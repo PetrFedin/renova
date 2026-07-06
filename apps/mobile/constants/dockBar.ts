@@ -24,9 +24,9 @@ export const DOCK_OPTIONAL_SLOTS = DOCK_MAX - DOCK_MANDATORY.length;
 /** Дефолт: главная, сообщения, объект, ремонт, бюджет */
 export const DOCK_DEFAULT: DockItemId[] = ['home', 'chat', 'object', 'repair', 'budget'];
 
-/** S8 — dynamic presets для заказчика (setup / repair) */
-export const DOCK_PRESET_SETUP: DockItemId[] = ['home', 'object', 'estimate', 'contractor', 'more'];
-export const DOCK_PRESET_REPAIR: DockItemId[] = ['home', 'repair', 'budget', 'chat', 'more'];
+/** S8 — dynamic presets: центр всегда «Объект», «Сообщения» всегда на месте */
+export const DOCK_PRESET_SETUP: DockItemId[] = ['home', 'chat', 'object', 'estimate', 'contractor'];
+export const DOCK_PRESET_REPAIR: DockItemId[] = ['home', 'chat', 'object', 'budget', 'repair'];
 
 export const DOCK_CATALOG: DockItem[] = [
   { id: 'home', routeName: 'index', label: 'Главная', icon: 'home' },

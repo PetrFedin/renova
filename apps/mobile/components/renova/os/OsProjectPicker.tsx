@@ -1,14 +1,16 @@
-/** Выбор проекта в шапке — компактный список вместо больших chips на главной */
-import { useState, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator } from 'react-native';
+/** Выбор проекта в шапке — группы «В работе» / «Завершённые» + портфель */
+import { useState, useEffect, useMemo } from 'react';
+import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { useTopInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useOsNavFromHere } from '@/lib/navigation';
 import { api, type ProjectSummary } from '@/lib/api';
 import { formatProjectPhaseLabel } from '@/lib/domain/formatProjectPhaseLabel';
+import { summarizePortfolio } from '@/lib/domain/summarizePortfolio';
+import { partitionPortfolioProjects } from '@/lib/domain/portfolioProjects';
 import type { OsRole } from '@/constants/osSections';
 
 function projectMeta(p: ProjectSummary, pendingById: Record<string, number>): string {
@@ -20,7 +22,58 @@ function projectMeta(p: ProjectSummary, pendingById: Record<string, number>): st
   return [type, rooms, phase, addr].filter(Boolean).join(' · ');
 }
 
+function portfolioDeltaLabel(summary: ReturnType<typeof summarizePortfolio>): string {
+  if (summary.overspend > 0) {
+    return `Перерасход ${formatRub(summary.overspend)} (${summary.variancePct > 0 ? '+' : ''}${summary.variancePct}%)`;
+  }
+  if (summary.savings > 0) {
+    return `Экономия ${formatRub(summary.savings)} (${summary.variancePct}%)`;
+  }
+  return `По плану · ${summary.spendPct}% бюджета`;
+}
+
+function ProjectPickerRow({
+  p,
+  active,
+  loading,
+  busy,
+  pendingById,
+  onSelect,
+}: {
+  p: ProjectSummary;
+  active: boolean;
+  loading: boolean;
+  busy: boolean;
+  pendingById: Record<string, number>;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <Pressable
+      style={[s.item, active && s.itemOn]}
+      onPress={() => onSelect(p.id)}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <View style={s.itemBody}>
+        <Text style={[s.itemTitle, active && s.itemTitleOn]} numberOfLines={1}>{p.name}</Text>
+        <Text style={s.itemMeta} numberOfLines={2}>{projectMeta(p, pendingById)}</Text>
+        <Text style={s.itemProgress} numberOfLines={1}>
+          {formatRub(p.budget_spent)} из {formatRub(p.budget_planned)}
+          {p.progress_percent < 100 ? ` · работы ${p.progress_percent}%` : ''}
+        </Text>
+      </View>
+      {loading ? (
+        <ActivityIndicator size="small" color={RenovaTheme.colors.accent} />
+      ) : active ? (
+        <Ionicons name="checkmark-circle" size={20} color={RenovaTheme.colors.accent} />
+      ) : null}
+    </Pressable>
+  );
+}
+
 export function OsProjectPicker({ role }: { role: OsRole }) {
+  const pathname = usePathname();
   const topInset = useTopInset();
   const { pushTab, pushScreen } = useOsNavFromHere(role);
   const { user, projects, activeProject, loadProject, showPaywall } = useRenova();
@@ -28,8 +81,16 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
 
+  const portfolio = useMemo(() => summarizePortfolio(projects, pendingById), [projects, pendingById]);
+  const { inProgress, completed } = useMemo(
+    () => partitionPortfolioProjects(projects, pendingById),
+    [projects, pendingById],
+  );
+  const showPortfolioRow = projects.length >= 2;
+  const isPortfolioScreen = pathname.includes('/portfolio');
+
   useEffect(() => {
-    if (!open || !user || role !== 'customer') return;
+    if (!open || !user) return;
     const closing = projects.filter((p) => p.progress_percent >= 100);
     if (!closing.length) {
       setPendingById({});
@@ -50,11 +111,12 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
       if (!cancelled) setPendingById(Object.fromEntries(rows));
     });
     return () => { cancelled = true; };
-  }, [open, user?.id, projects, role]);
+  }, [open, user?.id, projects]);
 
   if (!activeProject || projects.length === 0) return null;
 
   async function select(id: string) {
+    if (busyId) return;
     if (id === activeProject?.id) {
       setOpen(false);
       return;
@@ -65,9 +127,15 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
       setOpen(false);
     } catch (e: any) {
       if (e?.code === 'subscription_required' || e?.status === 402) showPaywall();
+      else Alert.alert('Ошибка', 'Не удалось переключить объект. Попробуйте ещё раз.');
     } finally {
       setBusyId(null);
     }
+  }
+
+  function openPortfolio() {
+    setOpen(false);
+    pushScreen('/portfolio');
   }
 
   return (
@@ -88,76 +156,104 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
-          <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
-            <Pressable style={s.menu} onPress={(e) => e.stopPropagation()}>
-              <Text style={s.menuHead}>Объекты</Text>
-              {projects.map((p) => {
-                const active = p.id === activeProject.id;
-                const loading = busyId === p.id;
-                return (
-                  <Pressable
-                    key={p.id}
-                    style={[s.item, active && s.itemOn]}
-                    onPress={() => select(p.id)}
-                    disabled={!!busyId}
-                  >
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[s.itemTitle, active && s.itemTitleOn]} numberOfLines={1}>{p.name}</Text>
-                      <Text style={s.itemMeta} numberOfLines={2}>{projectMeta(p, pendingById)}</Text>
-                      <Text style={s.itemProgress} numberOfLines={1}>
-                        {formatRub(p.budget_spent)} / {formatRub(p.budget_planned)} · {p.progress_percent}%
-                      </Text>
-                    </View>
-                    {loading ? (
-                      <ActivityIndicator size="small" color={RenovaTheme.colors.accent} />
-                    ) : active ? (
-                      <Ionicons name="checkmark-circle" size={20} color={RenovaTheme.colors.accent} />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
+        <View style={s.backdrop}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} accessibilityLabel="Закрыть" />
+          <View style={[s.menuWrap, { paddingTop: topInset + 56, maxHeight: '85%' }]}>
+            <ScrollView style={s.menuScroll} contentContainerStyle={s.menuScrollIn} bounces={false}>
+              <View style={s.menu}>
+                <Text style={s.menuHead}>Объекты</Text>
 
-              {projects.length >= 2 && (
-                <>
-                  <View style={s.divider} />
-                  <Pressable
-                    style={s.item}
-                    onPress={() => {
-                      setOpen(false);
-                      pushScreen('/portfolio');
-                    }}
-                  >
-                    <Ionicons name="albums-outline" size={18} color={RenovaTheme.colors.textMuted} />
-                    <Text style={s.itemT}>Все проекты ({projects.length})</Text>
-                  </Pressable>
-                </>
-              )}
+                {showPortfolioRow ? (
+                  <>
+                    <Pressable
+                      style={[s.item, s.portfolioItem, isPortfolioScreen && s.itemOn]}
+                      onPress={openPortfolio}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isPortfolioScreen }}
+                    >
+                      <Ionicons
+                        name="albums-outline"
+                        size={18}
+                        color={isPortfolioScreen ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted}
+                      />
+                      <View style={s.itemBody}>
+                        <Text style={[s.itemTitle, isPortfolioScreen && s.itemTitleOn]} numberOfLines={1}>
+                          Все проекты ({portfolio.count})
+                        </Text>
+                        <Text style={s.itemMeta} numberOfLines={1}>
+                          План {formatRub(portfolio.totalPlan)} · факт {formatRub(portfolio.totalSpent)}
+                        </Text>
+                        <Text style={s.itemProgress} numberOfLines={1}>
+                          {portfolioDeltaLabel(portfolio)} · можно выбрать объекты
+                        </Text>
+                      </View>
+                      {isPortfolioScreen ? (
+                        <Ionicons name="checkmark-circle" size={20} color={RenovaTheme.colors.accent} />
+                      ) : null}
+                    </Pressable>
+                    <View style={s.divider} />
+                  </>
+                ) : null}
 
-              <View style={s.divider} />
-              <Pressable
-                style={s.item}
-                onPress={() => {
-                  setOpen(false);
-                  pushTab('object', 'profile');
-                }}
-              >
-                <Ionicons name="create-outline" size={18} color={RenovaTheme.colors.textMuted} />
-                <Text style={s.itemT}>Редактировать профиль</Text>
-              </Pressable>
-              <Pressable
-                style={s.item}
-                onPress={() => {
-                  setOpen(false);
-                  pushScreen('/wizard/type');
-                }}
-              >
-                <Ionicons name="add-circle-outline" size={18} color={RenovaTheme.colors.accent} />
-                <Text style={[s.itemT, { color: RenovaTheme.colors.accent }]}>Новый проект</Text>
-              </Pressable>
-            </Pressable>
+                {inProgress.length ? (
+                  <>
+                    <Text style={s.sectionHead}>В работе</Text>
+                    {inProgress.map((p) => (
+                      <ProjectPickerRow
+                        key={p.id}
+                        p={p}
+                        active={!isPortfolioScreen && p.id === activeProject.id}
+                        loading={busyId === p.id}
+                        busy={!!busyId}
+                        pendingById={pendingById}
+                        onSelect={select}
+                      />
+                    ))}
+                  </>
+                ) : null}
+
+                {completed.length ? (
+                  <>
+                    <Text style={[s.sectionHead, inProgress.length ? s.sectionHeadGap : null]}>Завершённые</Text>
+                    {completed.map((p) => (
+                      <ProjectPickerRow
+                        key={p.id}
+                        p={p}
+                        active={!isPortfolioScreen && p.id === activeProject.id}
+                        loading={busyId === p.id}
+                        busy={!!busyId}
+                        pendingById={pendingById}
+                        onSelect={select}
+                      />
+                    ))}
+                  </>
+                ) : null}
+
+                <View style={s.divider} />
+                <Pressable
+                  style={s.item}
+                  onPress={() => {
+                    setOpen(false);
+                    pushTab('object', 'profile');
+                  }}
+                >
+                  <Ionicons name="create-outline" size={18} color={RenovaTheme.colors.textMuted} />
+                  <Text style={s.itemT}>Редактировать профиль</Text>
+                </Pressable>
+                <Pressable
+                  style={s.item}
+                  onPress={() => {
+                    setOpen(false);
+                    pushScreen('/wizard/type');
+                  }}
+                >
+                  <Ionicons name="add-circle-outline" size={18} color={RenovaTheme.colors.accent} />
+                  <Text style={[s.itemT, { color: RenovaTheme.colors.accent }]}>Новый проект</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </>
   );
@@ -189,10 +285,13 @@ const s = StyleSheet.create({
   },
   countBadgeT: { color: RenovaTheme.colors.surface, fontSize: 8, fontWeight: '800' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
-  menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },
+  menuWrap: { position: 'absolute', top: 0, right: 12, left: 12, alignItems: 'flex-end' },
+  menuScroll: { maxWidth: 340, width: '100%' },
+  menuScrollIn: { alignItems: 'flex-end' },
   menu: {
     minWidth: 280,
     maxWidth: 340,
+    width: '100%',
     backgroundColor: RenovaTheme.colors.surface,
     borderRadius: RenovaTheme.radius.md,
     borderWidth: 1,
@@ -211,8 +310,19 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
+  sectionHead: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: RenovaTheme.colors.textSubtle,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  sectionHeadGap: { marginTop: 4, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.borderLight },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
-  itemOn: { backgroundColor: RenovaTheme.colors.borderLight },
+  portfolioItem: { backgroundColor: RenovaTheme.colors.borderLight },
+  itemOn: { backgroundColor: RenovaTheme.colors.infoBg },
+  itemBody: { flex: 1, minWidth: 0 },
   itemTitle: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
   itemTitleOn: { color: RenovaTheme.colors.accent },
   itemMeta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2, lineHeight: 16 },

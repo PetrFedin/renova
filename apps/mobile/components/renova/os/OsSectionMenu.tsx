@@ -1,15 +1,13 @@
 /** Панель разделов OS — иконка справа в шапке + сервисные ссылки */
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { router, usePathname, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { OS_MENU_SECTIONS, resolveSectionId, tabsRoute, type OsRole } from '@/constants/osSections';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { useTopInset } from '@/lib/useTopInset';
-import { useRenova } from '@/lib/context/RenovaContext';
-import { useChatUnread, useInboxWsListener } from '@/lib/useChatUnread';
-import { buildInboxItems, inboxMenuBadge } from '@/lib/domain/buildInboxItems';
+import { useInboxTasks } from '@/lib/useChatUnread';
 
 /** Без дубля «Сообщений» — «Входящие» отдельной строкой */
 const UTIL_LINKS: { id: string; label: string; href: string; icon: 'time-outline' | 'document-text-outline' | 'mail-unread-outline' }[] = [
@@ -22,30 +20,13 @@ type Props = { role: OsRole; iconOnly?: boolean };
 
 export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const topInset = useTopInset();
-  const { user, activeProject } = useRenova();
-  const { count: chatUnread } = useChatUnread(user?.id);
+  const { badge: inboxCount } = useInboxTasks(role);
   const [open, setOpen] = useState(false);
-  const [inboxCount, setInboxCount] = useState(0);
   const pathname = usePathname();
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
   const sections = OS_MENU_SECTIONS[role];
   const currentId = resolveSectionId(pathname);
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
-
-  const reloadInbox = useCallback(async () => {
-    if (!user || !activeProject) { setInboxCount(0); return; }
-    const items = await buildInboxItems({
-      userId: user.id,
-      projectId: activeProject.id,
-      role,
-      chatUnread,
-      project: activeProject,
-    });
-    setInboxCount(inboxMenuBadge(items));
-  }, [user?.id, activeProject, role, chatUnread]);
-
-  useFocusEffect(useCallback(() => { reloadInbox().catch(() => {}); }, [reloadInbox]));
-  useInboxWsListener(useCallback(() => { reloadInbox().catch(() => {}); }, [reloadInbox]));
 
   const totalBadge = inboxCount;
 

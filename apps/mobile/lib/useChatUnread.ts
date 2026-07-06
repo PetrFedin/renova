@@ -1,67 +1,122 @@
-/** Счётчик непрочитанных сообщений для badge в dock и шапке */
-import { useCallback, useState, useEffect } from 'react';
+/** Хуки unread/inbox — читают единый inboxSyncStore (один WS, один reload) */
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { api } from '@/lib/api';
 import type { UserRole } from '@/lib/api';
-import { inboxAttentionTotal } from '@/lib/chatAttention';
-import { useInboxWebSocket } from '@/lib/useInboxWebSocket';
-import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
-
-const POLL_MS = 25_000;
+import {
+  ensureInboxWebSocket,
+  getChatFailedSnapshot,
+  getChatUnreadCountSnapshot,
+  getInboxBadgeSnapshot,
+  getInboxItemsSnapshot,
+  getInboxWsConnectedSnapshot,
+  reloadInboxSync,
+  markChatReadAndSync,
+  subscribeInboxSync,
+  subscribeInboxWs,
+} from '@/lib/inboxSyncStore';
+import type { OsRole } from '@/constants/osSections';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 /** Подписка на inbox WS — колбэк при новых сообщениях / emitInboxWs */
 export function useInboxWsListener(onPush: () => void) {
   useEffect(() => subscribeInboxWs(onPush), [onPush]);
 }
 
-function sumThreadUnread(threads: { unread_count?: number }[]): number {
-  return threads.reduce((acc, t) => acc + (t.unread_count || 0), 0);
+/** Примитивные snapshot-функции — без новых object-ссылок на каждый render */
+function useChatUnreadCount() {
+  return useSyncExternalStore(subscribeInboxSync, getChatUnreadCountSnapshot, getChatUnreadCountSnapshot);
 }
 
-export function useChatUnread(userId?: string, viewerRole?: UserRole) {
-  const [count, setCount] = useState(0);
-  const [failed, setFailed] = useState(false);
+function useChatFailed() {
+  return useSyncExternalStore(subscribeInboxSync, getChatFailedSnapshot, getChatFailedSnapshot);
+}
+
+function useInboxWsConnected() {
+  return useSyncExternalStore(subscribeInboxSync, getInboxWsConnectedSnapshot, getInboxWsConnectedSnapshot);
+}
+
+function useInboxBadge() {
+  return useSyncExternalStore(subscribeInboxSync, getInboxBadgeSnapshot, getInboxBadgeSnapshot);
+}
+
+function useInboxItems() {
+  return useSyncExternalStore(subscribeInboxSync, getInboxItemsSnapshot, getInboxItemsSnapshot);
+}
+
+export function useChatUnread(userId?: string, userRole?: UserRole) {
+  const count = useChatUnreadCount();
+  const failed = useChatFailed();
+  const inboxWsConnected = useInboxWsConnected();
 
   const reload = useCallback(async () => {
-    if (!userId) { setCount(0); setFailed(false); return; }
-    let total = 0;
-    let apiOk = false;
-    try {
-      const r = await api.chatUnreadTotal(userId);
-      total = r.count || 0;
-      apiOk = true;
-    } catch {
-      apiOk = false;
-    }
-    try {
-      const inbox = await api.chatInbox(userId);
-      const fromThreads = sumThreadUnread(inbox);
-      const attention = inboxAttentionTotal(
-        inbox.filter((t) => !t.is_archived),
-        viewerRole === 'contractor' ? 'contractor' : viewerRole === 'customer' ? 'customer' : undefined,
-      );
-      total = Math.max(total, fromThreads, attention);
-      apiOk = true;
-    } catch {
-      /* keep prior total if inbox fails too */
-    }
-    setCount(total);
-    setFailed(!apiOk && total === 0);
-  }, [userId, viewerRole]);
+    await reloadInboxSync({ userId, userRole });
+  }, [userId, userRole]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
-
-  const { connected: inboxWs } = useInboxWebSocket(userId, !!userId, () => {
-    reload().catch(() => {});
-    emitInboxWs();
-  });
+  useFocusEffect(
+    useCallback(() => {
+      reload().catch(() => {});
+    }, [reload]),
+  );
 
   useEffect(() => {
-    if (!userId) return;
-    const ms = inboxWs ? 60_000 : POLL_MS;
-    const id = setInterval(() => { reload().catch(() => {}); }, ms);
-    return () => clearInterval(id);
-  }, [userId, reload, inboxWs]);
+    if (!userId) return undefined;
+    return ensureInboxWebSocket(userId, () => {
+      reload().catch(() => {});
+    });
+  }, [userId, reload]);
 
-  return { count, reload, inboxWsConnected: inboxWs, failed };
+  return { count, reload, inboxWsConnected, failed };
+}
+
+/** После markChatRead — дождаться сервера и обновить все badge */
+export function useChatReadSync(userId?: string, userRole?: UserRole) {
+  return useCallback(
+    async (projectId: string, threadId: string, knownUnread = 0) => {
+      if (!userId || !projectId || !threadId) return;
+      await markChatReadAndSync(userId, projectId, threadId, userRole, knownUnread);
+    },
+    [userId, userRole],
+  );
+}
+
+/** Задачи «Входящие» + badge — синхронизированы с chat attention и /inbox */
+export function useInboxTasks(role: OsRole) {
+  const { user, activeProject } = useRenova();
+  const items = useInboxItems();
+  const badge = useInboxBadge();
+  const chatUnread = useChatUnreadCount();
+  const projectId = activeProject?.id;
+  const projectRef = useRef(activeProject);
+  projectRef.current = activeProject;
+
+  const reload = useCallback(async () => {
+    await reloadInboxSync({
+      userId: user?.id,
+      userRole: user?.role,
+      projectId,
+      project: projectRef.current,
+      osRole: role,
+    });
+  }, [user?.id, user?.role, projectId, role]);
+
+  useFocusEffect(
+    useCallback(() => {
+      reload().catch(() => {});
+    }, [reload]),
+  );
+
+  useInboxWsListener(
+    useCallback(() => {
+      reload().catch(() => {});
+    }, [reload]),
+  );
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    return ensureInboxWebSocket(user.id, () => {
+      reload().catch(() => {});
+    });
+  }, [user?.id, reload]);
+
+  return { items, badge, chatUnread, reload };
 }

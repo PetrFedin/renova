@@ -23,6 +23,13 @@ const meta = formatProjectHeaderMeta('house', 5, 'МО, д. Пример', {
 if (meta.context !== sub) throw new Error('header meta context');
 if (meta.status) throw new Error('closing header must not repeat payment amount');
 
+const completeMeta = formatProjectHeaderMeta('apartment', 3, 'Москва, ул. Пример 12', {
+  isComplete: true,
+  pendingPayments: 0,
+  pendingPaymentTotal: 0,
+});
+if (completeMeta.status !== 'проект завершён') throw new Error('complete header status for badge');
+
 if (!isClosingPhaseSecondary('payment')) throw new Error('payment secondary');
 if (isClosingPhaseSecondary('material')) throw new Error('material blocked in closing');
 

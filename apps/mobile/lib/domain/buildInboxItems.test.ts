@@ -12,8 +12,8 @@ const items: InboxItem[] = [
 ];
 
 assert(inboxTotal(items, 0) === 3, 'total counts inbox rows');
-assert(inboxMenuBadge(items) === 2, 'menu badge excludes chat');
-assert(inboxMenuBadge([{ id: 'chat', kind: 'chat', title: 'Чат', href: '/chat', priority: 90 }]) === 0, 'chat-only menu badge zero');
+assert(inboxMenuBadge(items) === 3, 'menu badge counts all inbox rows including chat');
+assert(inboxMenuBadge([{ id: 'chat', kind: 'chat', title: 'Чат', href: '/chat', priority: 90 }]) === 1, 'chat-only menu badge');
 assert(inboxLinkItems(items, 'payment').length === 1, 'payment hero hides payment rows from link');
 assert(inboxLinkItems(items, 'work').length === 3, 'non-payment hero keeps all rows');
 assert(inboxTotal([], 4) === 4, 'chat unread when no chat item');

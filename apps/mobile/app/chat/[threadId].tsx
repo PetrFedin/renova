@@ -5,8 +5,11 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { ChatThreadView } from '@/components/renova/chat/ChatThreadView';
 
 export default function ChatThreadScreen() {
-  const { threadId, returnTo, highlightId } = useLocalSearchParams<{
-    threadId: string; returnTo?: string; highlightId?: string;
+  const { threadId, projectId, returnTo, highlightId } = useLocalSearchParams<{
+    threadId: string;
+    projectId?: string;
+    returnTo?: string;
+    highlightId?: string;
   }>();
 
   if (!threadId) {
@@ -20,7 +23,14 @@ export default function ChatThreadScreen() {
     );
   }
 
-  return <ChatThreadView threadId={threadId} returnTo={returnTo} highlightId={highlightId} />;
+  return (
+    <ChatThreadView
+      threadId={threadId}
+      projectId={projectId}
+      returnTo={returnTo}
+      highlightId={highlightId}
+    />
+  );
 }
 
 const s = StyleSheet.create({

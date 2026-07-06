@@ -1,71 +1,147 @@
-/** Полный экран портфеля — список проектов без deprecated CustomerPortfolioPanel */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+/** Портфель — выбор объектов, итоги, статьи расходов, сравнение */
+import { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { replaceOsNav } from '@/lib/pushOsNav';
-import { tabsRoute } from '@/constants/osSections';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { tabsRoute, type OsRole } from '@/constants/osSections';
+import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
-import { PlanFactObjects } from '@/components/renova/PlanFactObjects';
+import { api } from '@/lib/api';
+import { summarizePortfolio } from '@/lib/domain/summarizePortfolio';
+import { aggregatePortfolioBudgetBreakdowns, type PortfolioCategoryRow } from '@/lib/domain/aggregatePortfolioBudget';
+import { usePortfolioSelection } from '@/lib/portfolioSelection';
+import { PortfolioSummaryHero } from '@/components/renova/os/portfolio/PortfolioSummaryHero';
+import { PortfolioSelectionPanel } from '@/components/renova/os/portfolio/PortfolioSelectionPanel';
+import { PortfolioCategoryBreakdown } from '@/components/renova/os/portfolio/PortfolioCategoryBreakdown';
+import { PortfolioCompareList } from '@/components/renova/os/portfolio/PortfolioCompareList';
 
 export function PortfolioProjectsView() {
-  const { projects, activeProject, loadProject } = useRenova();
+  const { user, projects, activeProject, loadProject } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+  const allIds = useMemo(() => projects.map((p) => p.id), [projects]);
+  const {
+    ready,
+    selected,
+    selectedCount,
+    allCount,
+    toggle,
+    selectAll,
+    clearAll,
+  } = usePortfolioSelection(allIds);
+
+  const [pendingById, setPendingById] = useState<Record<string, number>>({});
+  const [categories, setCategories] = useState<PortfolioCategoryRow[]>([]);
+  const [catLoading, setCatLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const closing = projects.filter((p) => p.progress_percent >= 100);
+    if (!closing.length) {
+      setPendingById({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      closing.map(async (p) => {
+        if (p.pending_payments != null) return [p.id, p.pending_payments] as const;
+        try {
+          const n = (await api.countPendingPayments(user.id, p.id)) || 0;
+          return [p.id, n] as const;
+        } catch {
+          return [p.id, 0] as const;
+        }
+      }),
+    ).then((rows) => {
+      if (!cancelled) setPendingById(Object.fromEntries(rows));
+    });
+    return () => { cancelled = true; };
+  }, [user?.id, projects]);
+
+  const selectedProjects = useMemo(
+    () => projects.filter((p) => selected.has(p.id)),
+    [projects, selected],
+  );
+  const allRows = useMemo(
+    () => summarizePortfolio(projects, pendingById).rows,
+    [projects, pendingById],
+  );
+  const summary = useMemo(
+    () => summarizePortfolio(selectedProjects, pendingById),
+    [selectedProjects, pendingById],
+  );
+
+  const selectedIdsKey = useMemo(
+    () => selectedProjects.map((p) => p.id).sort().join('|'),
+    [selectedProjects],
+  );
+
+  useEffect(() => {
+    if (!user || !selectedProjects.length) {
+      setCategories([]);
+      return;
+    }
+    let cancelled = false;
+    setCatLoading(true);
+    Promise.all(
+      selectedProjects.map((p) => api.budgetBreakdown(user.id, p.id).catch(() => null)),
+    )
+      .then((rows) => {
+        if (!cancelled) {
+          setCategories(aggregatePortfolioBudgetBreakdowns(rows.filter(Boolean) as NonNullable<(typeof rows)[number]>[]));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCatLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [user?.id, selectedIdsKey]);
+
   if (!projects.length) {
     return <Text style={s.empty}>Нет проектов — создайте первый объект в профиле</Text>;
   }
 
-  const totalPlan = projects.reduce((a, p) => a + p.budget_planned, 0);
-  const totalSpent = projects.reduce((a, p) => a + p.budget_spent, 0);
-  const avgProgress = Math.round(projects.reduce((a, p) => a + p.progress_percent, 0) / projects.length);
+  if (!ready) {
+    return (
+      <View style={s.loadingWrap}>
+        <ActivityIndicator color={RenovaTheme.colors.accent} />
+      </View>
+    );
+  }
 
-  const summaryWidgets: OsWidget[] = [
-    { id: 'cnt', label: 'Проекты', value: String(projects.length), width: 88 },
-    { id: 'plan', label: 'План', value: formatRub(totalPlan), width: 100 },
-    { id: 'fact', label: 'Факт', value: formatRub(totalSpent), hint: `${Math.round((totalSpent / Math.max(1, totalPlan)) * 100)}%`, width: 100 },
-    { id: 'prog', label: 'Прогресс', value: `${avgProgress}%`, width: 96 },
-  ];
+  async function openProject(id: string) {
+    try {
+      await loadProject(id);
+      replaceOsNav(tabsRoute(role, 'index'));
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось открыть объект');
+    }
+  }
 
   return (
     <View style={s.wrap}>
-      <OsWidgetGrid items={summaryWidgets} />
-      <View style={s.projGrid}>
-        {(() => {
-          const rows: typeof projects[] = [];
-          for (let i = 0; i < projects.length; i += 2) rows.push(projects.slice(i, i + 2) as typeof projects);
-          return rows.map((row, ri) => (
-            <View key={ri} style={s.projRow}>
-              {row.map((p) => (
-                <Pressable
-                  key={p.id}
-                  style={[s.projChip, activeProject?.id === p.id && s.projChipOn]}
-                  onPress={() => loadProject(p.id).then(() => replaceOsNav(tabsRoute('customer', 'index'))).catch(() => {})}
-                >
-                  <Text style={s.projName} numberOfLines={2}>{p.name}</Text>
-                  <Text style={s.projMeta}>{formatRub(p.budget_spent)} · {p.progress_percent}%</Text>
-                  <View style={s.barBg}>
-                    <View style={[s.barFill, { width: `${Math.min(100, p.progress_percent)}%` }]} />
-                  </View>
-                </Pressable>
-              ))}
-              {row.length === 1 && <View style={[s.projChip, s.ghost]} />}
-            </View>
-          ));
-        })()}
-      </View>
-      <PlanFactObjects items={projects.map((p) => ({ name: p.name, planned: p.budget_planned, spent: p.budget_spent }))} />
+      <PortfolioSummaryHero summary={summary} selectedCount={selectedCount} totalCount={allCount} />
+
+      <PortfolioSelectionPanel
+        rows={allRows}
+        selected={selected}
+        onToggle={toggle}
+        onSelectAll={selectAll}
+        onClearAll={clearAll}
+        onOpen={openProject}
+        activeProjectId={activeProject?.id}
+      />
+
+      {selectedCount > 0 ? (
+        <>
+          <PortfolioCategoryBreakdown rows={categories} loading={catLoading} projectCount={selectedCount} />
+          <PortfolioCompareList rows={summary.rows} />
+        </>
+      ) : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { gap: 10 },
+  wrap: { gap: 12 },
   empty: { textAlign: 'center', color: RenovaTheme.colors.textMuted, marginTop: 24, fontSize: 14 },
-  projGrid: { gap: 8, marginBottom: 10 },
-  projRow: { flexDirection: 'row', gap: 8 },
-  projChip: { ...card, flex: 1, minWidth: 0, marginBottom: 0, padding: 10 },
-  ghost: { opacity: 0, borderWidth: 0 },
-  projChipOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
-  projName: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.text },
-  projMeta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4 },
-  barBg: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 8, overflow: 'hidden' },
-  barFill: { height: 4, backgroundColor: RenovaTheme.colors.accent },
+  loadingWrap: { paddingVertical: 32, alignItems: 'center' },
 });

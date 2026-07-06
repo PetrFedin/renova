@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
-import { formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
 
 export function KPITrends({ points }: { points: { id?: string; label: string; margin: number }[] }) {
   if (points.length < 2) return null;

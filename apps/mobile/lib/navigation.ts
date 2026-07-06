@@ -59,7 +59,11 @@ export function useNavFromHere() {
     material: (id: string) => router.push({ pathname: '/material/[id]', params: { id, returnTo: from } }),
     purchase: (id: string) => router.push({ pathname: '/purchase/[id]', params: { id, returnTo: from } }),
     workOrder: (id: string) => router.push({ pathname: '/work-order/[id]', params: { id, returnTo: from } }),
-    chat: (threadId: string) => router.push({ pathname: '/chat/[threadId]', params: { threadId, returnTo: from } }),
+    chat: (threadId: string, projectId?: string) =>
+      router.push({
+        pathname: '/chat/[threadId]',
+        params: { threadId, ...(projectId ? { projectId } : {}), returnTo: from },
+      }),
     article: (slug: string) => router.push({ pathname: '/article/[slug]', params: { slug, returnTo: from } }),
     scanReceipt: (roomId?: string, stageId?: string) => router.push({ pathname: '/scan-receipt', params: { returnTo: from, ...(roomId ? { roomId } : {}), ...(stageId ? { stageId } : {}) } }),
     href: (path: string) => router.push({ pathname: path as any, params: { returnTo: from } }),

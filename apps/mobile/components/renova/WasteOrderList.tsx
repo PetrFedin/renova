@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { api, WasteOrder } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
 
 export function WasteOrderList({ userId, projectId, role }: { userId: string; projectId: string; role: string }) {
   const [items, setItems] = useState<WasteOrder[]>([]);

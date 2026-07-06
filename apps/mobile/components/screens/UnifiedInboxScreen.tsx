@@ -1,12 +1,10 @@
 /** Полный экран единого inbox — чат · оплаты · согласования · приёмка · этапы */
-import { useCallback, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { useChatUnread, useInboxWsListener } from '@/lib/useChatUnread';
-import { buildInboxItems, deriveInboxHeroKind, filterInboxForHero, type InboxItem } from '@/lib/domain/buildInboxItems';
+import { useInboxTasks } from '@/lib/useChatUnread';
+import { filterInboxForHero, type InboxItem } from '@/lib/domain/buildInboxItems';
 import { navigateApproval } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
@@ -27,23 +25,7 @@ function InboxRow({ item, role, onPress }: { item: InboxItem; role: OsRole; onPr
 
 export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: { role: OsRole; returnTo?: string; heroKind?: string }) {
   const { user, activeProject, readOnly } = useRenova();
-  const { count: chatUnread } = useChatUnread(user?.id);
-  const [items, setItems] = useState<InboxItem[]>([]);
-
-  const reload = useCallback(async () => {
-    if (!user || !activeProject) return;
-    const list = await buildInboxItems({
-      userId: user.id,
-      projectId: activeProject.id,
-      role,
-      chatUnread,
-      project: activeProject,
-    });
-    setItems(list);
-  }, [user?.id, activeProject, role, chatUnread]);
-
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
-  useInboxWsListener(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  const { items, badge } = useInboxTasks(role);
 
   if (!user || !activeProject) {
     return (
@@ -54,8 +36,8 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
     );
   }
 
-  const heroKind = heroKindProp || deriveInboxHeroKind(items);
-  const visible = filterInboxForHero(items, heroKind);
+  /** Из меню — все строки; с главной — без дубля hero CTA */
+  const visible = heroKindProp ? filterInboxForHero(items, heroKindProp) : items;
 
   const open = (it: InboxItem) => {
     if (it.kind === 'approval') navigateApproval(it.approval, role, returnTo);
@@ -66,7 +48,7 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
     <>
       <BackHeader
         title="Входящие"
-        subtitle={readOnly ? 'Только просмотр — действия недоступны' : 'Все задачи проекта'}
+        subtitle={readOnly ? 'Только просмотр — действия недоступны' : badge > 0 ? `${badge} ${badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач'}` : 'Все задачи проекта'}
         returnTo={returnTo}
       />
       <ReadOnlyBanner />

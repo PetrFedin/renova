@@ -6,6 +6,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { StageExpenseLinksPanel } from '@/components/renova/StageExpenseLinksPanel';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
+import { RepairControlSummary } from '@/components/renova/RepairControlSummary';
 import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
 import { BUDGET_SEGMENT_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';

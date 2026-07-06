@@ -1,13 +1,12 @@
 /** «Сделать сейчас» v2 — hero stack + full-width CTA */
-import { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { homeLayout, homeRowStyles, homeTypography } from '@/constants/homeTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { useChatUnread, useInboxWsListener } from '@/lib/useChatUnread';
-import { buildInboxItems, inboxLinkItems, filterInboxForHero, type InboxItem } from '@/lib/domain/buildInboxItems';
+import { useInboxTasks } from '@/lib/useChatUnread';
+import { inboxLinkItems, filterInboxForHero, type InboxItem } from '@/lib/domain/buildInboxItems';
 import { navigateApproval, useOsNavFromHere } from '@/lib/navigation';
 import { homeHeroLabel } from '@/lib/domain/roleCapabilities';
 import type { ProjectOsSnapshot, OsNextAction } from '@/lib/domain/osTypes';
@@ -29,28 +28,9 @@ function duplicatesHero(item: InboxItem, hero: OsNextAction): boolean {
 }
 
 export function HomeActionHero({ role, snap, insights, showHero, showInbox, showInsights }: Props) {
-  const { user, activeProject, readOnly } = useRenova();
+  const { readOnly } = useRenova();
   const { pushNav, returnTo } = useOsNavFromHere(role);
-  const { count: chatUnread } = useChatUnread(user?.id, user?.role);
-  const [items, setItems] = useState<InboxItem[]>([]);
-
-  const reload = useCallback(async () => {
-    if (!user || !activeProject) {
-      setItems([]);
-      return;
-    }
-    const list = await buildInboxItems({
-      userId: user.id,
-      projectId: activeProject.id,
-      role,
-      chatUnread,
-      project: activeProject,
-    });
-    setItems(list);
-  }, [user?.id, activeProject, role, chatUnread]);
-
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
-  useInboxWsListener(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  const { items } = useInboxTasks(role);
 
   const hero = snap.nextAction;
   const phase = resolveProjectPhase(snap);

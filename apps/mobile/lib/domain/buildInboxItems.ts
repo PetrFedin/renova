@@ -207,7 +207,7 @@ export function inboxTotal(items: InboxItem[], chatUnread: number): number {
   return rows + chatUnread;
 }
 
-/** Badge меню ↑ — только задачи, без чата (чат на dock) */
+/** Badge «Входящие» — все строки, включая чат (единый счётчик с экраном /inbox) */
 export function inboxMenuBadge(items: InboxItem[]): number {
-  return items.filter((i) => i.kind !== 'chat').length;
+  return items.length;
 }

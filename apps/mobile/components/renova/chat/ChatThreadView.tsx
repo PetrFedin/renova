@@ -1,5 +1,5 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
@@ -15,7 +15,7 @@ import { api, ChatDetail, ChatMessage } from '@/lib/api';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
-import { useChatUnread } from '@/lib/useChatUnread';
+import { useChatReadSync } from '@/lib/useChatUnread';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute } from '@/constants/osSections';
@@ -106,12 +106,23 @@ function MessageBubble({
   );
 }
 
-export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: string; returnTo?: string; highlightId?: string }) {
+export function ChatThreadView({
+  threadId,
+  projectId: projectIdProp,
+  returnTo,
+  highlightId,
+}: {
+  threadId: string;
+  projectId?: string;
+  returnTo?: string;
+  highlightId?: string;
+}) {
   const pathname = usePathname();
-  const { user, activeProject, projects } = useRenova();
+  const { user, activeProject, projects, loadProject } = useRenova();
   const canWrite = useWriteAllowed();
-  const { reload: reloadUnread } = useChatUnread(user?.id, user?.role);
+  const syncAfterRead = useChatReadSync(user?.id, user?.role);
   const [chat, setChat] = useState<ChatDetail | null>(null);
+  const [chatProjectId, setChatProjectId] = useState<string | null>(projectIdProp ?? null);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [typing, setTyping] = useState(false);
@@ -123,11 +134,39 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
+  const resolveProjectId = useCallback(async (): Promise<string | null> => {
+    if (projectIdProp) return projectIdProp;
+    if (chatProjectId) return chatProjectId;
+    if (!user) return null;
+    if (activeProject?.id) {
+      try {
+        await api.getChat(user.id, activeProject.id, threadId);
+        return activeProject.id;
+      } catch {
+        /* чат на другом объекте */
+      }
+    }
+    const inbox = await api.chatInbox(user.id).catch(() => []);
+    return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
+  }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
+
   const reload = async () => {
-    if (!user || !activeProject || !threadId) return;
-    setChat(await api.getChat(user.id, activeProject.id, threadId));
-    await reloadUnread();
+    if (!user || !threadId) return;
+    const projectId = await resolveProjectId();
+    if (!projectId) return;
+    setChatProjectId(projectId);
+    if (activeProject?.id !== projectId) {
+      await loadProject(projectId).catch(() => {});
+    }
+    const inbox = await api.chatInbox(user.id).catch(() => []);
+    const knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
+    await syncAfterRead(projectId, threadId, knownUnread);
+    setChat(await api.getChat(user.id, projectId, threadId));
   };
+
+  useEffect(() => {
+    reload().catch(() => {});
+  }, [threadId, projectIdProp, activeProject?.id]);
 
   useEffect(() => {
     if (highlightId && chat?.messages.length) {
@@ -136,19 +175,13 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
     }
   }, [highlightId, chat?.messages.length]);
 
-  useEffect(() => {
-    reload().catch(() => {});
-    if (user && activeProject && threadId) api.markChatRead(user.id, activeProject.id, threadId).catch(() => {});
-  }, [threadId, activeProject?.id]);
-
-  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!activeProject, (payload) => {
+  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
     if (payload.type === 'typing') {
       setTyping(true);
       setTimeout(() => setTyping(false), 2000);
       return;
     }
     reload().catch(() => {});
-    if (user && activeProject && threadId) api.markChatRead(user.id, activeProject.id, threadId).catch(() => {});
   });
 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, () => {
@@ -161,7 +194,7 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
     pushOsNav(budgetTabRoute(role, 'payments'), returnTo || pathname);
   };
 
-  if (!chat || !user || !activeProject) {
+  if (!chat || !user) {
     return (
       <View style={s.root}>
         <BackHeader title="Чат" returnTo={returnTo} />
@@ -170,10 +203,20 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
     );
   }
 
+  const projectId = chatProjectId ?? chat.project_id ?? activeProject?.id;
+  if (!projectId) {
+    return (
+      <View style={s.root}>
+        <BackHeader title="Чат" returnTo={returnTo} />
+        <View style={s.center}><Text>Чат не привязан к объекту</Text></View>
+      </View>
+    );
+  }
+
   const sendText = async (body: string, type = 'text', image?: string) => {
     const prefix = replyTo?.text ? `↩ ${replyTo.text.slice(0, 40)}…\n` : '';
     try {
-      await api.sendChatMessage(user.id, activeProject.id, threadId, prefix + body, type, image, replyTo?.id);
+      await api.sendChatMessage(user.id, projectId, threadId, prefix + body, type, image, replyTo?.id);
     } catch (e: any) {
       if (e?.message === 'offline_queued') { Alert.alert('Офлайн', 'Отправится при подключении'); return; }
       throw e;
@@ -190,10 +233,10 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
         <Text style={[s.wsDot, wsConnected ? s.wsOn : s.wsOff]}>{wsConnected ? '● онлайн' : '○ обновление'}</Text>
         <Pressable onPress={() => setInviteOpen(true)}><Text style={s.topLink}>+ Участник</Text></Pressable>
         <Pressable onPress={() => setSettingsOpen(true)}><Text style={s.topLink}>Настройки</Text></Pressable>
-        <Pressable onPress={() => api.exportChatPdf(user.id, activeProject.id, threadId).catch(() => Alert.alert('Ошибка', 'Не удалось экспортировать документ'))}>
+        <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch(() => Alert.alert('Ошибка', 'Не удалось экспортировать документ'))}>
           <Text style={s.topLink}>Документ</Text>
         </Pressable>
-        <Pressable onPress={() => api.patchChatState(user.id, activeProject.id, threadId, { is_pinned: !chat.is_pinned }).then(reload)}>
+        <Pressable onPress={() => api.patchChatState(user.id, projectId, threadId, { is_pinned: !chat.is_pinned }).then(reload)}>
           <Text style={s.topLink}>{chat.is_pinned ? 'Открепить чат' : 'Закрепить чат'}</Text>
         </Pressable>
       </View>
@@ -208,11 +251,11 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
             highlight={highlightId === m.id}
             query={chatQuery.trim() || undefined}
             returnTo={returnTo || `/chat/${threadId}`}
-            onReact={(emoji) => api.reactChatMessage(user.id, activeProject.id, threadId, m.id, emoji).then(reload)}
-            onPin={() => api.pinChatMessage(user.id, activeProject.id, threadId, m.id, !m.is_pinned).then(reload)}
+            onReact={(emoji) => api.reactChatMessage(user.id, projectId, threadId, m.id, emoji).then(reload)}
+            onPin={() => api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned).then(reload)}
             onReply={() => setReplyTo(m)}
             onTask={() => setTaskMsg(m)}
-            onConfirm={m.message_type === 'confirm' ? () => api.confirmChatMessage(user.id, activeProject.id, threadId, m.id).then(reload) : undefined}
+            onConfirm={m.message_type === 'confirm' ? () => api.confirmChatMessage(user.id, projectId, threadId, m.id).then(reload) : undefined}
             onPay={m.message_type === 'payment' ? openPaymentFlow : undefined}
           />
         ))}
@@ -263,7 +306,7 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
               <Pressable disabled={!canWrite} onPress={() => {
                 Alert.alert('Счёт', 'Отправить запрос оплаты?', [
                   { text: 'Отмена', style: 'cancel' },
-                  { text: '10 000 ₽', onPress: () => api.invoiceFromChat(user.id, activeProject.id, threadId, { title: 'Оплата работ', amount: 10000, payment_type: 'stage' }).then(reload) },
+                  { text: '10 000 ₽', onPress: () => api.invoiceFromChat(user.id, projectId, threadId, { title: 'Оплата работ', amount: 10000, payment_type: 'stage' }).then(reload) },
                 ]);
               }}><Text style={s.toolBtn}>💳</Text></Pressable>
             </>
@@ -307,7 +350,7 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
             <TextInput style={s.input} value={invitePhone} onChangeText={setInvitePhone} placeholder="Телефон +7…" keyboardType="phone-pad" />
             <Text style={s.hint}>На телефон придёт SMS: установите Renova и зарегистрируйтесь — чат появится в Сообщениях.</Text>
             <PrimaryButton title="Пригласить" onPress={async () => {
-              await api.inviteToChat(user.id, activeProject.id, threadId, {
+              await api.inviteToChat(user.id, projectId, threadId, {
                 phone: invitePhone || undefined,
                 profile_code: inviteCode || undefined,
               });
@@ -329,7 +372,7 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
         onClose={() => setTaskMsg(null)}
         onSubmit={async (body) => {
           if (!taskMsg) return;
-          await api.taskFromChatMessage(user.id, activeProject.id, threadId, taskMsg.id, body);
+          await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
           setTaskMsg(null);
           await reload();
         }}

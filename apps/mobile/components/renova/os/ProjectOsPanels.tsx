@@ -14,6 +14,7 @@ import { sanitizeRiskImpact } from '@/lib/domain/sanitizeRiskImpact';
 import { workCardStatusLabel, materialPickStatusLabel } from '@/constants/labels';
 import { useOsNavFromHere } from '@/lib/navigation';
 import { HomeHealthBadge } from '@/components/renova/os/home/HomeHealthBadge';
+import { StatusPill } from '@/components/ui/StatusPill';
 import type { ProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
 
 export function ProjectOsHeader({
@@ -34,13 +35,19 @@ export function ProjectOsHeader({
   nameHidden?: boolean;
   status?: string;
 }) {
+  const showCompleteBadge = Boolean(headerMeta.status);
+
   return (
     <View style={s.header}>
-      <Text style={homeTypography.homeTitle} numberOfLines={1}>{name}</Text>
+      <View style={s.titleRow}>
+        <Text style={[homeTypography.homeTitle, s.titleText]} numberOfLines={1}>{name}</Text>
+        {showCompleteBadge ? (
+          <View style={s.completeBadge}>
+            <StatusPill label="Завершён" tone="success" />
+          </View>
+        ) : null}
+      </View>
       <Text style={[homeTypography.homeSubtitle, s.metaLine]} numberOfLines={2}>{headerMeta.context}</Text>
-      {headerMeta.status ? (
-        <Text style={[homeTypography.homeSubtitle, s.metaLine]} numberOfLines={1}>{headerMeta.status}</Text>
-      ) : null}
       {showHealth && healthScore != null && healthLevel && healthLabel ? (
         <HomeHealthBadge score={healthScore} level={healthLevel} label={healthLabel} />
       ) : null}
@@ -187,6 +194,9 @@ export function CompactMaterialsList({ snap, role }: { snap: ProjectOsSnapshot; 
 const s = StyleSheet.create({
   /** Отступ до «Сделать сейчас» — не слипается с подзаголовком */
   header: { marginBottom: homeLayout.sectionGap },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  titleText: { flex: 1, minWidth: 0 },
+  completeBadge: { flexShrink: 0 },
   metaLine: { marginTop: 4 },
   section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, marginTop: 4 },
   risks: { marginBottom: homeLayout.innerGap },

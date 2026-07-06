@@ -69,6 +69,8 @@ export default function RootLayout() {
         <Stack.Screen name="article/[slug]" options={{ headerShown: false }} />
         <Stack.Screen name="contractor-wizard/[leadId]" options={{ headerShown: false }} />
         <Stack.Screen name="job-leads" options={{ headerShown: false }} />
+        <Stack.Screen name="portfolio" options={{ headerShown: false }} />
+        <Stack.Screen name="reports" options={{ headerShown: false }} />
         <Stack.Screen name="design" options={{ headerShown: false }} />
         <Stack.Screen name="approvals" options={{ headerShown: false }} />
         <Stack.Screen name="activity" options={{ headerShown: false }} />

@@ -1,12 +1,12 @@
 /** Список чатов: фильтр объектов, архив, закрепление — каждый чат привязан к одному объекту */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ChatBadge } from '@/components/renova/chat/ChatBadge';
 import { ChatProjectFilterDropdown } from '@/components/renova/chat/ChatProjectFilter';
-import { FilterDropdown } from '@/components/renova/FilterDropdown';
+import { CreateChatSheet } from '@/components/renova/chat/CreateChatSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { indexChats } from '@/lib/chatSearchCache';
 import { api, ChatThread } from '@/lib/api';
@@ -23,8 +23,7 @@ import {
 } from '@/lib/chatProjectFilter';
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
 import { threadAwaitingReply, threadsAwaitingReplyCount, inboxAttentionTotal } from '@/lib/chatAttention';
-import { createProjectChat } from '@/lib/createProjectChat';
-import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
+import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 
 type Folder = 'active' | 'archive';
 
@@ -80,8 +79,7 @@ export function ChatListView() {
   const [projectFilter, setProjectFilterState] = useState<ChatProjectFilter>(CHAT_FILTER_ALL);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [threads, setThreads] = useState<ChatThread[]>([]);
-  const [title, setTitle] = useState('Согласование материалов');
-  const [createProjectId, setCreateProjectId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),
@@ -99,10 +97,10 @@ export function ChatListView() {
     });
   }, [projectOptions.map((p) => p.id).join('|')]);
 
-  useEffect(() => {
-    if (activeProject?.id) setCreateProjectId(activeProject.id);
-    else setCreateProjectId(pickPrimaryDemoProject(projects)?.id ?? projects[0]?.id ?? null);
-  }, [activeProject?.id, projects]);
+  const createProject = useMemo(
+    () => resolveChatCreateProject(projectFilter, projectOptions, activeProject?.id),
+    [projectFilter, projectOptions, activeProject?.id],
+  );
 
   const applyProjectFilter = async (next: ChatProjectFilter) => {
     const normalized = normalizeChatProjectFilter(next, projectOptions.map((p) => p.id));
@@ -164,10 +162,11 @@ export function ChatListView() {
       Alert.alert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
       return;
     }
+    setThreads((prev) => prev.map((x) => (x.id === t.id ? { ...x, unread_count: 0 } : x)));
     if (activeProject?.id !== t.project_id) {
       await loadProject(t.project_id).catch(() => {});
     }
-    nav.chat(t.id);
+    nav.chat(t.id, t.project_id);
   };
 
   const threadActions = (t: ChatThread) => {
@@ -189,31 +188,7 @@ export function ChatListView() {
     ]);
   };
 
-  const createChat = async () => {
-    if (!user) return;
-    const projectId = createProjectId || activeProject?.id;
-    if (!projectId) {
-      Alert.alert('Нет объекта', 'Сначала создайте или выберите объект — каждый чат привязан к одному объекту.');
-      return;
-    }
-    await createProjectChat({
-      userId: user.id,
-      projectId,
-      title,
-      existingThreads: threads,
-      onOpen: (id) => nav.chat(id),
-    });
-    await reload();
-  };
-
-  const totalUnread = displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
-  const attentionTotal = inboxAttentionTotal(displayThreads.filter((t) => !t.is_archived), user?.role);
-  const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
   const canCreate = folder === 'active' && projects.length > 0;
-  const createProjectOptions = useMemo(
-    () => projectOptions.map((p) => ({ value: p.id, label: p.name })),
-    [projectOptions],
-  );
 
   if (!prefsLoaded) {
     return (
@@ -222,6 +197,10 @@ export function ChatListView() {
       </View>
     );
   }
+
+  const totalUnread = displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
+  const attentionTotal = inboxAttentionTotal(displayThreads.filter((t) => !t.is_archived), user?.role);
+  const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
@@ -258,23 +237,31 @@ export function ChatListView() {
         />
       ) : null}
 
-      {canCreate && (
-        <View style={s.new}>
-          {projects.length > 1 ? (
-            <FilterDropdown
-              title="Объект чата"
-              hint="Каждый чат привязан ровно к одному объекту"
-              value={createProjectId || projectOptions[0]?.id || ''}
-              options={createProjectOptions}
-              onChange={setCreateProjectId}
-            />
-          ) : projects.length === 1 ? (
-            <Text style={s.singleProject}>Объект: {pickPrimaryDemoProject(projects)?.name ?? projects[0]?.name}</Text>
-          ) : null}
-          <TextInput style={s.input} value={title} onChangeText={setTitle} placeholder="Тема чата" />
-          <PrimaryButton title="Создать чат" onPress={createChat} />
+      {canCreate ? (
+        <View style={s.createBtn}>
+          <PrimaryButton
+            title="Создать чат"
+            variant="outline"
+            onPress={() => setCreateOpen(true)}
+            fullWidth
+          />
         </View>
-      )}
+      ) : null}
+
+      {user && createOpen ? (
+        <CreateChatSheet
+          visible={createOpen}
+          onClose={() => setCreateOpen(false)}
+          userId={user.id}
+          projects={projectOptions}
+          defaultProjectId={createProject.projectId}
+          projectLocked={createProject.locked}
+          selectableProjectIds={createProject.selectableIds}
+          existingThreads={threads}
+          onCreated={() => reload().catch(() => {})}
+          onOpenChat={(id, projectId) => nav.chat(id, projectId)}
+        />
+      ) : null}
 
       {grouped.map((g) => (
         <View key={g.key}>
@@ -323,9 +310,7 @@ const s = StyleSheet.create({
   tabOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   tabT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   tabTOn: { color: RenovaTheme.colors.accent },
-  new: { ...card, marginBottom: 12, gap: 8 },
-  singleProject: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 10 },
+  createBtn: { marginBottom: 12 },
   groupHead: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 6, marginTop: 4 },
   card: { ...card, marginBottom: 8, padding: 12 },
   cardPinned: { borderColor: RenovaTheme.colors.accent, backgroundColor: '#F8FAFF' },

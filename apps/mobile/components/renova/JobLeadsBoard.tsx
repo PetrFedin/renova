@@ -3,7 +3,7 @@ import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 import { LeadChat } from '@/components/renova/LeadChat';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { router } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 

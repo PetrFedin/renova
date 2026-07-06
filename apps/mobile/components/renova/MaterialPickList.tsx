@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, Pressable, Linking, StyleSheet, TextInput } from 'react-native';
 import { api, MaterialPick, Room, Stage } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { materialPickStatusLabel } from '@/constants/labels';
 import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';

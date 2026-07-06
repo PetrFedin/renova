@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { api, BudgetBreakdown as BB } from '@/lib/api';
-import { formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { getDetailLevel } from '@/lib/detailLevel';
 
 export function BudgetBreakdown({ userId, projectId }: { userId: string; projectId: string }) {
