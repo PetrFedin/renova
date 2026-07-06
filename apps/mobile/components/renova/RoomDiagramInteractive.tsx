@@ -1,5 +1,6 @@
 /** Drag розеток на схеме */
 import { useEffect, useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Pressable, StyleSheet, PanResponder } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Room } from '@/lib/api';
@@ -48,7 +49,7 @@ export function RoomDiagramInteractive({ room }: { room: Room }) {
   );
 }
 const s = StyleSheet.create({
-  wrap:{ backgroundColor:'#fff', borderRadius:12, padding:12, marginBottom:10 },
+  wrap:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:12, marginBottom:10 },
   head:{ fontWeight:'700', marginBottom:8 }, room:{ borderWidth:2, borderColor:'#374151', backgroundColor:'#f9fafb' },
   dot:{ position:'absolute', width:10, height:10, borderRadius:5, backgroundColor:'#f59e0b' },
   dotActive:{ backgroundColor:'#ef4444', transform:[{ scale:1.3 }] }, clr:{ color:'#2563eb', marginTop:6, fontSize:12 },

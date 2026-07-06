@@ -1,0 +1,77 @@
+---
+description: Renova UI — токены, компоненты, отступы, типографика. Обязательно при любых изменениях mobile UI.
+globs: apps/mobile/**/*.{tsx,ts}
+alwaysApply: true
+---
+
+# Renova Design System
+
+## Принцип
+
+Renova — спокойный slate/blue продукт про контроль ремонта. Не перерисовывать «красиво», а **следовать токенам и `components/ui`**.
+
+## Источники истины
+
+| Что | Файл |
+|-----|------|
+| Цвета, spacing, radius, shadow | `@/constants/Theme.ts` |
+| Типографика | `@/constants/typography.ts` |
+| Поверхности (chip active, info card) | `@/constants/uiTokens.ts` |
+| Базовые UI | `@/components/ui/*` |
+| Отступы экранов | `@/constants/screenLayout.ts` |
+
+## Запрещено
+
+- Локальные hex в компонентах (`#EFF6FF`, `#eee`, `#f0f0f0`) — только `RenovaTheme.colors.*` или `uiTokens`
+- Emoji в операционном UI (⚙ 📷 🎤) — `Ionicons`
+- Dev-тексты в user UI (`:8100`, `EXPO_PUBLIC_*`, `offline_queued`)
+- Свои `StyleSheet` карточки/кнопки на экранах — `Card`, `PrimaryButton`, `StatusPill`
+- Больше **1 primary CTA** на экран
+- Больше **4 hub-вкладок** без фильтра/«Ещё»
+
+## Цвета
+
+- **primary** — главная кнопка (Сохранить, Принять, Оплатить)
+- **outline** — вторичные действия
+- **danger** — удалить, отклонить, критичный перерасход
+- **warning** — риск, просрочка, ждёт материала
+- **accent** — ссылки, активная вкладка
+- **infoBg/infoBorder** — активный chip, информационные блоки
+
+## Spacing (сетка 4/8)
+
+Экран: `paddingHorizontal 16`, между блоками `16`, между карточками `8–12`.
+Карточка: `padding 12–14`, `radius 12`, `borderWidth 1`.
+
+## Типографика
+
+- `h1` — заголовок экрана (один)
+- `h2` — секция
+- `body` / `caption` — текст и подписи
+- `metric` / `display` — деньги и KPI
+
+## Компоненты
+
+```tsx
+// ✅ GOOD
+import { Card, StatusPill, SectionHeader } from '@/components/ui';
+<SectionHeader title="Бюджет" actionLabel="Подробнее" onAction={...} />
+<Card variant="base"><StatusPill tone="warning" label="Просрочено" /></Card>
+
+// ❌ BAD
+<View style={{ backgroundColor: '#EFF6FF', padding: 10, borderRadius: 8 }} />
+<PrimaryButton title="📷 До" />
+```
+
+## Кнопки
+
+`PrimaryButton`: `primary | outline | ghost | danger | dangerOutline`, `compact`, `fullWidth`.
+Стрелки в title (`→ Бюджет`) — лучше `TextLink` или `rightIcon`.
+
+## Статусы
+
+Только через `StatusPill` (`neutral | info | success | warning | danger`).
+
+## FAB (заказчик)
+
+Расход · Сообщение · Замечание · Фото. Без «Черновик» в быстрых действиях.

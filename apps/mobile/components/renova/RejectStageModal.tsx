@@ -24,9 +24,9 @@ export function RejectStageModal({ visible, stageName, onClose, onConfirm }: { v
 }
 const s = StyleSheet.create({
   overlay:{ flex:1, backgroundColor:'rgba(0,0,0,0.4)', justifyContent:'center', padding:24 },
-  box:{ backgroundColor:'#fff', borderRadius:12, padding:16 },
+  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:16 },
   head:{ fontWeight:'800', marginBottom:12 },
-  input:{ borderWidth:1, borderColor:'#eee', borderRadius:8, padding:10, minHeight:80, marginBottom:12 },
+  input:{ borderWidth:1, borderColor:RenovaTheme.colors.border, borderRadius:8, padding:10, minHeight:80, marginBottom:12 },
   row:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' },
   cancel:{ color: RenovaTheme.colors.textMuted, padding:8 },
 });

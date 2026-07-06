@@ -2,11 +2,11 @@
 import { RenovaTheme } from '@/constants/Theme';
 
 export const screenLayout = {
-  padding: RenovaTheme.spacing.md,
-  paddingBottom: 28,
+  padding: RenovaTheme.spacing.lg,
+  paddingBottom: 32,
   contentStyle: {
-    padding: RenovaTheme.spacing.md,
-    paddingBottom: 28,
+    padding: RenovaTheme.spacing.lg,
+    paddingBottom: 32,
   },
 } as const;
 

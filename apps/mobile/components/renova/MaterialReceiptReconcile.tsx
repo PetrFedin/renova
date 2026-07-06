@@ -38,7 +38,7 @@ export function MaterialReceiptReconcile({ rooms, receipts, picks }: {
   );
 }
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 4 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
   row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },

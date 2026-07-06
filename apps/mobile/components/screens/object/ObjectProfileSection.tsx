@@ -1,6 +1,7 @@
 /** Секция формы профиля объекта — единый ритм заголовков и карточек */
 import { View, Text, StyleSheet, type ReactNode, type ViewStyle } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { formMetaText } from '@/constants/formTypography';
 
 type Props = {
   title: string;
@@ -30,9 +31,7 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   hint: {
-    fontSize: 12,
-    color: RenovaTheme.colors.textSubtle,
-    lineHeight: 16,
+    ...formMetaText.caption,
     marginBottom: 6,
   },
   card: {

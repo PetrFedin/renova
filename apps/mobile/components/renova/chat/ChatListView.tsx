@@ -22,6 +22,7 @@ import {
   type ChatProjectFilter,
 } from '@/lib/chatProjectFilter';
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
+import { threadAwaitingReply, threadsAwaitingReplyCount, inboxAttentionTotal } from '@/lib/chatAttention';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 
@@ -33,14 +34,17 @@ function ThreadCard({
   onOpen,
   onLongPress,
   showProject,
+  viewerRole,
 }: {
   thread: ChatThread;
   preview: string;
   onOpen: () => void;
   onLongPress: () => void;
   showProject?: boolean;
+  viewerRole?: 'customer' | 'contractor';
 }) {
   const unread = thread.unread_count || 0;
+  const awaiting = !unread && threadAwaitingReply(thread, viewerRole);
   return (
     <Pressable
       style={[s.card, thread.is_pinned && s.cardPinned]}
@@ -57,10 +61,11 @@ function ThreadCard({
             <Text style={s.projectName} numberOfLines={1}>{thread.project_name}</Text>
           ) : null}
           <Text style={s.preview} numberOfLines={1}>{preview}</Text>
+          {awaiting ? <Text style={s.awaiting}>Ждёт вашего ответа</Text> : null}
         </View>
         <View style={s.rightCol}>
           <Text style={s.meta}>{thread.updated_at.slice(0, 16).replace('T', ' ')}</Text>
-          {unread > 0 ? <ChatBadge count={unread} inline size={20} /> : null}
+          {unread > 0 ? <ChatBadge count={unread} inline size={20} /> : awaiting ? <View style={s.awaitDot} /> : null}
         </View>
       </View>
     </Pressable>
@@ -70,7 +75,7 @@ function ThreadCard({
 export function ChatListView() {
   const nav = useNavFromHere();
   const { user, activeProject, projects, loadProject } = useRenova();
-  const { reload: reloadUnread, inboxWsConnected } = useChatUnread(user?.id);
+  const { reload: reloadUnread, inboxWsConnected, count: globalUnread, failed: unreadFailed } = useChatUnread(user?.id, user?.role);
   const [folder, setFolder] = useState<Folder>('active');
   const [projectFilter, setProjectFilterState] = useState<ChatProjectFilter>(CHAT_FILTER_ALL);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
@@ -202,6 +207,8 @@ export function ChatListView() {
   };
 
   const totalUnread = displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
+  const attentionTotal = inboxAttentionTotal(displayThreads.filter((t) => !t.is_archived), user?.role);
+  const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
   const canCreate = folder === 'active' && projects.length > 0;
   const createProjectOptions = useMemo(
     () => projectOptions.map((p) => ({ value: p.id, label: p.name })),
@@ -218,6 +225,20 @@ export function ChatListView() {
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
+      {folder === 'active' && (attentionTotal > 0 || globalUnread > 0 || awaitingCount > 0) ? (
+        <View style={s.unreadBanner}>
+          <Text style={s.unreadBannerT}>
+            {attentionTotal > 0
+              ? `${attentionTotal} ${attentionTotal === 1 ? 'диалог требует' : 'диалогов требуют'} внимания`
+              : `${globalUnread} непрочитанных`}
+            {awaitingCount > 0 && totalUnread === 0 ? ' · ждут ответа' : ''}
+          </Text>
+        </View>
+      ) : null}
+      {folder === 'active' && unreadFailed && totalUnread === 0 ? (
+        <Text style={s.unreadWarn}>Не удалось загрузить счётчик — обновите список</Text>
+      ) : null}
+
       <View style={s.toolbar}>
         <Pressable style={[s.tab, folder === 'active' && s.tabOn]} onPress={() => setFolder('active')}>
           <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>
@@ -264,6 +285,7 @@ export function ChatListView() {
               thread={t}
               preview={chatListPreview(t)}
               showProject={showProjectInCard}
+              viewerRole={user?.role === 'contractor' ? 'contractor' : 'customer'}
               onOpen={() => openThread(t)}
               onLongPress={() => threadActions(t)}
             />
@@ -286,9 +308,19 @@ export function ChatListView() {
 
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
+  unreadBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  unreadBannerT: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.danger, textAlign: 'center' },
+  unreadWarn: { fontSize: 12, color: RenovaTheme.colors.warning, marginBottom: 8, textAlign: 'center' },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' },
   tab: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface },
-  tabOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: '#EFF6FF' },
+  tabOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   tabT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   tabTOn: { color: RenovaTheme.colors.accent },
   new: { ...card, marginBottom: 12, gap: 8 },
@@ -303,7 +335,9 @@ const s = StyleSheet.create({
   title: { fontWeight: '700', fontSize: 16, flex: 1, color: RenovaTheme.colors.text },
   projectName: { fontSize: 11, color: RenovaTheme.colors.accent, fontWeight: '600', marginTop: 2 },
   preview: { color: RenovaTheme.colors.textMuted, marginTop: 4, fontSize: 13 },
+  awaiting: { fontSize: 11, color: RenovaTheme.colors.warning, fontWeight: '700', marginTop: 3 },
   rightCol: { alignItems: 'flex-end', minWidth: 56 },
   meta: { fontSize: 10, color: RenovaTheme.colors.textMuted },
+  awaitDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: RenovaTheme.colors.warning, marginTop: 4 },
   empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginTop: 24 },
 });

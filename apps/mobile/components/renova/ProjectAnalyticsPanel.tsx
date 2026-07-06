@@ -24,7 +24,7 @@ import { buildUnifiedBudgetExpenses, unifiedExpenseTotal } from '@/lib/domain/bu
 import { budgetTabHref } from '@/constants/osSections';
 
 function budgetAnalyticsReturnTo(role: 'customer' | 'contractor') {
-  return budgetTabHref(role, 'analytics');
+  return budgetTabHref(role, 'deviations');
 }
 
 export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {

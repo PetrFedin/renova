@@ -6,7 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme } from '@/constants/Theme';
-import { osEntryRoute } from '@/lib/osEntry';
+import { osEntryRoute, projectPickRoute } from '@/lib/osEntry';
+import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { DetailLevelPreview } from '@/components/renova/DetailLevelPreview';
 
 const MODES = [
@@ -24,6 +25,11 @@ export default function DetailQuizScreen() {
     await AsyncStorage.setItem('renova_detail_quiz_done', '1');
     const role = (await AsyncStorage.getItem('renova_user_role')) === 'contractor' ? 'contractor' : 'customer';
     await new Promise((r) => setTimeout(r, 0));
+    const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
+    if (pending === '1') {
+      router.replace(projectPickRoute() as any);
+      return;
+    }
     router.replace(osEntryRoute(role) as any);
   };
   const backToRole = async () => {
@@ -50,11 +56,11 @@ export default function DetailQuizScreen() {
 }
 const s = StyleSheet.create({
   wrap:{ flex:1, padding:20, backgroundColor: RenovaTheme.colors.background, justifyContent:'center' },
-  back:{ marginBottom:16, padding:12, borderRadius:10, backgroundColor:'#fff', borderWidth:1, borderColor:'#dbeafe' },
+  back:{ marginBottom:16, padding:12, borderRadius:10, backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:'#dbeafe' },
   backText:{ fontSize:15, fontWeight:'800', color: RenovaTheme.colors.primary },
   backSub:{ fontSize:12, color:'#64748b', marginTop:2 },
   title:{ fontSize:20, fontWeight:'800', marginBottom:16 },
-  card:{ backgroundColor:'#fff', padding:14, borderRadius:10, marginBottom:10, borderWidth:2, borderColor:'transparent' },
+  card:{ backgroundColor:RenovaTheme.colors.surface, padding:14, borderRadius:10, marginBottom:10, borderWidth:2, borderColor:'transparent' },
   on:{ borderColor: RenovaTheme.colors.primary },
   lbl:{ fontWeight:'700' }, desc:{ fontSize:12, color:'#666', marginTop:4 },
 });

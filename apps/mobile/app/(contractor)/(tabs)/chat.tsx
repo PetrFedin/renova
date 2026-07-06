@@ -4,8 +4,9 @@ import { OfflineSyncBanner } from '@/components/renova/OfflineSyncBanner';
 import { ChatListView } from '@/components/renova/chat/ChatListView';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { OsTabFocusGate } from '@/components/renova/os/OsTabFocusGate';
 
-export default function ContractorChat() {
+function ContractorChatBody() {
   const { user, projects } = useRenova();
   if (!user) return null;
   if (!projects.length) {
@@ -16,6 +17,14 @@ export default function ContractorChat() {
       <OfflineSyncBanner />
       <ChatListView />
     </View>
+  );
+}
+
+export default function ContractorChat() {
+  return (
+    <OsTabFocusGate routeName="chat">
+      <ContractorChatBody />
+    </OsTabFocusGate>
   );
 }
 

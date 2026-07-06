@@ -24,4 +24,4 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginVertical:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ backgroundColor:'#fff', padding:10, borderRadius:8, marginBottom:6 }, n:{ fontWeight:'600' }, m:{ fontSize:12, color:'#666' } });
+const s = StyleSheet.create({ box:{ marginVertical:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ backgroundColor:RenovaTheme.colors.surface, padding:10, borderRadius:8, marginBottom:6 }, n:{ fontWeight:'600' }, m:{ fontSize:12, color:'#666' } });

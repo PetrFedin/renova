@@ -43,7 +43,6 @@ type Props = {
   periodParam?: string | string[];
   focusParam?: string | string[];
   onPaymentPress: (p: Payment) => void;
-  onConfirmPayment: (paymentId: string) => Promise<void>;
   onExpensePress: (target: ExpenseDetailTarget) => void;
 };
 
@@ -51,7 +50,7 @@ export function BudgetSummarySection(props: Props) {
   const {
     userId, projectId, summary, summaryWidgets, figures, riskColor, receipts, payments,
     budgetAlerts, expenses, pendingPayments, stages = [], rooms = [], picks = [], bwVisible, role, readOnly, customerBudget,
-    projectStart, projectEnd, periodParam, focusParam, onPaymentPress, onConfirmPayment, onExpensePress,
+    projectStart, projectEnd, periodParam, focusParam, onPaymentPress, onExpensePress,
   } = props;
   const pathname = usePathname();
   const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks);
@@ -160,7 +159,7 @@ export function BudgetSummarySection(props: Props) {
               label: BUDGET_SEGMENT_LABEL[k] || k,
               value: formatRub(v.planned),
               hint: `факт ${formatRub(v.actual)}`,
-              href: budgetTabRoute(role, 'analytics', { period, focus: 'fact' }),
+              href: budgetTabRoute(role, 'deviations', { period, focus: 'fact' }),
             }))}
           />
         </>
@@ -175,7 +174,7 @@ export function BudgetSummarySection(props: Props) {
                 <Text style={s.rowMeta}>{PAYMENT_TYPE_LABEL[p.payment_type] || p.payment_type} · {formatRub(p.amount)}</Text>
               </View>
               {role === 'customer' && !readOnly ? (
-                <PrimaryButton title="Подтвердить" compact onPress={() => onConfirmPayment(p.id)} />
+                <PrimaryButton title="Оплатить →" compact onPress={() => onPaymentPress(p)} />
               ) : (
                 <Text style={[s.status, { color: RenovaTheme.colors.warning }]}>Ожидает</Text>
               )}

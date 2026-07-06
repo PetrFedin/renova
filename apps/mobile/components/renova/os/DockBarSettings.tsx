@@ -173,7 +173,7 @@ const s = StyleSheet.create({
   previewSlot: { flex: 1, alignItems: 'center', minWidth: 0 },
   previewLabel: { fontSize: 8, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginTop: 2, textAlign: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, marginBottom: 6 },
-  rowOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: '#EFF6FF' },
+  rowOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   rowLock: { opacity: 0.92 },
   meta: { flex: 1 },
   label: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },

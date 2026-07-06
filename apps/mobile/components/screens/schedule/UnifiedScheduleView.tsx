@@ -20,6 +20,8 @@ import { calendarEventInRange, calendarEventOnDate, formatCalendarEventDates, fi
 import { repairTabRoute, budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { formatScheduleRange } from '@/lib/formatScheduleDate';
+import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats';
+import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -133,6 +135,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   }, [workOrders, workFilter]);
 
   const upcomingWorks = useMemo(() => filteredWorks.slice(0, 5), [filteredWorks]);
+  const executionStats = useMemo(
+    () => buildScheduleExecutionStats(workOrders, today),
+    [workOrders, today],
+  );
 
   const openEvent = useCallback((e: CalendarEvent & { purchase_id?: string }) => {
     if (e.purchase_id) {
@@ -173,6 +179,11 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
             readOnly={readOnly}
             canCreateWork={canAddTask}
             addTaskLabel={role === 'customer' ? 'Добавить задачу' : 'Назначить работу'}
+            role={role}
+            userId={user.id}
+            projectId={activeProject.id}
+            workOrders={workOrders}
+            onChanged={reload}
             />
           </View>
         ) : (
@@ -192,6 +203,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
       <ScrollView style={s.planPane} contentContainerStyle={s.planContent}>
         <Text style={s.planTitle}>План работ</Text>
         <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
+        <ScheduleExecutionStrip stats={executionStats} />
 
         <ScheduleIconToolbar
           readOnly={readOnly}

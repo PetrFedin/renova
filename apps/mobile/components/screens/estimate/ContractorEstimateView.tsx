@@ -131,5 +131,5 @@ const styles = StyleSheet.create({
   links: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   section: { fontWeight: '700', marginTop: 16, marginBottom: 4, fontSize: 16 },
   sectionHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
-  inpFull: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 12, marginBottom: 8, backgroundColor: '#fff' },
+  inpFull: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 12, marginBottom: 8, backgroundColor: RenovaTheme.colors.surface },
 });

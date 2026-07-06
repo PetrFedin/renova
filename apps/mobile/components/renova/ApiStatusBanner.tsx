@@ -9,6 +9,8 @@ type Props = {
   showEmpty?: boolean;
 };
 
+const isDemoEnv = process.env.EXPO_PUBLIC_DEMO === '1' || __DEV__;
+
 export function ApiStatusBanner({ showEmpty }: Props) {
   const { apiReachable, projects, recoverSession, loading } = useRenova();
   const [busy, setBusy] = useState(false);
@@ -16,11 +18,14 @@ export function ApiStatusBanner({ showEmpty }: Props) {
   const needsRecovery = !apiReachable || (showEmpty && projects.length === 0);
   if (!needsRecovery || loading) return null;
 
-  const title = !apiReachable ? 'Сервер недоступен' : 'Нет данных проекта';
+  const title = !apiReachable ? 'Нет связи с сервером' : 'Нет данных проекта';
   const sub = !apiReachable
-    ? 'Запустите backend (npm run dev) и нажмите «Повторить»'
-    : 'Нажмите «Загрузить демо» для восстановления данных';
+    ? 'Проверьте интернет и нажмите «Повторить»'
+    : isDemoEnv
+      ? 'Нажмите «Загрузить демо» для восстановления данных'
+      : 'Создайте объект или войдите снова';
   const subtle = apiReachable && projects.length === 0;
+  const showDemoBtn = isDemoEnv || !apiReachable;
 
   return (
     <View style={[s.box, !apiReachable && s.offline, subtle && s.subtle]}>
@@ -30,7 +35,7 @@ export function ApiStatusBanner({ showEmpty }: Props) {
       </View>
       {busy ? (
         <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
-      ) : (
+      ) : showDemoBtn ? (
         <Pressable
           style={s.btn}
           onPress={async () => {
@@ -44,7 +49,7 @@ export function ApiStatusBanner({ showEmpty }: Props) {
         >
           <Text style={s.btnT}>{!apiReachable ? 'Повторить' : 'Демо'}</Text>
         </Pressable>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -53,20 +58,20 @@ const s = StyleSheet.create({
   box: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: RenovaTheme.colors.warningBg,
     borderRadius: 10,
     padding: 12,
     marginHorizontal: 16,
     marginTop: 8,
     marginBottom: 4,
     borderWidth: 1,
-    borderColor: '#FDE047',
+    borderColor: RenovaTheme.colors.warningBorder,
   },
   subtle: {
     backgroundColor: RenovaTheme.colors.borderLight,
     borderColor: RenovaTheme.colors.border,
   },
-  offline: { backgroundColor: '#FEE2E2', borderColor: '#FECACA' },
+  offline: { backgroundColor: RenovaTheme.colors.dangerBg, borderColor: RenovaTheme.colors.dangerBorder },
   title: { fontWeight: '700', fontSize: 13, color: RenovaTheme.colors.text },
   sub: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   btn: {
@@ -76,5 +81,5 @@ const s = StyleSheet.create({
     borderRadius: 8,
     marginLeft: 8,
   },
-  btnT: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  btnT: { color: RenovaTheme.colors.inverseText, fontWeight: '700', fontSize: 12 },
 });

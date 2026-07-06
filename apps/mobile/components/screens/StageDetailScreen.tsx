@@ -4,7 +4,8 @@ import { ScrollView, View, Text, Alert, TextInput, StyleSheet, Pressable, Image 
 import { useLocalSearchParams, router } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import * as ImagePicker from 'expo-image-picker';
-import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { inputField } from '@/constants/uiTokens';
 import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -27,6 +28,7 @@ import { StageDetailLinks } from '@/components/screens/stage/StageDetailLinks';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { repairTabRoute, objectTabHref } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
 
 const STATUS = STAGE_STATUS_LABEL;
 function renderComment(text: string) {
@@ -84,6 +86,18 @@ export function StageDetailScreen() {
         ? wfChecks.every((c) => c.done)
         : CHECKLIST.every((c) => checks[c]);
   const acceptBlocked = CHECKLIST.length > 0 && !checklistComplete;
+  const exportChecks = wfChecks.length
+    ? wfChecks.filter((c) => c.done).map((c) => c.text)
+    : CHECKLIST.filter((c) => checks[c]);
+
+  const onExportAcceptance = async () => {
+    if (!user || !activeProject) return;
+    try {
+      await api.exportStageAcceptance(user.id, activeProject.id, stage!.id, exportChecks);
+    } catch {
+      Alert.alert('Не удалось', 'Акт приёмки временно недоступен. Попробуйте позже.');
+    }
+  };
 
   const runAcceptStage = async () => {
     try {
@@ -91,7 +105,7 @@ export function StageDetailScreen() {
       await reload();
       await loadProject(activeProject!.id);
     } catch (e: any) {
-      if (e?.message === 'offline_queued') Alert.alert('Офлайн', 'Приёмка отправится при подключении');
+      if (isOfflineQueued(e)) notifyOfflineQueued('Приёмка');
       else throw e;
     }
   };
@@ -121,7 +135,7 @@ export function StageDetailScreen() {
     if (!user || !t) return;
     setLoading(true);
     const msg = replyTo ? `↩ "${replyTo.slice(0,80)}"\n${t}` : t;
-    try { await api.addStageComment(user.id, activeProject.id, stage.id, msg); setComment(''); setReplyTo(null); await reload(); } catch (e: any) { if (e?.message === 'offline_queued') Alert.alert('Офлайн', 'Комментарий отправится при подключении'); else throw e; }
+    try { await api.addStageComment(user.id, activeProject.id, stage.id, msg); setComment(''); setReplyTo(null); await reload(); } catch (e: unknown) { if (isOfflineQueued(e)) notifyOfflineQueued('Комментарий'); else throw e; }
     finally { setLoading(false); }
   };
 
@@ -252,7 +266,7 @@ export function StageDetailScreen() {
               </Pressable>
             );})}
             <PrimaryButton title="Принять этап" disabled={acceptBlocked || !canWrite} onPress={onAcceptPress} />
-            <PrimaryButton title="Вернуть на доработку" variant="outline" disabled={!canWrite} onPress={() => setRejectOpen(true)} />
+            <PrimaryButton title="Вернуть на доработку" variant="dangerOutline" disabled={!canWrite} onPress={() => setRejectOpen(true)} />
             {role === 'customer' && (<><TextInput style={styles.input} placeholder="Свой пункт чеклиста…" value={newCheck} onChangeText={setNewCheck} /><PrimaryButton title="Добавить пункт" variant="outline" onPress={async () => { if(!id||!newCheck.trim()) return; setCustomChecks(await addCustomCheck(id, newCheck)); setNewCheck(''); }} /></>)}
             {acceptBlocked && <Text style={styles.meta}>Отметьте все пункты для приёмки</Text>}
             {!acceptBlocked && CHECKLIST.length === 0 && <Text style={styles.meta}>Чеклист пуст — при приёмке будет запрос подтверждения</Text>}
@@ -278,24 +292,22 @@ export function StageDetailScreen() {
         {replyTo && <Text style={styles.meta}>Ответ на: {replyTo.slice(0,40)}… <Text onPress={() => setReplyTo(null)}>✕</Text></Text>}
         <TextInput editable={canWrite} style={styles.input} placeholder="Комментарий…" value={comment} onChangeText={setComment} multiline />
         {process.env.EXPO_PUBLIC_WHISPER_URL ? (
-          <PrimaryButton title="🎤 Голосовой комментарий" variant="outline" onPress={async () => { const { recordVoiceStub } = await import("@/lib/voiceRecord"); const { transcribeAudio } = await import("@/lib/whisperStub"); onAddComment(await transcribeAudio(await recordVoiceStub())); }} />
-        ) : (
-          <Text style={styles.meta}>Голосовые комментарии недоступны в этой сборке (нужен EXPO_PUBLIC_WHISPER_URL)</Text>
-        )}
+          <PrimaryButton title="Голосовой комментарий" variant="outline" onPress={async () => { const { recordVoiceStub } = await import("@/lib/voiceRecord"); const { transcribeAudio } = await import("@/lib/whisperStub"); onAddComment(await transcribeAudio(await recordVoiceStub())); }} />
+        ) : null}
         <PrimaryButton disabled={!canWrite} title="Отправить" onPress={() => onAddComment()} />
         {role === 'customer' && stage.status === "review" && user && (
           <>
             <PrimaryButton title="Полноэкранное сравнение" variant="outline" onPress={() => setSwipeOpen(true)} />
             <PhotoSwipeCompare before={before} after={after} visible={swipeOpen} onClose={() => setSwipeOpen(false)} />
-            <PrimaryButton title="Акт приёмки" variant="outline" onPress={() => api.exportStageAcceptance(user.id, activeProject.id, stage.id, CHECKLIST.filter(c => checks[c]))} />
+            <PrimaryButton title="Акт приёмки" variant="outline" onPress={() => { onExportAcceptance().catch(() => {}); }} />
           </>
         )}
 
         <PhotoCompare before={before} after={after} />
         <Text style={styles.section}>Фото до / после</Text>
         <View style={styles.photoBtns}>
-          <PrimaryButton disabled={!canWrite} title="📷 До" variant="outline" onPress={() => onAddPhoto('До работ')} />
-          <PrimaryButton disabled={!canWrite} title="📷 После" variant="outline" onPress={() => onAddPhoto('После работ')} />
+          <PrimaryButton disabled={!canWrite} title="До работ" variant="outline" onPress={() => onAddPhoto('До работ')} />
+          <PrimaryButton disabled={!canWrite} title="После работ" variant="outline" onPress={() => onAddPhoto('После работ')} />
         </View>
         {[{ title: 'До', list: before }, { title: 'После', list: after }, { title: 'Прочие', list: other }].map(({ title, list }) => list.length > 0 && (
           <View key={title}>
@@ -331,24 +343,24 @@ export function StageDetailScreen() {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  archiveBanner: { backgroundColor: '#f3f4f6', padding: 12, borderRadius: 10, marginBottom: 12 },
-  archiveText: { fontSize: 13, color: RenovaTheme.colors.textMuted, fontWeight: '600', marginBottom: 4 },
-  linksTitle: { fontWeight: '700', marginBottom: 6 },
-  link: { color: RenovaTheme.colors.primary, paddingVertical: 4, fontWeight: '600' },
-  card: { backgroundColor: '#fff', padding: 14, borderRadius: 12, marginBottom: 12 },
-  status: { fontSize: 18, fontWeight: '700' },
-  meta: { color: RenovaTheme.colors.textMuted, marginTop: 4, fontSize: 13 },
-  ok: { color: RenovaTheme.colors.success, marginTop: 6, fontWeight: '600' },
-  section: { fontWeight: '700', fontSize: 16, marginTop: 16, marginBottom: 8 },
-  subSection: { fontWeight: '600', marginTop: 10, marginBottom: 4 },
-  comment: { backgroundColor: '#fff', padding: 10, borderRadius: 8, marginBottom: 8 },
-  commentRole: { fontSize: 11, color: RenovaTheme.colors.textMuted, fontWeight: '600' },
-  input: { backgroundColor: '#fff', borderRadius: 10, padding: 12, minHeight: 60, marginVertical: 8, borderWidth: 1, borderColor: '#eee' },
-  tplRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
-  tpl: { backgroundColor: '#eef2ff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16 },
-  tplT: { fontSize: 12, color: '#3730a3' },
-  checkRow: { backgroundColor: '#fff', padding: 10, borderRadius: 8, marginBottom: 6 },
-  photoBtns: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  photoRow: { backgroundColor: '#fff', padding: 10, borderRadius: 8, marginTop: 8 },
+  archiveBanner: { ...card, backgroundColor: RenovaTheme.colors.surfaceMuted },
+  archiveText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, fontWeight: RenovaTheme.fontWeight.semibold, marginBottom: 4 },
+  linksTitle: { fontWeight: RenovaTheme.fontWeight.bold, marginBottom: 6 },
+  link: { color: RenovaTheme.colors.accent, paddingVertical: 4, fontWeight: RenovaTheme.fontWeight.semibold },
+  card: { ...card, padding: RenovaTheme.spacing.md },
+  status: { fontSize: RenovaTheme.fontSize.h2, fontWeight: RenovaTheme.fontWeight.bold },
+  meta: { color: RenovaTheme.colors.textMuted, marginTop: 4, fontSize: RenovaTheme.fontSize.bodySmall },
+  ok: { color: RenovaTheme.colors.success, marginTop: 6, fontWeight: RenovaTheme.fontWeight.semibold },
+  section: { fontWeight: RenovaTheme.fontWeight.bold, fontSize: RenovaTheme.fontSize.h3, marginTop: RenovaTheme.spacing.lg, marginBottom: RenovaTheme.spacing.sm },
+  subSection: { fontWeight: RenovaTheme.fontWeight.semibold, marginTop: 10, marginBottom: 4 },
+  comment: { ...card, padding: 10 },
+  commentRole: { fontSize: RenovaTheme.fontSize.tiny, color: RenovaTheme.colors.textMuted, fontWeight: RenovaTheme.fontWeight.semibold },
+  input: { ...inputField, minHeight: 60, marginVertical: RenovaTheme.spacing.sm },
+  tplRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: RenovaTheme.spacing.sm },
+  tpl: { backgroundColor: RenovaTheme.colors.infoBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: RenovaTheme.radius.pill, borderWidth: 1, borderColor: RenovaTheme.colors.infoBorder },
+  tplT: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.infoText },
+  checkRow: { ...card, padding: 10, marginBottom: 6 },
+  photoBtns: { flexDirection: 'row', gap: RenovaTheme.spacing.sm, marginBottom: RenovaTheme.spacing.sm },
+  photoRow: { ...card, padding: 10, marginTop: RenovaTheme.spacing.sm },
   img: { width: '100%', height: 160, borderRadius: 8, marginBottom: 6 },
 });

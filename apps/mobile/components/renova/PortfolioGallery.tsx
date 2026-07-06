@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
@@ -13,4 +14,4 @@ export function PortfolioGallery({ userId, profileId }: { userId: string; profil
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginVertical:8 }, head:{ fontWeight:'700', marginBottom:6 }, img:{ width:100, height:70, borderRadius:8, marginRight:8, backgroundColor:'#eee' } });
+const s = StyleSheet.create({ box:{ marginVertical:8 }, head:{ fontWeight:'700', marginBottom:6 }, img:{ width:100, height:70, borderRadius:8, marginRight:8, backgroundColor:RenovaTheme.colors.border } });

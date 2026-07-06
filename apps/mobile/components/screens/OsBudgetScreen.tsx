@@ -1,13 +1,10 @@
 /** Единый «Бюджет» — оркестратор вкладок (данные в useOsBudgetScreen) */
 import { useState } from 'react';
-import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
-import { useLocalSearchParams, usePathname, router } from 'expo-router';
-import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { ScrollView } from 'react-native';
+import { useLocalSearchParams, usePathname } from 'expo-router';
+import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
-import { ExpenseByRoom } from '@/components/renova/ExpenseByRoom';
-import { ExpenseByStage } from '@/components/renova/ExpenseByStage';
-import { ProjectAnalyticsPanel } from '@/components/renova/ProjectAnalyticsPanel';
 import { ExpenseDetailSheet, type ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
 import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
@@ -15,24 +12,29 @@ import { useBudgetWidgets } from '@/lib/useBudgetWidgets';
 import { useCustomerBudget } from '@/lib/hooks/useCustomerBudget';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useOsBudgetScreen } from '@/lib/hooks/useOsBudgetScreen';
-import { budgetTabHref, budgetTabRoute, type OsRole } from '@/constants/osSections';
-import { pushOsTabNav } from '@/lib/osTabNav';
+import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { resolveBudgetFigures } from '@/lib/useOsBudgetFigures';
-import { api, Payment, ApiError } from '@/lib/api';
+import type { Payment } from '@/lib/api';
 import { BudgetSummarySection } from '@/components/screens/budget/BudgetSummarySection';
 import { BudgetExpensesSection } from '@/components/screens/budget/BudgetExpensesSection';
 import { BudgetPaymentsSection } from '@/components/screens/budget/BudgetPaymentsSection';
+import { BudgetDeviationsSection } from '@/components/screens/budget/BudgetDeviationsSection';
 import { buildUnifiedBudgetExpenses, unifiedExpenseTotal } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
+import { formatRub } from '@/constants/Theme';
+import type { BudgetTab, ExpenseView } from '@/constants/budgetTabs';
+import { normalizeBudgetTab } from '@/constants/budgetTabs';
 
-export type BudgetTab = 'summary' | 'expenses' | 'payments' | 'rooms' | 'stages' | 'analytics';
+export type { BudgetTab } from '@/constants/budgetTabs';
 
 export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: BudgetTab }) {
-  const { roomId: roomParam, stageId: stageParam, period: periodParam, focus: focusParam } = useLocalSearchParams<{
+  const { roomId: roomParam, stageId: stageParam, period: periodParam, focus: focusParam, view: viewParam, tab: tabParam } = useLocalSearchParams<{
     roomId?: string;
     stageId?: string;
     period?: string;
     focus?: string;
+    view?: ExpenseView;
+    tab?: string;
   }>();
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
@@ -55,6 +57,13 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
   if (!activeProject || !user) {
     return <ProjectEmptyState role={role} />;
   }
+
+  const resolvedTab = normalizeBudgetTab(tabParam ?? tab).tab;
+  const expenseView: ExpenseView =
+    viewParam
+    ?? (roomParam ? 'list' : undefined)
+    ?? normalizeBudgetTab(tabParam).view
+    ?? 'list';
 
   const figures = resolveBudgetFigures(activeProject, summary);
   const unifiedRows = buildUnifiedBudgetExpenses(
@@ -106,23 +115,11 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
       : []),
   ];
 
-  const showSummary = tab === 'summary';
-  const showExpenses = tab === 'expenses';
-  const showPayments = tab === 'payments';
-
   return (
     <>
       <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <ReadOnlyBanner />
-        <Pressable
-          style={s.widgetSettingsLink}
-          onPress={() => pushOsTabNav(role, 'profile', undefined, undefined, pathname)}
-          accessibilityRole="button"
-        >
-          <Text style={s.widgetSettingsText}>⚙ Настроить блоки бюджета</Text>
-          <Text style={s.widgetSettingsArrow}>→</Text>
-        </Pressable>
-        {showSummary && (
+        {resolvedTab === 'summary' && (
           <BudgetSummarySection
             userId={user.id}
             projectId={activeProject.id}
@@ -147,21 +144,10 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             periodParam={periodParam}
             focusParam={focusParam}
             onPaymentPress={setPaymentDetail}
-            onConfirmPayment={async (id) => {
-              try {
-                await api.confirmPayment(user.id, activeProject.id, id);
-                await reload();
-              } catch (e) {
-                const msg = e instanceof ApiError && e.status === 409
-                  ? 'Сначала примите этап на вкладке «Контроль»'
-                  : 'Не удалось подтвердить оплату';
-                Alert.alert('Оплата', msg);
-              }
-            }}
             onExpensePress={setDetailTarget}
           />
         )}
-        {showExpenses && (
+        {resolvedTab === 'expenses' && (
           <BudgetExpensesSection
             userId={user.id}
             project={activeProject}
@@ -176,11 +162,12 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             periodParam={periodParam}
             serverFact={serverFact}
             listTotal={listTotal}
+            expenseView={expenseView}
             onReload={reload}
             onExpensePress={setDetailTarget}
           />
         )}
-        {showPayments && (
+        {resolvedTab === 'payments' && (
           <BudgetPaymentsSection
             role={role}
             userId={user.id}
@@ -194,34 +181,8 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             onSaved={reload}
           />
         )}
-        {tab === 'analytics' && <ProjectAnalyticsPanel full />}
-        {tab === 'stages' && (
-          <>
-            <Text style={s.section}>По этапам и работам</Text>
-            <ExpenseByStage
-              stages={activeProject.stages || []}
-              lines={activeProject.estimate_lines || []}
-              receipts={receipts}
-              expenses={expenses}
-              picks={picks}
-              rooms={activeProject.rooms || []}
-              returnTo={budgetTabHref(role, 'stages')}
-            />
-          </>
-        )}
-        {tab === 'rooms' && (
-          <>
-            <Text style={s.section}>По комнатам</Text>
-            <ExpenseByRoom
-              rooms={activeProject.rooms || []}
-              lines={activeProject.estimate_lines || []}
-              receipts={receipts}
-              expenses={expenses}
-              picks={picks}
-              stages={activeProject.stages || []}
-              returnTo={budgetTabHref(role, 'rooms')}
-            />
-          </>
+        {resolvedTab === 'deviations' && (
+          <BudgetDeviationsSection role={role} alerts={budgetAlerts} returnTo={pathname} />
         )}
       </ScrollView>
       <ExpenseDetailSheet
@@ -235,7 +196,16 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
         onClose={() => setDetailTarget(null)}
         onChanged={reload}
       />
-      <PaymentDetailSheet payment={paymentDetail} stages={activeProject.stages || []} role={role} readOnly={readOnly} userId={user.id} projectId={activeProject.id} onClose={() => setPaymentDetail(null)} onChanged={reload} />
+      <PaymentDetailSheet
+        payment={paymentDetail}
+        stages={activeProject.stages || []}
+        role={role}
+        readOnly={readOnly}
+        userId={user.id}
+        projectId={activeProject.id}
+        onClose={() => setPaymentDetail(null)}
+        onChanged={reload}
+      />
     </>
   );
 }

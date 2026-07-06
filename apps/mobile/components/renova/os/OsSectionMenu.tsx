@@ -139,7 +139,7 @@ const s = StyleSheet.create({
     position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8,
     backgroundColor: RenovaTheme.colors.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
-  badgeT: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  badgeT: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
   menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },
   menu: {
@@ -169,5 +169,5 @@ const s = StyleSheet.create({
   check: { fontSize: 14, color: RenovaTheme.colors.accent, fontWeight: '700' },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
   miniBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: RenovaTheme.colors.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  miniBadgeT: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  miniBadgeT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
 });

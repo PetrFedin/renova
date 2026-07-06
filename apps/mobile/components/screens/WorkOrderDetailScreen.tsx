@@ -97,7 +97,7 @@ export function WorkOrderDetailScreen() {
 const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   section: { fontWeight: '700', marginVertical: 12, textTransform: 'uppercase', fontSize: 12, color: RenovaTheme.colors.textMuted },
-  archiveBanner: { backgroundColor: '#f3f4f6', padding: 10, borderRadius: 8, marginBottom: 10 },
+  archiveBanner: { backgroundColor: RenovaTheme.colors.surfaceMuted, padding: 10, borderRadius: 8, marginBottom: 10 },
   archiveText: { fontSize: 13, color: RenovaTheme.colors.textMuted, fontWeight: '600' },
   budgetRow: { marginTop: 4, marginBottom: 8 },
   budgetLabel: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },

@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
-import { tabsPrefix, budgetTabHref, type OsRole } from '@/constants/osSections';
+import { tabsPrefix, budgetTabHref, objectTabHref, repairTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 
 type Action = { id: string; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap; run: () => void };
@@ -52,21 +52,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
       sub: 'Заказ в календаре',
       icon: 'hammer-outline' as keyof typeof Ionicons.glyphMap,
       run: () => { setOpen(false); setShowWork(true); },
-    }] : [{
-      id: 'task',
-      label: 'Задача',
-      sub: 'В план на день',
-      icon: 'hammer-outline' as keyof typeof Ionicons.glyphMap,
-      run: () => { setOpen(false); setShowWork(true); },
-    }]),
-    {
-      id: 'chat',
-      label: 'Сообщение',
-      sub: 'Новый чат или список',
-      icon: 'chatbubble-outline',
-      run: () => { setOpen(false); setChatOpen(true); },
-    },
-    {
+    }, {
       id: 'scratch',
       label: 'В черновик',
       sub: 'Записать мысль',
@@ -75,13 +61,59 @@ export function OsQuickFab({ role }: { role: OsRole }) {
         setOpen(false);
         router.push({ pathname: '/scratchpad', params: { role, returnTo: pathname } } as any);
       },
+    }] : [
+      {
+        id: 'remark',
+        label: 'Замечание',
+        sub: expenseContext.stageId ? 'К текущему этапу' : 'Раздел приёмки',
+        icon: 'alert-circle-outline',
+        run: () => {
+          setOpen(false);
+          if (expenseContext.stageId) {
+            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname);
+          } else {
+            pushOsNav(repairTabRoute(role, 'control'), pathname);
+          }
+        },
+      },
+      {
+        id: 'photo',
+        label: 'Фото',
+        sub: expenseContext.stageId ? 'На этап' : 'Скан или галерея',
+        icon: 'camera-outline',
+        run: () => {
+          setOpen(false);
+          if (expenseContext.stageId) {
+            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname);
+          } else {
+            nav.scanReceipt(expenseContext.roomId, expenseContext.stageId);
+          }
+        },
+      },
+      {
+        id: 'change',
+        label: 'Запрос изменения',
+        sub: 'Комната или план',
+        icon: 'create-outline',
+        run: () => {
+          setOpen(false);
+          pushOsNav(objectTabHref(role, 'rooms'), pathname);
+        },
+      },
+    ]),
+    {
+      id: 'chat',
+      label: 'Сообщение',
+      sub: 'Новый чат или список',
+      icon: 'chatbubble-outline',
+      run: () => { setOpen(false); setChatOpen(true); },
     },
   ];
 
   return (
     <>
       <Pressable style={s.fab} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Быстрые действия">
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color={RenovaTheme.colors.inverseText} />
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
@@ -213,7 +245,7 @@ const s = StyleSheet.create({
     zIndex: 20,
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
+  sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
   head: { fontSize: 16, fontWeight: '800', marginBottom: 12, color: RenovaTheme.colors.text },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   label: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },

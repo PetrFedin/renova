@@ -27,7 +27,7 @@ export function RoomPickerChips({ rooms, value, onChange, optional = true }: { r
 const s = StyleSheet.create({
   wrap: { marginBottom: 10 }, lbl: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginBottom: 6 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#eee', minWidth: 72 },
+  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: RenovaTheme.colors.border, minWidth: 72 },
   on: { backgroundColor: RenovaTheme.colors.primary }, txt: { fontWeight: '700', fontSize: 12, color: '#333' },
-  sub: { fontSize: 9, color: '#666', marginTop: 1 }, txtOn: { color: '#fff' },
+  sub: { fontSize: 9, color: '#666', marginTop: 1 }, txtOn: { color: RenovaTheme.colors.surface },
 });

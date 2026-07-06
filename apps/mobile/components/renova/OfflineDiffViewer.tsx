@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 import { fieldDiff } from '@/lib/fieldDiff';
 
 export function OfflineDiffViewer({ local, server }: { local: string; server?: string }) {
@@ -16,6 +17,6 @@ export function OfflineDiffViewer({ local, server }: { local: string; server?: s
 const s = StyleSheet.create({
   box:{ backgroundColor:'#fffbeb', padding:10, borderRadius:8, marginTop:8 },
   head:{ fontWeight:'700', marginBottom:6 }, lbl:{ fontSize:11, color:'#92400e', marginTop:4 },
-  code:{ fontSize:10, fontFamily:'monospace', backgroundColor:'#fff', padding:6, borderRadius:4 },
+  code:{ fontSize:10, fontFamily:'monospace', backgroundColor:RenovaTheme.colors.surface, padding:6, borderRadius:4 },
   diffLine:{ fontSize:10, color:'#b45309', marginVertical:2 },
 });

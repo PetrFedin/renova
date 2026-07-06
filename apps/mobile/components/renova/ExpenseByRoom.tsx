@@ -70,13 +70,13 @@ export function ExpenseByRoom({
   );
 }
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 10, fontSize: 14 },
   empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   name: { fontWeight: '700', fontSize: 13 },
   sub: { fontSize: 10, color: RenovaTheme.colors.textMuted, marginTop: 1 },
-  bar: { height: 4, backgroundColor: '#eee', borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+  bar: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   fill: { height: 4 },
   val: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginLeft: 8 },
   over: { color: RenovaTheme.colors.warning },

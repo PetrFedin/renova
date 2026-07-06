@@ -8,19 +8,23 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { BudgetPlannerPanel } from '@/components/renova/BudgetPlannerPanel';
 import { RenovationPlanBadge } from '@/components/renova/RenovationPlanBadge';
 import { CustomerBudgetField } from '@/components/renova/CustomerBudgetField';
+import { PostCreateSheet } from '@/components/renova/os/home/PostCreateSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
+import { objectTabHref, tabsHref } from '@/constants/osSections';
 
 function formatCreateError(e: unknown): string {
   if (e && typeof e === 'object') {
     const err = e as { message?: string; detail?: string | { msg?: string }[]; status?: number };
     if (typeof err.detail === 'string' && err.detail) return err.detail;
     if (Array.isArray(err.detail)) return err.detail.map((d) => d.msg || String(d)).join('\n');
-    if (err.message) return err.message;
+    if (err.message && err.message !== 'offline_queued') return err.message;
     if (err.status) return `Ошибка сервера (${err.status})`;
   }
-  return 'Сервер недоступен. Проверьте, что backend запущен на :8100';
+  return __DEV__
+    ? 'Сервер недоступен. Проверьте подключение к backend.'
+    : 'Не удалось создать объект. Проверьте интернет и попробуйте снова.';
 }
 
 export default function WizardConfirm() {
@@ -36,6 +40,8 @@ export default function WizardConfirm() {
   const [budgetInput, setBudgetInput] = useState(
     wizard.customer_budget ? String(wizard.customer_budget) : '',
   );
+  const [postCreateOpen, setPostCreateOpen] = useState(false);
+  const [createdName, setCreatedName] = useState('');
 
   let materials: any[] = [];
   let works: any[] = [];
@@ -64,14 +70,15 @@ export default function WizardConfirm() {
         await api.patchProject(user.id, result.id, { budget_planned: Math.round(marketEstimate.grand_total) });
         await loadProject(result.id);
       }
-      if (result.demoKeptPrimary) {
-        const { createdName, activeName } = result.demoKeptPrimary;
+      setCreatedName(wizard.name.trim());
+      if (result.demoKeptPrimary && __DEV__) {
+        const { createdName: cn, activeName } = result.demoKeptPrimary;
         Alert.alert(
           'Объект создан',
-          `«${createdName}» добавлен в список. На демо открыт «${activeName}» — переключите объект в шапке.`,
+          `«${cn}» добавлен в список. На демо открыт «${activeName}» — переключите объект в шапке.`,
         );
       }
-      router.replace('/(customer)/(tabs)');
+      setPostCreateOpen(true);
     } catch (e) {
       const msg = formatCreateError(e);
       Alert.alert('Ошибка создания', msg, [
@@ -84,6 +91,7 @@ export default function WizardConfirm() {
   }
 
   return (
+    <>
     <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16 }}>
       <Text style={styles.stepTitle}>Шаг 3 · Смета и бюджет</Text>
       <Text style={styles.total}>{formatRub(summary.grandTotal)}</Text>
@@ -140,6 +148,23 @@ export default function WizardConfirm() {
       <Text style={styles.note}>После создания: контроль бюджета на главной и в разделе «Бюджет». Нажмите на виджеты — детализация по неделе, месяцу или году.</Text>
       <PrimaryButton title={busy ? 'Создание…' : 'Создать проект'} onPress={onCreate} disabled={busy} />
     </ScrollView>
+    <PostCreateSheet
+        visible={postCreateOpen}
+        projectName={createdName || wizard.name}
+        onNavigate={(href) => {
+          setPostCreateOpen(false);
+          router.replace(href as any);
+        }}
+        onHome={() => {
+          setPostCreateOpen(false);
+          router.replace('/(customer)/(tabs)');
+        }}
+        onClose={() => {
+          setPostCreateOpen(false);
+          router.replace('/(customer)/(tabs)');
+        }}
+      />
+    </>
   );
 }
 
@@ -151,7 +176,7 @@ const styles = StyleSheet.create({
   sub: { color: RenovaTheme.colors.textMuted, marginTop: 8 },
   roomLine: { fontSize: 13, marginTop: 4, color: RenovaTheme.colors.text },
   note: { marginVertical: 16, color: RenovaTheme.colors.text, lineHeight: 22, fontSize: 13 },
-  toggleRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 16, padding: 12, backgroundColor: '#F0F9FF', borderRadius: 10 },
+  toggleRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 16, padding: 12, backgroundColor: RenovaTheme.colors.infoBg, borderRadius: 10 },
   toggleMark: { fontSize: 18, lineHeight: 22 },
   toggleText: { flex: 1, fontSize: 13, lineHeight: 18, color: RenovaTheme.colors.text },
 });

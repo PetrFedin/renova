@@ -1,6 +1,7 @@
 /** Секция формы новой работы */
 import { View, Text, StyleSheet, type ReactNode } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { formMetaText } from '@/constants/formTypography';
 
 export function WorkFormSection({
   title,
@@ -30,6 +31,6 @@ const s = StyleSheet.create({
     letterSpacing: 0.3,
     marginBottom: 4,
   },
-  hint: { fontSize: 12, color: RenovaTheme.colors.textSubtle, lineHeight: 16, marginBottom: 6 },
+  hint: { ...formMetaText.caption, marginBottom: 6 },
   body: { ...card, padding: 12, gap: 8 },
 });

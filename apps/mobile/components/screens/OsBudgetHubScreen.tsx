@@ -1,30 +1,36 @@
-/** Hub «Бюджет»: Сводка · Расходы · Оплаты · Комнаты · Этапы · Аналитика */
+/** Hub «Деньги»: Сводка · Расходы · Оплаты · Отклонения (≤4 вкладки) */
+import { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
-import { OsBudgetScreen, type BudgetTab } from '@/components/screens/OsBudgetScreen';
+import { router, useLocalSearchParams } from 'expo-router';
+import { OsHubTabs } from '@/components/renova/os/OsHubTabs';
+import { OsBudgetScreen } from '@/components/screens/OsBudgetScreen';
 import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { useHubTab } from '@/lib/useHubTab';
+import { BUDGET_HUB_TABS, BUDGET_TAB_IDS, normalizeBudgetTab, type BudgetTab } from '@/constants/budgetTabs';
 import type { OsRole } from '@/constants/osSections';
 
-const TABS: HubTab[] = [
-  { id: 'summary', label: 'Сводка' },
-  { id: 'expenses', label: 'Расходы' },
-  { id: 'payments', label: 'Оплаты' },
-  { id: 'rooms', label: 'Комнаты' },
-  { id: 'stages', label: 'Этапы' },
-  { id: 'analytics', label: 'Аналитика' },
-];
-
-/** Все id для deep link (?tab=) — совпадают с вкладками в шапке */
-const TAB_IDS = ['summary', 'expenses', 'payments', 'analytics', 'rooms', 'stages'] as const;
-
 export function OsBudgetHubScreen({ role }: { role: OsRole }) {
-  const [active, setActive] = useHubTab(TAB_IDS, 'summary', `renova_budget_hub_tab_${role}`);
+  const { tab: tabParam, view: viewParam } = useLocalSearchParams<{ tab?: string; view?: string }>();
+  const [active, setActive] = useHubTab(BUDGET_TAB_IDS, 'summary', `renova_budget_hub_tab_${role}`);
+
+  useEffect(() => {
+    if (typeof tabParam !== 'string') return;
+    const normalized = normalizeBudgetTab(tabParam);
+    const needsTab = normalized.tab !== tabParam;
+    const needsView = normalized.view && normalized.view !== viewParam;
+    if (needsTab || needsView) {
+      router.setParams({
+        tab: normalized.tab,
+        ...(normalized.view ? { view: normalized.view } : {}),
+      });
+      setActive(normalized.tab);
+    }
+  }, [tabParam, viewParam, setActive]);
 
   return (
     <ProjectScopeLoader role={role}>
       <View style={s.root}>
-        <OsHubTabs tabs={TABS} value={active} onChange={(id) => setActive(id as BudgetTab)} />
+        <OsHubTabs tabs={BUDGET_HUB_TABS} value={active} onChange={(id) => setActive(id as BudgetTab)} />
         <OsBudgetScreen role={role} tab={active as BudgetTab} />
       </View>
     </ProjectScopeLoader>

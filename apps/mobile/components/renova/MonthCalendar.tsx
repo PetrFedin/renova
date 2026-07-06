@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 import { Stage } from '@/lib/api';
 
 export function MonthCalendar({ stages }: { stages: Stage[] }) {
@@ -21,7 +22,7 @@ export function MonthCalendar({ stages }: { stages: Stage[] }) {
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:'#fff', borderRadius:12, padding:12, marginBottom:10 },
+  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:12, marginBottom:10 },
   head:{ fontWeight:'800', marginBottom:8, textTransform:'capitalize' },
   grid:{ flexDirection:'row', flexWrap:'wrap' },
   cell:{ width:'14.28%', aspectRatio:1, alignItems:'center', justifyContent:'center' },

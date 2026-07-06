@@ -131,7 +131,7 @@ export function MaterialPickDetailSheet({
 
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
+  sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
   head: { fontSize: 17, fontWeight: '800' },
   status: { fontSize: 13, color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 12 },
   block: { ...card, marginBottom: 8 },

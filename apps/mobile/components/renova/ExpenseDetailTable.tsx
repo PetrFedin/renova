@@ -84,7 +84,7 @@ export function ExpenseDetailTable({
     <View style={s.box}>
       <View style={s.headRow}>
         <Text style={s.head}>Детализация · {formatRub(total)}</Text>
-        <Pressable onPress={() => pushOsNav(budgetTabRoute(role, 'analytics'), pathname)}>
+        <Pressable onPress={() => pushOsNav(budgetTabRoute(role, 'deviations'), pathname)}>
           <Text style={s.link}>Вся аналитика</Text>
         </Pressable>
       </View>
@@ -116,7 +116,7 @@ const s = StyleSheet.create({
   link: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.accent },
   modes: { gap: 6, marginBottom: 10 },
   mode: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface },
-  modeOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: '#EFF6FF' },
+  modeOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   modeT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   modeTOn: { color: RenovaTheme.colors.accent },
   group: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },

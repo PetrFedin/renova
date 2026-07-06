@@ -37,6 +37,7 @@ export function RoomDetailScreen() {
   const [calcItems, setCalcItems] = useState<{ name: string; qty: number; unit: string; note?: string }[]>([]);
   const [roomSnap, setRoomSnap] = useState<RoomSnapshot | null>(null);
   const isContractor = user?.role === 'contractor';
+  const ownerCanEdit = !isContractor && !activeProject?.contractor_id && canWrite && !readOnly;
   const role = isContractor ? 'contractor' : 'customer';
   const preview = useMemo(() => calcRoomMetrics(+len || 0, +wid || 0, +hei || 2.7, room?.openings_sq_m ?? 2), [len, wid, hei, room?.openings_sq_m]);
 
@@ -137,7 +138,7 @@ export function RoomDetailScreen() {
             {plan > 0 && spent > plan && <Text style={s.over}>Перерасход {formatRub(spent - plan)}</Text>}
             <View style={s.row}>
             <PrimaryButton title="Расходы" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute(role, 'expenses', { roomId: room.id }), pathname)} />
-            <PrimaryButton title="Бюджет: комнаты" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute(role, 'rooms'), pathname)} />
+            <PrimaryButton title="Расходы по комнате" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute(role, 'expenses', { roomId: room.id, view: 'rooms' }), pathname)} />
           </View>
             <Text style={s.fabHint}>Скан чека — кнопка + внизу экрана (с привязкой к комнате)</Text>
           </View>
@@ -155,14 +156,14 @@ export function RoomDetailScreen() {
               <RoomTypePicker value={room.room_type} onChange={(room_type) => save({ room_type })} />
               <FloorLevelPicker value={room.floor_level ?? 1} max={activeProject?.property_type === "house" ? 3 : 1} onChange={(floor_level) => save({ floor_level })} />
             </View>)}
-            {isContractor && (<View style={s.card}><Text style={s.h}>Габариты</Text>
+            {(isContractor || ownerCanEdit) && (<View style={s.card}><Text style={s.h}>Габариты</Text>
               <Field label="Длина" value={len} onChange={setLen} /><Field label="Ширина" value={wid} onChange={setWid} /><Field label="Высота" value={hei} onChange={setHei} />
-              <PrimaryButton disabled={!canWrite} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
+              <PrimaryButton disabled={!canWrite && !ownerCanEdit} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
             </View>)}
             <View style={s.card}><Text style={s.h}>Инженерия</Text>
-              {isContractor ? (<><Field label="Розетки" value={outlets} onChange={setOutlets} /><Field label="Сантехника" value={plumbing} onChange={setPlumbing} />
-              <PrimaryButton disabled={!canWrite} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
-              : <Text style={s.line}>Розетки {room.outlets_count} · сантехника {room.plumbing_points}</Text>}
+              {(isContractor || ownerCanEdit) ? (<><Field label="Розетки" value={outlets} onChange={setOutlets} /><Field label="Сантехника" value={plumbing} onChange={setPlumbing} />
+              <PrimaryButton disabled={!canWrite && !ownerCanEdit} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
+              : <Text style={s.line}>Розетки {room.outlets_count} · сантехника {room.plumbing_points}. Изменения — через запрос исполнителю.</Text>}
             </View>
             {lines.length > 0 && <View style={s.card}><Text style={s.h}>Смета</Text>
               {lines.map(l => (
@@ -192,9 +193,9 @@ function Field({ label, value, onChange }: { label:string; value:string; onChang
 }
 const s = StyleSheet.create({
   wrap:{ flex:1, backgroundColor: RenovaTheme.colors.background }, center:{ flex:1, alignItems:'center', justifyContent:'center' },
-  metrics:{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12 }, metric:{ flex:1, minWidth:'45%', backgroundColor:'#fff', borderWidth:1, borderColor:'#E5E7EB', borderRadius:14, padding:12, alignItems:'center' }, metricN:{ fontSize:18, fontWeight:'800' }, metricL:{ fontSize:11, color: RenovaTheme.colors.textMuted, marginTop:2 },
-  card:{ backgroundColor:'#fff', padding:14, borderRadius:12, marginBottom:10 }, h:{ fontWeight:'800', marginBottom:8 },
-  field:{ marginBottom:8 }, lbl:{ fontSize:12, color: RenovaTheme.colors.textMuted }, input:{ backgroundColor:'#f9fafb', borderRadius:8, padding:10, marginTop:4, borderWidth:1, borderColor:'#eee' }, line:{ paddingVertical:6, fontSize:13 },
+  metrics:{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12 }, metric:{ flex:1, minWidth:'45%', backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:'#E5E7EB', borderRadius:14, padding:12, alignItems:'center' }, metricN:{ fontSize:18, fontWeight:'800' }, metricL:{ fontSize:11, color: RenovaTheme.colors.textMuted, marginTop:2 },
+  card:{ backgroundColor:RenovaTheme.colors.surface, padding:14, borderRadius:12, marginBottom:10 }, h:{ fontWeight:'800', marginBottom:8 },
+  field:{ marginBottom:8 }, lbl:{ fontSize:12, color: RenovaTheme.colors.textMuted }, input:{ backgroundColor:'#f9fafb', borderRadius:8, padding:10, marginTop:4, borderWidth:1, borderColor:RenovaTheme.colors.border }, line:{ paddingVertical:6, fontSize:13 },
   warn:{ marginBottom:10, backgroundColor:'#fef2f2', padding:12, borderRadius:10 }, warnT:{ fontWeight:'700', color:'#991b1b', marginBottom:4 },
   over:{ color: RenovaTheme.colors.warning, fontWeight:'700', marginVertical:4 },
   toggle:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingVertical:14, marginTop:4 },

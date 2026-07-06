@@ -25,6 +25,7 @@ import {
 import { enrichProjectsPendingPayments } from '@/lib/domain/enrichProjectsPendingPayments';
 import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 import { resolveActiveProjectId, isJunkProjectName } from '@/lib/resolveActiveProjectId';
+import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { setCustomerBudget } from '@/lib/customerBudgetPrefs';
 import { normalizeCustomerBudget } from '@/lib/customerBudgetSync';
 import { syncCustomerBudgetOnLoad } from '@/lib/customerBudgetMigrate';
@@ -152,6 +153,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         setActiveProject(p);
         setReadOnly(!!p?.read_only);
         await AsyncStorage.setItem(KEYS.projectId, id);
+        await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
+        await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
       } finally {
         setProjectResolving(false);
       }
@@ -161,6 +164,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const ensureActiveProject = useCallback(async () => {
     if (!user || activeProject || !projects.length || projectResolving) return;
+    const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
+    if (pending === '1') return;
     const saved = await AsyncStorage.getItem(KEYS.projectId);
     const pickId = resolveActiveProjectId(projects, saved);
     if (!pickId) return;
@@ -190,6 +195,13 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setReadOnly(false);
     }
+    const pendingPick = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
+    const explicitPick = await AsyncStorage.getItem(SESSION_KEYS.projectExplicitlyPicked);
+    if (pendingPick === '1' || (isDemoPhone(u.phone) && !explicitPick && enriched.length > 0)) {
+      if (!pendingPick) await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
+      setActiveProject(null);
+      return;
+    }
     const pid = await AsyncStorage.getItem(KEYS.projectId);
     const role = inferDemoRole(u, await AsyncStorage.getItem('renova_user_role'));
     const p = await loadActiveProject(u.id, enriched, pid, role);
@@ -216,6 +228,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       const raw = await listProjectsWithRetry(user.id, 4);
       const list = user ? await enrichProjectsPendingPayments(user.id, raw, user.role) : raw;
       setProjects(list);
+      const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
+      if (pending === '1') {
+        setActiveProject(null);
+        return;
+      }
       if (list.length) {
         const p = await loadActiveProject(user.id, list, await AsyncStorage.getItem(KEYS.projectId), role);
         if (p) {
@@ -320,23 +337,10 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       list = [];
     }
     setProjects(list);
-    const primary = pickPrimaryDemoProject(list);
-    if (primary) {
-      try {
-        let p = await api.getProject(u.id, primary.id);
-        if (role === 'contractor') {
-          try { p = await api.assignProject(u.id, primary.id); } catch { /* ok */ }
-        }
-        if (p) {
-          setActiveProject(p);
-          await AsyncStorage.setItem(KEYS.projectId, p.id);
-        }
-      } catch {
-        setActiveProject(null);
-      }
-    } else {
-      setActiveProject(null);
-    }
+    setActiveProject(null);
+    await AsyncStorage.removeItem(KEYS.projectId);
+    await AsyncStorage.removeItem(SESSION_KEYS.projectExplicitlyPicked);
+    await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
   }, []);
 
 
@@ -347,13 +351,17 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const raw = await api.listProjects(u.id);
     const list = await enrichProjectsPendingPayments(u.id, raw, role);
     setProjects(list);
-    if (list.length) {
-      const saved = await AsyncStorage.getItem(KEYS.projectId);
-      const pickId = resolveActiveProjectId(list, saved);
-      if (!pickId) return;
+    const saved = await AsyncStorage.getItem(KEYS.projectId);
+    const pickId = saved ? resolveActiveProjectId(list, saved) : null;
+    if (pickId) {
       const detail = await api.getProject(u.id, pickId);
       setActiveProject(detail);
       await AsyncStorage.setItem(KEYS.projectId, pickId);
+      await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
+    } else {
+      setActiveProject(null);
+      await AsyncStorage.removeItem(KEYS.projectId);
+      await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
     }
     try {
       const tok = await (await import('expo-notifications')).getExpoPushTokenAsync();
@@ -406,6 +414,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         const detail = await api.getProject(user.id, primaryId);
         setActiveProject(detail);
         await AsyncStorage.setItem(KEYS.projectId, primaryId);
+        await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
         return {
           id: p.id,
           demoKeptPrimary: { createdName: p.name, activeName: primary?.name || detail.name },
@@ -414,6 +423,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     }
     setActiveProject(p);
     await AsyncStorage.setItem(KEYS.projectId, p.id);
+    await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
     await refreshProjects();
     return { id: p.id };
   }, [user, wizard, refreshProjects]);
@@ -456,14 +466,17 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     [user, activeProject, loadProject],
   );
 
-  /** Проект не выбран, но список есть — подхватить сохранённый или первый */
+  /** Проект не выбран, но список есть — подхватить сохранённый (не при ожидании выбора) */
   useEffect(() => {
     if (loading || !user || activeProject || !projects.length) return;
-    ensureActiveProject().catch(() => {});
+    AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick).then((pending) => {
+      if (pending === '1') return;
+      ensureActiveProject().catch(() => {});
+    });
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
   const logout = useCallback(async () => {
-    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId]);
+    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, SESSION_KEYS.pendingProjectPick, SESSION_KEYS.projectExplicitlyPicked]);
     setUser(null);
     setProjects([]);
     setActiveProject(null);

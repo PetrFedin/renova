@@ -6,7 +6,8 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { UserRole } from '@/lib/api';
 import { api } from '@/lib/api';
-import { osEntryRoute } from '@/lib/osEntry';
+import { osEntryRoute, projectPickRoute } from '@/lib/osEntry';
+import { SESSION_KEYS } from '@/constants/sessionKeys';
 
 type Mode = 'demo' | 'sms';
 
@@ -34,6 +35,11 @@ export default function RoleScreen() {
     const done = await (await import('@react-native-async-storage/async-storage')).default.getItem('renova_detail_quiz_done');
     if (!done) {
       router.replace('/onboarding/detail-quiz');
+      return;
+    }
+    const pending = await (await import('@react-native-async-storage/async-storage')).default.getItem(SESSION_KEYS.pendingProjectPick);
+    if (pending === '1') {
+      router.replace(projectPickRoute() as any);
       return;
     }
     router.replace(osEntryRoute(role) as any);
@@ -101,16 +107,16 @@ const styles = StyleSheet.create({
   logo: { fontSize: 32, fontWeight: '800', color: RenovaTheme.colors.primary, textAlign: 'center' },
   sub: { textAlign: 'center', color: RenovaTheme.colors.textMuted, marginBottom: 16, marginTop: 6, fontSize: 15 },
   modeRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: '#eee', alignItems: 'center' },
+  modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: RenovaTheme.colors.border, alignItems: 'center' },
   modeOn: { backgroundColor: RenovaTheme.colors.primary },
   modeT: { fontWeight: '700', color: '#333' },
-  modeTOn: { color: '#fff' },
+  modeTOn: { color: RenovaTheme.colors.surface },
   roles: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   roleBtn: { flex: 1, paddingVertical: 16, borderRadius: 12, borderWidth: 2, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface, alignItems: 'center' },
-  roleActive: { borderColor: RenovaTheme.colors.primary, backgroundColor: '#EFF6FF' },
+  roleActive: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
   roleText: { fontWeight: '700', fontSize: 14, textAlign: 'center' },
   roleTextActive: { color: RenovaTheme.colors.primary },
-  input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: '#fff' },
+  input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: RenovaTheme.colors.surface },
   demoCode: { textAlign: 'center', color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 8 },
   note: { textAlign: 'center', fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 16, lineHeight: 18 },
   noteHint: { fontSize: 11, color: '#94a3b8', marginTop: 6, textAlign: 'center', lineHeight: 16 },

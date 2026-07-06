@@ -41,7 +41,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   name: { fontWeight: '700', fontSize: 13 },
   type: { fontSize: 10, color: RenovaTheme.colors.textMuted },
-  barWrap: { width: 56, height: 6, backgroundColor: '#eee', borderRadius: 3, overflow: 'hidden' },
+  barWrap: { width: 56, height: 6, backgroundColor: RenovaTheme.colors.border, borderRadius: 3, overflow: 'hidden' },
   bar: { height: 6, backgroundColor: RenovaTheme.colors.primary, borderRadius: 3 },
   pct: { fontWeight: '700', fontSize: 12, width: 36, textAlign: 'right' },
 });

@@ -81,7 +81,7 @@ export function CreatePaymentForm({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 4 },
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10 },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },

@@ -153,7 +153,7 @@ const s = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
-    backgroundColor: '#fff',
+    backgroundColor: RenovaTheme.colors.surface,
   },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 14 },
 });

@@ -1,7 +1,7 @@
-/** Вкладка «Бюджет → Расходы» — единый список трат + ручной ввод */
+/** Вкладка «Бюджет → Расходы» — единый список трат + группировка по комнатам/этапам */
 import { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
-import { usePathname } from 'expo-router';
+import { usePathname, router } from 'expo-router';
 import { BudgetPeriodPicker } from '@/components/renova/BudgetPeriodPicker';
 import { parseBudgetPeriod, BUDGET_PERIOD_LABEL } from '@/constants/budgetPeriod';
 import { filterRowsByPeriod, sumRows } from '@/lib/domain/aggregateBudgetByPeriod';
@@ -11,6 +11,8 @@ import { ReceiptBulkLinkPanel } from '@/components/renova/ReceiptBulkLinkPanel';
 import { ReceiptBulkCategoryPanel } from '@/components/renova/ReceiptBulkCategoryPanel';
 import { UnifiedExpenseList } from '@/components/renova/UnifiedExpenseList';
 import { ScheduleFilterChips } from '@/components/renova/schedule/ScheduleFilterChips';
+import { ExpenseByRoom } from '@/components/renova/ExpenseByRoom';
+import { ExpenseByStage } from '@/components/renova/ExpenseByStage';
 import type { MaterialPick, OsExpense, ProjectDetail, ReceiptItem } from '@/lib/api';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
@@ -24,6 +26,8 @@ import {
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import type { OsRole } from '@/constants/osSections';
+import { budgetTabHref } from '@/constants/osSections';
+import type { ExpenseView } from '@/constants/budgetTabs';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
 
 type Props = {
@@ -40,14 +44,21 @@ type Props = {
   periodParam?: string | string[];
   serverFact?: number;
   listTotal?: number;
+  expenseView?: ExpenseView;
   onReload: () => void;
   onExpensePress: (target: ExpenseDetailTarget) => void;
 };
 
 const FILTER_KEYS: ExpenseListFilter[] = ['all', 'no-stage', 'unverified'];
 
+const VIEW_ITEMS: { key: ExpenseView; label: string }[] = [
+  { key: 'list', label: 'Список' },
+  { key: 'rooms', label: 'По комнатам' },
+  { key: 'stages', label: 'По этапам' },
+];
+
 export function BudgetExpensesSection({
-  userId, project, receipts, expenses, picks, role, canWrite, readOnly, initialRoomId, initialStageId, periodParam, serverFact, listTotal, onReload, onExpensePress,
+  userId, project, receipts, expenses, picks, role, canWrite, readOnly, initialRoomId, initialStageId, periodParam, serverFact, listTotal, expenseView = 'list', onReload, onExpensePress,
 }: Props) {
   const pathname = usePathname();
   const [filter, setFilter] = useState<ExpenseListFilter>('all');
@@ -75,6 +86,42 @@ export function BudgetExpensesSection({
   return (
     <>
       <BudgetPeriodPicker period={period} tab="expenses" />
+      <Text style={s.section}>Группировка</Text>
+      <ScheduleFilterChips
+        items={VIEW_ITEMS}
+        value={expenseView}
+        onChange={(key) => router.setParams({ tab: 'expenses', view: key })}
+      />
+      {expenseView === 'rooms' && (
+        <>
+          <Text style={s.section}>По комнатам</Text>
+          <ExpenseByRoom
+            rooms={project.rooms || []}
+            lines={project.estimate_lines || []}
+            receipts={receipts}
+            expenses={expenses}
+            picks={picks}
+            stages={project.stages || []}
+            returnTo={budgetTabHref(role, 'expenses', { view: 'rooms' })}
+          />
+        </>
+      )}
+      {expenseView === 'stages' && (
+        <>
+          <Text style={s.section}>По этапам</Text>
+          <ExpenseByStage
+            stages={project.stages || []}
+            lines={project.estimate_lines || []}
+            receipts={receipts}
+            expenses={expenses}
+            picks={picks}
+            rooms={project.rooms || []}
+            returnTo={budgetTabHref(role, 'expenses', { view: 'stages' })}
+          />
+        </>
+      )}
+      {expenseView === 'list' && (
+        <>
       {typeof serverFact === 'number' && (
         <BudgetFactStatus serverFact={serverFact} listTotal={unifiedTotal} compact showAligned />
       )}
@@ -133,6 +180,8 @@ export function BudgetExpensesSection({
           initialStageId={initialStageId ?? null}
           onSaved={onReload}
         />
+      )}
+        </>
       )}
     </>
   );

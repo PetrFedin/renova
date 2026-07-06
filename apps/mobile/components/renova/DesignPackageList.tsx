@@ -103,7 +103,7 @@ const s = StyleSheet.create({
   emptyT: { fontWeight: '700', fontSize: 14 },
   emptyH: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 17 },
   row: {
-    backgroundColor: '#fff',
+    backgroundColor: RenovaTheme.colors.surface,
     padding: 10,
     borderRadius: 8,
     marginBottom: 6,

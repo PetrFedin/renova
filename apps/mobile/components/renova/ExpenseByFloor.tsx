@@ -48,7 +48,7 @@ export function ExpenseByFloor({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 8 },
   row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   name: { fontWeight: '700', fontSize: 13 },

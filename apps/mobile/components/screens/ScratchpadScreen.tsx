@@ -1,7 +1,7 @@
 /** Черновик — записная книжка проекта с превращением в задачи и расходы */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView, Pressable, Alert, KeyboardAvoidingView, Platform,
+  View, Text, TextInput, StyleSheet, ScrollView, Pressable, Alert, KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +17,7 @@ import { createProjectChat } from '@/lib/createProjectChat';
 import { budgetTabHref, calendarTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 
-const HINT = 'Пишите что угодно. [ ] пункт · [x] сделано · 🛒 покупка. Потом превратите строку в задачу, расход или чат.';
+const HINT = 'Пишите что угодно. [ ] пункт · [x] сделано · 🛒 покупка. Нажмите строку — редактирование, → — превратить в задачу, чат или расход.';
 
 export function ScratchpadScreen({ role }: { role: OsRole }) {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -27,6 +27,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
   const [busy, setBusy] = useState(false);
   const [promoteLine, setPromoteLine] = useState<ScratchpadLine | null>(null);
   const [workOpen, setWorkOpen] = useState(false);
+  const [editLine, setEditLine] = useState<ScratchpadLine | null>(null);
+  const [editText, setEditText] = useState('');
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
@@ -86,6 +88,26 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       done: true,
     });
     reload();
+  };
+
+  const openEdit = (line: ScratchpadLine) => {
+    if (readOnly) return;
+    setEditLine(line);
+    setEditText(line.text);
+  };
+
+  const saveEdit = async () => {
+    if (!user || !activeProject || !editLine || !editText.trim()) return;
+    setBusy(true);
+    try {
+      await api.patchScratchpadLine(user.id, activeProject.id, editLine.id, { text: editText.trim() });
+      setEditLine(null);
+      reload();
+    } catch {
+      Alert.alert('Черновик', 'Не удалось сохранить изменения');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openPromoteMenu = (line: ScratchpadLine) => {
@@ -166,7 +188,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
               <ScratchpadLineRow
                 key={line.id}
                 line={line}
+                readOnly={readOnly}
                 onToggle={() => toggleLine(line)}
+                onEdit={() => openEdit(line)}
                 onPromote={() => openPromoteMenu(line)}
                 onDelete={() => deleteLine(line)}
               />
@@ -182,7 +206,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
               <ScratchpadLineRow
                 key={line.id}
                 line={line}
+                readOnly={readOnly}
                 onToggle={() => toggleLine(line)}
+                onEdit={() => openEdit(line)}
                 onPromote={() => openPromoteMenu(line)}
                 onDelete={() => deleteLine(line)}
               />
@@ -221,6 +247,24 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
           pushOsNav(calendarTabHref(role, { date }), returnTo);
         }}
       />
+
+      <Modal visible={!!editLine} transparent animationType="fade" onRequestClose={() => setEditLine(null)}>
+        <Pressable style={s.modalBackdrop} onPress={() => setEditLine(null)}>
+          <Pressable style={s.modalSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={s.modalTitle}>Редактировать</Text>
+            <TextInput
+              style={s.input}
+              value={editText}
+              onChangeText={setEditText}
+              multiline
+              autoFocus
+              maxLength={4000}
+            />
+            <PrimaryButton title="Сохранить" compact disabled={busy || !editText.trim()} onPress={saveEdit} />
+            <PrimaryButton title="Отмена" variant="outline" compact onPress={() => setEditLine(null)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -256,6 +300,9 @@ const s = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
     fontSize: 15,
-    backgroundColor: '#fff',
+    backgroundColor: RenovaTheme.colors.surface,
   },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 },
+  modalSheet: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 14, padding: 16, gap: 10 },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },
 });

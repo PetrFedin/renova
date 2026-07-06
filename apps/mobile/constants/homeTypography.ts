@@ -24,7 +24,7 @@ export const homeTypography = StyleSheet.create({
 
 /** Отступы главной — плотнее, touch-target ≥ 40px */
 export const homeLayout = {
-  screenPadding: 14,
+  screenPadding: 16,
   sectionGap: 12,
   innerGap: 6,
   zoneBottom: 12,

@@ -12,6 +12,12 @@ import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { WorkStageCard } from '@/components/renova/WorkStageCard';
 import { RejectStageModal } from '@/components/renova/RejectStageModal';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { WORKS_FILTER_LABEL } from '@/constants/labels';
+import {
+  CUSTOMER_WORKS_FILTERS,
+  filterStagesForCustomer,
+  type CustomerWorksFilter,
+} from '@/lib/domain/customerWorksFilters';
 import { ReworkSlaWidget } from '@/components/renova/ReworkSlaWidget';
 import { TodayWidget } from '@/components/renova/TodayWidget';
 import { CreateStageSheet } from '@/components/renova/CreateStageSheet';
@@ -23,37 +29,42 @@ import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
 
 const FILTERS = [
-  { key: 'all', label: 'Активные' },
-  { key: 'today', label: 'Сегодня' },
-  { key: 'overdue', label: 'Просрочено' },
-  { key: 'review', label: 'Приёмка' },
-  { key: 'active', label: 'В работе' },
-  { key: 'archive', label: 'Архив' },
-  { key: 'rework', label: 'Доработка' },
-  { key: 'material', label: 'Ждёт материал' },
+  { key: 'all', label: WORKS_FILTER_LABEL.all },
+  { key: 'today', label: WORKS_FILTER_LABEL.today },
+  { key: 'overdue', label: WORKS_FILTER_LABEL.overdue },
+  { key: 'review', label: WORKS_FILTER_LABEL.review },
+  { key: 'active', label: WORKS_FILTER_LABEL.active },
+  { key: 'archive', label: WORKS_FILTER_LABEL.archive },
+  { key: 'rework', label: WORKS_FILTER_LABEL.rework },
+  { key: 'material', label: WORKS_FILTER_LABEL.material },
 ];
 
 export function OsWorksScreen({ role }: { role: OsRole }) {
   const nav = useNavFromHere();
   const { user, activeProject, rejectStage, loadProject, submitStage, readOnly } = useRenova();
+  const isContractor = role === 'contractor';
+  const isCustomer = role === 'customer';
   const [blockedMap, setBlockedMap] = useState<Record<string, { blocked: boolean; depends_on?: string; status_label?: string }>>({});
   const [query, setQuery] = useState('');
   const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(isCustomer ? 'now' : 'all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   useEffect(() => {
-    if (typeof filterParam === 'string' && FILTERS.some((f) => f.key === filterParam)) {
-      setFilter(filterParam);
+    if (typeof filterParam === 'string') {
+      if (isCustomer && CUSTOMER_WORKS_FILTERS.some((f) => f.key === filterParam)) {
+        setFilter(filterParam);
+      } else if (FILTERS.some((f) => f.key === filterParam)) {
+        setFilter(filterParam);
+        if (isContractor) setShowAdvancedFilters(true);
+      }
     }
-  }, [filterParam]);
+  }, [filterParam, isCustomer, isContractor]);
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectName, setRejectName] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateWork, setShowCreateWork] = useState(false);
-
-  const isContractor = role === 'contractor';
-  const isCustomer = role === 'customer';
 
   const reloadBlocked = useCallback(async () => {
     if (!user || !activeProject) return;
@@ -75,26 +86,42 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
   const stages = useMemo(() => {
     if (!activeProject) return [];
     const today = new Date().toISOString().slice(0, 10);
-    return [...activeProject.stages]
+    const base = [...activeProject.stages]
       .sort((a, b) => {
         if (a.needs_rework && !b.needs_rework) return -1;
         if (!a.needs_rework && b.needs_rework) return 1;
         return a.sort_order - b.sort_order;
-      })
-      .filter((s) => {
-        if (filter === 'archive' && s.status !== 'done') return false;
-        if (filter === 'all' && s.status === 'done') return false;
-        if (filter === 'rework' && !s.needs_rework) return false;
-        if (filter === 'overdue' && !(s.planned_end && s.planned_end < today && s.status !== 'done')) return false;
-        if (filter === 'material' && !blockedMap[s.id]?.blocked) return false;
-        if (filter === 'today' && !(s.planned_start === today || s.planned_end === today)) return false;
-        if (!['all', 'archive', 'rework', 'overdue', 'today', 'material'].includes(filter) && s.status !== filter) return false;
-        if (query && !s.name.toLowerCase().includes(query.toLowerCase())) return false;
-        return true;
       });
-  }, [activeProject, filter, query, blockedMap]);
 
-  const toggleSel = (id: string) => setSel((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const filteredBase = isCustomer
+      ? filterStagesForCustomer(base, filter as CustomerWorksFilter, blockedMap, today)
+      : base.filter((s) => {
+          if (filter === 'archive' && s.status !== 'done') return false;
+          if (filter === 'all' && s.status === 'done') return false;
+          if (filter === 'rework' && !s.needs_rework) return false;
+          if (filter === 'overdue' && !(s.planned_end && s.planned_end < today && s.status !== 'done')) return false;
+          if (filter === 'material' && !blockedMap[s.id]?.blocked) return false;
+          if (filter === 'today' && !(s.planned_start === today || s.planned_end === today)) return false;
+          if (!['all', 'archive', 'rework', 'overdue', 'today', 'material'].includes(filter) && s.status !== filter) return false;
+          return true;
+        });
+
+    return filteredBase.filter((s) => !query || s.name.toLowerCase().includes(query.toLowerCase()));
+  }, [activeProject, filter, query, blockedMap, isCustomer]);
+
+  const activeFilters = isCustomer
+    ? CUSTOMER_WORKS_FILTERS
+    : showAdvancedFilters
+      ? FILTERS
+      : FILTERS.slice(0, 4);
+  const activeFilterLabel = (isCustomer ? CUSTOMER_WORKS_FILTERS : FILTERS).find((f) => f.key === filter)?.label ?? filter;
+  const hasActiveFilter = isCustomer
+    ? filter !== 'now'
+    : filter !== 'all' || query.trim().length > 0;
+  const resetFilters = () => {
+    setFilter(isCustomer ? 'now' : 'all');
+    setQuery('');
+  };
 
   const bulkReady = async () => {
     if (!user || !activeProject) return;
@@ -118,7 +145,10 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
             <TodayWidget stages={activeProject.stages} role="contractor" />
           </>
         )}
-        <SearchFilter query={query} onQuery={setQuery} filters={FILTERS} active={filter} onFilter={setFilter} />
+        <SearchFilter query={query} onQuery={setQuery} filters={activeFilters} active={filter} onFilter={setFilter} />
+        {isContractor && !showAdvancedFilters && (
+          <PrimaryButton title="Ещё фильтры" variant="ghost" compact onPress={() => setShowAdvancedFilters(true)} />
+        )}
         {user && (
           <StageDependenciesPanel userId={user.id} projectId={activeProject.id} role={role} />
         )}
@@ -160,7 +190,21 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         })}
         {isContractor && <Text style={s.hint}>Долгое нажатие — выбрать для массовой сдачи</Text>}
         <RejectStageModal visible={!!rejectId} stageName={rejectName} onClose={() => setRejectId(null)} onConfirm={async (reason) => { if (rejectId) await rejectStage(rejectId, reason); setRejectId(null); await loadProject(activeProject.id); }} />
-        {!stages.length && <Text style={s.empty}>Нет работ по фильтру</Text>}
+        {!stages.length && hasActiveFilter && (
+          <View style={s.emptyBox}>
+            <Text style={s.emptyTitle}>Нет работ по фильтру «{activeFilterLabel}»</Text>
+            <Text style={s.emptySub}>
+              {query.trim()
+                ? `Поиск «${query.trim()}» не дал результатов.`
+                : 'Попробуйте другой фильтр или покажите все активные этапы.'}
+            </Text>
+            <PrimaryButton title="Сбросить фильтр" variant="outline" onPress={resetFilters} />
+            <PrimaryButton title="Показать все" variant="ghost" onPress={resetFilters} />
+          </View>
+        )}
+        {!stages.length && !hasActiveFilter && (activeProject.stages?.length ?? 0) === 0 && (
+          <Text style={s.empty}>Этапов пока нет. {isContractor ? 'Создайте первый этап.' : 'Они появятся после планирования ремонта.'}</Text>
+        )}
       </ScrollView>
       {user && isContractor && (
         <CreateStageSheet
@@ -195,6 +239,17 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   muted: { color: RenovaTheme.colors.textMuted },
   empty: { textAlign: 'center', color: RenovaTheme.colors.textMuted, marginTop: 24 },
+  emptyBox: {
+    marginTop: RenovaTheme.spacing.lg,
+    padding: RenovaTheme.spacing.md,
+    borderRadius: RenovaTheme.radius.lg,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.border,
+    backgroundColor: RenovaTheme.colors.surface,
+    gap: RenovaTheme.spacing.sm,
+  },
+  emptyTitle: { fontSize: RenovaTheme.fontSize.h3, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text, textAlign: 'center' },
+  emptySub: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, textAlign: 'center', lineHeight: 18 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 8, textAlign: 'center' },
   createRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
 });

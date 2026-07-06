@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   head: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
   sub: { color: RenovaTheme.colors.textMuted, marginBottom: 16, fontSize: 13 },
-  card: { backgroundColor: '#fff', padding: 14, borderRadius: 12, marginBottom: 10 },
+  card: { backgroundColor: RenovaTheme.colors.surface, padding: 14, borderRadius: 12, marginBottom: 10 },
   cat: { fontSize: 11, color: RenovaTheme.colors.primary, fontWeight: '700', textTransform: 'uppercase' },
   title: { fontSize: 16, fontWeight: '700', marginTop: 4 },
   summary: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 6 },

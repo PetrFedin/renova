@@ -1,7 +1,5 @@
-/**
- * Контент главной Renova OS — зоны сверху вниз:
- * контекст → сделать сейчас → сводка → неделя → ещё
- */
+/** Контент главной Renova OS — 5 блоков: статус → действие → деньги → работа → события */
+import { Text } from 'react-native';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
 import { ProjectSitesPanel } from '@/components/renova/ProjectSitesPanel';
@@ -16,13 +14,16 @@ import {
   WorksMaterialsTwinRow,
 } from '@/components/renova/os/ProjectOsPanels';
 import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
+import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { WeekScheduleStrip } from '@/components/renova/os/WeekScheduleStrip';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, tabsPrefix, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { HomeCompletionStrip } from '@/components/renova/os/home/HomeCompletionStrip';
+import { roleScopeLabel } from '@/lib/domain/roleCapabilities';
 import { resolveProjectPhase, type ProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
+import { homeTypography } from '@/constants/homeTypography';
 import { useOsNavFromHere } from '@/lib/navigation';
 
 export type HomeScreenBodyProps = {
@@ -64,15 +65,17 @@ export function HomeScreenBody({
   showKpi,
   isVisible,
 }: HomeScreenBodyProps) {
-  const { pushNav, pushScreen, pushTab, returnTo } = useOsNavFromHere(role);
+  const { pushNav, pushScreen, returnTo } = useOsNavFromHere(role);
   const rolePrefix = role === 'contractor' ? '/(contractor)/(tabs)' : '/(customer)/(tabs)';
   const phase = resolveProjectPhase(snap);
   const inboxRole = readOnly ? 'customer' : role;
   const kpiDetailHref = budgetTabRoute(role, 'summary', { period: 'month', focus: 'fact' });
   const showKpiHeaderLink = phase !== 'closing';
+  const moneyZoneTitle = role === 'customer' ? 'Деньги' : 'Сводка';
 
   return (
     <>
+      {/* 1. Статус */}
       <ProjectOsHeader
         name={activeProject.name}
         headerMeta={headerMeta}
@@ -81,15 +84,24 @@ export function HomeScreenBody({
         healthLevel={snap.healthLevel}
         healthLabel={snap.healthLabel}
       />
+      <Text style={homeTypography.homeSubtitle}>{roleScopeLabel({ role, readOnly })}</Text>
 
       {role === 'customer' && !readOnly && (
-        <ProjectProfileHint project={activeProject} role={role} />
+        <>
+          <ProjectProfileHint project={activeProject} role={role} />
+          <HomeSetupChecklist project={activeProject} snap={snap} role={role} />
+        </>
       )}
 
       {role === 'contractor' && (
         <HomeLinkRow title="+ Заявки и новый объект" onPress={() => pushScreen('/job-leads')} />
       )}
 
+      {phase === 'complete' && (
+        <HomeCompletionStrip role={role} userId={user.id} projectId={activeProject.id} />
+      )}
+
+      {/* 2. Главное действие */}
       {showAttention && (
         <HomeActionHero
           role={inboxRole}
@@ -101,27 +113,34 @@ export function HomeScreenBody({
         />
       )}
 
+      {/* 3. Деньги */}
       {showKpi && (
         <HomeZone
-          title="Сводка"
-          linkLabel={showKpiHeaderLink ? 'Бюджет →' : undefined}
+          title={moneyZoneTitle}
+          linkLabel={showKpiHeaderLink ? 'Подробнее →' : undefined}
           onLinkPress={showKpiHeaderLink ? () => pushNav(kpiDetailHref) : undefined}
         >
           <OsKpiGrid snap={snap} rolePrefix={rolePrefix} role={role} gridTitle={null} />
         </HomeZone>
       )}
 
-      {phase === 'complete' && (
-        <HomeCompletionStrip role={role} userId={user.id} projectId={activeProject.id} />
+      {/* 4. Что в работе */}
+      {showWorksMaterials && !snap.isComplete && (
+        <HomeZone title="В работе">
+          <WorksMaterialsTwinRow snap={snap} role={role} />
+        </HomeZone>
       )}
 
+      {/* 5. События */}
       {isVisible('schedule') && (
-        <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} />
+        <HomeZone title="События">
+          <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} />
+        </HomeZone>
       )}
 
+      {/* Дополнительно — свёрнуто */}
       {moreHasContent && (
         <HomeMoreSection summary={moreSummary}>
-          {showWorksMaterials && <WorksMaterialsTwinRow snap={snap} role={role} />}
           {isVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} returnTo={returnTo} />}
           {isVisible('sites') && (
             <ProjectSitesPanel
@@ -144,15 +163,6 @@ export function HomeScreenBody({
             />
           )}
         </HomeMoreSection>
-      )}
-
-      {!readOnly && (
-        <HomeLinkRow
-          leading="Вид главной"
-          title="Настроить →"
-          variant="trailingLink"
-          onPress={() => pushTab('profile')}
-        />
       )}
     </>
   );

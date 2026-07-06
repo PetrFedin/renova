@@ -64,5 +64,5 @@ const s = StyleSheet.create({
   title: { fontWeight: '700', fontSize: 13, color: RenovaTheme.colors.text },
   sub: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   btn: { backgroundColor: RenovaTheme.colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginLeft: 8 },
-  btnT: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  btnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 12 },
 });

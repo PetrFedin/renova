@@ -1,6 +1,5 @@
-/** Hub «Объект»: Профиль · Комнаты · Смета · План */
+/** Hub «Объект»: wizard 1–4 без дубля вкладок */
 import { View, StyleSheet } from 'react-native';
-import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
 import { OsProjectProfileScreen } from '@/components/screens/OsProjectProfileScreen';
 import { OsRoomsScreen } from '@/components/screens/OsRoomsScreen';
 import { OsEstimateScreen } from '@/components/screens/OsEstimateScreen';
@@ -10,13 +9,6 @@ import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { useHubTab } from '@/lib/useHubTab';
 import type { OsRole } from '@/constants/osSections';
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
-
-const TABS: HubTab[] = [
-  { id: 'profile', label: 'Данные объекта' },
-  { id: 'rooms', label: 'Комнаты' },
-  { id: 'estimate', label: 'Смета' },
-  { id: 'plan', label: 'План' },
-];
 
 const TAB_IDS = ['profile', 'rooms', 'estimate', 'plan'] as const;
 
@@ -28,7 +20,6 @@ export function OsObjectHubScreen({ role }: { role: OsRole }) {
   return (
     <ProjectScopeLoader role={role}>
       <View style={s.root}>
-        <OsHubTabs tabs={TABS} value={active} onChange={(id) => goTab(id as ObjectTabId)} />
         <ObjectTabProgress active={active} onChange={goTab} />
         <View style={s.body}>
           {active === 'profile' && <OsProjectProfileScreen role={role} onNextTab={goTab} />}

@@ -182,6 +182,13 @@ async def _seed_apartment_chats(
             "customer",
             "Перевёл на карту, проверьте, пожалуйста.",
         )
+        await chat_svc.send_message(
+            db,
+            t_payment,
+            contractor_id,
+            "contractor",
+            "Проверю поступление сегодня вечером.",
+        )
 
     await chat_svc.set_thread_state(db, t_payment.id, customer_id, is_pinned=True)
 

@@ -53,7 +53,7 @@ const s = StyleSheet.create({
   wrap: { marginTop: 8 },
   section: { fontWeight: '700', fontSize: 16, marginBottom: 4 },
   meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 16 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 6 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 8, marginBottom: 6 },
   amount: { fontWeight: '700', fontSize: 15 },
   title: { fontSize: 13, marginTop: 2, color: RenovaTheme.colors.text },
   metaLine: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },

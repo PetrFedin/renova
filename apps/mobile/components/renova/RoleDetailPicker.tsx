@@ -27,8 +27,8 @@ const s = StyleSheet.create({
   box: { marginVertical: 8 },
   head: { fontWeight: '700', fontSize: 12, marginBottom: 6 },
   row: { flexDirection: 'row', gap: 6 },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: '#eee' },
+  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: RenovaTheme.colors.border },
   on: { backgroundColor: RenovaTheme.colors.primary },
   t: { fontSize: 12, fontWeight: '600' },
-  tOn: { color: '#fff' },
+  tOn: { color: RenovaTheme.colors.surface },
 });

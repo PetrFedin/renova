@@ -71,7 +71,7 @@ export function ManualExpenseForm({
   );
 }
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 4 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 10 },
   link: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, paddingVertical: 4 },

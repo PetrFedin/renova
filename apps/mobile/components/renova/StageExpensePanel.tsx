@@ -129,14 +129,14 @@ export function StageExpensePanel({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 4 },
   hintTop: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 15 },
   empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, fontStyle: 'italic' },
   row: { paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   amt: { fontWeight: '700' },
   meta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  picksBlock: { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#eee' },
+  picksBlock: { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border },
   picksHead: { fontWeight: '700', fontSize: 12, marginBottom: 4, color: RenovaTheme.colors.textMuted },
   link: { fontSize: 13, color: RenovaTheme.colors.primary, fontWeight: '700', paddingVertical: 4 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, fontStyle: 'italic' },

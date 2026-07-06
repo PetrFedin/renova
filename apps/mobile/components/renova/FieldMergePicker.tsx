@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { fieldDiff } from '@/lib/fieldDiff';
 import { MergePreview } from '@/components/renova/MergePreview';
@@ -33,4 +34,4 @@ export function FieldMergePicker({ local, server, onMerge }: { local: string; se
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginTop:8, padding:8, backgroundColor:'#eff6ff', borderRadius:8 }, head:{ fontWeight:'700', fontSize:12 }, row:{ flexDirection:'row', gap:6, marginVertical:4, alignItems:'center' }, f:{ flex:1, fontSize:11 }, b:{ fontSize:11, padding:4, backgroundColor:'#eee', borderRadius:4 }, on:{ backgroundColor:'#2563eb', color:'#fff' }, apply:{ color:'#2563eb', fontWeight:'700', marginTop:6 } });
+const s = StyleSheet.create({ box:{ marginTop:8, padding:8, backgroundColor:'#eff6ff', borderRadius:8 }, head:{ fontWeight:'700', fontSize:12 }, row:{ flexDirection:'row', gap:6, marginVertical:4, alignItems:'center' }, f:{ flex:1, fontSize:11 }, b:{ fontSize:11, padding:4, backgroundColor:RenovaTheme.colors.border, borderRadius:4 }, on:{ backgroundColor:'#2563eb', color:RenovaTheme.colors.surface }, apply:{ color:'#2563eb', fontWeight:'700', marginTop:6 } });

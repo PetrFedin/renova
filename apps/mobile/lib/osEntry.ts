@@ -6,6 +6,11 @@ export function osEntryRoute(role: UserRole): OsTabRoute {
   return tabsRoute(role === 'contractor' ? 'contractor' : 'customer', 'index');
 }
 
+/** Экран выбора объекта после входа */
+export function projectPickRoute(): string {
+  return '/onboarding/project';
+}
+
 /** @deprecated Используйте osEntryRoute + router.replace(route) */
 export function osEntryHref(role: UserRole): string {
   return osEntryRoute(role).pathname;

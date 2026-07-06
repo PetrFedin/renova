@@ -22,7 +22,7 @@ export function RoomPassport({ snap, role }: { snap: RoomSnapshot; role?: OsRole
   const pathname = usePathname();
   const na = snap.next_action;
   const overrun = snap.budget.overrun > 0;
-  const budgetRoute = role ? budgetTabRoute(role, 'rooms') : null;
+  const budgetRoute = role ? budgetTabRoute(role, 'expenses', { roomId: snap.id, view: 'rooms' }) : null;
 
   return (
     <View style={s.wrap}>

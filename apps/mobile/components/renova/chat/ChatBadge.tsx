@@ -24,5 +24,5 @@ const s = StyleSheet.create({
     zIndex: 2,
   },
   inline: { position: 'relative', top: 0, right: 0, marginTop: 4 },
-  text: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  text: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '800' },
 });

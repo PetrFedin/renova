@@ -135,5 +135,5 @@ const s = StyleSheet.create({
     zIndex: 20,
     minWidth: 120,
   },
-  tooltipT: { color: '#fff', fontSize: 11, textAlign: 'center' },
+  tooltipT: { color: RenovaTheme.colors.surface, fontSize: 11, textAlign: 'center' },
 });

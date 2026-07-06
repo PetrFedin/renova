@@ -8,8 +8,8 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread, useInboxWsListener } from '@/lib/useChatUnread';
 import { buildInboxItems, inboxLinkItems, filterInboxForHero, type InboxItem } from '@/lib/domain/buildInboxItems';
-import { navigateApproval } from '@/lib/navigation';
-import { useOsNavFromHere } from '@/lib/navigation';
+import { navigateApproval, useOsNavFromHere } from '@/lib/navigation';
+import { homeHeroLabel } from '@/lib/domain/roleCapabilities';
 import type { ProjectOsSnapshot, OsNextAction } from '@/lib/domain/osTypes';
 import type { OsInsight } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
@@ -31,7 +31,7 @@ function duplicatesHero(item: InboxItem, hero: OsNextAction): boolean {
 export function HomeActionHero({ role, snap, insights, showHero, showInbox, showInsights }: Props) {
   const { user, activeProject, readOnly } = useRenova();
   const { pushNav, returnTo } = useOsNavFromHere(role);
-  const { count: chatUnread } = useChatUnread(user?.id);
+  const { count: chatUnread } = useChatUnread(user?.id, user?.role);
   const [items, setItems] = useState<InboxItem[]>([]);
 
   const reload = useCallback(async () => {
@@ -69,7 +69,7 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
   return (
     <View style={s.wrap}>
       <View style={s.zoneHead}>
-        <Text style={homeTypography.zoneLabel}>Сделать сейчас</Text>
+        <Text style={homeTypography.zoneLabel}>{homeHeroLabel({ role, readOnly })}</Text>
         {inboxForLink.length > 0 ? (
           <Pressable
             onPress={() => router.push({ pathname: '/inbox', params: { returnTo, heroKind: hero.kind } } as any)}

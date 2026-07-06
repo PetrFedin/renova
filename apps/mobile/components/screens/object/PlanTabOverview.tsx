@@ -106,7 +106,7 @@ function LinkBtn({ label, onPress }: { label: string; onPress: () => void }) {
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 14, gap: 10 },
-  hero: { ...card, paddingVertical: 12, backgroundColor: '#F0F9FF' },
+  hero: { ...card, paddingVertical: 12, backgroundColor: RenovaTheme.colors.infoBg },
   heroTitle: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
   heroMeta: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 18 },
   flow: { ...card, paddingVertical: 10, backgroundColor: '#F8FAFC' },

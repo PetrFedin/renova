@@ -28,7 +28,7 @@ export const DOCK_CATALOG: DockItem[] = [
   { id: 'chat', routeName: 'chat', label: 'Сообщения', icon: 'chat' },
   { id: 'object', routeName: 'object', label: 'Объект', icon: 'rooms' },
   { id: 'repair', routeName: 'repair', label: 'Ремонт', icon: 'works' },
-  { id: 'budget', routeName: 'budget', label: 'Бюджет', icon: 'budget' },
+  { id: 'budget', routeName: 'budget', label: 'Деньги', icon: 'budget' },
   { id: 'calendar', routeName: 'calendar', label: 'Календарь', icon: 'calendar' },
 ];
 

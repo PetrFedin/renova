@@ -6,12 +6,14 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectProfileFields, type ProjectProfileValues } from '@/components/renova/ProjectProfileFields';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useCustomerBudget } from '@/lib/hooks/useCustomerBudget';
+import { canEditProjectProfile } from '@/lib/domain/roleCapabilities';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { isIsoDate } from '@/lib/validateDate';
 import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
+import { formMetaText } from '@/constants/formTypography';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
@@ -23,7 +25,7 @@ export function OsProjectProfileScreen({
   onNextTab?: (tab: ObjectTabId) => void;
 }) {
   const { activeProject, updateProjectProfile, readOnly, user } = useRenova();
-  const canWrite = useWriteAllowed();
+  const canWrite = useWriteAllowed() && canEditProjectProfile({ role, readOnly });
   const { customerBudget } = useCustomerBudget({
     projectId: activeProject?.id,
     userId: user?.id,
@@ -115,9 +117,11 @@ export function OsProjectProfileScreen({
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       {readOnly && <ReadOnlyBanner />}
-      <ObjectTabGuide tab="profile" onNextTab={onNextTab} compact />
+      <ObjectTabGuide tab="profile" role={role} onNextTab={onNextTab} compact />
       <ProjectProfileFields
         variant="profile"
+        role={role}
+        readOnly={!!readOnly}
         values={values}
         showSchedule
         budgetValue={budgetInput}
@@ -161,5 +165,5 @@ const s = StyleSheet.create({
   footer: { marginTop: 4, marginBottom: 16, gap: 10 },
   roomsLink: { alignSelf: 'flex-start', paddingVertical: 4 },
   roomsLinkT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.primary },
-  savedHint: { fontSize: 12, color: RenovaTheme.colors.textSubtle },
+  savedHint: { ...formMetaText.caption },
 });

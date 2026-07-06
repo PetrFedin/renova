@@ -80,4 +80,4 @@ export function MaterialPickList({
     </View>
   );
 }
-const s = StyleSheet.create({ form:{ gap:8, marginTop:8 }, inp:{ borderWidth:1, borderColor:'#ddd', borderRadius:8, padding:10, backgroundColor:'#fff' }, box:{ marginVertical:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ backgroundColor:'#fff', padding:10, borderRadius:8, marginBottom:6 }, n:{ fontWeight:'600' }, m:{ fontSize:12, color:'#666' }, link:{ color:'#2563eb', fontSize:12, marginTop:4 } });
+const s = StyleSheet.create({ form:{ gap:8, marginTop:8 }, inp:{ borderWidth:1, borderColor:'#ddd', borderRadius:8, padding:10, backgroundColor:RenovaTheme.colors.surface }, box:{ marginVertical:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ backgroundColor:RenovaTheme.colors.surface, padding:10, borderRadius:8, marginBottom:6 }, n:{ fontWeight:'600' }, m:{ fontSize:12, color:'#666' }, link:{ color:'#2563eb', fontSize:12, marginTop:4 } });

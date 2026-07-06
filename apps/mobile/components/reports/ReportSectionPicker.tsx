@@ -64,7 +64,7 @@ const s = StyleSheet.create({
     borderColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  chipOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: '#EFF6FF' },
+  chipOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   chipT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   chipTOn: { color: RenovaTheme.colors.accent },
   catHead: { marginTop: 14 },

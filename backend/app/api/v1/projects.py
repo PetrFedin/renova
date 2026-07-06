@@ -198,7 +198,29 @@ async def assign_contractor(project_id: str, user: User = Depends(get_current_us
     return await _detail(db, p, user)
 
 class ViewerShareIn(BaseModel):
-    phone: str
+    phone: str | None = None
+    profile_code: str | None = None
+
+
+class LinkContractorIn(BaseModel):
+    contractor_id: str
+
+
+@router.post("/{project_id}/contractor")
+async def link_contractor(project_id: str, body: LinkContractorIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select
+    from app.models.entities import User as U, UserRole
+    p = await require_project(db, project_id, user, write=True)
+    if user.id != p.customer_id:
+        raise HTTPException(403, "Только заказчик")
+    r = await db.execute(select(U).where(U.id == body.contractor_id, U.role == UserRole.contractor))
+    contractor = r.scalar_one_or_none()
+    if not contractor:
+        raise HTTPException(404, "Исполнитель не найден")
+    linked = await svc.assign_contractor(db, project_id, contractor.id)
+    if not linked:
+        raise HTTPException(409, "На объекте уже другой исполнитель или нужен Pro у подрядчика")
+    return await _detail(db, linked, user)
 
 
 @router.get("/{project_id}/viewers")
@@ -220,11 +242,19 @@ async def share_viewer(project_id: str, body: ViewerShareIn, user: User = Depend
     p = await require_project(db, project_id, user, write=True)
     if user.id != p.customer_id:
         raise HTTPException(403, "Только заказчик")
-    phone = body.phone.strip()
-    r = await db.execute(select(U).where(U.phone == phone))
-    target = r.scalar_one_or_none()
+    target = None
+    phone = (body.phone or "").strip()
+    code = (body.profile_code or "").strip().upper()
+    if phone:
+        r = await db.execute(select(U).where(U.phone == phone))
+        target = r.scalar_one_or_none()
+    elif code:
+        r = await db.execute(select(U).where(U.profile_code == code))
+        target = r.scalar_one_or_none()
+    if not phone and not code:
+        raise HTTPException(400, "Укажите телефон или код профиля")
     if not target:
-        raise HTTPException(404, "Пользователь не найден. Попросите гостя войти как заказчик (SMS или demo).")
+        raise HTTPException(404, "Пользователь не найден. Попросите гостя войти в Renova (demo или SMS).")
     ex = await db.execute(select(ProjectViewer).where(ProjectViewer.project_id == project_id, ProjectViewer.user_id == target.id))
     if ex.scalar_one_or_none():
         return {"ok": True, "message": "Уже имеет доступ", "user_id": target.id}

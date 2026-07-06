@@ -32,5 +32,5 @@ export function replaceOsNav(target: OsNavHref, returnTo?: string) {
 
 /** returnTo для stack-экранов (documents и т.д.) */
 export function budgetAnalyticsReturnTo(role: OsRole): string {
-  return budgetTabHref(role, 'analytics');
+  return budgetTabHref(role, 'deviations');
 }

@@ -73,10 +73,10 @@ export default function ConflictsScreen() {
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   hint: { color: RenovaTheme.colors.textMuted, marginBottom: 12, lineHeight: 18, fontSize: 13 },
-  empty: { ...{ backgroundColor: '#fff', padding: 24, borderRadius: 12, alignItems: 'center' } },
+  empty: { ...{ backgroundColor: RenovaTheme.colors.surface, padding: 24, borderRadius: 12, alignItems: 'center' } },
   emptyT: { fontWeight: '700', fontSize: 16 },
   emptySub: { color: RenovaTheme.colors.textMuted, marginTop: 6, textAlign: 'center' },
-  card: { backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  card: { backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   path: { fontWeight: '700', fontSize: 13 },
   meta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginVertical: 4 },
   preview: { fontSize: 12, color: RenovaTheme.colors.text, marginBottom: 4 },

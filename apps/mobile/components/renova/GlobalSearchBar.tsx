@@ -81,10 +81,10 @@ export function GlobalSearchBar({
   );
 }
 const s = StyleSheet.create({
-  wrap: { marginBottom: 12 }, input: { backgroundColor: '#fff', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#eee' },
+  wrap: { marginBottom: 12 }, input: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   hist: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, alignItems: 'center' },
   histLabel: { width: '100%', fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 2 },
   histT: { fontSize: 11, color: RenovaTheme.colors.primary, backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
-  hit: { backgroundColor: '#fff', padding: 10, borderRadius: 8, marginTop: 6 },
+  hit: { backgroundColor: RenovaTheme.colors.surface, padding: 10, borderRadius: 8, marginTop: 6 },
   title: { fontWeight: '700' }, sub: { fontSize: 12, color: RenovaTheme.colors.textMuted },
 });

@@ -1,2 +1,10 @@
 import { OsObjectHubScreen } from '@/components/screens/OsObjectHubScreen';
-export default function CustomerObject() { return <OsObjectHubScreen role="customer" />; }
+import { OsTabFocusGate } from '@/components/renova/os/OsTabFocusGate';
+
+export default function TabScreen() {
+  return (
+    <OsTabFocusGate routeName="object">
+      <OsObjectHubScreen role="customer" />
+    </OsTabFocusGate>
+  );
+}

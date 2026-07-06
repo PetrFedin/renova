@@ -28,10 +28,10 @@ export function SearchFilter({ query, onQuery, filters, active, onFilter }: Prop
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 10 },
-  input: { backgroundColor: '#fff', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#eee', marginBottom: 8 },
+  input: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border, marginBottom: 8 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: '#eee' },
+  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: RenovaTheme.colors.border },
   chipOn: { backgroundColor: RenovaTheme.colors.primary },
   chipT: { fontSize: 12, fontWeight: '600', color: '#444' },
-  chipTOn: { color: '#fff' },
+  chipTOn: { color: RenovaTheme.colors.surface },
 });

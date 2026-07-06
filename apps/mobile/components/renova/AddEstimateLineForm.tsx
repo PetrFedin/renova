@@ -130,16 +130,16 @@ export function AddEstimateLineForm({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   head: { fontWeight: '800', marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   row2: { flexDirection: 'row', gap: 8 },
   half: { flex: 1 },
   unitRow: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  unitChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#eee' },
+  unitChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: RenovaTheme.colors.border },
   unitOn: { backgroundColor: RenovaTheme.colors.primary },
   unitT: { fontSize: 11, fontWeight: '600', color: '#334155' },
-  unitTOn: { color: '#fff' },
+  unitTOn: { color: RenovaTheme.colors.surface },
   lbl: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, marginBottom: 4 },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },
   notes: { minHeight: 56, textAlignVertical: 'top' },

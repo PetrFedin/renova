@@ -3,6 +3,8 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { budgetTabHref, calendarTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
+import { formMetaText } from '@/constants/formTypography';
+import { objectProfileHint } from '@/lib/domain/roleCapabilities';
 import { pushOsNav } from '@/lib/pushOsNav';
 
 export type ObjectTabId = 'profile' | 'rooms' | 'estimate' | 'plan';
@@ -55,11 +57,12 @@ export function ObjectTabGuide({
 }) {
   const g = GUIDES[tab];
   const pathname = usePathname();
+  const doText = tab === 'profile' && role ? objectProfileHint({ role, readOnly: false }) : g.do;
   if (compact) {
     return (
       <View style={s.compactRow}>
         <Text style={s.compactText} numberOfLines={2}>
-          {g.do}
+          {doText}
         </Text>
         {g.next ? (
           <Pressable
@@ -77,7 +80,7 @@ export function ObjectTabGuide({
       <Text style={s.label}>Что здесь</Text>
       <Text style={s.read}>{g.read}</Text>
       <Text style={s.label}>Что делать</Text>
-      <Text style={s.do}>{g.do}</Text>
+      <Text style={s.do}>{doText}</Text>
       {g.next ? (
         <Pressable
           style={s.next}
@@ -108,7 +111,7 @@ const s = StyleSheet.create({
     marginBottom: 12,
     paddingVertical: 4,
   },
-  compactText: { flex: 1, fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
+  compactText: { flex: 1, ...formMetaText.caption },
   compactNext: { flexShrink: 0 },
   box: {
     ...card,

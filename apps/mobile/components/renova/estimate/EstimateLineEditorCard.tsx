@@ -121,7 +121,7 @@ const s = StyleSheet.create({
     borderRadius: 8,
     padding: 8,
     fontSize: 14,
-    backgroundColor: '#fff',
+    backgroundColor: RenovaTheme.colors.surface,
   },
   notesLabel: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.text, marginTop: 4 },
   notes: {
@@ -132,6 +132,6 @@ const s = StyleSheet.create({
     minHeight: 64,
     fontSize: 13,
     textAlignVertical: 'top',
-    backgroundColor: '#fff',
+    backgroundColor: RenovaTheme.colors.surface,
   },
 });

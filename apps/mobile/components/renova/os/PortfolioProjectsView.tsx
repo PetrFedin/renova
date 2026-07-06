@@ -63,7 +63,7 @@ const s = StyleSheet.create({
   projRow: { flexDirection: 'row', gap: 8 },
   projChip: { ...card, flex: 1, minWidth: 0, marginBottom: 0, padding: 10 },
   ghost: { opacity: 0, borderWidth: 0 },
-  projChipOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: '#EFF6FF' },
+  projChipOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   projName: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.text },
   projMeta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4 },
   barBg: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 8, overflow: 'hidden' },

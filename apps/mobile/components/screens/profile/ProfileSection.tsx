@@ -1,6 +1,7 @@
 /** Секция профиля: заголовок + описание + карточка с содержимым */
 import { View, Text, StyleSheet, type ReactNode, type ViewStyle } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { formMetaText } from '@/constants/formTypography';
 
 type Props = {
   title: string;
@@ -34,9 +35,7 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   desc: {
-    fontSize: 12,
-    color: RenovaTheme.colors.textMuted,
-    lineHeight: 17,
+    ...formMetaText.caption,
     marginBottom: 8,
   },
   card: {

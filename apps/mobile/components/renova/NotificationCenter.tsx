@@ -66,7 +66,7 @@ const s = StyleSheet.create({
   head:{ fontWeight:'800' },
   subHead:{ fontWeight:'700', fontSize:13, color: RenovaTheme.colors.text },
   filter:{ color: RenovaTheme.colors.primary, fontWeight:'600', fontSize:12 },
-  item:{ backgroundColor:'#fff', padding:10, borderRadius:8, marginBottom:6 },
+  item:{ backgroundColor:RenovaTheme.colors.surface, padding:10, borderRadius:8, marginBottom:6 },
   unread:{ borderLeftWidth:3, borderLeftColor: RenovaTheme.colors.primary },
   title:{ fontWeight:'700' }, body:{ fontSize:12, color: RenovaTheme.colors.textMuted },
   snoozeRow:{ flexDirection:'row', gap:12, marginTop:6 },

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 
@@ -13,4 +14,4 @@ export function ChecklistVersionDiff({ userId, projectId, tplId }: { userId: str
     </View>
   );
 }
-const s = StyleSheet.create({ row:{ flexDirection:'row', gap:8, marginTop:8 }, col:{ flex:1, backgroundColor:'#f3f4f6', padding:8, borderRadius:8 }, head:{ fontWeight:'700', fontSize:12 }, add:{ color:'#15803d', fontSize:11 }, rm:{ color:'#b91c1c', fontSize:11 } });
+const s = StyleSheet.create({ row:{ flexDirection:'row', gap:8, marginTop:8 }, col:{ flex:1, backgroundColor:RenovaTheme.colors.surfaceMuted, padding:8, borderRadius:8 }, head:{ fontWeight:'700', fontSize:12 }, add:{ color:'#15803d', fontSize:11 }, rm:{ color:'#b91c1c', fontSize:11 } });

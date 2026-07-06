@@ -18,7 +18,6 @@ const summary = buildHomeMoreSummary({
   receipts: [],
   picks: [],
   isVisible: isVisible as any,
-  showWorksMaterials: false,
 });
 
 if (!summary.includes('2 риска') || !summary.includes('документы')) throw new Error('more summary');
@@ -33,7 +32,6 @@ if (!homeMoreHasVisibleContent({
   receipts: [],
   picks: [],
   isVisible: isVisible as any,
-  showWorksMaterials: false,
 })) throw new Error('visible content');
 
 if (homeMoreHasVisibleContent({
@@ -43,7 +41,6 @@ if (homeMoreHasVisibleContent({
   receipts: [],
   picks: [],
   isVisible: () => false,
-  showWorksMaterials: false,
 })) throw new Error('empty should be false');
 
 console.log('buildHomeMoreSummary.test OK');

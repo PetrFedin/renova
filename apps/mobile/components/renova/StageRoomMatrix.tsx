@@ -114,7 +114,7 @@ const s = StyleSheet.create({
   roomT: { fontSize: 8, color: RenovaTheme.colors.textMuted },
   cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, minHeight: 32 },
   editable: { borderRadius: 6 },
-  on: { backgroundColor: '#EFF6FF' },
+  on: { backgroundColor: RenovaTheme.colors.infoBg },
   dot: { fontSize: 14, color: '#ccc' },
   dotOn: { color: RenovaTheme.colors.primary },
 });

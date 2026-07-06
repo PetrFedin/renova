@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { api } from '@/lib/api';
 
@@ -12,4 +13,4 @@ export function WorkTypeFilter({ value, onChange }: { value?: string; onChange: 
     </ScrollView>
   );
 }
-const s = StyleSheet.create({ row:{ marginBottom:8 }, ch:{ paddingHorizontal:10, paddingVertical:5, borderRadius:12, backgroundColor:'#eee', marginRight:6 }, on:{ backgroundColor:'#2563eb' }, t:{ fontSize:11, color:'#333' } });
+const s = StyleSheet.create({ row:{ marginBottom:8 }, ch:{ paddingHorizontal:10, paddingVertical:5, borderRadius:12, backgroundColor:RenovaTheme.colors.border, marginRight:6 }, on:{ backgroundColor:'#2563eb' }, t:{ fontSize:11, color:'#333' } });

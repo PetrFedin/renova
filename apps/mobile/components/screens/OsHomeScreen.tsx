@@ -97,7 +97,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         }
       });
     } catch (e) {
-      setLoadError('error');
+      setLoadError('Не удалось загрузить данные главной');
     } finally {
       setLoading(false);
     }
@@ -193,7 +193,6 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     receipts,
     picks,
     isVisible,
-    showWorksMaterials,
   };
   const moreSummary = buildHomeMoreSummary(moreArgs);
   const moreHasContent = homeMoreHasVisibleContent(moreArgs);

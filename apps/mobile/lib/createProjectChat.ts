@@ -25,7 +25,7 @@ export async function createProjectChat({
     return null;
   }
   const trimmed = title.trim() || 'Чат';
-  const dup = findExistingChat(existingThreads, projectId, trimmed);
+  const dup = findExistingChat(existingThreads, projectId, trimmed, topic);
 
   if (dup) {
     onOpen(dup.id);

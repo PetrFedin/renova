@@ -1,4 +1,5 @@
 import { View, Text, Image, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 
 type Photo = { id: string; caption: string | null; image_url?: string };
 
@@ -18,11 +19,11 @@ export function PhotoCompare({ before, after }: { before: Photo[]; after: Photo[
 }
 
 const s = StyleSheet.create({
-  wrap: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginVertical: 8 },
+  wrap: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 12, marginVertical: 8 },
   head: { fontWeight: '700', marginBottom: 8 },
   row: { flexDirection: 'row', gap: 8 },
   col: { flex: 1 },
   img: { width: '100%', height: 120, borderRadius: 8 },
-  empty: { height: 120, textAlign: 'center', lineHeight: 120, backgroundColor: '#f3f4f6', borderRadius: 8, color: '#888' },
+  empty: { height: 120, textAlign: 'center', lineHeight: 120, backgroundColor: RenovaTheme.colors.surfaceMuted, borderRadius: 8, color: '#888' },
   cap: { textAlign: 'center', marginTop: 4, fontWeight: '600', fontSize: 12 },
 });

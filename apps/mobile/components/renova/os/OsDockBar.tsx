@@ -11,6 +11,7 @@ import { resolveSectionId, tabsRoute, type OsRole } from '@/constants/osSections
 import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
+import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 
 const REPAIR_SEGMENTS = new Set(['repair', 'works', 'materials', 'control', 'stages']);
 const OBJECT_SEGMENTS = new Set(['object', 'rooms', 'estimate', 'plan']);
@@ -18,8 +19,9 @@ const OBJECT_SEGMENTS = new Set(['object', 'rooms', 'estimate', 'plan']);
 export function OsDockBar({ role }: { role: OsRole }) {
   const pathname = usePathname();
   const bottomPad = useBottomInset();
-  const { user } = useRenova();
-  const { count: chatUnread } = useChatUnread(user?.id);
+  const { user, activeProject } = useRenova();
+  const { count: chatUnread } = useChatUnread(user?.id, user?.role);
+  const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
   const section = resolveSectionId(pathname);
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
@@ -69,6 +71,10 @@ export function OsDockBar({ role }: { role: OsRole }) {
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
               {id === 'chat' && <ChatBadge count={chatUnread} />}
+              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} />}
+              {id === 'home' && !items.includes('calendar') && todayTasks > 0 && (
+                <ChatBadge count={todayTasks} />
+              )}
             </View>
             <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{item.label}</Text>
           </Pressable>

@@ -1,6 +1,7 @@
 /** Поле «Сколько готов вложить» — wizard и профиль объекта */
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { formMetaText } from '@/constants/formTypography';
 
 type Props = {
   value: string;
@@ -46,7 +47,7 @@ const s = StyleSheet.create({
   wrap: { marginVertical: 12 },
   embedded: { gap: 4 },
   title: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 4 },
-  desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 8 },
+  desc: { ...formMetaText.caption, marginBottom: 8 },
   input: {
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
@@ -56,6 +57,6 @@ const s = StyleSheet.create({
     fontWeight: '700',
     backgroundColor: RenovaTheme.colors.surface,
   },
-  meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 6 },
+  meta: { ...formMetaText.caption, marginTop: 6 },
   warn: { fontSize: 12, color: RenovaTheme.colors.warning, marginTop: 6, lineHeight: 16 },
 });

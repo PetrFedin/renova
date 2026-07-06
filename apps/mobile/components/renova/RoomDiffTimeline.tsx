@@ -17,8 +17,8 @@ export function RoomDiffTimeline({ logs }: { logs: Log[] }) {
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:'#fff', borderRadius:10, padding:12, marginBottom:10 },
-  head:{ fontWeight:'800', marginBottom:8 }, row:{ paddingVertical:6, borderTopWidth:1, borderTopColor:'#f3f4f6' },
+  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:10, padding:12, marginBottom:10 },
+  head:{ fontWeight:'800', marginBottom:8 }, row:{ paddingVertical:6, borderTopWidth:1, borderTopColor:RenovaTheme.colors.surfaceMuted },
   date:{ fontSize:10, color: RenovaTheme.colors.textMuted }, change:{ fontSize:13, marginTop:2 },
   old:{ color:'#9ca3af', textDecorationLine:'line-through' }, new:{ color:'#059669', fontWeight:'600' },
 });

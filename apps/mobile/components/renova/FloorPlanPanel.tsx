@@ -132,16 +132,16 @@ export function FloorPlanPanel({
 }
 
 const s = StyleSheet.create({
-  box: { marginVertical: 10, backgroundColor: '#fff', padding: 12, borderRadius: 10 },
+  box: { marginVertical: 10, backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10 },
   embedded: { gap: 8 },
   head: { fontWeight: '800', marginBottom: 8 },
   floors: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  fchip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#eee' },
+  fchip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: RenovaTheme.colors.border },
   fon: { backgroundColor: RenovaTheme.colors.primary },
   ft: { fontSize: 11 },
-  fonT: { fontSize: 11, color: '#fff' },
+  fonT: { fontSize: 11, color: RenovaTheme.colors.surface },
   mapWrap: { position: 'relative', minHeight: 180 },
-  img: { width: '100%', height: 180, backgroundColor: '#f3f4f6', borderRadius: 8 },
+  img: { width: '100%', height: 180, backgroundColor: RenovaTheme.colors.surfaceMuted, borderRadius: 8 },
   emptyBox: {
     padding: 14,
     borderRadius: 10,
@@ -154,5 +154,5 @@ const s = StyleSheet.create({
   emptyHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
   link: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, marginTop: 4 },
   pin: { position: 'absolute' },
-  pinT: { backgroundColor: RenovaTheme.colors.primary, color: '#fff', fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  pinT: { backgroundColor: RenovaTheme.colors.primary, color: RenovaTheme.colors.surface, fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
 });

@@ -1,4 +1,5 @@
 import { Text, View, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function ReactionAvatars({ reactions }: { reactions: { user_id: string; reaction: string }[] }) {
   if (!reactions.length) return null;
@@ -9,4 +10,4 @@ export function ReactionAvatars({ reactions }: { reactions: { user_id: string; r
     ))}</View>
   );
 }
-const s = StyleSheet.create({ row:{ flexDirection:'row', flexWrap:'wrap', gap:4, marginTop:4 }, tag:{ fontSize:10, backgroundColor:'#f3f4f6', paddingHorizontal:6, paddingVertical:2, borderRadius:8 } });
+const s = StyleSheet.create({ row:{ flexDirection:'row', flexWrap:'wrap', gap:4, marginTop:4 }, tag:{ fontSize:10, backgroundColor:RenovaTheme.colors.surfaceMuted, paddingHorizontal:6, paddingVertical:2, borderRadius:8 } });

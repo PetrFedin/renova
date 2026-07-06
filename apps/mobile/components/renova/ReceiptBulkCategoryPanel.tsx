@@ -71,8 +71,8 @@ const s = StyleSheet.create({
   head: { fontWeight: '800', fontSize: 14, marginBottom: 4 },
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 16 },
   catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  catChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#f3f4f6' },
+  catChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: RenovaTheme.colors.surfaceMuted },
   catOn: { backgroundColor: RenovaTheme.colors.primary },
   catT: { fontSize: 11, fontWeight: '600' },
-  catTOn: { color: '#fff' },
+  catTOn: { color: RenovaTheme.colors.surface },
 });

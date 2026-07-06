@@ -56,7 +56,7 @@ const s = StyleSheet.create({
     borderColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  on: { borderColor: RenovaTheme.colors.primary, backgroundColor: '#EFF6FF' },
+  on: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
   t: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.text },
   tOn: { color: RenovaTheme.colors.primary },
 });

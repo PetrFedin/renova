@@ -52,7 +52,7 @@ function StageRow({ link, returnTo }: { link: StageExpenseLink; returnTo?: strin
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 4, fontSize: 14 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 10, lineHeight: 15 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },

@@ -26,7 +26,7 @@ const EXTRA_WITH_CONTRACTOR: typeof EXTRA_BASIC = [];
 
 export function CustomerProfileScreen() {
   const pathname = usePathname();
-  const { user, activeProject, readOnly } = useRenova();
+  const { user, activeProject, readOnly, loadProject } = useRenova();
   const showAccess = Boolean(user && activeProject && !readOnly);
   const hasContractor = Boolean(activeProject?.contractor_id);
   const extraItems = hasContractor ? [...EXTRA_BASIC, ...EXTRA_WITH_CONTRACTOR] : EXTRA_BASIC;
@@ -53,7 +53,15 @@ export function CustomerProfileScreen() {
           description="Гости видят объект без редактирования. Исполнители — из базы Renova."
         >
           <ViewerSharePanel userId={user!.id} projectId={activeProject!.id} embedded />
-          {user ? <ContractorDirectory userId={user.id} embedded /> : null}
+          {user ? (
+            <ContractorDirectory
+              userId={user.id}
+              projectId={activeProject!.id}
+              linkedContractorId={activeProject!.contractor_id}
+              embedded
+              onLinked={() => loadProject(activeProject!.id).catch(() => {})}
+            />
+          ) : null}
         </ProfileSection>
       ) : null}
 

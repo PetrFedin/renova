@@ -43,15 +43,15 @@ export function StageRoomPicker({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 10 },
+  box: { backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10, marginBottom: 10 },
   head: { fontWeight: '800', marginBottom: 4 },
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#eee', minWidth: 88 },
+  chip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: RenovaTheme.colors.border, minWidth: 88 },
   on: { backgroundColor: RenovaTheme.colors.primary },
   dis: { opacity: 0.7 },
   txt: { fontWeight: '700', fontSize: 13, color: '#333' },
   sub: { fontSize: 10, color: '#666', marginTop: 2 },
-  txtOn: { color: '#fff' },
+  txtOn: { color: RenovaTheme.colors.surface },
   clear: { marginTop: 8, color: RenovaTheme.colors.primary, fontWeight: '600', fontSize: 12 },
 });

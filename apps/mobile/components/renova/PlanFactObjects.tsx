@@ -15,7 +15,7 @@ export function PlanFactObjects({ items }: { items: { name: string; planned: num
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:'#fff', borderRadius:12, padding:12, marginBottom:12 },
+  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:12, marginBottom:12 },
   head:{ fontWeight:'800', marginBottom:8 },
   row:{ flexDirection:'row', justifyContent:'space-between', paddingVertical:5, borderTopWidth:1, borderTopColor:'#f0f0f0' },
   n:{ flex:1, fontWeight:'600', fontSize:13 }, v:{ fontSize:12, color: RenovaTheme.colors.textMuted },

@@ -19,7 +19,7 @@ export function PaywallModal({ visible, price = 990, onClose, onUpgrade }: Props
 }
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,.45)', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, gap: 12 },
+  card: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 16, padding: 20, gap: 12 },
   title: { fontSize: 20, fontWeight: '800' },
   body: { color: RenovaTheme.colors.textMuted, lineHeight: 20 },
 });

@@ -12,7 +12,14 @@ export type OsSection = {
   hubTab?: string;
 };
 
-const CORE: OsSection[] = [
+const CUSTOMER_CORE: OsSection[] = [
+  { id: 'home', label: 'Главная', routeName: 'index', icon: 'home' },
+  { id: 'object', label: 'Квартира', routeName: 'object', icon: 'rooms' },
+  { id: 'repair', label: 'Ремонт', routeName: 'repair', icon: 'works' },
+  { id: 'budget', label: 'Деньги', routeName: 'budget', icon: 'budget' },
+];
+
+const CONTRACTOR_CORE: OsSection[] = [
   { id: 'home', label: 'Главная', routeName: 'index', icon: 'home' },
   { id: 'object', label: 'Объект', routeName: 'object', icon: 'rooms' },
   { id: 'repair', label: 'Ремонт', routeName: 'repair', icon: 'works' },
@@ -22,20 +29,20 @@ const CORE: OsSection[] = [
 /** Верхнее меню: 4 столпа + сообщения + календарь */
 export const OS_MENU_SECTIONS: Record<OsRole, OsSection[]> = {
   customer: [
-    ...CORE,
+    ...CUSTOMER_CORE,
     { id: 'chat', label: 'Сообщения', routeName: 'chat', icon: 'chat' },
     { id: 'calendar', label: 'Календарь', routeName: 'calendar', icon: 'calendar' },
   ],
   contractor: [
-    ...CORE,
+    ...CONTRACTOR_CORE,
     { id: 'chat', label: 'Сообщения', routeName: 'chat', icon: 'chat' },
     { id: 'calendar', label: 'Календарь', routeName: 'calendar', icon: 'calendar' },
   ],
 };
 
 export const OS_SECTIONS: Record<OsRole, OsSection[]> = {
-  customer: CORE,
-  contractor: CORE,
+  customer: CUSTOMER_CORE,
+  contractor: CONTRACTOR_CORE,
 };
 
 const DIRECT: Record<string, OsSectionId> = {
@@ -65,13 +72,14 @@ const ALIAS: Record<string, OsSectionId> = {
 
 const ROUTE_TITLES: Record<string, { customer: string; contractor: string }> = {
   chat: { customer: 'Сообщения', contractor: 'Сообщения' },
-  object: { customer: 'Объект', contractor: 'Объект' },
+  object: { customer: 'Квартира', contractor: 'Объект' },
   repair: { customer: 'Ремонт', contractor: 'Ремонт' },
   calendar: { customer: 'Сроки', contractor: 'Сроки' },
   estimate: { customer: 'Смета', contractor: 'Смета' },
   rooms: { customer: 'Комнаты', contractor: 'Комнаты' },
   profile: { customer: 'Данные объекта', contractor: 'Данные объекта' },
-  finance: { customer: 'Финансы', contractor: 'Финансы' },
+  finance: { customer: 'Деньги', contractor: 'Финансы' },
+  budget: { customer: 'Деньги', contractor: 'Бюджет' },
   guide: { customer: 'Справка', contractor: 'Справка' },
   plan: { customer: 'План', contractor: 'План' },
   works: { customer: 'Этапы', contractor: 'Этапы' },
@@ -170,13 +178,14 @@ export function objectTabRoute(role: OsRole, tab: string, sub?: string): OsTabRo
 export function budgetTabHref(
   role: OsRole,
   tab: string,
-  params?: { roomId?: string; stageId?: string; period?: string; focus?: string },
+  params?: { roomId?: string; stageId?: string; period?: string; focus?: string; view?: string },
 ): string {
   const extra: Record<string, string> = {};
   if (params?.roomId) extra.roomId = params.roomId;
   if (params?.stageId) extra.stageId = params.stageId;
   if (params?.period) extra.period = params.period;
   if (params?.focus) extra.focus = params.focus;
+  if (params?.view) extra.view = params.view;
   const r = tabsRoute(role, 'budget', tab, Object.keys(extra).length ? extra : undefined);
   if (!r.params) return r.pathname;
   const qs = new URLSearchParams(r.params).toString();
@@ -186,12 +195,13 @@ export function budgetTabHref(
 export function budgetTabRoute(
   role: OsRole,
   tab: string,
-  params?: { roomId?: string; stageId?: string; period?: string; focus?: string },
+  params?: { roomId?: string; stageId?: string; period?: string; focus?: string; view?: string },
 ): OsTabRoute {
   const extra: Record<string, string> = {};
   if (params?.roomId) extra.roomId = params.roomId;
   if (params?.stageId) extra.stageId = params.stageId;
   if (params?.period) extra.period = params.period;
   if (params?.focus) extra.focus = params.focus;
+  if (params?.view) extra.view = params.view;
   return tabsRoute(role, 'budget', tab, Object.keys(extra).length ? extra : undefined);
 }

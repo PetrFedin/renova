@@ -13,9 +13,11 @@ import { type ExpenseCategoryId } from '@/constants/expenseCategories';
 /** QR чека — на web вставка строки, на iPhone камера */
 import { BackHeader } from '@/components/renova/BackHeader';
 import { useLocalSearchParams, router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { paymentReceiptKey } from '@/constants/sessionKeys';
 
 export default function ScanReceiptScreen() {
-  const { returnTo, roomId: roomParam, stageId: stageParam } = useLocalSearchParams<{ returnTo?: string; roomId?: string; stageId?: string }>();
+  const { returnTo, roomId: roomParam, stageId: stageParam, paymentId } = useLocalSearchParams<{ returnTo?: string; roomId?: string; stageId?: string; paymentId?: string }>();
   const { user, activeProject, loadProject } = useRenova();
   const [perm, requestPerm] = useCameraPermissions();
   const [manual, setManual] = useState('t=20260627T1200&s=1500.00&fn=9999078901234567&i=12345&fp=1234567890&n=1');
@@ -42,6 +44,9 @@ export default function ScanReceiptScreen() {
         `${r.message}\nСумма: ${r.amount.toLocaleString('ru-RU')} ₽`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
+      if (paymentId) {
+        await AsyncStorage.setItem(paymentReceiptKey(String(paymentId)), '1');
+      }
       await loadProject(activeProject.id);
     } catch {
       scanned.current = false;
@@ -54,7 +59,7 @@ export default function ScanReceiptScreen() {
   if (Platform.OS === 'web') {
     return (
       <>
-        <BackHeader title="Скан чека" returnTo={returnTo} subtitle="Вставьте строку QR с чека" />
+        <BackHeader title="Скан чека" returnTo={returnTo} subtitle={paymentId ? "Чек для подтверждения оплаты счёта" : "Вставьте строку QR с чека"} />
         <View style={styles.wrap}>
           <Text style={styles.hintWeb}>Формат: t=...&s=...&fn=...&i=...&fp=...&n=1</Text>
           <TextInput style={styles.input} multiline value={manual} onChangeText={setManual} editable={!busy} />
@@ -123,5 +128,5 @@ const styles = StyleSheet.create({  manualWrap: { padding: 16, paddingBottom: 32
   title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, minHeight: 100, marginBottom: 16, fontSize: 13 },
   hintWeb: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
-  hint: { position: 'absolute', bottom: 40, alignSelf: 'center', color: '#fff', backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 8 },
+  hint: { position: 'absolute', bottom: 40, alignSelf: 'center', color: RenovaTheme.colors.surface, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 8 },
 });

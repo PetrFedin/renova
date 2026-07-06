@@ -44,7 +44,7 @@ export function StageEstimatePanel({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 10 },
+  box: { backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10, marginBottom: 10 },
   head: { fontWeight: '800', marginBottom: 4 },
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 6 },
   total: { fontSize: 22, fontWeight: '800', color: RenovaTheme.colors.primary, marginBottom: 8 },

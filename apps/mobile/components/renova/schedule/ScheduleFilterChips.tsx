@@ -35,5 +35,5 @@ const s = StyleSheet.create({
   },
   chipOn: { backgroundColor: RenovaTheme.colors.accent, borderColor: RenovaTheme.colors.accent },
   chipT: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  chipTOn: { color: '#fff' },
+  chipTOn: { color: RenovaTheme.colors.surface },
 });

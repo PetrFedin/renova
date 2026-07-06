@@ -32,6 +32,6 @@ export default function AdminDashboardWeb() {
 const st = StyleSheet.create({
   wrap: { padding: 16, backgroundColor: RenovaTheme.colors.background, flex: 1 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  lbl: { width: 70, fontSize: 12 }, track: { flex: 1, height: 12, backgroundColor: '#eee', borderRadius: 6, overflow: 'hidden' },
+  lbl: { width: 70, fontSize: 12 }, track: { flex: 1, height: 12, backgroundColor: RenovaTheme.colors.border, borderRadius: 6, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: RenovaTheme.colors.primary },
 });

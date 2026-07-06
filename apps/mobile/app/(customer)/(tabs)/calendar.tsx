@@ -1,6 +1,10 @@
 import { OsCalendarScreen } from '@/components/screens/OsCalendarScreen';
+import { OsTabFocusGate } from '@/components/renova/os/OsTabFocusGate';
 
-/** Календарь — отдельный раздел (не вкладка hub «Ремонт») */
-export default function CustomerCalendar() {
-  return <OsCalendarScreen role="customer" />;
+export default function TabScreen() {
+  return (
+    <OsTabFocusGate routeName="calendar">
+      <OsCalendarScreen role="customer" />
+    </OsTabFocusGate>
+  );
 }

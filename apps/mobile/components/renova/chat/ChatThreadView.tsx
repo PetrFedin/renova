@@ -18,6 +18,9 @@ import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
+import { budgetTabRoute } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { usePathname } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -43,6 +46,7 @@ function MessageBubble({
   onReply: () => void;
   onTask: () => void;
   onConfirm?: () => void;
+  onPay?: () => void;
 }) {
   const roleLabel = m.author_role === 'customer' ? 'Заказчик' : m.author_role === 'contractor' ? 'Исполнитель' : 'Система';
   const isSystem = m.author_role === 'system' || m.message_type === 'system';
@@ -72,11 +76,11 @@ function MessageBubble({
       {m.is_pinned ? <Text style={s.pinTag}>📌 Закреплено</Text> : null}
       <Text style={s.role}>{roleLabel}</Text>
       {m.text && <HighlightText text={m.text} query={query} />}
+      {m.message_type === 'payment' && m.confirmed !== true && onPay && (
+        <PrimaryButton title="Перейти к оплате" compact onPress={onPay} />
+      )}
       {m.message_type === 'confirm' && m.confirmed !== true && onConfirm && (
         <PrimaryButton title="Подтвердить" compact onPress={onConfirm} />
-      )}
-      {m.message_type === 'payment' && m.confirmed !== true && onConfirm && (
-        <PrimaryButton title="Подтвердить оплату" compact onPress={onConfirm} />
       )}
       {m.confirmed && <Text style={s.ok}>✓ Подтверждено</Text>}
       {m.work_order_id && (
@@ -103,9 +107,10 @@ function MessageBubble({
 }
 
 export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: string; returnTo?: string; highlightId?: string }) {
+  const pathname = usePathname();
   const { user, activeProject, projects } = useRenova();
   const canWrite = useWriteAllowed();
-  const { reload: reloadUnread } = useChatUnread(user?.id);
+  const { reload: reloadUnread } = useChatUnread(user?.id, user?.role);
   const [chat, setChat] = useState<ChatDetail | null>(null);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
@@ -149,6 +154,12 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, () => {
     reload().catch(() => {});
   });
+
+  const role = user?.role === 'contractor' ? 'contractor' : 'customer';
+
+  const openPaymentFlow = () => {
+    pushOsNav(budgetTabRoute(role, 'payments'), returnTo || pathname);
+  };
 
   if (!chat || !user || !activeProject) {
     return (
@@ -201,7 +212,8 @@ export function ChatThreadView({ threadId, returnTo, highlightId }: { threadId: 
             onPin={() => api.pinChatMessage(user.id, activeProject.id, threadId, m.id, !m.is_pinned).then(reload)}
             onReply={() => setReplyTo(m)}
             onTask={() => setTaskMsg(m)}
-            onConfirm={(m.message_type === 'confirm' || m.message_type === 'payment') ? () => api.confirmChatMessage(user.id, activeProject.id, threadId, m.id).then(reload) : undefined}
+            onConfirm={m.message_type === 'confirm' ? () => api.confirmChatMessage(user.id, activeProject.id, threadId, m.id).then(reload) : undefined}
+            onPay={m.message_type === 'payment' ? openPaymentFlow : undefined}
           />
         ))}
       </ScrollView>
@@ -337,7 +349,7 @@ const s = StyleSheet.create({
   topLink: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.accent },
   msg: { padding: 10, borderRadius: 10, marginBottom: 8, maxWidth: '88%' },
   me: { alignSelf: 'flex-end', backgroundColor: '#dbeafe' },
-  them: { alignSelf: 'flex-start', backgroundColor: '#fff' },
+  them: { alignSelf: 'flex-start', backgroundColor: RenovaTheme.colors.surface },
   highlight: { backgroundColor: '#fef9c3' },
   pinnedMsg: { borderWidth: 1, borderColor: RenovaTheme.colors.accent },
   pinTag: { fontSize: 10, color: RenovaTheme.colors.accent, fontWeight: '700', marginBottom: 2 },
@@ -350,17 +362,17 @@ const s = StyleSheet.create({
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   reactChip: { backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   reactText: { fontSize: 12 },
-  composer: { padding: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', gap: 8 },
+  composer: { padding: 12, backgroundColor: RenovaTheme.colors.surface, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, gap: 8 },
   composerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   toolBtn: { fontSize: 20, padding: 4 },
   typing: { fontSize: 11, color: '#999' },
   wsHint: { fontSize: 10, color: RenovaTheme.colors.warning, marginBottom: 4 },
-  input: { minHeight: 44, borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10 },
+  input: { minHeight: 44, borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 10 },
   replyBar: { flexDirection: 'row', alignItems: 'center', padding: 8, backgroundColor: '#f1f5f9', gap: 8 },
   replyText: { flex: 1, fontSize: 12, color: RenovaTheme.colors.textMuted },
   replyX: { fontSize: 16, padding: 4 },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, gap: 10 },
+  modal: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, gap: 10 },
   modalTitle: { fontSize: 18, fontWeight: '700' },
   or: { textAlign: 'center', color: RenovaTheme.colors.textMuted, fontSize: 12 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted },

@@ -20,6 +20,8 @@ export type ProjectSummary = {
   customer_budget?: number | null;
   /** Счётов к оплате — если backend отдаёт в списке проектов */
   pending_payments?: number | null;
+  /** Подключённый исполнитель */
+  contractor_id?: string | null;
 };
 
 export type EstimateLine = {

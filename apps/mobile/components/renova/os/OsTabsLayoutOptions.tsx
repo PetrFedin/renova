@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Platform, View, StyleSheet, Pressable } from 'react-native';
-import { useState } from 'react';
-import { usePathname } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { usePathname, router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { tabBarScreenOptions } from '@/constants/tabBar';
 import { OsSectionMenu } from '@/components/renova/os/OsSectionMenu';
@@ -18,6 +19,8 @@ import { OsQuickFab } from '@/components/renova/os/OsQuickFab';
 import { ApiStatusBanner } from '@/components/renova/ApiStatusBanner';
 import { OsReturnBar } from '@/components/renova/os/OsReturnBar';
 import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
+import { SESSION_KEYS } from '@/constants/sessionKeys';
+import { projectPickRoute } from '@/lib/osEntry';
 
 /** Шапка: лого + путь слева, меню разделов справа */
 export function OsTabsHeaderBar({ role }: { role: OsRole }) {
@@ -70,12 +73,30 @@ export function useOsTabsScreenOptions(_role: OsRole) {
     tabBar: () => null,
     tabBarStyle: { display: 'none' as const },
     headerShown: false,
-    contentStyle: { paddingBottom: 0 },
+    lazy: true,
+    freezeOnBlur: true,
+    detachInactiveScreens: true,
+    sceneStyle: { flex: 1, overflow: 'hidden' as const },
+    contentStyle: { paddingBottom: 0, flex: 1 },
   };
 }
 
 /** Оболочка вкладок: шапка + контент + нижняя панель */
 export function OsTabsShell({ role, children }: { role: OsRole; children: ReactNode }) {
+  const pathname = usePathname();
+  const { user, activeProject } = useRenova();
+  const [pendingPick, setPendingPick] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick).then((v) => setPendingPick(v === '1'));
+  }, [pathname, activeProject?.id, user?.id]);
+
+  useEffect(() => {
+    if (!user || activeProject || !pendingPick) return;
+    if (pathname.includes('/onboarding/')) return;
+    router.replace(projectPickRoute() as any);
+  }, [user?.id, activeProject?.id, pendingPick, pathname]);
+
   return (
     <View style={shell.root}>
       <ActiveProjectSync />
@@ -116,5 +137,5 @@ const profileBtn = StyleSheet.create({
 
 const shell = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAFC' },
-  body: { flex: 1, paddingBottom: Platform.OS === 'web' ? 4 : 0 },
+  body: { flex: 1, paddingBottom: Platform.OS === 'web' ? 4 : 0, overflow: 'hidden' },
 });

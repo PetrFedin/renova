@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 
@@ -15,4 +16,4 @@ export function ChecklistVersionList({ userId, projectId, tplId }: { userId: str
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginTop:8, padding:8, backgroundColor:'#f3f4f6', borderRadius:8 }, head:{ fontWeight:'700', fontSize:12 }, line:{ fontSize:11, color:'#555' } });
+const s = StyleSheet.create({ box:{ marginTop:8, padding:8, backgroundColor:RenovaTheme.colors.surfaceMuted, borderRadius:8 }, head:{ fontWeight:'700', fontSize:12 }, line:{ fontSize:11, color:'#555' } });

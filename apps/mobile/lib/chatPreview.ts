@@ -37,8 +37,15 @@ export function findExistingChat(
   threads: ChatThread[],
   projectId: string,
   title: string,
+  topic?: string,
 ): ChatThread | undefined {
   const norm = title.trim().toLowerCase();
+  if (topic) {
+    const byTopic = threads.find(
+      (t) => t.project_id === projectId && !t.is_archived && t.topic === topic,
+    );
+    if (byTopic) return byTopic;
+  }
   if (!norm) return undefined;
   return threads.find(
     (t) =>

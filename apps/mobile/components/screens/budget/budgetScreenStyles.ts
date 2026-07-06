@@ -1,13 +1,14 @@
 /** Стили общие для вкладок «Бюджет» */
 import { StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { formMetaText } from '@/constants/formTypography';
 
 export const budgetScreenStyles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   muted: { color: RenovaTheme.colors.textMuted },
   risk: { fontSize: 13, marginTop: 8, fontWeight: '600' },
-  dataHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 6, marginBottom: 4, lineHeight: 16 },
+  dataHint: { ...formMetaText.caption, marginTop: 6, marginBottom: 4 },
   widgetSettingsLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -16,6 +17,7 @@ export const budgetScreenStyles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
+  widgetSettingsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   widgetSettingsText: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.accent },
   widgetSettingsArrow: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.accent },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
@@ -32,7 +34,7 @@ export const budgetScreenStyles = StyleSheet.create({
     marginBottom: 12,
     borderLeftWidth: 3,
     borderLeftColor: RenovaTheme.colors.primary,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: RenovaTheme.colors.neutralBg,
   },
   limitTitle: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
   limitVal: { fontSize: 18, fontWeight: '700', color: RenovaTheme.colors.text, marginTop: 2 },

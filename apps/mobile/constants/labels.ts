@@ -80,7 +80,7 @@ export const PURCHASE_STATUS_LABEL: Record<string, string> = {
 
 export const MATERIAL_PICK_STATUS_LABEL: Record<string, string> = {
   draft: 'Черновик',
-  pending: 'На согласовании',
+  pending: 'Ждёт согласования',
   approved: 'Согласовано',
   purchased: 'Куплено',
   rejected: 'Отклонено',
@@ -164,3 +164,28 @@ export function designPackageStatusLabel(status: string): string {
 export function stageStatusLabel(status: string): string {
   return STAGE_STATUS_LABEL[status]?.replace(/^[✓⏳🔨○]\s*/, '') ?? status;
 }
+
+/** Фильтры экрана «Работы» */
+export const WORKS_FILTER_LABEL: Record<string, string> = {
+  all: 'Активные',
+  today: 'Сегодня',
+  overdue: 'Просрочено',
+  review: 'Приёмка',
+  active: 'В работе',
+  archive: 'Архив',
+  rework: 'Доработка',
+  material: 'Ждёт материал',
+};
+
+export const PAYMENT_BLOCKED_ACCEPTANCE_MSG =
+  'Оплатить можно только после приёмки этапа. Сначала проверьте работы и нажмите «Принять этап».';
+
+export const SETUP_CHECKLIST_LABEL: Record<string, string> = {
+  object: 'Объект создан',
+  profile: 'Данные объекта',
+  rooms: 'Комнаты',
+  estimate: 'Смета',
+  contractor: 'Исполнитель',
+  stages: 'Этапы',
+  budget: 'Бюджет под контролем',
+};

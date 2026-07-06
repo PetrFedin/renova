@@ -147,7 +147,7 @@ const s = StyleSheet.create({
   emptyT: { fontWeight: '700', fontSize: 15 },
   emptyM: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginVertical: 8, lineHeight: 18 },
   chips: { marginBottom: 8, maxHeight: 40 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: RenovaTheme.colors.border, marginRight: 8, backgroundColor: '#fff' },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: RenovaTheme.colors.border, marginRight: 8, backgroundColor: RenovaTheme.colors.surface },
   chipOn: { borderColor: RenovaTheme.colors.text, backgroundColor: RenovaTheme.colors.borderLight },
   chipT: { fontSize: 13, color: RenovaTheme.colors.textMuted },
   chipTOn: { color: RenovaTheme.colors.text, fontWeight: '600' },

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { TextInput, View, Text, Pressable, StyleSheet } from 'react-native';
 import { HighlightText } from '@/components/renova/HighlightText';
 
@@ -12,4 +13,4 @@ export function ChatInThreadSearch({ messages, onJump, onQueryChange }: { messag
     </View>
   );
 }
-const s = StyleSheet.create({ wrap:{ marginBottom:8 }, input:{ backgroundColor:'#fff', borderRadius:8, padding:8, borderWidth:1, borderColor:'#eee' }, hit:{ padding:6, fontSize:12, color:'#2563eb' } });
+const s = StyleSheet.create({ wrap:{ marginBottom:8 }, input:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:8, padding:8, borderWidth:1, borderColor:RenovaTheme.colors.border }, hit:{ padding:6, fontSize:12, color:'#2563eb' } });

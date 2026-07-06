@@ -25,4 +25,4 @@ export function BudgetBreakdown({ userId, projectId }: { userId: string; project
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginVertical:10, backgroundColor:'#fff', padding:12, borderRadius:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ flexDirection:'row', justifyContent:'space-between', paddingVertical:4 }, v:{ fontWeight:'600' }, warn:{ color:'#b45309', fontSize:11, marginTop:4 }, sub:{ fontSize:11, color:'#666', marginTop:8 } });
+const s = StyleSheet.create({ box:{ marginVertical:10, backgroundColor:RenovaTheme.colors.surface, padding:12, borderRadius:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ flexDirection:'row', justifyContent:'space-between', paddingVertical:4 }, v:{ fontWeight:'600' }, warn:{ color:'#b45309', fontSize:11, marginTop:4 }, sub:{ fontSize:11, color:'#666', marginTop:8 } });

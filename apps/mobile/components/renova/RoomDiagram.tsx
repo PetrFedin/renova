@@ -1,5 +1,6 @@
 /** 2D-схема комнаты: стены + розетки */
 import { View, Text, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 import { Room } from '@/lib/api';
 
 export function RoomDiagram({ room }: { room: Room }) {
@@ -21,7 +22,7 @@ export function RoomDiagram({ room }: { room: Room }) {
   );
 }
 const s = StyleSheet.create({
-  wrap:{ backgroundColor:'#fff', borderRadius:12, padding:12, marginBottom:10 },
+  wrap:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:12, marginBottom:10 },
   head:{ fontWeight:'700', marginBottom:8 },
   room:{ borderWidth:2, borderColor:'#374151', backgroundColor:'#f9fafb', borderRadius:4, position:'relative' },
   outlet:{ position:'absolute', width:8, height:8, borderRadius:4, backgroundColor:'#f59e0b' },

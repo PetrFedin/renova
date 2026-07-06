@@ -98,9 +98,11 @@ export async function recoverDemoSession(role: UserRole): Promise<{ user: User; 
   }
 }
 
-/** Автовход для preview: демо-заказчик + пропуск квиза */
+/** Автовход для preview: демо-заказчик + пропуск квиза и выбора объекта */
 export async function bootstrapPreviewDemo(): Promise<{ user: User; projects: ProjectSummary[] } | null> {
   await AsyncStorage.setItem('renova_detail_quiz_done', '1');
   await AsyncStorage.setItem('renova_detail_level', 'standard');
+  await AsyncStorage.setItem('renova_project_explicitly_picked', '1');
+  await AsyncStorage.removeItem('renova_pending_project_pick');
   return recoverDemoSession('customer');
 }

@@ -54,9 +54,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  tabOn: { backgroundColor: '#EFF6FF', borderColor: RenovaTheme.colors.accent },
+  tabOn: { backgroundColor: RenovaTheme.colors.infoBg, borderColor: RenovaTheme.colors.accent },
   label: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   labelOn: { color: RenovaTheme.colors.accent },
   badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: RenovaTheme.colors.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  badgeT: { fontSize: 10, fontWeight: '800', color: '#fff' },
+  badgeT: { fontSize: 10, fontWeight: '800', color: RenovaTheme.colors.surface },
 });

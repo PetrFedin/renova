@@ -17,7 +17,7 @@ export function RenovationPlanBadge({ renovationType, propertyType, stageNames }
   );
 }
 const s = StyleSheet.create({
-  box: { backgroundColor: '#F0F9FF', borderRadius: 10, padding: 12, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.primary },
+  box: { backgroundColor: RenovaTheme.colors.infoBg, borderRadius: 10, padding: 12, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.primary },
   head: { fontWeight: '800', fontSize: 13, marginBottom: 4 },
   flow: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
 });

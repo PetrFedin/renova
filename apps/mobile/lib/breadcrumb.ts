@@ -16,9 +16,10 @@ export const HUB_TAB_LABELS: Record<string, Record<string, string>> = {
     summary: 'Сводка',
     expenses: 'Расходы',
     payments: 'Оплаты',
-    rooms: 'По комнатам',
-    stages: 'По этапам',
-    analytics: 'Аналитика',
+    deviations: 'Отклонения',
+    rooms: 'Расходы',
+    stages: 'Расходы',
+    analytics: 'Отклонения',
   },
   object: { profile: 'Профиль', rooms: 'Комнаты', estimate: 'Смета', plan: 'План' },
 };

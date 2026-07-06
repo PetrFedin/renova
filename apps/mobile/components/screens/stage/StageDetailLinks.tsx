@@ -16,6 +16,7 @@ import {
 } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { findStageChatThread } from '@/lib/domain/findStageChatThread';
+import { createProjectChat } from '@/lib/createProjectChat';
 
 type Props = {
   role: OsRole;
@@ -30,6 +31,8 @@ type Props = {
 export function StageDetailLinks({ role, user, project, stage, stageId, canWrite, onRoomsChanged }: Props) {
   const [openingChat, setOpeningChat] = useState(false);
   const stageReturn = `/stage/${stageId}`;
+  const chatTopic = `stage:${stageId}`;
+  const chatTitle = `Этап: ${stage.name}`;
 
   async function openStageChat() {
     if (openingChat) return;
@@ -44,9 +47,21 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
         } as any);
         return;
       }
-      Alert.alert('Чат', 'Пока нет переписки по этому этапу. Создайте чат в разделе «Сообщения».');
+      await createProjectChat({
+        userId: user.id,
+        projectId: project.id,
+        title: chatTitle,
+        topic: chatTopic,
+        existingThreads: chats,
+        onOpen: (threadId) => {
+          router.push({
+            pathname: '/chat/[threadId]',
+            params: { threadId, returnTo: stageReturn },
+          } as any);
+        },
+      });
     } catch {
-      Alert.alert('Ошибка', 'Не удалось открыть чат');
+      Alert.alert('Ошибка', 'Не удалось открыть чат по этапу');
     } finally {
       setOpeningChat(false);
     }

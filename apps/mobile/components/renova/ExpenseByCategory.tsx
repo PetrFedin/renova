@@ -24,11 +24,11 @@ export function ExpenseByCategory({ rows }: { rows: ExpenseDetailRow[] }) {
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 12 },
+  box: { backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 10 },
   row: { marginBottom: 8 },
   label: { fontSize: 13, fontWeight: '600' },
   val: { fontSize: 12, color: RenovaTheme.colors.primary, marginTop: 2 },
-  bar: { height: 4, backgroundColor: '#eee', borderRadius: 2, marginTop: 4, overflow: 'hidden' },
+  bar: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 4, overflow: 'hidden' },
   fill: { height: 4, backgroundColor: RenovaTheme.colors.primary },
 });

@@ -87,7 +87,7 @@ export default function ApprovalsScreen() {
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background, padding: 16 },
   hint: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 12, lineHeight: 18 },
-  card: { backgroundColor: '#fff', padding: 14, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  card: { backgroundColor: RenovaTheme.colors.surface, padding: 14, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   type: { fontSize: 11, color: RenovaTheme.colors.accent, fontWeight: '700' },
   title: { fontWeight: '700', marginTop: 4 },
   sub: { color: RenovaTheme.colors.textMuted, marginTop: 4, marginBottom: 8 },

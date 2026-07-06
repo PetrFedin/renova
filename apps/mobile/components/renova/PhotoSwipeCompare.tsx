@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { Modal, View, Text, Image, Pressable, StyleSheet, Dimensions } from 'react-native';
 
 type P = { id: string; caption: string | null; image_url?: string };
@@ -24,10 +25,10 @@ export function PhotoSwipeCompare({ before, after, visible, onClose }: { before:
 }
 const s = StyleSheet.create({
   wrap: { flex:1, backgroundColor:'#000', padding:16, paddingTop:48 },
-  close: { color:'#fff', fontSize:16, marginBottom:12 },
+  close: { color:RenovaTheme.colors.surface, fontSize:16, marginBottom:12 },
   img: { width:'100%', height: Dimensions.get('window').height*0.6 },
   empty: { color:'#888', textAlign:'center', marginTop:80 },
-  cap: { color:'#fff', marginTop:12, textAlign:'center' },
+  cap: { color:RenovaTheme.colors.surface, marginTop:12, textAlign:'center' },
   nav: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginTop:20, paddingHorizontal:40 },
-  btn: { color:'#fff', fontSize:28 },
+  btn: { color:RenovaTheme.colors.surface, fontSize:28 },
 });

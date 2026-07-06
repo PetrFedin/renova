@@ -1,2 +1,10 @@
 import { OsRepairHubScreen } from '@/components/screens/OsRepairHubScreen';
-export default function ContractorRepair() { return <OsRepairHubScreen role="contractor" />; }
+import { OsTabFocusGate } from '@/components/renova/os/OsTabFocusGate';
+
+export default function TabScreen() {
+  return (
+    <OsTabFocusGate routeName="repair">
+      <OsRepairHubScreen role="contractor" />
+    </OsTabFocusGate>
+  );
+}

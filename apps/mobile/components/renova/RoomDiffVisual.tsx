@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function RoomDiffVisual({ before, after }: { before: Record<string, string | number>; after: Record<string, string | number> }) {
   const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
@@ -19,7 +20,7 @@ export function RoomDiffVisual({ before, after }: { before: Record<string, strin
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:'#fff', borderRadius:10, padding:12, marginBottom:10, borderWidth:1, borderColor:'#e5e7eb' },
+  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:10, padding:12, marginBottom:10, borderWidth:1, borderColor:'#e5e7eb' },
   head:{ fontWeight:'800', marginBottom:8 },
   row:{ flexDirection:'row', alignItems:'center', gap:6, paddingVertical:4, flexWrap:'wrap' },
   k:{ fontWeight:'600', width:90, fontSize:12 }, old:{ color:'#9ca3af', fontSize:12 }, new:{ color:'#059669', fontWeight:'700', fontSize:12 },

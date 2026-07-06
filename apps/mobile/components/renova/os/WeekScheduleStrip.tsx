@@ -86,15 +86,22 @@ export function WeekScheduleStrip({ userId, projectId, role }: { userId: string;
 
       <View style={s.summaryRow}>
         <Pressable
-          style={[homeRowStyles.linkRow, s.summaryLink]}
+          style={s.summaryLink}
           onPress={() => setExpanded((v) => !v)}
           accessibilityRole="button"
           accessibilityLabel={expanded ? 'Свернуть расписание' : 'Показать по дням'}
         >
-          <Text style={[homeTypography.actionRow, homeRowStyles.linkRowLeading]} numberOfLines={1}>{summary}</Text>
-          <Text style={homeTypography.link}>{expanded ? '▲' : '▼'}</Text>
+          <Text style={homeTypography.actionRow} numberOfLines={1}>
+            {summary} {expanded ? '▲' : '▼'}
+          </Text>
         </Pressable>
-        <Pressable onPress={openCalendar} hitSlop={8} accessibilityRole="button" accessibilityLabel="Открыть календарь">
+        <Pressable
+          style={s.calendarArrow}
+          onPress={openCalendar}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Открыть календарь"
+        >
           <Text style={homeTypography.link}>→</Text>
         </Pressable>
       </View>
@@ -118,9 +125,10 @@ const s = StyleSheet.create({
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
-  summaryLink: { flex: 1, minWidth: 0 },
+  summaryLink: { flex: 1, minWidth: 0, paddingVertical: 6 },
+  calendarArrow: { flexShrink: 0, paddingVertical: 6, paddingLeft: 4 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

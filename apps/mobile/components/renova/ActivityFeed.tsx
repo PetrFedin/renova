@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -74,4 +75,4 @@ export function ActivityFeed({
     </View>
   );
 }
-const s = StyleSheet.create({ box: { marginVertical: 8 }, head: { fontWeight: '800', marginBottom: 6 }, ch: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: '#eee', marginRight: 6 }, on: { backgroundColor: '#2563eb' }, ct: { fontSize: 11 }, row: { backgroundColor: '#fff', padding: 8, borderRadius: 8, marginBottom: 4 }, t: { fontWeight: '600', fontSize: 13 }, b: { fontSize: 11, color: '#666' }, d: { fontSize: 10, color: '#999', marginTop: 2 }, more: { color: '#2563eb', marginTop: 6, fontSize: 12 } });
+const s = StyleSheet.create({ box: { marginVertical: 8 }, head: { fontWeight: '800', marginBottom: 6 }, ch: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: RenovaTheme.colors.border, marginRight: 6 }, on: { backgroundColor: '#2563eb' }, ct: { fontSize: 11 }, row: { backgroundColor: RenovaTheme.colors.surface, padding: 8, borderRadius: 8, marginBottom: 4 }, t: { fontWeight: '600', fontSize: 13 }, b: { fontSize: 11, color: '#666' }, d: { fontSize: 10, color: '#999', marginTop: 2 }, more: { color: '#2563eb', marginTop: 6, fontSize: 12 } });

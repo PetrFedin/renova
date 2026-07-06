@@ -41,9 +41,6 @@ export function ObjectTabProgress({
           );
         })}
       </ScrollView>
-      <Text style={s.hint}>
-        Шаг {activeIdx + 1} из {STEPS.length} · данные → комнаты → стоимость → сроки
-      </Text>
     </View>
   );
 }
@@ -69,7 +66,7 @@ const s = StyleSheet.create({
     borderColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  stepCurrent: { borderColor: RenovaTheme.colors.primary, backgroundColor: '#EFF6FF' },
+  stepCurrent: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
   stepDone: { borderColor: '#86efac', backgroundColor: '#f0fdf4' },
   num: {
     width: 20,
@@ -83,10 +80,9 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.background,
     overflow: 'hidden',
   },
-  numCurrent: { color: '#fff', backgroundColor: RenovaTheme.colors.primary },
+  numCurrent: { color: RenovaTheme.colors.surface, backgroundColor: RenovaTheme.colors.primary },
   numDone: { color: '#166534', backgroundColor: '#dcfce7' },
   label: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted, maxWidth: 72 },
   labelCurrent: { color: RenovaTheme.colors.primary },
   sep: { fontSize: 14, color: RenovaTheme.colors.textSubtle, marginHorizontal: 2 },
-  hint: { fontSize: 10, color: RenovaTheme.colors.textMuted, marginTop: 6 },
 });

@@ -37,9 +37,9 @@ export function ProjectOsHeader({
   return (
     <View style={s.header}>
       <Text style={homeTypography.homeTitle} numberOfLines={1}>{name}</Text>
-      <Text style={[homeTypography.kpiHint, s.metaLine]} numberOfLines={2}>{headerMeta.context}</Text>
+      <Text style={[homeTypography.homeSubtitle, s.metaLine]} numberOfLines={2}>{headerMeta.context}</Text>
       {headerMeta.status ? (
-        <Text style={[homeTypography.kpiHint, s.metaLine]} numberOfLines={1}>{headerMeta.status}</Text>
+        <Text style={[homeTypography.homeSubtitle, s.metaLine]} numberOfLines={1}>{headerMeta.status}</Text>
       ) : null}
       {showHealth && healthScore != null && healthLevel && healthLabel ? (
         <HomeHealthBadge score={healthScore} level={healthLevel} label={healthLabel} />

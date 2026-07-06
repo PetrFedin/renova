@@ -17,7 +17,8 @@ import { api, Room, RoomChangeRequest, isRateLimitError } from '@/lib/api';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomChangeStatusLabel } from '@/constants/labels';
 import { ROOM_FORM_HINTS } from '@/constants/roomFormHints';
-import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
+import { InfoBanner } from '@/components/ui/InfoBanner';
+import { budgetTabRoute, objectTabHref, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -62,15 +63,35 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
     <>
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
-        <ObjectTabGuide tab="rooms" onNextTab={onNextTab} />
-        <PrimaryButton
-          title="→ Ход работ и этапы"
-          variant="outline"
-          compact
-          onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from)}
-        />
+        <ObjectTabGuide tab="rooms" onNextTab={onNextTab} compact />
+        {!activeProject.contractor_id && (
+          <InfoBanner
+            tone="info"
+            title="Исполнитель не подключён"
+            message="Пока подрядчика нет — вы можете редактировать комнаты сами. После подключения изменения только через запрос."
+          />
+        )}
+        {!activeProject.contractor_id ? (
+          <PrimaryButton
+            title="→ Подключить исполнителя"
+            variant="outline"
+            compact
+            onPress={() => pushOsNav(objectTabHref('customer', 'profile'), nav.from)}
+          />
+        ) : (
+          <PrimaryButton
+            title="→ Ход работ и этапы"
+            variant="outline"
+            compact
+            onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from)}
+          />
+        )}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
-        <Text style={styles.hint}>Нажмите комнату — параметры, расходы и запрос изменений.</Text>
+        <Text style={styles.hint}>
+          {activeProject.contractor_id
+            ? 'Нажмите комнату — расходы и запрос изменений исполнителю.'
+            : 'Нажмите комнату — можно редактировать параметры до подключения исполнителя.'}
+        </Text>
         {!filtered.length && (
           <Text style={styles.empty}>Комнат пока нет. Список появится после создания объекта.</Text>
         )}
@@ -79,7 +100,10 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
             <FloorSectionHeader floor={floor} count={floorRooms.length} isHouse={activeProject.property_type === 'house'} />
             {floorRooms.map((room) => (
               <Pressable key={room.id} onPress={() => nav.room(room.id)}>
-                <RoomRequestCard room={room} onSubmit={async (message, payload) => {
+                <RoomRequestCard
+                  room={room}
+                  requestOnly={!!activeProject.contractor_id}
+                  onSubmit={async (message, payload) => {
                   try {
                     await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
                     setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
@@ -263,7 +287,7 @@ function ContractorRoomsBody() {
   );
 }
 
-function RoomRequestCard({ room, onSubmit }: { room: Room; onSubmit: (msg: string, payload: Record<string, unknown>) => Promise<void> }) {
+function RoomRequestCard({ room, onSubmit, requestOnly }: { room: Room; onSubmit: (msg: string, payload: Record<string, unknown>) => Promise<void>; requestOnly?: boolean }) {
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
   const [msg, setMsg] = useState('');
@@ -274,11 +298,14 @@ function RoomRequestCard({ room, onSubmit }: { room: Room; onSubmit: (msg: strin
       <Pressable onPress={() => pushOsNav(budgetTabRoute('customer', 'expenses', { roomId: room.id }), pathname)}>
         <Text style={styles.link}>→ Расходы по комнате</Text>
       </Pressable>
-      {canWrite && (
+      {canWrite && requestOnly && (
         <>
           <TextInput style={styles.input} placeholder="Запрос изменения…" value={msg} onChangeText={setMsg} />
           <PrimaryButton title="Отправить запрос" variant="outline" onPress={() => { if (msg.trim()) onSubmit(msg.trim(), {}); setMsg(''); }} />
         </>
+      )}
+      {canWrite && !requestOnly && (
+        <Text style={styles.meta}>Редактирование — в карточке комнаты</Text>
       )}
     </View>
   );
@@ -342,9 +369,9 @@ const styles = StyleSheet.create({
   card: { ...card, paddingVertical: 14 },
   name: { fontWeight: '700', fontSize: 16 },
   meta: { color: RenovaTheme.colors.textMuted, marginTop: 4, fontSize: 13 },
-  input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: '#eee' },
+  input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   section: { fontWeight: '700', marginTop: 16, marginBottom: 8 },
-  req: { backgroundColor: '#fff', padding: 10, borderRadius: 8, marginBottom: 6 },
+  req: { backgroundColor: RenovaTheme.colors.surface, padding: 10, borderRadius: 8, marginBottom: 6 },
   reqPending: { backgroundColor: '#FEF3C7', padding: 12, borderRadius: 10, marginBottom: 12 },
   reqTitle: { fontWeight: '700', marginBottom: 4 },
   row: { gap: 8, marginTop: 10 },

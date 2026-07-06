@@ -23,8 +23,12 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     const j = JSON.parse(txt) as { detail?: unknown; code?: string; message?: string };
     detail = j.detail;
     if (typeof j.detail === 'string') {
-      code = j.detail;
-    } else if (typeof j.detail === 'object' && j.detail && 'code' in (j.detail as object)) {
+      return { message: j.detail, code: j.detail, detail };
+    }
+    if (typeof j.message === 'string' && j.message) {
+      return { message: j.message, code: j.code, detail };
+    }
+    if (typeof j.detail === 'object' && j.detail && 'code' in (j.detail as object)) {
       code = (j.detail as { code?: string }).code;
     } else if (typeof j.code === 'string') {
       code = j.code;

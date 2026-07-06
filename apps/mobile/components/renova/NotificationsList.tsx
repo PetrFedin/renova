@@ -27,7 +27,7 @@ export function NotificationsList({ userId, defaultReturn }: { userId: string; d
   );
 }
 const s = StyleSheet.create({
-  wrap:{ gap:8 }, row:{ backgroundColor:'#fff', padding:12, borderRadius:10 },
+  wrap:{ gap:8 }, row:{ backgroundColor:RenovaTheme.colors.surface, padding:12, borderRadius:10 },
   unread:{ borderLeftWidth:3, borderLeftColor: RenovaTheme.colors.primary },
   title:{ fontWeight:'700' }, body:{ fontSize:13, color: RenovaTheme.colors.textMuted, marginTop:2 },
   empty:{ color: RenovaTheme.colors.textMuted, marginVertical:8 },

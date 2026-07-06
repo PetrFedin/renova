@@ -18,7 +18,7 @@ export function WeekTimeline({ stages }: { stages: Stage[] }) {
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:'#fff', borderRadius:12, padding:12, marginBottom:10 },
+  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:12, marginBottom:10 },
   head:{ fontWeight:'800', marginBottom:8 },
   row:{ flexDirection:'row', justifyContent:'space-between' },
   cell:{ alignItems:'center', flex:1 }, d:{ fontSize:10, color: RenovaTheme.colors.textMuted }, n:{ fontWeight:'700', marginTop:4 },

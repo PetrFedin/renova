@@ -38,7 +38,7 @@ const s = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 10,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: RenovaTheme.colors.infoBg,
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },

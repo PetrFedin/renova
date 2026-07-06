@@ -4,6 +4,8 @@ import { RenovaTheme } from '@/constants/Theme';
 import { normalizeIsoDateInput } from '@/lib/validateDate';
 import { ObjectProfileSection } from '@/components/screens/object/ObjectProfileSection';
 import { CustomerBudgetField } from '@/components/renova/CustomerBudgetField';
+import { formMetaText } from '@/constants/formTypography';
+import { canEditCustomerBudget, canEditProjectProfile, type RoleContext } from '@/lib/domain/roleCapabilities';
 
 const RENOVATION_TYPES = [
   { id: 'cosmetic', label: 'Косметический' },
@@ -33,6 +35,8 @@ type Props = {
   showSchedule?: boolean;
   /** profile — секции hub; wizard — компактный поток без бюджета */
   variant?: 'profile' | 'wizard';
+  role?: RoleContext['role'];
+  readOnly?: boolean;
   budgetValue?: string;
   onBudgetChange?: (v: string) => void;
   estimateTotal?: number;
@@ -70,11 +74,16 @@ export function ProjectProfileFields({
   onChange,
   showSchedule,
   variant = 'wizard',
+  role = 'customer',
+  readOnly = false,
   budgetValue,
   onBudgetChange,
   estimateTotal,
 }: Props) {
   const isProfile = variant === 'profile';
+  const ctx: RoleContext = { role, readOnly };
+  const editable = canEditProjectProfile(ctx);
+  const showBudget = isProfile && canEditCustomerBudget(ctx) && budgetValue != null && onBudgetChange;
 
   const objectBlock = (
     <>
@@ -84,6 +93,7 @@ export function ProjectProfileFields({
         placeholder="Например: Демо-дом, дачный посёлок"
         value={values.name}
         onChangeText={(name) => onChange({ name })}
+        editable={editable}
       />
       <FieldLabel>Адрес</FieldLabel>
       <TextInput
@@ -91,12 +101,13 @@ export function ProjectProfileFields({
         placeholder="Улица, дом"
         value={values.address}
         onChangeText={(address) => onChange({ address })}
+        editable={editable}
       />
       <FieldLabel>Тип жилья</FieldLabel>
       <ChipRow
         items={PROPERTY_TYPES}
         value={values.property_type}
-        onSelect={(id) => onChange({ property_type: id as 'apartment' | 'house' })}
+        onSelect={(id) => editable && onChange({ property_type: id as 'apartment' | 'house' })}
       />
     </>
   );
@@ -107,7 +118,7 @@ export function ProjectProfileFields({
       <ChipRow
         items={RENOVATION_TYPES}
         value={values.renovation_type}
-        onSelect={(renovation_type) => onChange({ renovation_type })}
+        onSelect={(renovation_type) => editable && onChange({ renovation_type })}
       />
       {isProfile ? null : (
         <Text style={s.inlineHint}>Тип комнаты на следующем шаге может переопределить расчёт.</Text>
@@ -125,6 +136,7 @@ export function ProjectProfileFields({
             placeholder="2026-06-01"
             value={values.planned_start_date || ''}
             onChangeText={(v) => onChange({ planned_start_date: normalizeIsoDateInput(v) })}
+            editable={editable}
           />
           <Text style={s.dateHint}>Старт</Text>
         </View>
@@ -134,6 +146,7 @@ export function ProjectProfileFields({
             placeholder="2026-09-01"
             value={values.planned_end_date || ''}
             onChangeText={(v) => onChange({ planned_end_date: normalizeIsoDateInput(v) })}
+            editable={editable}
           />
           <Text style={s.dateHint}>Финиш</Text>
         </View>
@@ -142,7 +155,7 @@ export function ProjectProfileFields({
   ) : null;
 
   const budgetBlock =
-    isProfile && budgetValue != null && onBudgetChange ? (
+    showBudget ? (
       <CustomerBudgetField
         embedded
         value={budgetValue}
@@ -154,6 +167,9 @@ export function ProjectProfileFields({
   if (isProfile) {
     return (
       <View>
+        {!editable ? (
+          <Text style={s.inlineHint}>Профиль объекта редактирует заказчик. Исполнитель видит актуальные данные.</Text>
+        ) : null}
         <ObjectProfileSection title="Объект">{objectBlock}</ObjectProfileSection>
         <ObjectProfileSection
           title="Ремонт"
@@ -188,9 +204,9 @@ export function ProjectProfileFields({
 
 const s = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '800', color: RenovaTheme.colors.text, marginBottom: 4 },
-  sectionHint: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 16, lineHeight: 18 },
+  sectionHint: { ...formMetaText.caption, marginBottom: 16 },
   fieldLabel: { fontWeight: '600', marginBottom: 4, color: RenovaTheme.colors.text, fontSize: 13 },
-  inlineHint: { fontSize: 12, color: RenovaTheme.colors.textSubtle, lineHeight: 16 },
+  inlineHint: { ...formMetaText.caption },
   input: {
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
@@ -209,7 +225,7 @@ const s = StyleSheet.create({
     borderColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  chipOn: { borderColor: RenovaTheme.colors.primary, backgroundColor: '#EFF6FF' },
+  chipOn: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
   chipT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.text },
   chipTOn: { color: RenovaTheme.colors.primary },
   dateRow: { flexDirection: 'row', gap: 10 },
@@ -222,5 +238,5 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.surface,
     fontSize: 14,
   },
-  dateHint: { fontSize: 11, color: RenovaTheme.colors.textSubtle, marginTop: 4 },
+  dateHint: { ...formMetaText.caption, marginTop: 4 },
 });
