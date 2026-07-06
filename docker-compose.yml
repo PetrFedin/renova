@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: renova
+      POSTGRES_PASSWORD: renova
+      POSTGRES_DB: renova
+    ports:
+      - "5433:5432"
+    volumes:
+      - renova_pg:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: renova
+      MINIO_ROOT_PASSWORD: renova123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - renova_minio:/data
+
+volumes:
+  renova_pg:
+  renova_minio:
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-config.yaml"]
+    volumes:
+      - ./infra/otel-config.yaml:/etc/otel-config.yaml
+    ports:
+      - "4318:4318"
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports: ["16686:16686", "4317:4317"]
+  postgres-replica:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: renova
+      POSTGRES_PASSWORD: renova
+      POSTGRES_DB: renova
+    ports: ["5434:5432"]
+    depends_on: [postgres]
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: renova
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning

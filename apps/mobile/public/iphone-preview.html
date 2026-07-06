@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Renova — iPhone</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; background: #0f172a;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+    .phone {
+      width: 393px; height: 852px; background: #111; border-radius: 54px; padding: 12px;
+      box-shadow: 0 0 0 2px #333, 0 0 0 6px #1a1a1a, 0 30px 80px rgba(0,0,0,0.55);
+      position: relative;
+    }
+    .screen {
+      width: 100%; height: 100%; border-radius: 44px; overflow: hidden;
+      background: #f8fafc; position: relative; display: flex; flex-direction: column;
+    }
+    /* Зона status bar — только декор, контент приложения ниже */
+    .status-zone {
+      height: 54px; flex-shrink: 0; background: #f8fafc; position: relative; z-index: 20;
+    }
+    .notch {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      width: 126px; height: 34px; background: #111; border-radius: 20px;
+      pointer-events: none;
+    }
+    .iframe-wrap { flex: 1; min-height: 0; position: relative; background: #f8fafc; padding-bottom: 10px; box-sizing: border-box; }
+    iframe {
+      width: 100%; height: 100%; border: none; background: #f8fafc; display: block;
+    }
+    .loader {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      background: #f8fafc; z-index: 25; padding: 24px; text-align: center;
+      transition: opacity 0.25s;
+    }
+    .loader.hidden { opacity: 0; pointer-events: none; }
+    .loader p { color: #475569; font-size: 14px; line-height: 1.5; }
+    .loader strong { color: #0f172a; font-size: 15px; }
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid #e2e8f0; border-top-color: #2563eb;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .home-bar {
+      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      width: 134px; height: 5px; background: rgba(0,0,0,0.22); border-radius: 3px;
+      z-index: 30; pointer-events: none;
+    }
+    .titlebar { position: fixed; top: 12px; left: 12px; color: #94a3b8; font-size: 12px; z-index: 40; }
+    .retry {
+      margin-top: 8px; padding: 8px 16px; border: none; border-radius: 8px;
+      background: #2563eb; color: #fff; font-size: 13px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">Renova · iPhone 15 Pro preview</div>
+  <div class="phone">
+    <div class="screen">
+      <div class="status-zone"><div class="notch"></div></div>
+      <div class="iframe-wrap">
+        <div class="loader" id="loader">
+          <div class="spinner"></div>
+          <strong id="loader-title">Запуск приложения…</strong>
+          <p id="loader-msg">Подключаемся к Metro…</p>
+          <button class="retry" id="retry" hidden>Повторить</button>
+        </div>
+        <iframe id="app" title="Renova App"></iframe>
+      </div>
+      <div class="home-bar"></div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var frame = document.getElementById('app');
+      var loader = document.getElementById('loader');
+      var loaderTitle = document.getElementById('loader-title');
+      var loaderMsg = document.getElementById('loader-msg');
+      var retryBtn = document.getElementById('retry');
+      var attempts = 0;
+      var maxAttempts = 45;
+      var ready = false;
+
+      function clearDevCaches() {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (rs) {
+            rs.forEach(function (r) { r.unregister(); });
+          });
+        }
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (keys) { keys.forEach(function (k) { caches.delete(k); }); });
+        }
+      }
+
+      function hideLoader() {
+        if (ready) return;
+        ready = true;
+        loader.classList.add('hidden');
+      }
+
+      function fail(msg) {
+        loaderTitle.textContent = 'Не удалось загрузить';
+        loaderMsg.textContent = msg;
+        retryBtn.hidden = false;
+        ready = false;
+        loader.classList.remove('hidden');
+      }
+
+      function iframeHasUI() {
+        try {
+          var doc = frame.contentDocument || frame.contentWindow.document;
+          if (!doc || !doc.body) return false;
+          var text = (doc.body.innerText || '').replace(/\s+/g, ' ').trim();
+          if (text.length > 25) return true;
+          if (doc.querySelector('#root > *')) return true;
+          return false;
+        } catch (e) { return false; }
+      }
+
+      function pollIframeUI() {
+        var ticks = 0;
+        var iv = setInterval(function () {
+          ticks++;
+          if (iframeHasUI()) { clearInterval(iv); hideLoader(); return; }
+          if (ticks > 80) { clearInterval(iv); hideLoader(); }
+        }, 250);
+      }
+
+      window.addEventListener('message', function (e) {
+        if (e.data && (e.data === 'renova-ready' || (e.data.type === 'renova-ready'))) hideLoader();
+      });
+
+      function loadApp() {
+        ready = false;
+        loader.classList.remove('hidden');
+        retryBtn.hidden = true;
+        loaderMsg.textContent = 'Загружаем приложение…';
+        clearDevCaches();
+        var bundleUrl = '/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.routerRoot=app&unstable_transformProfile=hermes-stable';
+        fetch(bundleUrl + '&t=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) {
+            if (!r.ok) {
+              return r.text().then(function (txt) {
+                var msg = 'Ошибка сборки Metro';
+                try {
+                  var j = JSON.parse(txt);
+                  if (j.message) msg = j.message.split('\\n')[0];
+                } catch (e) {
+                  if (txt) msg = txt.slice(0, 160);
+                }
+                throw new Error(msg);
+              });
+            }
+            frame.src = '/?t=' + Date.now();
+            pollIframeUI();
+          })
+          .catch(function (e) {
+            fail((e && e.message) || 'Не удалось собрать приложение. Смотрите терминал Metro.');
+          });
+      }
+
+      function waitMetro() {
+        attempts += 1;
+        loaderTitle.textContent = 'Запуск приложения… (' + attempts + '/' + maxAttempts + ')';
+        fetch('/?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) {
+            if (!r.ok) throw new Error('no metro');
+            loadApp();
+          })
+          .catch(function () {
+            if (attempts >= maxAttempts) {
+              fail('Metro не отвечает. В терминале: npm run dev');
+              return;
+            }
+            setTimeout(waitMetro, 2000);
+          });
+      }
+
+      retryBtn.addEventListener('click', function () {
+        attempts = 0;
+        loaderTitle.textContent = 'Запуск приложения…';
+        loaderMsg.textContent = 'Повторное подключение…';
+        waitMetro();
+      });
+
+      waitMetro();
+    })();
+  </script>
+</body>
+</html>

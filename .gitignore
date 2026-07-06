@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+backend/.venv/
+backend/__pycache__/
+*.pyc
+.env
+.DS_Store
+backend/logs/
+backend/renova.db
+.sync.log
+.sync-last
+test-results/

@@ -1,0 +1,527 @@
+/** Глобальное состояние: пользователь, роль, активный проект */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { PaywallModal } from '@/components/renova/PaywallModal';
+import { router } from 'expo-router';
+import { flush } from "@/lib/offlineQueue";
+
+function signalPreviewReady() {
+  if (typeof window !== "undefined" && window.parent !== window) {
+    window.parent.postMessage({ type: "renova-ready" }, "*");
+  }
+}
+
+import { ApiError, api, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
+import {
+  bootstrapPreviewDemo,
+  inferDemoRole,
+  isDemoPhone,
+  isPreviewFrame,
+  listProjectsWithRetry,
+  loadActiveProject,
+  pingApi,
+  recoverDemoSession,
+} from '@/lib/sessionBootstrap';
+import { enrichProjectsPendingPayments } from '@/lib/domain/enrichProjectsPendingPayments';
+import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
+import { resolveActiveProjectId, isJunkProjectName } from '@/lib/resolveActiveProjectId';
+import { setCustomerBudget } from '@/lib/customerBudgetPrefs';
+import { normalizeCustomerBudget } from '@/lib/customerBudgetSync';
+import { syncCustomerBudgetOnLoad } from '@/lib/customerBudgetMigrate';
+import { buildProjectCreatePayload } from '@/lib/wizard/buildProjectCreatePayload';
+
+const KEYS = { userId: 'renova_user_id', projectId: 'renova_project_id' };
+
+import type { WizardRoomDraft } from '@/constants/roomTypes';
+
+type WizardDraft = {
+  name: string;
+  address: string;
+  renovation_type: string;
+  property_type: 'apartment' | 'house';
+  planned_start_date?: string;
+  planned_end_date?: string;
+  /** Лимит, который заказчик готов вложить (₽) */
+  customer_budget?: number;
+  rooms: WizardRoomDraft[];
+};
+
+export type ProjectProfilePatch = Partial<Pick<WizardDraft, 'name' | 'address' | 'renovation_type' | 'property_type' | 'customer_budget'>> & {
+  planned_start_date?: string | null;
+  planned_end_date?: string | null;
+};
+
+/** Результат создания объекта из wizard */
+export type CreateProjectResult = {
+  id: string;
+  /** На demo-телефоне активным остаётся канонический объект */
+  demoKeptPrimary?: { createdName: string; activeName: string };
+};
+
+type Ctx = {
+  loading: boolean;
+  apiReachable: boolean;
+  user: User | null;
+  projects: ProjectSummary[];
+  activeProject: ProjectDetail | null;
+  wizard: WizardDraft;
+  setWizard: (p: Partial<WizardDraft>) => void;
+  demoLogin: (role: UserRole) => Promise<void>;
+  register: (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => Promise<void>;
+  loginWithSms: (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => Promise<void>;
+  refreshProjects: () => Promise<void>;
+  refreshMe: () => Promise<void>;
+  loadProject: (id: string) => Promise<void>;
+  /** Подхват сохранённого объекта — один раз на все разделы OS */
+  ensureActiveProject: () => Promise<void>;
+  /** Идёт загрузка/восстановление активного объекта */
+  projectResolving: boolean;
+  recoverSession: () => Promise<void>;
+  createProjectFromWizard: (extra?: Partial<WizardDraft>) => Promise<CreateProjectResult>;
+  updateProjectProfile: (patch: ProjectProfilePatch) => Promise<void>;
+  submitStage: (stageId: string) => Promise<void>;
+  acceptStage: (stageId: string) => Promise<void>;
+  rejectStage: (stageId: string, reason: string) => Promise<void>;
+  logout: () => Promise<void>;
+  
+  paywallVisible: boolean;
+  showPaywall: () => void;
+  hidePaywall: () => void;
+  readOnly: boolean;
+};
+
+const defaultWizard: WizardDraft = {
+  name: '',
+  address: '',
+  renovation_type: 'cosmetic',
+  property_type: 'apartment',
+  rooms: [{ name: 'Гостиная', room_type: 'living', floor_level: 1, length_m: 4.2, width_m: 3.1, height_m: 2.7, outlets_count: 6, switches_count: 2, plumbing_points: 0 }],
+};
+
+const RenovaContext = createContext<Ctx | null>(null);
+
+export function RenovaProvider({ children }: { children: React.ReactNode }) {
+  const [loading, setLoading] = useState(true);
+  const [apiReachable, setApiReachable] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [activeProject, setActiveProject] = useState<ProjectDetail | null>(null);
+  const [projectResolving, setProjectResolving] = useState(false);
+  const ensureAttemptKeyRef = useRef<string | null>(null);
+  const [wizard, setWizardState] = useState<WizardDraft>(defaultWizard);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
+
+  const setWizard = useCallback((p: Partial<WizardDraft>) => {
+    setWizardState((w) => ({ ...w, ...p }));
+  }, []);
+
+  const refreshProjects = useCallback(async () => {
+    if (!user) return;
+    const raw = await api.listProjects(user.id);
+    const list = await enrichProjectsPendingPayments(user.id, raw, user.role);
+    setProjects(list);
+  }, [user]);
+
+  const refreshMe = useCallback(async () => {
+    if (!user) return;
+    const u = await api.me(user.id);
+    setUser(u);
+    try {
+      const team = await api.getTeam(u.id);
+      const me = team?.members?.find((m: any) => m.user_id === u.id);
+      setReadOnly(false);
+    } catch { setReadOnly(false); }
+  }, [user?.id]);
+
+  const loadProject = useCallback(
+    async (id: string) => {
+      if (!user) return;
+      setProjectResolving(true);
+      ensureAttemptKeyRef.current = null;
+      try {
+        let p = await api.getProject(user.id, id);
+        if (user.role === 'contractor' && !p) throw new Error('not found');
+        if (user.role === 'contractor') {
+          try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { router } = await import('expo-router'); router.push('/(contractor)/subscription'); throw e; } }
+        }
+        const syncedLimit = await syncCustomerBudgetOnLoad(user.id, id, p.customer_budget);
+        if (syncedLimit !== normalizeCustomerBudget(p.customer_budget)) {
+          p = { ...p, customer_budget: syncedLimit };
+        }
+        setActiveProject(p);
+        setReadOnly(!!p?.read_only);
+        await AsyncStorage.setItem(KEYS.projectId, id);
+      } finally {
+        setProjectResolving(false);
+      }
+    },
+    [user],
+  );
+
+  const ensureActiveProject = useCallback(async () => {
+    if (!user || activeProject || !projects.length || projectResolving) return;
+    const saved = await AsyncStorage.getItem(KEYS.projectId);
+    const pickId = resolveActiveProjectId(projects, saved);
+    if (!pickId) return;
+    const attemptKey = `${user.id}:${pickId}`;
+    if (ensureAttemptKeyRef.current === attemptKey) return;
+    ensureAttemptKeyRef.current = attemptKey;
+    try {
+      await loadProject(pickId);
+    } catch {
+      /* оставляем ref — не крутим бесконечный retry; ручной выбор сбросит */
+    }
+  }, [user, activeProject, projects, projectResolving, loadProject]);
+
+  useEffect(() => {
+    ensureAttemptKeyRef.current = null;
+  }, [projects.map((p) => p.id).join('|')]);
+
+  /** Применить пользователя + проекты + активный объект после bootstrap/recovery */
+  const applySession = useCallback(async (u: User, list: ProjectSummary[]) => {
+    setUser(u);
+    const enriched = await enrichProjectsPendingPayments(u.id, list, u.role);
+    setProjects(enriched);
+    try {
+      const team = await api.getTeam(u.id);
+      const me = team?.members?.find((m: { user_id: string; role?: string }) => m.user_id === u.id);
+      if (u.role === 'contractor') setReadOnly(me?.role === 'viewer');
+    } catch {
+      setReadOnly(false);
+    }
+    const pid = await AsyncStorage.getItem(KEYS.projectId);
+    const role = inferDemoRole(u, await AsyncStorage.getItem('renova_user_role'));
+    const p = await loadActiveProject(u.id, enriched, pid, role);
+    if (p) {
+      setReadOnly(!!p.read_only);
+      setActiveProject(p);
+    } else {
+      setActiveProject(null);
+    }
+  }, []);
+
+  const recoverSession = useCallback(async () => {
+    const reachable = await pingApi();
+    setApiReachable(reachable);
+    if (!reachable) return;
+    const storedRole = await AsyncStorage.getItem('renova_user_role');
+    const role = inferDemoRole(user, storedRole);
+    const recovered = await recoverDemoSession(role);
+    if (recovered) {
+      await applySession(recovered.user, recovered.projects);
+      return;
+    }
+    if (user) {
+      const raw = await listProjectsWithRetry(user.id, 4);
+      const list = user ? await enrichProjectsPendingPayments(user.id, raw, user.role) : raw;
+      setProjects(list);
+      if (list.length) {
+        const p = await loadActiveProject(user.id, list, await AsyncStorage.getItem(KEYS.projectId), role);
+        if (p) {
+          setActiveProject(p);
+          setReadOnly(!!p.read_only);
+        }
+      }
+    }
+  }, [user, applySession]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const reachable = await pingApi();
+        setApiReachable(reachable);
+
+        const uid = await AsyncStorage.getItem(KEYS.userId);
+        const storedRole = await AsyncStorage.getItem('renova_user_role');
+
+        // Preview iframe: автодемо без ручного онбординга
+        if (!uid && isPreviewFrame() && reachable) {
+          const preview = await bootstrapPreviewDemo();
+          if (preview) {
+            await applySession(preview.user, preview.projects);
+            return;
+          }
+        }
+
+        if (!uid) return;
+
+        let u: User;
+        try {
+          u = await api.me(uid);
+        } catch {
+          await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId]);
+          if (reachable) {
+            const recovered = await recoverDemoSession(inferDemoRole(null, storedRole));
+            if (recovered) await applySession(recovered.user, recovered.projects);
+          }
+          return;
+        }
+
+        try {
+          const Notifications = await import('expo-notifications');
+          const { status } = await Notifications.requestPermissionsAsync();
+          if (status === 'granted') {
+            const tok = (await Notifications.getExpoPushTokenAsync()).data;
+            await api.registerPushToken(u.id, tok);
+          }
+        } catch {}
+
+        let list = await listProjectsWithRetry(u.id);
+
+        // Пустой список или устаревший userId — пересинхронизация с демо
+        if (list.length === 0 && reachable) {
+          const role = inferDemoRole(u, storedRole);
+          if (isDemoPhone(u.phone) || storedRole === 'customer' || storedRole === 'contractor') {
+            const recovered = await recoverDemoSession(role);
+            if (recovered) {
+              u = recovered.user;
+              list = recovered.projects;
+            }
+          }
+        }
+
+        await applySession(u, list);
+      } catch {
+        /* сбой окружения — не сбрасываем storage */
+      } finally {
+        try {
+          await flush(process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100');
+        } catch {}
+        setLoading(false);
+        signalPreviewReady();
+      }
+    })();
+  }, [applySession]);
+
+
+  const demoLogin = useCallback(async (role: UserRole) => {
+    const u = await api.demoLogin(role);
+    setUser(u);
+        try {
+          const team = await api.getTeam(u.id);
+          const me = team?.members?.find((m: any) => m.user_id === u.id);
+          setReadOnly(me?.role === 'viewer');
+        } catch { setReadOnly(false); }
+        try {
+          const Notifications = await import('expo-notifications');
+          const { status } = await Notifications.requestPermissionsAsync();
+          if (status === 'granted') {
+            const tok = (await Notifications.getExpoPushTokenAsync()).data;
+            await api.registerPushToken(u.id, tok);
+          }
+        } catch {}
+    await AsyncStorage.setItem(KEYS.userId, u.id);
+    await AsyncStorage.setItem('renova_user_role', role);
+    let list: ProjectSummary[] = [];
+    try {
+      list = await enrichProjectsPendingPayments(u.id, await listProjectsWithRetry(u.id, 4), role);
+    } catch {
+      list = [];
+    }
+    setProjects(list);
+    const primary = pickPrimaryDemoProject(list);
+    if (primary) {
+      try {
+        let p = await api.getProject(u.id, primary.id);
+        if (role === 'contractor') {
+          try { p = await api.assignProject(u.id, primary.id); } catch { /* ok */ }
+        }
+        if (p) {
+          setActiveProject(p);
+          await AsyncStorage.setItem(KEYS.projectId, p.id);
+        }
+      } catch {
+        setActiveProject(null);
+      }
+    } else {
+      setActiveProject(null);
+    }
+  }, []);
+
+
+  const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
+    const u = await api.verifySmsCode(phone, code, role, extra);
+    await AsyncStorage.setItem(KEYS.userId, u.id);
+    setUser(u);
+    const raw = await api.listProjects(u.id);
+    const list = await enrichProjectsPendingPayments(u.id, raw, role);
+    setProjects(list);
+    if (list.length) {
+      const saved = await AsyncStorage.getItem(KEYS.projectId);
+      const pickId = resolveActiveProjectId(list, saved);
+      if (!pickId) return;
+      const detail = await api.getProject(u.id, pickId);
+      setActiveProject(detail);
+      await AsyncStorage.setItem(KEYS.projectId, pickId);
+    }
+    try {
+      const tok = await (await import('expo-notifications')).getExpoPushTokenAsync();
+      if (tok?.data) await api.registerPushToken(u.id, tok.data);
+    } catch { /* push */ }
+  }, []);
+
+  const register = useCallback(async (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
+    const u = await api.register({ phone, role, ...extra });
+    setUser(u);
+        try {
+          const team = await api.getTeam(u.id);
+          const me = team?.members?.find((m: any) => m.user_id === u.id);
+          setReadOnly(me?.role === 'viewer');
+        } catch { setReadOnly(false); }
+        try {
+          const Notifications = await import('expo-notifications');
+          const { status } = await Notifications.requestPermissionsAsync();
+          if (status === 'granted') {
+            const tok = (await Notifications.getExpoPushTokenAsync()).data;
+            await api.registerPushToken(u.id, tok);
+          }
+        } catch {}
+    await AsyncStorage.setItem(KEYS.userId, u.id);
+    if (role === 'contractor') {
+      const raw = await api.listProjects(u.id);
+      const list = await enrichProjectsPendingPayments(u.id, raw, role);
+      setProjects(list);
+    }
+  }, []);
+
+  const createProjectFromWizard = useCallback(async (extra?: Partial<WizardDraft>): Promise<CreateProjectResult> => {
+    if (!user) throw new Error('no user');
+    const draft = { ...wizard, ...extra };
+    if (!draft.name.trim()) throw new Error('Укажите название проекта');
+    const body = buildProjectCreatePayload(draft);
+    const p = await api.createProject(user.id, body);
+    if (draft.customer_budget && draft.customer_budget > 0) {
+      await api.patchProject(user.id, p.id, { customer_budget: Math.round(draft.customer_budget) });
+    }
+    const limit = normalizeCustomerBudget(p.customer_budget) ?? normalizeCustomerBudget(draft.customer_budget);
+    if (limit) await setCustomerBudget(p.id, limit);
+    const refreshed = await enrichProjectsPendingPayments(user.id, await api.listProjects(user.id), user.role as UserRole);
+    setProjects(refreshed);
+    const junkWizard = isDemoPhone(user.phone) && isJunkProjectName(p.name);
+    if (junkWizard) {
+      const primary = pickPrimaryDemoProject(refreshed);
+      const primaryId = primary?.id;
+      if (primaryId) {
+        const detail = await api.getProject(user.id, primaryId);
+        setActiveProject(detail);
+        await AsyncStorage.setItem(KEYS.projectId, primaryId);
+        return {
+          id: p.id,
+          demoKeptPrimary: { createdName: p.name, activeName: primary?.name || detail.name },
+        };
+      }
+    }
+    setActiveProject(p);
+    await AsyncStorage.setItem(KEYS.projectId, p.id);
+    await refreshProjects();
+    return { id: p.id };
+  }, [user, wizard, refreshProjects]);
+
+  const updateProjectProfile = useCallback(async (patch: ProjectProfilePatch) => {
+    if (!user || !activeProject) throw new Error('no project');
+    const body: Record<string, unknown> = { ...patch };
+    if (patch.address === undefined) delete body.address;
+    if (patch.customer_budget === undefined) delete body.customer_budget;
+    const p = await api.patchProject(user.id, activeProject.id, body);
+    if (patch.customer_budget !== undefined) {
+      const limit = normalizeCustomerBudget(p.customer_budget) ?? normalizeCustomerBudget(patch.customer_budget);
+      await setCustomerBudget(activeProject.id, limit);
+    }
+    setActiveProject(p);
+    await refreshProjects();
+  }, [user, activeProject, refreshProjects]);
+
+  const submitStage = useCallback(
+    async (stageId: string) => {
+      if (!user || !activeProject) return;
+      await api.submitStage(user.id, activeProject.id, stageId);
+      await loadProject(activeProject.id);
+    },
+    [user, activeProject, loadProject],
+  );
+
+  const rejectStage = useCallback(async (stageId: string, reason: string) => {
+    if (!user || !activeProject) return;
+    await api.rejectStage(user.id, activeProject.id, stageId, reason);
+    await loadProject(activeProject.id);
+  }, [user, activeProject, loadProject]);
+
+  const acceptStage = useCallback(
+    async (stageId: string) => {
+      if (!user || !activeProject) return;
+      try { await api.acceptStage(user.id, activeProject.id, stageId); } catch (e: any) { if (e?.message === 'offline_queued') { /* queued */ } else throw e; }
+      await loadProject(activeProject.id);
+    },
+    [user, activeProject, loadProject],
+  );
+
+  /** Проект не выбран, но список есть — подхватить сохранённый или первый */
+  useEffect(() => {
+    if (loading || !user || activeProject || !projects.length) return;
+    ensureActiveProject().catch(() => {});
+  }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
+
+  const logout = useCallback(async () => {
+    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId]);
+    setUser(null);
+    setProjects([]);
+    setActiveProject(null);
+    setWizardState(defaultWizard);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      loading,
+      apiReachable,
+      user,
+      projects,
+      activeProject,
+      wizard,
+      setWizard,
+      demoLogin,
+      register,
+      loginWithSms,
+      refreshProjects,
+      refreshMe,
+      loadProject,
+      ensureActiveProject,
+      projectResolving,
+      recoverSession,
+      createProjectFromWizard,
+      updateProjectProfile,
+      submitStage,
+      acceptStage,
+      rejectStage,
+      logout,
+      paywallVisible,
+      showPaywall: () => setPaywallVisible(true),
+      hidePaywall: () => setPaywallVisible(false),
+      readOnly,
+    }),
+    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, readOnly],
+  );
+
+  return (
+    <RenovaContext.Provider value={value}>
+      {children}
+      {paywallVisible && user && (
+        <PaywallModal
+          visible={paywallVisible}
+          onClose={() => setPaywallVisible(false)}
+          onUpgrade={async () => {
+            await api.checkoutPro(user.id);
+            setPaywallVisible(false);
+            router.replace('/(contractor)/subscription');
+          }}
+        />
+      )}
+    </RenovaContext.Provider>
+  );
+}
+
+export function useRenova() {
+  const ctx = useContext(RenovaContext);
+  if (!ctx) throw new Error('useRenova outside provider');
+  return ctx;
+}

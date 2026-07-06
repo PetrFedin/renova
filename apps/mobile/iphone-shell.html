@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="refresh" content="0; url=http://127.0.0.1:8081/iphone-preview.html" />
+  <title>Renova — перенаправление</title>
+  <style>
+    body { font-family: system-ui; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; text-align: center; }
+    a { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <div>
+    <p>Открываем preview через Expo (тот же origin, без «Соединение сброшено»)…</p>
+    <p><a href="http://127.0.0.1:8081/iphone-preview.html">http://127.0.0.1:8081/iphone-preview.html</a></p>
+    <p style="margin-top:16px;color:#94a3b8;font-size:14px">Сначала запустите: <code>npm run dev</code></p>
+  </div>
+  <script>
+    location.replace('http://127.0.0.1:8081/iphone-preview.html');
+  </script>
+</body>
+</html>

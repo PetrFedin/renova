@@ -1,0 +1,213 @@
+/** Сборка элементов единого inbox — главная, /inbox, badge в шапке */
+import { api, type ApprovalItem, type ProjectDetail, type Stage } from '@/lib/api';
+import { formatRub } from '@/constants/Theme';
+import { budgetTabHref, calendarTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
+
+export type InboxItem =
+  | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
+  | { id: string; title: string; sub?: string; kind: 'approval'; approval: ApprovalItem; priority: number };
+
+function overdueStages(stages: Stage[]) {
+  const today = new Date().toISOString().slice(0, 10);
+  return stages.filter((s) => s.planned_end && s.planned_end < today && s.status !== 'done');
+}
+
+function reworkStages(stages: Stage[]) {
+  return stages.filter((s) => s.needs_rework);
+}
+
+export async function buildInboxItems(opts: {
+  userId: string;
+  projectId: string;
+  role: OsRole;
+  chatUnread: number;
+  project?: ProjectDetail | null;
+}): Promise<InboxItem[]> {
+  const { userId, projectId, role, chatUnread, project } = opts;
+  const isCustomer = role === 'customer';
+  const stages = project?.stages || [];
+  const next: InboxItem[] = [];
+  let pendingAcceptance = 0;
+
+  if (chatUnread > 0) {
+    next.push({
+      id: 'chat',
+      kind: 'chat',
+      title: 'Непрочитанные сообщения',
+      sub: `${chatUnread} в чатах`,
+      href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
+      priority: 90,
+    });
+  }
+
+  if (isCustomer) {
+    try {
+      const payments = await api.listPayments(userId, projectId);
+      const pending = payments.filter((p) => p.status === 'pending');
+      for (const p of pending) {
+        next.push({
+          id: `pay-${p.id}`,
+          kind: 'payment',
+          title: p.title || 'Счёт к оплате',
+          sub: formatRub(p.amount),
+          href: budgetTabHref(role, 'payments'),
+          priority: 85,
+        });
+      }
+    } catch { /* noop */ }
+
+    try {
+      const hub = await api.approvalHub(userId, projectId);
+      hub.items.forEach((it) => {
+        next.push({
+          id: `ap-${it.type}-${it.id}`,
+          kind: 'approval',
+          title: it.title,
+          sub: it.subtitle || 'Согласование',
+          approval: it,
+          priority: 80,
+        });
+      });
+    } catch { /* noop */ }
+
+    try {
+      const acc = await api.acceptancesPendingCount(userId, projectId);
+      pendingAcceptance = acc.count;
+    } catch { /* noop */ }
+
+    if (pendingAcceptance > 0) {
+      next.push({
+        id: 'acceptance',
+        kind: 'acceptance',
+        title: 'Приёмка этапов',
+        sub: `${pendingAcceptance} ожидает`,
+        href: repairTabHref(role, 'control'),
+        priority: 88,
+      });
+    }
+
+    try {
+      const picks = await api.listMaterialPicks(userId, projectId);
+      const pendingMat = picks.filter((p) => p.status === 'pending');
+      const hasMaterialApproval = next.some((it) => it.kind === 'approval' && it.approval.type === 'material');
+      if (pendingMat.length > 0 && !hasMaterialApproval) {
+        next.push({
+          id: 'materials-pending',
+          kind: 'material',
+          title: 'Материалы на согласование',
+          sub: `${pendingMat.length} · ${pendingMat[0]?.name || ''}`,
+          href: repairTabHref(role, 'materials'),
+          priority: 77,
+        });
+      }
+    } catch { /* noop */ }
+  } else {
+    const rework = reworkStages(stages);
+    if (rework.length > 0) {
+      next.push({
+        id: 'rework',
+        kind: 'stage',
+        title: 'Доработка этапов',
+        sub: `${rework.length} · ${rework[0]?.name || ''}`,
+        href: repairTabHref(role, 'works', 'rework'),
+        priority: 87,
+      });
+    }
+
+    try {
+      const picks = await api.listMaterialPicks(userId, projectId);
+      const draft = picks.filter((p) => p.status === 'draft' || p.status === 'pending').length;
+      if (draft > 0) {
+        next.push({
+          id: 'materials',
+          kind: 'material',
+          title: 'Материалы к заказу',
+          sub: `${draft} поз.`,
+          href: repairTabHref(role, 'materials'),
+          priority: 75,
+        });
+      }
+    } catch { /* noop */ }
+  }
+
+  const overdue = overdueStages(stages);
+  if (overdue.length > 0) {
+    next.push({
+      id: 'stages-overdue',
+      kind: 'stage',
+      title: 'Просроченные этапы',
+      sub: `${overdue.length} · ${overdue[0]?.name || ''}`,
+      href: repairTabHref(role, 'works', 'overdue'),
+      priority: 92,
+    });
+  }
+
+  try {
+    const workOrders = await api.listWorkOrders(userId, projectId);
+    const reviewWo = workOrders.filter((w) => w.status === 'review');
+    const pendingWo = workOrders.filter((w) => ['published', 'negotiating', 'approved'].includes(w.status));
+    if (isCustomer && reviewWo.length > 0 && pendingAcceptance === 0) {
+      next.push({
+        id: 'wo-review',
+        kind: 'work',
+        title: 'Работы на приёмке',
+        sub: `${reviewWo.length} · ${reviewWo[0]?.title || ''}`,
+        href: repairTabHref(role, 'control'),
+        priority: 84,
+      });
+    }
+    if (!isCustomer && pendingWo.length > 0) {
+      next.push({
+        id: 'wo-pending',
+        kind: 'work',
+        title: 'Работы ждут действия',
+        sub: `${pendingWo.length} · ${pendingWo[0]?.title || ''}`,
+        href: calendarTabHref(role),
+        priority: 83,
+      });
+    }
+  } catch { /* noop */ }
+
+  return next.sort((a, b) => b.priority - a.priority);
+}
+
+/** Dedup inbox vs hero «Сделать сейчас» — главная, /inbox, «Все задачи». */
+export function filterInboxForHero(items: InboxItem[], heroKind: string): InboxItem[] {
+  if (!heroKind || heroKind === 'idle') return items;
+  return items.filter((it) => {
+    if (heroKind === 'payment' && it.kind === 'payment') return false;
+    if (heroKind === 'accept' && (it.kind === 'acceptance' || it.id === 'acceptance' || it.id === 'wo-review')) return false;
+    if (heroKind === 'work' && (it.id === 'wo-review' || (it.kind === 'work' && /приёмк/i.test(it.title)))) return false;
+    if (heroKind === 'work' && it.kind === 'stage' && /просроч/i.test(it.title)) return false;
+    if (heroKind === 'material' && it.kind === 'material') return false;
+    return true;
+  });
+}
+
+/** Hero kind по приоритету inbox — совпадает с логикой nextAction на главной. */
+export function deriveInboxHeroKind(items: InboxItem[]): string {
+  if (items.some((i) => i.kind === 'payment')) return 'payment';
+  if (items.some((i) => i.id === 'acceptance')) return 'accept';
+  if (items.some((i) => i.kind === 'stage' && /просроч/i.test(i.title))) return 'work';
+  if (items.some((i) => i.id === 'materials-pending')) return 'material';
+  return 'idle';
+}
+
+/** Строки inbox для ссылки «Все задачи» — без дубля hero (оплата уже в CTA) */
+export function inboxLinkItems<T extends { kind: string; id: string; title: string }>(
+  items: T[],
+  heroKind: string,
+): T[] {
+  return filterInboxForHero(items as InboxItem[], heroKind) as T[];
+}
+
+export function inboxTotal(items: InboxItem[], chatUnread: number): number {
+  const rows = items.length;
+  if (items.some((i) => i.id === 'chat')) return rows;
+  return rows + chatUnread;
+}
+
+/** Badge меню ↑ — только задачи, без чата (чат на dock) */
+export function inboxMenuBadge(items: InboxItem[]): number {
+  return items.filter((i) => i.kind !== 'chat').length;
+}

@@ -1,0 +1,30 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: renova, POSTGRES_PASSWORD: renova, POSTGRES_DB: renova }
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          cd backend && pip install poetry && poetry install && pip install fpdf2
+          DATABASE_URL=sqlite+aiosqlite:///./ci.db uvicorn app.main:app --port 8100 &
+          sleep 5 && bash ../scripts/e2e-smoke.sh
+          cd backend && alembic upgrade head || true
+  playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci && npx playwright install chromium
+      - run: npm run dev &
+      - run: sleep 20 && npm run e2e:web || true

@@ -1,0 +1,17 @@
+WORK_TYPES = [
+    {"code": "demolition", "name": "Демонтаж", "category": "prep"},
+    {"code": "electrical", "name": "Электрика", "category": "engineering"},
+    {"code": "outlet_install", "name": "Проводка / розетки", "category": "engineering"},
+    {"code": "plumbing", "name": "Сантехника", "category": "engineering"},
+    {"code": "sewage", "name": "Канализация", "category": "engineering"},
+    {"code": "plaster", "name": "Штукатурка", "category": "finish"},
+    {"code": "tiling", "name": "Плитка", "category": "finish"},
+    {"code": "painting", "name": "Покраска", "category": "finish"},
+    {"code": "paint_walls", "name": "Покраска стен", "category": "finish"},
+    {"code": "flooring", "name": "Напольные покрытия", "category": "finish"},
+    {"code": "floor_screed", "name": "Заливка пола / стяжка", "category": "finish"},
+    {"code": "waste", "name": "Вывоз мусора", "category": "logistics"},
+    {"code": "waste_removal", "name": "Вывоз строительного мусора", "category": "logistics"},
+    {"code": "furniture", "name": "Мебель", "category": "furnish"},
+    {"code": "custom", "name": "Своя работа", "category": "other"},
+]

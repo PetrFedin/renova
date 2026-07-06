@@ -1,0 +1,127 @@
+import { useState, useRef, useEffect } from 'react';
+import { View, Text, TextInput, StyleSheet, Alert, Platform } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { RenovaTheme } from '@/constants/Theme';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { api } from '@/lib/api';
+import { resolveStageForRoom } from '@/lib/stageResolve';
+import { ManualExpenseForm } from '@/components/renova/ManualExpenseForm';
+import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
+import { type ExpenseCategoryId } from '@/constants/expenseCategories';
+
+/** QR чека — на web вставка строки, на iPhone камера */
+import { BackHeader } from '@/components/renova/BackHeader';
+import { useLocalSearchParams, router } from 'expo-router';
+
+export default function ScanReceiptScreen() {
+  const { returnTo, roomId: roomParam, stageId: stageParam } = useLocalSearchParams<{ returnTo?: string; roomId?: string; stageId?: string }>();
+  const { user, activeProject, loadProject } = useRenova();
+  const [perm, requestPerm] = useCameraPermissions();
+  const [manual, setManual] = useState('t=20260627T1200&s=1500.00&fn=9999078901234567&i=12345&fp=1234567890&n=1');
+  const [busy, setBusy] = useState(false);
+  const [category, setCategory] = useState<ExpenseCategoryId>('materials');
+  const [roomId, setRoomId] = useState<string | null>(roomParam || null);
+  const [stageId, setStageId] = useState<string | null>(stageParam || null);
+  const scanned = useRef(false);
+
+  useEffect(() => {
+    if (!activeProject?.stages || !roomId || stageId) return;
+    const auto = resolveStageForRoom(activeProject.stages, roomId, null);
+    if (auto) setStageId(auto);
+  }, [activeProject?.stages, roomId, stageId]);
+
+  async function submit(qr: string) {
+    if (!user || !activeProject || busy || scanned.current) return;
+    scanned.current = true;
+    setBusy(true);
+    try {
+      const r = await api.scanReceipt(user.id, activeProject.id, qr.trim(), category, roomId, resolveStageForRoom(activeProject.stages, roomId, stageId)) as { verified: boolean; message: string; amount: number };
+      Alert.alert(
+        r.verified ? 'Чек принят' : 'Чек сохранён',
+        `${r.message}\nСумма: ${r.amount.toLocaleString('ru-RU')} ₽`,
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+      await loadProject(activeProject.id);
+    } catch {
+      scanned.current = false;
+      Alert.alert('Ошибка', 'Не удалось проверить чек. Проверьте QR или сервер.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (Platform.OS === 'web') {
+    return (
+      <>
+        <BackHeader title="Скан чека" returnTo={returnTo} subtitle="Вставьте строку QR с чека" />
+        <View style={styles.wrap}>
+          <Text style={styles.hintWeb}>Формат: t=...&s=...&fn=...&i=...&fp=...&n=1</Text>
+          <TextInput style={styles.input} multiline value={manual} onChangeText={setManual} editable={!busy} />
+          
+      {activeProject && (
+        <ExpenseContextPickers
+          project={activeProject}
+          roomId={roomId}
+          stageId={stageId}
+          category={category}
+          onRoomChange={setRoomId}
+          onStageChange={setStageId}
+          onCategoryChange={setCategory}
+          disabled={busy}
+        />
+      )}
+          <PrimaryButton disabled={busy} title={busy ? 'Проверка…' : 'Проверить и сохранить'} onPress={() => submit(manual)} />
+          {user && activeProject && <ManualExpenseForm userId={user.id} project={activeProject} initialRoomId={roomId} initialStageId={stageId} collapsed onSaved={() => loadProject(activeProject.id)} />}
+        </View>
+      </>
+    );
+  }
+
+  if (!perm?.granted) {
+    return (
+      <View style={styles.wrap}>
+        <PrimaryButton title="Разрешить камеру" onPress={requestPerm} />
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <BackHeader title="Скан чека" returnTo={returnTo} subtitle="Камера или расход без чека ниже" />
+      {activeProject && (
+        <ExpenseContextPickers
+          project={activeProject}
+          roomId={roomId}
+          stageId={stageId}
+          category={category}
+          onRoomChange={setRoomId}
+          onStageChange={setStageId}
+          onCategoryChange={setCategory}
+          disabled={busy}
+        />
+      )}
+      <View style={{ flex: 1, minHeight: 280 }}>
+        <CameraView
+          style={{ flex: 1 }}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+          onBarcodeScanned={({ data }) => submit(data)}
+        />
+        <Text style={styles.hint}>Наведите на QR чека</Text>
+      </View>
+      {user && activeProject && (
+        <View style={styles.manualWrap}>
+          <ManualExpenseForm userId={user.id} project={activeProject} initialRoomId={roomId} initialStageId={stageId} collapsed onSaved={() => loadProject(activeProject.id)} />
+        </View>
+      )}
+    </>
+  );
+}
+
+const styles = StyleSheet.create({  manualWrap: { padding: 16, paddingBottom: 32 },
+  wrap: { flex: 1, padding: 16, backgroundColor: RenovaTheme.colors.background },
+  title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, minHeight: 100, marginBottom: 16, fontSize: 13 },
+  hintWeb: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
+  hint: { position: 'absolute', bottom: 40, alignSelf: 'center', color: '#fff', backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 8 },
+});
