@@ -3,6 +3,7 @@ import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
+import { DecisionHistoryPanel } from '@/components/renova/DecisionHistoryPanel';
 import { FilterDropdown } from '@/components/renova/FilterDropdown';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RepairProcessTimeline } from '@/components/renova/RepairProcessTimeline';
@@ -100,6 +101,11 @@ export default function ActivityScreen() {
         {viewProject ? (
           <>
             <RepairProcessTimeline stages={viewProject.stages || []} />
+            <DecisionHistoryPanel
+              userId={user.id}
+              projectId={viewProject.id}
+              returnTo={returnTo || '/activity'}
+            />
             <ActivityFeed userId={user.id} projectId={viewProject.id} returnTo={returnTo || '/activity'} />
           </>
         ) : (

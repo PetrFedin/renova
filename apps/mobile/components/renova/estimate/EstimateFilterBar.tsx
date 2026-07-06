@@ -23,9 +23,17 @@ type Props = {
   category: string | null;
   onLineType: (v: EstimateLineTypeFilter) => void;
   onCategory: (v: string | null) => void;
+  showCategoryFilters?: boolean;
 };
 
-export function EstimateFilterBar({ lines, lineType, category, onLineType, onCategory }: Props) {
+export function EstimateFilterBar({
+  lines,
+  lineType,
+  category,
+  onLineType,
+  onCategory,
+  showCategoryFilters = true,
+}: Props) {
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>(WORK_TYPES_FALLBACK);
   const categories = collectEstimateCategories(lines);
 
@@ -47,7 +55,7 @@ export function EstimateFilterBar({ lines, lineType, category, onLineType, onCat
           </Pressable>
         ))}
       </View>
-      {categories.length > 0 && (
+      {showCategoryFilters && categories.length > 0 && (
         <>
           <Text style={s.label}>Статья</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row}>

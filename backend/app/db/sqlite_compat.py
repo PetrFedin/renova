@@ -51,6 +51,15 @@ def ensure_os_schema() -> None:
             """
         )
 
+
+    if "receipts" in tables:
+        rc = cols("receipts")
+        if "payment_id" not in rc:
+            try:
+                c.execute("ALTER TABLE receipts ADD COLUMN payment_id TEXT")
+            except Exception:
+                pass
+
     if "material_picks" in tables:
         mp = cols("material_picks")
         for col, typ in [

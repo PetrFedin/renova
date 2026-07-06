@@ -52,14 +52,19 @@ export function PaymentDetailSheet({
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
+    if (payment.receipt_id) {
+      setReceiptAttached(true);
+      setStep((s) => (s === 'info' ? 'confirm' : s));
+      return;
+    }
     try {
       const v = await AsyncStorage.getItem(paymentReceiptKey(payment.id));
       if (v === '1') {
         setReceiptAttached(true);
         setStep((s) => (s === 'info' ? 'confirm' : s));
       }
-    } catch { /* storage */ }
-  }, [payment?.id]);
+    } catch { /* storage fallback до синхронизации API */ }
+  }, [payment?.id, payment?.receipt_id]);
 
   useEffect(() => {
     if (!payment) return;

@@ -38,7 +38,15 @@ export default function ScanReceiptScreen() {
     scanned.current = true;
     setBusy(true);
     try {
-      const r = await api.scanReceipt(user.id, activeProject.id, qr.trim(), category, roomId, resolveStageForRoom(activeProject.stages, roomId, stageId)) as { verified: boolean; message: string; amount: number };
+      const r = await api.scanReceipt(
+        user.id,
+        activeProject.id,
+        qr.trim(),
+        category,
+        roomId,
+        resolveStageForRoom(activeProject.stages, roomId, stageId),
+        paymentId ? String(paymentId) : null,
+      ) as { verified: boolean; message: string; amount: number; payment_id?: string | null };
       Alert.alert(
         r.verified ? 'Чек принят' : 'Чек сохранён',
         `${r.message}\nСумма: ${r.amount.toLocaleString('ru-RU')} ₽`,

@@ -9,6 +9,8 @@ export type Payment = {
   notes: string | null;
   confirmed_at: string | null;
   created_at: string;
+  /** Чек, прикреплённый к счёту (API) */
+  receipt_id?: string | null;
 };
 
 export type MaterialPick = {
@@ -66,6 +68,7 @@ export type ReceiptItem = {
   room_id?: string | null;
   stage_id?: string | null;
   source?: 'scan' | 'manual';
+  payment_id?: string | null;
   description?: string | null;
 };
 

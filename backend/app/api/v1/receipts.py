@@ -25,8 +25,21 @@ router = APIRouter(prefix="/projects/{project_id}/receipts", tags=["receipts"])
 
 VALID_CATEGORIES = {"materials", "labor", "delivery", "tools", "other"}
 
+async def _resolve_payment_id(db, project_id: str, payment_id: str | None) -> str | None:
+    if not payment_id:
+        return None
+    from app.models.entities import Payment, PaymentStatus
+    pay = await db.get(Payment, payment_id)
+    if not pay or pay.project_id != project_id:
+        raise HTTPException(404, "Счёт не найден")
+    if pay.status != PaymentStatus.pending:
+        raise HTTPException(409, "К счёту уже нельзя прикрепить чек")
+    return pay.id
+
+
 
 class ReceiptScan(BaseModel):
+    payment_id: str | None = None
     qr_raw: str
     expense_category: str = "materials"
     room_id: str | None = None
@@ -34,6 +47,7 @@ class ReceiptScan(BaseModel):
 
 
 class ReceiptManual(BaseModel):
+    payment_id: str | None = None
     amount: float
     description: str = ""
     expense_category: str = "materials"
@@ -55,6 +69,7 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
     if not p:
         raise HTTPException(404)
     cat = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
+    payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
     stage_id = body.stage_id
     if not stage_id and body.room_id:
         from sqlalchemy import select
@@ -73,6 +88,7 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
         expense_category=cat,
         room_id=body.room_id,
         stage_id=stage_id,
+        payment_id=payment_id,
     )
     db.add(rec)
     await db.flush()
@@ -82,7 +98,7 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
     await bud.refresh_budget_facts(db, project_id)
     await db.commit()
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="ExpenseAdded", title=exp.title, body=str(exp.amount), link_path="/(customer)/(tabs)/budget")
-    return {"id": rec.id, "amount": rec.amount, "verified": rec.fns_verified, "message": check["message"], "expense_category": cat, "room_id": rec.room_id, "stage_id": rec.stage_id}
+    return {"id": rec.id, "amount": rec.amount, "verified": rec.fns_verified, "message": check["message"], "expense_category": cat, "room_id": rec.room_id, "stage_id": rec.stage_id, "payment_id": rec.payment_id}
 
 
 
@@ -96,6 +112,7 @@ async def manual_receipt(project_id: str, body: ReceiptManual, user: User = Depe
     if not p:
         raise HTTPException(404)
     cat = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
+    payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
     stage_id = body.stage_id
     if not stage_id and body.room_id:
         from sqlalchemy import select
@@ -113,6 +130,7 @@ async def manual_receipt(project_id: str, body: ReceiptManual, user: User = Depe
         expense_category=cat,
         room_id=body.room_id,
         stage_id=stage_id,
+        payment_id=payment_id,
     )
     db.add(rec)
     await db.flush()
@@ -122,7 +140,7 @@ async def manual_receipt(project_id: str, body: ReceiptManual, user: User = Depe
     await bud.refresh_budget_facts(db, project_id)
     await db.commit()
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="ExpenseAdded", title=exp.title, body=str(exp.amount), link_path="/(customer)/(tabs)/budget")
-    return {"id": rec.id, "amount": rec.amount, "verified": True, "source": "manual", "description": desc, "room_id": rec.room_id, "stage_id": rec.stage_id}
+    return {"id": rec.id, "amount": rec.amount, "verified": True, "source": "manual", "description": desc, "room_id": rec.room_id, "stage_id": rec.stage_id, "payment_id": rec.payment_id}
 
 @router.patch("/{receipt_id}")
 async def patch_receipt(project_id: str, receipt_id: str, body: ReceiptPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -192,5 +210,6 @@ async def list_receipts(project_id: str, user: User = Depends(get_current_user),
             "stage_id": getattr(r, "stage_id", None),
             "source": "manual" if r.fn == "MANUAL" else "scan",
             "description": r.qr_raw if r.fn == "MANUAL" else None,
+            "payment_id": getattr(r, "payment_id", None),
         })
     return out

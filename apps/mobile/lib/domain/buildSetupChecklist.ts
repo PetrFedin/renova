@@ -4,6 +4,7 @@ import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { resolveProjectPhase } from '@/lib/domain/resolveProjectPhase';
 import { getProjectProfileGaps } from '@/lib/domain/projectProfileGaps';
 import {
+  customerProfileTabHref,
   objectTabHref,
   repairTabHref,
   tabsHref,
@@ -68,7 +69,7 @@ export function buildSetupChecklist(
       id: 'contractor',
       label: 'Исполнитель',
       done: !!project.contractor_id,
-      href: objectTabHref(role, 'profile'),
+      href: customerProfileTabHref(role, 'contractor'),
       priority: 5,
     },
     {

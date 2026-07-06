@@ -167,6 +167,14 @@ export function calendarTabRoute(role: OsRole, extra?: Record<string, string>): 
   return tabsRoute(role, 'calendar', undefined, extra);
 }
 
+
+export function customerProfileTabHref(role: OsRole, focus?: string): string {
+  const r = tabsRoute(role, 'profile', undefined, focus ? { focus } : undefined);
+  if (!r.params) return r.pathname;
+  const qs = new URLSearchParams(r.params).toString();
+  return `${r.pathname}?${qs}`;
+}
+
 export function objectTabHref(role: OsRole, tab: string, sub?: string): string {
   return tabsHref(role, 'object', tab) + (sub ? `&sub=${sub}` : '');
 }

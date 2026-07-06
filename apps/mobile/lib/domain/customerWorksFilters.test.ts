@@ -1,5 +1,5 @@
-import { filterStagesForCustomer, CUSTOMER_WORKS_FILTERS } from '@/lib/domain/customerWorksFilters';
-import type { Stage } from '@/lib/api';
+import { filterStagesForCustomer, CUSTOMER_WORKS_FILTERS } from './customerWorksFilters';
+import type { Stage } from '../api';
 
 const today = '2026-06-01';
 const stages = [

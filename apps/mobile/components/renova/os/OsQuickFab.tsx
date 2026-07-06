@@ -11,6 +11,8 @@ import { createProjectChat } from '@/lib/createProjectChat';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
 import { tabsPrefix, budgetTabHref, objectTabHref, repairTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { useDetailLevel } from '@/lib/useDetailLevel';
+import { fabActionIdsForLevel } from '@/lib/detailLevelPolicy';
 
 type Action = { id: string; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap; run: () => void };
 
@@ -18,6 +20,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
   const { user, activeProject, readOnly, loadProject } = useRenova();
   const pathname = usePathname();
   const nav = useNavFromHere();
+  const detailLevel = useDetailLevel();
   const [open, setOpen] = useState(false);
   const [showWork, setShowWork] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
@@ -110,6 +113,9 @@ export function OsQuickFab({ role }: { role: OsRole }) {
     },
   ];
 
+  const allowedIds = fabActionIdsForLevel(detailLevel, role);
+  const visibleActions = allowedIds ? actions.filter((a) => allowedIds.has(a.id)) : actions;
+
   return (
     <>
       <Pressable style={s.fab} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Быстрые действия">
@@ -119,7 +125,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
           <View style={s.sheet}>
             <Text style={s.head}>Создать</Text>
-            {actions.map((a) => (
+            {visibleActions.map((a) => (
               <Pressable key={a.id} style={s.row} onPress={a.run}>
                 <Ionicons name={a.icon} size={22} color={RenovaTheme.colors.primary} />
                 <View style={{ flex: 1 }}>

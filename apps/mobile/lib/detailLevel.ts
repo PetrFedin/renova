@@ -4,6 +4,17 @@ export type DetailLevel = 'brief' | 'standard' | 'detailed';
 
 const KEY = 'renova_detail_level';
 
+const listeners = new Set<() => void>();
+
+export function subscribeDetailLevel(onChange: () => void): () => void {
+  listeners.add(onChange);
+  return () => listeners.delete(onChange);
+}
+
+function notifyDetailLevelChanged() {
+  listeners.forEach((fn) => fn());
+}
+
 export async function getDetailLevel(): Promise<DetailLevel> {
   const v = await AsyncStorage.getItem(KEY);
   return (v as DetailLevel) || 'standard';
@@ -11,6 +22,7 @@ export async function getDetailLevel(): Promise<DetailLevel> {
 
 export async function setDetailLevel(l: DetailLevel) {
   await AsyncStorage.setItem(KEY, l);
+  notifyDetailLevelChanged();
 }
 
 export type DetailPreset = 'cosmetic' | 'capital' | 'house';

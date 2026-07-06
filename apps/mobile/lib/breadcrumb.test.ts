@@ -9,7 +9,7 @@ if (!parseHubTabRouteName('repair:control')) throw new Error('parse hub tab');
 if (formatReturnToTrail('/(customer)/(tabs)/repair?tab=control', 'customer') !== 'Ремонт › Приёмка') {
   throw new Error('returnTo trail repair');
 }
-if (formatReturnToTrail('/(customer)/(tabs)/budget?tab=expenses', 'customer') !== 'Бюджет › Расходы') {
+if (formatReturnToTrail('/(customer)/(tabs)/budget?tab=expenses', 'customer') !== 'Деньги › Расходы') {
   throw new Error('returnTo trail budget');
 }
 

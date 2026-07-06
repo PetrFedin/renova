@@ -1,10 +1,10 @@
-/** Единый redirect legacy tab-маршрутов → hub (см. TAB_ALIASES в pushLinks.ts) */
+/** Единый redirect legacy tab-маршрутов → hub (см. TAB_ALIASES в legacyRoutes.ts) */
 import { Redirect, useGlobalSearchParams } from 'expo-router';
-import { resolveLegacyTabHref } from '@/lib/pushLinks';
+import { resolveLegacyRoute } from '@/lib/legacyRoutes';
 
 export function LegacyTabRedirect({ path }: { path: string }) {
   const query = useGlobalSearchParams<Record<string, string | string[]>>();
-  const route = resolveLegacyTabHref(path);
+  const route = resolveLegacyRoute(path);
   const returnTo = query.returnTo;
   const merged = {
     ...(route.params || {}),

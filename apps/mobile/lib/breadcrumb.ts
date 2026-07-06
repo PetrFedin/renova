@@ -85,7 +85,7 @@ export function formatReturnToTrail(returnTo: string | undefined, role: OsRole):
   if (returnTo.includes('/inbox')) return 'Входящие';
   if (returnTo.includes('/documents')) return 'Документы';
   if (returnTo.includes('/reports')) return 'Отчёты';
-  if (returnTo.includes('/budget')) return 'Бюджет';
+  if (returnTo.includes('/budget')) return sectionTitle(role, pathname);
   if (returnTo.includes('/repair')) return 'Ремонт';
   if (returnTo.includes('/object')) return 'Объект';
   return undefined;

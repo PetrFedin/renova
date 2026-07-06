@@ -1,10 +1,6 @@
-/** Legacy — единая аналитика только во вкладке «Бюджет → Аналитика» */
-import { Redirect } from 'expo-router';
-import { useRenova } from '@/lib/context/RenovaContext';
-import { budgetTabHref } from '@/constants/osSections';
+import { LegacyTabRedirect } from '@/components/routing/LegacyTabRedirect';
 
-export default function ProjectAnalyticsRedirect() {
-  const { user } = useRenova();
-  const role = user?.role === 'contractor' ? 'contractor' : 'customer';
-  return <Redirect href={budgetTabHref(role, 'analytics')} />;
+/** Legacy deep link → «Деньги › Отклонения» */
+export default function ProjectAnalyticsLegacyScreen() {
+  return <LegacyTabRedirect path="/project-analytics" />;
 }

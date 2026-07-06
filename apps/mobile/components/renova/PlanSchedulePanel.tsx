@@ -1,4 +1,4 @@
-/** График этапов проекта — обзор с переходом в этап, профиль и календарь */
+/** График этапов — read-only обзор; сроки меняются в «Календарь», ход — в «Ремонт» */
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
@@ -44,11 +44,18 @@ export function PlanSchedulePanel({
 
   return (
     <View style={embedded ? styles.embedded : undefined}>
+      <View style={styles.readOnlyBox}>
+        <Text style={styles.readOnlyTitle}>Только просмотр</Text>
+        <Text style={styles.readOnlyText}>
+          Здесь — обзор этапов по датам. Перенос сроков и задачи — в «Календарь», выполнение и приёмка — в «Ремонт».
+        </Text>
+      </View>
+
       <View style={styles.syncBox}>
         <Text style={styles.syncTitle}>Сроки проекта (из профиля)</Text>
         <Text style={styles.syncVal}>{profileRange}</Text>
         <Pressable onPress={() => pushOsNav(objectTabRoute(role, 'profile'), nav.from)}>
-          <Text style={styles.syncLink}>→ Изменить в профиле</Text>
+          <Text style={styles.syncLink}>→ Изменить общие сроки в профиле</Text>
         </Pressable>
       </View>
 
@@ -58,27 +65,26 @@ export function PlanSchedulePanel({
         </Text>
       ) : (
         plan.stages.map((st, i) => (
-          <Pressable key={st.id} style={styles.row} onPress={() => nav.stage(st.id)} accessibilityRole="button">
+          <View key={st.id} style={styles.row} accessibilityRole="text">
             <Text style={styles.num}>{i + 1}</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{st.name}</Text>
               <Text style={styles.dates}>{formatScheduleWorkSpan(st.planned_start, st.planned_end)}</Text>
               <Text style={styles.status}>{stageStatusLabel(st.status)}</Text>
             </View>
-            <Text style={styles.link}>→</Text>
-          </Pressable>
+          </View>
         ))
       )}
 
       <View style={styles.footer}>
-        <Pressable style={styles.footerBtn} onPress={() => pushOsNav(repairTabRoute(role, 'works'), nav.from)}>
-          <Text style={styles.footerT}>→ Ход в «Ремонт»</Text>
-        </Pressable>
         <Pressable
-          style={styles.footerBtn}
+          style={[styles.footerBtn, styles.footerPrimary]}
           onPress={() => pushOsNav(calendarTabRoute(role), nav.from)}
         >
-          <Text style={styles.footerT}>→ Полный календарь (основной график)</Text>
+          <Text style={[styles.footerT, styles.footerPrimaryT]}>→ Управлять сроками (календарь)</Text>
+        </Pressable>
+        <Pressable style={styles.footerBtn} onPress={() => pushOsNav(repairTabRoute(role, 'works'), nav.from)}>
+          <Text style={styles.footerT}>→ Ход работ (ремонт)</Text>
         </Pressable>
       </View>
     </View>
@@ -89,6 +95,16 @@ const styles = StyleSheet.create({
   embedded: { gap: 8 },
   center: { padding: 24, alignItems: 'center' },
   loading: { color: RenovaTheme.colors.textMuted },
+  readOnlyBox: {
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginBottom: 10,
+  },
+  readOnlyTitle: { fontSize: 11, fontWeight: '800', color: '#1D4ED8', textTransform: 'uppercase' },
+  readOnlyText: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 17 },
   syncBox: {
     backgroundColor: '#F8FAFC',
     padding: 12,
@@ -117,24 +133,25 @@ const styles = StyleSheet.create({
     height: 26,
     lineHeight: 26,
     textAlign: 'center',
-    backgroundColor: RenovaTheme.colors.primary,
+    backgroundColor: RenovaTheme.colors.textMuted,
     color: RenovaTheme.colors.surface,
     borderRadius: 13,
     fontWeight: '700',
     overflow: 'hidden',
   },
   name: { fontWeight: '600' },
-  dates: { fontSize: 12, color: RenovaTheme.colors.primary, marginTop: 2 },
+  dates: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   status: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  link: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.primary },
-  footer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  footer: { flexDirection: 'column', gap: 8, marginTop: 8 },
   footerBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: RenovaTheme.colors.primary,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  footerT: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary },
+  footerPrimary: { backgroundColor: RenovaTheme.colors.infoBg },
+  footerT: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, textAlign: 'center' },
+  footerPrimaryT: { color: RenovaTheme.colors.accent },
 });

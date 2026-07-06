@@ -55,12 +55,18 @@ async def get_payment(db: AsyncSession, payment_id: str) -> Payment | None:
     return await db.get(Payment, payment_id)
 
 
+async def receipt_id_for_payment(db: AsyncSession, payment_id: str) -> str | None:
+    from app.models.entities import Receipt
+    r = await db.execute(select(Receipt.id).where(Receipt.payment_id == payment_id).limit(1))
+    return r.scalar_one_or_none()
+
+
 async def list_payments(db: AsyncSession, project_id: str) -> list[Payment]:
     r = await db.execute(select(Payment).where(Payment.project_id == project_id).order_by(Payment.created_at.desc()))
     return list(r.scalars().all())
 
 
-def payment_dict(p: Payment) -> dict:
+def payment_dict(p: Payment, *, receipt_id: str | None = None) -> dict:
     return {
         "id": p.id,
         "title": p.title,
@@ -71,4 +77,5 @@ def payment_dict(p: Payment) -> dict:
         "notes": p.notes,
         "confirmed_at": p.confirmed_at.isoformat() if p.confirmed_at else None,
         "created_at": p.created_at.isoformat(),
+        "receipt_id": receipt_id,
     }

@@ -1,11 +1,11 @@
 import { ScrollView, View, Text } from 'react-native';
-import { usePathname } from 'expo-router';
+import { useLocalSearchParams, usePathname } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
 import { BudgetWidgetSettings } from '@/components/renova/os/BudgetWidgetSettings';
 import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
 import { BudgetThresholdPicker } from '@/components/renova/BudgetThresholdPicker';
-import { ContractorDirectory } from '@/components/renova/ContractorDirectory';
+import { ContractorInvitePanel } from '@/components/renova/ContractorInvitePanel';
 import { ViewerSharePanel } from '@/components/renova/ViewerSharePanel';
 import { RoleSwitchButton } from '@/components/renova/RoleSwitchButton';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
@@ -26,6 +26,7 @@ const EXTRA_WITH_CONTRACTOR: typeof EXTRA_BASIC = [];
 
 export function CustomerProfileScreen() {
   const pathname = usePathname();
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
   const { user, activeProject, readOnly, loadProject } = useRenova();
   const showAccess = Boolean(user && activeProject && !readOnly);
   const hasContractor = Boolean(activeProject?.contractor_id);
@@ -51,12 +52,14 @@ export function CustomerProfileScreen() {
         <ProfileSection
           title="Доступ к объекту"
           description="Гости видят объект без редактирования. Исполнители — из базы Renova."
+          highlight={focus === 'contractor'}
         >
           <ViewerSharePanel userId={user!.id} projectId={activeProject!.id} embedded />
           {user ? (
-            <ContractorDirectory
+            <ContractorInvitePanel
               userId={user.id}
               projectId={activeProject!.id}
+              projectName={activeProject!.name}
               linkedContractorId={activeProject!.contractor_id}
               embedded
               onLinked={() => loadProject(activeProject!.id).catch(() => {})}

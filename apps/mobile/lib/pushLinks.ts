@@ -1,35 +1,18 @@
 /** Нормализация deep link из push-уведомлений */
 import { parseOsHref } from '../constants/osSections';
+import { TAB_ALIASES, legacyRouteCanonical, logLegacyRouteDeprecation } from './legacyRoutes';
 
 export type PushTarget = { pathname: string; params: Record<string, string> };
 
-/** Legacy tab-маршруты → канонические hub-пути */
-export const TAB_ALIASES: Record<string, string> = {
-  '/(customer)/(tabs)/finance': '/(customer)/(tabs)/budget',
-  '/(customer)/(tabs)/more': '/(customer)/(tabs)/profile',
-  '/(customer)/(tabs)/works': '/(customer)/(tabs)/repair?tab=works',
-  '/(customer)/(tabs)/materials': '/(customer)/(tabs)/repair?tab=materials',
-  '/(customer)/(tabs)/control': '/(customer)/(tabs)/repair?tab=control',
-  '/(customer)/(tabs)/stages': '/(customer)/(tabs)/repair?tab=works',
-  '/(customer)/(tabs)/rooms': '/(customer)/(tabs)/object?tab=rooms',
-  '/(customer)/(tabs)/estimate': '/(customer)/(tabs)/object?tab=estimate',
-  '/project-analytics': '/(customer)/(tabs)/budget?tab=deviations',
-  '/(customer)/(tabs)/plan': '/(customer)/(tabs)/object?tab=plan',
-  '/(contractor)/(tabs)/money': '/(contractor)/(tabs)/budget',
-  '/(contractor)/(tabs)/more': '/(contractor)/(tabs)/profile',
-  '/(contractor)/(tabs)/works': '/(contractor)/(tabs)/repair?tab=works',
-  '/(contractor)/(tabs)/materials': '/(contractor)/(tabs)/repair?tab=materials',
-  '/(contractor)/(tabs)/control': '/(contractor)/(tabs)/repair?tab=control',
-  '/(contractor)/(tabs)/stages': '/(contractor)/(tabs)/repair?tab=works',
-  '/(contractor)/(tabs)/rooms': '/(contractor)/(tabs)/object?tab=rooms',
-  '/(contractor)/(tabs)/estimate': '/(contractor)/(tabs)/object?tab=estimate',
-  '/(contractor)/(tabs)/plan': '/(contractor)/(tabs)/object?tab=plan',
-  '/(contractor)/(tabs)/objects': '/(contractor)/(tabs)/',
-};
+export { TAB_ALIASES };
 
 /** Redirect href для legacy tab-файлов (finance, more, calendar…) */
 export function resolveLegacyTabHref(legacyPath: string) {
-  return parseOsHref(TAB_ALIASES[legacyPath] || legacyPath);
+  const canonical = legacyRouteCanonical(legacyPath);
+  if (TAB_ALIASES[legacyPath]) {
+    logLegacyRouteDeprecation(legacyPath, canonical);
+  }
+  return parseOsHref(canonical);
 }
 
 export function resolvePushLink(link?: string | null, returnTo?: string | null): PushTarget | null {

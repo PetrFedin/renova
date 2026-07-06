@@ -2,7 +2,7 @@
 import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
-import { objectTabHref, repairTabHref, tabsHref } from '@/constants/osSections';
+import { objectTabHref, repairTabHref, tabsHref, customerProfileTabHref } from '@/constants/osSections';
 
 type Step = {
   id: string;
@@ -25,7 +25,7 @@ const STEPS: Step[] = [
     label: 'Подключить исполнителя',
     sub: 'Телефон или ссылка-приглашение',
     icon: 'person-add-outline',
-    href: objectTabHref('customer', 'profile'),
+    href: customerProfileTabHref('customer', 'contractor'),
   },
   {
     id: 'plan',
@@ -53,7 +53,7 @@ const STEPS: Step[] = [
 type Props = {
   visible: boolean;
   projectName: string;
-  onNavigate: (href: string) => void;
+  onNavigate: (href: string, stepId?: string) => void;
   onHome: () => void;
   onClose: () => void;
 };
@@ -66,7 +66,7 @@ export function PostCreateSheet({ visible, projectName, onNavigate, onHome, onCl
           <Text style={s.head}>Объект создан</Text>
           <Text style={s.sub}>«{projectName}» готов. Что дальше?</Text>
           {STEPS.map((step) => (
-            <Pressable key={step.id} style={s.row} onPress={() => onNavigate(step.href)}>
+            <Pressable key={step.id} style={s.row} onPress={() => onNavigate(step.href, step.id)}>
               <Ionicons name={step.icon} size={22} color={RenovaTheme.colors.primary} />
               <View style={s.body}>
                 <Text style={s.label}>{step.label}</Text>

@@ -24,6 +24,7 @@ const baseSnap = {
 const items = buildSetupChecklist(baseProject, baseSnap, 'customer');
 if (items.find((i) => i.id === 'object')?.done !== true) throw new Error('object always done');
 if (items.find((i) => i.id === 'rooms')?.done !== true) throw new Error('rooms done');
+if (items.find((i) => i.id === 'contractor')?.href.includes('focus=contractor') !== true) throw new Error('contractor href');
 if (items.find((i) => i.id === 'contractor')?.done !== false) throw new Error('contractor pending');
 
 const progress = setupChecklistProgress(items);

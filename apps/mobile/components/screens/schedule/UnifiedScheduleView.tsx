@@ -201,7 +201,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
       </View>
 
       <ScrollView style={s.planPane} contentContainerStyle={s.planContent}>
-        <Text style={s.planTitle}>План работ</Text>
+        <Text style={s.planTitle}>Расписание и задачи</Text>
         <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
         <ScheduleExecutionStrip stats={executionStats} />
 

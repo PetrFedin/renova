@@ -45,6 +45,8 @@ type WizardDraft = {
   /** Лимит, который заказчик готов вложить (₽) */
   customer_budget?: number;
   rooms: WizardRoomDraft[];
+  /** quick = шаблон комнат, detailed = пошагово */
+  wizard_mode?: 'quick' | 'detailed';
 };
 
 export type ProjectProfilePatch = Partial<Pick<WizardDraft, 'name' | 'address' | 'renovation_type' | 'property_type' | 'customer_budget'>> & {
@@ -96,6 +98,7 @@ const defaultWizard: WizardDraft = {
   address: '',
   renovation_type: 'cosmetic',
   property_type: 'apartment',
+  wizard_mode: 'detailed',
   rooms: [{ name: 'Гостиная', room_type: 'living', floor_level: 1, length_m: 4.2, width_m: 3.1, height_m: 2.7, outlets_count: 6, switches_count: 2, plumbing_points: 0 }],
 };
 

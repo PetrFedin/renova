@@ -132,6 +132,7 @@ class PaymentOut(BaseModel):
     notes: str | None
     confirmed_at: str | None
     created_at: str
+    receipt_id: str | None = None
 
 
 class StageCommentIn(BaseModel):

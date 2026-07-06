@@ -15,7 +15,11 @@ router = APIRouter(prefix="/projects", tags=["payments"])
 async def list_payments(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     p = await require_project(db, project_id, user, write=False)
     items = await pay_svc.list_payments(db, project_id)
-    return [PaymentOut(**pay_svc.payment_dict(x)) for x in items]
+    out = []
+    for x in items:
+        rid = await pay_svc.receipt_id_for_payment(db, x.id)
+        out.append(PaymentOut(**pay_svc.payment_dict(x, receipt_id=rid)))
+    return out
 
 
 @router.post("/{project_id}/payments", response_model=PaymentOut)
@@ -33,7 +37,8 @@ async def create_payment(
     pay = await pay_svc.create_payment(
         db, project_id, user.id, body.title, body.amount, body.payment_type, body.stage_id, body.notes
     )
-    return PaymentOut(**pay_svc.payment_dict(pay))
+    rid = await pay_svc.receipt_id_for_payment(db, pay.id)
+    return PaymentOut(**pay_svc.payment_dict(pay, receipt_id=rid))
 
 
 @router.post("/{project_id}/payments/{payment_id}/confirm", response_model=PaymentOut)
@@ -58,4 +63,5 @@ async def confirm_payment(
         raise HTTPException(404, "Платёж не найден")
     from app.services import activity_service as act
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="PaymentApproved", title=f"Оплата: {pay.title}", body=str(pay.amount), link_path="/(customer)/(tabs)/budget")
-    return PaymentOut(**pay_svc.payment_dict(pay))
+    rid = await pay_svc.receipt_id_for_payment(db, pay.id)
+    return PaymentOut(**pay_svc.payment_dict(pay, receipt_id=rid))

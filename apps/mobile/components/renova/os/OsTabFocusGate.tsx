@@ -1,8 +1,7 @@
-/** На web неактивные вкладки Tabs иногда остаются в DOM — скрываем по pathname (web) и фокусу (native) */
+/** На web неактивные вкладки Tabs остаются в DOM — скрываем контент по активному pathname */
 import type { ReactNode } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { usePathname } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
 
 function segmentMatches(pathname: string, routeName: string): boolean {
   const parts = pathname.split('/').filter(Boolean);
@@ -18,11 +17,8 @@ export function OsTabFocusGate({
   children: ReactNode;
   routeName: string;
 }) {
-  const navFocused = useIsFocused();
   const pathname = usePathname();
-  const pathMatch = segmentMatches(pathname, routeName);
-  const visible = Platform.OS === 'web' ? pathMatch : navFocused && pathMatch;
-  if (!visible) return null;
+  if (!segmentMatches(pathname, routeName)) return null;
   return <View style={s.root}>{children}</View>;
 }
 

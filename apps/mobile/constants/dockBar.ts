@@ -2,7 +2,8 @@
 import type { TabIconKey } from '@/components/renova/TabIcon';
 
 export type DockItemId =
-  | 'home' | 'chat' | 'object' | 'repair' | 'budget' | 'calendar';
+  | 'home' | 'chat' | 'object' | 'repair' | 'budget' | 'calendar'
+  | 'estimate' | 'contractor' | 'more';
 
 export type DockItem = {
   id: DockItemId;
@@ -23,6 +24,10 @@ export const DOCK_OPTIONAL_SLOTS = DOCK_MAX - DOCK_MANDATORY.length;
 /** Дефолт: главная, сообщения, объект, ремонт, бюджет */
 export const DOCK_DEFAULT: DockItemId[] = ['home', 'chat', 'object', 'repair', 'budget'];
 
+/** S8 — dynamic presets для заказчика (setup / repair) */
+export const DOCK_PRESET_SETUP: DockItemId[] = ['home', 'object', 'estimate', 'contractor', 'more'];
+export const DOCK_PRESET_REPAIR: DockItemId[] = ['home', 'repair', 'budget', 'chat', 'more'];
+
 export const DOCK_CATALOG: DockItem[] = [
   { id: 'home', routeName: 'index', label: 'Главная', icon: 'home' },
   { id: 'chat', routeName: 'chat', label: 'Сообщения', icon: 'chat' },
@@ -30,6 +35,9 @@ export const DOCK_CATALOG: DockItem[] = [
   { id: 'repair', routeName: 'repair', label: 'Ремонт', icon: 'works' },
   { id: 'budget', routeName: 'budget', label: 'Деньги', icon: 'budget' },
   { id: 'calendar', routeName: 'calendar', label: 'Календарь', icon: 'calendar' },
+  { id: 'estimate', routeName: 'object', hubTab: 'estimate', label: 'Смета', icon: 'estimate' },
+  { id: 'contractor', routeName: 'profile', label: 'Исполнитель', icon: 'profile' },
+  { id: 'more', routeName: 'profile', label: 'Ещё', icon: 'more' },
 ];
 
 export const DOCK_BY_ID = Object.fromEntries(DOCK_CATALOG.map((d) => [d.id, d])) as Record<DockItemId, DockItem>;
@@ -40,8 +48,8 @@ const LEGACY_DOCK: Record<string, DockItemId> = {
   materials: 'repair',
   control: 'repair',
   rooms: 'object',
-  estimate: 'object',
-  more: 'budget',
+  estimate: 'estimate',
+  more: 'more',
 };
 
 export function migrateDockId(id: string): DockItemId | null {

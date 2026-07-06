@@ -2,7 +2,7 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
-import { budgetTabHref, calendarTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
+import { budgetTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 import { formMetaText } from '@/constants/formTypography';
 import { objectProfileHint } from '@/lib/domain/roleCapabilities';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -27,8 +27,8 @@ const GUIDES: Record<ObjectTabId, Guide> = {
     next: { tab: 'estimate', label: 'Дальше: Смета →' },
   },
   estimate: {
-    read: 'Работы и материалы с итоговой суммой проекта.',
-    do: 'Раскройте списки по комнатам. Одобряйте доп. работы — кнопки «Бюджет» и «Материалы» ниже.',
+    read: 'Четыре слоя: итог, изменения, детализация, документы.',
+    do: 'Согласуйте доп. работы во вкладке «Изменения». PDF и Excel — «Документы».',
     next: { tab: 'plan', label: 'Дальше: План →' },
   },
   plan: {
@@ -39,8 +39,7 @@ const GUIDES: Record<ObjectTabId, Guide> = {
 
 const PLAN_LINKS = (role: OsRole) => [
   { label: '→ Ремонт', href: repairTabHref(role, 'works') },
-  { label: '→ Бюджет', href: budgetTabHref(role, 'summary') },
-  { label: '→ Календарь', href: calendarTabHref(role) },
+  { label: '→ Деньги', href: budgetTabHref(role, 'summary') },
 ] as const;
 
 export function ObjectTabGuide({

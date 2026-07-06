@@ -15,6 +15,7 @@ import {
 } from '@/components/renova/os/ProjectOsPanels';
 import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
+import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import { WeekScheduleStrip } from '@/components/renova/os/WeekScheduleStrip';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, tabsPrefix, type OsRole } from '@/constants/osSections';
@@ -102,6 +103,9 @@ export function HomeScreenBody({
       )}
 
       {/* 2. Главное действие */}
+      {role === 'customer' && snap.quality.awaitingAcceptance > 0 ? (
+        <HomeAcceptanceBanner count={snap.quality.awaitingAcceptance} role={role} />
+      ) : null}
       {showAttention && (
         <HomeActionHero
           role={inboxRole}

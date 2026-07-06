@@ -9,12 +9,14 @@ type Props = {
   children: ReactNode;
   /** Без карточки — для inline-блоков (роль, портфель) */
   bare?: boolean;
+  /** Подсветка секции при deep link (focus=contractor) */
+  highlight?: boolean;
   style?: ViewStyle;
 };
 
-export function ProfileSection({ title, description, children, bare, style }: Props) {
+export function ProfileSection({ title, description, children, bare, highlight, style }: Props) {
   return (
-    <View style={[s.wrap, style]}>
+    <View style={[s.wrap, highlight && s.wrapHighlight, style]}>
       <Text style={s.title}>{title}</Text>
       {description ? <Text style={s.desc}>{description}</Text> : null}
       {bare ? children : <View style={s.card}>{children}</View>}
@@ -25,6 +27,14 @@ export function ProfileSection({ title, description, children, bare, style }: Pr
 const s = StyleSheet.create({
   wrap: {
     marginTop: 20,
+  },
+  wrapHighlight: {
+    marginTop: 12,
+    padding: 8,
+    borderRadius: RenovaTheme.radius.md,
+    backgroundColor: RenovaTheme.colors.infoBg,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.infoBorder,
   },
   title: {
     fontSize: 12,

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import {
-  calendarTabRoute,
   objectTabRoute,
   repairTabRoute,
   type OsRole,
@@ -53,9 +52,9 @@ export function PlanTabOverview({ role, project, userId }: Props) {
       <View style={s.flow}>
         <Text style={s.flowTitle}>Как это работает</Text>
         <Text style={s.flowLine}>① Профиль — общие сроки и тип ремонта</Text>
-        <Text style={s.flowLine}>② План (здесь) — чертёж, дизайн, обзор графика</Text>
-        <Text style={s.flowLine}>③ Ремонт — выполнение этапов и приёмка</Text>
-        <Text style={s.flowLine}>④ Календарь — полное расписание по датам</Text>
+        <Text style={s.flowLine}>② План (здесь) — чертёж, дизайн, обзор графика (без редактирования сроков)</Text>
+        <Text style={s.flowLine}>③ Ремонт — выполнение этапов, приёмка и задачи</Text>
+        <Text style={s.flowLine}>④ Календарь — перенос дат, задачи и полное расписание</Text>
       </View>
 
       <View style={s.statusRow}>
@@ -81,7 +80,6 @@ export function PlanTabOverview({ role, project, userId }: Props) {
       <View style={s.links}>
         <LinkBtn label="→ Профиль" onPress={() => pushOsNav(objectTabRoute(role, 'profile'), nav.from)} />
         <LinkBtn label="→ Ремонт" onPress={() => pushOsNav(repairTabRoute(role, 'works'), nav.from)} />
-        <LinkBtn label="→ Календарь" onPress={() => pushOsNav(calendarTabRoute(role), nav.from)} />
       </View>
     </View>
   );

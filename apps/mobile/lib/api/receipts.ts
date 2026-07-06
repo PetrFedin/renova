@@ -2,8 +2,8 @@
 import { req, cachedGet, API_BASE } from './client';
 import type { BudgetBreakdown, ReceiptItem, User } from './types';
 export const receiptsApi = {
-  addManualReceipt: async (userId: string, projectId: string, amount: number, description: string, expense_category = 'materials', room_id?: string | null, stage_id?: string | null) => {
-    const body = { amount, description, expense_category, room_id, stage_id };
+  addManualReceipt: async (userId: string, projectId: string, amount: number, description: string, expense_category = 'materials', room_id?: string | null, stage_id?: string | null, payment_id?: string | null) => {
+    const body = { amount, description, expense_category, room_id, stage_id, payment_id };
     try {
       return await req(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: JSON.stringify(body) }, userId);
     } catch {
@@ -12,8 +12,8 @@ export const receiptsApi = {
       throw new Error('offline_queued');
     }
   },
-  scanReceipt: async (userId: string, projectId: string, qr_raw: string, expense_category = 'materials', room_id?: string | null, stage_id?: string | null) => {
-    const body = { qr_raw, expense_category, room_id, stage_id };
+  scanReceipt: async (userId: string, projectId: string, qr_raw: string, expense_category = 'materials', room_id?: string | null, stage_id?: string | null, payment_id?: string | null) => {
+    const body = { qr_raw, expense_category, room_id, stage_id, payment_id };
     try {
       return await req(`/api/v1/projects/${projectId}/receipts/scan`, { method: 'POST', body: JSON.stringify(body) }, userId);
     } catch {

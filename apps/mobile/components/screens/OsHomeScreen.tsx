@@ -9,6 +9,9 @@ import { type BudgetAlert } from '@/components/renova/BudgetAlerts';
 import { HomeScreenBody } from '@/components/renova/os/home/HomeScreenBody';
 import { homeLayout } from '@/constants/homeTypography';
 import { useHomeWidgets } from '@/lib/useHomeWidgets';
+import { useDetailLevel } from '@/lib/useDetailLevel';
+import { homeWidgetVisibleForLevel } from '@/lib/detailLevelPolicy';
+import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { buildProjectOsSnapshot } from '@/lib/domain/buildProjectOsSnapshot';
 import { buildHomeMoreSummary, homeMoreHasVisibleContent } from '@/lib/domain/buildHomeMoreSummary';
@@ -38,7 +41,9 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const snapRole = readOnly ? 'customer' : role === 'contractor' ? 'contractor' : 'customer';
-  const { isVisible } = useHomeWidgets(role);
+  const { isVisible: isWidgetEnabled } = useHomeWidgets(role);
+  const detailLevel = useDetailLevel();
+  const isVisible = (id: HomeWidgetId) => isWidgetEnabled(id) && homeWidgetVisibleForLevel(id, detailLevel);
 
   async function load() {
     if (!user || !activeProject) {

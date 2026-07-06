@@ -172,6 +172,8 @@ async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | N
         existing.category = rec.expense_category
         existing.room_id = rec.room_id
         existing.stage_id = rec.stage_id
+        if getattr(rec, "payment_id", None):
+            existing.payment_id = rec.payment_id
         existing.status = "confirmed" if rec.fns_verified else "pending_receipt"
         await db.flush()
         return existing
@@ -180,6 +182,7 @@ async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | N
         room_id=rec.room_id,
         stage_id=rec.stage_id,
         receipt_id=rec.id,
+        payment_id=getattr(rec, "payment_id", None),
         title=title or f"Чек {rec.amount:.0f} ₽",
         category=rec.expense_category,
         amount=rec.amount,
