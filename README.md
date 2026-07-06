@@ -1,5 +1,7 @@
 # Renova — платформа управления ремонтом (iPhone-first)
 
+**Repository:** https://github.com/PetrFedin/renova — отдельный продукт, не связан с [Syntha](https://github.com/PetrFedin/syntha).
+
 Монорепо MVP: мобильное приложение для заказчика и исполнителя, backend API, движок расчётов смет.
 
 ## Стек
