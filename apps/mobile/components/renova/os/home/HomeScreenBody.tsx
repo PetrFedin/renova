@@ -17,8 +17,9 @@ import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import { WeekScheduleStrip } from '@/components/renova/os/WeekScheduleStrip';
+import { WorkScheduleSummaryCard } from '@/components/renova/workSchedule/WorkScheduleSummaryCard';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
-import { budgetTabRoute, tabsPrefix, type OsRole } from '@/constants/osSections';
+import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { HomeCompletionLinks } from '@/components/renova/os/home/HomeCompletionStrip';
@@ -138,13 +139,14 @@ export function HomeScreenBody({
         </HomeZone>
       )}
 
-      {/* 5. План на неделю */}
+      {/* 5. План и сроки */}
       {isVisible('schedule') && (
         <HomeZone
-          title="План на неделю"
+          title="План и сроки"
           linkLabel="Календарь →"
           onLinkPress={() => pushTab('calendar')}
         >
+          <WorkScheduleSummaryCard userId={user.id} projectId={activeProject.id} />
           <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
         </HomeZone>
       )}
