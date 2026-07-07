@@ -51,6 +51,10 @@ function itemMeta(item: WorkScheduleItem) {
   return range;
 }
 
+function openStageFromSchedule(stageId: string) {
+  router.push(`/stage/${stageId}?returnTo=${encodeURIComponent('/work-schedule')}`);
+}
+
 function WorkScheduleItemCard({ item, onStatus }: { item: WorkScheduleItem; onStatus: (item: WorkScheduleItem, status: WorkScheduleItemStatus) => void }) {
   const tone = statusTone((item.delay_days || 0) > 0 ? 'delayed' : item.status);
   return (
@@ -71,7 +75,7 @@ function WorkScheduleItemCard({ item, onStatus }: { item: WorkScheduleItem; onSt
       </View>
       <View style={styles.itemActions}>
         {item.stage_id ? (
-          <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${item.stage_id}`)} />
+          <PrimaryButton title="Этап" variant="outline" compact onPress={() => openStageFromSchedule(item.stage_id!)} />
         ) : null}
         {!['accepted', 'cancelled'].includes(item.status) ? (
           <>
