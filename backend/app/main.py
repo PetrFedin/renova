@@ -10,6 +10,7 @@ from app.db.session import init_db, SessionLocal
 from app.services.seed_demo import ensure_demo_users
 from app.services.seed_articles import seed_articles
 import app.models.entities  # noqa: F401 — регистрация моделей
+import app.models.work_schedule  # noqa: F401 — регистрация моделей графика работ
 
 
 @asynccontextmanager
@@ -44,7 +45,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
 if FastAPIInstrumentor:
