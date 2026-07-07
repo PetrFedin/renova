@@ -55,8 +55,16 @@ function openStageFromSchedule(stageId: string) {
   router.push(`/stage/${stageId}?returnTo=${encodeURIComponent('/work-schedule')}`);
 }
 
-function WorkScheduleItemCard({ item, onStatus }: { item: WorkScheduleItem; onStatus: (item: WorkScheduleItem, status: WorkScheduleItemStatus) => void }) {
+type ItemCardProps = {
+  item: WorkScheduleItem;
+  canEdit: boolean;
+  onStatus: (item: WorkScheduleItem, status: WorkScheduleItemStatus) => void;
+};
+
+function WorkScheduleItemCard({ item, canEdit, onStatus }: ItemCardProps) {
   const tone = statusTone((item.delay_days || 0) > 0 ? 'delayed' : item.status);
+  const canChangeStatus = canEdit && !['accepted', 'cancelled'].includes(item.status);
+
   return (
     <View style={styles.itemCard}>
       <View style={styles.itemHeader}>
@@ -68,16 +76,19 @@ function WorkScheduleItemCard({ item, onStatus }: { item: WorkScheduleItem; onSt
           <Text style={[styles.badgeText, { color: tone.text }]}>{statusLabel((item.delay_days || 0) > 0 ? 'delayed' : item.status)}</Text>
         </View>
       </View>
+
       {item.description ? <Text style={styles.itemDescription}>{item.description}</Text> : null}
+
       <View style={styles.progressLine}>
         <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, item.progress_percent || 0))}%` }]} /></View>
         <Text style={styles.progressText}>{Math.round(item.progress_percent || 0)}%</Text>
       </View>
+
       <View style={styles.itemActions}>
         {item.stage_id ? (
           <PrimaryButton title="Этап" variant="outline" compact onPress={() => openStageFromSchedule(item.stage_id!)} />
         ) : null}
-        {!['accepted', 'cancelled'].includes(item.status) ? (
+        {canChangeStatus ? (
           <>
             <PrimaryButton title="В работе" variant="outline" compact onPress={() => onStatus(item, 'in_progress')} />
             <PrimaryButton title="Принято" compact onPress={() => onStatus(item, 'accepted')} />
@@ -89,10 +100,11 @@ function WorkScheduleItemCard({ item, onStatus }: { item: WorkScheduleItem; onSt
 }
 
 export function WorkScheduleScreen() {
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, readOnly } = useRenova();
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
+  const canEdit = Boolean(user && activeProject && !readOnly);
 
   const load = useCallback(async () => {
     if (!user || !activeProject) return;
@@ -118,7 +130,7 @@ export function WorkScheduleScreen() {
   }, [schedule]);
 
   const createFromStages = async () => {
-    if (!user || !activeProject) return;
+    if (!user || !activeProject || !canEdit) return;
     try {
       setActing(true);
       const result = await api.createWorkSchedule(user.id, activeProject.id, { title: 'План-график работ' });
@@ -131,7 +143,7 @@ export function WorkScheduleScreen() {
   };
 
   const submit = async () => {
-    if (!user || !activeProject || !schedule) return;
+    if (!user || !activeProject || !schedule || !canEdit) return;
     try {
       setActing(true);
       setSchedule(await api.submitWorkSchedule(user.id, activeProject.id, schedule.id));
@@ -139,7 +151,7 @@ export function WorkScheduleScreen() {
   };
 
   const confirm = async () => {
-    if (!user || !activeProject || !schedule) return;
+    if (!user || !activeProject || !schedule || !canEdit) return;
     try {
       setActing(true);
       setSchedule(await api.confirmWorkSchedule(user.id, activeProject.id, schedule.id));
@@ -147,7 +159,7 @@ export function WorkScheduleScreen() {
   };
 
   const updateItemStatus = async (item: WorkScheduleItem, status: WorkScheduleItemStatus) => {
-    if (!user || !activeProject || !schedule) return;
+    if (!user || !activeProject || !schedule || !canEdit) return;
     try {
       await api.updateWorkScheduleItemStatus(user.id, activeProject.id, schedule.id, item.id, { status, progress_percent: status === 'accepted' ? 100 : undefined });
       await load();
@@ -184,6 +196,12 @@ export function WorkScheduleScreen() {
         <Text style={styles.subtitle}>Единый план по этапам, срокам, прогрессу и задержкам.</Text>
       </View>
 
+      {readOnly ? (
+        <View style={styles.readOnlyNote}>
+          <Text style={styles.readOnlyText}>Режим просмотра: можно открыть этапы и проверить сроки, но нельзя менять график.</Text>
+        </View>
+      ) : null}
+
       <View style={[styles.statusCard, { backgroundColor: tone.bg, borderColor: tone.border }]}>
         <Text style={[styles.statusText, { color: tone.text }]}>{statusLabel(schedule?.status)}</Text>
         <Text style={styles.statusDescription}>{stats.progress}% принято · {stats.accepted}/{stats.total} этапов · рисков по срокам: {stats.blocked}</Text>
@@ -193,7 +211,7 @@ export function WorkScheduleScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>График ещё не создан</Text>
           <Text style={styles.meta}>Создайте график из существующих этапов проекта. Это свяжет сроки, статусы и дальнейшую приёмку в один маршрут.</Text>
-          <PrimaryButton title={acting ? 'Создаём...' : 'Создать из этапов'} onPress={createFromStages} loading={acting} fullWidth />
+          <PrimaryButton title={acting ? 'Создаём...' : 'Создать из этапов'} onPress={createFromStages} loading={acting} disabled={!canEdit} fullWidth />
         </View>
       ) : (
         <>
@@ -202,15 +220,15 @@ export function WorkScheduleScreen() {
             <Text style={styles.meta}>{formatDate(schedule.planned_start_date)} — {formatDate(schedule.planned_finish_date)}</Text>
             <View style={styles.progressTrackLarge}><View style={[styles.progressFillLarge, { width: `${stats.progress}%` }]} /></View>
             <View style={styles.actionRow}>
-              {schedule.status === 'draft' || schedule.status === 'rejected' ? <PrimaryButton title="На согласование" onPress={submit} loading={acting} fullWidth /> : null}
-              {schedule.status === 'submitted' ? <PrimaryButton title="Согласовать график" onPress={confirm} loading={acting} fullWidth /> : null}
+              {schedule.status === 'draft' || schedule.status === 'rejected' ? <PrimaryButton title="На согласование" onPress={submit} loading={acting} disabled={!canEdit} fullWidth /> : null}
+              {schedule.status === 'submitted' ? <PrimaryButton title="Согласовать график" onPress={confirm} loading={acting} disabled={!canEdit} fullWidth /> : null}
             </View>
           </View>
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Этапы графика</Text>
             <View style={styles.list}>
-              {schedule.items.map((item) => <WorkScheduleItemCard key={item.id} item={item} onStatus={updateItemStatus} />)}
+              {schedule.items.map((item) => <WorkScheduleItemCard key={item.id} item={item} canEdit={canEdit} onStatus={updateItemStatus} />)}
             </View>
           </View>
         </>
@@ -227,6 +245,8 @@ const styles = StyleSheet.create({
   back: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.primaryMuted, fontWeight: RenovaTheme.fontWeight.semibold },
   title: { fontSize: RenovaTheme.fontSize.h1, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
   subtitle: { fontSize: RenovaTheme.fontSize.body, lineHeight: 20, color: RenovaTheme.colors.textMuted },
+  readOnlyNote: { ...card, padding: RenovaTheme.spacing.md, backgroundColor: RenovaTheme.colors.surfaceMuted },
+  readOnlyText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
   statusCard: { borderWidth: 1, borderRadius: RenovaTheme.radius.lg, padding: RenovaTheme.spacing.md, gap: 4 },
   statusText: { fontSize: RenovaTheme.fontSize.h3, fontWeight: RenovaTheme.fontWeight.extrabold },
   statusDescription: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.text },
