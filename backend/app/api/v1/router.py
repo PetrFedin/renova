@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import auth, activity, scratchpad, chat_inbox, work_orders, budget_planner, purchases, os, reports, marketplace, design_packages, approvals, waste_orders, floor_plans, work_types, materials, rework_sla, kpi_history, project_checklists, checklist_templates, stage_reactions, articles, analytics, admin, audit, subscription, teams, export, push, articles_admin, calendar, change_orders, chats, estimate, fns, media, notifications, payments, projects, receipts, room_requests, rooms, stages_ext
+from app.api.v1 import auth, activity, scratchpad, chat_inbox, work_orders, budget_planner, purchases, os, reports, marketplace, design_packages, approvals, waste_orders, floor_plans, work_types, materials, rework_sla, kpi_history, project_checklists, checklist_templates, stage_reactions, articles, analytics, admin, audit, subscription, teams, export, push, articles_admin, calendar, change_orders, chats, estimate, fns, media, notifications, payments, projects, receipts, room_requests, rooms, stages_ext, project_work_schedule
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(design_packages.router)
@@ -33,6 +33,7 @@ api_router.include_router(projects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
 api_router.include_router(stages_ext.router)
+api_router.include_router(project_work_schedule.router)
 api_router.include_router(calendar.router)
 api_router.include_router(chat_inbox.router)
 api_router.include_router(chats.router)
