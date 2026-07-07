@@ -18,6 +18,7 @@ import { marketApi } from './market';
 import { designApi } from './design';
 import { adminApi } from './admin';
 import { scratchpadApi } from './scratchpad';
+import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
 
 export const api = {
@@ -40,6 +41,7 @@ export const api = {
   ...designApi,
   ...adminApi,
   ...scratchpadApi,
+  ...workScheduleApi,
   ...miscApi,
 };
 
