@@ -16,7 +16,6 @@ export function fabActionIdsForLevel(level: DetailLevel, role: OsRole): Set<stri
 
 export function dockItemLabel(id: string, role: OsRole, defaultLabel: string): string {
   if (role !== 'customer') return defaultLabel;
-  if (id === 'object') return 'Квартира';
   if (id === 'budget') return 'Деньги';
   return defaultLabel;
 }

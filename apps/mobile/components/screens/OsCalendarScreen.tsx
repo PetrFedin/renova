@@ -5,7 +5,7 @@ import type { OsRole } from '@/constants/osSections';
 
 export function OsCalendarScreen({ role }: { role: OsRole }) {
   return (
-    <ProjectScopeLoader role={role} hint="Выберите объект — календарь покажет его график работ.">
+    <ProjectScopeLoader role={role}>
       <UnifiedScheduleView role={role} />
     </ProjectScopeLoader>
   );

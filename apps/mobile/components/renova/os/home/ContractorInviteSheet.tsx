@@ -8,7 +8,6 @@ type Props = {
   visible: boolean;
   userId: string;
   projectId: string;
-  projectName: string;
   linkedContractorId?: string | null;
   onClose: () => void;
   onLinked?: () => void;
@@ -18,7 +17,6 @@ export function ContractorInviteSheet({
   visible,
   userId,
   projectId,
-  projectName,
   linkedContractorId,
   onClose,
   onLinked,
@@ -31,7 +29,6 @@ export function ContractorInviteSheet({
             <ContractorInvitePanel
               userId={userId}
               projectId={projectId}
-              projectName={projectName}
               linkedContractorId={linkedContractorId}
               compact
               onLinked={() => {

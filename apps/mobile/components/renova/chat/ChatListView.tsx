@@ -11,18 +11,13 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { indexChats } from '@/lib/chatSearchCache';
 import { api, ChatThread } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
-import { useChatUnread, useInboxWsListener } from '@/lib/useChatUnread';
+import { useChatUnread, useChatInboxThreads, useInboxWsListener } from '@/lib/useChatUnread';
+import { markChatReadAndSync } from '@/lib/inboxSyncStore';
 import { useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
-import {
-  CHAT_FILTER_ALL,
-  filterChatThreads,
-  normalizeChatProjectFilter,
-  shouldGroupChatsByProject,
-  type ChatProjectFilter,
-} from '@/lib/chatProjectFilter';
+import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
-import { threadAwaitingReply, threadsAwaitingReplyCount, inboxAttentionTotal } from '@/lib/chatAttention';
+import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttention';
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 
 type Folder = 'active' | 'archive';
@@ -75,10 +70,12 @@ export function ChatListView() {
   const nav = useNavFromHere();
   const { user, activeProject, projects, loadProject } = useRenova();
   const { reload: reloadUnread, inboxWsConnected, count: globalUnread, failed: unreadFailed } = useChatUnread(user?.id, user?.role);
+  const { threads: storeThreads, reload: reloadStore } = useChatInboxThreads(user?.id, user?.role);
   const [folder, setFolder] = useState<Folder>('active');
   const [projectFilter, setProjectFilterState] = useState<ChatProjectFilter>(CHAT_FILTER_ALL);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
-  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [localThreads, setLocalThreads] = useState<ChatThread[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   const projectOptions = useMemo(
@@ -110,22 +107,30 @@ export function ChatListView() {
 
   const reload = useCallback(async () => {
     if (!user) return;
+    setLoadError(false);
     try {
-      let list: ChatThread[] = [];
       if (projects.length > 0) {
-        list = await api.chatInbox(user.id);
+        await reloadStore();
       } else if (activeProject) {
-        list = await api.listChats(user.id, activeProject.id, folder === 'archive');
+        const list = await api.listChats(user.id, activeProject.id, folder === 'archive');
+        setLocalThreads(sortChatThreads(list));
+        indexChats(list);
       }
-      const filtered = list.filter((t) => (folder === 'archive' ? t.is_archived : !t.is_archived));
-      const sorted = sortChatThreads(filtered);
-      setThreads(sorted);
-      indexChats(sorted);
       await reloadUnread();
     } catch {
-      setThreads([]);
+      setLoadError(true);
     }
-  }, [user?.id, activeProject?.id, folder, projects.length, reloadUnread]);
+  }, [user?.id, activeProject?.id, folder, projects.length, reloadUnread, reloadStore]);
+
+  const sourceThreads = projects.length > 0 ? storeThreads : localThreads;
+  const threads = useMemo(
+    () => sourceThreads.filter((t) => (folder === 'archive' ? t.is_archived : !t.is_archived)),
+    [sourceThreads, folder],
+  );
+
+  useEffect(() => {
+    if (threads.length) indexChats(threads);
+  }, [threads]);
 
   useFocusEffect(useCallback(() => { if (prefsLoaded) reload().catch(() => {}); }, [reload, prefsLoaded]));
   useInboxWsListener(useCallback(() => {
@@ -162,7 +167,10 @@ export function ChatListView() {
       Alert.alert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
       return;
     }
-    setThreads((prev) => prev.map((x) => (x.id === t.id ? { ...x, unread_count: 0 } : x)));
+    const unread = t.unread_count || 0;
+    if (unread > 0 && user) {
+      await markChatReadAndSync(user.id, t.project_id, t.id, user.role, unread).catch(() => {});
+    }
     if (activeProject?.id !== t.project_id) {
       await loadProject(t.project_id).catch(() => {});
     }
@@ -198,30 +206,31 @@ export function ChatListView() {
     );
   }
 
-  const totalUnread = displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
-  const attentionTotal = inboxAttentionTotal(displayThreads.filter((t) => !t.is_archived), user?.role);
+  const filterIsAll = projectFilter === CHAT_FILTER_ALL || (Array.isArray(projectFilter) && projectFilter.length === projectOptions.length);
+  const tabUnread = filterIsAll ? globalUnread : displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
   const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
-      {folder === 'active' && (attentionTotal > 0 || globalUnread > 0 || awaitingCount > 0) ? (
+      {folder === 'active' && (globalUnread > 0 || awaitingCount > 0) ? (
         <View style={s.unreadBanner}>
           <Text style={s.unreadBannerT}>
-            {attentionTotal > 0
-              ? `${attentionTotal} ${attentionTotal === 1 ? 'диалог требует' : 'диалогов требуют'} внимания`
-              : `${globalUnread} непрочитанных`}
-            {awaitingCount > 0 && totalUnread === 0 ? ' · ждут ответа' : ''}
+            {globalUnread > 0
+              ? `${globalUnread} ${globalUnread === 1 ? 'непрочитанное' : globalUnread < 5 ? 'непрочитанных' : 'непрочитанных'}`
+              : `${awaitingCount} ${awaitingCount === 1 ? 'диалог ждёт' : 'диалогов ждут'} ответа`}
           </Text>
         </View>
       ) : null}
-      {folder === 'active' && unreadFailed && totalUnread === 0 ? (
-        <Text style={s.unreadWarn}>Не удалось загрузить счётчик — обновите список</Text>
+      {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 ? (
+        <Pressable onPress={() => reload().catch(() => {})}>
+          <Text style={s.unreadWarn}>Не удалось обновить — нажмите, чтобы повторить</Text>
+        </Pressable>
       ) : null}
 
       <View style={s.toolbar}>
         <Pressable style={[s.tab, folder === 'active' && s.tabOn]} onPress={() => setFolder('active')}>
           <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>
-            Чаты{folder === 'active' && totalUnread ? ` · ${totalUnread}` : ''}
+            Чаты{folder === 'active' && tabUnread > 0 ? ` · ${tabUnread}` : ''}
           </Text>
         </Pressable>
         <Pressable style={[s.tab, folder === 'archive' && s.tabOn]} onPress={() => setFolder('archive')}>

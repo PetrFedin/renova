@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
-import { homeLayout, homeRowStyles, homeTypography } from '@/constants/homeTypography';
+import { homeRowStyles, homeTypography } from '@/constants/homeTypography';
 import { api, CalendarData } from '@/lib/api';
 import { calendarEventInRange, filterCalendarEventsForRole } from '@/lib/domain/calendarEvents';
 import { useOsNavFromHere } from '@/lib/navigation';
@@ -23,7 +23,15 @@ function eventLabel(count: number): string {
   return `${count} событий`;
 }
 
-export function WeekScheduleStrip({ userId, projectId, role }: { userId: string; projectId: string; role: OsRole }) {
+type Props = {
+  userId: string;
+  projectId: string;
+  role: OsRole;
+  /** Внутри HomeZone — без своего заголовка и обёртки zone */
+  embedded?: boolean;
+};
+
+export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) {
   const { pushTab } = useOsNavFromHere(role);
   const [events, setEvents] = useState<{ date: string; title: string }[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -35,7 +43,7 @@ export function WeekScheduleStrip({ userId, projectId, role }: { userId: string;
       const week = filterCalendarEventsForRole(c.events, role).filter((e) => calendarEventInRange(e, from, to));
       setEvents(week);
     }).catch(() => setEvents([]));
-  }, [userId, projectId]);
+  }, [userId, projectId, role]);
 
   const groups = useMemo(() => {
     const map = new Map<string, DayGroup>();
@@ -51,22 +59,27 @@ export function WeekScheduleStrip({ userId, projectId, role }: { userId: string;
   const openCalendar = (date?: string) =>
     pushTab('calendar', undefined, date ? { date } : undefined);
 
+  const wrapStyle = embedded ? undefined : homeRowStyles.zone;
+
   if (!groups.length) {
-    return (
-      <View style={homeRowStyles.zone}>
-        <View style={homeRowStyles.zoneHead}>
-          <Text style={homeTypography.zoneLabel}>План на неделю</Text>
-          <Pressable onPress={openCalendar} hitSlop={8} accessibilityRole="button">
-            <Text style={homeTypography.link}>Календарь →</Text>
-          </Pressable>
-        </View>
-        <Pressable style={homeRowStyles.linkRow} onPress={openCalendar} accessibilityRole="button">
+    const empty = (
+      <>
+        {!embedded ? (
+          <View style={homeRowStyles.zoneHead}>
+            <Text style={homeTypography.zoneLabel}>План на неделю</Text>
+            <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button">
+              <Text style={homeTypography.link}>Календарь →</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <Pressable style={homeRowStyles.linkRow} onPress={() => openCalendar()} accessibilityRole="button">
           <Text style={[homeTypography.emptyState, homeRowStyles.linkRowLeading]} numberOfLines={1}>
-            пусто
+            На этой неделе пусто
           </Text>
         </Pressable>
-      </View>
+      </>
     );
+    return embedded ? <View>{empty}</View> : <View style={wrapStyle}>{empty}</View>;
   }
 
   const totalEvents = events.length;
@@ -75,14 +88,16 @@ export function WeekScheduleStrip({ userId, projectId, role }: { userId: string;
       ? `${groups[0].label} · ${eventLabel(totalEvents)}`
       : eventLabel(totalEvents);
 
-  return (
-    <View style={homeRowStyles.zone}>
-      <View style={homeRowStyles.zoneHead}>
-        <Text style={homeTypography.zoneLabel}>План на неделю</Text>
-        <Pressable onPress={openCalendar} hitSlop={8} accessibilityRole="button">
-          <Text style={homeTypography.link}>Календарь →</Text>
-        </Pressable>
-      </View>
+  const body = (
+    <>
+      {!embedded ? (
+        <View style={homeRowStyles.zoneHead}>
+          <Text style={homeTypography.zoneLabel}>План на неделю</Text>
+          <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button">
+            <Text style={homeTypography.link}>Календарь →</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={s.summaryRow}>
         <Pressable
@@ -95,15 +110,17 @@ export function WeekScheduleStrip({ userId, projectId, role }: { userId: string;
             {summary} {expanded ? '▲' : '▼'}
           </Text>
         </Pressable>
-        <Pressable
-          style={s.calendarArrow}
-          onPress={openCalendar}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Открыть календарь"
-        >
-          <Text style={homeTypography.link}>→</Text>
-        </Pressable>
+        {!embedded ? (
+          <Pressable
+            style={s.calendarArrow}
+            onPress={() => openCalendar()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Открыть календарь"
+          >
+            <Text style={homeTypography.link}>→</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {expanded && groups.map((g) => (
@@ -117,8 +134,10 @@ export function WeekScheduleStrip({ userId, projectId, role }: { userId: string;
           </View>
         </Pressable>
       ))}
-    </View>
+    </>
   );
+
+  return embedded ? <View>{body}</View> : <View style={wrapStyle}>{body}</View>;
 }
 
 const s = StyleSheet.create({

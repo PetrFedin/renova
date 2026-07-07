@@ -39,18 +39,22 @@ export function ProjectOsHeader({
 
   return (
     <View style={s.header}>
-      <View style={s.titleRow}>
-        <Text style={[homeTypography.homeTitle, s.titleText]} numberOfLines={1}>{name}</Text>
-        {showCompleteBadge ? (
-          <View style={s.completeBadge}>
-            <StatusPill label="Завершён" tone="success" />
+      <View style={s.identityCard}>
+        <View style={s.titleRow}>
+          <Text style={s.projectName} numberOfLines={2}>{name}</Text>
+          {showCompleteBadge ? (
+            <View style={s.completeBadge}>
+              <StatusPill label="Завершён" tone="success" />
+            </View>
+          ) : null}
+        </View>
+        <Text style={s.projectMeta} numberOfLines={2}>{headerMeta.context}</Text>
+        {showHealth && healthScore != null && healthLevel && healthLabel ? (
+          <View style={s.healthWrap}>
+            <HomeHealthBadge score={healthScore} level={healthLevel} label={healthLabel} />
           </View>
         ) : null}
       </View>
-      <Text style={[homeTypography.homeSubtitle, s.metaLine]} numberOfLines={2}>{headerMeta.context}</Text>
-      {showHealth && healthScore != null && healthLevel && healthLabel ? (
-        <HomeHealthBadge score={healthScore} level={healthLevel} label={healthLabel} />
-      ) : null}
     </View>
   );
 }
@@ -192,12 +196,32 @@ export function CompactMaterialsList({ snap, role }: { snap: ProjectOsSnapshot; 
 }
 
 const s = StyleSheet.create({
-  /** Отступ до «Сделать сейчас» — не слипается с подзаголовком */
-  header: { marginBottom: homeLayout.sectionGap },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  titleText: { flex: 1, minWidth: 0 },
-  completeBadge: { flexShrink: 0 },
-  metaLine: { marginTop: 4 },
+  /** Карточка объекта — название отдельно от зон «Сделать сейчас» / KPI */
+  header: { marginBottom: homeLayout.sectionGap + 4 },
+  identityCard: {
+    ...card,
+    padding: 14,
+    gap: 6,
+    borderRadius: homeLayout.heroCardRadius,
+  },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  projectName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 26,
+    color: RenovaTheme.colors.text,
+    letterSpacing: -0.3,
+  },
+  projectMeta: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+    color: RenovaTheme.colors.textMuted,
+  },
+  completeBadge: { flexShrink: 0, marginTop: 2 },
+  healthWrap: { marginTop: 2 },
   section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, marginTop: 4 },
   risks: { marginBottom: homeLayout.innerGap },
   riskRow: { ...card, paddingVertical: 10, borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.warning },

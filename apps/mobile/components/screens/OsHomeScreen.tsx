@@ -156,12 +156,6 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       <ScrollView style={s.container} contentContainerStyle={s.content}>
         <ProjectEmptyState
           role={role}
-          title={projects.length === 0 ? 'Создайте первый объект' : 'Сменить объект'}
-          hint={
-            projects.length === 0
-              ? 'Создайте первый объект — смета, этапы и учёт расходов появятся автоматически.'
-              : 'Не удалось открыть объект с главной. Выберите другой из списка или создайте новый.'
-          }
           showCreate
           hideHomeButton
         />

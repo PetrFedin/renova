@@ -103,21 +103,9 @@ export function DockBarSettings({ role, embedded }: { role: OsRole; embedded?: b
   return (
     <View style={[s.wrap, embedded && s.embedded]}>
       {!embedded ? (
-        <>
-          <Text style={s.head}>Нижняя панель</Text>
-          <Text style={s.hint}>
-            Главная и Сообщения — обязательны. Выберите ещё 3 раздела: Объект, Ремонт, Бюджет или Календарь.
-          </Text>
-        </>
+        <Text style={s.head}>Нижняя панель</Text>
       ) : (
-        <>
-          <Text style={s.subHead}>Нижняя панель</Text>
-          <Text style={s.subHint}>
-            {role === 'customer'
-              ? 'Главная и Сообщения — обязательны при ручной настройке. В режиме «Подробно» панель фиксирована. Иначе dock меняется: настройка объекта или ремонт.'
-              : 'Главная и Сообщения — обязательны. Ещё 3 из: Объект, Ремонт, Бюджет, Календарь.'}
-          </Text>
-        </>
+        <Text style={s.subHead}>Нижняя панель</Text>
       )}
       <Text style={s.count}>
         Дополнительно: {optionalOn.length}/{DOCK_OPTIONAL_SLOTS} · всего {selected.length}/{DOCK_MAX}

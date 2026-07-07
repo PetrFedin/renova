@@ -60,15 +60,9 @@ export function HomeWidgetSettings({ role, embedded }: { role: OsRole; embedded?
   return (
     <View style={[s.wrap, embedded && s.embedded]}>
       {!embedded ? (
-        <>
-          <Text style={s.head}>Вид главной</Text>
-          <Text style={s.hint}>Пресет или отдельные блоки. Главное действие → показатели → «Ещё».</Text>
-        </>
+        <Text style={s.head}>Вид главной</Text>
       ) : (
-        <>
-          <Text style={s.subHead}>Вид главной</Text>
-          <Text style={s.subHint}>Пресет или отдельные блоки. Главное → показатели → «Ещё».</Text>
-        </>
+        <Text style={s.subHead}>Вид главной</Text>
       )}
 
       <View style={s.presets}>
@@ -78,7 +72,6 @@ export function HomeWidgetSettings({ role, embedded }: { role: OsRole; embedded?
           return (
             <Pressable key={id} style={[s.preset, on && s.presetOn]} onPress={() => onPreset(id)}>
               <Text style={[s.presetT, on && s.presetTOn]}>{p.label}</Text>
-              <Text style={s.presetH}>{p.hint}</Text>
             </Pressable>
           );
         })}
@@ -102,7 +95,6 @@ export function HomeWidgetSettings({ role, embedded }: { role: OsRole; embedded?
                 <Pressable key={item.id} style={[s.row, card, on && s.rowOn]} onPress={() => onToggle(item.id)}>
                   <View style={s.meta}>
                     <Text style={[s.label, on && s.labelOn]}>{item.label}</Text>
-                    {item.hint ? <Text style={s.sub}>{item.hint}</Text> : null}
                   </View>
                   <Text style={[s.check, on && s.checkOn]}>{on ? '✓' : '○'}</Text>
                 </Pressable>

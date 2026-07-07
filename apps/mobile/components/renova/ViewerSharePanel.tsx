@@ -1,9 +1,8 @@
-/** Заказчик: гостевой доступ (read-only) — без отдельной роли */
+/** Заказчик: гостевой доступ (только просмотр) */
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
-import { formMetaText } from '@/constants/formTypography';
 import { api } from '@/lib/api';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
 
@@ -32,7 +31,7 @@ export function ViewerSharePanel({
     const trimmedPhone = normalizePhoneInput(phone);
     const code = profileCode.trim().toUpperCase();
     if (!trimmedPhone && !code) {
-      Alert.alert('Контакт', 'Введите телефон или код профиля гостя');
+      Alert.alert('Контакт', 'Введите телефон или код профиля');
       return;
     }
     setBusy(true);
@@ -44,15 +43,8 @@ export function ViewerSharePanel({
       setPhone('');
       setProfileCode('');
       load();
-      Alert.alert('Гость добавлен', 'Доступ только для просмотра объекта.');
     } catch (e: unknown) {
-      Alert.alert(
-        'Не удалось добавить',
-        apiErrorMessage(
-          e,
-          'Пользователь должен войти в Renova. Demo-гость: +70000000003 или код профиля из «Профиль».',
-        ),
-      );
+      Alert.alert('Не удалось добавить', apiErrorMessage(e, 'Пользователь должен быть в Renova'));
     } finally {
       setBusy(false);
     }
@@ -60,68 +52,62 @@ export function ViewerSharePanel({
 
   return (
     <View style={[s.box, embedded && s.embedded]}>
-      {!embedded ? (
-        <>
-          <Text style={s.head}>Гостевой доступ</Text>
-          <Text style={formMetaText.caption}>Только просмотр — семья или дизайнер видят объект без редактирования</Text>
-        </>
-      ) : (
-        <>
-          <Text style={s.subHead}>Гостевой доступ</Text>
-          <Text style={[formMetaText.caption, s.subHintSpaced]}>Только просмотр — без редактирования</Text>
-        </>
-      )}
-
       {items.length ? (
-        items.map((v) => (
-          <View key={v.user_id} style={s.row}>
-            <View style={s.meta}>
-              <Text style={s.name}>{v.full_name || 'Гость'}</Text>
-              <Text style={formMetaText.caption}>{v.phone}</Text>
+        <View style={s.list}>
+          {items.map((v) => (
+            <View key={v.user_id} style={s.row}>
+              <View style={s.meta}>
+                <Text style={s.name}>{v.full_name || 'Гость'}</Text>
+                <Text style={s.phone}>{v.phone}</Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Удалить гостя"
+                style={s.remove}
+                onPress={async () => {
+                  try {
+                    await api.removeViewer(userId, projectId, v.user_id);
+                    load();
+                  } catch (e: unknown) {
+                    Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось удалить'));
+                  }
+                }}
+              >
+                <Text style={s.removeT}>✕</Text>
+              </Pressable>
             </View>
-            <Pressable
-              accessibilityLabel="Удалить гостя"
-              style={s.remove}
-              onPress={async () => {
-                try {
-                  await api.removeViewer(userId, projectId, v.user_id);
-                  load();
-                } catch (e: unknown) {
-                  Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось удалить гостя'));
-                }
-              }}
-            >
-              <Text style={s.removeT}>✕</Text>
-            </Pressable>
-          </View>
-        ))
+          ))}
+        </View>
       ) : (
-        <Text style={formMetaText.caption}>Гостей пока нет</Text>
+        <Text style={s.empty}>Нет гостей</Text>
       )}
 
-      <Text style={[formMetaText.caption, s.fieldHint]}>Demo: +70000000003 · или код профиля из «Профиль»</Text>
-      <TextInput
-        style={s.inp}
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="Телефон +7…"
-        keyboardType="phone-pad"
-        editable={!busy}
-      />
-      <TextInput
-        style={s.inp}
-        value={profileCode}
-        onChangeText={setProfileCode}
-        placeholder="Код профиля (6 символов)"
-        autoCapitalize="characters"
-        editable={!busy}
-      />
-      <PrimaryButton
-        title={busy ? 'Добавление…' : 'Добавить гостя'}
-        variant="outline"
-        disabled={busy}
-        onPress={addGuest}
-      />
+      <View style={s.addBlock}>
+        <Text style={s.addLabel}>Добавить гостя</Text>
+        <TextInput
+          style={s.inp}
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="Телефон"
+          keyboardType="phone-pad"
+          editable={!busy}
+        />
+        <Text style={s.or}>или</Text>
+        <TextInput
+          style={s.inp}
+          value={profileCode}
+          onChangeText={setProfileCode}
+          placeholder="Код профиля"
+          autoCapitalize="characters"
+          maxLength={6}
+          editable={!busy}
+        />
+        <PrimaryButton
+          title={busy ? '…' : 'Добавить'}
+          variant="outline"
+          disabled={busy}
+          onPress={addGuest}
+        />
+      </View>
       {busy ? <ActivityIndicator style={s.loader} color={RenovaTheme.colors.primary} /> : null}
     </View>
   );
@@ -142,20 +128,22 @@ const s = StyleSheet.create({
     borderWidth: 0,
     backgroundColor: 'transparent',
   },
-  head: { fontWeight: '800', marginBottom: 4, fontSize: 15 },
-  subHead: { fontWeight: '700', marginBottom: 2, fontSize: 14 },
-  subHintSpaced: { marginBottom: 8 },
-  fieldHint: { marginTop: 8, marginBottom: 4 },
+  list: { gap: 0, marginBottom: 12 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: RenovaTheme.colors.border,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: RenovaTheme.colors.borderLight,
   },
   meta: { flex: 1, paddingRight: 8 },
-  name: { fontWeight: '600', fontSize: 14 },
+  name: { fontWeight: '600', fontSize: 15, color: RenovaTheme.colors.text },
+  phone: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  empty: { fontSize: 14, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
+  addBlock: { gap: 8 },
+  addLabel: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
+  or: { fontSize: 12, color: RenovaTheme.colors.textSubtle, textAlign: 'center' },
   remove: {
     width: 32,
     height: 32,
@@ -169,8 +157,8 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
     borderRadius: RenovaTheme.radius.md,
-    padding: 10,
-    marginBottom: 8,
+    padding: 12,
+    fontSize: 15,
     backgroundColor: RenovaTheme.colors.surface,
   },
   loader: { marginTop: 6 },

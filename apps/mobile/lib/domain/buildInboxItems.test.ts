@@ -1,4 +1,4 @@
-import { inboxTotal, inboxLinkItems, filterInboxForHero, inboxMenuBadge, type InboxItem } from './buildInboxItems';
+import { inboxTotal, inboxAttentionBadge, inboxTaskBadge, inboxLinkItems, filterInboxForHero, type InboxItem } from './buildInboxItems';
 
 let ok = true;
 function assert(cond: boolean, msg: string) {
@@ -12,8 +12,9 @@ const items: InboxItem[] = [
 ];
 
 assert(inboxTotal(items, 0) === 3, 'total counts inbox rows');
-assert(inboxMenuBadge(items) === 3, 'menu badge counts all inbox rows including chat');
-assert(inboxMenuBadge([{ id: 'chat', kind: 'chat', title: 'Чат', href: '/chat', priority: 90 }]) === 1, 'chat-only menu badge');
+assert(inboxAttentionBadge(items, 2) === 4, 'attention badge = tasks + unread messages');
+assert(inboxTaskBadge(items) === 2, 'task badge excludes chat row');
+assert(inboxAttentionBadge([{ id: 'chat', kind: 'chat', title: 'Чат', href: '/chat', priority: 90 }], 3) === 3, 'chat-only attention');
 assert(inboxLinkItems(items, 'payment').length === 1, 'payment hero hides payment rows from link');
 assert(inboxLinkItems(items, 'work').length === 3, 'non-payment hero keeps all rows');
 assert(inboxTotal([], 4) === 4, 'chat unread when no chat item');

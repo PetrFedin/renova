@@ -1,4 +1,4 @@
-/** Ожидание активного объекта — вместо повторного «выберите объект» */
+/** Ожидание активного объекта — без лишних подсказок */
 import type { ReactNode } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
@@ -9,10 +9,9 @@ import type { OsRole } from '@/constants/osSections';
 type Props = {
   role: OsRole;
   children: ReactNode;
-  hint?: string;
 };
 
-export function ProjectScopeLoader({ role, children, hint }: Props) {
+export function ProjectScopeLoader({ role, children }: Props) {
   const scope = useProjectScope();
 
   if (scope.status === 'loading') {
@@ -25,25 +24,11 @@ export function ProjectScopeLoader({ role, children, hint }: Props) {
   }
 
   if (scope.status === 'empty') {
-    return (
-      <ProjectEmptyState
-        role={role}
-        title="Создайте первый объект"
-        hint="Создайте объект — смета, этапы и учёт расходов появятся автоматически."
-        hideHomeButton
-      />
-    );
+    return <ProjectEmptyState role={role} title="Создайте первый объект" hideHomeButton />;
   }
 
   if (scope.status === 'pick') {
-    return (
-      <ProjectEmptyState
-        role={role}
-        title="Сменить объект"
-        hint={hint ?? 'Объект с главной недоступен. Выберите другой из списка или создайте новый.'}
-        hideHomeButton
-      />
-    );
+    return <ProjectEmptyState role={role} title="Сменить объект" hideHomeButton />;
   }
 
   if (scope.status === 'no-user') return null;

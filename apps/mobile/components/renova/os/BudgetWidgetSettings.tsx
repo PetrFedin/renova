@@ -28,15 +28,9 @@ export function BudgetWidgetSettings({ role, embedded }: { role: OsRole; embedde
   return (
     <View style={[s.wrap, embedded && s.embedded]}>
       {!embedded ? (
-        <>
-          <Text style={s.head}>Виджеты бюджета</Text>
-          <Text style={s.hint}>Блоки на вкладке «Бюджет → Сводка».</Text>
-        </>
+        <Text style={s.head}>Виджеты бюджета</Text>
       ) : (
-        <>
-          <Text style={s.subHead}>Виджеты бюджета</Text>
-          <Text style={s.subHint}>Блоки на вкладке «Бюджет → Сводка».</Text>
-        </>
+        <Text style={s.subHead}>Виджеты бюджета</Text>
       )}
       {embedded && !expanded ? (
         <Pressable onPress={() => setExpanded(true)} style={s.expand}>
@@ -49,7 +43,6 @@ export function BudgetWidgetSettings({ role, embedded }: { role: OsRole; embedde
           <Pressable key={w.id} style={[s.row, on && s.rowOn]} onPress={() => onToggle(w.id)}>
             <View style={{ flex: 1 }}>
               <Text style={s.label}>{w.label}</Text>
-              {w.hint ? <Text style={s.sub}>{w.hint}</Text> : null}
             </View>
             <Text style={[s.check, on && s.checkOn]}>{on ? '✓' : '○'}</Text>
           </Pressable>

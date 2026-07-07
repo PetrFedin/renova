@@ -158,7 +158,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   };
 
   if (!user || !activeProject) {
-    return <ProjectEmptyState role={role} hint="Выберите объект, чтобы открыть календарь." />;
+    return <ProjectEmptyState role={role} />;
   }
   if (!cal) {
     return <View style={s.center}><Text>Загрузка календаря…</Text></View>;

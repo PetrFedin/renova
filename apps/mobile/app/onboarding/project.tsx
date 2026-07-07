@@ -8,7 +8,6 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { osEntryRoute } from '@/lib/osEntry';
 import type { OsRole } from '@/constants/osSections';
-import { formMetaText } from '@/constants/formTypography';
 
 export default function ProjectPickScreen() {
   const { user, loadProject } = useRenova();
@@ -25,13 +24,8 @@ export default function ProjectPickScreen() {
     <View style={s.wrap}>
       <Text style={s.logo}>Renova</Text>
       <Text style={s.title}>Выберите объект</Text>
-      <Text style={formMetaText.caption}>
-        Откройте существующий проект или создайте новый — без автоподстановки демо.
-      </Text>
       <ProjectEmptyState
         role={role}
-        title="Ваши объекты"
-        hint="Нажмите карточку — откроется главная выбранного объекта."
         autoPick={false}
         hideHomeButton
         onSelectProject={enterProject}

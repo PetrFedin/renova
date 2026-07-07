@@ -7,7 +7,7 @@ import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
 import { BudgetThresholdPicker } from '@/components/renova/BudgetThresholdPicker';
 import { ContractorInvitePanel } from '@/components/renova/ContractorInvitePanel';
 import { ViewerSharePanel } from '@/components/renova/ViewerSharePanel';
-import { RoleSwitchButton } from '@/components/renova/RoleSwitchButton';
+import { RoleSwitchButton, roleDisplayLabel } from '@/components/renova/RoleSwitchButton';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { ProfileHeader } from './ProfileHeader';
@@ -17,8 +17,8 @@ import { profileScreenStyles as ps } from './profileScreenStyles';
 import { pushOsNav } from '@/lib/pushOsNav';
 
 const EXTRA_BASIC = [
-  { label: 'Архив', desc: 'Лента событий', href: '/activity' },
-  { label: 'Помощь', desc: 'Гид по ремонту', href: '/guide' },
+  { label: 'Архив', href: '/activity' },
+  { label: 'Помощь', href: '/guide' },
 ];
 
 /** После подключения исполнителя — архив и помощь; согласования через «Входящие» */
@@ -31,44 +31,45 @@ export function CustomerProfileScreen() {
   const showAccess = Boolean(user && activeProject && !readOnly);
   const hasContractor = Boolean(activeProject?.contractor_id);
   const extraItems = hasContractor ? [...EXTRA_BASIC, ...EXTRA_WITH_CONTRACTOR] : EXTRA_BASIC;
+  const roleLabel = roleDisplayLabel(user?.role);
 
   return (
     <ScrollView style={ps.scroll} contentContainerStyle={ps.content}>
+      <RoleSwitchButton />
+
       <ProfileHeader
-        title="Профиль"
+        title="Заказчик"
         name={user?.full_name || user?.phone}
         profileCode={user?.profile_code}
       />
 
-      <ProfileSection
-        title="Аккаунт"
-        description="Смена объекта — через выбор в шапке или «Все проекты» на главной при нескольких объектах."
-        bare
-      >
-        <RoleSwitchButton />
+      <ProfileSection title="Аккаунт" bare>
+        <Text style={ps.userMeta}>Сейчас: {roleLabel}</Text>
       </ProfileSection>
 
       {showAccess ? (
-        <ProfileSection
-          title="Доступ к объекту"
-          description="Гости видят объект без редактирования. Исполнители — из базы Renova."
-          highlight={focus === 'contractor'}
-        >
-          <ViewerSharePanel userId={user!.id} projectId={activeProject!.id} embedded />
-          {user ? (
-            <ContractorInvitePanel
-              userId={user.id}
-              projectId={activeProject!.id}
-              projectName={activeProject!.name}
-              linkedContractorId={activeProject!.contractor_id}
-              embedded
-              onLinked={() => loadProject(activeProject!.id).catch(() => {})}
-            />
-          ) : null}
-        </ProfileSection>
+        <>
+          <Text style={ps.accessObject} numberOfLines={2}>{activeProject!.name}</Text>
+
+          <ProfileSection title="Исполнитель" highlight={focus === 'contractor'}>
+            {user ? (
+              <ContractorInvitePanel
+                userId={user.id}
+                projectId={activeProject!.id}
+                linkedContractorId={activeProject!.contractor_id}
+                embedded
+                onLinked={() => loadProject(activeProject!.id).catch(() => {})}
+              />
+            ) : null}
+          </ProfileSection>
+
+          <ProfileSection title="Гости">
+            <ViewerSharePanel userId={user!.id} projectId={activeProject!.id} embedded />
+          </ProfileSection>
+        </>
       ) : null}
 
-      <ProfileSection title="Персонализация" description="Три пресета главной. Детальные блоки — по ссылке «Настроить» внутри раздела.">
+      <ProfileSection title="Персонализация">
         <HomeWidgetSettings role="customer" embedded />
         <BudgetWidgetSettings role="customer" embedded />
         <DockBarSettings role="customer" embedded />
@@ -76,19 +77,19 @@ export function CustomerProfileScreen() {
       </ProfileSection>
 
       {user ? (
-        <ProfileSection title="Уведомления" description="Сводка по типам и отложение напоминаний.">
+        <ProfileSection title="Уведомления">
           <ProfileNotifications userId={user.id} />
         </ProfileSection>
       ) : null}
 
-      <ProfileSection title="Проект" description="Документы и новый объект. Расход — кнопка «+» на любом экране.">
+      <ProfileSection title="Проект">
         <View style={ps.actionGap}>
           <PrimaryButton title="Документы проекта" variant="outline" onPress={() => pushOsNav('/documents', pathname)} />
           <PrimaryButton title="Новый проект" onPress={() => pushOsNav('/wizard/type', pathname)} />
         </View>
       </ProfileSection>
 
-      <ProfileSection title="Ещё" description={hasContractor ? 'Архив и помощь. Согласования — во «Входящих».' : 'Архив и помощь. Согласования — после подключения исполнителя (входящие).'}>
+      <ProfileSection title="Ещё">
         <ProfileExtraLinks items={extraItems} returnTo="/(customer)/(tabs)/profile" />
       </ProfileSection>
     </ScrollView>

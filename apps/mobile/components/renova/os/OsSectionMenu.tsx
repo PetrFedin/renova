@@ -1,4 +1,4 @@
-/** Панель разделов OS — иконка справа в шапке + сервисные ссылки */
+/** Панель разделов OS — badge сообщений = dock, badge задач = «Входящие» */
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,9 +18,18 @@ const UTIL_LINKS: { id: string; label: string; href: string; icon: 'time-outline
 
 type Props = { role: OsRole; iconOnly?: boolean };
 
+function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' | 'warning' }) {
+  if (count <= 0) return null;
+  return (
+    <View style={[s.miniBadge, tone === 'warning' && s.miniBadgeWarn]}>
+      <Text style={s.miniBadgeT}>{count > 99 ? '99+' : count}</Text>
+    </View>
+  );
+}
+
 export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const topInset = useTopInset();
-  const { badge: inboxCount } = useInboxTasks(role);
+  const { taskBadge, chatUnread } = useInboxTasks(role);
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
@@ -28,7 +37,8 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const currentId = resolveSectionId(pathname);
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
 
-  const totalBadge = inboxCount;
+  /** На иконке меню — только непрочитанные сообщения (как dock «Сообщения») */
+  const menuIconBadge = chatUnread;
 
   const isActive = (sec: (typeof sections)[0]) => {
     if (sec.id === 'chat') return seg === 'chat';
@@ -48,7 +58,11 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
         style={[s.btn, iconOnly && s.btnIcon]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
-        accessibilityLabel="Разделы проекта"
+        accessibilityLabel={
+          menuIconBadge > 0
+            ? `Разделы проекта, ${menuIconBadge} непрочитанных сообщений`
+            : 'Разделы проекта'
+        }
         hitSlop={8}
       >
         <Ionicons
@@ -56,8 +70,8 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
           size={22}
           color={RenovaTheme.colors.text}
         />
-        {totalBadge > 0 ? (
-          <View style={s.badge}><Text style={s.badgeT}>{totalBadge > 99 ? '99+' : totalBadge}</Text></View>
+        {menuIconBadge > 0 ? (
+          <View style={s.badge}><Text style={s.badgeT}>{menuIconBadge > 99 ? '99+' : menuIconBadge}</Text></View>
         ) : null}
       </Pressable>
 
@@ -72,6 +86,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                   <Pressable key={sec.id} style={[s.item, active && s.itemOn]} onPress={() => go(sec)}>
                     <TabIcon name={sec.icon} color={active ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted} size={18} />
                     <Text style={[s.itemT, active && s.itemTOn]}>{sec.label}</Text>
+                    {sec.id === 'chat' ? <MenuBadge count={chatUnread} tone="danger" /> : null}
                     {active ? <Text style={s.check}>✓</Text> : null}
                   </Pressable>
                 );
@@ -88,9 +103,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                 >
                   <Ionicons name={link.icon} size={18} color={RenovaTheme.colors.textMuted} />
                   <Text style={s.itemT}>{link.label}</Text>
-                  {link.id === 'inbox' && inboxCount > 0 ? (
-                    <View style={s.miniBadge}><Text style={s.miniBadgeT}>{inboxCount > 99 ? '99+' : inboxCount}</Text></View>
-                  ) : null}
+                  {link.id === 'inbox' ? <MenuBadge count={taskBadge} tone="warning" /> : null}
                 </Pressable>
               ))}
             </View>
@@ -150,5 +163,6 @@ const s = StyleSheet.create({
   check: { fontSize: 14, color: RenovaTheme.colors.accent, fontWeight: '700' },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
   miniBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: RenovaTheme.colors.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  miniBadgeWarn: { backgroundColor: RenovaTheme.colors.warning },
   miniBadgeT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
 });

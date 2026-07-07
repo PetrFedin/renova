@@ -34,7 +34,7 @@ export async function buildInboxItems(opts: {
       id: 'chat',
       kind: 'chat',
       title: 'Непрочитанные сообщения',
-      sub: `${chatUnread} в чатах`,
+      sub: `${chatUnread} непрочитанных`,
       href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
       priority: 90,
     });
@@ -207,7 +207,17 @@ export function inboxTotal(items: InboxItem[], chatUnread: number): number {
   return rows + chatUnread;
 }
 
-/** Badge «Входящие» — все строки, включая чат (единый счётчик с экраном /inbox) */
+/** Badge задач «Входящие» — без чата (оплаты, приёмка и т.д.) */
+export function inboxTaskBadge(items: InboxItem[]): number {
+  return items.filter((i) => i.kind !== 'chat').length;
+}
+
+/** Badge «Входящие» — задачи + каждое непрочитанное сообщение */
+export function inboxAttentionBadge(items: InboxItem[], chatUnread: number): number {
+  return inboxTaskBadge(items) + Math.max(0, chatUnread);
+}
+
+/** @deprecated используйте inboxAttentionBadge */
 export function inboxMenuBadge(items: InboxItem[]): number {
   return items.length;
 }

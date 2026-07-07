@@ -11,6 +11,16 @@ import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import type { OsRole } from '@/constants/osSections';
 
+function badgeLabel(badge: number, chatUnread: number): string {
+  if (chatUnread > 0 && badge === chatUnread) {
+    return chatUnread === 1 ? 'непрочитанное' : 'непрочитанных';
+  }
+  if (chatUnread > 0) {
+    return badge === 1 ? 'дело требует внимания' : 'дел требуют внимания';
+  }
+  return badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач';
+}
+
 function InboxRow({ item, role, onPress }: { item: InboxItem; role: OsRole; onPress: () => void }) {
   return (
     <Pressable style={s.row} onPress={onPress}>
@@ -25,13 +35,13 @@ function InboxRow({ item, role, onPress }: { item: InboxItem; role: OsRole; onPr
 
 export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: { role: OsRole; returnTo?: string; heroKind?: string }) {
   const { user, activeProject, readOnly } = useRenova();
-  const { items, badge } = useInboxTasks(role);
+  const { items, badge, chatUnread } = useInboxTasks(role);
 
   if (!user || !activeProject) {
     return (
       <>
         <BackHeader title="Входящие" returnTo={returnTo} />
-        <ProjectEmptyState role={role} hint="Выберите объект для просмотра задач." />
+        <ProjectEmptyState role={role} />
       </>
     );
   }
@@ -48,7 +58,7 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
     <>
       <BackHeader
         title="Входящие"
-        subtitle={readOnly ? 'Только просмотр — действия недоступны' : badge > 0 ? `${badge} ${badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач'}` : 'Все задачи проекта'}
+        subtitle={readOnly ? 'Только просмотр — действия недоступны' : badge > 0 ? `${badge} ${badgeLabel(badge, chatUnread)}` : 'Все задачи проекта'}
         returnTo={returnTo}
       />
       <ReadOnlyBanner />

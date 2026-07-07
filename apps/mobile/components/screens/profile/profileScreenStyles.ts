@@ -9,11 +9,21 @@ export const profileScreenStyles = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.background,
   },
   content: screenLayout.contentStyle,
+  headerBlock: {
+    marginBottom: 4,
+  },
   pageTitle: {
     fontSize: 24,
     fontWeight: '800',
     color: RenovaTheme.colors.primary,
     marginBottom: 4,
+  },
+  roleSubtitle: {
+    fontSize: 14,
+    color: RenovaTheme.colors.textMuted,
+    lineHeight: 20,
+    marginTop: 2,
+    marginBottom: 6,
   },
   userName: {
     fontSize: 17,
@@ -25,6 +35,13 @@ export const profileScreenStyles = StyleSheet.create({
     fontSize: 14,
     color: RenovaTheme.colors.textMuted,
     marginTop: 4,
+  },
+  accessObject: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: RenovaTheme.colors.text,
+    marginTop: 16,
+    marginBottom: 4,
   },
   badge: {
     marginTop: 8,

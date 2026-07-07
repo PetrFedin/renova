@@ -21,7 +21,7 @@ import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, tabsPrefix, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
-import { HomeCompletionStrip } from '@/components/renova/os/home/HomeCompletionStrip';
+import { HomeCompletionLinks } from '@/components/renova/os/home/HomeCompletionStrip';
 import { roleScopeLabel } from '@/lib/domain/roleCapabilities';
 import { resolveProjectPhase, type ProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
 import { homeTypography } from '@/constants/homeTypography';
@@ -66,13 +66,18 @@ export function HomeScreenBody({
   showKpi,
   isVisible,
 }: HomeScreenBodyProps) {
-  const { pushNav, pushScreen, returnTo } = useOsNavFromHere(role);
+  const { pushNav, pushScreen, pushTab, returnTo } = useOsNavFromHere(role);
   const rolePrefix = role === 'contractor' ? '/(contractor)/(tabs)' : '/(customer)/(tabs)';
   const phase = resolveProjectPhase(snap);
   const inboxRole = readOnly ? 'customer' : role;
   const kpiDetailHref = budgetTabRoute(role, 'summary', { period: 'month', focus: 'fact' });
   const showKpiHeaderLink = phase !== 'closing';
   const moneyZoneTitle = role === 'customer' ? 'Деньги' : 'Сводка';
+
+  const showMore = moreHasContent || phase === 'complete';
+  const moreSectionSummary = phase === 'complete'
+    ? (moreSummary ? `отчёты · ${moreSummary}` : 'отчёты · экспорт')
+    : moreSummary;
 
   return (
     <>
@@ -85,7 +90,9 @@ export function HomeScreenBody({
         healthLevel={snap.healthLevel}
         healthLabel={snap.healthLabel}
       />
-      <Text style={homeTypography.homeSubtitle}>{roleScopeLabel({ role, readOnly })}</Text>
+      {readOnly ? (
+        <Text style={homeTypography.homeSubtitle}>{roleScopeLabel({ role, readOnly })}</Text>
+      ) : null}
 
       {role === 'customer' && !readOnly && (
         <>
@@ -94,19 +101,15 @@ export function HomeScreenBody({
         </>
       )}
 
-      {role === 'contractor' && (
-        <HomeLinkRow title="+ Заявки и новый объект" onPress={() => pushScreen('/job-leads')} />
-      )}
-
-      {phase === 'complete' && (
-        <HomeCompletionStrip role={role} userId={user.id} projectId={activeProject.id} />
+      {role === 'contractor' && phase === 'active' && (
+        <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
       )}
 
       {/* 2. Главное действие */}
       {role === 'customer' && snap.quality.awaitingAcceptance > 0 ? (
         <HomeAcceptanceBanner count={snap.quality.awaitingAcceptance} role={role} />
       ) : null}
-      {showAttention && (
+      {showAttention && phase !== 'complete' && (
         <HomeActionHero
           role={inboxRole}
           snap={snap}
@@ -135,16 +138,23 @@ export function HomeScreenBody({
         </HomeZone>
       )}
 
-      {/* 5. События */}
+      {/* 5. План на неделю */}
       {isVisible('schedule') && (
-        <HomeZone title="События">
-          <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} />
+        <HomeZone
+          title="План на неделю"
+          linkLabel="Календарь →"
+          onLinkPress={() => pushTab('calendar')}
+        >
+          <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
         </HomeZone>
       )}
 
-      {/* Дополнительно — свёрнуто */}
-      {moreHasContent && (
-        <HomeMoreSection summary={moreSummary}>
+      {/* Дополнительно — свёрнуто; для завершённого проекта отчёты тоже здесь */}
+      {showMore && (
+        <HomeMoreSection summary={moreSectionSummary}>
+          {phase === 'complete' && (
+            <HomeCompletionLinks role={role} userId={user.id} projectId={activeProject.id} />
+          )}
           {isVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} returnTo={returnTo} />}
           {isVisible('sites') && (
             <ProjectSitesPanel

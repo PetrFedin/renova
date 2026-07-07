@@ -162,7 +162,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
           </Pressable>
           <Text style={s.title}>Черновик</Text>
         </View>
-        <ProjectEmptyState role={role} hint="Выберите объект — черновик привязан к проекту." />
+        <ProjectEmptyState role={role} />
       </View>
     );
   }

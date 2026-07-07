@@ -1,5 +1,5 @@
-/** Единый store: chat attention + inbox задачи — один reload и одно WS-подключение */
-import { api, type ProjectDetail, type UserRole } from '@/lib/api';
+/** Единый store: chat threads, unread, inbox задачи — один reload и одно WS */
+import { api, type ChatThread, type ProjectDetail, type UserRole } from '@/lib/api';
 import { buildInboxItems, type InboxItem } from '@/lib/domain/buildInboxItems';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
@@ -13,6 +13,7 @@ const listeners = new Set<Listener>();
 let chatCount = 0;
 let chatFailed = false;
 let inboxWsConnected = false;
+let chatThreads: ChatThread[] = [];
 let inboxItems: InboxItem[] = [];
 let inboxBadge = 0;
 
@@ -40,6 +41,19 @@ function notify() {
   });
 }
 
+function sumChatUnread(threads: ChatThread[]): number {
+  return threads
+    .filter((t) => !t.is_archived)
+    .reduce((sum, t) => sum + (t.unread_count || 0), 0);
+}
+
+function applyLocalThreadUnread(threadId: string, unread = 0) {
+  chatThreads = chatThreads.map((t) =>
+    t.id === threadId ? { ...t, unread_count: unread } : t,
+  );
+  chatCount = sumChatUnread(chatThreads);
+}
+
 export function getChatUnreadSnapshot() {
   return { count: chatCount, failed: chatFailed, inboxWsConnected };
 }
@@ -54,6 +68,10 @@ export function getChatFailedSnapshot() {
 
 export function getInboxWsConnectedSnapshot() {
   return inboxWsConnected;
+}
+
+export function getChatInboxThreadsSnapshot(): ChatThread[] {
+  return chatThreads;
 }
 
 export function getInboxTasksSnapshot() {
@@ -87,13 +105,18 @@ function notifyIfChanged(prev: {
   notify();
 }
 
-
-/** Сумма непрочитанных — для badge «непрочитанных» */
-async function loadChatUnreadTotal(userId: string): Promise<number> {
-  const inbox = await api.chatInbox(userId);
-  return inbox
-    .filter((t) => !t.is_archived)
-    .reduce((sum, t) => sum + (t.unread_count || 0), 0);
+async function loadChatState(userId: string): Promise<{ threads: ChatThread[]; unread: number; ok: boolean }> {
+  try {
+    const threads = await api.chatInbox(userId);
+    return { threads, unread: sumChatUnread(threads), ok: true };
+  } catch {
+    try {
+      const { count } = await api.chatUnreadTotal(userId);
+      return { threads: chatThreads, unread: count, ok: true };
+    } catch {
+      return { threads: chatThreads, unread: chatCount, ok: false };
+    }
+  }
 }
 
 let cachedFullSync: {
@@ -128,24 +151,25 @@ function mergeReloadOpts(opts: {
     userRole: opts.userRole ?? cachedFullSync.userRole,
     projectId: cachedFullSync.projectId,
     osRole: cachedFullSync.osRole,
-    project: cachedFullSync.project,
+    project: opts.project ?? cachedFullSync.project,
   };
 }
 
 /** После markChatRead — обновить chat badge и строку «Входящие» */
 function refreshInboxChatRow(nextChat: number) {
-  if (!inboxItems.length) return;
+  if (!inboxItems.length && nextChat <= 0) return;
   if (nextChat <= 0) {
     inboxItems = inboxItems.filter((i) => i.kind !== 'chat');
-  } else {
+  } else if (inboxItems.some((i) => i.kind === 'chat')) {
     inboxItems = inboxItems.map((i) =>
-      i.kind === 'chat' ? { ...i, sub: `${nextChat} в чатах` } : i,
+      i.kind === 'chat' ? { ...i, sub: `${nextChat} непрочитанных` } : i,
     );
   }
-  inboxBadge = inboxItems.length;
+  const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
+  inboxBadge = taskRows + nextChat;
 }
 
-/** Прочитать тред: optimistic badge + API + полный resync */
+/** Прочитать тред: optimistic local + API + полный resync */
 export async function markChatReadAndSync(
   userId: string,
   projectId: string,
@@ -161,17 +185,17 @@ export async function markChatReadAndSync(
     inboxWsConnected,
   };
 
-  if (knownUnread > 0) {
-    chatCount = Math.max(0, chatCount - knownUnread);
-    refreshInboxChatRow(chatCount);
-    notifyIfChanged(prev);
-  }
+  applyLocalThreadUnread(threadId, 0);
+  refreshInboxChatRow(chatCount);
+  notifyIfChanged(prev);
 
   try {
     await api.markChatRead(userId, projectId, threadId);
+    chatFailed = false;
   } catch {
-    /* resync ниже подтянет актуальное состояние */
+    /* resync подтянет актуальное */
   }
+
   await reloadInboxSync(
     {
       userId,
@@ -217,6 +241,7 @@ export async function reloadInboxSync(
     if (!merged.userId) {
       chatCount = 0;
       chatFailed = false;
+      chatThreads = [];
       inboxItems = [];
       inboxBadge = 0;
       cachedFullSync = null;
@@ -224,31 +249,37 @@ export async function reloadInboxSync(
       return;
     }
 
-    let nextChat = 0;
-    let chatOk = false;
-    try {
-      nextChat = await loadChatUnreadTotal(merged.userId);
-      chatOk = true;
-    } catch {
-      chatOk = false;
+    const chatState = await loadChatState(merged.userId);
+    if (chatState.ok) {
+      chatThreads = chatState.threads;
+      chatCount = chatState.unread;
+      chatFailed = false;
+    } else {
+      chatCount = chatState.unread;
+      chatFailed = chatThreads.length === 0 && chatCount === 0;
     }
-    chatCount = nextChat;
-    chatFailed = !chatOk && nextChat === 0;
 
-    if (merged.projectId && merged.osRole) {
+    const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
+    const syncOsRole = merged.osRole ?? cachedFullSync?.osRole;
+
+    if (syncProjectId && syncOsRole) {
       try {
         inboxItems = await buildInboxItems({
           userId: merged.userId,
-          projectId: merged.projectId,
-          role: merged.osRole,
-          chatUnread: nextChat,
-          project: merged.project,
+          projectId: syncProjectId,
+          role: syncOsRole,
+          chatUnread: chatCount,
+          project: merged.project ?? cachedFullSync?.project,
         });
-        inboxBadge = inboxItems.length;
+        const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
+        inboxBadge = taskRows + chatCount;
       } catch {
-        inboxItems = [];
-        inboxBadge = 0;
+        if (!inboxItems.length) {
+          inboxBadge = chatCount;
+        }
       }
+    } else {
+      inboxBadge = chatCount;
     }
 
     notifyIfChanged(prev);
@@ -359,7 +390,7 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
   };
 }
 
-/** Одно WS на пользователя — ref-counted, все экраны слушают через inboxWsBus */
+/** Одно WS на пользователя — ref-counted */
 export function ensureInboxWebSocket(userId: string | undefined, onReload: () => void) {
   if (!userId) {
     stopInboxWebSocket();

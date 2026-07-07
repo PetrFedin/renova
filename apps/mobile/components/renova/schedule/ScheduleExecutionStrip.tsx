@@ -7,7 +7,7 @@ export function ScheduleExecutionStrip({ stats }: { stats: ScheduleExecutionStat
   const items = [
     { label: 'Сегодня', value: stats.todayOpen, tone: stats.todayOpen > 0 ? 'accent' : 'muted' },
     { label: 'Просрочено', value: stats.overdue, tone: stats.overdue > 0 ? 'warn' : 'muted' },
-    { label: 'Сделано за 7 дн.', value: stats.doneThisWeek, tone: stats.doneThisWeek > 0 ? 'good' : 'muted' },
+    { label: '7 дн', value: stats.doneThisWeek, tone: stats.doneThisWeek > 0 ? 'good' : 'muted' },
     { label: 'Продления', value: stats.extensions, tone: stats.extensions > 0 ? 'neutral' : 'muted' },
   ] as const;
 
@@ -16,7 +16,7 @@ export function ScheduleExecutionStrip({ stats }: { stats: ScheduleExecutionStat
       {items.map((it) => (
         <View key={it.label} style={s.chip}>
           <Text style={[s.val, s[`val_${it.tone}`]]}>{it.value}</Text>
-          <Text style={s.label}>{it.label}</Text>
+          <Text style={s.label} numberOfLines={1}>{it.label}</Text>
         </View>
       ))}
     </View>
@@ -27,12 +27,11 @@ const s = StyleSheet.create({
   wrap: {
     ...card,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
     marginBottom: 10,
     paddingVertical: 10,
+    paddingHorizontal: 4,
   },
-  chip: { minWidth: 72, alignItems: 'center' },
+  chip: { flex: 1, alignItems: 'center', minWidth: 0 },
   val: { fontSize: 18, fontWeight: '800' },
   val_accent: { color: RenovaTheme.colors.primary },
   val_warn: { color: RenovaTheme.colors.warning },

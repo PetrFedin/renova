@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -123,6 +123,7 @@ export function ChatThreadView({
   const syncAfterRead = useChatReadSync(user?.id, user?.role);
   const [chat, setChat] = useState<ChatDetail | null>(null);
   const [chatProjectId, setChatProjectId] = useState<string | null>(projectIdProp ?? null);
+  const markedReadRef = useRef<string | null>(null);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [typing, setTyping] = useState(false);
@@ -150,7 +151,7 @@ export function ChatThreadView({
     return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
   }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
 
-  const reload = async () => {
+  const loadMessages = useCallback(async () => {
     if (!user || !threadId) return;
     const projectId = await resolveProjectId();
     if (!projectId) return;
@@ -158,15 +159,36 @@ export function ChatThreadView({
     if (activeProject?.id !== projectId) {
       await loadProject(projectId).catch(() => {});
     }
-    const inbox = await api.chatInbox(user.id).catch(() => []);
+    setChat(await api.getChat(user.id, projectId, threadId));
+  }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
+
+  const markThreadRead = useCallback(async () => {
+    if (!user || !threadId) return;
+    const markKey = `${threadId}:${projectIdProp ?? chatProjectId ?? ''}`;
+    if (markedReadRef.current === markKey) return;
+    const projectId = projectIdProp ?? chatProjectId ?? (await resolveProjectId());
+    if (!projectId) return;
+    markedReadRef.current = markKey;
+    const inbox = await api.chatInbox(user.id).catch(() => [] as import('@/lib/api').ChatThread[]);
     const knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
     await syncAfterRead(projectId, threadId, knownUnread);
-    setChat(await api.getChat(user.id, projectId, threadId));
-  };
+  }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
+
+  useFocusEffect(
+    useCallback(() => {
+      markedReadRef.current = null;
+      let cancelled = false;
+      (async () => {
+        await markThreadRead();
+        if (!cancelled) await loadMessages().catch(() => {});
+      })();
+      return () => { cancelled = true; };
+    }, [threadId, projectIdProp, markThreadRead, loadMessages]),
+  );
 
   useEffect(() => {
-    reload().catch(() => {});
-  }, [threadId, projectIdProp, activeProject?.id]);
+    markedReadRef.current = null;
+  }, [threadId, projectIdProp]);
 
   useEffect(() => {
     if (highlightId && chat?.messages.length) {
@@ -175,18 +197,18 @@ export function ChatThreadView({
     }
   }, [highlightId, chat?.messages.length]);
 
+  const reload = () => loadMessages().catch(() => {});
+
   const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
     if (payload.type === 'typing') {
       setTyping(true);
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    reload().catch(() => {});
+    reload();
   });
 
-  useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, () => {
-    reload().catch(() => {});
-  });
+  useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
 
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 

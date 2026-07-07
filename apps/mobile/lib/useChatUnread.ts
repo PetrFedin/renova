@@ -1,12 +1,12 @@
-/** Хуки unread/inbox — читают единый inboxSyncStore (один WS, один reload) */
+/** Хуки unread/inbox — единый inboxSyncStore */
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useFocusEffect } from 'expo-router';
 import type { UserRole } from '@/lib/api';
 import {
   ensureInboxWebSocket,
   getChatFailedSnapshot,
+  getChatInboxThreadsSnapshot,
   getChatUnreadCountSnapshot,
-  getInboxBadgeSnapshot,
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
   reloadInboxSync,
@@ -14,15 +14,14 @@ import {
   subscribeInboxSync,
   subscribeInboxWs,
 } from '@/lib/inboxSyncStore';
+import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 
-/** Подписка на inbox WS — колбэк при новых сообщениях / emitInboxWs */
 export function useInboxWsListener(onPush: () => void) {
   useEffect(() => subscribeInboxWs(onPush), [onPush]);
 }
 
-/** Примитивные snapshot-функции — без новых object-ссылок на каждый render */
 function useChatUnreadCount() {
   return useSyncExternalStore(subscribeInboxSync, getChatUnreadCountSnapshot, getChatUnreadCountSnapshot);
 }
@@ -33,10 +32,6 @@ function useChatFailed() {
 
 function useInboxWsConnected() {
   return useSyncExternalStore(subscribeInboxSync, getInboxWsConnectedSnapshot, getInboxWsConnectedSnapshot);
-}
-
-function useInboxBadge() {
-  return useSyncExternalStore(subscribeInboxSync, getInboxBadgeSnapshot, getInboxBadgeSnapshot);
 }
 
 function useInboxItems() {
@@ -68,7 +63,6 @@ export function useChatUnread(userId?: string, userRole?: UserRole) {
   return { count, reload, inboxWsConnected, failed };
 }
 
-/** После markChatRead — дождаться сервера и обновить все badge */
 export function useChatReadSync(userId?: string, userRole?: UserRole) {
   return useCallback(
     async (projectId: string, threadId: string, knownUnread = 0) => {
@@ -79,12 +73,13 @@ export function useChatReadSync(userId?: string, userRole?: UserRole) {
   );
 }
 
-/** Задачи «Входящие» + badge — синхронизированы с chat attention и /inbox */
+/** Задачи «Входящие» + единый badge (задачи + непрочитанные сообщения) */
 export function useInboxTasks(role: OsRole) {
   const { user, activeProject } = useRenova();
   const items = useInboxItems();
-  const badge = useInboxBadge();
   const chatUnread = useChatUnreadCount();
+  const taskBadge = inboxTaskBadge(items);
+  const badge = inboxAttentionBadge(items, chatUnread);
   const projectId = activeProject?.id;
   const projectRef = useRef(activeProject);
   projectRef.current = activeProject;
@@ -118,5 +113,18 @@ export function useInboxTasks(role: OsRole) {
     });
   }, [user?.id, reload]);
 
-  return { items, badge, chatUnread, reload };
+  return { items, badge, taskBadge, chatUnread, reload };
+}
+
+function useChatInboxThreadsSnapshot() {
+  return useSyncExternalStore(subscribeInboxSync, getChatInboxThreadsSnapshot, getChatInboxThreadsSnapshot);
+}
+
+/** Список чатов из store — синхронен с badge */
+export function useChatInboxThreads(userId?: string, userRole?: UserRole) {
+  const threads = useChatInboxThreadsSnapshot();
+  const reload = useCallback(async () => {
+    await reloadInboxSync({ userId, userRole });
+  }, [userId, userRole]);
+  return { threads, reload };
 }

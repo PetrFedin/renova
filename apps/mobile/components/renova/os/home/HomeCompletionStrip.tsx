@@ -1,7 +1,6 @@
-/** Действия после завершения проекта — отчёты и экспорт */
+/** Ссылки после завершения — без отдельного заголовка, живут в «Ещё» */
 import { useState } from 'react';
-import { View, Text, Alert } from 'react-native';
-import { homeRowStyles, homeTypography } from '@/constants/homeTypography';
+import { Alert } from 'react-native';
 import { HomeLinkRow } from '@/components/renova/os/HomeLinkRow';
 import { exportExpensesCsvFile } from '@/lib/exportExpensesCsv';
 import type { OsRole } from '@/constants/osSections';
@@ -13,7 +12,7 @@ type Props = {
   projectId: string;
 };
 
-export function HomeCompletionStrip({ role, userId, projectId }: Props) {
+export function HomeCompletionLinks({ role, userId, projectId }: Props) {
   const { pushScreen } = useOsNavFromHere(role);
   const [busy, setBusy] = useState(false);
 
@@ -29,13 +28,17 @@ export function HomeCompletionStrip({ role, userId, projectId }: Props) {
   }
 
   return (
-    <View style={homeRowStyles.zone}>
-      <Text style={[homeTypography.zoneLabel, homeRowStyles.zoneTitleOnly]}>После завершения</Text>
+    <>
       <HomeLinkRow title="Отчёты проекта" onPress={() => pushScreen('/reports')} />
       <HomeLinkRow
         title={busy ? 'Выгрузка…' : 'Экспорт расходов (CSV)'}
         onPress={() => { if (!busy) exportCsv(); }}
       />
-    </View>
+    </>
   );
+}
+
+/** @deprecated Используйте HomeCompletionLinks внутри HomeMoreSection */
+export function HomeCompletionStrip(props: Props) {
+  return <HomeCompletionLinks {...props} />;
 }

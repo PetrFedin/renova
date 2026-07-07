@@ -14,7 +14,7 @@ export type OsSection = {
 
 const CUSTOMER_CORE: OsSection[] = [
   { id: 'home', label: 'Главная', routeName: 'index', icon: 'home' },
-  { id: 'object', label: 'Квартира', routeName: 'object', icon: 'rooms' },
+  { id: 'object', label: 'Объект', routeName: 'object', icon: 'rooms' },
   { id: 'repair', label: 'Ремонт', routeName: 'repair', icon: 'works' },
   { id: 'budget', label: 'Деньги', routeName: 'budget', icon: 'budget' },
 ];
@@ -72,7 +72,7 @@ const ALIAS: Record<string, OsSectionId> = {
 
 const ROUTE_TITLES: Record<string, { customer: string; contractor: string }> = {
   chat: { customer: 'Сообщения', contractor: 'Сообщения' },
-  object: { customer: 'Квартира', contractor: 'Объект' },
+  object: { customer: 'Объект', contractor: 'Объект' },
   repair: { customer: 'Ремонт', contractor: 'Ремонт' },
   calendar: { customer: 'Сроки', contractor: 'Сроки' },
   estimate: { customer: 'Смета', contractor: 'Смета' },

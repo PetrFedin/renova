@@ -110,7 +110,7 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
 }
 
 const s = StyleSheet.create({
-  wrap: { marginBottom: homeLayout.sectionGap },
+  wrap: { marginTop: 4, marginBottom: homeLayout.sectionGap },
   zoneHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',

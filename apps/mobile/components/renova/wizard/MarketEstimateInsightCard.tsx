@@ -23,7 +23,7 @@ export function MarketEstimateInsightCard({ insights }: { insights: MarketEstima
       ) : null}
       <Text style={s.hint}>{insights.hint}</Text>
       <Text style={s.note}>
-        Уточните комнаты в разделе «Квартира» — точность сметы вырастет.
+        Уточните комнаты в разделе «Объект» — точность сметы вырастет.
       </Text>
     </View>
   );

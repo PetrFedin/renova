@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Alert, Platform, ScrollView } from 'react-native';
+import { ScrollView, View, Text, TextInput, Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
 import { BudgetWidgetSettings } from '@/components/renova/os/BudgetWidgetSettings';
 import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
-import { RoleSwitchButton } from '@/components/renova/RoleSwitchButton';
+import { RoleSwitchButton, roleDisplayLabel } from '@/components/renova/RoleSwitchButton';
 import { AdminHubLink } from '@/components/renova/AdminHubLink';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { NotificationsList } from '@/components/renova/NotificationsList';
@@ -19,9 +19,9 @@ import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 
 const EXTRA_ITEMS = [
-  { label: 'Помощь', desc: 'Гид по ремонту', href: '/guide' },
-  { label: 'Архив', desc: 'Лента событий', href: '/activity' },
-  { label: 'Заявки', desc: 'Новые объекты', href: '/job-leads' },
+  { label: 'Помощь', href: '/guide' },
+  { label: 'Архив', href: '/activity' },
+  { label: 'Заявки', href: '/job-leads' },
 ];
 
 function TeamSection() {
@@ -92,9 +92,12 @@ export function ContractorProfileScreen() {
   const { user, refreshMe } = useRenova();
   const [inn, setInn] = useState(user?.inn || '');
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
+  const roleLabel = roleDisplayLabel(user?.role);
 
   return (
     <ScrollView style={ps.scroll} contentContainerStyle={ps.content}>
+      <RoleSwitchButton />
+
       <ProfileHeader
         title="Исполнитель"
         name={user?.full_name || user?.phone}
@@ -103,10 +106,10 @@ export function ContractorProfileScreen() {
       />
 
       <ProfileSection title="Аккаунт" bare>
-        <RoleSwitchButton />
+        <Text style={ps.userMeta}>Сейчас: {roleLabel}</Text>
       </ProfileSection>
 
-      <ProfileSection title="Персонализация" description="Главная, бюджет и нижняя панель.">
+      <ProfileSection title="Персонализация">
         <HomeWidgetSettings role="contractor" embedded />
         <BudgetWidgetSettings role="contractor" embedded />
         <DockBarSettings role="contractor" embedded />
@@ -118,11 +121,11 @@ export function ContractorProfileScreen() {
         </ProfileSection>
       ) : null}
 
-      <ProfileSection title="Бригада" description="Участники и приглашения по QR или телефону.">
+      <ProfileSection title="Бригада">
         <TeamSection />
       </ProfileSection>
 
-      <ProfileSection title="Работа" description="Согласования — также во «Входящих». Документы, подписка и аудит.">
+      <ProfileSection title="Работа">
         <View style={ps.actionGap}>
           <PrimaryButton title="Согласования" variant="outline" onPress={() => pushOsNav('/approvals', nav.from)} />
           <PrimaryButton title="Документы объекта" variant="outline" onPress={() => pushOsNav('/documents', nav.from)} />
@@ -139,7 +142,7 @@ export function ContractorProfileScreen() {
         </View>
       </ProfileSection>
 
-      <ProfileSection title="НПД и данные" description="ИНН, проверка самозанятого и экспорт персональных данных.">
+      <ProfileSection title="НПД и данные">
         <TextInput
           style={ps.input}
           placeholder="ИНН"
