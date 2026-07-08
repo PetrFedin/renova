@@ -13,6 +13,7 @@ import { osApi } from './os';
 import { materialsApi } from './materials';
 import { workOrdersApi } from './workOrders';
 import { issuesApi } from './issues';
+import { workAcceptancesApi } from './workAcceptances';
 import { floorApi } from './floor';
 import { marketApi } from './market';
 import { designApi } from './design';
@@ -36,6 +37,7 @@ export const api = {
   ...materialsApi,
   ...workOrdersApi,
   ...issuesApi,
+  ...workAcceptancesApi,
   ...floorApi,
   ...marketApi,
   ...designApi,
