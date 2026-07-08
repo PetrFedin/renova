@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project, Stage, StageStatus, User, UserRole
+from app.models.entities import Project, Stage, StageStatus, User
 from app.models.work_schedule import (
     ProjectWorkSchedule,
     ProjectWorkScheduleItem,
@@ -12,6 +12,14 @@ from app.models.work_schedule import (
     WorkScheduleStatus,
 )
 from app.schemas.project_work_schedule import WorkScheduleCreateIn, WorkScheduleItemIn, WorkScheduleUpdateIn
+
+
+def is_project_member(user: User, project: Project) -> bool:
+    return user.id in [project.customer_id, project.contractor_id]
+
+
+def is_project_customer(user: User, project: Project) -> bool:
+    return user.id == project.customer_id
 
 
 async def load_items(db: AsyncSession, schedule_id: str) -> list[ProjectWorkScheduleItem]:
@@ -35,7 +43,7 @@ async def require_project_member(db: AsyncSession, user: User, project_id: str) 
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="project_not_found")
-    if user.role != UserRole.admin and user.id not in [project.customer_id, project.contractor_id]:
+    if not is_project_member(user, project):
         raise HTTPException(status_code=403, detail="project_forbidden")
     return project
 
@@ -45,9 +53,9 @@ def stage_status_to_schedule_status(stage: Stage) -> WorkScheduleItemStatus:
         return WorkScheduleItemStatus.in_progress
     if stage.status == StageStatus.review:
         return WorkScheduleItemStatus.submitted
-    if stage.status == StageStatus.accepted:
+    if stage.status == StageStatus.done:
         return WorkScheduleItemStatus.accepted
-    if stage.status == StageStatus.rework:
+    if getattr(stage, "needs_rework", False):
         return WorkScheduleItemStatus.blocked
     return WorkScheduleItemStatus.planned
 
@@ -172,7 +180,7 @@ async def get_schedule(db: AsyncSession, project_id: str, schedule_id: str) -> P
 
 
 async def create_schedule(db: AsyncSession, project: Project, user: User, body: WorkScheduleCreateIn) -> ProjectWorkSchedule:
-    if user.role != UserRole.admin and user.id not in [project.contractor_id, project.customer_id]:
+    if not is_project_member(user, project):
         raise HTTPException(status_code=403, detail="only_project_members_can_create_schedule")
     schedule = ProjectWorkSchedule(
         project_id=project.id,
@@ -232,7 +240,7 @@ async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
 
 
 async def confirm_schedule(db: AsyncSession, project: Project, schedule: ProjectWorkSchedule, user: User) -> ProjectWorkSchedule:
-    if user.role != UserRole.admin and user.id != project.customer_id:
+    if not is_project_customer(user, project):
         raise HTTPException(status_code=403, detail="only_customer_can_confirm_schedule")
     if schedule.status != WorkScheduleStatus.submitted:
         raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_confirm")
@@ -246,7 +254,7 @@ async def confirm_schedule(db: AsyncSession, project: Project, schedule: Project
 
 
 async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectWorkSchedule, user: User, reason: str | None) -> ProjectWorkSchedule:
-    if user.role != UserRole.admin and user.id != project.customer_id:
+    if not is_project_customer(user, project):
         raise HTTPException(status_code=403, detail="only_customer_can_reject_schedule")
     if schedule.status != WorkScheduleStatus.submitted:
         raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_reject")
