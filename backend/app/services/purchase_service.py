@@ -133,17 +133,31 @@ async def set_status(db: AsyncSession, purchase_id: str, status: PurchaseStatus)
 
 
 async def _on_cancelled(db: AsyncSession, purchase: Purchase) -> None:
-    """Отмена доставки — вернуть pick из факта бюджета и пересчитать budget_spent."""
+    """Отмена доставки → вернуть материал и снова проверить зависимые этапы."""
     from app.services import budget_service as bud
+    from app.services import dependency_service as dep_svc
 
+    touched_stage_ids: set[str] = set()
     for item in purchase.items or []:
-        if not item.material_pick_id:
+        pick: MaterialPick | None = None
+        if item.material_pick_id:
+            pick = await db.get(MaterialPick, item.material_pick_id)
+            if pick:
+                pick.status = MaterialPickStatus.approved
+                pick.qty_delivered = max(0.0, (pick.qty_delivered or 0) - (item.qty or 0))
+                if pick.stage_id:
+                    touched_stage_ids.add(pick.stage_id)
+        if item.stage_id:
+            touched_stage_ids.add(item.stage_id)
+
+    for stage_id in touched_stage_ids:
+        stage = await db.get(Stage, stage_id)
+        if not stage or stage.status == StageStatus.done:
             continue
-        pick = await db.get(MaterialPick, item.material_pick_id)
-        if not pick:
-            continue
-        pick.status = MaterialPickStatus.approved
-        pick.qty_delivered = max(0.0, (pick.qty_delivered or 0) - (item.qty or 0))
+        ev = await dep_svc.evaluate_stage(db, stage)
+        if ev["blocked"]:
+            stage.status = StageStatus.planned
+
     await bud.refresh_budget_facts(db, purchase.project_id)
 
 
