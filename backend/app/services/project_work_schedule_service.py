@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project, Stage, StageStatus, User
+from app.models.entities import Payment, PaymentStatus, PaymentType, Project, Stage, StageStatus, User
 from app.models.work_schedule import (
     ProjectWorkSchedule,
     ProjectWorkScheduleItem,
@@ -269,6 +269,36 @@ async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectW
     return await attach_items(db, schedule)
 
 
+async def ensure_pending_stage_payment(db: AsyncSession, stage: Stage) -> None:
+    if not stage.payment_amount or stage.payment_amount <= 0:
+        return
+    existing = (
+        await db.execute(
+            select(Payment)
+            .where(Payment.project_id == stage.project_id)
+            .where(Payment.stage_id == stage.id)
+            .where(Payment.payment_type == PaymentType.stage)
+            .where(Payment.status.in_([PaymentStatus.pending, PaymentStatus.confirmed]))
+            .limit(1)
+        )
+    ).scalars().first()
+    if existing:
+        return
+    db.add(
+        Payment(
+            project_id=stage.project_id,
+            stage_id=stage.id,
+            payment_type=PaymentType.stage,
+            status=PaymentStatus.pending,
+            title=f"Оплата этапа: {stage.name}",
+            amount=stage.payment_amount,
+            created_by=stage.project.contractor_id or stage.project.customer_id,
+            notes="Создано автоматически после приёмки этапа через график работ",
+            created_at=datetime.utcnow(),
+        )
+    )
+
+
 async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkScheduleItem, status: WorkScheduleItemStatus) -> None:
     if not item.stage_id:
         return
@@ -292,6 +322,7 @@ async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkSchedul
         stage.actual_end = stage.actual_end or date.today()
         stage.customer_accepted_at = stage.customer_accepted_at or datetime.utcnow()
         stage.percent_complete = 100
+        await ensure_pending_stage_payment(db, stage)
 
 
 async def update_item_status(
