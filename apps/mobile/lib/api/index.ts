@@ -14,6 +14,7 @@ import { materialsApi } from './materials';
 import { workOrdersApi } from './workOrders';
 import { issuesApi } from './issues';
 import { workAcceptancesApi } from './workAcceptances';
+import { documentsApi } from './documents';
 import { floorApi } from './floor';
 import { marketApi } from './market';
 import { designApi } from './design';
@@ -38,6 +39,7 @@ export const api = {
   ...workOrdersApi,
   ...issuesApi,
   ...workAcceptancesApi,
+  ...documentsApi,
   ...floorApi,
   ...marketApi,
   ...designApi,
