@@ -269,6 +269,31 @@ async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectW
     return await attach_items(db, schedule)
 
 
+async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkScheduleItem, status: WorkScheduleItemStatus) -> None:
+    if not item.stage_id:
+        return
+    stage = await db.get(Stage, item.stage_id)
+    if not stage or stage.project_id != item.project_id:
+        return
+
+    stage.needs_rework = status == WorkScheduleItemStatus.blocked
+    if status == WorkScheduleItemStatus.planned:
+        stage.status = StageStatus.planned
+        stage.percent_complete = min(stage.percent_complete or 0, 10)
+    elif status in [WorkScheduleItemStatus.ready, WorkScheduleItemStatus.in_progress]:
+        stage.status = StageStatus.active
+        stage.actual_start = stage.actual_start or date.today()
+        stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 25)
+    elif status == WorkScheduleItemStatus.submitted:
+        stage.status = StageStatus.review
+        stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 90)
+    elif status == WorkScheduleItemStatus.accepted:
+        stage.status = StageStatus.done
+        stage.actual_end = stage.actual_end or date.today()
+        stage.customer_accepted_at = stage.customer_accepted_at or datetime.utcnow()
+        stage.percent_complete = 100
+
+
 async def update_item_status(
     db: AsyncSession,
     schedule: ProjectWorkSchedule,
@@ -287,6 +312,7 @@ async def update_item_status(
         item.actual_finish_date = date.today()
     item.delay_days = calculate_delay(item)
     item.updated_at = datetime.utcnow()
+    await sync_stage_from_item_status(db, item, body_status)
     await db.commit()
     await db.refresh(item)
     return item
