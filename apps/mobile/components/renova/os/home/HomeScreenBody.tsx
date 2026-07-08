@@ -156,6 +156,7 @@ export function HomeScreenBody({
       {/* Дополнительно — свёрнуто; для завершённого проекта отчёты тоже здесь */}
       {showMore && (
         <HomeMoreSection summary={moreSectionSummary}>
+          <HomeLinkRow title="Управленческая сводка" onPress={() => pushScreen('/manager-dashboard')} />
           {phase === 'complete' && (
             <HomeCompletionLinks role={role} userId={user.id} projectId={activeProject.id} />
           )}
