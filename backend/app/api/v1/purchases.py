@@ -5,8 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import PurchaseStatus, User
+from app.models.entities import Project, PurchaseStatus, User
 from app.services import activity_service as act
+from app.services import notification_service as notif
 from app.services import purchase_service as pur
 
 router = APIRouter(prefix="/projects", tags=["purchases"])
@@ -39,6 +40,43 @@ def _purchase_status_event(status: PurchaseStatus, items_count: int, stage_count
     if status == PurchaseStatus.paid:
         return ("PurchasePaid", f"Закупка оплачена: {items_count} поз.", None)
     return ("PurchaseUpdated", f"Закупка → {status.value}", None)
+
+
+def _project_member_ids(project: Project) -> list[str]:
+    ids = [project.customer_id, project.contractor_id, project.foreman_id]
+    seen: set[str] = set()
+    result: list[str] = []
+    for user_id in ids:
+        if user_id and user_id not in seen:
+            seen.add(user_id)
+            result.append(user_id)
+    return result
+
+
+async def _notify_purchase_status(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor_id: str,
+    status: PurchaseStatus,
+    title: str,
+    body: str | None,
+) -> None:
+    if status not in {PurchaseStatus.delivered, PurchaseStatus.cancelled}:
+        return
+    for user_id in _project_member_ids(project):
+        if user_id == actor_id:
+            continue
+        await notif.notify(
+            db,
+            user_id=user_id,
+            project_id=project.id,
+            notification_type="materials",
+            title=title,
+            body=body or "Откройте материалы и проверьте, как это влияет на ближайшие этапы.",
+            link_path="/(customer)/(tabs)/materials",
+            return_to="/(customer)/(tabs)/home",
+        )
 
 
 @router.get("/{project_id}/purchases")
@@ -83,7 +121,7 @@ async def update_purchase_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     try:
         st = PurchaseStatus(body.status)
     except ValueError:
@@ -103,6 +141,14 @@ async def update_purchase_status(
         title=title,
         body=event_body or p.supplier_name,
         link_path="/(customer)/(tabs)/materials",
+    )
+    await _notify_purchase_status(
+        db,
+        project=project,
+        actor_id=user.id,
+        status=st,
+        title=title,
+        body=event_body,
     )
     return pur.purchase_dict(p)
 
