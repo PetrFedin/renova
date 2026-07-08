@@ -156,8 +156,9 @@ async def get_active_schedule(db: AsyncSession, project: Project) -> ProjectWork
             .where(ProjectWorkSchedule.project_id == project.id)
             .where(ProjectWorkSchedule.status != WorkScheduleStatus.archived)
             .order_by(ProjectWorkSchedule.created_at.desc())
+            .limit(1)
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
     if schedule:
         await sync_items_from_stages(db, schedule)
         await db.commit()
