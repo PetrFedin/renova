@@ -26,6 +26,22 @@ export type Stage = {
 
 export type StageChecklistItem = { id: string; text: string; done: boolean };
 
+export type WorkAcceptance = {
+  id: string;
+  project_id: string;
+  room_id: string | null;
+  stage_id: string;
+  requested_by: string | null;
+  accepted_by: string | null;
+  requested_at: string | null;
+  accepted_at: string | null;
+  status: 'not_requested' | 'requested' | 'in_review' | 'accepted' | 'accepted_with_remarks' | 'returned' | 'rejected' | string;
+  checklist: string[];
+  quality_score: number | null;
+  comment: string | null;
+  created_at: string | null;
+};
+
 export type StageDetail = Stage & {
   notes: string | null;
   contractor_ready_at: string | null;
