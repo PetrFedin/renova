@@ -159,6 +159,8 @@ export function HomeScreenBody({
           <HomeLinkRow title="Управленческая сводка" onPress={() => pushScreen('/manager-dashboard')} />
           <HomeLinkRow title="Финансовый центр" onPress={() => pushScreen('/finance-center')} />
           <HomeLinkRow title="Контроль качества" onPress={() => pushScreen('/quality-control')} />
+          <HomeLinkRow title="Приёмка работ" onPress={() => pushScreen('/work-acceptance')} />
+          <HomeLinkRow title="Документы проекта" onPress={() => pushScreen('/documents')} />
           {phase === 'complete' && (
             <HomeCompletionLinks role={role} userId={user.id} projectId={activeProject.id} />
           )}
