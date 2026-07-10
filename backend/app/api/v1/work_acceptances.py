@@ -3,13 +3,13 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import AcceptanceStatus, Project, ProjectIssue, Stage, StageStatus, User, WorkAcceptance
+from app.models.entities import AcceptanceStatus, Project, ProjectIssue, Stage, StageStatus, User, UserRole, WorkAcceptance
 from app.services import activity_service as act
 from app.services import notification_service as notif
 
@@ -24,7 +24,7 @@ class AcceptanceCreateIn(BaseModel):
 
 class AcceptanceDecisionIn(BaseModel):
     checklist: list[str] | None = None
-    quality_score: float | None = None
+    quality_score: float | None = Field(default=None, ge=0, le=10)
     comment: str | None = None
     create_issue: bool = False
 
@@ -63,6 +63,22 @@ def project_member_ids(project: Project) -> list[str]:
     return result
 
 
+def require_acceptance_requester(project: Project, user: User) -> None:
+    is_assigned_contractor = user.role == UserRole.contractor and user.id in {project.contractor_id, project.foreman_id}
+    if not is_assigned_contractor:
+        raise HTTPException(403, "acceptance_request_contractor_only")
+
+
+def require_acceptance_decider(project: Project, user: User) -> None:
+    if user.role != UserRole.customer or user.id != project.customer_id:
+        raise HTTPException(403, "acceptance_decision_customer_only")
+
+
+def require_pending_decision(row: WorkAcceptance) -> None:
+    if row.status not in {AcceptanceStatus.requested.value, AcceptanceStatus.in_review.value}:
+        raise HTTPException(409, "acceptance_already_decided")
+
+
 async def require_stage(db: AsyncSession, project_id: str, stage_id: str) -> Stage:
     stage = await db.get(Stage, stage_id)
     if not stage or stage.project_id != project_id:
@@ -79,8 +95,6 @@ async def active_acceptance(db: AsyncSession, project_id: str, stage_id: str) ->
             .where(WorkAcceptance.status.in_([
                 AcceptanceStatus.requested.value,
                 AcceptanceStatus.in_review.value,
-                AcceptanceStatus.returned.value,
-                AcceptanceStatus.accepted_with_remarks.value,
             ]))
             .order_by(WorkAcceptance.created_at.desc())
             .limit(1)
@@ -111,9 +125,12 @@ async def request_acceptance(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=True)
+    require_acceptance_requester(project, user)
     stage = await require_stage(db, project_id, body.stage_id)
+    if stage.status == StageStatus.done:
+        raise HTTPException(409, "stage_already_accepted")
     existing = await active_acceptance(db, project_id, body.stage_id)
-    if existing and existing.status in [AcceptanceStatus.requested.value, AcceptanceStatus.in_review.value]:
+    if existing:
         return acceptance_dict(existing)
 
     row = WorkAcceptance(
@@ -169,13 +186,15 @@ async def accept_work(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=True)
+    require_acceptance_decider(project, user)
     row = await db.get(WorkAcceptance, acceptance_id)
     if not row or row.project_id != project_id:
         raise HTTPException(404, "acceptance_not_found")
+    require_pending_decision(row)
     stage = await require_stage(db, project_id, row.stage_id)
 
     now = datetime.utcnow()
-    row.status = AcceptanceStatus.accepted.value if not body.create_issue else AcceptanceStatus.accepted_with_remarks.value
+    row.status = AcceptanceStatus.accepted_with_remarks.value if body.create_issue else AcceptanceStatus.accepted.value
     row.accepted_by = user.id
     row.accepted_at = now
     row.quality_score = body.quality_score
@@ -186,6 +205,16 @@ async def accept_work(
     stage.customer_accepted_at = stage.customer_accepted_at or now
     stage.percent_complete = 100
     stage.needs_rework = False
+    if body.create_issue:
+        db.add(ProjectIssue(
+            project_id=project_id,
+            stage_id=stage.id,
+            title=f"Замечание после приёмки: {stage.name}",
+            description=body.comment,
+            severity="low",
+            status="open",
+            created_at=now,
+        ))
     await db.commit()
     await db.refresh(row)
 
@@ -223,9 +252,11 @@ async def return_work(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=True)
+    require_acceptance_decider(project, user)
     row = await db.get(WorkAcceptance, acceptance_id)
     if not row or row.project_id != project_id:
         raise HTTPException(404, "acceptance_not_found")
+    require_pending_decision(row)
     stage = await require_stage(db, project_id, row.stage_id)
 
     row.status = AcceptanceStatus.returned.value
