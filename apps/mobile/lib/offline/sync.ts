@@ -9,6 +9,12 @@ export type OfflineSyncResult = {
   skipped: number;
 };
 
+export type OfflineOutboxStatus = {
+  total: number;
+  pending: number;
+  blocked: number;
+};
+
 class OfflineReplayError extends Error {
   status: number;
   permanent: boolean;
@@ -69,9 +75,19 @@ export async function flushOfflineOutbox(): Promise<OfflineSyncResult> {
   }
 }
 
-export async function getOfflineOutboxSize() {
+export async function getOfflineOutboxStatus(): Promise<OfflineOutboxStatus> {
   const items = await offlineOutbox.list();
-  return items.length;
+  const blocked = items.filter((item) => item.blocked).length;
+  return {
+    total: items.length,
+    blocked,
+    pending: items.length - blocked,
+  };
+}
+
+export async function getOfflineOutboxSize() {
+  const status = await getOfflineOutboxStatus();
+  return status.pending;
 }
 
 export function isOfflineSyncRunning() {
