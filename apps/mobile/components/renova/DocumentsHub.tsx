@@ -16,7 +16,7 @@ type DocRow = {
   format: string;
   previewPath?: string;
   filename?: string;
-  run: () => Promise<void>;
+  run?: () => Promise<void>;
   /** PDF — по нажатию меню: открыть / скачать / поделиться */
   pdf?: boolean;
 };
@@ -123,6 +123,12 @@ export function DocumentsHub({
         format: 'ICS',
         run: () => api.exportIcal(userId, projectId),
       },
+      estimateTable: {
+        id: 'estimate-table',
+        label: 'Смета для Excel',
+        desc: 'Выберите формат CSV или XLSX',
+        format: 'CSV / Excel',
+      },
       dossierPdf: {
         id: 'dossier',
         label: 'Полное досье',
@@ -157,15 +163,7 @@ export function DocumentsHub({
       },
       {
         title: 'Таблицы',
-        rows: [
-          {
-            id: 'estimate-table',
-            label: 'Смета для Excel',
-            desc: 'Выберите формат CSV или XLSX',
-            format: 'CSV / Excel',
-            run: async () => {},
-          },
-        ],
+        rows: [rows.estimateTable],
       },
       {
         title: 'Дополнительно',
@@ -192,6 +190,7 @@ export function DocumentsHub({
   }
 
   function openPdfMenu(row: DocRow) {
+    if (!row.run) return;
     const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
       {
         text: 'Открыть',
@@ -202,7 +201,7 @@ export function DocumentsHub({
       },
       {
         text: 'Скачать',
-        onPress: () => withBusy(`${row.id}-dl`, row.run),
+        onPress: () => withBusy(`${row.id}-dl`, row.run!),
       },
     ];
     if (Platform.OS !== 'web') {
@@ -232,7 +231,7 @@ export function DocumentsHub({
       openPdfMenu(row);
       return;
     }
-    withBusy(row.id, row.run);
+    if (row.run) withBusy(row.id, row.run);
   }
 
   return (
