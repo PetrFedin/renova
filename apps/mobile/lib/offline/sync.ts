@@ -9,35 +9,57 @@ export type OfflineSyncResult = {
   skipped: number;
 };
 
+class OfflineReplayError extends Error {
+  status: number;
+  permanent: boolean;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'OfflineReplayError';
+    this.status = status;
+    this.permanent = status >= 400 && status < 500 && ![408, 425, 429].includes(status);
+  }
+}
+
 let running = false;
 
 async function replayMutation(item: OfflineMutation) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (item.userId) headers['X-User-Id'] = item.userId;
-  const res = await fetch(`${API_BASE}${item.path}`, {
+
+  const response = await fetch(`${API_BASE}${item.path}`, {
     method: item.method,
     headers,
     body: item.body === undefined ? undefined : JSON.stringify(item.body),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `HTTP ${res.status}`);
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new OfflineReplayError(response.status, text || `HTTP ${response.status}`);
   }
 }
 
 export async function flushOfflineOutbox(): Promise<OfflineSyncResult> {
   if (running) return { total: 0, synced: 0, failed: 0, skipped: 1 };
+
   running = true;
   const items = await offlineOutbox.list();
   const result: OfflineSyncResult = { total: items.length, synced: 0, failed: 0, skipped: 0 };
+
   try {
     for (const item of items) {
+      if (item.blocked) {
+        result.skipped += 1;
+        continue;
+      }
+
       try {
         await replayMutation(item);
         await offlineOutbox.remove(item.id);
         result.synced += 1;
       } catch (error) {
-        await offlineOutbox.markFailed(item.id, error);
+        const permanent = error instanceof OfflineReplayError && error.permanent;
+        await offlineOutbox.markFailed(item.id, error, permanent);
         result.failed += 1;
       }
     }
