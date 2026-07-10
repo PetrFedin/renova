@@ -2,6 +2,7 @@
 import { Text } from 'react-native';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { ProjectSitesPanel } from '@/components/renova/ProjectSitesPanel';
 import { HomeActionHero } from '@/components/renova/os/HomeActionHero';
 import { HomeLinkRow } from '@/components/renova/os/HomeLinkRow';
@@ -91,6 +92,7 @@ export function HomeScreenBody({
         healthLevel={snap.healthLevel}
         healthLabel={snap.healthLabel}
       />
+      <OfflineSyncStatus compact />
       {readOnly ? (
         <Text style={homeTypography.homeSubtitle}>{roleScopeLabel({ role, readOnly })}</Text>
       ) : null}
