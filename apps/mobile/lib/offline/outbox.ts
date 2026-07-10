@@ -12,6 +12,7 @@ export type OfflineMutation = {
   createdAt: string;
   attempts: number;
   lastError?: string;
+  blocked?: boolean;
 };
 
 const OUTBOX_KEY = 'renova_offline_outbox:v1';
@@ -41,13 +42,14 @@ export const offlineOutbox = {
     return readOutbox();
   },
 
-  async enqueue(input: Omit<OfflineMutation, 'id' | 'createdAt' | 'attempts'>) {
+  async enqueue(input: Omit<OfflineMutation, 'id' | 'createdAt' | 'attempts' | 'blocked'>) {
     const items = await readOutbox();
     const item: OfflineMutation = {
       ...input,
       id: makeId(),
       createdAt: new Date().toISOString(),
       attempts: 0,
+      blocked: false,
     };
     items.push(item);
     await writeOutbox(items);
@@ -59,12 +61,26 @@ export const offlineOutbox = {
     await writeOutbox(items.filter((item) => item.id !== id));
   },
 
-  async markFailed(id: string, error: unknown) {
+  async markFailed(id: string, error: unknown, permanent = false) {
     const items = await readOutbox();
     const message = error instanceof Error ? error.message : String(error || 'sync_failed');
+    await writeOutbox(items.map((item) => {
+      if (item.id !== id) return item;
+      const attempts = item.attempts + 1;
+      return {
+        ...item,
+        attempts,
+        lastError: message,
+        blocked: permanent || attempts >= MAX_ATTEMPTS,
+      };
+    }));
+  },
+
+  async retry(id: string) {
+    const items = await readOutbox();
     await writeOutbox(items.map((item) => (
-      item.id === id ? { ...item, attempts: item.attempts + 1, lastError: message } : item
-    )).filter((item) => item.attempts < MAX_ATTEMPTS));
+      item.id === id ? { ...item, attempts: 0, blocked: false, lastError: undefined } : item
+    )));
   },
 
   async clear() {
