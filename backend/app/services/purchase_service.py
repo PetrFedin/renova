@@ -132,38 +132,55 @@ async def set_status(db: AsyncSession, purchase_id: str, status: PurchaseStatus)
     return p
 
 
-
 async def _on_cancelled(db: AsyncSession, purchase: Purchase) -> None:
-    """Отмена доставки — вернуть pick из факта бюджета и пересчитать budget_spent."""
+    """Отмена доставки → вернуть материал и снова проверить зависимые этапы."""
     from app.services import budget_service as bud
+    from app.services import dependency_service as dep_svc
 
+    touched_stage_ids: set[str] = set()
     for item in purchase.items or []:
-        if not item.material_pick_id:
+        pick: MaterialPick | None = None
+        if item.material_pick_id:
+            pick = await db.get(MaterialPick, item.material_pick_id)
+            if pick:
+                pick.status = MaterialPickStatus.approved
+                pick.qty_delivered = max(0.0, (pick.qty_delivered or 0) - (item.qty or 0))
+                if pick.stage_id:
+                    touched_stage_ids.add(pick.stage_id)
+        if item.stage_id:
+            touched_stage_ids.add(item.stage_id)
+
+    for stage_id in touched_stage_ids:
+        stage = await db.get(Stage, stage_id)
+        if not stage or stage.status == StageStatus.done:
             continue
-        pick = await db.get(MaterialPick, item.material_pick_id)
-        if not pick:
-            continue
-        pick.status = MaterialPickStatus.approved
-        pick.qty_delivered = max(0.0, (pick.qty_delivered or 0) - (item.qty or 0))
+        ev = await dep_svc.evaluate_stage(db, stage)
+        if ev["blocked"]:
+            stage.status = StageStatus.planned
+
     await bud.refresh_budget_facts(db, purchase.project_id)
 
+
 async def _on_delivered(db: AsyncSession, purchase: Purchase) -> None:
-    from app.services import dependency_service as dep_svc
     """Доставка материала → обновить pick и открыть зависимую работу."""
+    from app.services import dependency_service as dep_svc
+
     for item in purchase.items or []:
-        if not item.material_pick_id:
-            continue
-        pick = await db.get(MaterialPick, item.material_pick_id)
-        if not pick:
-            continue
-        pick.status = MaterialPickStatus.purchased
-        pick.qty_delivered = (pick.qty_delivered or 0) + item.qty
+        pick: MaterialPick | None = None
         if item.material_pick_id:
-            await dep_svc.on_material_delivered(db, item.material_pick_id)
-        elif item.stage_id:
-            stage = await db.get(Stage, item.stage_id)
+            pick = await db.get(MaterialPick, item.material_pick_id)
+            if pick:
+                pick.status = MaterialPickStatus.purchased
+                pick.qty_delivered = (pick.qty_delivered or 0) + item.qty
+                await dep_svc.on_material_delivered(db, item.material_pick_id)
+
+        stage_id = item.stage_id or (pick.stage_id if pick else None)
+        if stage_id:
+            stage = await db.get(Stage, stage_id)
             if stage and stage.status == StageStatus.planned:
-                stage.status = StageStatus.active
+                ev = await dep_svc.evaluate_stage(db, stage)
+                if not ev["blocked"]:
+                    stage.status = StageStatus.active
 
 
 async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> list[MaterialPick]:

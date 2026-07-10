@@ -1,7 +1,9 @@
 """Платежи: авансы, этапы, закупка материалов."""
 from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.entities import Payment, PaymentStatus, PaymentType, Project
 
 
@@ -15,7 +17,7 @@ async def create_payment(
     stage_id: str | None = None,
     notes: str | None = None,
 ) -> Payment:
-    p = Payment(
+    payment = Payment(
         project_id=project_id,
         stage_id=stage_id,
         payment_type=PaymentType(payment_type),
@@ -24,31 +26,44 @@ async def create_payment(
         created_by=user_id,
         notes=notes,
     )
-    db.add(p)
+    db.add(payment)
     await db.commit()
-    await db.refresh(p)
-    return p
+    await db.refresh(payment)
+    return payment
 
 
-async def confirm_payment(db: AsyncSession, payment_id: str, *, allow_without_acceptance: bool = False) -> Payment | None:
-    p = await db.get(Payment, payment_id)
-    if not p or p.status != PaymentStatus.pending:
+async def confirm_payment(
+    db: AsyncSession,
+    payment_id: str,
+    *,
+    project_id: str | None = None,
+    allow_without_acceptance: bool = False,
+) -> Payment | None:
+    payment = await db.get(Payment, payment_id)
+    if not payment or payment.status != PaymentStatus.pending:
         return None
-    if p.payment_type == PaymentType.stage and p.stage_id and not allow_without_acceptance:
+    if project_id is not None and payment.project_id != project_id:
+        return None
+
+    if payment.payment_type == PaymentType.stage and payment.stage_id and not allow_without_acceptance:
         from app.models.entities import Stage
-        stage = await db.get(Stage, p.stage_id)
-        if not stage or not stage.customer_accepted_at:
+
+        stage = await db.get(Stage, payment.stage_id)
+        if not stage or stage.project_id != payment.project_id or not stage.customer_accepted_at:
             return None
-    p.status = PaymentStatus.confirmed
-    p.confirmed_at = datetime.utcnow()
-    proj = await db.get(Project, p.project_id)
-    if proj:
-        proj.budget_spent = round(proj.budget_spent + p.amount, 2)
-    from app.services import budget_service as bud
-    await bud.expense_from_payment(db, p)
+
+    payment.status = PaymentStatus.confirmed
+    payment.confirmed_at = datetime.utcnow()
+    project = await db.get(Project, payment.project_id)
+    if project:
+        project.budget_spent = round(project.budget_spent + payment.amount, 2)
+
+    from app.services import budget_service as budget
+
+    await budget.expense_from_payment(db, payment)
     await db.commit()
-    await db.refresh(p)
-    return p
+    await db.refresh(payment)
+    return payment
 
 
 async def get_payment(db: AsyncSession, payment_id: str) -> Payment | None:
@@ -57,25 +72,30 @@ async def get_payment(db: AsyncSession, payment_id: str) -> Payment | None:
 
 async def receipt_id_for_payment(db: AsyncSession, payment_id: str) -> str | None:
     from app.models.entities import Receipt
-    r = await db.execute(select(Receipt.id).where(Receipt.payment_id == payment_id).limit(1))
-    return r.scalar_one_or_none()
+
+    result = await db.execute(select(Receipt.id).where(Receipt.payment_id == payment_id).limit(1))
+    return result.scalar_one_or_none()
 
 
 async def list_payments(db: AsyncSession, project_id: str) -> list[Payment]:
-    r = await db.execute(select(Payment).where(Payment.project_id == project_id).order_by(Payment.created_at.desc()))
-    return list(r.scalars().all())
+    result = await db.execute(
+        select(Payment)
+        .where(Payment.project_id == project_id)
+        .order_by(Payment.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
-def payment_dict(p: Payment, *, receipt_id: str | None = None) -> dict:
+def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
     return {
-        "id": p.id,
-        "title": p.title,
-        "amount": p.amount,
-        "payment_type": p.payment_type.value,
-        "status": p.status.value,
-        "stage_id": p.stage_id,
-        "notes": p.notes,
-        "confirmed_at": p.confirmed_at.isoformat() if p.confirmed_at else None,
-        "created_at": p.created_at.isoformat(),
+        "id": payment.id,
+        "title": payment.title,
+        "amount": payment.amount,
+        "payment_type": payment.payment_type.value,
+        "status": payment.status.value,
+        "stage_id": payment.stage_id,
+        "notes": payment.notes,
+        "confirmed_at": payment.confirmed_at.isoformat() if payment.confirmed_at else None,
+        "created_at": payment.created_at.isoformat(),
         "receipt_id": receipt_id,
     }

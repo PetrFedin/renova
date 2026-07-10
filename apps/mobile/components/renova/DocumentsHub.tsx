@@ -1,11 +1,11 @@
-/** Документы проекта — по разделам, одно действие на строку без дубля кнопок */
-import { useMemo, useState } from 'react';
+/** Документы проекта — по разделам + единый индекс Document Center */
+import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { RenovaTheme, card } from '@/constants/Theme';
-import { api } from '@/lib/api';
+import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { api, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 
@@ -16,7 +16,7 @@ type DocRow = {
   format: string;
   previewPath?: string;
   filename?: string;
-  run: () => Promise<void>;
+  run?: () => Promise<void>;
   /** PDF — по нажатию меню: открыть / скачать / поделиться */
   pdf?: boolean;
 };
@@ -27,6 +27,30 @@ type DocSection = {
   rows: DocRow[];
 };
 
+function sourceLabel(source: string) {
+  switch (source) {
+    case 'design': return 'Дизайн';
+    case 'receipt': return 'Чек';
+    case 'export': return 'Экспорт';
+    default: return source;
+  }
+}
+
+function statusLabel(doc: ProjectDocument) {
+  if (doc.source === 'receipt') return doc.verified ? 'Проверен' : 'Не проверен';
+  if (doc.status === 'ready') return 'Готов';
+  if (doc.status === 'verified') return 'Проверен';
+  if (doc.status === 'unverified') return 'Не проверен';
+  return doc.status || '—';
+}
+
+function formatDocMeta(doc: ProjectDocument) {
+  const parts = [sourceLabel(doc.source), statusLabel(doc)];
+  if (doc.version != null) parts.push(`v${doc.version}`);
+  if (doc.amount != null) parts.push(formatRub(doc.amount));
+  return parts.filter(Boolean).join(' · ');
+}
+
 export function DocumentsHub({
   userId,
   projectId,
@@ -36,8 +60,22 @@ export function DocumentsHub({
   projectName?: string;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
+  const [indexLoading, setIndexLoading] = useState(true);
 
   const pdfPath = (path: string) => path.replace('{id}', projectId);
+
+  useEffect(() => {
+    let alive = true;
+    setIndexLoading(true);
+    api.listProjectDocuments(userId, projectId)
+      .then((result) => { if (alive) setDocIndex(result); })
+      .catch(() => { if (alive) setDocIndex(null); })
+      .finally(() => { if (alive) setIndexLoading(false); });
+    return () => { alive = false; };
+  }, [userId, projectId]);
+
+  const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 6), [docIndex]);
 
   const sections: DocSection[] = useMemo(() => {
     const rows = {
@@ -85,6 +123,12 @@ export function DocumentsHub({
         format: 'ICS',
         run: () => api.exportIcal(userId, projectId),
       },
+      estimateTable: {
+        id: 'estimate-table',
+        label: 'Смета для Excel',
+        desc: 'Выберите формат CSV или XLSX',
+        format: 'CSV / Excel',
+      },
       dossierPdf: {
         id: 'dossier',
         label: 'Полное досье',
@@ -119,15 +163,7 @@ export function DocumentsHub({
       },
       {
         title: 'Таблицы',
-        rows: [
-          {
-            id: 'estimate-table',
-            label: 'Смета для Excel',
-            desc: 'Выберите формат CSV или XLSX',
-            format: 'CSV / Excel',
-            run: async () => {},
-          },
-        ],
+        rows: [rows.estimateTable],
       },
       {
         title: 'Дополнительно',
@@ -154,6 +190,7 @@ export function DocumentsHub({
   }
 
   function openPdfMenu(row: DocRow) {
+    if (!row.run) return;
     const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
       {
         text: 'Открыть',
@@ -164,7 +201,7 @@ export function DocumentsHub({
       },
       {
         text: 'Скачать',
-        onPress: () => withBusy(`${row.id}-dl`, row.run),
+        onPress: () => withBusy(`${row.id}-dl`, row.run!),
       },
     ];
     if (Platform.OS !== 'web') {
@@ -194,12 +231,44 @@ export function DocumentsHub({
       openPdfMenu(row);
       return;
     }
-    withBusy(row.id, row.run);
+    if (row.run) withBusy(row.id, row.run);
   }
 
   return (
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
+
+      <View style={s.indexCard}>
+        <View style={s.indexHeader}>
+          <View>
+            <Text style={s.indexTitle}>Единый индекс</Text>
+            <Text style={s.indexHint}>Дизайн, чеки и экспортные документы в одном месте</Text>
+          </View>
+          {indexLoading ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : null}
+        </View>
+        {docIndex ? (
+          <View style={s.countsRow}>
+            <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.design}</Text><Text style={s.countLabel}>дизайн</Text></View>
+            <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.receipts}</Text><Text style={s.countLabel}>чеки</Text></View>
+            <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.exports}</Text><Text style={s.countLabel}>экспорт</Text></View>
+          </View>
+        ) : (
+          <Text style={s.indexEmpty}>Индекс пока недоступен. Базовые документы ниже остаются рабочими.</Text>
+        )}
+        {recentDocs.length ? (
+          <View style={s.recentList}>
+            {recentDocs.map((doc) => (
+              <View key={doc.id} style={s.recentRow}>
+                <View style={s.recentMain}>
+                  <Text style={s.recentTitle} numberOfLines={1}>{doc.title}</Text>
+                  <Text style={s.recentMeta} numberOfLines={1}>{formatDocMeta(doc)}</Text>
+                </View>
+                <Text style={s.recentKind}>{doc.kind}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
 
       {sections.map((section) => (
         <View key={section.title} style={s.section}>
@@ -239,6 +308,21 @@ export function DocumentsHub({
 const s = StyleSheet.create({
   wrap: { paddingHorizontal: 16, paddingBottom: 24 },
   sub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 16, lineHeight: 18 },
+  indexCard: { ...card, marginBottom: 18, gap: 10 },
+  indexHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
+  indexTitle: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
+  indexHint: { marginTop: 3, fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
+  indexEmpty: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
+  countsRow: { flexDirection: 'row', gap: 8 },
+  countPill: { flex: 1, borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: RenovaTheme.colors.surface },
+  countValue: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
+  countLabel: { fontSize: 10, color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginTop: 2 },
+  recentList: { gap: 6 },
+  recentRow: { flexDirection: 'row', gap: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, paddingTop: 8 },
+  recentMain: { flex: 1, minWidth: 0 },
+  recentTitle: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
+  recentMeta: { marginTop: 2, fontSize: 11, color: RenovaTheme.colors.textMuted },
+  recentKind: { fontSize: 10, fontWeight: '800', color: RenovaTheme.colors.primary, textTransform: 'uppercase', maxWidth: 90 },
   section: { marginBottom: 18 },
   sectionTitle: {
     fontSize: 12,

@@ -2,6 +2,7 @@
 import { Text } from 'react-native';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { ProjectSitesPanel } from '@/components/renova/ProjectSitesPanel';
 import { HomeActionHero } from '@/components/renova/os/HomeActionHero';
 import { HomeLinkRow } from '@/components/renova/os/HomeLinkRow';
@@ -17,8 +18,9 @@ import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import { WeekScheduleStrip } from '@/components/renova/os/WeekScheduleStrip';
+import { WorkScheduleSummaryCard } from '@/components/renova/workSchedule/WorkScheduleSummaryCard';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
-import { budgetTabRoute, tabsPrefix, type OsRole } from '@/constants/osSections';
+import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { HomeCompletionLinks } from '@/components/renova/os/home/HomeCompletionStrip';
@@ -90,6 +92,7 @@ export function HomeScreenBody({
         healthLevel={snap.healthLevel}
         healthLabel={snap.healthLabel}
       />
+      <OfflineSyncStatus compact />
       {readOnly ? (
         <Text style={homeTypography.homeSubtitle}>{roleScopeLabel({ role, readOnly })}</Text>
       ) : null}
@@ -104,6 +107,8 @@ export function HomeScreenBody({
       {role === 'contractor' && phase === 'active' && (
         <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
       )}
+
+      <HomeLinkRow title="Уведомления проекта" onPress={() => pushScreen('/notifications')} />
 
       {/* 2. Главное действие */}
       {role === 'customer' && snap.quality.awaitingAcceptance > 0 ? (
@@ -138,13 +143,14 @@ export function HomeScreenBody({
         </HomeZone>
       )}
 
-      {/* 5. План на неделю */}
+      {/* 5. План и сроки */}
       {isVisible('schedule') && (
         <HomeZone
-          title="План на неделю"
+          title="План и сроки"
           linkLabel="Календарь →"
           onLinkPress={() => pushTab('calendar')}
         >
+          <WorkScheduleSummaryCard userId={user.id} projectId={activeProject.id} />
           <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
         </HomeZone>
       )}
@@ -152,6 +158,11 @@ export function HomeScreenBody({
       {/* Дополнительно — свёрнуто; для завершённого проекта отчёты тоже здесь */}
       {showMore && (
         <HomeMoreSection summary={moreSectionSummary}>
+          <HomeLinkRow title="Управленческая сводка" onPress={() => pushScreen('/manager-dashboard')} />
+          <HomeLinkRow title="Финансовый центр" onPress={() => pushScreen('/finance-center')} />
+          <HomeLinkRow title="Контроль качества" onPress={() => pushScreen('/quality-control')} />
+          <HomeLinkRow title="Приёмка работ" onPress={() => pushScreen('/work-acceptance')} />
+          <HomeLinkRow title="Документы проекта" onPress={() => pushScreen('/documents')} />
           {phase === 'complete' && (
             <HomeCompletionLinks role={role} userId={user.id} projectId={activeProject.id} />
           )}

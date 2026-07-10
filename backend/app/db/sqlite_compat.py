@@ -100,6 +100,62 @@ def ensure_os_schema() -> None:
             );
         """)
 
+    if "project_work_schedules" not in tables:
+        c.executescript("""
+            CREATE TABLE IF NOT EXISTS project_work_schedules (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'draft',
+              title TEXT DEFAULT 'План-график работ',
+              description TEXT,
+              planned_start_date TEXT,
+              planned_finish_date TEXT,
+              rejection_reason TEXT,
+              created_by TEXT NOT NULL,
+              submitted_by TEXT,
+              confirmed_by TEXT,
+              rejected_by TEXT,
+              created_at TEXT,
+              submitted_at TEXT,
+              confirmed_at TEXT,
+              rejected_at TEXT,
+              updated_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedules_project_id ON project_work_schedules(project_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedules_status ON project_work_schedules(status);
+        """)
+
+    if "project_work_schedule_items" not in tables:
+        c.executescript("""
+            CREATE TABLE IF NOT EXISTS project_work_schedule_items (
+              id TEXT PRIMARY KEY,
+              schedule_id TEXT NOT NULL,
+              project_id TEXT NOT NULL,
+              stage_id TEXT,
+              title TEXT NOT NULL,
+              description TEXT,
+              status TEXT NOT NULL DEFAULT 'planned',
+              planned_start_date TEXT NOT NULL,
+              planned_finish_date TEXT NOT NULL,
+              actual_start_date TEXT,
+              actual_finish_date TEXT,
+              depends_on_item_id TEXT,
+              requires_customer_acceptance INTEGER DEFAULT 1,
+              requires_photo INTEGER DEFAULT 1,
+              requires_hidden_work_acceptance INTEGER DEFAULT 0,
+              delay_days INTEGER DEFAULT 0,
+              blocking_reason TEXT,
+              sort_order INTEGER DEFAULT 0,
+              progress_percent REAL DEFAULT 0,
+              created_at TEXT,
+              updated_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_schedule_id ON project_work_schedule_items(schedule_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_project_id ON project_work_schedule_items(project_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_stage_id ON project_work_schedule_items(stage_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_status ON project_work_schedule_items(status);
+        """)
+
     if "property_floors" not in tables:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS property_floors (

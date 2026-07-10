@@ -14,10 +14,32 @@ fi
 STAGES=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID")
 SID=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); s=next((x for x in d['stages'] if x['status']=='active'), None); print(s['id'] if s else d['stages'][0]['id'])" "$STAGES")
 STATUS=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(next(x['status'] for x in d['stages'] if x['id']==sys.argv[2]))" "$STAGES" "$SID")
+
+# Полный защищённый поток: платёж этапа блокируется до приёмки и проходит после решения заказчика.
 if [ "$STATUS" = "active" ]; then
-  curl -sf -X POST "$API/api/v1/projects/$PID/stages/$SID/submit" -H "X-User-Id: $KID" >/dev/null
-  curl -sf -X POST "$API/api/v1/projects/$PID/stages/$SID/accept" -H "X-User-Id: $CID" >/dev/null
+  PAY=$(curl -sf -X POST "$API/api/v1/projects/$PID/payments" \
+    -H "X-User-Id: $KID" -H 'Content-Type: application/json' \
+    -d "{\"title\":\"E2E оплата этапа\",\"amount\":1,\"payment_type\":\"stage\",\"stage_id\":\"$SID\"}")
+  PAYID=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['id'])" "$PAY")
+
+  BLOCK_CODE=$(curl -s -o /tmp/renova-payment-blocked.json -w '%{http_code}' -X POST \
+    "$API/api/v1/projects/$PID/payments/$PAYID/confirm" -H "X-User-Id: $CID")
+  test "$BLOCK_CODE" = "409"
+
+  ACCEPTANCE=$(curl -sf -X POST "$API/api/v1/projects/$PID/work-acceptances" \
+    -H "X-User-Id: $KID" -H 'Content-Type: application/json' \
+    -d "{\"stage_id\":\"$SID\",\"checklist\":[\"Проверить результат\"],\"comment\":\"E2E: готово к приёмке\"}")
+  AID=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['id'])" "$ACCEPTANCE")
+
+  curl -sf -X POST "$API/api/v1/projects/$PID/work-acceptances/$AID/accept" \
+    -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
+    -d '{"quality_score":10,"comment":"E2E: принято"}' | grep -q 'accepted'
+
+  curl -sf -X POST "$API/api/v1/projects/$PID/payments/$PAYID/confirm" \
+    -H "X-User-Id: $CID" | grep -q 'confirmed'
+  echo "E2E acceptance/payment: blocked-before, confirmed-after OK"
 fi
+
 curl -sf "$API/api/v1/projects/$PID/calendar" -H "X-User-Id: $CID" | grep -q events
 curl -sf "$API/api/v1/projects/$PID/chats" -H "X-User-Id: $CID" | grep -q '\['
 curl -sf "$API/api/v1/audit/logs" -H "X-User-Id: $KID" | grep -q '\['
@@ -31,7 +53,7 @@ if [ -n "$ROOM" ]; then
   curl -sf --max-time 15 -X POST "$API/api/v1/projects/$PID/receipts/scan" -H "X-User-Id: $KID" -H 'Content-Type: application/json' \
     -d "{\"qr_raw\":\"t=20260627T1200&s=800.00&fn=9999078901234567&i=12346&fp=1234567891&n=1\",\"room_id\":\"$ROOM\",\"expense_category\":\"materials\"}" | grep -q stage_id
 fi
-curl -sf --max-time 10 -X POST "$API/api/v1/projects/$PID/receipts/manual" -H "X-User-Id: $KID" -H 'Content-Type: application/json'   -d '{"amount":500,"description":"Наличные за доставку","expense_category":"delivery"}' | grep -q amount
+curl -sf --max-time 10 -X POST "$API/api/v1/projects/$PID/receipts/manual" -H "X-User-Id: $KID" -H 'Content-Type: application/json' -d '{"amount":500,"description":"Наличные за доставку","expense_category":"delivery"}' | grep -q amount
 curl -sf --max-time 10 "$API/api/v1/projects/$PID/analytics/expenses.csv" -H "X-User-Id: $CID" | grep -q Комната
 curl -sf "$API/api/v1/projects/$PID/analytics/expenses-summary" -H "X-User-Id: $CID" | grep -q by_room
 curl -sf -X POST "$API/api/v1/projects/$PID/viewers" -H "X-User-Id: $CID" -H 'Content-Type: application/json' -d '{"phone":"+70000000003"}' | grep -q ok
@@ -39,7 +61,6 @@ curl -sf "$API/api/v1/projects/$PID/viewers" -H "X-User-Id: $CID" | grep -q user
 VIEWER=$(curl -sf -X POST "$API/api/v1/auth/demo/guest" -H 'Content-Type: application/json' | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 VP=$(curl -sf "$API/api/v1/projects" -H "X-User-Id: $VIEWER" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))")
 test "$VP" -ge 1 && echo "E2E guest: projects=$VP OK"
-# bathroom plan stages
 BATH_STAGES=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('stages',[])))")
 test "$BATH_STAGES" -ge 6 && echo "E2E stages: count=$BATH_STAGES OK"
-echo "E2E extended: PDF + receipts + digest + expenses OK"
+echo "E2E extended: acceptance + payment gate + PDF + receipts + digest + expenses OK"

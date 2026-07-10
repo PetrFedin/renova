@@ -249,7 +249,6 @@ class Receipt(Base):
     project: Mapped["Project"] = relationship(back_populates="receipts")
 
 
-
 class ProjectViewer(Base):
     __tablename__ = "project_viewers"
     __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_project_viewer"),)
@@ -286,6 +285,7 @@ class NotificationType(str, enum.Enum):
     chat_message = "chat_message"
     budget_alert = "budget_alert"
     reaction = "reaction"
+    materials = "materials"
 
 class RoomChangeRequest(Base):
     __tablename__ = "room_change_requests"

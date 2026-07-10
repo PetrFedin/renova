@@ -10,4 +10,5 @@ export * from './chat';
 export * from './calendar';
 export * from './scratchpad';
 export * from './floor';
+export * from './documents';
 export * from './misc';
