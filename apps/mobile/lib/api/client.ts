@@ -63,6 +63,11 @@ function canUseDurableCache(opts: RequestInit) {
   return !opts.method || opts.method === 'GET';
 }
 
+function canFallbackToCache(error: unknown) {
+  if (!(error instanceof ApiError)) return true;
+  return error.status >= 500;
+}
+
 async function saveDurableCache<T>(path: string, userId: string | undefined, value: T) {
   try {
     await AsyncStorage.setItem(storageKey(path, userId), JSON.stringify({ t: Date.now(), v: value }));
@@ -90,13 +95,15 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
     _cache.set(k, { t: Date.now(), v });
     await saveDurableCache(path, userId, v);
     return v;
-  } catch (e) {
-    const fallback = await readDurableCache<T>(path, userId);
-    if (fallback !== null) {
-      _cache.set(k, { t: Date.now(), v: fallback });
-      return fallback;
+  } catch (error) {
+    if (canFallbackToCache(error)) {
+      const fallback = await readDurableCache<T>(path, userId);
+      if (fallback !== null) {
+        _cache.set(k, { t: Date.now(), v: fallback });
+        return fallback;
+      }
     }
-    throw e;
+    throw error;
   }
 }
 
@@ -112,15 +119,16 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
       const parsed = parseApiErrorBody(txt, res.status);
       throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
     }
-    const data = await res.json();
-    if (canUseDurableCache(opts)) await saveDurableCache(path, userId, data);
-    return data;
-  } catch (e) {
-    if (canUseDurableCache(opts)) {
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : undefined;
+    if (canUseDurableCache(opts) && data !== undefined) await saveDurableCache(path, userId, data);
+    return data as T;
+  } catch (error) {
+    if (canUseDurableCache(opts) && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) return fallback;
     }
-    throw e;
+    throw error;
   }
 }
 
