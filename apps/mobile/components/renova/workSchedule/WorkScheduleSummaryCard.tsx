@@ -9,6 +9,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 type Props = {
   userId: string;
   projectId: string;
+  projectComplete?: boolean;
 };
 
 function statusLabel(status?: string | null) {
@@ -40,7 +41,7 @@ function pickNextItems(items: WorkScheduleItem[]) {
     .slice(0, 3);
 }
 
-export function WorkScheduleSummaryCard({ userId, projectId }: Props) {
+export function WorkScheduleSummaryCard({ userId, projectId, projectComplete = false }: Props) {
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -70,7 +71,12 @@ export function WorkScheduleSummaryCard({ userId, projectId }: Props) {
     return { total, accepted, delayed, next };
   }, [schedule]);
 
-  const progress = stats.total ? Math.round((stats.accepted / stats.total) * 100) : 0;
+  const useProjectCompletion = projectComplete && !schedule;
+  const progress = useProjectCompletion ? 100 : stats.total ? Math.round((stats.accepted / stats.total) * 100) : 0;
+  const subtitle = useProjectCompletion ? 'Работы завершены' : loading ? 'Загрузка...' : statusLabel(schedule?.status);
+  const progressText = useProjectCompletion
+    ? '100% · проект завершён'
+    : `${progress}% принято · ${stats.accepted}/${stats.total || 0}`;
   const tone = stats.delayed > 0 ? RenovaTheme.colors.dangerText : RenovaTheme.colors.textMuted;
 
   return (
@@ -78,7 +84,7 @@ export function WorkScheduleSummaryCard({ userId, projectId }: Props) {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>График работ</Text>
-          <Text style={styles.subtitle}>{loading ? 'Загрузка...' : statusLabel(schedule?.status)}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
         <Text style={styles.link}>Открыть →</Text>
       </View>
@@ -87,7 +93,7 @@ export function WorkScheduleSummaryCard({ userId, projectId }: Props) {
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
-        <Text style={styles.progressText}>{progress}% принято · {stats.accepted}/{stats.total || 0}</Text>
+        <Text style={styles.progressText}>{progressText}</Text>
       </View>
 
       {stats.next.length ? (
@@ -100,7 +106,13 @@ export function WorkScheduleSummaryCard({ userId, projectId }: Props) {
           ))}
         </View>
       ) : (
-        <Text style={styles.emptyText}>{schedule ? 'Все пункты графика закрыты.' : 'Создайте график из этапов проекта.'}</Text>
+        <Text style={styles.emptyText}>
+          {useProjectCompletion
+            ? 'Проект завершён. График можно открыть для просмотра истории.'
+            : schedule
+              ? 'Все пункты графика закрыты.'
+              : 'Создайте график из этапов проекта.'}
+        </Text>
       )}
 
       {stats.delayed > 0 ? <Text style={[styles.warning, { color: tone }]}>Есть риск по срокам: {stats.delayed}</Text> : null}
