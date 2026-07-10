@@ -3,15 +3,18 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 
 import { RenovaTheme, card } from '@/constants/Theme';
-import { flushOfflineOutbox, getOfflineOutboxSize } from '@/lib/offline';
+import { flushOfflineOutbox, getOfflineOutboxStatus } from '@/lib/offline';
 
 export function OfflineSyncStatus({ compact = false }: { compact?: boolean }) {
   const [pending, setPending] = useState(0);
+  const [blocked, setBlocked] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setPending(await getOfflineOutboxSize().catch(() => 0));
+    const status = await getOfflineOutboxStatus().catch(() => ({ total: 0, pending: 0, blocked: 0 }));
+    setPending(status.pending);
+    setBlocked(status.blocked);
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -20,24 +23,37 @@ export function OfflineSyncStatus({ compact = false }: { compact?: boolean }) {
     setSyncing(true);
     try {
       const result = await flushOfflineOutbox();
-      setLastMessage(result.failed ? `Готово: ${result.synced}, не прошло: ${result.failed}` : 'Все изменения отправлены');
+      setLastMessage(result.failed ? `Отправлено: ${result.synced}, с ошибкой: ${result.failed}` : 'Все доступные изменения отправлены');
       await refresh();
     } finally {
       setSyncing(false);
     }
   };
 
-  if (compact && pending === 0) return null;
+  if (compact && pending === 0 && blocked === 0) return null;
+
+  const title = pending > 0
+    ? `${pending} изменений ждут отправки`
+    : blocked > 0
+      ? `${blocked} изменений требуют проверки`
+      : 'Офлайн-очередь пуста';
+
+  const hint = lastMessage || (blocked > 0
+    ? 'Некоторые изменения сервер отклонил. Они больше не отправляются автоматически.'
+    : 'Последние данные доступны из кэша. Изменения можно отправить вручную.');
+
+  const iconName = pending > 0 ? 'cloud-upload-outline' : blocked > 0 ? 'warning-outline' : 'cloud-done-outline';
+  const iconColor = pending > 0 ? RenovaTheme.colors.warning : blocked > 0 ? RenovaTheme.colors.danger : RenovaTheme.colors.success;
 
   return (
     <View style={styles.card}>
       <View style={styles.main}>
         <View style={styles.iconWrap}>
-          <Ionicons name={pending ? 'cloud-upload-outline' : 'cloud-done-outline'} size={18} color={pending ? RenovaTheme.colors.warning : RenovaTheme.colors.success} />
+          <Ionicons name={iconName} size={18} color={iconColor} />
         </View>
         <View style={styles.textWrap}>
-          <Text style={styles.title}>{pending ? `${pending} изменений в очереди` : 'Офлайн-очередь пуста'}</Text>
-          <Text style={styles.hint}>{lastMessage || 'Последние данные доступны из кэша. Изменения можно отправить вручную.'}</Text>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.hint}>{hint}</Text>
         </View>
       </View>
       {pending > 0 ? (
