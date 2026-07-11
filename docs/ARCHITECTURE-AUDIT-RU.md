@@ -6,7 +6,7 @@
 
 ## 1. Состояние веток
 
-- `develop` опережает `main` на 76 коммитов.
+- `develop` опережает `main` на 77 коммитов.
 - `feature/task-18` объединена с `develop` через PR #1.
 - Основная актуальная интеграционная база — `develop`.
 - `main` пока не содержит последние изменения и не должен использоваться как источник текущего состояния продукта.
@@ -145,6 +145,28 @@ KPI «Сроки» использует `ProjectOsSnapshot.schedule` и сост
 - добавить smoke-test уникальности routes;
 - не менять URL API при рефакторинге.
 
+### A-06. Граница development / production не закреплена конфигурацией
+
+Критичность: High
+
+README описывает backend как FastAPI + PostgreSQL, однако фактическая конфигурация по умолчанию использует SQLite и локальный `public_base_url`. При каждом старте backend выполняет `Base.metadata.create_all`, SQLite compatibility patch и seed demo-пользователей/статей.
+
+Последствия:
+
+- локальный режим легко случайно перенести в staging/production;
+- схема базы может изменяться вне Alembic migration workflow;
+- demo-данные создаются автоматически без явного feature flag;
+- TestFlight не сможет работать с локальным `127.0.0.1`;
+- поведение SQLite и PostgreSQL может расходиться.
+
+Решение:
+
+- ввести обязательные профили `development`, `test`, `staging`, `production`;
+- запрещать SQLite, demo seed и `create_all` вне development/test;
+- сделать `PUBLIC_BASE_URL`, `DATABASE_URL`, CORS origins обязательными для staging/production;
+- запускать миграции Alembic отдельно до старта приложения;
+- добавить startup validation с понятной ошибкой конфигурации.
+
 ## 3. Что в архитектуре уже хорошо
 
 - monorepo разделён на `backend`, `apps/mobile`, `packages`, `scripts`, `docs`;
@@ -166,7 +188,8 @@ KPI «Сроки» использует `ProjectOsSnapshot.schedule` и сост
 | Единый источник данных | 5/10 | Work Schedule и Stage расходятся |
 | Offline architecture | 3/10 | Три параллельных механизма |
 | Навигационная архитектура | 5/10 | Есть недостижимые/неправильно зарегистрированные экраны |
-| Общая архитектурная готовность | 65% | Можно развивать, но перед production нужен рефакторинг связей |
+| Environment boundaries | 4/10 | Dev-режим недостаточно отделён от staging/production |
+| Общая архитектурная готовность | 63% | Можно развивать, но перед production нужен рефакторинг связей и окружений |
 
 ## 5. Следующие проверки этапа 1
 
