@@ -13,7 +13,6 @@ import { flush } from '@/lib/offlineQueue';
 import { initLang } from '@/lib/i18n';
 import { resolvePushLink } from '@/lib/pushLinks';
 
-
 SplashScreen.preventAutoHideAsync();
 
 function SplashGate({ children }: { children: ReactNode }) {
@@ -51,41 +50,35 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-    <RenovaProvider>
-      <SplashGate>
-      <StatusBar style="dark" />
-      <NavTracker />
-      <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="onboarding/role" />
-        <Stack.Screen name="onboarding/project" />
-        <Stack.Screen name="onboarding/detail-quiz" options={{ title: "Детализация" }} />
-        <Stack.Screen name="wizard" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="(customer)" />
-        <Stack.Screen name="(contractor)" />
-        <Stack.Screen name="room/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="stage/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="chat/[threadId]" />
-        <Stack.Screen name="article/[slug]" options={{ headerShown: false }} />
-        <Stack.Screen name="contractor-wizard/[leadId]" options={{ headerShown: false }} />
-        <Stack.Screen name="job-leads" options={{ headerShown: false }} />
-        <Stack.Screen name="portfolio" options={{ headerShown: false }} />
-        <Stack.Screen name="reports" options={{ headerShown: false }} />
-        <Stack.Screen name="design" options={{ headerShown: false }} />
-        <Stack.Screen name="approvals" options={{ headerShown: false }} />
-        <Stack.Screen name="activity" options={{ headerShown: false }} />
-        <Stack.Screen name="documents" options={{ headerShown: false }} />
-        <Stack.Screen name="conflicts" options={{ headerShown: false }} />
-        <Stack.Screen name="scan-receipt" options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="(contractor)/subscription" options={{ headerShown: false }} />
-        <Stack.Screen name="(contractor)/articles-admin" options={{ headerShown: false }} />
-        <Stack.Screen name="(contractor)/audit" options={{ headerShown: false }} />
-        <Stack.Screen name="(contractor)/admin" options={{ headerShown: false }} />
-        <Stack.Screen name="(contractor)/team-qr" options={{ headerShown: false }} />
-        <Stack.Screen name="(contractor)/admin-dashboard" options={{ headerShown: false }} />
-      </Stack>
-      </SplashGate>
-    </RenovaProvider>
+      <RenovaProvider>
+        <SplashGate>
+          <StatusBar style="dark" />
+          <NavTracker />
+          <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="onboarding/role" />
+            <Stack.Screen name="onboarding/project" />
+            <Stack.Screen name="onboarding/detail-quiz" options={{ title: 'Детализация' }} />
+            <Stack.Screen name="wizard" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="(customer)" />
+            <Stack.Screen name="(contractor)" />
+            <Stack.Screen name="room/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="stage/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="chat/[threadId]" />
+            <Stack.Screen name="article/[slug]" options={{ headerShown: false }} />
+            <Stack.Screen name="contractor-wizard/[leadId]" options={{ headerShown: false }} />
+            <Stack.Screen name="job-leads" options={{ headerShown: false }} />
+            <Stack.Screen name="portfolio" options={{ headerShown: false }} />
+            <Stack.Screen name="reports" options={{ headerShown: false }} />
+            <Stack.Screen name="design" options={{ headerShown: false }} />
+            <Stack.Screen name="approvals" options={{ headerShown: false }} />
+            <Stack.Screen name="activity" options={{ headerShown: false }} />
+            <Stack.Screen name="documents" options={{ headerShown: false }} />
+            <Stack.Screen name="conflicts" options={{ headerShown: false }} />
+            <Stack.Screen name="scan-receipt" options={{ presentation: 'modal', headerShown: false }} />
+          </Stack>
+        </SplashGate>
+      </RenovaProvider>
     </SafeAreaProvider>
   );
 }
