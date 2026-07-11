@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -40,7 +40,7 @@ function MetricCard({ label, value, hint, tone }: { label: string; value: string
 }
 
 export function FinanceCenterScreen() {
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, role, readOnly } = useRenova();
   const [state, setState] = useState<FinanceState>({ budget: null, expenses: [], payments: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,14 +69,17 @@ export function FinanceCenterScreen() {
   const confirmedAmount = useMemo(() => confirmedPayments.reduce((sum, p) => sum + (p.amount || 0), 0), [confirmedPayments]);
   const topExpenses = useMemo(() => [...state.expenses].sort((a, b) => b.amount - a.amount).slice(0, 5), [state.expenses]);
   const budget = state.budget;
+  const canConfirmPayments = role === 'customer' && !readOnly;
 
   const confirmPayment = async (payment: Payment) => {
-    if (!user || !activeProject) return;
+    if (!user || !activeProject || !canConfirmPayments) return;
     setConfirmingId(payment.id);
     try {
       await api.confirmPayment(user.id, activeProject.id, payment.id);
       await load();
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось подтвердить оплату.';
+      Alert.alert('Оплата не подтверждена', message);
       await load();
     } finally {
       setConfirmingId(null);
@@ -112,6 +115,16 @@ export function FinanceCenterScreen() {
         <Text style={styles.title}>Финансовый центр</Text>
         <Text style={styles.subtitle}>{activeProject.name}</Text>
       </View>
+
+      {!canConfirmPayments && pendingPayments.length > 0 ? (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoText}>
+            {readOnly
+              ? 'Режим просмотра: подтверждение оплат недоступно.'
+              : 'Оплаты подтверждает заказчик. Здесь доступен просмотр финансового статуса проекта.'}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.heroCard}>
         <Text style={styles.heroLabel}>Финансовый статус</Text>
@@ -155,13 +168,17 @@ export function FinanceCenterScreen() {
               <Text style={styles.rowTitle} numberOfLines={1}>{payment.title}</Text>
               <Text style={styles.rowMeta}>{paymentLabel(payment.status)} · {formatRub(payment.amount)}</Text>
             </View>
-            <PrimaryButton
-              title="Оплатить"
-              compact
-              onPress={() => confirmPayment(payment)}
-              loading={confirmingId === payment.id}
-              disabled={Boolean(confirmingId)}
-            />
+            {canConfirmPayments ? (
+              <PrimaryButton
+                title="Оплатить"
+                compact
+                onPress={() => confirmPayment(payment)}
+                loading={confirmingId === payment.id}
+                disabled={Boolean(confirmingId)}
+              />
+            ) : (
+              <Text style={styles.roleHint}>Решение заказчика</Text>
+            )}
           </View>
         )) : <Text style={styles.emptyText}>Нет платежей, ожидающих оплаты.</Text>}
       </View>
@@ -190,6 +207,8 @@ const styles = StyleSheet.create({
   back: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.primaryMuted, fontWeight: RenovaTheme.fontWeight.semibold },
   title: { fontSize: RenovaTheme.fontSize.h1, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
   subtitle: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.textMuted },
+  infoCard: { ...card, backgroundColor: RenovaTheme.colors.surfaceMuted, padding: RenovaTheme.spacing.md },
+  infoText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
   heroCard: { ...card, gap: RenovaTheme.spacing.sm, borderLeftWidth: 4, borderLeftColor: RenovaTheme.colors.primaryMuted },
   heroLabel: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, fontWeight: RenovaTheme.fontWeight.bold, textTransform: 'uppercase', letterSpacing: 0.4 },
   heroTitle: { fontSize: RenovaTheme.fontSize.h2, fontWeight: RenovaTheme.fontWeight.extrabold, lineHeight: 26 },
@@ -206,6 +225,7 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1, minWidth: 0 },
   rowTitle: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.extrabold },
   rowMeta: { marginTop: 2, fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted },
+  roleHint: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, fontWeight: RenovaTheme.fontWeight.semibold },
   amountText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.extrabold },
   emptyText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
   stateTitle: { fontSize: RenovaTheme.fontSize.h3, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text, textAlign: 'center' },
