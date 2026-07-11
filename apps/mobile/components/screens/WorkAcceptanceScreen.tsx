@@ -81,8 +81,9 @@ function AcceptanceCard({
   onReturn: (acceptance: WorkAcceptance) => void;
 }) {
   const isCustomer = role === 'customer';
-  const canRequest = !readOnly && !isCustomer && ['active', 'review'].includes(stage.status) && !acceptance;
-  const canDecide = !readOnly && isCustomer && acceptance && ['requested', 'in_review', 'returned'].includes(acceptance.status);
+  const acceptanceClosedForRework = acceptance?.status === 'returned' || acceptance?.status === 'rejected';
+  const canRequest = !readOnly && !isCustomer && ['active', 'review'].includes(stage.status) && (!acceptance || acceptanceClosedForRework);
+  const canDecide = !readOnly && isCustomer && acceptance && ['requested', 'in_review'].includes(acceptance.status);
   const accepted = stage.status === 'done' || acceptance?.status === 'accepted' || acceptance?.status === 'accepted_with_remarks';
   const tone = statusTone(acceptance?.status || stage.status);
 
@@ -93,7 +94,7 @@ function AcceptanceCard({
           <Text style={styles.cardTitle}>{stage.name}</Text>
           <Text style={styles.cardMeta}>{stageStatusLabel(stage.status)} · готовность {Math.round(stage.percent_complete || 0)}%</Text>
         </View>
-        <View style={[styles.badge, { borderColor: tone }]}> 
+        <View style={[styles.badge, { borderColor: tone }]}>
           <Text style={[styles.badgeText, { color: tone }]}>{statusLabel(acceptance?.status || stage.status)}</Text>
         </View>
       </View>
@@ -109,6 +110,9 @@ function AcceptanceCard({
               {acceptance.checklist.slice(0, 4).map((item) => <Text key={item} style={styles.checklistItem}>• {item}</Text>)}
             </View>
           ) : null}
+          {acceptanceClosedForRework && !isCustomer ? (
+            <Text style={styles.reworkHint}>После исправления замечаний отправьте этап на повторную приёмку.</Text>
+          ) : null}
         </View>
       ) : (
         <Text style={styles.hintText}>Приёмка по этапу ещё не запрошена.</Text>
@@ -116,7 +120,7 @@ function AcceptanceCard({
 
       <View style={styles.actions}>
         <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${stage.id}?returnTo=${encodeURIComponent('/work-acceptance')}` as never)} />
-        {canRequest ? <PrimaryButton title="Запросить приёмку" compact onPress={() => onRequest(stage)} loading={actingId === stage.id} disabled={Boolean(actingId)} /> : null}
+        {canRequest ? <PrimaryButton title={acceptanceClosedForRework ? 'Повторно на приёмку' : 'Запросить приёмку'} compact onPress={() => onRequest(stage)} loading={actingId === stage.id} disabled={Boolean(actingId)} /> : null}
         {canDecide ? <PrimaryButton title="Принять" compact onPress={() => onAccept(acceptance)} loading={actingId === acceptance.id} disabled={Boolean(actingId)} /> : null}
         {canDecide ? <PrimaryButton title="На доработку" variant="outline" compact onPress={() => onReturn(acceptance)} loading={actingId === acceptance.id} disabled={Boolean(actingId)} /> : null}
       </View>
@@ -293,6 +297,7 @@ const styles = StyleSheet.create({
   detailsBox: { gap: 3 },
   detailText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
   hintText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
+  reworkHint: { marginTop: 4, fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.warningText, lineHeight: 16, fontWeight: RenovaTheme.fontWeight.semibold },
   checklistBox: { marginTop: 4, gap: 2 },
   checklistItem: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: RenovaTheme.spacing.sm },
