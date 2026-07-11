@@ -45,26 +45,21 @@
 
 Критичность: High
 
-Файлы маршрутов существуют, например:
+Статус: устранено 11 июля 2026.
 
-- `apps/mobile/app/(contractor)/subscription.tsx`
-- `apps/mobile/app/(contractor)/audit.tsx`
-- `apps/mobile/app/(contractor)/admin.tsx`
-- `apps/mobile/app/(contractor)/team-qr.tsx`
+Файлы маршрутов уже корректно зарегистрированы в `apps/mobile/app/(contractor)/_layout.tsx`, но те же экраны дополнительно объявлялись в корневом `app/_layout.tsx` как `(contractor)/...`.
 
-Но они объявлены в корневом `app/_layout.tsx` как `(contractor)/...`, тогда как `app/(contractor)/_layout.tsx` регистрирует только `(tabs)`.
+Устранение:
 
-Последствия:
+- удалены дублирующие declarations из root Stack;
+- canonical registration оставлена внутри contractor group;
+- commit: `19fd6f9e248758578e2ff7d533a601fa23656b86`.
 
-- Expo Router warnings;
-- нестабильное поведение web routing;
-- ссылки из профиля могут вести в route, который не зарегистрирован в layout своей группы.
+Остаточная проверка:
 
-Решение:
-
-- зарегистрировать эти экраны внутри `app/(contractor)/_layout.tsx`;
-- убрать вложенные contractor screen declarations из root Stack;
-- проверить deep links на web и native.
+- запустить Expo web и native;
+- проверить переходы `subscription`, `audit`, `admin`, `team-qr`, `admin-dashboard`;
+- убедиться, что warnings исчезли.
 
 ### A-03. Два источника истины для прогресса работ
 
@@ -167,7 +162,121 @@ README описывает backend как FastAPI + PostgreSQL, однако фа
 - запускать миграции Alembic отдельно до старта приложения;
 - добавить startup validation с понятной ошибкой конфигурации.
 
-## 3. Что в архитектуре уже хорошо
+### A-07. Нет единого реестра публичных, служебных и WIP-экранов
+
+Критичность: Medium
+
+Customer и contractor tabs имеют четыре канонических раздела:
+
+- Главная;
+- Объект;
+- Ремонт;
+- Бюджет/Деньги.
+
+Остальные tab-routes зарегистрированы с `href: null` и открываются программно. Дополнительно существуют глобальные secondary routes и отдельные центры.
+
+Риск:
+
+- разработчик не видит, какой экран считается частью продукта, какой служебный, а какой WIP;
+- новые функции легко остаются недостижимыми;
+- один и тот же сценарий может получить несколько входов и разные названия.
+
+Решение:
+
+- создать typed registry экранов;
+- для каждого route задать `audience`, `visibility`, `entryPoint`, `status`;
+- навигационные меню строить из registry, а не из разрозненных массивов и прямых `router.push`;
+- добавить тест, что production routes имеют хотя бы один entry point.
+
+## 3. Реестр Mobile routes — первый проход
+
+### 3.1 Канонические tabs для обеих ролей
+
+| Route | Customer | Contractor | Статус |
+|---|---:|---:|---|
+| `index` | да | да | основной |
+| `object` | да | да | основной |
+| `repair` | да | да | основной |
+| `budget` | да | да | основной |
+
+### 3.2 Скрытые tab routes
+
+Customer:
+
+- `works`
+- `materials`
+- `control`
+- `more`
+- `stages`
+- `finance`
+- `estimate`
+- `chat`
+- `profile`
+- `rooms`
+- `calendar`
+- `guide`
+- `plan`
+
+Contractor:
+
+- `works`
+- `materials`
+- `control`
+- `more`
+- `objects`
+- `plan`
+- `money`
+- `stages`
+- `estimate`
+- `chat`
+- `profile`
+- `rooms`
+- `calendar`
+
+### 3.3 Глобальные secondary routes
+
+Подтверждены в root Stack:
+
+- onboarding;
+- wizard;
+- room detail;
+- stage detail;
+- chat thread;
+- article;
+- contractor wizard;
+- job leads;
+- portfolio;
+- reports;
+- design;
+- approvals;
+- activity;
+- documents;
+- conflicts;
+- scan receipt.
+
+### 3.4 Contractor group routes
+
+Подтверждены внутри contractor layout:
+
+- subscription;
+- articles-admin;
+- audit;
+- admin;
+- team-qr;
+- admin-dashboard.
+
+### 3.5 Новые standalone centers
+
+Файлы существуют, но пока требуют формального включения в route registry:
+
+- work-schedule;
+- finance-center;
+- quality-control;
+- work-acceptance;
+- manager-dashboard;
+- notifications.
+
+## 4. Что в архитектуре уже хорошо
 
 - monorepo разделён на `backend`, `apps/mobile`, `packages`, `scripts`, `docs`;
 - mobile API собран через единый `apps/mobile/lib/api/index.ts`;
@@ -178,29 +287,28 @@ README описывает backend как FastAPI + PostgreSQL, однако фа
 - тема и UI-компоненты частично централизованы;
 - `develop` теперь является актуальной интеграционной веткой.
 
-## 4. Предварительная оценка этапа 1
+## 5. Предварительная оценка этапа 1
 
 | Область | Оценка | Комментарий |
 |---|---:|---|
 | Структура monorepo | 8/10 | Основа хорошая |
 | Разделение backend-слоёв | 7/10 | Есть API/services/models, но router перегружен |
-| Mobile architecture | 7/10 | Хорошее разделение, но навигация и offline дублируются |
+| Mobile architecture | 7/10 | Хорошее разделение, но navigation registry отсутствует |
 | Единый источник данных | 5/10 | Work Schedule и Stage расходятся |
 | Offline architecture | 3/10 | Три параллельных механизма |
-| Навигационная архитектура | 5/10 | Есть недостижимые/неправильно зарегистрированные экраны |
+| Навигационная архитектура | 6/10 | Один дефект устранён, но secondary routes не формализованы |
 | Environment boundaries | 4/10 | Dev-режим недостаточно отделён от staging/production |
-| Общая архитектурная готовность | 63% | Можно развивать, но перед production нужен рефакторинг связей и окружений |
+| Общая архитектурная готовность | 64% | Основа сильная, но нужны canonical offline, progress и route registry |
 
-## 5. Следующие проверки этапа 1
+## 6. Следующие проверки этапа 1
 
-- полный реестр mobile routes;
-- карта достижимости экранов;
+- проверить достижимость каждого standalone center;
 - поиск дублирующихся API clients/types;
 - проверка моделей WorkAcceptance/Stage/Payment/Document;
 - проверка циклических импортов и прямых вызовов инфраструктуры из UI;
-- проверка `offlineQueue` usage и безопасный план объединения offline-слоёв;
+- безопасный план объединения offline-слоёв;
 - проверка feature/task-19…task-24 относительно актуального develop.
 
-## 6. Правило аудита
+## 7. Правило аудита
 
 Каждый вывод должен быть подтверждён актуальным кодом ветки `develop`. Подготовленное, но не записанное изменение не считается выполненным.
