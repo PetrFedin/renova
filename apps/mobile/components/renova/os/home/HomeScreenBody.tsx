@@ -150,7 +150,11 @@ export function HomeScreenBody({
           linkLabel="Календарь →"
           onLinkPress={() => pushTab('calendar')}
         >
-          <WorkScheduleSummaryCard userId={user.id} projectId={activeProject.id} />
+          <WorkScheduleSummaryCard
+            userId={user.id}
+            projectId={activeProject.id}
+            projectComplete={snap.isComplete}
+          />
           <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
         </HomeZone>
       )}
