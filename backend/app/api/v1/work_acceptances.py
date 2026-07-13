@@ -1,6 +1,6 @@
 """API приёмки работ: запрос → проверка → принять / вернуть."""
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -9,7 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import AcceptanceStatus, Project, ProjectIssue, Stage, StageStatus, User, UserRole, WorkAcceptance
+from app.models.entities import (
+    AcceptanceStatus,
+    Payment,
+    PaymentType,
+    Project,
+    ProjectIssue,
+    Stage,
+    StageStatus,
+    User,
+    UserRole,
+    WorkAcceptance,
+)
 from app.services import activity_service as act
 from app.services import notification_service as notif
 
@@ -100,6 +111,49 @@ async def active_acceptance(db: AsyncSession, project_id: str, stage_id: str) ->
             .limit(1)
         )
     ).scalars().first()
+
+
+async def ensure_stage_payment(db: AsyncSession, project: Project, stage: Stage, created_by: str) -> Payment | None:
+    existing = (
+        await db.execute(
+            select(Payment)
+            .where(Payment.project_id == project.id)
+            .where(Payment.stage_id == stage.id)
+            .where(Payment.payment_type == PaymentType.stage)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing or not stage.payment_amount or stage.payment_amount <= 0:
+        return existing
+
+    payment = Payment(
+        project_id=project.id,
+        stage_id=stage.id,
+        payment_type=PaymentType.stage,
+        title=f"Оплата этапа: {stage.name}",
+        amount=stage.payment_amount,
+        created_by=created_by,
+        notes="Создано при приёмке этапа",
+    )
+    db.add(payment)
+    return payment
+
+
+async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
+    next_stage = (
+        await db.execute(
+            select(Stage)
+            .where(Stage.project_id == stage.project_id)
+            .where(Stage.sort_order > stage.sort_order)
+            .where(Stage.status == StageStatus.planned)
+            .order_by(Stage.sort_order.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if next_stage:
+        next_stage.status = StageStatus.active
+        next_stage.actual_start = next_stage.actual_start or date.today()
+    return next_stage
 
 
 @router.get("/{project_id}/work-acceptances")
@@ -201,10 +255,13 @@ async def accept_work(
     row.comment = body.comment or row.comment
     if body.checklist is not None:
         row.checklist_json = json.dumps(body.checklist)
+
     stage.status = StageStatus.done
     stage.customer_accepted_at = stage.customer_accepted_at or now
+    stage.actual_end = stage.actual_end or date.today()
     stage.percent_complete = 100
     stage.needs_rework = False
+
     if body.create_issue:
         db.add(ProjectIssue(
             project_id=project_id,
@@ -215,6 +272,9 @@ async def accept_work(
             status="open",
             created_at=now,
         ))
+
+    payment = await ensure_stage_payment(db, project, stage, user.id)
+    next_stage = await activate_next_stage(db, stage)
     await db.commit()
     await db.refresh(row)
 
@@ -227,6 +287,17 @@ async def accept_work(
         body=body.comment,
         link_path=f"/stage/{stage.id}",
     )
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="StageClosed",
+        title=f"Этап закрыт: {stage.name}",
+        body=body.comment,
+        link_path=f"/stage/{stage.id}",
+        stage_id=stage.id,
+    )
+
     for member_id in project_member_ids(project):
         if member_id == user.id:
             continue
@@ -240,6 +311,32 @@ async def accept_work(
             link_path=f"/stage/{stage.id}",
             return_to="/(customer)/(tabs)/home",
         )
+
+    if payment and project.customer_id:
+        await notif.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=project_id,
+            notification_type="payment_pending",
+            title="Подтвердите оплату этапа",
+            body=stage.name,
+            link_path="/(customer)/(tabs)/finance",
+            return_to="/(customer)/(tabs)/home",
+        )
+
+    if next_stage:
+        for member_id in project_member_ids(project):
+            await notif.notify(
+                db,
+                user_id=member_id,
+                project_id=project_id,
+                notification_type="stage_started",
+                title=f"Следующий этап: {next_stage.name}",
+                body="Этап автоматически переведён в работу после приёмки предыдущего.",
+                link_path=f"/stage/{next_stage.id}",
+                return_to="/(customer)/(tabs)/repair",
+            )
+
     return acceptance_dict(row)
 
 
@@ -266,6 +363,8 @@ async def return_work(
     if body.checklist is not None:
         row.checklist_json = json.dumps(body.checklist)
     stage.status = StageStatus.active
+    stage.contractor_ready = False
+    stage.contractor_ready_at = None
     stage.needs_rework = True
     stage.percent_complete = min(stage.percent_complete or 90, 90)
 
