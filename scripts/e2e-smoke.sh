@@ -14,6 +14,7 @@ fi
 STAGES=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID")
 SID=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); s=next((x for x in d['stages'] if x['status']=='active'), None); print(s['id'] if s else d['stages'][0]['id'])" "$STAGES")
 STATUS=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(next(x['status'] for x in d['stages'] if x['id']==sys.argv[2]))" "$STAGES" "$SID")
+NEXT_SID=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); current=next(x for x in d['stages'] if x['id']==sys.argv[2]); nxt=next((x for x in sorted(d['stages'], key=lambda x: x.get('sort_order', 0)) if x.get('sort_order', 0)>current.get('sort_order', 0) and x['status']=='planned'), None); print(nxt['id'] if nxt else '')" "$STAGES" "$SID")
 
 # Полный защищённый поток: платёж этапа блокируется до приёмки и проходит после решения заказчика.
 if [ "$STATUS" = "active" ]; then
@@ -35,9 +36,21 @@ if [ "$STATUS" = "active" ]; then
     -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
     -d '{"quality_score":10,"comment":"E2E: принято"}' | grep -q 'accepted'
 
+  AFTER_ACCEPT=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID")
+  ACCEPTED_STATUS=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(next(x['status'] for x in d['stages'] if x['id']==sys.argv[2]))" "$AFTER_ACCEPT" "$SID")
+  test "$ACCEPTED_STATUS" = "done"
+
+  if [ -n "$NEXT_SID" ]; then
+    NEXT_STATUS=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(next(x['status'] for x in d['stages'] if x['id']==sys.argv[2]))" "$AFTER_ACCEPT" "$NEXT_SID")
+    test "$NEXT_STATUS" = "active"
+  fi
+
+  STAGE_PAYMENT_COUNT=$(curl -sf "$API/api/v1/projects/$PID/payments" -H "X-User-Id: $CID" | python3 -c "import json,sys; rows=json.load(sys.stdin); print(sum(1 for x in rows if x.get('stage_id')==sys.argv[1] and x.get('payment_type')=='stage'))" "$SID")
+  test "$STAGE_PAYMENT_COUNT" = "1"
+
   curl -sf -X POST "$API/api/v1/projects/$PID/payments/$PAYID/confirm" \
     -H "X-User-Id: $CID" | grep -q 'confirmed'
-  echo "E2E acceptance/payment: blocked-before, confirmed-after OK"
+  echo "E2E acceptance/payment: blocked-before, accepted, next-stage-active, single-payment, confirmed-after OK"
 fi
 
 curl -sf "$API/api/v1/projects/$PID/calendar" -H "X-User-Id: $CID" | grep -q events
@@ -63,4 +76,4 @@ VP=$(curl -sf "$API/api/v1/projects" -H "X-User-Id: $VIEWER" | python3 -c "impor
 test "$VP" -ge 1 && echo "E2E guest: projects=$VP OK"
 BATH_STAGES=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('stages',[])))")
 test "$BATH_STAGES" -ge 6 && echo "E2E stages: count=$BATH_STAGES OK"
-echo "E2E extended: acceptance + payment gate + PDF + receipts + digest + expenses OK"
+echo "E2E extended: acceptance + payment gate + next stage + PDF + receipts + digest + expenses OK"
