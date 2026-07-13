@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import DesignPackage, Receipt, User
+from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage, User, WorkAcceptance
 
 router = APIRouter(prefix="/projects", tags=["documents"])
 
@@ -59,6 +59,44 @@ async def list_project_documents(
             "meta": {"notes": item.notes, "file_key": item.file_key},
         })
 
+    acceptance_rows = list(
+        (
+            await db.execute(
+                select(WorkAcceptance, Stage)
+                .join(Stage, Stage.id == WorkAcceptance.stage_id)
+                .where(WorkAcceptance.project_id == project_id)
+                .where(WorkAcceptance.status.in_([
+                    AcceptanceStatus.accepted.value,
+                    AcceptanceStatus.accepted_with_remarks.value,
+                ]))
+                .order_by(WorkAcceptance.accepted_at.desc(), WorkAcceptance.created_at.desc())
+            )
+        ).all()
+    )
+    for acceptance, stage in acceptance_rows:
+        docs.append({
+            "id": f"acceptance:{acceptance.id}",
+            "source": "acceptance",
+            "kind": "stage_acceptance_act",
+            "title": f"Акт приёмки: {stage.name}",
+            "status": acceptance.status,
+            "href": f"/api/v1/projects/{project_id}/stages/{stage.id}/acceptance.pdf",
+            "created_at": (
+                acceptance.accepted_at.isoformat()
+                if acceptance.accepted_at
+                else acceptance.created_at.isoformat() if acceptance.created_at else None
+            ),
+            "amount": stage.payment_amount,
+            "verified": True,
+            "version": None,
+            "meta": {
+                "stage_id": stage.id,
+                "quality_score": acceptance.quality_score,
+                "comment": acceptance.comment,
+                "accepted_by": acceptance.accepted_by,
+            },
+        })
+
     receipt_rows = list(
         (
             await db.execute(
@@ -100,15 +138,22 @@ async def list_project_documents(
         export_doc(project_id, "kpi_weekly_pdf", "Еженедельный KPI-отчёт", f"/api/v1/projects/{project_id}/kpi-weekly.pdf"),
     ])
 
-    docs.sort(key=lambda x: x.get("created_at") or "9999-12-31", reverse=True)
+    docs.sort(
+        key=lambda item: (
+            item.get("created_at") is not None,
+            item.get("created_at") or "",
+        ),
+        reverse=True,
+    )
     return {
         "project_id": project_id,
         "project_name": project.name,
         "items": docs,
         "counts": {
             "total": len(docs),
-            "design": len([x for x in docs if x["source"] == "design"]),
-            "receipts": len([x for x in docs if x["source"] == "receipt"]),
-            "exports": len([x for x in docs if x["source"] == "export"]),
+            "design": len([item for item in docs if item["source"] == "design"]),
+            "acceptances": len([item for item in docs if item["source"] == "acceptance"]),
+            "receipts": len([item for item in docs if item["source"] == "receipt"]),
+            "exports": len([item for item in docs if item["source"] == "export"]),
         },
     }
