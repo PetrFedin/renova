@@ -16,14 +16,13 @@ from app.services.subscription_service import is_pro
 from app.services import team_service as team_svc
 
 
-
 STAGE_ROOM_TYPES: dict[str, list[str]] = {
     "сантех": ["bathroom", "toilet", "kitchen"],
     "гидро": ["bathroom", "toilet"],
     "плитк": ["bathroom", "toilet", "kitchen"],
     "фартук": ["kitchen"],
     "соглас": [],
-    "электр": [],  # all rooms
+    "электр": [],
     "демонтаж": [],
     "чернов": [],
     "чистов": [],
@@ -116,7 +115,6 @@ async def create_project(
 
     await db.commit()
     for rd in rooms_data:
-        # sync electrical/plumbing lines per room after commit
         pass
 
     p = await get_project(db, project.id)
@@ -129,8 +127,7 @@ async def create_project(
     if not p:
         return project
 
-    all_lines_objs = p.estimate_lines
-    total = sum(l.quantity_planned * l.unit_price for l in all_lines_objs)
+    total = sum(l.quantity_planned * l.unit_price for l in p.estimate_lines)
     p.budget_planned = _r2(total)
 
     day_cursor = start
@@ -207,17 +204,16 @@ async def list_projects_for_user(db: AsyncSession, user: User) -> list[Project]:
             if p.id not in seen:
                 owned.append(p)
         return owned
-    else:
-        owners = await team_svc.team_owner_ids(db, user.id)
-        ids = {user.id} | owners
-        q = q.where((Project.contractor_id.in_(ids)) | (Project.contractor_id.is_(None)))
+
+    owners = await team_svc.team_owner_ids(db, user.id)
+    contractor_ids = {user.id} | owners
+    q = q.where(Project.contractor_id.in_(contractor_ids))
     result = await db.execute(q.order_by(Project.created_at.desc()))
     return list(result.scalars().all())
 
 
 def build_dashboard(project: Project) -> dict:
     stages = sorted(project.stages, key=lambda s: s.sort_order)
-    total_w = len(stages) or 1
     progress = st_status.weighted_progress(stages)
     review = next((s for s in stages if s.status == StageStatus.review), None)
     active = next((s for s in stages if s.status == StageStatus.active), None)
@@ -259,9 +255,7 @@ def build_dashboard(project: Project) -> dict:
 
 
 async def submit_stage_for_review(db: AsyncSession, stage_id: str) -> tuple[Stage | None, dict | None]:
-    """Алиас: исполнитель отмечает готовность этапа."""
     from app.services import stage_service as stage_svc
-
     return await stage_svc.set_contractor_ready(db, stage_id)
 
 
@@ -274,7 +268,6 @@ async def reject_stage(db: AsyncSession, stage_id: str, user_id: str, reason: st
     stage.contractor_ready = False
     stage.contractor_ready_at = None
     stage.needs_rework = True
-    from datetime import timedelta
     stage.rework_deadline = datetime.utcnow() + timedelta(days=3)
     if reason:
         from app.models.entities import StageComment
@@ -297,12 +290,10 @@ async def accept_stage(db: AsyncSession, stage_id: str) -> Stage | None:
     stage.needs_rework = False
     stage.customer_accepted_at = datetime.utcnow()
     if not getattr(stage, "actual_end", None):
-        from datetime import date as _date
-        stage.actual_end = _date.today()
+        stage.actual_end = date.today()
 
     project = await get_project(db, stage.project_id)
     if project:
-        # создаём ожидающий платёж за этап (подтверждает заказчик)
         existing = next(
             (p for p in project.payments if p.stage_id == stage.id and p.payment_type == PaymentType.stage),
             None,
@@ -327,8 +318,7 @@ async def accept_stage(db: AsyncSession, stage_id: str) -> Stage | None:
         if nxt:
             nxt.status = StageStatus.active
             if not getattr(nxt, "actual_start", None):
-                from datetime import date as _date
-                nxt.actual_start = _date.today()
+                nxt.actual_start = date.today()
     from app.services import acceptance_service as acc_svc
     acc = await acc_svc.get_by_stage(db, stage.id)
     if acc and acc.status in ("requested", "in_review", "returned"):
@@ -345,7 +335,7 @@ async def accept_stage(db: AsyncSession, stage_id: str) -> Stage | None:
 
 
 async def count_contractor_projects(db: AsyncSession, contractor_id: str) -> int:
-    from sqlalchemy import func, select
+    from sqlalchemy import func
     r = await db.execute(select(func.count()).select_from(Project).where(Project.contractor_id == contractor_id))
     return r.scalar() or 0
 
@@ -366,7 +356,6 @@ async def assign_contractor(db: AsyncSession, project_id: str, contractor_id: st
 
 
 async def update_project(db: AsyncSession, project_id: str, **fields) -> Project | None:
-    """Обновление профиля проекта — только переданные поля."""
     p = await get_project(db, project_id)
     if not p:
         return None
