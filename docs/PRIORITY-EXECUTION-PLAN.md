@@ -240,3 +240,19 @@ Score: documents ~7.5 · overall ~77%.
 1. OCR classify stub (async job flag на DocumentVersion)
 2. E-sign provider interface (stub)
 3. Merge develop → main по checklist (осознанный PR, не auto)
+
+---
+
+## Wave 3b — OCR stub + e-sign providers (2026-07-15) — DONE
+
+- `document_ocr_service.py` + поля на `DocumentVersion`
+- Upload auto-classify (эвристики); `GET/POST …/ocr`
+- `esign/` registry: in_app + kontur/goskey stubs; `GET /esign/providers`; sign → 501 для stubs
+- Docs: `DOCUMENT-CENTER-WAVE3B.md`
+- Score: Document Center ~8.2 · overall ~82%
+
+### Следующий приоритет
+
+1. (Опционально) OCR async worker + реальный engine
+2. Merge `develop` → `main` по `MAIN-MERGE-CHECKLIST.md` (осознанный PR)
+3. TestFlight notes / staging env smoke на non-sqlite

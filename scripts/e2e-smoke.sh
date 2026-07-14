@@ -150,6 +150,41 @@ curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/legal-hold" \
   -d '{"enabled":false}' >/dev/null
 echo "E2E legal hold: block-delete=$DEL_HOLD OK"
 
+# --- Wave 3b: OCR classify + e-sign providers ---
+OCR_GET=$(curl -sf "$API/api/v1/projects/$PID/documents/$DOC_ID/ocr" -H "X-User-Id: $CID")
+echo "$OCR_GET" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['ocr']['status']=='done'; assert d['ocr'].get('suggested_type')"
+# Upload with contract in title → type applied
+UP2=$(curl -sf -X POST "$API/api/v1/projects/$PID/documents/upload" \
+  -H "X-User-Id: $CID" \
+  -F "file=@/etc/hosts;type=text/plain;filename=note.txt" \
+  -F "title=Договор на ремонт" \
+  -F "document_type=upload")
+echo "$UP2" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['kind']=='contract', d; assert d['meta']['ocr']['status']=='done'"
+echo "E2E OCR: classify+apply OK"
+
+PROVS=$(curl -sf "$API/api/v1/esign/providers" -H "X-User-Id: $CID")
+echo "$PROVS" | python3 -c "import json,sys; d=json.load(sys.stdin); names={p['name'] for p in d['providers']}; assert 'in_app' in names and 'kontur' in names"
+SIGN=$(curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/sign" \
+  -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
+  -d '{"signature_type":"in_app","provider":"in_app"}')
+echo "$SIGN" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('signature_id')"
+K501=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/sign" \
+  -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
+  -d '{"provider":"kontur"}')
+# already signed may 400, so use fresh upload for kontur 501
+DOC3=$(curl -sf -X POST "$API/api/v1/projects/$PID/documents/upload" \
+  -H "X-User-Id: $CID" \
+  -F "file=@/etc/hosts;type=text/plain;filename=esign.txt" \
+  -F "title=Для подписи контур" \
+  -F "document_type=contract")
+DID3=$(echo "$DOC3" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+K501=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/v1/projects/$PID/documents/$DID3/sign" \
+  -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
+  -d '{"provider":"kontur"}')
+test "$K501" = "501"
+echo "E2E e-sign: providers+in_app+kontur501=$K501 OK"
+
+
 
 
 BATH_STAGES=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('stages',[])))")

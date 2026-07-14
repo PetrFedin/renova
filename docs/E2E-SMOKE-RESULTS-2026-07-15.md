@@ -37,3 +37,15 @@ E2E extended: acceptance + payment gate + next stage + PDF + receipts + digest +
 ## Зачем в git
 
 Артефакт готовности staging: не только «скрипт есть», а зафиксированный прогон на живом API.
+
+## Run 3 (Wave 3b OCR + e-sign) — PASS (`EXIT:0`)
+
+```
+E2E media ACL: noauth=401 owner=200 foreign=404 OK
+E2E legal hold: block-delete=409 OK
+E2E OCR: classify+apply OK
+E2E e-sign: providers+in_app+kontur501=501 OK
+E2E stages / extended OK
+```
+
+Commit серии Wave 3b: OCR stub + esign registry на `develop`.

@@ -344,6 +344,34 @@ def ensure_os_schema() -> None:
             CREATE INDEX IF NOT EXISTS ix_scratchpad_lines_project ON scratchpad_lines(project_id);
         """)
 
+    # Wave 3b: OCR flags on document_versions + esign provider on signatures
+    if "document_versions" in tables:
+        dv = cols("document_versions")
+        for col, typ in [
+            ("ocr_status", "TEXT DEFAULT 'none'"),
+            ("ocr_job_id", "TEXT"),
+            ("ocr_suggested_type", "TEXT"),
+            ("ocr_confidence", "REAL"),
+            ("ocr_completed_at", "TEXT"),
+            ("ocr_error", "TEXT"),
+        ]:
+            if col not in dv:
+                try:
+                    c.execute(f"ALTER TABLE document_versions ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+    if "document_signatures" in tables:
+        ds = cols("document_signatures")
+        for col, typ in [
+            ("provider_name", "TEXT DEFAULT 'in_app'"),
+            ("provider_external_id", "TEXT"),
+        ]:
+            if col not in ds:
+                try:
+                    c.execute(f"ALTER TABLE document_signatures ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
     # Wave 3: legal hold on canonical documents
     if "project_documents" in tables:
         pd = cols("project_documents")

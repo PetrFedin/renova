@@ -36,4 +36,5 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 
 - [x] Media membership ACL (`document_media_acl.py`)
 - [x] Legal hold MVP (`POST …/legal-hold`, block delete)
-- [ ] OCR / e-sign — не блокер merge staging; отдельный milestone
+- [x] OCR stub + e-sign registry (`DOCUMENT-CENTER-WAVE3B.md`) — не блокер; контракты готовы
+- [ ] Реальный OCR worker / Kontur SDK — post-staging

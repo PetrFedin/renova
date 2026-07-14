@@ -77,6 +77,13 @@ class DocumentVersion(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Wave 3b: OCR classify stub (async-ready flags; sync runner in MVP)
+    ocr_status: Mapped[str] = mapped_column(String(16), default="none")  # none|queued|processing|done|failed
+    ocr_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ocr_suggested_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ocr_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ocr_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class DocumentSignature(Base):
@@ -90,6 +97,8 @@ class DocumentSignature(Base):
     signer_user_id: Mapped[str] = mapped_column(String(36), index=True)
     signer_role: Mapped[str] = mapped_column(String(32), default="customer")
     signature_type: Mapped[str] = mapped_column(String(32), default="in_app")
+    provider_name: Mapped[str] = mapped_column(String(32), default="in_app")
+    provider_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="signed")
     signed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

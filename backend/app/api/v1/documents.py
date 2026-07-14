@@ -11,7 +11,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage, User, WorkAcceptance
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
-from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn, LegalHoldIn
+from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn, LegalHoldIn, OcrRunIn
 from app.services import project_document_service as docs_svc
 from app.services import storage_service as storage_svc
 
@@ -285,9 +285,15 @@ async def sign_project_document(
             signer_role=getattr(user.role, "value", str(user.role)),
             signature_type=body.signature_type,
             content_hash=body.content_hash,
+            provider=body.provider,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e)) from e
+        msg = str(e)
+        if msg.startswith("provider_unavailable:"):
+            raise HTTPException(501, msg) from e
+        if msg.startswith("unknown_esign_provider:"):
+            raise HTTPException(400, msg) from e
+        raise HTTPException(400, msg) from e
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
     return {"signature_id": sig.id, "document": docs_svc.document_dict(doc, version, [sig])}
@@ -358,6 +364,11 @@ async def upload_project_document(
         file_size=len(data),
         checksum_sha256=checksum,
     )
+    # Wave 3b: OCR classify stub (sync MVP; flags ready for async worker)
+    from app.services import document_ocr_service as ocr_svc
+    version = await docs_svc.get_current_version(db, doc.id)
+    if version:
+        await ocr_svc.enqueue_and_run(db, doc, version, apply_type=True)
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
     return docs_svc.document_dict(doc, version)
@@ -420,6 +431,44 @@ async def set_document_legal_hold(
         except ValueError as e:
             raise HTTPException(400, "invalid_retention_until") from e
     await docs_svc.set_legal_hold(db, doc, enabled=body.enabled, retention_until=retention)
+    await db.commit()
+    version = await docs_svc.get_current_version(db, doc.id)
+    return docs_svc.document_dict(doc, version)
+
+
+@router.get("/{project_id}/documents/{document_id}/ocr")
+async def get_document_ocr(
+    project_id: str,
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wave 3b: статус OCR classify для текущей версии."""
+    await require_project_docs(db, project_id, user, write=False)
+    doc = await _get_project_document(db, project_id, document_id)
+    version = await docs_svc.get_current_version(db, doc.id)
+    from app.services.document_ocr_service import ocr_dict
+
+    return {"document_id": doc.id, "document_type": doc.document_type, "ocr": ocr_dict(version)}
+
+
+@router.post("/{project_id}/documents/{document_id}/ocr")
+async def run_document_ocr(
+    project_id: str,
+    document_id: str,
+    body: OcrRunIn = OcrRunIn(),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Перезапуск OCR stub (sync). apply_type обновляет kind при высокой уверенности."""
+    await require_project_docs(db, project_id, user, write=True)
+    doc = await _get_project_document(db, project_id, document_id)
+    version = await docs_svc.get_current_version(db, doc.id)
+    if not version:
+        raise HTTPException(400, "document_has_no_version")
+    from app.services import document_ocr_service as ocr_svc
+
+    await ocr_svc.enqueue_and_run(db, doc, version, apply_type=body.apply_type)
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
     return docs_svc.document_dict(doc, version)

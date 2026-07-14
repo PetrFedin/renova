@@ -26,7 +26,13 @@ class DocumentVersionIn(BaseModel):
 
 class DocumentSignIn(BaseModel):
     signature_type: str = "in_app"
+    provider: str | None = None  # Wave 3b: in_app | kontur | goskey
     content_hash: str | None = None
+
+
+class OcrRunIn(BaseModel):
+    """Запуск OCR classify (stub sync в MVP)."""
+    apply_type: bool = True  # применить suggested_type к document_type при conf≥0.7
 
 
 class LegalHoldIn(BaseModel):

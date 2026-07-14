@@ -16,6 +16,8 @@ from app.models.project_documents import (
 
 
 def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, signatures: list[DocumentSignature] | None = None) -> dict:
+    from app.services.document_ocr_service import ocr_dict
+
     return {
         "id": doc.id,
         "source": "canonical",
@@ -37,6 +39,7 @@ def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, 
             "notes": doc.notes,
             "legal_hold": bool(getattr(doc, "legal_hold", False)),
             "retention_until": doc.retention_until.isoformat() if getattr(doc, "retention_until", None) else None,
+            "ocr": ocr_dict(version),
             "signatures": [
                 {
                     "id": s.id,
@@ -44,6 +47,8 @@ def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, 
                     "signer_role": s.signer_role,
                     "signed_at": s.signed_at.isoformat() if s.signed_at else None,
                     "status": s.status,
+                    "provider_name": getattr(s, "provider_name", None) or s.signature_type,
+                    "provider_external_id": getattr(s, "provider_external_id", None),
                 }
                 for s in (signatures or [])
             ],
@@ -177,19 +182,53 @@ async def sign_document(
     signer_role: str,
     signature_type: str = "in_app",
     content_hash: str | None = None,
+    provider: str | None = None,
 ) -> DocumentSignature:
+    """Подпись через e-sign registry (in_app сегодня; внешние → unavailable)."""
+    import json
+
+    from app.services.esign.base import SignRequest
+    from app.services.esign.registry import get_provider
+
     version = await get_current_version(db, doc.id)
     if not version:
         raise ValueError("document_has_no_version")
+
+    provider_name = provider or signature_type or "in_app"
+    try:
+        esign = get_provider(provider_name)
+    except KeyError as e:
+        raise ValueError(str(e)) from e
+
+    if not esign.is_available():
+        raise ValueError(f"provider_unavailable:{esign.name}")
+
+    result = await esign.create_signature(
+        SignRequest(
+            document_id=doc.id,
+            version_id=version.id,
+            signer_user_id=signer_user_id,
+            signer_role=signer_role,
+            content_hash=content_hash or version.checksum_sha256,
+            title=doc.title,
+            mime_type=version.mime_type,
+        )
+    )
+    if result.status != "signed":
+        raise ValueError(result.error or f"sign_failed:{result.status}")
+
     sig = DocumentSignature(
         document_id=doc.id,
         version_id=version.id,
         signer_user_id=signer_user_id,
         signer_role=signer_role,
-        signature_type=signature_type,
+        signature_type=result.signature_type or signature_type,
+        provider_name=result.provider_name,
+        provider_external_id=result.external_id,
         content_hash=content_hash or version.checksum_sha256,
         status="signed",
         signed_at=datetime.utcnow(),
+        meta_json=json.dumps(result.meta, ensure_ascii=False) if result.meta else None,
     )
     db.add(sig)
     await db.flush()

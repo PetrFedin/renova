@@ -16,7 +16,7 @@
 | Soft ACL: documents/* → X-User-Id | **done** → superseded | 401 без header |
 | Full project membership на media | **done** | `document_media_acl.py` + privacy 404 |
 | Legal hold / retention | **done (MVP)** | колонки + `POST …/legal-hold` + блок delete |
-| OCR / auto-classify | planned | async job после storage |
+| OCR / auto-classify | **done (stub)** | см. `DOCUMENT-CENTER-WAVE3B.md` |
 | External e-sign | planned | после аккредитации провайдера |
 | Merge develop → main | gated | `MAIN-MERGE-CHECKLIST.md` |
 
