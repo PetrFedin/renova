@@ -256,3 +256,19 @@ Score: documents ~7.5 · overall ~77%.
 1. (Опционально) OCR async worker + реальный engine
 2. Merge `develop` → `main` по `MAIN-MERGE-CHECKLIST.md` (осознанный PR)
 3. TestFlight notes / staging env smoke на non-sqlite
+
+---
+
+## Wave merge-prep — develop→main package (2026-07-15) — DONE (PR, no auto-merge)
+
+- SECRET audit evidence + staging/production env templates
+- `scripts/merge-readiness.sh`, `scripts/staging-env-smoke.sh`
+- Docs: `MERGE-DEVELOP-TO-MAIN.md`, `STAGING-SMOKE.md`, `TESTFLIGHT-NOTES-v0.2.md`
+- Checklist criteria closed; **merge только после PR review**
+- Score overall ~84% (код на develop готов; main ждёт human merge)
+
+### Следующий приоритет
+
+1. Review + merge PR develop→main + tag `v0.2.0`
+2. Staging Postgres live smoke (`API_BASE=…`)
+3. Post-release: OCR worker / Kontur SDK (не блокер)

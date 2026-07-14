@@ -9,8 +9,8 @@
 - [x] D docs: `cd backend && python -m pytest tests/test_project_documents.py -q`
 - [x] Route registry: `node apps/mobile/lib/__tests__/routeRegistry.test.mjs`
 - [x] E2E: `bash scripts/e2e-smoke.sh` green 2026-07-15 (see `E2E-SMOKE-RESULTS-2026-07-15.md`)
-- [ ] Нет SECRET_KEY/default в staging/prod конфигах
-- [ ] `main` отстаёт осознанно; PR с описанием рисков
+- [x] Нет SECRET_KEY/default в staging/prod конфигах — guards + `.env.staging/.production.example` + `merge-readiness` scan (2026-07-15)
+- [x] `main` отстаёт осознанно; PR package: `MERGE-DEVELOP-TO-MAIN.md` + TestFlight notes (merge вручную после review)
 
 ## Команды merge (когда готово)
 
