@@ -304,3 +304,18 @@ Score: documents ~7.5 · overall ~77%.
 1. Human merge [PR #2](https://github.com/PetrFedin/renova/pull/2) + tag `v0.2.0`
 2. Native DocumentPicker для upload на iOS/Android
 3. Kontur SDK / real OCR engine
+
+---
+
+## Wave 3e — Native DocumentPicker (2026-07-15) — DONE
+
+- `expo-document-picker` + `documentUploadPick.ts`
+- Hub: native file/photo source Alert
+- Docs: `DOCUMENT-CENTER-WAVE3E.md`
+- Score ~89%
+
+### Следующий приоритет
+
+1. **Human merge** [PR #2](https://github.com/PetrFedin/renova/pull/2) + tag `v0.2.0` — сказать «мержи PR #2»
+2. Contour SDK / real OCR
+3. TestFlight build notes publish after tag

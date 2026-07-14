@@ -12,6 +12,7 @@ import {
   documentCenterSubtitle,
   isCanonicalDocument,
 } from '@/lib/documentCenterMeta';
+import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 
 type DocRow = {
   id: string;
@@ -318,34 +319,59 @@ export function DocumentsHub({
     Alert.alert(doc.title, formatDocMeta(doc), actions);
   }
 
+  async function doUploadPicked(file: { uri: string; name: string; type: string }) {
+    await withBusy('upload', async () => {
+      await api.uploadProjectDocument(
+        userId,
+        projectId,
+        file,
+        { title: file.name, document_type: 'upload' },
+      );
+      await reloadIndex();
+    });
+  }
+
+  /** Wave 3e: web file input + native DocumentPicker / photo fallback */
   async function uploadCanonicalDocument() {
-    // Web: простой текстовый blob; native: DocumentPicker при наличии — MVP web/dev
     try {
-      if (Platform.OS === 'web' && typeof document !== 'undefined') {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'application/pdf,image/*,text/plain';
-        const file = await new Promise<File | null>((resolve) => {
-          input.onchange = () => resolve(input.files?.[0] || null);
-          input.click();
-        });
+      if (Platform.OS === 'web') {
+        const file = await pickDocumentForUpload();
         if (!file) return;
-        const uri = URL.createObjectURL(file);
-        await withBusy('upload', async () => {
-          await api.uploadProjectDocument(
-            userId,
-            projectId,
-            { uri, name: file.name, type: file.type || 'application/octet-stream' },
-            { title: file.name, document_type: 'upload' },
-          );
-          await reloadIndex();
-        });
+        await doUploadPicked(file);
         return;
       }
-      Alert.alert(
-        'Загрузка',
-        'На web выберите файл через проводник. На устройстве используйте сборку с DocumentPicker (следующий срез).',
-      );
+
+      Alert.alert('Загрузить документ', 'Выберите источник файла', [
+        {
+          text: 'Файл (PDF, DOC…)',
+          onPress: () => {
+            void (async () => {
+              try {
+                const file = await pickDocumentForUpload();
+                if (!file) return;
+                await doUploadPicked(file);
+              } catch (e: any) {
+                Alert.alert('Ошибка загрузки', String(e?.message || e));
+              }
+            })();
+          },
+        },
+        {
+          text: 'Фото из галереи',
+          onPress: () => {
+            void (async () => {
+              try {
+                const file = await pickImageForDocumentUpload();
+                if (!file) return;
+                await doUploadPicked(file);
+              } catch (e: any) {
+                Alert.alert('Ошибка загрузки', String(e?.message || e));
+              }
+            })();
+          },
+        },
+        { text: 'Отмена', style: 'cancel' },
+      ]);
     } catch (e: any) {
       Alert.alert('Ошибка загрузки', String(e?.message || e));
     }

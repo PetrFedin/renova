@@ -50,4 +50,4 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 ## Wave 3d — mobile Document Center (2026-07-15)
 
 - [x] Mobile hub actions (OCR / sign / hold / upload web)
-- [ ] Native DocumentPicker (post-merge ok)
+- [x] Native DocumentPicker (`DOCUMENT-CENTER-WAVE3E.md`)
