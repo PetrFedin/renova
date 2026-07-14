@@ -8,7 +8,7 @@
 - [x] A-06 env: `cd backend && python -m pytest tests/test_environment_guards.py -q`
 - [x] D docs: `cd backend && python -m pytest tests/test_project_documents.py -q`
 - [x] Route registry: `node apps/mobile/lib/__tests__/routeRegistry.test.mjs`
-- [ ] E2E:  # run locally before merge:  `bash scripts/e2e-smoke.sh` (acceptance → documents содержит act)
+- [x] E2E: `bash scripts/e2e-smoke.sh` green 2026-07-15 (see `E2E-SMOKE-RESULTS-2026-07-15.md`)
 - [ ] Нет SECRET_KEY/default в staging/prod конфигах
 - [ ] `main` отстаёт осознанно; PR с описанием рисков
 
@@ -30,3 +30,10 @@ git push origin main
 ## Wave 2 added (2026-07-15)
 
 Before merge also verify Document Center upload/archive/restore + foreign 404 in `scripts/e2e-smoke.sh`.
+
+
+## Wave 3 added (2026-07-15)
+
+- [x] Media membership ACL (`document_media_acl.py`)
+- [x] Legal hold MVP (`POST …/legal-hold`, block delete)
+- [ ] OCR / e-sign — не блокер merge staging; отдельный milestone

@@ -344,6 +344,20 @@ def ensure_os_schema() -> None:
             CREATE INDEX IF NOT EXISTS ix_scratchpad_lines_project ON scratchpad_lines(project_id);
         """)
 
+    # Wave 3: legal hold on canonical documents
+    if "project_documents" in tables:
+        pd = cols("project_documents")
+        if "legal_hold" not in pd:
+            try:
+                c.execute("ALTER TABLE project_documents ADD COLUMN legal_hold INTEGER DEFAULT 0")
+            except Exception:
+                pass
+        if "retention_until" not in pd:
+            try:
+                c.execute("ALTER TABLE project_documents ADD COLUMN retention_until TEXT")
+            except Exception:
+                pass
+
     if "chat_thread_participants" not in tables:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS chat_thread_participants (

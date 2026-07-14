@@ -1,5 +1,6 @@
 """Document Center: index + canonical ProjectDocument API (D-01…D-07)."""
 import hashlib
+from datetime import datetime
 import mimetypes
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -10,7 +11,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage, User, WorkAcceptance
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
-from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn
+from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn, LegalHoldIn
 from app.services import project_document_service as docs_svc
 from app.services import storage_service as storage_svc
 
@@ -399,3 +400,26 @@ async def delete_project_document(
         raise HTTPException(409, str(e)) from e
     await db.commit()
     return {"ok": True, "id": document_id, "status": "deleted"}
+
+
+@router.post("/{project_id}/documents/{document_id}/legal-hold")
+async def set_document_legal_hold(
+    project_id: str,
+    document_id: str,
+    body: LegalHoldIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wave 3: legal hold блокирует soft-delete до снятия."""
+    await require_project_docs(db, project_id, user, write=True)
+    doc = await _get_project_document(db, project_id, document_id)
+    retention = None
+    if body.retention_until:
+        try:
+            retention = datetime.fromisoformat(body.retention_until.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError as e:
+            raise HTTPException(400, "invalid_retention_until") from e
+    await docs_svc.set_legal_hold(db, doc, enabled=body.enabled, retention_until=retention)
+    await db.commit()
+    version = await docs_svc.get_current_version(db, doc.id)
+    return docs_svc.document_dict(doc, version)

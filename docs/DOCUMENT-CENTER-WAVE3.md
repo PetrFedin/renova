@@ -1,34 +1,79 @@
-# Document Center — Wave 3 (plan + first slice)
+# Document Center — Wave 3
 
 **Дата:** 2026-07-15  
-**Ветка:** `develop`
+**Ветка:** `develop`  
+**Репозиторий:** https://github.com/PetrFedin/renova
 
-## Context
+## Цель волны
 
-После Wave 2 (upload/restore/privacy) и инцидента `python-multipart`:
+Закрыть дыры после Wave 2 (upload/archive/privacy): **доступ к файлам media**, **legal hold**, задел под OCR / e-sign. Всё — в каноне `ProjectDocument`, без параллельного Document Center.
 
-| Slice | Status | Notes |
-|-------|--------|-------|
-| Media nested paths `documents/{project_id}/file` | **done** | catch-all `/{file_path:path}` |
-| Soft ACL: documents/* require X-User-Id | **done** | 401 without header |
-| Full project membership check on media | planned | use require_project + storage_key ownership |
-| Legal hold / retention | planned | status + admin flag |
-| OCR / auto-classify upload | planned | async job |
-| External e-sign | planned | provider after accreditation |
+## Статус срезов
+
+| Slice | Status | Код / док |
+|-------|--------|-----------|
+| Nested media paths `documents/{project_id}/file` | **done** | `backend/app/api/v1/media.py` |
+| Soft ACL: documents/* → X-User-Id | **done** → superseded | 401 без header |
+| Full project membership на media | **done** | `document_media_acl.py` + privacy 404 |
+| Legal hold / retention | **done (MVP)** | колонки + `POST …/legal-hold` + блок delete |
+| OCR / auto-classify | planned | async job после storage |
+| External e-sign | planned | после аккредитации провайдера |
 | Merge develop → main | gated | `MAIN-MERGE-CHECKLIST.md` |
 
-## Acceptance for this slice
+## Media membership ACL — зачем и как
 
-1. `GET /api/v1/media/documents/{project_id}/{file}` works (not 404 from route mismatch)
-2. Without `X-User-Id` → 401
-3. API boots with multipart installed (start-dev autodfix)
+**Проблема:** после Wave 3 soft ACL любой аутентифицированный пользователь мог скачать `documents/{чужой_uuid}/…`, зная/угадав путь.
+
+**Решение:**
+1. `parse_document_media_key(key)` — извлекает `project_id`, режет `..` traversal.
+2. `assert_document_media_access` — `get_project` + `can_access_project`; нет доступа → **404** (как D-07).
+3. `photos/*` без project ACL (как раньше); upload-url по-прежнему требует auth.
+
+**Endpoints:**
+- `GET /api/v1/media/documents/{project_id}/…`
+- `GET /api/v1/media/presign/documents/{project_id}/…`
+
+**Ожидаемые коды:**
+
+| Кто | documents/* |
+|-----|-------------|
+| без X-User-Id | 401 |
+| owner / contractor / guest viewer | 200 |
+| foreign (не shared) | 404 |
+| photos/* без auth | 200 (legacy public) |
+
+## Legal hold — MVP
+
+**Зачем:** акт/договор нельзя «удалить» во время спора; audit trail важнее UX purge.
+
+**Модель** (`project_documents`):
+- `legal_hold: bool` (default false)
+- `retention_until: datetime | null`
+
+**API:** `POST /api/v1/projects/{id}/documents/{doc_id}/legal-hold`  
+Body: `{ "enabled": true, "retention_until": "2030-01-01T00:00:00" }`
+
+**Side effect:** `DELETE` при hold → **409** `legal_hold_blocks_delete` (как signed docs).
+
+**Миграции:**
+- Alembic: `n4o5p6q7r8s9_document_legal_hold.py`
+- SQLite local: `sqlite_compat.py` ALTER
+
+## Acceptance
+
+1. Unit: `pytest tests/test_document_media_acl.py tests/test_project_documents.py`
+2. E2E: media noauth 401 / owner 200 / foreign 404; legal-hold delete 409
+3. `docs/E2E-SMOKE-RESULTS-2026-07-15.md` обновлён после прогона
+
+## Не делаем в этой волне
+
+- Полный retention cron (auto-release after `retention_until`)
+- OCR pipeline / e-sign provider
+- Auto-merge в `main`
 
 ## Related
 
-- `docs/INCIDENT-2026-07-15-API-MULTIPART.md`
 - `docs/DOCUMENT-CENTER-WAVE2.md`
-
-## Hotfix — storage presigned recursion
-
-`presigned_url` ↔ `generate_cloudfront_signed_url` вызывали друг друга → `RecursionError` на GET media.
-Исправлено: CloudFront helper возвращает `None` без CF config; S3 only when client exists; иначе local disk.
+- `docs/INCIDENT-2026-07-15-API-MULTIPART.md`
+- `docs/E2E-SMOKE-RESULTS-2026-07-15.md`
+- `docs/MAIN-MERGE-CHECKLIST.md`

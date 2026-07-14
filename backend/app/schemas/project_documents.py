@@ -27,3 +27,9 @@ class DocumentVersionIn(BaseModel):
 class DocumentSignIn(BaseModel):
     signature_type: str = "in_app"
     content_hash: str | None = None
+
+
+class LegalHoldIn(BaseModel):
+    """Wave 3: включить/снять legal hold на документе."""
+    enabled: bool = True
+    retention_until: str | None = None  # ISO datetime optional

@@ -35,6 +35,8 @@ def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, 
             "work_acceptance_id": doc.work_acceptance_id,
             "current_version_id": doc.current_version_id,
             "notes": doc.notes,
+            "legal_hold": bool(getattr(doc, "legal_hold", False)),
+            "retention_until": doc.retention_until.isoformat() if getattr(doc, "retention_until", None) else None,
             "signatures": [
                 {
                     "id": s.id,
@@ -262,10 +264,29 @@ async def document_has_signatures(db: AsyncSession, document_id: str) -> bool:
 
 
 async def soft_delete_document(db: AsyncSession, doc: ProjectDocument) -> ProjectDocument:
-    """D-04: soft delete. Signed docs cannot be destroyed — archive instead."""
+    """D-04: soft delete. Signed / legal-hold docs cannot be destroyed."""
+    if getattr(doc, "legal_hold", False):
+        raise ValueError("legal_hold_blocks_delete")
     if await document_has_signatures(db, doc.id):
         raise ValueError("signed_document_cannot_be_deleted")
     doc.status = DocumentStatus.deleted.value
     doc.archived_at = datetime.utcnow()
+    await db.flush()
+    return doc
+
+
+async def set_legal_hold(
+    db: AsyncSession,
+    doc: ProjectDocument,
+    *,
+    enabled: bool,
+    retention_until: datetime | None = None,
+) -> ProjectDocument:
+    """Wave 3: legal hold — блок soft-delete до снятия холда."""
+    doc.legal_hold = enabled
+    if enabled:
+        doc.retention_until = retention_until
+    else:
+        doc.retention_until = None
     await db.flush()
     return doc

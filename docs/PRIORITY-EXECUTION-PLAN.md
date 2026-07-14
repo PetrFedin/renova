@@ -225,3 +225,18 @@ Score: documents ~7.5 · overall ~77%.
 | Harden `start-dev.sh` auto-install multipart | done |
 | Media nested document paths | done — `DOCUMENT-CENTER-WAVE3.md` |
 | Soft ACL on documents/* media | done (X-User-Id required) |
+
+---
+
+## Wave 3 — media ACL + legal hold (2026-07-15) — DONE
+
+- Membership check на `GET /api/v1/media/documents/…` (privacy 404)
+- Legal hold MVP: колонки + API + 409 на delete
+- E2E расширен; результаты в `E2E-SMOKE-RESULTS-2026-07-15.md`
+- Оценка готовности архитектуры: ~80% (media leak закрыт; OCR/e-sign ещё open)
+
+### Следующий приоритет
+
+1. OCR classify stub (async job flag на DocumentVersion)
+2. E-sign provider interface (stub)
+3. Merge develop → main по checklist (осознанный PR, не auto)

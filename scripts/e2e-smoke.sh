@@ -125,6 +125,33 @@ VIEWER_WRITE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/v1/proje
 test "$VIEWER_WRITE" = "403" -o "$VIEWER_WRITE" = "404"
 echo "E2E documents: viewer read-only OK (get=$VIEWER_GET write=$VIEWER_WRITE viewer=$VIEWER_RO)"
 
+# --- Wave 3: media membership ACL + legal hold ---
+MEDIA_PATH=$(echo "$UPLOAD" | python3 -c "import json,sys,re; u=json.load(sys.stdin).get('href') or ''; u=re.sub(r'^https?://[^/]+','',u); print(u.split('/api/v1/media/',1)[-1] if '/api/v1/media/' in u or u.startswith('api/v1/media/') else '')")
+if [ -n "$MEDIA_PATH" ]; then
+  NOAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/v1/media/$MEDIA_PATH")
+  test "$NOAUTH" = "401"
+  OWNER_M=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/v1/media/$MEDIA_PATH" -H "X-User-Id: $CID")
+  test "$OWNER_M" = "200"
+  FOREIGN_M=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/v1/media/$MEDIA_PATH" -H "X-User-Id: $FOREIGN_ID")
+  test "$FOREIGN_M" = "404"
+  echo "E2E media ACL: noauth=$NOAUTH owner=$OWNER_M foreign=$FOREIGN_M OK"
+else
+  echo "E2E media ACL: SKIP (no href on upload)"
+fi
+
+HOLD=$(curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/legal-hold" \
+  -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
+  -d '{"enabled":true,"retention_until":"2030-01-01T00:00:00"}')
+echo "$HOLD" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['meta']['legal_hold'] is True"
+DEL_HOLD=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/v1/projects/$PID/documents/$DOC_ID" -H "X-User-Id: $CID")
+test "$DEL_HOLD" = "409"
+curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/legal-hold" \
+  -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
+  -d '{"enabled":false}' >/dev/null
+echo "E2E legal hold: block-delete=$DEL_HOLD OK"
+
+
+
 BATH_STAGES=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('stages',[])))")
 test "$BATH_STAGES" -ge 6 && echo "E2E stages: count=$BATH_STAGES OK"
 echo "E2E extended: acceptance + payment gate + next stage + PDF + receipts + digest + expenses OK"

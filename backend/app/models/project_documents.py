@@ -5,7 +5,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -55,6 +55,9 @@ class ProjectDocument(Base):
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Wave 3: legal hold блокирует soft-delete; retention_until — дата снятия холда (ISO day)
+    legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

@@ -129,3 +129,27 @@ def test_presigned_url_no_recursion():
 
     assert generate_cloudfront_signed_url("documents/p/a.txt") is None
     assert presigned_url("documents/p/a.txt") is None
+
+
+
+@pytest.mark.asyncio
+async def test_legal_hold_blocks_soft_delete(db):
+    from app.services.project_document_service import (
+        create_document,
+        set_legal_hold,
+        soft_delete_document,
+    )
+
+    doc = await create_document(
+        db,
+        project_id="p1",
+        created_by="u1",
+        title="Hold me",
+        document_type=DocumentType.contract.value,
+    )
+    await set_legal_hold(db, doc, enabled=True)
+    with pytest.raises(ValueError, match="legal_hold_blocks_delete"):
+        await soft_delete_document(db, doc)
+    await set_legal_hold(db, doc, enabled=False)
+    await soft_delete_document(db, doc)
+    assert doc.status == "deleted"
