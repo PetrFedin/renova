@@ -275,6 +275,18 @@ async def accept_work(
 
     payment = await ensure_stage_payment(db, project, stage, user.id)
     next_stage = await activate_next_stage(db, stage)
+
+    # D-01: register canonical acceptance act in Document Center
+    from app.services.project_document_service import ensure_acceptance_act_document
+    await ensure_acceptance_act_document(
+        db,
+        project_id=project_id,
+        stage_id=stage.id,
+        stage_name=stage.name,
+        acceptance_id=row.id,
+        accepted_by=user.id,
+    )
+
     await db.commit()
     await db.refresh(row)
 

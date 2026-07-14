@@ -1,11 +1,14 @@
-"""Document Center: единый индекс документов поверх существующих источников."""
-from fastapi import APIRouter, Depends
+"""Document Center: index + canonical ProjectDocument API (D-01…D-07)."""
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage, User, WorkAcceptance
+from app.models.project_documents import DocumentStatus, ProjectDocument
+from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn
+from app.services import project_document_service as docs_svc
 
 router = APIRouter(prefix="/projects", tags=["documents"])
 
@@ -34,6 +37,15 @@ async def list_project_documents(
 ):
     project = await require_project(db, project_id, user, write=False)
     docs: list[dict] = []
+
+    # Canonical rows first
+    canonical = await docs_svc.list_canonical_documents(db, project_id)
+    docs.extend(canonical)
+    canonical_acceptance_ids = {
+        item.get("meta", {}).get("work_acceptance_id")
+        for item in canonical
+        if item.get("kind") == "acceptance_act"
+    }
 
     design_rows = list(
         (
@@ -74,6 +86,9 @@ async def list_project_documents(
         ).all()
     )
     for acceptance, stage in acceptance_rows:
+        # Prefer canonical acceptance_act when present
+        if acceptance.id in canonical_acceptance_ids:
+            continue
         docs.append({
             "id": f"acceptance:{acceptance.id}",
             "source": "acceptance",
@@ -86,14 +101,15 @@ async def list_project_documents(
                 if acceptance.accepted_at
                 else acceptance.created_at.isoformat() if acceptance.created_at else None
             ),
-            "amount": stage.payment_amount,
-            "verified": True,
+            "amount": None,
+            "verified": None,
             "version": None,
             "meta": {
-                "stage_id": stage.id,
                 "quality_score": acceptance.quality_score,
                 "comment": acceptance.comment,
                 "accepted_by": acceptance.accepted_by,
+                "stage_id": stage.id,
+                "work_acceptance_id": acceptance.id,
             },
         })
 
@@ -151,9 +167,114 @@ async def list_project_documents(
         "items": docs,
         "counts": {
             "total": len(docs),
+            "canonical": len([item for item in docs if item["source"] == "canonical"]),
             "design": len([item for item in docs if item["source"] == "design"]),
-            "acceptances": len([item for item in docs if item["source"] == "acceptance"]),
+            "acceptances": len([
+                item for item in docs
+                if item["source"] in ("acceptance", "canonical") and item.get("kind") in ("acceptance_act", "stage_acceptance_act")
+            ]),
             "receipts": len([item for item in docs if item["source"] == "receipt"]),
             "exports": len([item for item in docs if item["source"] == "export"]),
         },
     }
+
+
+async def _get_project_document(db: AsyncSession, project_id: str, document_id: str) -> ProjectDocument:
+    doc = await db.get(ProjectDocument, document_id)
+    if not doc or doc.project_id != project_id or doc.status == DocumentStatus.deleted.value:
+        raise HTTPException(404, "document_not_found")
+    return doc
+
+
+@router.post("/{project_id}/documents")
+async def create_project_document(
+    project_id: str,
+    body: DocumentCreateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_project(db, project_id, user, write=True)
+    doc = await docs_svc.create_document(
+        db,
+        project_id=project_id,
+        created_by=user.id,
+        title=body.title,
+        document_type=body.document_type,
+        stage_id=body.stage_id,
+        payment_id=body.payment_id,
+        notes=body.notes,
+        href=body.href,
+        storage_key=body.storage_key,
+        mime_type=body.mime_type,
+        file_size=body.file_size,
+        checksum_sha256=body.checksum_sha256,
+    )
+    await db.commit()
+    version = await docs_svc.get_current_version(db, doc.id)
+    return docs_svc.document_dict(doc, version)
+
+
+@router.post("/{project_id}/documents/{document_id}/versions")
+async def add_document_version(
+    project_id: str,
+    document_id: str,
+    body: DocumentVersionIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_project(db, project_id, user, write=True)
+    doc = await _get_project_document(db, project_id, document_id)
+    version = await docs_svc.add_version(
+        db,
+        doc,
+        created_by=user.id,
+        href=body.href,
+        storage_key=body.storage_key,
+        mime_type=body.mime_type,
+        file_size=body.file_size,
+        checksum_sha256=body.checksum_sha256,
+        notes=body.notes,
+    )
+    await db.commit()
+    return docs_svc.document_dict(doc, version)
+
+
+@router.post("/{project_id}/documents/{document_id}/sign")
+async def sign_project_document(
+    project_id: str,
+    document_id: str,
+    body: DocumentSignIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_project(db, project_id, user, write=True)
+    doc = await _get_project_document(db, project_id, document_id)
+    try:
+        sig = await docs_svc.sign_document(
+            db,
+            doc,
+            signer_user_id=user.id,
+            signer_role=getattr(user.role, "value", str(user.role)),
+            signature_type=body.signature_type,
+            content_hash=body.content_hash,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    version = await docs_svc.get_current_version(db, doc.id)
+    return {"signature_id": sig.id, "document": docs_svc.document_dict(doc, version, [sig])}
+
+
+@router.post("/{project_id}/documents/{document_id}/archive")
+async def archive_project_document(
+    project_id: str,
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_project(db, project_id, user, write=True)
+    doc = await _get_project_document(db, project_id, document_id)
+    await docs_svc.archive_document(db, doc)
+    await db.commit()
+    version = await docs_svc.get_current_version(db, doc.id)
+    return docs_svc.document_dict(doc, version)

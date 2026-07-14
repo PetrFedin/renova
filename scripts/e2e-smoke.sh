@@ -51,6 +51,12 @@ if [ "$STATUS" = "active" ]; then
   curl -sf -X POST "$API/api/v1/projects/$PID/payments/$PAYID/confirm" \
     -H "X-User-Id: $CID" | grep -q 'confirmed'
   echo "E2E acceptance/payment: blocked-before, accepted, next-stage-active, single-payment, confirmed-after OK"
+
+  # D-07: canonical / legacy acceptance act visible in Document Center
+  DOCS=$(curl -sf "$API/api/v1/projects/$PID/documents" -H "X-User-Id: $CID")
+  echo "$DOCS" | python3 -c "import json,sys; d=json.load(sys.stdin); kinds={i.get('kind') for i in d.get('items',[])}; assert 'acceptance_act' in kinds or 'stage_acceptance_act' in kinds, kinds"
+  echo "E2E documents: acceptance act present OK"
+
 fi
 
 curl -sf "$API/api/v1/projects/$PID/calendar" -H "X-User-Id: $CID" | grep -q events

@@ -28,6 +28,7 @@ import { roleScopeLabel } from '@/lib/domain/roleCapabilities';
 import { resolveProjectPhase, type ProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
 import { homeTypography } from '@/constants/homeTypography';
 import { useOsNavFromHere } from '@/lib/navigation';
+import { menuRoutes } from '@/lib/routeRegistry';
 
 export type HomeScreenBodyProps = {
   role: OsRole;
@@ -163,11 +164,13 @@ export function HomeScreenBody({
       {/* Дополнительно — свёрнуто; для завершённого проекта отчёты тоже здесь */}
       {showMore && (
         <HomeMoreSection summary={moreSectionSummary}>
-          <HomeLinkRow title="Управленческая сводка" onPress={() => pushScreen('/manager-dashboard')} />
-          <HomeLinkRow title="Финансовый центр" onPress={() => pushScreen('/finance-center')} />
-          <HomeLinkRow title="Контроль качества" onPress={() => pushScreen('/quality-control')} />
-          <HomeLinkRow title="Приёмка работ" onPress={() => pushScreen('/work-acceptance')} />
-          <HomeLinkRow title="Документы проекта" onPress={() => pushScreen('/documents')} />
+          {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more').map((route) => (
+            <HomeLinkRow
+              key={route.id}
+              title={route.titleRu}
+              onPress={() => pushScreen(route.path)}
+            />
+          ))}
           {phase === 'complete' && (
             <HomeCompletionLinks role={role} userId={user.id} projectId={activeProject.id} />
           )}

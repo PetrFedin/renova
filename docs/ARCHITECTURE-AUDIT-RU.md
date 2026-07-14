@@ -300,9 +300,9 @@ Contractor:
 | Mobile architecture | 7/10 | Хорошее разделение, но navigation registry отсутствует |
 | Единый источник данных | 6/10 | План vs факт разделены на главной |
 | Offline architecture | 6/10 | Один storage key; façade UI; тесты policy |
-| Навигационная архитектура | 6/10 | Один дефект устранён, но secondary routes не формализованы |
-| Environment boundaries | 4/10 | Dev-режим недостаточно отделён от staging/production |
-| Общая архитектурная готовность | 68% | Offline + progress частично закрыты; дальше env + documents + route registry |
+| Навигационная архитектура | 7/10 | routeRegistry + Home more menu |
+| Environment boundaries | 7/10 | Profiles + startup guards (A-06) |
+| Общая архитектурная готовность | 74% | A-01/A-03/A-06/A-04 + documents P0 landed |
 
 ## 6. Следующие проверки этапа 1
 
@@ -316,3 +316,11 @@ Contractor:
 ## 7. Правило аудита
 
 Каждый вывод должен быть подтверждён актуальным кодом ветки `develop`. Подготовленное, но не записанное изменение не считается выполненным.
+
+
+## Update 2026-07-15
+
+- A-06 environment profiles implemented (`docs/ENVIRONMENT-PROFILES.md`)
+- A-04/A-07 route registry (`docs/ROUTE-REGISTRY.md`)
+- A-05 router section comments
+- See `docs/PRIORITY-EXECUTION-PLAN.md`

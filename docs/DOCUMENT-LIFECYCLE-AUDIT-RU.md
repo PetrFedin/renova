@@ -253,3 +253,22 @@ Document Center можно считать полноценным только к
 `загрузка документа → версия → согласование → подпись → связь с этапом/платежом → архив → экспорт истории`
 
 и этот сценарий покрыт интеграционным и E2E-тестом для Customer, Contractor и Read Only.
+
+
+## Update 2026-07-15 — implementation status
+
+| ID | Status | Notes |
+|----|--------|-------|
+| D-01 | **done (MVP)** | `ProjectDocument` model + tables + Alembic `m3n4o5p6q7r8` |
+| D-02 | **done (MVP)** | `DocumentVersion` with version_number / href / checksum |
+| D-03 | **done (stub)** | `DocumentSignature` in-app sign endpoint |
+| D-04 | partial | archive endpoint; no restore/legal hold yet |
+| D-05 | partial | payment_id on ProjectDocument; not all types linked |
+| D-06 | partial | POST `/documents` for metadata upload; no binary multipart yet |
+| D-07 | partial | e2e-smoke checks acceptance act in documents index |
+
+Code:
+- `backend/app/models/project_documents.py`
+- `backend/app/services/project_document_service.py`
+- `backend/app/api/v1/documents.py`
+- Auto-hook on work acceptance accept → `ensure_acceptance_act_document`
