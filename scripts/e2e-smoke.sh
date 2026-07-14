@@ -57,6 +57,7 @@ if [ "$STATUS" = "active" ]; then
   echo "$DOCS" | python3 -c "import json,sys; d=json.load(sys.stdin); kinds={i.get('kind') for i in d.get('items',[])}; assert 'acceptance_act' in kinds or 'stage_acceptance_act' in kinds, kinds"
   echo "E2E documents: acceptance act present OK"
 
+
 fi
 
 curl -sf "$API/api/v1/projects/$PID/calendar" -H "X-User-Id: $CID" | grep -q events
@@ -80,6 +81,50 @@ curl -sf "$API/api/v1/projects/$PID/viewers" -H "X-User-Id: $CID" | grep -q user
 VIEWER=$(curl -sf -X POST "$API/api/v1/auth/demo/guest" -H 'Content-Type: application/json' | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 VP=$(curl -sf "$API/api/v1/projects" -H "X-User-Id: $VIEWER" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))")
 test "$VP" -ge 1 && echo "E2E guest: projects=$VP OK"
+
+# --- Document Center wave-2 (D-04/D-06/D-07) ---
+UPLOAD=$(curl -sf -X POST "$API/api/v1/projects/$PID/documents/upload" \
+  -H "X-User-Id: $CID" \
+  -F "file=@/etc/hosts;type=text/plain;filename=hosts-note.txt" \
+  -F "title=Договор-заглушка" \
+  -F "document_type=contract")
+DOC_ID=$(echo "$UPLOAD" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+test -n "$DOC_ID"
+echo "E2E documents: upload OK id=$DOC_ID"
+
+curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/archive" -H "X-User-Id: $CID" | grep -q archived
+curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/restore" -H "X-User-Id: $CID" | grep -q active
+echo "E2E documents: archive/restore OK"
+
+# Completely foreign user (fresh register, not shared) → 404
+FOREIGN_PHONE="+7999$(date +%s | tail -c 8)"
+curl -sf -X POST "$API/api/v1/auth/sms/send" -H 'Content-Type: application/json' -d "{\"phone\":\"$FOREIGN_PHONE\"}" >/dev/null || true
+# Dev OTP often accepts 0000 / 1234 — try register endpoint if SMS verify unsupported
+FOREIGN=$(curl -sf -X POST "$API/api/v1/auth/register" -H 'Content-Type: application/json' \
+  -d "{\"phone\":\"$FOREIGN_PHONE\",\"role\":\"customer\",\"full_name\":\"E2E Foreign\"}" \
+  || curl -sf -X POST "$API/api/v1/auth/sms/verify" -H 'Content-Type: application/json' \
+  -d "{\"phone\":\"$FOREIGN_PHONE\",\"code\":\"0000\",\"role\":\"customer\",\"full_name\":\"E2E Foreign\"}")
+FOREIGN_ID=$(echo "$FOREIGN" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+FOREIGN_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/v1/projects/$PID/documents" -H "X-User-Id: $FOREIGN_ID")
+test "$FOREIGN_CODE" = "404"
+echo "E2E documents: foreign access 404 OK"
+
+# Read-only viewer by shared phone +70000000003
+VIEWER_RO=$(curl -sf "$API/api/v1/projects/$PID/viewers" -H "X-User-Id: $CID" | python3 -c "import json,sys; rows=json.load(sys.stdin); print(rows[0]['user_id'] if rows else '')")
+if [ -z "$VIEWER_RO" ]; then
+  SHARE=$(curl -sf -X POST "$API/api/v1/projects/$PID/viewers" -H "X-User-Id: $CID" -H 'Content-Type: application/json' -d '{"phone":"+70000000003"}')
+  VIEWER_RO=$(echo "$SHARE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('user_id',''))")
+fi
+test -n "$VIEWER_RO"
+VIEWER_GET=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/v1/projects/$PID/documents" -H "X-User-Id: $VIEWER_RO")
+test "$VIEWER_GET" = "200"
+VIEWER_WRITE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/v1/projects/$PID/documents/upload" \
+  -H "X-User-Id: $VIEWER_RO" \
+  -F "file=@/etc/hosts;type=text/plain;filename=nope.txt" \
+  -F "title=viewer-denied")
+test "$VIEWER_WRITE" = "403" -o "$VIEWER_WRITE" = "404"
+echo "E2E documents: viewer read-only OK (get=$VIEWER_GET write=$VIEWER_WRITE viewer=$VIEWER_RO)"
+
 BATH_STAGES=$(curl -sf "$API/api/v1/projects/$PID" -H "X-User-Id: $CID" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('stages',[])))")
 test "$BATH_STAGES" -ge 6 && echo "E2E stages: count=$BATH_STAGES OK"
 echo "E2E extended: acceptance + payment gate + next stage + PDF + receipts + digest + expenses OK"

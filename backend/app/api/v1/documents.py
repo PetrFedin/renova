@@ -1,16 +1,43 @@
 """Document Center: index + canonical ProjectDocument API (D-01…D-07)."""
-from fastapi import APIRouter, Depends, HTTPException
+import hashlib
+import mimetypes
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage, User, WorkAcceptance
-from app.models.project_documents import DocumentStatus, ProjectDocument
+from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn
 from app.services import project_document_service as docs_svc
+from app.services import storage_service as storage_svc
+
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+ALLOWED_UPLOAD_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "text/plain",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/octet-stream",
+}
 
 router = APIRouter(prefix="/projects", tags=["documents"])
+
+async def require_project_docs(db: AsyncSession, project_id: str, user: User, *, write: bool = False):
+    """D-07: чужой проект → 404 (не раскрываем существование)."""
+    try:
+        return await require_project(db, project_id, user, write=write)
+    except HTTPException as e:
+        if e.status_code in (403, 404):
+            raise HTTPException(404, "document_or_project_not_found") from e
+        raise
+
 
 
 def export_doc(project_id: str, kind: str, title: str, href: str) -> dict:
@@ -35,7 +62,7 @@ async def list_project_documents(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=False)
+    project = await require_project_docs(db, project_id, user, write=False)
     docs: list[dict] = []
 
     # Canonical rows first
@@ -193,7 +220,7 @@ async def create_project_document(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project_docs(db, project_id, user, write=True)
     doc = await docs_svc.create_document(
         db,
         project_id=project_id,
@@ -222,7 +249,7 @@ async def add_document_version(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project_docs(db, project_id, user, write=True)
     doc = await _get_project_document(db, project_id, document_id)
     version = await docs_svc.add_version(
         db,
@@ -247,7 +274,7 @@ async def sign_project_document(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project_docs(db, project_id, user, write=True)
     doc = await _get_project_document(db, project_id, document_id)
     try:
         sig = await docs_svc.sign_document(
@@ -272,9 +299,103 @@ async def archive_project_document(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project_docs(db, project_id, user, write=True)
     doc = await _get_project_document(db, project_id, document_id)
     await docs_svc.archive_document(db, doc)
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
     return docs_svc.document_dict(doc, version)
+
+
+@router.post("/{project_id}/documents/upload")
+async def upload_project_document(
+    project_id: str,
+    file: UploadFile = File(...),
+    title: str | None = Form(None),
+    document_type: str = Form(DocumentType.upload.value),
+    stage_id: str | None = Form(None),
+    payment_id: str | None = Form(None),
+    notes: str | None = Form(None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """D-06: multipart upload → storage + ProjectDocument + DocumentVersion."""
+    await require_project_docs(db, project_id, user, write=True)
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "empty_file")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "file_too_large")
+
+    content_type = (file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream")
+    if content_type not in ALLOWED_UPLOAD_TYPES and not content_type.startswith("image/"):
+        # allow unknown but safe binary as octet-stream
+        content_type = "application/octet-stream"
+
+    checksum = hashlib.sha256(data).hexdigest()
+    storage_key, href = await storage_svc.save_bytes(
+        data,
+        folder=f"documents/{project_id}",
+        filename=file.filename,
+        content_type=content_type,
+    )
+
+    doc_title = (title or file.filename or "Загруженный документ").strip()[:255]
+    doc = await docs_svc.create_document(
+        db,
+        project_id=project_id,
+        created_by=user.id,
+        title=doc_title,
+        document_type=document_type or DocumentType.upload.value,
+        stage_id=stage_id,
+        payment_id=payment_id,
+        notes=notes,
+        href=href,
+        storage_key=storage_key,
+        mime_type=content_type,
+        file_size=len(data),
+        checksum_sha256=checksum,
+    )
+    await db.commit()
+    version = await docs_svc.get_current_version(db, doc.id)
+    return docs_svc.document_dict(doc, version)
+
+
+@router.post("/{project_id}/documents/{document_id}/restore")
+async def restore_project_document(
+    project_id: str,
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """D-04: restore archived → active."""
+    await require_project_docs(db, project_id, user, write=True)
+    doc = await db.get(ProjectDocument, document_id)
+    if not doc or doc.project_id != project_id:
+        raise HTTPException(404, "document_or_project_not_found")
+    try:
+        await docs_svc.restore_document(db, doc)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await db.commit()
+    version = await docs_svc.get_current_version(db, doc.id)
+    return docs_svc.document_dict(doc, version)
+
+
+@router.delete("/{project_id}/documents/{document_id}")
+async def delete_project_document(
+    project_id: str,
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """D-04: soft-delete. Signed documents cannot be deleted (archive instead)."""
+    await require_project_docs(db, project_id, user, write=True)
+    doc = await _get_project_document(db, project_id, document_id)
+    try:
+        await docs_svc.soft_delete_document(db, doc)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    await db.commit()
+    return {"ok": True, "id": document_id, "status": "deleted"}

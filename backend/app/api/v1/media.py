@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse, Response
+import mimetypes
 import uuid
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -32,4 +33,5 @@ async def get_media(folder: str, filename: str):
     data = await storage_svc.read_image(key)
     if not data:
         raise HTTPException(404)
-    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400, s-maxage=604800"})
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=86400, s-maxage=604800"})

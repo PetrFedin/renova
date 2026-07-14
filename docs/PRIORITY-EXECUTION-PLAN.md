@@ -198,3 +198,18 @@ npm run test:offline
 npm run test:routes
 cd backend && PYTHONPATH=. python -m pytest tests/test_environment_guards.py tests/test_project_documents.py -q
 ```
+
+
+---
+
+## Execution log — 2026-07-15 Wave 2
+
+| Item | Result | Docs |
+|------|--------|------|
+| D-06 multipart upload | done | `DOCUMENT-CENTER-WAVE2.md` |
+| D-04 restore + soft-delete | done | same |
+| D-07 privacy + viewer RO e2e | done | e2e-smoke.sh |
+| Mobile FormData + upload API | done | documents.ts / client.ts |
+| Merge main | still deferred | `MAIN-MERGE-CHECKLIST.md` |
+
+Score: documents ~7.5 · overall ~77%.

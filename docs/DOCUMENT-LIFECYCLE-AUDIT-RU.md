@@ -262,13 +262,16 @@ Document Center можно считать полноценным только к
 | D-01 | **done (MVP)** | `ProjectDocument` model + tables + Alembic `m3n4o5p6q7r8` |
 | D-02 | **done (MVP)** | `DocumentVersion` with version_number / href / checksum |
 | D-03 | **done (stub)** | `DocumentSignature` in-app sign endpoint |
-| D-04 | partial | archive endpoint; no restore/legal hold yet |
+| D-04 | **done (MVP)** | archive + restore + soft-delete; signed cannot delete; legal hold → Wave 3 |
 | D-05 | partial | payment_id on ProjectDocument; not all types linked |
-| D-06 | partial | POST `/documents` for metadata upload; no binary multipart yet |
-| D-07 | partial | e2e-smoke checks acceptance act in documents index |
+| D-06 | **done (MVP)** | multipart `/documents/upload` + storage checksum; OCR → Wave 3 |
+| D-07 | **done (MVP)** | act + upload + archive/restore + foreign 404 + viewer read-only in e2e |
 
 Code:
 - `backend/app/models/project_documents.py`
 - `backend/app/services/project_document_service.py`
 - `backend/app/api/v1/documents.py`
 - Auto-hook on work acceptance accept → `ensure_acceptance_act_document`
+
+
+Подробности Wave 2: `docs/DOCUMENT-CENTER-WAVE2.md`

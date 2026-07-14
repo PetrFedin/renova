@@ -302,7 +302,7 @@ Contractor:
 | Offline architecture | 6/10 | Один storage key; façade UI; тесты policy |
 | Навигационная архитектура | 7/10 | routeRegistry + Home more menu |
 | Environment boundaries | 7/10 | Profiles + startup guards (A-06) |
-| Общая архитектурная готовность | 74% | A-01/A-03/A-06/A-04 + documents P0 landed |
+| Общая архитектурная готовность | 77% | Wave 2 documents upload/restore/privacy |
 
 ## 6. Следующие проверки этапа 1
 

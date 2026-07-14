@@ -40,6 +40,51 @@ async def save_image(base64_or_data_url: str, *, folder: str = "photos") -> tupl
                else f"{settings.public_base_url}/api/v1/media/{key}")
     return key, url
 
+
+async def save_bytes(
+    data: bytes,
+    *,
+    folder: str = "documents",
+    filename: str | None = None,
+    content_type: str = "application/octet-stream",
+) -> tuple[str, str]:
+    """Save arbitrary file bytes to S3 or local uploads. Returns (storage_key, public_href)."""
+    import hashlib
+    safe_name = (filename or "file.bin").replace("/", "_").replace("\\", "_")[-120:]
+    digest = hashlib.sha256(data).hexdigest()[:16]
+    key = f"{folder}/{uuid.uuid4().hex}_{digest}_{safe_name}"
+    client = _s3_client()
+    if client:
+        try:
+            client.put_object(
+                Bucket=settings.s3_bucket,
+                Key=key,
+                Body=data,
+                ContentType=content_type,
+            )
+            url = (
+                f"{settings.s3_public_url.rstrip('/')}/{settings.s3_bucket}/{key}"
+                if settings.s3_public_url
+                else f"{settings.public_base_url}/api/v1/media/{key}"
+            )
+            return key, url
+        except Exception:
+            pass
+    path = _local_root() / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    url = (
+        f"{settings.s3_public_url.rstrip('/')}/{settings.s3_bucket}/{key}"
+        if settings.s3_public_url
+        else f"{settings.public_base_url}/api/v1/media/{key}"
+    )
+    return key, url
+
+
+async def read_bytes(key: str) -> bytes | None:
+    """Alias for binary download (same as read_image for local/S3)."""
+    return await read_image(key)
+
 async def read_image(key: str) -> bytes | None:
     client = _s3_client()
     if client:

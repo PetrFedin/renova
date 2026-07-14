@@ -110,8 +110,14 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
 export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
 export async function req<T>(path: string, opts: RequestInit = {}, userId?: string): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(opts.headers as object) };
+  const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(opts.headers as object),
+  };
   if (userId) headers['X-User-Id'] = userId;
+  // FormData must manage its own multipart boundary — drop forced JSON content-type
+  if (isFormData) delete headers['Content-Type'];
   try {
     const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
     if (!res.ok) {

@@ -238,3 +238,34 @@ async def ensure_acceptance_act_document(
         mime_type="application/pdf",
         notes="auto-created on work acceptance",
     )
+
+
+async def restore_document(db: AsyncSession, doc: ProjectDocument) -> ProjectDocument:
+    """D-04: restore from archived (not from deleted)."""
+    if doc.status == DocumentStatus.deleted.value:
+        raise ValueError("cannot_restore_deleted")
+    if doc.status != DocumentStatus.archived.value:
+        raise ValueError("document_not_archived")
+    doc.status = DocumentStatus.active.value
+    doc.archived_at = None
+    await db.flush()
+    return doc
+
+
+async def document_has_signatures(db: AsyncSession, document_id: str) -> bool:
+    row = (
+        await db.execute(
+            select(DocumentSignature.id).where(DocumentSignature.document_id == document_id).limit(1)
+        )
+    ).first()
+    return row is not None
+
+
+async def soft_delete_document(db: AsyncSession, doc: ProjectDocument) -> ProjectDocument:
+    """D-04: soft delete. Signed docs cannot be destroyed — archive instead."""
+    if await document_has_signatures(db, doc.id):
+        raise ValueError("signed_document_cannot_be_deleted")
+    doc.status = DocumentStatus.deleted.value
+    doc.archived_at = datetime.utcnow()
+    await db.flush()
+    return doc

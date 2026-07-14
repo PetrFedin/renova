@@ -36,4 +36,32 @@ export const documentsApi = {
       method: 'POST',
       body: '{}',
     }, userId),
+  uploadProjectDocument: async (
+    userId: string,
+    projectId: string,
+    file: { uri: string; name: string; type: string },
+    fields?: { title?: string; document_type?: string; notes?: string },
+  ) => {
+    const form = new FormData();
+    form.append('file', file as unknown as Blob);
+    if (fields?.title) form.append('title', fields.title);
+    if (fields?.document_type) form.append('document_type', fields.document_type);
+    if (fields?.notes) form.append('notes', fields.notes);
+    return req(`/api/v1/projects/${projectId}/documents/upload`, {
+      method: 'POST',
+      body: form as unknown as BodyInit,
+      // let fetch set multipart boundary — omit Content-Type JSON
+    } as RequestInit, userId);
+  },
+
+  restoreProjectDocument: (userId: string, projectId: string, documentId: string) =>
+    req(`/api/v1/projects/${projectId}/documents/${documentId}/restore`, {
+      method: 'POST',
+      body: '{}',
+    }, userId),
+
+  deleteProjectDocument: (userId: string, projectId: string, documentId: string) =>
+    req(`/api/v1/projects/${projectId}/documents/${documentId}`, {
+      method: 'DELETE',
+    }, userId),
 };
