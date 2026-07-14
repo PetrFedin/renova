@@ -213,3 +213,15 @@ cd backend && PYTHONPATH=. python -m pytest tests/test_environment_guards.py tes
 | Merge main | still deferred | `MAIN-MERGE-CHECKLIST.md` |
 
 Score: documents ~7.5 · overall ~77%.
+
+
+---
+
+## Execution log — 2026-07-15 Wave 2.1 / Wave 3 start
+
+| Item | Result |
+|------|--------|
+| Fix API crash (python-multipart missing in venv) | done — see `INCIDENT-2026-07-15-API-MULTIPART.md` |
+| Harden `start-dev.sh` auto-install multipart | done |
+| Media nested document paths | done — `DOCUMENT-CENTER-WAVE3.md` |
+| Soft ACL on documents/* media | done (X-User-Id required) |

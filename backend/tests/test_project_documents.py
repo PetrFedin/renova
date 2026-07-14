@@ -122,3 +122,10 @@ async def test_save_bytes_local(tmp_path, monkeypatch):
     assert href.endswith(key) or key in href
     data = await storage_svc.read_bytes(key)
     assert data.startswith(b"%PDF")
+
+
+def test_presigned_url_no_recursion():
+    from app.services.storage_service import generate_cloudfront_signed_url, presigned_url
+
+    assert generate_cloudfront_signed_url("documents/p/a.txt") is None
+    assert presigned_url("documents/p/a.txt") is None

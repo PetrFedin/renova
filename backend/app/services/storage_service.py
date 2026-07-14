@@ -110,17 +110,20 @@ def ensure_bucket() -> None:
 
 
 def presigned_url(key: str, expires: int = 3600) -> str | None:
+    """Return CloudFront/S3 signed URL, or None for local-disk fallback."""
+    # Never recurse into generate_cloudfront_signed_url → presigned_url
     cf = generate_cloudfront_signed_url(key, expires)
-    if cf and settings.cloudfront_domain:
+    if cf:
         return cf
     client = _s3_client()
     if not client:
         return None
     try:
-        cf = cloudfront_signed_url(key, expires)
-        if cf:
-            return cf
-        return client.generate_presigned_url("get_object", Params={"Bucket": settings.s3_bucket, "Key": key}, ExpiresIn=expires)
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.s3_bucket, "Key": key},
+            ExpiresIn=expires,
+        )
     except Exception:
         return None
 
@@ -136,16 +139,14 @@ def presigned_put(key: str, expires: int = 900) -> str | None:
 
 
 def cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
-    if not settings.cloudfront_domain or not settings.cloudfront_key_id:
-        return presigned_url(key, expires)
-    base = settings.cloudfront_domain.rstrip("/")
-    return f"{base}/{key}"  # prod: RSA signed URL
+    """Deprecated alias — use generate_cloudfront_signed_url. No recursion."""
+    return generate_cloudfront_signed_url(key, expires)
 
 
 def generate_cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
-    """CloudFront signed URL (prod). Fallback → presigned S3."""
+    """CloudFront signed URL (prod). Returns None if CloudFront not configured (no recursion)."""
     if not settings.cloudfront_domain:
-        return presigned_url(key, expires)
+        return None
     domain = settings.cloudfront_domain.rstrip("/")
     if settings.cloudfront_key_id:
         try:
