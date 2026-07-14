@@ -184,6 +184,14 @@ K501=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/v1/projects/$PID
 test "$K501" = "501"
 echo "E2E e-sign: providers+in_app+kontur501=$K501 OK"
 
+# --- Wave 3c: OCR worker tick endpoint ---
+WORKER=$(curl -sf "$API/api/v1/ocr/worker" -H "X-User-Id: $CID")
+echo "$WORKER" | python3 -c "import json,sys; d=json.load(sys.stdin); assert 'mode' in d and 'queued_count' in d"
+TICK=$(curl -sf -X POST "$API/api/v1/ocr/worker/tick" -H "X-User-Id: $CID")
+echo "$TICK" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('ok') is True"
+echo "E2E OCR worker: status+tick OK"
+
+
 
 
 

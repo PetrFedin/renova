@@ -1,0 +1,21 @@
+# Minimal Postgres for local staging-like smoke (port 5435 — не конфликтует с :5433 local).
+# Usage: bash scripts/staging-postgres-smoke.sh
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: renova
+      POSTGRES_PASSWORD: renova
+      POSTGRES_DB: renova_staging
+    ports:
+      - "5435:5432"
+    volumes:
+      - renova_pg_staging:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renova -d renova_staging"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  renova_pg_staging:

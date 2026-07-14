@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Явные флаги (по умолчанию следуют policy profile)
     allow_create_all: bool | None = None
     allow_demo_seed: bool | None = None
+    # sync = classify in upload request; async = enqueue + worker tick/loop
+    document_ocr_mode: str = "sync"
+    document_ocr_worker_interval_sec: float = 5.0
 
     @property
     def normalized_environment(self) -> str:

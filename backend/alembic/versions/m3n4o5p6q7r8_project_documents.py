@@ -12,7 +12,37 @@ branch_labels = None
 depends_on = None
 
 
+
+def _has_table(name: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return name in insp.get_table_names()
+
+
+def _ensure_work_acceptances() -> None:
+    """Document Center FK; table often from create_all on SQLite historically."""
+    if _has_table("work_acceptances"):
+        return
+    op.create_table(
+        "work_acceptances",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("project_id", sa.String(36), sa.ForeignKey("projects.id"), nullable=False, index=True),
+        sa.Column("room_id", sa.String(36), sa.ForeignKey("rooms.id"), nullable=True),
+        sa.Column("stage_id", sa.String(36), sa.ForeignKey("stages.id"), nullable=False, index=True),
+        sa.Column("requested_by", sa.String(36), nullable=True),
+        sa.Column("accepted_by", sa.String(36), nullable=True),
+        sa.Column("requested_at", sa.DateTime(), nullable=True),
+        sa.Column("accepted_at", sa.DateTime(), nullable=True),
+        sa.Column("status", sa.String(32), server_default="not_requested"),
+        sa.Column("checklist_json", sa.Text(), nullable=True),
+        sa.Column("quality_score", sa.Float(), nullable=True),
+        sa.Column("comment", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=True),
+    )
+
+
 def upgrade() -> None:
+    _ensure_work_acceptances()
     op.create_table(
         "project_documents",
         sa.Column("id", sa.String(36), primary_key=True),

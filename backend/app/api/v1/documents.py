@@ -364,11 +364,16 @@ async def upload_project_document(
         file_size=len(data),
         checksum_sha256=checksum,
     )
-    # Wave 3b: OCR classify stub (sync MVP; flags ready for async worker)
+    # Wave 3b/3c: OCR — sync classify in-request или async enqueue для worker
+    from app.core.config import settings as app_settings
     from app.services import document_ocr_service as ocr_svc
     version = await docs_svc.get_current_version(db, doc.id)
     if version:
-        await ocr_svc.enqueue_and_run(db, doc, version, apply_type=True)
+        mode = (app_settings.document_ocr_mode or "sync").strip().lower()
+        if mode == "async":
+            await ocr_svc.enqueue_ocr(db, version)
+        else:
+            await ocr_svc.enqueue_and_run(db, doc, version, apply_type=True)
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
     return docs_svc.document_dict(doc, version)

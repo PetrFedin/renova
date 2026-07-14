@@ -38,3 +38,10 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 - [x] Legal hold MVP (`POST …/legal-hold`, block delete)
 - [x] OCR stub + e-sign registry (`DOCUMENT-CENTER-WAVE3B.md`) — не блокер; контракты готовы
 - [ ] Реальный OCR worker / Kontur SDK — post-staging
+
+
+## Wave 3c / staging Postgres (2026-07-15)
+
+- [x] Local Postgres staging smoke script (`npm run staging:postgres`)
+- [x] OCR async worker contract
+- [ ] Human merge PR #2 + tag v0.2.0

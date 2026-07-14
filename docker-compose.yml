@@ -1,3 +1,5 @@
+# Renova local infra.
+# Staging smoke uses: docker compose -f docker-compose.staging.yml up -d
 services:
   postgres:
     image: postgres:17-alpine
@@ -9,6 +11,11 @@ services:
       - "5433:5432"
     volumes:
       - renova_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renova -d renova"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   minio:
     image: minio/minio:latest
@@ -22,31 +29,30 @@ services:
     volumes:
       - renova_minio:/data
 
-volumes:
-  renova_pg:
-  renova_minio:
+  # Optional observability (explicit profile)
   otel-collector:
+    profiles: ["obs"]
     image: otel/opentelemetry-collector:latest
     command: ["--config=/etc/otel-config.yaml"]
     volumes:
       - ./infra/otel-config.yaml:/etc/otel-config.yaml
     ports:
       - "4318:4318"
+
   jaeger:
+    profiles: ["obs"]
     image: jaegertracing/all-in-one:latest
     ports: ["16686:16686", "4317:4317"]
-  postgres-replica:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: renova
-      POSTGRES_PASSWORD: renova
-      POSTGRES_DB: renova
-    ports: ["5434:5432"]
-    depends_on: [postgres]
+
   grafana:
+    profiles: ["obs"]
     image: grafana/grafana:latest
     ports: ["3000:3000"]
     environment:
       GF_SECURITY_ADMIN_PASSWORD: renova
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning
+
+volumes:
+  renova_pg:
+  renova_minio:

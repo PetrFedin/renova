@@ -272,3 +272,20 @@ Score: documents ~7.5 · overall ~77%.
 1. Review + merge PR develop→main + tag `v0.2.0`
 2. Staging Postgres live smoke (`API_BASE=…`)
 3. Post-release: OCR worker / Kontur SDK (не блокер)
+
+---
+
+## Wave 3c — OCR async worker + staging Postgres smoke (2026-07-15) — DONE
+
+- `DOCUMENT_OCR_MODE=sync|async` + worker tick/loop
+- Fixed `docker-compose.yml`; added `docker-compose.staging.yml` (:5435)
+- `scripts/staging-postgres-smoke.sh` / `npm run staging:postgres`
+- Docs: `DOCUMENT-CENTER-WAVE3C.md`, `STAGING-POSTGRES-SMOKE.md`
+- PR #2 remains open for human merge
+- Score ~86% (Postgres staging path proven locally)
+
+### Следующий приоритет
+
+1. Human merge [PR #2](https://github.com/PetrFedin/renova/pull/2) + tag `v0.2.0`
+2. Deploy real staging + `API_BASE=…` smoke
+3. Kontur / real OCR engine (post-release)

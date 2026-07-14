@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 
 from fastapi import FastAPI
@@ -60,7 +61,26 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("demo seed skipped (environment=%s)", policy.name)
 
+    ocr_stop: asyncio.Event | None = None
+    ocr_task: asyncio.Task | None = None
+    if (settings.document_ocr_mode or "sync").strip().lower() == "async":
+        from app.services.document_ocr_worker import ocr_worker_loop
+
+        ocr_stop = asyncio.Event()
+        ocr_task = asyncio.create_task(
+            ocr_worker_loop(ocr_stop, interval_sec=float(settings.document_ocr_worker_interval_sec))
+        )
+        logger.info("OCR async worker enabled")
+
     yield
+
+    if ocr_stop is not None:
+        ocr_stop.set()
+    if ocr_task is not None:
+        try:
+            await asyncio.wait_for(ocr_task, timeout=5)
+        except Exception:
+            ocr_task.cancel()
 
 
 setup_logging()
