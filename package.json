@@ -30,7 +30,7 @@
     "sync:os:daemon:uninstall": "bash scripts/uninstall-sync-daemon.sh",
     "test:offline": "node apps/mobile/lib/offline/__tests__/flushPolicy.test.mjs",
     "test:routes": "node apps/mobile/lib/__tests__/routeRegistry.test.mjs",
-    "test:guards": "cd backend && python -m pytest tests/test_environment_guards.py tests/test_project_documents.py -q",
+    "test:guards": "cd backend && .venv/bin/python -m pytest tests/test_environment_guards.py tests/test_project_documents.py -q",
     "test:priority": "npm run test:offline && npm run test:routes && npm run test:guards"
   },
   "devDependencies": {
