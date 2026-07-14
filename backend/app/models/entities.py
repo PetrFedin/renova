@@ -278,7 +278,9 @@ class ChatMessageType(str, enum.Enum):
 
 class NotificationType(str, enum.Enum):
     stage_review = "stage_review"
+    stage_started = "stage_started"
     room_updated = "room_updated"
+    room_created = "room_created"
     payment_pending = "payment_pending"
     change_order = "change_order"
     room_change = "room_change"
@@ -286,6 +288,12 @@ class NotificationType(str, enum.Enum):
     budget_alert = "budget_alert"
     reaction = "reaction"
     materials = "materials"
+    approval = "approval"
+    issue = "issue"
+    deadline = "deadline"
+    waste_reminder = "waste_reminder"
+    document = "document"
+    other = "other"
 
 class RoomChangeRequest(Base):
     __tablename__ = "room_change_requests"

@@ -21,6 +21,18 @@
 
 ---
 
+
+## Волна merge-cut (2026-07-15) — in progress
+
+| Шаг | Статус | Док / артефакт |
+|-----|--------|----------------|
+| CI uvicorn e2e | DONE `edb91d0` | `CI-E2E-FIX-2026-07-15.md` |
+| CI NotificationType | THIS | `CI-NOTIFICATION-TYPE-FIX-2026-07-15.md` |
+| Green CI на PR #2 | WAIT | https://github.com/PetrFedin/renova/pull/2 |
+| Merge develop→main | NEXT | `MERGE-DEVELOP-TO-MAIN.md` |
+| Tag v0.2.0 + notes | NEXT | `RELEASE-v0.2-PREP.md` |
+
+
 ## Уже закрыто
 
 ### A-01 Canonical offline — DONE (`e4ae9ee`)
