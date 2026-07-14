@@ -31,6 +31,7 @@ function sourceLabel(source: string) {
   switch (source) {
     case 'design': return 'Дизайн';
     case 'receipt': return 'Чек';
+    case 'acceptance': return 'Приёмка';
     case 'export': return 'Экспорт';
     default: return source;
   }
@@ -49,6 +50,14 @@ function formatDocMeta(doc: ProjectDocument) {
   if (doc.version != null) parts.push(`v${doc.version}`);
   if (doc.amount != null) parts.push(formatRub(doc.amount));
   return parts.filter(Boolean).join(' · ');
+}
+
+function indexedFilename(doc: ProjectDocument) {
+  if (doc.kind === 'stage_acceptance_act') return `acceptance-${String(doc.meta?.stage_id || doc.id).slice(0, 8)}.pdf`;
+  if (doc.kind.includes('estimate')) return doc.kind.endsWith('xlsx') ? 'estimate.xlsx' : doc.kind.endsWith('csv') ? 'estimate.csv' : 'estimate.pdf';
+  if (doc.kind.includes('dossier')) return 'project-dossier.pdf';
+  if (doc.kind.includes('project')) return 'project-report.pdf';
+  return `${doc.kind || 'document'}.pdf`;
 }
 
 export function DocumentsHub({
@@ -234,6 +243,28 @@ export function DocumentsHub({
     if (row.run) withBusy(row.id, row.run);
   }
 
+  function openIndexedDocument(doc: ProjectDocument) {
+    if (!doc.href) {
+      const details = [
+        formatDocMeta(doc),
+        doc.meta?.category ? `Категория: ${doc.meta.category}` : null,
+        doc.meta?.comment ? `Комментарий: ${doc.meta.comment}` : null,
+      ].filter(Boolean).join('\n');
+      Alert.alert(doc.title, details || 'Для этого элемента хранится запись без отдельного файла.');
+      return;
+    }
+
+    if (doc.href.toLowerCase().includes('.pdf')) {
+      withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, doc.href!, indexedFilename(doc)));
+      return;
+    }
+
+    Alert.alert(
+      doc.title,
+      `${formatDocMeta(doc)}\n\nФайл этого типа доступен в соответствующем разделе проекта.`,
+    );
+  }
+
   return (
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
@@ -242,13 +273,14 @@ export function DocumentsHub({
         <View style={s.indexHeader}>
           <View>
             <Text style={s.indexTitle}>Единый индекс</Text>
-            <Text style={s.indexHint}>Дизайн, чеки и экспортные документы в одном месте</Text>
+            <Text style={s.indexHint}>Дизайн, чеки, акты и экспортные документы в одном месте</Text>
           </View>
           {indexLoading ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : null}
         </View>
         {docIndex ? (
           <View style={s.countsRow}>
             <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.design}</Text><Text style={s.countLabel}>дизайн</Text></View>
+            <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.acceptances}</Text><Text style={s.countLabel}>акты</Text></View>
             <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.receipts}</Text><Text style={s.countLabel}>чеки</Text></View>
             <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.exports}</Text><Text style={s.countLabel}>экспорт</Text></View>
           </View>
@@ -257,15 +289,33 @@ export function DocumentsHub({
         )}
         {recentDocs.length ? (
           <View style={s.recentList}>
-            {recentDocs.map((doc) => (
-              <View key={doc.id} style={s.recentRow}>
-                <View style={s.recentMain}>
-                  <Text style={s.recentTitle} numberOfLines={1}>{doc.title}</Text>
-                  <Text style={s.recentMeta} numberOfLines={1}>{formatDocMeta(doc)}</Text>
-                </View>
-                <Text style={s.recentKind}>{doc.kind}</Text>
-              </View>
-            ))}
+            {recentDocs.map((doc) => {
+              const loading = busy === `index-${doc.id}`;
+              return (
+                <Pressable
+                  key={doc.id}
+                  style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
+                  onPress={() => openIndexedDocument(doc)}
+                  disabled={Boolean(busy)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${doc.title}. ${formatDocMeta(doc)}`}
+                >
+                  <View style={s.recentMain}>
+                    <Text style={s.recentTitle} numberOfLines={1}>{doc.title}</Text>
+                    <Text style={s.recentMeta} numberOfLines={1}>{formatDocMeta(doc)}</Text>
+                  </View>
+                  {loading ? (
+                    <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
+                  ) : (
+                    <Ionicons
+                      name={doc.href ? 'chevron-forward' : 'information-circle-outline'}
+                      size={18}
+                      color={RenovaTheme.colors.textMuted}
+                    />
+                  )}
+                </Pressable>
+              );
+            })}
           </View>
         ) : null}
       </View>
@@ -313,16 +363,15 @@ const s = StyleSheet.create({
   indexTitle: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
   indexHint: { marginTop: 3, fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
   indexEmpty: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
-  countsRow: { flexDirection: 'row', gap: 8 },
-  countPill: { flex: 1, borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: RenovaTheme.colors.surface },
+  countsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  countPill: { flexGrow: 1, minWidth: '22%', borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: RenovaTheme.colors.surface },
   countValue: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
   countLabel: { fontSize: 10, color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginTop: 2 },
   recentList: { gap: 6 },
-  recentRow: { flexDirection: 'row', gap: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, paddingTop: 8 },
+  recentRow: { flexDirection: 'row', gap: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, paddingTop: 10, paddingBottom: 4 },
   recentMain: { flex: 1, minWidth: 0 },
   recentTitle: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
   recentMeta: { marginTop: 2, fontSize: 11, color: RenovaTheme.colors.textMuted },
-  recentKind: { fontSize: 10, fontWeight: '800', color: RenovaTheme.colors.primary, textTransform: 'uppercase', maxWidth: 90 },
   section: { marginBottom: 18 },
   sectionTitle: {
     fontSize: 12,
