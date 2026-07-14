@@ -319,3 +319,19 @@ Score: documents ~7.5 · overall ~77%.
 1. **Human merge** [PR #2](https://github.com/PetrFedin/renova/pull/2) + tag `v0.2.0` — сказать «мержи PR #2»
 2. Contour SDK / real OCR
 3. TestFlight build notes publish after tag
+
+---
+
+## Wave 3f — Kontur/Goskey scaffold + release prep (2026-07-15) — DONE
+
+- Env-gated kontur/goskey (`KONTUR_MODE` / `GOSKEY_MODE`)
+- Pending signatures + webhooks `/api/v1/esign/webhooks/*`
+- `RELEASE-v0.2-PREP.md`, `scripts/release-notes-v0.2.sh`
+- Default: kontur still 501 (e2e unchanged)
+- Score ~90%
+
+### Следующий приоритет
+
+1. Напиши **мержи PR #2** → merge + tag `v0.2.0`
+2. Staging secrets + optional KONTUR_MODE=sandbox
+3. Real Kontur HTTP SDK / TestFlight build

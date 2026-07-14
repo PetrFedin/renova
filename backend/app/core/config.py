@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # sync = classify in upload request; async = enqueue + worker tick/loop
     document_ocr_mode: str = "sync"
     document_ocr_worker_interval_sec: float = 5.0
+    # E-sign external (Wave 3f). Без ключей → 501 как раньше.
+    kontur_api_key: str | None = None
+    kontur_api_url: str = "https://api.kontur.ru/sign/v1"  # placeholder
+    kontur_mode: str = "off"  # off | sandbox | live
+    goskey_client_id: str | None = None
+    goskey_mode: str = "off"  # off | sandbox | live
+    esign_webhook_secret: str | None = None
 
     @property
     def normalized_environment(self) -> str:

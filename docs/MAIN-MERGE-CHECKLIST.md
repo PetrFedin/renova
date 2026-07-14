@@ -51,3 +51,10 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 
 - [x] Mobile hub actions (OCR / sign / hold / upload web)
 - [x] Native DocumentPicker (`DOCUMENT-CENTER-WAVE3E.md`)
+
+
+## Wave 3f (2026-07-15)
+
+- [x] Kontur/Goskey env scaffold + webhooks
+- [x] Release prep docs (`RELEASE-v0.2-PREP.md`)
+- [ ] Human: merge PR #2 + tag v0.2.0

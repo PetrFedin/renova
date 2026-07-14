@@ -36,7 +36,8 @@
     "test:priority": "npm run test:offline && npm run test:routes && npm run test:docs-meta && npm run test:docs-upload && npm run test:guards",
     "merge:check": "bash scripts/merge-readiness.sh",
     "staging:smoke": "bash scripts/staging-env-smoke.sh",
-    "staging:postgres": "bash scripts/staging-postgres-smoke.sh"
+    "staging:postgres": "bash scripts/staging-postgres-smoke.sh",
+    "release:notes": "bash scripts/release-notes-v0.2.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

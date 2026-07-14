@@ -101,6 +101,6 @@ class DocumentSignature(Base):
     provider_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="signed")
-    signed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)

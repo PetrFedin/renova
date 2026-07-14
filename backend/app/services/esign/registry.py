@@ -1,14 +1,15 @@
-"""Реестр e-sign провайдеров."""
+"""Реестр e-sign провайдеров (Wave 3f — env-gated kontur/goskey)."""
 from __future__ import annotations
 
 from app.services.esign.base import ESignProvider
-from app.services.esign.external_stub import GOSKEY, KONTUR
+from app.services.esign.goskey import GoskeyESignProvider
 from app.services.esign.in_app import InAppESignProvider
+from app.services.esign.kontur import KonturESignProvider
 
 _PROVIDERS: dict[str, ESignProvider] = {
     InAppESignProvider.name: InAppESignProvider(),
-    KONTUR.name: KONTUR,
-    GOSKEY.name: GOSKEY,
+    KonturESignProvider.name: KonturESignProvider(),
+    GoskeyESignProvider.name: GoskeyESignProvider(),
 }
 
 

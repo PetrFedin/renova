@@ -293,6 +293,25 @@ export function DocumentsHub({
         }),
       },
       {
+        text: 'Подписать через Контур',
+        onPress: () => withBusy(`sign-kontur-${doc.id}`, async () => {
+          const { providers } = await api.listEsignProviders(userId);
+          const kontur = providers.find((p) => p.name === 'kontur');
+          if (!kontur?.available) {
+            Alert.alert('Контур недоступен', 'На сервере не заданы KONTUR_MODE/KONTUR_API_KEY (ожидаемо в dev).');
+            return;
+          }
+          const res: any = await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' });
+          await reloadIndex();
+          Alert.alert(
+            'Контур',
+            res?.document?.meta?.signatures
+              ? 'Запрос подписи создан (pending). Завершение — webhook.'
+              : 'Запрос отправлен (pending).',
+          );
+        }),
+      },
+      {
         text: 'Распознать тип (OCR)',
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {
           await api.runDocumentOcr(userId, projectId, doc.id, true);

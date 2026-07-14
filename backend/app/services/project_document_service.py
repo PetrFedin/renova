@@ -214,7 +214,7 @@ async def sign_document(
             mime_type=version.mime_type,
         )
     )
-    if result.status != "signed":
+    if result.status not in ("signed", "pending"):
         raise ValueError(result.error or f"sign_failed:{result.status}")
 
     sig = DocumentSignature(
@@ -226,8 +226,8 @@ async def sign_document(
         provider_name=result.provider_name,
         provider_external_id=result.external_id,
         content_hash=content_hash or version.checksum_sha256,
-        status="signed",
-        signed_at=datetime.utcnow(),
+        status=result.status,  # signed | pending (Wave 3f external)
+        signed_at=datetime.utcnow() if result.status == "signed" else None,
         meta_json=json.dumps(result.meta, ensure_ascii=False) if result.meta else None,
     )
     db.add(sig)
@@ -329,3 +329,31 @@ async def set_legal_hold(
         doc.retention_until = None
     await db.flush()
     return doc
+
+
+
+async def complete_external_signature(
+    db: AsyncSession,
+    *,
+    provider_name: str,
+    external_id: str,
+    status: str = "signed",
+) -> DocumentSignature | None:
+    """Wave 3f: webhook завершает pending подпись внешнего провайдера."""
+    row = (
+        await db.execute(
+            select(DocumentSignature).where(
+                DocumentSignature.provider_name == provider_name,
+                DocumentSignature.provider_external_id == external_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not row:
+        return None
+    row.status = status
+    if status == "signed":
+        row.signed_at = datetime.utcnow()
+    elif status == "failed":
+        row.revoked_at = datetime.utcnow()
+    await db.flush()
+    return row
