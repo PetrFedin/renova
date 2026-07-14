@@ -1,3 +1,5 @@
+> **DONE:** merged + tagged — see `RELEASE-v0.2-MERGED.md`.
+
 # Release v0.2.0 — prep package (до merge main)
 
 **Дата:** 2026-07-15  

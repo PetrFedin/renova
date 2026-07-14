@@ -28,10 +28,10 @@
 |-----|--------|----------------|
 | CI uvicorn e2e | DONE `edb91d0` | `CI-E2E-FIX-2026-07-15.md` |
 | CI NotificationType | DONE `da674dc` | `CI-NOTIFICATION-TYPE-FIX-2026-07-15.md` |
-| CI Alembic dep | THIS | `CI-ALEMBIC-DEP-FIX-2026-07-15.md` |
-| Green CI на PR #2 | WAIT | https://github.com/PetrFedin/renova/pull/2 |
-| Merge develop→main | NEXT | `MERGE-DEVELOP-TO-MAIN.md` |
-| Tag v0.2.0 + notes | NEXT | `RELEASE-v0.2-PREP.md` |
+| CI Alembic dep | DONE `b1f96b4` | `CI-ALEMBIC-DEP-FIX-2026-07-15.md` |
+| Green CI на PR #2 | DONE | https://github.com/PetrFedin/renova/pull/2 |
+| Merge develop→main | DONE `9cc3cc7` | `RELEASE-v0.2-MERGED.md` |
+| Tag v0.2.0 + notes | DONE | https://github.com/PetrFedin/renova/releases/tag/v0.2.0 |
 
 
 ## Уже закрыто
@@ -355,3 +355,12 @@ Score: documents ~7.5 · overall ~77%.
 
 - Fix CI: `poetry run uvicorn` (см. `CI-E2E-FIX-2026-07-15.md`)
 - Merge PR #2 → `main`, tag `v0.2.0`
+
+
+## Post-v0.2 backlog (новый приоритет)
+
+1. TestFlight — `TESTFLIGHT-NOTES-v0.2.md`
+2. Kontur/Goskey live HTTP
+3. Production OCR engine
+4. poetry.lock + alembic (без pip sidecar в CI)
+5. EAS build workflow (сейчас fail вне merge gate)

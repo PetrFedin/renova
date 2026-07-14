@@ -1,5 +1,8 @@
 # Merge `develop` → `main` — checklist
 
+> **STATUS 2026-07-15:** PR #2 **MERGED** → tag **v0.2.0**. Подробности: `RELEASE-v0.2-MERGED.md`.
+
+
 **Не выполнять автоматически** до зелёных критериев.
 
 ## Критерии
