@@ -9,21 +9,24 @@ import { RenovaTheme, card } from '@/constants/Theme';
 type Props = {
   userId: string;
   projectId: string;
+  /** Факт исполнения по этапам (Stage / OS snapshot) — не путать с планом графика. */
   projectComplete?: boolean;
+  /** Фактический % по этапам (0–100), если известен. */
+  stageFactPercent?: number | null;
 };
 
 function statusLabel(status?: string | null) {
   switch (status) {
     case 'draft':
-      return 'Черновик';
+      return 'Черновик плана';
     case 'submitted':
-      return 'На согласовании';
+      return 'План на согласовании';
     case 'confirmed':
-      return 'Согласован';
+      return 'План согласован';
     case 'rejected':
-      return 'Возвращён';
+      return 'План возвращён';
     default:
-      return 'Не создан';
+      return 'План не создан';
   }
 }
 
@@ -41,7 +44,17 @@ function pickNextItems(items: WorkScheduleItem[]) {
     .slice(0, 3);
 }
 
-export function WorkScheduleSummaryCard({ userId, projectId, projectComplete = false }: Props) {
+/**
+ * Карточка = ПЛАН (Work Schedule).
+ * Факт этапов (Stage / projectComplete) показывается отдельно — иначе KPI «100%»
+ * конфликтует с «0% / не создан» (A-03).
+ */
+export function WorkScheduleSummaryCard({
+  userId,
+  projectId,
+  projectComplete = false,
+  stageFactPercent = null,
+}: Props) {
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -71,12 +84,42 @@ export function WorkScheduleSummaryCard({ userId, projectId, projectComplete = f
     return { total, accepted, delayed, next };
   }, [schedule]);
 
-  const useProjectCompletion = projectComplete && !schedule;
-  const progress = useProjectCompletion ? 100 : stats.total ? Math.round((stats.accepted / stats.total) * 100) : 0;
-  const subtitle = useProjectCompletion ? 'Работы завершены' : loading ? 'Загрузка...' : statusLabel(schedule?.status);
-  const progressText = useProjectCompletion
-    ? '100% · проект завершён'
-    : `${progress}% принято · ${stats.accepted}/${stats.total || 0}`;
+  const hasPlan = Boolean(schedule);
+  const planProgress = stats.total ? Math.round((stats.accepted / stats.total) * 100) : null;
+  const factPercent = projectComplete
+    ? 100
+    : typeof stageFactPercent === 'number'
+      ? Math.max(0, Math.min(100, Math.round(stageFactPercent)))
+      : null;
+
+  const subtitle = loading
+    ? 'Загрузка...'
+    : hasPlan
+      ? statusLabel(schedule?.status)
+      : 'План не создан';
+
+  // Полоска прогресса отражает только план; без плана — не рисуем «0% работ».
+  const progressBarWidth = hasPlan ? (planProgress ?? 0) : 0;
+  const showPlanBar = hasPlan && stats.total > 0;
+
+  const progressText = !hasPlan
+    ? (
+      factPercent != null
+        ? `План не заведён · факт по этапам ${factPercent}%`
+        : 'План не заведён — прогресс графика не считается'
+    )
+    : stats.total === 0
+      ? (
+        factPercent != null
+          ? `В плане нет пунктов · факт по этапам ${factPercent}%`
+          : 'В плане пока нет пунктов'
+      )
+      : (
+        factPercent != null && factPercent !== planProgress
+          ? `План ${planProgress}% принято · факт этапов ${factPercent}%`
+          : `План ${planProgress}% принято · ${stats.accepted}/${stats.total}`
+      );
+
   const tone = stats.delayed > 0 ? RenovaTheme.colors.dangerText : RenovaTheme.colors.textMuted;
 
   return (
@@ -90,9 +133,13 @@ export function WorkScheduleSummaryCard({ userId, projectId, projectComplete = f
       </View>
 
       <View style={styles.progressBox}>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
+        {showPlanBar ? (
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progressBarWidth}%` }]} />
+          </View>
+        ) : (
+          <View style={[styles.progressTrack, styles.progressTrackMuted]} />
+        )}
         <Text style={styles.progressText}>{progressText}</Text>
       </View>
 
@@ -107,15 +154,17 @@ export function WorkScheduleSummaryCard({ userId, projectId, projectComplete = f
         </View>
       ) : (
         <Text style={styles.emptyText}>
-          {useProjectCompletion
-            ? 'Проект завершён. График можно открыть для просмотра истории.'
-            : schedule
-              ? 'Все пункты графика закрыты.'
-              : 'Создайте график из этапов проекта.'}
+          {!hasPlan
+            ? (projectComplete
+              ? 'Проект по этапам завершён. Создайте или откройте график, если нужен план.'
+              : 'Создайте график из этапов проекта — это план, а не факт исполнения.')
+            : stats.total === 0
+              ? 'График создан, но пункты ещё не добавлены.'
+              : 'Все пункты графика закрыты.'}
         </Text>
       )}
 
-      {stats.delayed > 0 ? <Text style={[styles.warning, { color: tone }]}>Есть риск по срокам: {stats.delayed}</Text> : null}
+      {stats.delayed > 0 ? <Text style={[styles.warning, { color: tone }]}>Есть риск по срокам плана: {stats.delayed}</Text> : null}
     </Pressable>
   );
 }
@@ -128,6 +177,7 @@ const styles = StyleSheet.create({
   link: { fontSize: RenovaTheme.fontSize.bodySmall, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.primaryMuted },
   progressBox: { gap: 6 },
   progressTrack: { height: 6, borderRadius: RenovaTheme.radius.pill, backgroundColor: RenovaTheme.colors.surfaceMuted, overflow: 'hidden' },
+  progressTrackMuted: { opacity: 0.45 },
   progressFill: { height: 6, borderRadius: RenovaTheme.radius.pill, backgroundColor: RenovaTheme.colors.primaryMuted },
   progressText: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted },
   list: { gap: 6 },

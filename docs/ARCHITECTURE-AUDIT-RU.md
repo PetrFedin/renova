@@ -17,6 +17,8 @@
 
 Критичность: High
 
+Статус: **частично устранено 15 июля 2026** — canonical `offlineQueue` (`renova_offline_queue`); outbox/sync — façade; legacy keys мигрируют; OfflineSyncStatus читает ту же очередь; flush policy 409/4xx/5xx.
+
 Одновременно существуют:
 
 1. `apps/mobile/lib/offlineQueue.ts`
@@ -64,6 +66,8 @@
 ### A-03. Два источника истины для прогресса работ
 
 Критичность: High
+
+Статус: **частично устранено 15 июля 2026** — WorkScheduleSummaryCard разделяет план (график) и факт (этапы); без плана не показывает «0% работ».
 
 KPI «Сроки» использует `ProjectOsSnapshot.schedule` и состояние завершённости проекта.
 Карточка `WorkScheduleSummaryCard` использует отдельную сущность `WorkSchedule`.
@@ -294,11 +298,11 @@ Contractor:
 | Структура monorepo | 8/10 | Основа хорошая |
 | Разделение backend-слоёв | 7/10 | Есть API/services/models, но router перегружен |
 | Mobile architecture | 7/10 | Хорошее разделение, но navigation registry отсутствует |
-| Единый источник данных | 5/10 | Work Schedule и Stage расходятся |
-| Offline architecture | 3/10 | Три параллельных механизма |
+| Единый источник данных | 6/10 | План vs факт разделены на главной |
+| Offline architecture | 6/10 | Один storage key; façade UI; тесты policy |
 | Навигационная архитектура | 6/10 | Один дефект устранён, но secondary routes не формализованы |
 | Environment boundaries | 4/10 | Dev-режим недостаточно отделён от staging/production |
-| Общая архитектурная готовность | 64% | Основа сильная, но нужны canonical offline, progress и route registry |
+| Общая архитектурная готовность | 68% | Offline + progress частично закрыты; дальше env + documents + route registry |
 
 ## 6. Следующие проверки этапа 1
 

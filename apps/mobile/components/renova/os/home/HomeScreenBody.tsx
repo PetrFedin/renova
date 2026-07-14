@@ -154,6 +154,7 @@ export function HomeScreenBody({
             userId={user.id}
             projectId={activeProject.id}
             projectComplete={snap.isComplete}
+            stageFactPercent={snap.schedule?.progressPercent ?? null}
           />
           <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
         </HomeZone>

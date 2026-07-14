@@ -1,49 +1,72 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 
 import { RenovaTheme, card } from '@/constants/Theme';
 import { flushOfflineOutbox, getOfflineOutboxStatus } from '@/lib/offline';
 
+/** Статус канонической offline-очереди (тот же storage, что layout flush). */
 export function OfflineSyncStatus({ compact = false }: { compact?: boolean }) {
   const [pending, setPending] = useState(0);
   const [blocked, setBlocked] = useState(0);
+  const [conflicts, setConflicts] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const status = await getOfflineOutboxStatus().catch(() => ({ total: 0, pending: 0, blocked: 0 }));
+    const status = await getOfflineOutboxStatus().catch(() => ({
+      total: 0,
+      pending: 0,
+      blocked: 0,
+      conflicts: 0,
+    }));
     setPending(status.pending);
     setBlocked(status.blocked);
+    setConflicts(status.conflicts);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useFocusEffect(useCallback(() => {
+    refresh().catch(() => {});
+  }, [refresh]));
 
   const runSync = async () => {
     setSyncing(true);
     try {
       const result = await flushOfflineOutbox();
-      setLastMessage(result.failed ? `Отправлено: ${result.synced}, с ошибкой: ${result.failed}` : 'Все доступные изменения отправлены');
+      if (result.conflicts > 0) {
+        setLastMessage(`Отправлено: ${result.synced}, конфликтов: ${result.conflicts}`);
+      } else if (result.failed) {
+        setLastMessage(`Отправлено: ${result.synced}, с ошибкой: ${result.failed}`);
+      } else {
+        setLastMessage('Все доступные изменения отправлены');
+      }
       await refresh();
     } finally {
       setSyncing(false);
     }
   };
 
-  if (compact && pending === 0 && blocked === 0) return null;
+  if (compact && pending === 0 && blocked === 0 && conflicts === 0) return null;
 
   const title = pending > 0
     ? `${pending} изменений ждут отправки`
-    : blocked > 0
-      ? `${blocked} изменений требуют проверки`
-      : 'Офлайн-очередь пуста';
+    : conflicts > 0
+      ? `${conflicts} конфликтов требуют разбора`
+      : blocked > 0
+        ? `${blocked} изменений заблокированы`
+        : 'Офлайн-очередь пуста';
 
-  const hint = lastMessage || (blocked > 0
-    ? 'Некоторые изменения сервер отклонил. Они больше не отправляются автоматически.'
-    : 'Последние данные доступны из кэша. Изменения можно отправить вручную.');
+  const hint = lastMessage || (
+    conflicts > 0
+      ? 'Сервер отклонил изменения (409). Откройте экран конфликтов.'
+      : blocked > 0
+        ? 'Сервер отклонил часть изменений. Они больше не отправляются автоматически.'
+        : 'Последние данные доступны из кэша. Изменения можно отправить вручную.'
+  );
 
-  const iconName = pending > 0 ? 'cloud-upload-outline' : blocked > 0 ? 'warning-outline' : 'cloud-done-outline';
-  const iconColor = pending > 0 ? RenovaTheme.colors.warning : blocked > 0 ? RenovaTheme.colors.danger : RenovaTheme.colors.success;
+  const iconName = pending > 0 ? 'cloud-upload-outline' : (conflicts > 0 || blocked > 0) ? 'warning-outline' : 'cloud-done-outline';
+  const iconColor = pending > 0 ? RenovaTheme.colors.warning : (conflicts > 0 || blocked > 0) ? RenovaTheme.colors.danger : RenovaTheme.colors.success;
 
   return (
     <View style={styles.card}>

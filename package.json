@@ -27,7 +27,8 @@
     "sync:os:watch": "bash scripts/sync-renova-os.sh watch",
     "sync:os:push": "bash scripts/sync-renova-os.sh push",
     "sync:os:daemon:install": "bash scripts/install-sync-daemon.sh",
-    "sync:os:daemon:uninstall": "bash scripts/uninstall-sync-daemon.sh"
+    "sync:os:daemon:uninstall": "bash scripts/uninstall-sync-daemon.sh",
+    "test:offline": "node apps/mobile/lib/offline/__tests__/flushPolicy.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
