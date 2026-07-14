@@ -335,3 +335,10 @@ Score: documents ~7.5 · overall ~77%.
 1. Напиши **мержи PR #2** → merge + tag `v0.2.0`
 2. Staging secrets + optional KONTUR_MODE=sandbox
 3. Real Kontur HTTP SDK / TestFlight build
+
+---
+
+## Release cut — merge main + CI fix (2026-07-15)
+
+- Fix CI: `poetry run uvicorn` (см. `CI-E2E-FIX-2026-07-15.md`)
+- Merge PR #2 → `main`, tag `v0.2.0`
