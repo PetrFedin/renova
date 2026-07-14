@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           pip install poetry
           poetry install --no-interaction
-          poetry run pip install fpdf2
+          poetry run pip install fpdf2 alembic
           export ENVIRONMENT=development
           export DATABASE_URL=sqlite+aiosqlite:///./ci.db
           export PUBLIC_BASE_URL=http://127.0.0.1:8100
@@ -49,7 +49,7 @@ jobs:
           ALLOW_DEMO_SEED: "false"
         run: |
           set -euo pipefail
-          poetry run alembic upgrade head
+          poetry run python -m alembic upgrade head
   playwright:
     runs-on: ubuntu-latest
     steps:
