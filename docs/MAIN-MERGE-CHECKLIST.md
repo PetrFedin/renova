@@ -45,3 +45,9 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 - [x] Local Postgres staging smoke script (`npm run staging:postgres`)
 - [x] OCR async worker contract
 - [ ] Human merge PR #2 + tag v0.2.0
+
+
+## Wave 3d — mobile Document Center (2026-07-15)
+
+- [x] Mobile hub actions (OCR / sign / hold / upload web)
+- [ ] Native DocumentPicker (post-merge ok)

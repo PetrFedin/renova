@@ -1,10 +1,19 @@
-/** API: Document Center (+ canonical CRUD D-01…D-06) */
+/** API: Document Center (+ OCR / e-sign Wave 3d) */
 import { req } from './client';
 import type { ProjectDocumentsResponse } from './types';
+
+export type EsignProvider = {
+  name: string;
+  display_name: string;
+  available: boolean;
+};
 
 export const documentsApi = {
   listProjectDocuments: (userId: string, projectId: string) =>
     req<ProjectDocumentsResponse>(`/api/v1/projects/${projectId}/documents`, {}, userId),
+
+  listEsignProviders: (userId: string) =>
+    req<{ providers: EsignProvider[] }>('/api/v1/esign/providers', {}, userId),
 
   createProjectDocument: (
     userId: string,
@@ -25,10 +34,48 @@ export const documentsApi = {
       body: JSON.stringify(body),
     }, userId),
 
-  signProjectDocument: (userId: string, projectId: string, documentId: string) =>
+  signProjectDocument: (
+    userId: string,
+    projectId: string,
+    documentId: string,
+    opts?: { provider?: string; signature_type?: string },
+  ) =>
     req(`/api/v1/projects/${projectId}/documents/${documentId}/sign`, {
       method: 'POST',
-      body: JSON.stringify({ signature_type: 'in_app' }),
+      body: JSON.stringify({
+        signature_type: opts?.signature_type || opts?.provider || 'in_app',
+        provider: opts?.provider || 'in_app',
+      }),
+    }, userId),
+
+  getDocumentOcr: (userId: string, projectId: string, documentId: string) =>
+    req<{ document_id: string; document_type: string; ocr: Record<string, unknown> }>(
+      `/api/v1/projects/${projectId}/documents/${documentId}/ocr`,
+      {},
+      userId,
+    ),
+
+  runDocumentOcr: (
+    userId: string,
+    projectId: string,
+    documentId: string,
+    applyType = true,
+  ) =>
+    req(`/api/v1/projects/${projectId}/documents/${documentId}/ocr`, {
+      method: 'POST',
+      body: JSON.stringify({ apply_type: applyType }),
+    }, userId),
+
+  setDocumentLegalHold: (
+    userId: string,
+    projectId: string,
+    documentId: string,
+    enabled: boolean,
+    retentionUntil?: string | null,
+  ) =>
+    req(`/api/v1/projects/${projectId}/documents/${documentId}/legal-hold`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled, retention_until: retentionUntil ?? null }),
     }, userId),
 
   archiveProjectDocument: (userId: string, projectId: string, documentId: string) =>
@@ -36,6 +83,7 @@ export const documentsApi = {
       method: 'POST',
       body: '{}',
     }, userId),
+
   uploadProjectDocument: async (
     userId: string,
     projectId: string,
@@ -50,7 +98,6 @@ export const documentsApi = {
     return req(`/api/v1/projects/${projectId}/documents/upload`, {
       method: 'POST',
       body: form as unknown as BodyInit,
-      // let fetch set multipart boundary — omit Content-Type JSON
     } as RequestInit, userId);
   },
 
@@ -64,4 +111,7 @@ export const documentsApi = {
     req(`/api/v1/projects/${projectId}/documents/${documentId}`, {
       method: 'DELETE',
     }, userId),
+
+  tickOcrWorker: (userId: string) =>
+    req('/api/v1/ocr/worker/tick', { method: 'POST', body: '{}' }, userId),
 };

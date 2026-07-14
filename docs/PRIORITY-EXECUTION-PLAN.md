@@ -289,3 +289,18 @@ Score: documents ~7.5 · overall ~77%.
 1. Human merge [PR #2](https://github.com/PetrFedin/renova/pull/2) + tag `v0.2.0`
 2. Deploy real staging + `API_BASE=…` smoke
 3. Kontur / real OCR engine (post-release)
+
+---
+
+## Wave 3d — Mobile Document Center actions (2026-07-15) — DONE
+
+- Hub: upload + sign/OCR/legal-hold/archive на canonical docs
+- API client + meta helpers + `test:docs-meta`
+- Docs: `DOCUMENT-CENTER-WAVE3D.md`
+- Score ~88% (product path через мобильный индекс закрыт; main ждёт merge)
+
+### Следующий приоритет
+
+1. Human merge [PR #2](https://github.com/PetrFedin/renova/pull/2) + tag `v0.2.0`
+2. Native DocumentPicker для upload на iOS/Android
+3. Kontur SDK / real OCR engine

@@ -8,6 +8,10 @@ import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { api, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { exportGdprJsonFile } from '@/lib/exportGdprJson';
+import {
+  documentCenterSubtitle,
+  isCanonicalDocument,
+} from '@/lib/documentCenterMeta';
 
 type DocRow = {
   id: string;
@@ -32,6 +36,7 @@ function sourceLabel(source: string) {
     case 'design': return 'Дизайн';
     case 'receipt': return 'Чек';
     case 'acceptance': return 'Приёмка';
+    case 'canonical': return 'Документ';
     case 'export': return 'Экспорт';
     default: return source;
   }
@@ -49,7 +54,7 @@ function formatDocMeta(doc: ProjectDocument) {
   const parts = [sourceLabel(doc.source), statusLabel(doc)];
   if (doc.version != null) parts.push(`v${doc.version}`);
   if (doc.amount != null) parts.push(formatRub(doc.amount));
-  return parts.filter(Boolean).join(' · ');
+  return documentCenterSubtitle(doc, parts.filter(Boolean) as string[]);
 }
 
 function indexedFilename(doc: ProjectDocument) {
@@ -84,7 +89,15 @@ export function DocumentsHub({
     return () => { alive = false; };
   }, [userId, projectId]);
 
-  const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 6), [docIndex]);
+  const reloadIndex = () => {
+    setIndexLoading(true);
+    return api.listProjectDocuments(userId, projectId)
+      .then((result) => setDocIndex(result))
+      .catch(() => setDocIndex(null))
+      .finally(() => setIndexLoading(false));
+  };
+
+  const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 8), [docIndex]);
 
   const sections: DocSection[] = useMemo(() => {
     const rows = {
@@ -185,8 +198,14 @@ export function DocumentsHub({
     setBusy(id);
     try {
       await fn();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось получить документ. Проверьте подключение к серверу.');
+    } catch (e: any) {
+      const msg = String(e?.message || e || '');
+      Alert.alert(
+        'Ошибка',
+        msg.includes('501') || msg.includes('provider_unavailable')
+          ? 'Провайдер подписи пока недоступен (ожидаемо для Kontur/Госключ).'
+          : (msg.slice(0, 180) || 'Не удалось выполнить действие. Проверьте связь с API.'),
+      );
     } finally {
       setBusy(null);
     }
@@ -244,25 +263,92 @@ export function DocumentsHub({
   }
 
   function openIndexedDocument(doc: ProjectDocument) {
-    if (!doc.href) {
-      const details = [
-        formatDocMeta(doc),
-        doc.meta?.category ? `Категория: ${doc.meta.category}` : null,
-        doc.meta?.comment ? `Комментарий: ${doc.meta.comment}` : null,
-      ].filter(Boolean).join('\n');
-      Alert.alert(doc.title, details || 'Для этого элемента хранится запись без отдельного файла.');
+    const openFile = () => {
+      if (!doc.href) {
+        Alert.alert(doc.title, formatDocMeta(doc) || 'Запись без файла.');
+        return;
+      }
+      if (doc.href.toLowerCase().includes('.pdf') || doc.href.includes('/media/')) {
+        withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, doc.href!, indexedFilename(doc)));
+        return;
+      }
+      Alert.alert(doc.title, `${formatDocMeta(doc)}\n\nФайл доступен в разделе проекта.`);
+    };
+
+    if (!isCanonicalDocument(doc)) {
+      openFile();
       return;
     }
 
-    if (doc.href.toLowerCase().includes('.pdf')) {
-      withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, doc.href!, indexedFilename(doc)));
-      return;
-    }
+    // Wave 3d: действия Document Center для канонических документов
+    const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
+      { text: 'Открыть', onPress: openFile },
+      {
+        text: 'Подписать в приложении',
+        onPress: () => withBusy(`sign-${doc.id}`, async () => {
+          await api.signProjectDocument(userId, projectId, doc.id, { provider: 'in_app' });
+          await reloadIndex();
+          Alert.alert('Подписано', 'Подпись in_app сохранена.');
+        }),
+      },
+      {
+        text: 'Распознать тип (OCR)',
+        onPress: () => withBusy(`ocr-${doc.id}`, async () => {
+          await api.runDocumentOcr(userId, projectId, doc.id, true);
+          await reloadIndex();
+          Alert.alert('OCR', 'Классификация обновлена.');
+        }),
+      },
+      {
+        text: doc.meta?.legal_hold ? 'Снять legal hold' : 'Legal hold',
+        onPress: () => withBusy(`hold-${doc.id}`, async () => {
+          await api.setDocumentLegalHold(userId, projectId, doc.id, !doc.meta?.legal_hold);
+          await reloadIndex();
+        }),
+      },
+      {
+        text: 'Архив',
+        onPress: () => withBusy(`arch-${doc.id}`, async () => {
+          await api.archiveProjectDocument(userId, projectId, doc.id);
+          await reloadIndex();
+        }),
+      },
+      { text: 'Отмена', style: 'cancel' },
+    ];
+    Alert.alert(doc.title, formatDocMeta(doc), actions);
+  }
 
-    Alert.alert(
-      doc.title,
-      `${formatDocMeta(doc)}\n\nФайл этого типа доступен в соответствующем разделе проекта.`,
-    );
+  async function uploadCanonicalDocument() {
+    // Web: простой текстовый blob; native: DocumentPicker при наличии — MVP web/dev
+    try {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/pdf,image/*,text/plain';
+        const file = await new Promise<File | null>((resolve) => {
+          input.onchange = () => resolve(input.files?.[0] || null);
+          input.click();
+        });
+        if (!file) return;
+        const uri = URL.createObjectURL(file);
+        await withBusy('upload', async () => {
+          await api.uploadProjectDocument(
+            userId,
+            projectId,
+            { uri, name: file.name, type: file.type || 'application/octet-stream' },
+            { title: file.name, document_type: 'upload' },
+          );
+          await reloadIndex();
+        });
+        return;
+      }
+      Alert.alert(
+        'Загрузка',
+        'На web выберите файл через проводник. На устройстве используйте сборку с DocumentPicker (следующий срез).',
+      );
+    } catch (e: any) {
+      Alert.alert('Ошибка загрузки', String(e?.message || e));
+    }
   }
 
   return (
@@ -273,14 +359,25 @@ export function DocumentsHub({
         <View style={s.indexHeader}>
           <View>
             <Text style={s.indexTitle}>Единый индекс</Text>
-            <Text style={s.indexHint}>Дизайн, чеки, акты и экспортные документы в одном месте</Text>
+            <Text style={s.indexHint}>Дизайн, чеки, акты, OCR и подпись — в одном месте</Text>
           </View>
-          {indexLoading ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : null}
+          <View style={{ alignItems: 'flex-end', gap: 8 }}>
+            {indexLoading ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : null}
+            <Pressable
+              onPress={() => { void uploadCanonicalDocument(); }}
+              disabled={Boolean(busy)}
+              style={s.uploadBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Загрузить документ"
+            >
+              <Text style={s.uploadBtnText}>{busy === 'upload' ? '…' : '+ Файл'}</Text>
+            </Pressable>
+          </View>
         </View>
         {docIndex ? (
           <View style={s.countsRow}>
             <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.design}</Text><Text style={s.countLabel}>дизайн</Text></View>
-            <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.acceptances}</Text><Text style={s.countLabel}>акты</Text></View>
+            <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.acceptances ?? 0}</Text><Text style={s.countLabel}>акты</Text></View>
             <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.receipts}</Text><Text style={s.countLabel}>чеки</Text></View>
             <View style={s.countPill}><Text style={s.countValue}>{docIndex.counts.exports}</Text><Text style={s.countLabel}>экспорт</Text></View>
           </View>
@@ -361,6 +458,8 @@ const s = StyleSheet.create({
   indexCard: { ...card, marginBottom: 18, gap: 10 },
   indexHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
   indexTitle: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
+  uploadBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: RenovaTheme.colors.primary },
+  uploadBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   indexHint: { marginTop: 3, fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
   indexEmpty: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
   countsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

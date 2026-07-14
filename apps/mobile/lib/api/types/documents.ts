@@ -1,5 +1,14 @@
 /** Document Center — единый индекс документов проекта */
-export type ProjectDocumentSource = 'design' | 'receipt' | 'export' | string;
+export type ProjectDocumentSource = 'design' | 'receipt' | 'export' | 'canonical' | 'acceptance' | string;
+
+export type ProjectDocumentOcr = {
+  status?: string | null;
+  job_id?: string | null;
+  suggested_type?: string | null;
+  confidence?: number | null;
+  completed_at?: string | null;
+  error?: string | null;
+};
 
 export type ProjectDocument = {
   id: string;
@@ -12,7 +21,13 @@ export type ProjectDocument = {
   amount: number | null;
   verified: boolean | null;
   version: number | null;
-  meta?: Record<string, unknown>;
+  meta?: {
+    legal_hold?: boolean;
+    retention_until?: string | null;
+    ocr?: ProjectDocumentOcr | null;
+    signatures?: Array<Record<string, unknown>>;
+    [key: string]: unknown;
+  };
 };
 
 export type ProjectDocumentsResponse = {
@@ -24,5 +39,6 @@ export type ProjectDocumentsResponse = {
     design: number;
     receipts: number;
     exports: number;
+    acceptances?: number;
   };
 };
