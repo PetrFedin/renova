@@ -40,6 +40,51 @@ async def save_image(base64_or_data_url: str, *, folder: str = "photos") -> tupl
                else f"{settings.public_base_url}/api/v1/media/{key}")
     return key, url
 
+
+async def save_bytes(
+    data: bytes,
+    *,
+    folder: str = "documents",
+    filename: str | None = None,
+    content_type: str = "application/octet-stream",
+) -> tuple[str, str]:
+    """Save arbitrary file bytes to S3 or local uploads. Returns (storage_key, public_href)."""
+    import hashlib
+    safe_name = (filename or "file.bin").replace("/", "_").replace("\\", "_")[-120:]
+    digest = hashlib.sha256(data).hexdigest()[:16]
+    key = f"{folder}/{uuid.uuid4().hex}_{digest}_{safe_name}"
+    client = _s3_client()
+    if client:
+        try:
+            client.put_object(
+                Bucket=settings.s3_bucket,
+                Key=key,
+                Body=data,
+                ContentType=content_type,
+            )
+            url = (
+                f"{settings.s3_public_url.rstrip('/')}/{settings.s3_bucket}/{key}"
+                if settings.s3_public_url
+                else f"{settings.public_base_url}/api/v1/media/{key}"
+            )
+            return key, url
+        except Exception:
+            pass
+    path = _local_root() / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    url = (
+        f"{settings.s3_public_url.rstrip('/')}/{settings.s3_bucket}/{key}"
+        if settings.s3_public_url
+        else f"{settings.public_base_url}/api/v1/media/{key}"
+    )
+    return key, url
+
+
+async def read_bytes(key: str) -> bytes | None:
+    """Alias for binary download (same as read_image for local/S3)."""
+    return await read_image(key)
+
 async def read_image(key: str) -> bytes | None:
     client = _s3_client()
     if client:
@@ -65,17 +110,20 @@ def ensure_bucket() -> None:
 
 
 def presigned_url(key: str, expires: int = 3600) -> str | None:
+    """Return CloudFront/S3 signed URL, or None for local-disk fallback."""
+    # Never recurse into generate_cloudfront_signed_url → presigned_url
     cf = generate_cloudfront_signed_url(key, expires)
-    if cf and settings.cloudfront_domain:
+    if cf:
         return cf
     client = _s3_client()
     if not client:
         return None
     try:
-        cf = cloudfront_signed_url(key, expires)
-        if cf:
-            return cf
-        return client.generate_presigned_url("get_object", Params={"Bucket": settings.s3_bucket, "Key": key}, ExpiresIn=expires)
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.s3_bucket, "Key": key},
+            ExpiresIn=expires,
+        )
     except Exception:
         return None
 
@@ -91,16 +139,14 @@ def presigned_put(key: str, expires: int = 900) -> str | None:
 
 
 def cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
-    if not settings.cloudfront_domain or not settings.cloudfront_key_id:
-        return presigned_url(key, expires)
-    base = settings.cloudfront_domain.rstrip("/")
-    return f"{base}/{key}"  # prod: RSA signed URL
+    """Deprecated alias — use generate_cloudfront_signed_url. No recursion."""
+    return generate_cloudfront_signed_url(key, expires)
 
 
 def generate_cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
-    """CloudFront signed URL (prod). Fallback → presigned S3."""
+    """CloudFront signed URL (prod). Returns None if CloudFront not configured (no recursion)."""
     if not settings.cloudfront_domain:
-        return presigned_url(key, expires)
+        return None
     domain = settings.cloudfront_domain.rstrip("/")
     if settings.cloudfront_key_id:
         try:

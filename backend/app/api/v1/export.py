@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import project_service as proj_svc
@@ -14,6 +14,7 @@ router = APIRouter(prefix="/projects", tags=["export"])
 
 @router.get("/{project_id}/estimate.pdf")
 async def export_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_project(db, project_id, user, write=False)
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404)
@@ -30,6 +31,7 @@ async def export_pdf(project_id: str, user: User = Depends(get_current_user), db
 async def export_acceptance(project_id: str, stage_id: str, checks: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import stage_service as st_svc
 
+    await require_project(db, project_id, user, write=False)
     stage = await st_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404)
@@ -54,6 +56,7 @@ async def export_room_pdf(project_id: str, room_id: str, user: User = Depends(ge
     from app.models.entities import Room
     from app.services.room_service import room_detail
 
+    await require_project(db, project_id, user, write=False)
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
         raise HTTPException(404)
@@ -68,6 +71,7 @@ async def export_room_pdf(project_id: str, room_id: str, user: User = Depends(ge
 
 @router.get("/{project_id}/export.pdf")
 async def export_project_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_project(db, project_id, user, write=False)
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404)
@@ -83,6 +87,7 @@ async def export_project_pdf(project_id: str, user: User = Depends(get_current_u
 
 @router.get("/{project_id}/estimate.csv")
 async def export_estimate_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_project(db, project_id, user, write=False)
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404)
@@ -97,6 +102,7 @@ async def export_estimate_csv(project_id: str, user: User = Depends(get_current_
 async def export_xlsx(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from itertools import groupby
 
+    await require_project(db, project_id, user, write=False)
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404)
@@ -123,6 +129,7 @@ async def export_room_audit(project_id: str, room_id: str, field: str | None = N
     from sqlalchemy import select
     from app.models.entities import Room, RoomChangeLog
 
+    await require_project(db, project_id, user, write=False)
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
         raise HTTPException(404)
@@ -145,6 +152,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
     from sqlalchemy import select
     from app.models.entities import MarginSnapshot
 
+    await require_project(db, project_id, user, write=False)
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404)
@@ -168,6 +176,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
 async def export_dossier(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import activity_service as act
 
+    await require_project(db, project_id, user, write=False)
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404)
@@ -183,6 +192,7 @@ async def export_dossier(project_id: str, user: User = Depends(get_current_user)
 async def full_dossier(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import activity_service as act
 
+    await require_project(db, project_id, user, write=False)
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404)

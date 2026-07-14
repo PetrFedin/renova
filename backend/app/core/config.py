@@ -1,5 +1,7 @@
-"""Конfigурация backend Renova."""
+"""Конфигурация backend Renova."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.environment import normalize_environment
 
 
 class Settings(BaseSettings):
@@ -7,7 +9,7 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     app_name: str = "Renova API"
-    # SQLite для локальной разработки; PostgreSQL в production
+    # SQLite только development/test; staging/production — PostgreSQL (см. environment.py)
     database_url: str = "sqlite+aiosqlite:///./renova.db"
     secret_key: str = "dev-secret-change-me"
     fns_npd_status_url: str = (
@@ -26,10 +28,9 @@ class Settings(BaseSettings):
     fns_receipt_api_url: str = "https://proverkacheka.nalog.ru:9999/v1/inns/*/kkts/*/fss/*"
     public_base_url: str = "http://127.0.0.1:8100"
 
-
     cloudfront_domain: str | None = None
     cloudfront_key_id: str | None = None
-    s3_public_url: str | None = None  # CDN URL prefix
+    s3_public_url: str | None = None
 
     sentry_dsn: str | None = None
 
@@ -38,12 +39,26 @@ class Settings(BaseSettings):
     rate_limit_rpm: int = 120
 
     twilio_sid: str | None = None
-
     twilio_token: str | None = None
-
     twilio_from: str | None = None
 
+    # Явные флаги (по умолчанию следуют policy profile)
+    allow_create_all: bool | None = None
+    allow_demo_seed: bool | None = None
+    # sync = classify in upload request; async = enqueue + worker tick/loop
+    document_ocr_mode: str = "sync"
+    document_ocr_worker_interval_sec: float = 5.0
+    # E-sign external (Wave 3f). Без ключей → 501 как раньше.
+    kontur_api_key: str | None = None
+    kontur_api_url: str = "https://api.kontur.ru/sign/v1"  # placeholder
+    kontur_mode: str = "off"  # off | sandbox | live
+    goskey_client_id: str | None = None
+    goskey_mode: str = "off"  # off | sandbox | live
+    esign_webhook_secret: str | None = None
+
+    @property
+    def normalized_environment(self) -> str:
+        return normalize_environment(self.environment)
+
+
 settings = Settings()
-
-
-# S3/MinIO (опционально; без них — локальная папка uploads/)

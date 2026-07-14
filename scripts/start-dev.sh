@@ -13,6 +13,8 @@ sleep 1
 echo "Backend :${API_PORT}..."
 cd "${ROOT}/backend"
 source .venv/bin/activate
+# Form/upload routes require python-multipart (Wave 2) — ensure present after pull
+python -c "import multipart" 2>/dev/null || pip install -q 'python-multipart>=0.0.20' aiosqlite
 [ -f alembic.ini ] && alembic upgrade head 2>/dev/null || true
 uvicorn app.main:app --reload --port "${API_PORT}" &
 BACK_PID=$!

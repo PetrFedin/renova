@@ -1,26 +1,86 @@
 from contextlib import asynccontextmanager
+import asyncio
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.environment import (
+    collect_warnings,
+    policy_for,
+    validate_runtime_settings,
+)
 from app.core.logging_config import setup_logging
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.audit import AuditMiddleware
 from app.db.session import init_db, SessionLocal
-from app.services.seed_demo import ensure_demo_users
-from app.services.seed_articles import seed_articles
-import app.models.entities  # noqa: F401 — регистрация моделей
+import app.models.entities  # noqa: F401
+import app.models.work_schedule  # noqa: F401
+import app.models.project_documents  # noqa: F401
+
+logger = logging.getLogger(__name__)
+
+
+def _demo_seed_allowed() -> bool:
+    policy = policy_for(settings.normalized_environment)
+    if settings.allow_demo_seed is not None:
+        return bool(settings.allow_demo_seed)
+    return policy.allow_demo_seed
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Hard fail до приёма трафика при неверном профиле
+    policy = validate_runtime_settings(
+        environment=settings.environment,
+        database_url=settings.database_url,
+        public_base_url=settings.public_base_url,
+        secret_key=settings.secret_key,
+    )
+    for warning in collect_warnings(
+        environment=settings.environment,
+        database_url=settings.database_url,
+        secret_key=settings.secret_key,
+    ):
+        logger.warning(warning)
+
     await init_db()
     from app.services.storage_service import ensure_bucket
     ensure_bucket()
-    async with SessionLocal() as db:
-        await ensure_demo_users(db)
-        await seed_articles(db)
+
+    if _demo_seed_allowed():
+        from app.services.seed_demo import ensure_demo_users
+        from app.services.seed_articles import seed_articles
+
+        async with SessionLocal() as db:
+            await ensure_demo_users(db)
+            await seed_articles(db)
+        logger.info("demo seed applied (environment=%s)", policy.name)
+    else:
+        logger.info("demo seed skipped (environment=%s)", policy.name)
+
+    ocr_stop: asyncio.Event | None = None
+    ocr_task: asyncio.Task | None = None
+    if (settings.document_ocr_mode or "sync").strip().lower() == "async":
+        from app.services.document_ocr_worker import ocr_worker_loop
+
+        ocr_stop = asyncio.Event()
+        ocr_task = asyncio.create_task(
+            ocr_worker_loop(ocr_stop, interval_sec=float(settings.document_ocr_worker_interval_sec))
+        )
+        logger.info("OCR async worker enabled")
+
     yield
+
+    if ocr_stop is not None:
+        ocr_stop.set()
+    if ocr_task is not None:
+        try:
+            await asyncio.wait_for(ocr_task, timeout=5)
+        except Exception:
+            ocr_task.cancel()
 
 
 setup_logging()
@@ -59,4 +119,9 @@ app.include_router(ws.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "renova-api", "version": "0.2.0"}
+    return {
+        "status": "ok",
+        "service": "renova-api",
+        "version": "0.2.0",
+        "environment": settings.normalized_environment,
+    }

@@ -11,7 +11,8 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSPhotoLibraryUsageDescription": "Renova использует фото для загрузки документов и отчётов по ремонту."
       },
       "supportsTablet": false,
       "bundleIdentifier": "ru.renova.app"
@@ -23,7 +24,11 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "bundler": "metro",

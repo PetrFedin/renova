@@ -13,11 +13,14 @@ import { osApi } from './os';
 import { materialsApi } from './materials';
 import { workOrdersApi } from './workOrders';
 import { issuesApi } from './issues';
+import { workAcceptancesApi } from './workAcceptances';
+import { documentsApi } from './documents';
 import { floorApi } from './floor';
 import { marketApi } from './market';
 import { designApi } from './design';
 import { adminApi } from './admin';
 import { scratchpadApi } from './scratchpad';
+import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
 
 export const api = {
@@ -35,11 +38,14 @@ export const api = {
   ...materialsApi,
   ...workOrdersApi,
   ...issuesApi,
+  ...workAcceptancesApi,
+  ...documentsApi,
   ...floorApi,
   ...marketApi,
   ...designApi,
   ...adminApi,
   ...scratchpadApi,
+  ...workScheduleApi,
   ...miscApi,
 };
 

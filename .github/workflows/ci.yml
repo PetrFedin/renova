@@ -14,11 +14,42 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: |
-          cd backend && pip install poetry && poetry install && pip install fpdf2
-          DATABASE_URL=sqlite+aiosqlite:///./ci.db uvicorn app.main:app --port 8100 &
-          sleep 5 && bash ../scripts/e2e-smoke.sh
-          cd backend && alembic upgrade head || true
+      - name: Install backend + start API + e2e-smoke
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+          export ENVIRONMENT=development
+          export DATABASE_URL=sqlite+aiosqlite:///./ci.db
+          export PUBLIC_BASE_URL=http://127.0.0.1:8100
+          export SECRET_KEY=ci-secret-key-at-least-16
+          poetry run uvicorn app.main:app --host 127.0.0.1 --port 8100 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8100/health >/dev/null; then
+              echo "API ready"
+              break
+            fi
+            sleep 1
+            if [ "$i" -eq 30 ]; then
+              echo "API failed to start"
+              exit 1
+            fi
+          done
+          bash ../scripts/e2e-smoke.sh
+      - name: Alembic on Postgres service (smoke)
+        working-directory: backend
+        env:
+          ENVIRONMENT: staging
+          DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+          PUBLIC_BASE_URL: https://ci-staging.example.com
+          SECRET_KEY: ci-staging-secret-key-32chars!!
+          ALLOW_CREATE_ALL: "false"
+          ALLOW_DEMO_SEED: "false"
+        run: |
+          set -euo pipefail
+          poetry run python -m alembic upgrade head
   playwright:
     runs-on: ubuntu-latest
     steps:

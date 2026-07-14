@@ -1,9 +1,30 @@
 """In-app уведомления + push с returnTo для навигации назад."""
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.entities import AppNotification, NotificationType
 from app.services.push_service import send_push
+
+# Исторические строки из callers → канон enum (CI/prod не падают на опечатках/алиасах).
+_TYPE_ALIASES: dict[str, str] = {
+    "material": "materials",
+    "budget": "budget_alert",
+    "stage_start": "stage_started",
+}
+
+
+def resolve_notification_type(raw: str) -> NotificationType:
+    """Маппинг строки caller → NotificationType; неизвестное → other."""
+    key = (raw or "").strip()
+    key = _TYPE_ALIASES.get(key, key)
+    try:
+        return NotificationType(key)
+    except ValueError:
+        return NotificationType.other
 
 
 async def notify(
@@ -24,7 +45,7 @@ async def notify(
     n = AppNotification(
         user_id=user_id,
         project_id=project_id,
-        notification_type=NotificationType(notification_type),
+        notification_type=resolve_notification_type(notification_type),
         title=title,
         body=body,
         link_path=stored_link,
@@ -70,7 +91,6 @@ async def snooze(db: AsyncSession, notification_id: str, user_id: str, hours: in
     n = r.scalar_one_or_none()
     if not n:
         return False
-    from datetime import timedelta
     n.snoozed_until = datetime.utcnow() + timedelta(hours=hours)
     await db.commit()
     return True

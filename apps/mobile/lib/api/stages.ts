@@ -1,6 +1,16 @@
 /** API: stages */
-import { req, cachedGet, API_BASE, ApiError } from './client';
-import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, User, WorkCompletionCheck, WorkSnapshot } from './types';
+import { req, API_BASE, ApiError } from './client';
+import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
+
+async function activeAcceptance(userId: string, projectId: string, stageId: string): Promise<WorkAcceptance | null> {
+  const items = await req<WorkAcceptance[]>(
+    `/api/v1/projects/${projectId}/work-acceptances?stage_id=${encodeURIComponent(stageId)}`,
+    {},
+    userId,
+  );
+  return items.find((item) => ['requested', 'in_review'].includes(item.status)) ?? null;
+}
+
 export const stagesApi = {
   getPlan: (userId: string, projectId: string) => req<ProjectPlan>(`/api/v1/projects/${projectId}/plan`, {}, userId),
   getStage: (userId: string, projectId: string, stageId: string) =>
@@ -37,23 +47,71 @@ export const stagesApi = {
   markStageReady: (userId: string, projectId: string, stageId: string) =>
     req<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}/ready`, { method: 'POST' }, userId),
   submitStage: async (userId: string, projectId: string, stageId: string) => {
-    try { return await req(`/api/v1/projects/${projectId}/stages/${stageId}/submit`, { method: 'POST' }, userId); }
-    catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/submit`, method: 'POST', body: '{}', userId }); throw new Error('offline_queued');
+    try {
+      return await req<WorkAcceptance>(
+        `/api/v1/projects/${projectId}/work-acceptances`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            stage_id: stageId,
+            checklist: [],
+            comment: 'Этап готов к приёмке',
+          }),
+        },
+        userId,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-acceptances`,
+        method: 'POST',
+        body: JSON.stringify({ stage_id: stageId, checklist: [], comment: 'Этап готов к приёмке' }),
+        userId,
+      });
+      throw new Error('offline_queued');
     }
   },
   rejectStage: async (userId: string, projectId: string, stageId: string, text: string) => {
-    const body = { text };
-    try { return await req(`/api/v1/projects/${projectId}/stages/${stageId}/reject`, { method: 'POST', body: JSON.stringify(body) }, userId); }
-    catch { const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/reject`, method: 'POST', body: JSON.stringify(body), userId }); throw new Error('offline_queued'); }
+    const acceptance = await activeAcceptance(userId, projectId, stageId);
+    if (!acceptance) throw new ApiError(409, 'Нет активной приёмки по этапу', 'acceptance_not_requested');
+    const body = { quality_score: 5, comment: text, create_issue: true };
+    try {
+      return await req(
+        `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/return`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/return`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
   },
   acceptStage: async (userId: string, projectId: string, stageId: string) => {
+    const acceptance = await activeAcceptance(userId, projectId, stageId);
+    if (!acceptance) throw new ApiError(409, 'Нет активной приёмки по этапу', 'acceptance_not_requested');
     try {
-      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/accept`, { method: 'POST' }, userId);
-    } catch {
+      return await req(
+        `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/accept`,
+        { method: 'POST', body: JSON.stringify({ quality_score: 10, comment: 'Работы приняты' }) },
+        userId,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/accept`, method: 'POST', body: '{}', userId });
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/accept`,
+        method: 'POST',
+        body: JSON.stringify({ quality_score: 10, comment: 'Работы приняты' }),
+        userId,
+      });
       throw new Error('offline_queued');
     }
   },
@@ -74,12 +132,18 @@ export const stagesApi = {
   reactComment: (userId: string, projectId: string, stageId: string, commentId: string, reaction: string) => req(`/api/v1/projects/${projectId}/stages/${stageId}/comments/${commentId}/react`, { method: 'POST', body: JSON.stringify({ reaction }) }, userId),
   getCommentReactions: (userId: string, projectId: string, stageId: string, commentId: string) => req<{ reactions: { user_id: string; reaction: string }[] }>(`/api/v1/projects/${projectId}/stages/${stageId}/comments/${commentId}/react`, {}, userId),
   exportStageAcceptance: async (userId: string, projectId: string, stageId: string, checklist?: string[]) => {
-    const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
     const qs = checklist?.length ? `?checks=${encodeURIComponent(checklist.join('|'))}` : '';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/stages/${stageId}/acceptance.pdf${qs}`, { headers: { 'X-User-Id': userId } });
-    if (!r.ok) throw new Error('export failed');
-    const blob = await r.blob();
-    if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = `acceptance-${stageId.slice(0,8)}.pdf`; a.click(); URL.revokeObjectURL(u); }
+    const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/stages/${stageId}/acceptance.pdf${qs}`, { headers: { 'X-User-Id': userId } });
+    if (!response.ok) throw new Error('export failed');
+    const blob = await response.blob();
+    if (typeof window !== 'undefined') {
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `acceptance-${stageId.slice(0, 8)}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    }
   },
   extendReworkSla: (userId: string, projectId: string, stageId: string, days = 1) => req(`/api/v1/projects/${projectId}/rework-sla/extend?stage_id=${stageId}&days=${days}`, { method: 'POST' }, userId),
   reworkSlaCheck: (userId: string, projectId: string) => req(`/api/v1/projects/${projectId}/rework-sla/check`, { method: 'POST' }, userId),

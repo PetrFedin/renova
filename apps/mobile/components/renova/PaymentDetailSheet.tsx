@@ -46,6 +46,7 @@ export function PaymentDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  const pathname = usePathname();
   const [step, setStep] = useState<PayStep>('info');
   const [transferAck, setTransferAck] = useState(false);
   const [receiptAttached, setReceiptAttached] = useState(false);
@@ -84,7 +85,6 @@ export function PaymentDetailSheet({
 
   if (!payment) return null;
 
-  const pathname = usePathname();
   const stage = stages.find((st) => st.id === payment.stage_id);
   const isCustomer = role === 'customer';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
@@ -255,7 +255,7 @@ export function PaymentDetailSheet({
           {history.length > 0 && (
             <View style={s.block}>
               <Text style={s.sectionHead}>История</Text>
-              {history.map((ev, i) => (
+              {history.map((ev) => (
                 <View key={ev.id} style={s.histRow}>
                   <View style={s.histBody}>
                     <Text style={s.histTitle}>{ev.title}</Text>
@@ -292,10 +292,10 @@ const s = StyleSheet.create({
   linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', marginBottom: 8 },
   link: { fontSize: 14, color: RenovaTheme.colors.primary, fontWeight: '600' },
   wait: { fontSize: 13, color: RenovaTheme.colors.warning, fontWeight: '600', marginBottom: 8 },
-  sectionHead: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 4 },
-  histRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
-  histBody: { flex: 1, paddingBottom: 6 },
-  histTitle: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.text },
-  histSub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  histDate: { fontSize: 11, color: RenovaTheme.colors.textSubtle, marginTop: 2 },
+  sectionHead: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 2 },
+  histRow: { borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 8 },
+  histBody: { gap: 2 },
+  histTitle: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
+  histSub: { fontSize: 12, color: RenovaTheme.colors.textMuted },
+  histDate: { fontSize: 11, color: RenovaTheme.colors.textMuted },
 });

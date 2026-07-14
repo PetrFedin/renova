@@ -100,6 +100,62 @@ def ensure_os_schema() -> None:
             );
         """)
 
+    if "project_work_schedules" not in tables:
+        c.executescript("""
+            CREATE TABLE IF NOT EXISTS project_work_schedules (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'draft',
+              title TEXT DEFAULT 'План-график работ',
+              description TEXT,
+              planned_start_date TEXT,
+              planned_finish_date TEXT,
+              rejection_reason TEXT,
+              created_by TEXT NOT NULL,
+              submitted_by TEXT,
+              confirmed_by TEXT,
+              rejected_by TEXT,
+              created_at TEXT,
+              submitted_at TEXT,
+              confirmed_at TEXT,
+              rejected_at TEXT,
+              updated_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedules_project_id ON project_work_schedules(project_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedules_status ON project_work_schedules(status);
+        """)
+
+    if "project_work_schedule_items" not in tables:
+        c.executescript("""
+            CREATE TABLE IF NOT EXISTS project_work_schedule_items (
+              id TEXT PRIMARY KEY,
+              schedule_id TEXT NOT NULL,
+              project_id TEXT NOT NULL,
+              stage_id TEXT,
+              title TEXT NOT NULL,
+              description TEXT,
+              status TEXT NOT NULL DEFAULT 'planned',
+              planned_start_date TEXT NOT NULL,
+              planned_finish_date TEXT NOT NULL,
+              actual_start_date TEXT,
+              actual_finish_date TEXT,
+              depends_on_item_id TEXT,
+              requires_customer_acceptance INTEGER DEFAULT 1,
+              requires_photo INTEGER DEFAULT 1,
+              requires_hidden_work_acceptance INTEGER DEFAULT 0,
+              delay_days INTEGER DEFAULT 0,
+              blocking_reason TEXT,
+              sort_order INTEGER DEFAULT 0,
+              progress_percent REAL DEFAULT 0,
+              created_at TEXT,
+              updated_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_schedule_id ON project_work_schedule_items(schedule_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_project_id ON project_work_schedule_items(project_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_stage_id ON project_work_schedule_items(stage_id);
+            CREATE INDEX IF NOT EXISTS ix_project_work_schedule_items_status ON project_work_schedule_items(status);
+        """)
+
     if "property_floors" not in tables:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS property_floors (
@@ -287,6 +343,48 @@ def ensure_os_schema() -> None:
             );
             CREATE INDEX IF NOT EXISTS ix_scratchpad_lines_project ON scratchpad_lines(project_id);
         """)
+
+    # Wave 3b: OCR flags on document_versions + esign provider on signatures
+    if "document_versions" in tables:
+        dv = cols("document_versions")
+        for col, typ in [
+            ("ocr_status", "TEXT DEFAULT 'none'"),
+            ("ocr_job_id", "TEXT"),
+            ("ocr_suggested_type", "TEXT"),
+            ("ocr_confidence", "REAL"),
+            ("ocr_completed_at", "TEXT"),
+            ("ocr_error", "TEXT"),
+        ]:
+            if col not in dv:
+                try:
+                    c.execute(f"ALTER TABLE document_versions ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+    if "document_signatures" in tables:
+        ds = cols("document_signatures")
+        for col, typ in [
+            ("provider_name", "TEXT DEFAULT 'in_app'"),
+            ("provider_external_id", "TEXT"),
+        ]:
+            if col not in ds:
+                try:
+                    c.execute(f"ALTER TABLE document_signatures ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
+    # Wave 3: legal hold on canonical documents
+    if "project_documents" in tables:
+        pd = cols("project_documents")
+        if "legal_hold" not in pd:
+            try:
+                c.execute("ALTER TABLE project_documents ADD COLUMN legal_hold INTEGER DEFAULT 0")
+            except Exception:
+                pass
+        if "retention_until" not in pd:
+            try:
+                c.execute("ALTER TABLE project_documents ADD COLUMN retention_until TEXT")
+            except Exception:
+                pass
 
     if "chat_thread_participants" not in tables:
         c.executescript("""

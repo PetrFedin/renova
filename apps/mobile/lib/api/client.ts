@@ -1,4 +1,6 @@
 /** HTTP-клиент Renova API */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -42,32 +44,98 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
   return { message: txt || `HTTP ${status}`, code, detail };
 }
 
-const OFFLINE_ROOMS = "renova_cache_rooms";
-const OFFLINE_STAGES = "renova_cache_stages";
+const OFFLINE_ROOMS = 'renova_cache_rooms';
+const OFFLINE_STAGES = 'renova_cache_stages';
+const OFFLINE_GET_PREFIX = 'renova_cache_get:';
 const _cache = new Map<string, { t: number; v: unknown }>();
 const CACHE_TTL = 30_000;
+const DURABLE_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function cacheKey(path: string, userId?: string) {
+  return `${userId || ''}:${path}`;
+}
+
+function storageKey(path: string, userId?: string) {
+  return `${OFFLINE_GET_PREFIX}${cacheKey(path, userId)}`;
+}
+
+function canUseDurableCache(opts: RequestInit) {
+  return !opts.method || opts.method === 'GET';
+}
+
+function canFallbackToCache(error: unknown) {
+  if (!(error instanceof ApiError)) return true;
+  return error.status >= 500;
+}
+
+async function saveDurableCache<T>(path: string, userId: string | undefined, value: T) {
+  try {
+    await AsyncStorage.setItem(storageKey(path, userId), JSON.stringify({ t: Date.now(), v: value }));
+  } catch { /* cache is best-effort */ }
+}
+
+async function readDurableCache<T>(path: string, userId?: string): Promise<T | null> {
+  try {
+    const raw = await AsyncStorage.getItem(storageKey(path, userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { t?: number; v?: T };
+    if (!parsed.t || Date.now() - parsed.t > DURABLE_CACHE_TTL) return null;
+    return parsed.v ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
-  const k = `${userId || ''}:${path}`;
+  const k = cacheKey(path, userId);
   const hit = _cache.get(k);
   if (hit && Date.now() - hit.t < CACHE_TTL) return hit.v as T;
-  const v = await req<T>(path, {}, userId);
-  _cache.set(k, { t: Date.now(), v });
-  return v;
+  try {
+    const v = await req<T>(path, {}, userId);
+    _cache.set(k, { t: Date.now(), v });
+    await saveDurableCache(path, userId, v);
+    return v;
+  } catch (error) {
+    if (canFallbackToCache(error)) {
+      const fallback = await readDurableCache<T>(path, userId);
+      if (fallback !== null) {
+        _cache.set(k, { t: Date.now(), v: fallback });
+        return fallback;
+      }
+    }
+    throw error;
+  }
 }
 
 export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
 export async function req<T>(path: string, opts: RequestInit = {}, userId?: string): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(opts.headers as object) };
+  const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(opts.headers as object),
+  };
   if (userId) headers['X-User-Id'] = userId;
-  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
-  if (!res.ok) {
-    const txt = await res.text();
-    const parsed = parseApiErrorBody(txt, res.status);
-    throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+  // FormData must manage its own multipart boundary — drop forced JSON content-type
+  if (isFormData) delete headers['Content-Type'];
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+    if (!res.ok) {
+      const txt = await res.text();
+      const parsed = parseApiErrorBody(txt, res.status);
+      throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+    }
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : undefined;
+    if (canUseDurableCache(opts) && data !== undefined) await saveDurableCache(path, userId, data);
+    return data as T;
+  } catch (error) {
+    if (canUseDurableCache(opts) && canFallbackToCache(error)) {
+      const fallback = await readDurableCache<T>(path, userId);
+      if (fallback !== null) return fallback;
+    }
+    throw error;
   }
-  return res.json();
 }
 
-export { OFFLINE_ROOMS, OFFLINE_STAGES };
+export { OFFLINE_ROOMS, OFFLINE_STAGES, OFFLINE_GET_PREFIX };
