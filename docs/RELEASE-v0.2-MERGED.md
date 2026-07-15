@@ -44,3 +44,8 @@ npm run test:priority
 - `docs/TESTFLIGHT-PREP-RUNBOOK.md`, `docs/EAS-BUILD-FIX-2026-07-15.md`
 - `npm run testflight:preflight`, profile `testflight` in eas.json
 - Ops: set real staging `EXPO_PUBLIC_API_URL`, then EAS build
+
+## Competitive audit wave (2026-07-15)
+
+- `docs/MARKET-COMPETITIVE-AUDIT-2026-07-15.md` — сравнение с Smetter/Vition/Buildertrend/Fieldwire + внутренний gap
+- `docs/PRODUCT-REMEDIATION-PLAN-2026-07-15.md` — план P0→P3
