@@ -30,3 +30,9 @@ GitHub отклонял файл workflow при валидации.
 - Actions → EAS Build & Submit → Run workflow → preflight green
 
 См. также `docs/TESTFLIGHT-PREP-RUNBOOK.md`.
+
+## Follow-up (same day)
+
+GitHub также отклонял workflow при `if: secrets.EXPO_TOKEN` на уровне **job** / **step** — секреты нельзя использовать в условиях `if:`.
+
+Итоговая схема: один job, проверка `EXPO_TOKEN` в bash, `npx eas-cli` с env (без `expo-github-action`).
