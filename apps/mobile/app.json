@@ -2,7 +2,7 @@
   "expo": {
     "name": "Renova",
     "slug": "renova",
-    "version": "1.0.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "renova",
@@ -12,10 +12,12 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSPhotoLibraryUsageDescription": "Renova использует фото для загрузки документов и отчётов по ремонту."
+        "NSPhotoLibraryUsageDescription": "Renova \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442 \u0444\u043e\u0442\u043e \u0434\u043b\u044f \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u043e\u0432 \u0438 \u043e\u0442\u0447\u0451\u0442\u043e\u0432 \u043f\u043e \u0440\u0435\u043c\u043e\u043d\u0442\u0443.",
+        "NSCameraUsageDescription": "Renova \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442 \u043a\u0430\u043c\u0435\u0440\u0443 \u0434\u043b\u044f \u0444\u043e\u0442\u043e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u043e\u0432 \u0438 \u043e\u0442\u0447\u0451\u0442\u043e\u0432 \u043f\u043e \u0440\u0435\u043c\u043e\u043d\u0442\u0443."
       },
       "supportsTablet": false,
-      "bundleIdentifier": "ru.renova.app"
+      "bundleIdentifier": "ru.renova.app",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +30,8 @@
       "permissions": [
         "READ_MEDIA_IMAGES",
         "READ_EXTERNAL_STORAGE"
-      ]
+      ],
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",

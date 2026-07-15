@@ -1,15 +1,85 @@
+# Manual EAS build/submit — requires EXPO_TOKEN (+ Apple creds for submit).
+# Invalid YAML in prior versions caused instant workflow validation failures on push.
 name: EAS Build & Submit
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile (eas.json)
+        required: true
+        default: testflight
+        type: choice
+        options:
+          - testflight
+          - preview
+          - production
+      platform:
+        description: Target platform
+        required: true
+        default: ios
+        type: choice
+        options:
+          - ios
+          - android
+          - all
+      submit:
+        description: Submit to store after build (needs Apple/Google secrets)
+        required: false
+        default: false
+        type: boolean
+
 jobs:
-  build:
+  preflight:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with:
+          node-version: "20"
+      - name: Repo preflight (no EAS token required)
+        run: bash scripts/testflight-preflight.sh --ci
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-latest
+    if: ${{ secrets.EXPO_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - run: npm ci
       - uses: expo/expo-github-action@v8
-        with: { eas-version: latest, token: ${{ secrets.EXPO_TOKEN }}
-      - run: cd apps/mobile && npx eas build --platform all --non-interactive
-      - run: cd apps/mobile && npx eas submit --platform ios --non-interactive --latest
-      - run: cd apps/mobile && npx eas submit --platform android --non-interactive --latest
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: EAS build
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          npx eas build \
+            --platform "${{ inputs.platform }}" \
+            --profile "${{ inputs.profile }}" \
+            --non-interactive \
+            --no-wait
+      - name: EAS submit (optional)
+        if: ${{ inputs.submit }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          SUBMIT_PROFILE="${{ inputs.profile }}"
+          if [ "$SUBMIT_PROFILE" = "preview" ]; then SUBMIT_PROFILE="testflight"; fi
+          npx eas submit \
+            --platform ios \
+            --profile "$SUBMIT_PROFILE" \
+            --non-interactive \
+            --latest
+
+  missing-token:
+    needs: preflight
+    runs-on: ubuntu-latest
+    if: ${{ secrets.EXPO_TOKEN == '' }}
+    steps:
+      - run: |
+          echo "::warning::EXPO_TOKEN secret not set — build skipped. Add repo secret and re-run workflow."
+          echo "See docs/TESTFLIGHT-PREP-RUNBOOK.md"
