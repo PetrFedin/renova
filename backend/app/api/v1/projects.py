@@ -179,13 +179,13 @@ async def reject_stage(project_id: str, stage_id: str, body: dict, user: User = 
 
 @router.post("/{project_id}/stages/{stage_id}/accept")
 async def accept_stage(project_id: str, stage_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Deprecated: use POST /projects/{id}/work-acceptances/{acceptance_id}/accept."""
     await require_project(db, project_id, user, write=True)
-    if user.role != UserRole.customer:
-        raise HTTPException(403, "Только заказчик принимает этап")
-    stage = await svc.accept_stage(db, stage_id)
-    if not stage or stage.project_id != project_id:
-        raise HTTPException(404, "Этап не на приёмке")
-    return {"ok": True, "status": stage.status.value}
+    raise HTTPException(
+        410,
+        "Deprecated: use work-acceptances API",
+        headers={"X-Deprecated-Use": "work-acceptances"},
+    )
 
 
 @router.post("/{project_id}/assign")

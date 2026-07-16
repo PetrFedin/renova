@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import Receipt, User
 from app.services.fns.receipt_verify import parse_receipt_qr, verify_receipt, receipt_meta
@@ -65,9 +65,7 @@ class ReceiptPatch(BaseModel):
 
 @router.post("/scan")
 async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    await require_project(db, project_id, user, write=True)
     cat = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
     payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
     stage_id = body.stage_id
@@ -108,9 +106,7 @@ async def manual_receipt(project_id: str, body: ReceiptManual, user: User = Depe
     """Расход без QR: наличные, перевод, доставка."""
     if body.amount <= 0:
         raise HTTPException(400, "Сумма должна быть больше 0")
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    await require_project(db, project_id, user, write=True)
     cat = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
     payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
     stage_id = body.stage_id
@@ -144,6 +140,7 @@ async def manual_receipt(project_id: str, body: ReceiptManual, user: User = Depe
 
 @router.patch("/{receipt_id}")
 async def patch_receipt(project_id: str, receipt_id: str, body: ReceiptPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    p = await require_project(db, project_id, user, write=True)
     rec = await db.get(Receipt, receipt_id)
     if not rec or rec.project_id != project_id:
         raise HTTPException(404)
@@ -156,8 +153,7 @@ async def patch_receipt(project_id: str, receipt_id: str, body: ReceiptPatch, us
             raise HTTPException(400, detail="Сумма должна быть больше 0")
         old_amt = rec.amount
         rec.amount = round(body.amount, 2)
-        p = await proj_svc.get_project(db, project_id)
-        if p and rec.fns_verified:
+        if rec.fns_verified:
             p.budget_spent = round(max(0, (p.budget_spent or 0) - old_amt + rec.amount), 2)
     if body.description is not None and rec.fn == "MANUAL":
         rec.qr_raw = (body.description or "Ручной расход")[:500]
@@ -174,11 +170,9 @@ async def patch_receipt(project_id: str, receipt_id: str, body: ReceiptPatch, us
 @router.delete("/{receipt_id}")
 async def delete_receipt(project_id: str, receipt_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Удалить чек и связанные расходы, пересчитать факт бюджета."""
+    await require_project(db, project_id, user, write=True)
     rec = await db.get(Receipt, receipt_id)
     if not rec or rec.project_id != project_id:
-        raise HTTPException(404)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
         raise HTTPException(404)
     from app.services import budget_service as bud
     removed = await bud.delete_receipt_expenses(db, receipt_id, rec=rec)
@@ -192,9 +186,7 @@ async def delete_receipt(project_id: str, receipt_id: str, user: User = Depends(
 
 @router.get("")
 async def list_receipts(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     out = []
     for r in p.receipts:
         meta = receipt_meta(r.qr_raw)

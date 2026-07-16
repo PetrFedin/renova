@@ -151,46 +151,26 @@ async def acceptances_pending(project_id: str, user: User = Depends(get_current_
 
 @router.post("/projects/{project_id}/acceptances/{acceptance_id}/accept")
 async def accept_work(project_id: str, acceptance_id: str, body: AcceptIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services import acceptance_service as acc_svc
-    from app.models.entities import UserRole
-    await require_project(db, project_id, user, write=True)
-    if user.role not in (UserRole.customer,):
-        raise HTTPException(403, "Только заказчик может принять этап")
-    from app.models.entities import WorkAcceptance
-    acc = await db.get(__import__("app.models.entities", fromlist=["WorkAcceptance"]).WorkAcceptance, acceptance_id)
-    if not acc or acc.project_id != project_id:
-        raise HTTPException(404)
-    from app.services import issue_service as iss
-    issues = await iss.list_issues(db, project_id, status=None)
-    open_n = len([i for i in issues if i.stage_id == acc.stage_id and i.status != "closed"])
-    updated = await acc_svc.accept(db, acceptance_id, accepted_by=user.id, with_remarks=body.with_remarks, comment=body.comment, open_issues=open_n)
-    if not updated:
-        raise HTTPException(400)
-    stage = await proj_svc.accept_stage(db, acc.stage_id)
-    if not stage:
-        raise HTTPException(409, "Этап не в статусе приёмки")
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="AcceptancePassed", title=f"Принято: {stage.name}", body=str(updated.quality_score), link_path=f"/stage/{stage.id}", stage_id=stage.id)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="InspectionRequested", title=f"Приёмка завершена: {stage.name}", stage_id=stage.id)
-    return acc_svc.acceptance_dict(updated, stage)
+    from app.api.v1.work_acceptances import AcceptanceDecisionIn, accept_work as canon_accept_work
+
+    decision = AcceptanceDecisionIn(
+        comment=body.comment,
+        create_issue=body.with_remarks,
+        quality_score=8 if body.with_remarks else 10,
+    )
+    return await canon_accept_work(project_id, acceptance_id, decision, user, db)
 
 
 @router.post("/projects/{project_id}/acceptances/{acceptance_id}/return")
 async def return_work(project_id: str, acceptance_id: str, body: ReturnIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services import acceptance_service as acc_svc
-    from app.models.entities import UserRole, WorkAcceptance
-    await require_project(db, project_id, user, write=True)
-    if user.role not in (UserRole.customer,):
-        raise HTTPException(403)
-    acc = await db.get(WorkAcceptance, acceptance_id)
-    if not acc or acc.project_id != project_id:
-        raise HTTPException(404)
-    updated = await acc_svc.return_for_rework(db, acceptance_id, comment=body.comment)
-    stage = await proj_svc.reject_stage(db, acc.stage_id, user.id, body.comment)
-    if not stage:
-        raise HTTPException(409)
-    await db.commit()
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="AcceptanceReturned", title=f"Возврат: {stage.name}", body=body.comment, stage_id=stage.id)
-    return acc_svc.acceptance_dict(updated, stage) if updated else {}
+    from app.api.v1.work_acceptances import AcceptanceDecisionIn, return_work as canon_return_work
+
+    decision = AcceptanceDecisionIn(
+        comment=body.comment,
+        create_issue=True,
+        quality_score=5,
+    )
+    return await canon_return_work(project_id, acceptance_id, decision, user, db)
 
 
 @router.get("/projects/{project_id}/os/budget")

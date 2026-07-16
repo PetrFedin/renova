@@ -67,7 +67,7 @@ async def confirm_payment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
         raise HTTPException(403, "Подтверждает оплату заказчик")
 
@@ -96,6 +96,7 @@ async def confirm_payment(
         raise HTTPException(409, "Платёж нельзя подтвердить")
 
     from app.services import activity_service as act
+    from app.services import notification_service as notif
 
     await act.log_event(
         db,
@@ -106,5 +107,18 @@ async def confirm_payment(
         body=str(payment.amount),
         link_path="/(customer)/(tabs)/budget",
     )
+    for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+        if not member_id or member_id == user.id:
+            continue
+        await notif.notify(
+            db,
+            user_id=member_id,
+            project_id=project_id,
+            notification_type="payment_pending",
+            title=f"Оплата подтверждена: {payment.title}",
+            body=str(payment.amount),
+            link_path="/(customer)/(tabs)/budget" if member_id == project.customer_id else "/(contractor)/(tabs)/budget",
+            return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home",
+        )
     receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
