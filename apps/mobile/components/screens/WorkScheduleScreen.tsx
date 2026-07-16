@@ -193,7 +193,7 @@ export function WorkScheduleScreen() {
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}><Text style={styles.back}>‹ Назад</Text></Pressable>
         <Text style={styles.title}>График работ</Text>
-        <Text style={styles.subtitle}>Единый план по этапам, срокам, прогрессу и задержкам.</Text>
+        <Text style={styles.subtitle}>Прогресс графика по срокам и задержкам — не путать с приёмкой работ (Control / work-acceptance).</Text>
       </View>
 
       {readOnly ? (

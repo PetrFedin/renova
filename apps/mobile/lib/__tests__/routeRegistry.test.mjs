@@ -14,4 +14,9 @@ for (const id of ['finance-center', 'manager-dashboard', 'quality-control', 'wor
   assert.ok(src.includes(`id: '${id}'`), `missing ${id}`);
 }
 assert.ok(src.includes("assertRouteRegistryInvariants"), 'invariants helper');
+
+for (const id of ['inbox', 'scan-receipt', 'stage', 'materials-procurement', 'conflicts']) {
+  assert.ok(src.includes(`id: '${id}'`), `missing ${id}`);
+}
+
 console.log('OK routeRegistry invariants (dock≤4, secondary centers listed)');

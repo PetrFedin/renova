@@ -1,5 +1,6 @@
 /** API: Document Center (+ OCR / e-sign Wave 3d) */
-import { req } from './client';
+import { req, ApiError } from './client';
+import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
 import type { ProjectDocumentsResponse } from './types';
 
 export type EsignProvider = {
@@ -95,10 +96,18 @@ export const documentsApi = {
     if (fields?.title) form.append('title', fields.title);
     if (fields?.document_type) form.append('document_type', fields.document_type);
     if (fields?.notes) form.append('notes', fields.notes);
-    return req(`/api/v1/projects/${projectId}/documents/upload`, {
-      method: 'POST',
-      body: form as unknown as BodyInit,
-    } as RequestInit, userId);
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents/upload`, {
+        method: 'POST',
+        body: form as unknown as BodyInit,
+      } as RequestInit, userId);
+    } catch (e) {
+      // Upload cannot be queued offline — explicit user-facing block
+      if (!(e instanceof ApiError) || e.status >= 500) {
+        throw new Error(OFFLINE_UPLOAD_BLOCKED);
+      }
+      throw e;
+    }
   },
 
   restoreProjectDocument: (userId: string, projectId: string, documentId: string) =>
