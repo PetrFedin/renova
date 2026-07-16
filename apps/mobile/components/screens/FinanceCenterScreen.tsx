@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { OsBudgetSummary, OsExpense, Payment } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import type { OsRole } from '@/constants/osSections';
 
 type FinanceState = {
   budget: OsBudgetSummary | null;
@@ -44,7 +46,7 @@ export function FinanceCenterScreen() {
   const [state, setState] = useState<FinanceState>({ budget: null, expenses: [], payments: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [paymentDetail, setPaymentDetail] = useState<Payment | null>(null);
 
   const load = useCallback(async () => {
     if (!user || !activeProject) return;
@@ -71,19 +73,8 @@ export function FinanceCenterScreen() {
   const budget = state.budget;
   const canConfirmPayments = role === 'customer' && !readOnly;
 
-  const confirmPayment = async (payment: Payment) => {
-    if (!user || !activeProject || !canConfirmPayments) return;
-    setConfirmingId(payment.id);
-    try {
-      await api.confirmPayment(user.id, activeProject.id, payment.id);
-      await load();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Не удалось подтвердить оплату.';
-      Alert.alert('Оплата не подтверждена', message);
-      await load();
-    } finally {
-      setConfirmingId(null);
-    }
+  const openPayment = (payment: Payment) => {
+    setPaymentDetail(payment);
   };
 
   if (!user || !activeProject) {
@@ -105,6 +96,7 @@ export function FinanceCenterScreen() {
   }
 
   return (
+    <>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -163,23 +155,21 @@ export function FinanceCenterScreen() {
       <View style={styles.cardBlock}>
         <Text style={styles.sectionTitle}>Ожидают оплаты</Text>
         {pendingPayments.length ? pendingPayments.slice(0, 5).map((payment) => (
-          <View key={payment.id} style={styles.row}>
+          <Pressable key={payment.id} style={styles.row} onPress={() => openPayment(payment)}>
             <View style={styles.rowMain}>
               <Text style={styles.rowTitle} numberOfLines={1}>{payment.title}</Text>
               <Text style={styles.rowMeta}>{paymentLabel(payment.status)} · {formatRub(payment.amount)}</Text>
             </View>
             {canConfirmPayments ? (
               <PrimaryButton
-                title="Оплатить"
+                title="Открыть"
                 compact
-                onPress={() => confirmPayment(payment)}
-                loading={confirmingId === payment.id}
-                disabled={Boolean(confirmingId)}
+                onPress={() => openPayment(payment)}
               />
             ) : (
               <Text style={styles.roleHint}>Решение заказчика</Text>
             )}
-          </View>
+          </Pressable>
         )) : <Text style={styles.emptyText}>Нет платежей, ожидающих оплаты.</Text>}
       </View>
 
@@ -196,6 +186,17 @@ export function FinanceCenterScreen() {
         )) : <Text style={styles.emptyText}>Расходы пока не отражены.</Text>}
       </View>
     </ScrollView>
+    <PaymentDetailSheet
+      payment={paymentDetail}
+      stages={activeProject.stages || []}
+      role={role as OsRole}
+      readOnly={readOnly}
+      userId={user.id}
+      projectId={activeProject.id}
+      onClose={() => setPaymentDetail(null)}
+      onChanged={load}
+    />
+    </>
   );
 }
 

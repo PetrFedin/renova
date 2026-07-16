@@ -58,3 +58,26 @@ export function resolvePushLink(link?: string | null, returnTo?: string | null):
   }
   return { pathname: canonicalPath, params: { returnTo: rt } };
 }
+
+/** Fallback router when push payload has no link_path */
+export function resolveNotificationLink(notificationType: string): PushTarget | null {
+  switch (notificationType) {
+    case 'payment_pending':
+      return { pathname: '/finance-center', params: {} };
+    case 'stage_review':
+    case 'stage_started':
+      return { pathname: '/work-acceptance', params: {} };
+    case 'change_order':
+      return { pathname: '/(customer)/(tabs)/budget', params: { tab: 'payments' } };
+    case 'materials':
+      return { pathname: '/(customer)/(tabs)/repair', params: { tab: 'materials' } };
+    case 'chat_message':
+      return { pathname: '/(customer)/(tabs)/chat', params: {} };
+    case 'budget_alert':
+      return { pathname: '/(customer)/(tabs)/budget', params: {} };
+    case 'document':
+      return { pathname: '/documents', params: {} };
+    default:
+      return null;
+  }
+}

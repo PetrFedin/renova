@@ -1,17 +1,17 @@
 /** «N ждут приёмки» на главной — 1 tap до очереди решений */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
-import { repairTabRoute, type OsRole } from '@/constants/osSections';
+import { type OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
 
 export function HomeAcceptanceBanner({ count, role }: { count: number; role: OsRole }) {
-  const { pushNav } = useOsNavFromHere(role);
+  const { pushScreen } = useOsNavFromHere(role);
   if (count <= 0) return null;
 
   return (
     <Pressable
       style={s.box}
-      onPress={() => pushNav(repairTabRoute(role, 'control'))}
+      onPress={() => pushScreen('/work-acceptance')}
       accessibilityRole="button"
     >
       <Text style={s.head}>{count} этап(ов) ждут вашей приёмки</Text>

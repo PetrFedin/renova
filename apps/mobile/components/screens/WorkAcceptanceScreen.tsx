@@ -7,6 +7,8 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { Stage, WorkAcceptance } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { apiErrorMessage } from '@/lib/formatPhone';
 
 type AcceptanceState = {
   acceptances: WorkAcceptance[];
@@ -157,6 +159,14 @@ export function WorkAcceptanceScreen() {
   const returned = useMemo(() => state.acceptances.filter((item) => item.status === 'returned'), [state.acceptances]);
   const accepted = useMemo(() => state.acceptances.filter((item) => item.status === 'accepted' || item.status === 'accepted_with_remarks'), [state.acceptances]);
 
+  const handleActionError = (e: unknown, label: string) => {
+    if (isOfflineQueued(e)) {
+      notifyOfflineQueued(label);
+      return;
+    }
+    Alert.alert('Ошибка', apiErrorMessage(e, `Не удалось выполнить: ${label.toLowerCase()}`));
+  };
+
   const requestAcceptance = async (stage: Stage) => {
     if (!user || !activeProject || readOnly) return;
     setActingId(stage.id);
@@ -167,6 +177,8 @@ export function WorkAcceptanceScreen() {
         comment: 'Этап готов к проверке',
       });
       await load();
+    } catch (e) {
+      handleActionError(e, 'Запрос приёмки');
     } finally {
       setActingId(null);
     }
@@ -181,6 +193,8 @@ export function WorkAcceptanceScreen() {
         comment: 'Работы приняты',
       });
       await load();
+    } catch (e) {
+      handleActionError(e, 'Принятие этапа');
     } finally {
       setActingId(null);
     }
@@ -202,6 +216,8 @@ export function WorkAcceptanceScreen() {
               create_issue: true,
             });
             await load();
+          } catch (e) {
+            handleActionError(e, 'Возврат на доработку');
           } finally {
             setActingId(null);
           }

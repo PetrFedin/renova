@@ -1,5 +1,5 @@
 /** Smoke-тест deep links — npx tsx lib/pushLinks.test.ts */
-import { resolvePushLink, resolveLegacyTabHref } from './pushLinks';
+import { resolvePushLink, resolveLegacyTabHref, resolveNotificationLink } from './pushLinks';
 
 const stage = resolvePushLink('/stage/abc-123', '/(customer)/(tabs)/');
 console.assert(stage?.pathname === '/stage/[id]' && stage.params.id === 'abc-123', 'stage');
@@ -17,4 +17,7 @@ console.assert(resolvePushLink('/(customer)/(tabs)/calendar', '/home')?.pathname
 console.assert(resolvePushLink('/scratchpad', '/home')?.pathname === '/scratchpad', 'scratchpad stack');
 console.assert(resolvePushLink('/scratchpad', '/home')?.params?.returnTo === '/home', 'scratchpad returnTo');
 console.assert(resolvePushLink(null) === null, 'null');
+console.assert(resolveNotificationLink('payment_pending')?.pathname === '/finance-center', 'notify payment');
+console.assert(resolveNotificationLink('stage_review')?.pathname === '/work-acceptance', 'notify acceptance');
+console.assert(resolveNotificationLink('unknown_xyz') === null, 'notify unknown');
 console.log('pushLinks: OK');

@@ -25,7 +25,7 @@ export function CustomerControlView() {
   const reload = useCallback(() => {
     if (user && activeProject) {
       api.listIssues(user.id, activeProject.id).then(setIssues).catch(() => setIssues([]));
-      api.listAcceptances(user.id, activeProject.id).then(setAcceptances).catch(() => setAcceptances([]));
+      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch(() => setAcceptances([]));
     }
   }, [user?.id, activeProject?.id]);
 

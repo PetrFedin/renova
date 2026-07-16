@@ -77,6 +77,7 @@ export function DocumentsHub({
   const [busy, setBusy] = useState<string | null>(null);
   const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
+  const [konturAvailable, setKonturAvailable] = useState(false);
 
   const pdfPath = (path: string) => path.replace('{id}', projectId);
 
@@ -87,6 +88,12 @@ export function DocumentsHub({
       .then((result) => { if (alive) setDocIndex(result); })
       .catch(() => { if (alive) setDocIndex(null); })
       .finally(() => { if (alive) setIndexLoading(false); });
+    api.listEsignProviders(userId)
+      .then(({ providers }) => {
+        if (!alive) return;
+        setKonturAvailable(Boolean(providers.find((p) => p.name === 'kontur')?.available));
+      })
+      .catch(() => { if (alive) setKonturAvailable(false); });
     return () => { alive = false; };
   }, [userId, projectId]);
 
@@ -266,7 +273,14 @@ export function DocumentsHub({
   function openIndexedDocument(doc: ProjectDocument) {
     const openFile = () => {
       if (!doc.href) {
-        Alert.alert(doc.title, formatDocMeta(doc) || 'Запись без файла.');
+        Alert.alert(
+          doc.title,
+          'Файл ещё не загружен. Добавьте документ через «+ Файл» или дождитесь генерации акта.',
+          [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Загрузить', onPress: () => { void uploadCanonicalDocument(); } },
+          ],
+        );
         return;
       }
       if (doc.href.toLowerCase().includes('.pdf') || doc.href.includes('/media/')) {
@@ -292,16 +306,10 @@ export function DocumentsHub({
           Alert.alert('Подписано', 'Подпись in_app сохранена.');
         }),
       },
-      {
+      ...(konturAvailable ? [{
         text: 'Подписать через Контур',
         onPress: () => withBusy(`sign-kontur-${doc.id}`, async () => {
-          const { providers } = await api.listEsignProviders(userId);
-          const kontur = providers.find((p) => p.name === 'kontur');
-          if (!kontur?.available) {
-            Alert.alert('Контур недоступен', 'На сервере не заданы KONTUR_MODE/KONTUR_API_KEY (ожидаемо в dev).');
-            return;
-          }
-          const res: any = await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' });
+          const res: { document?: { meta?: { signatures?: unknown } } } = await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' });
           await reloadIndex();
           Alert.alert(
             'Контур',
@@ -310,7 +318,7 @@ export function DocumentsHub({
               : 'Запрос отправлен (pending).',
           );
         }),
-      },
+      }] : []),
       {
         text: 'Распознать тип (OCR)',
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {

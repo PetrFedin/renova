@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Linking, StyleSheet, Platform, Alert } from 'react-native';
+import { View, Text, Linking, StyleSheet, Alert } from 'react-native';
 import { api } from '@/lib/api';
-import { uploadMediaBlob, pickFileWeb } from '@/lib/mediaUpload';
+import { uploadMediaBlob } from '@/lib/mediaUpload';
+import { pickDocumentForUpload } from '@/lib/documentUploadPick';
 import { designPackageStatusLabel } from '@/constants/labels';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
@@ -28,19 +29,12 @@ export function DesignPackageList({
   const uploadPdf = async () => {
     setUploading(true);
     try {
-      let blob: Blob | null = null;
-      let contentType = 'application/pdf';
-      if (Platform.OS === 'web') {
-        const file = await pickFileWeb('.pdf,application/pdf');
-        if (!file) return;
-        blob = file;
-        contentType = file.type || contentType;
-      } else {
-        Alert.alert('Документ', 'Загрузка PDF доступна в веб-версии. На телефоне — попросите подрядчика загрузить с компьютера.');
-        return;
-      }
-      const key = await uploadMediaBlob(userId, blob, contentType);
-      await api.createDesignPackage(userId, projectId, { title: 'Дизайн-проект', file_key: key });
+      const picked = await pickDocumentForUpload();
+      if (!picked) return;
+      const response = await fetch(picked.uri);
+      const blob = await response.blob();
+      const key = await uploadMediaBlob(userId, blob, picked.type || 'application/pdf');
+      await api.createDesignPackage(userId, projectId, { title: picked.name || 'Дизайн-проект', file_key: key });
       load();
     } catch {
       Alert.alert('Загрузка', 'Не удалось загрузить документ');

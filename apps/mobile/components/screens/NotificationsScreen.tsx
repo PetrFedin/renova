@@ -7,6 +7,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { AppNotification } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { resolveNotificationLink } from '@/lib/pushLinks';
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -27,8 +28,12 @@ function typeLabel(type: string) {
 }
 
 function openNotification(notification: AppNotification) {
-  if (!notification.link_path) return;
-  router.push(notification.link_path as never);
+  if (notification.link_path) {
+    router.push(notification.link_path as never);
+    return;
+  }
+  const target = resolveNotificationLink(notification.notification_type);
+  if (target) router.push(target.pathname as never);
 }
 
 function NotificationCard({ item, onRead }: { item: AppNotification; onRead: (id: string) => void }) {
@@ -51,7 +56,7 @@ function NotificationCard({ item, onRead }: { item: AppNotification; onRead: (id
       <Text style={styles.notificationBody}>{item.body}</Text>
       <View style={styles.cardFooter}>
         {!item.read ? <Text style={styles.unreadText}>Новое</Text> : <Text style={styles.readText}>Прочитано</Text>}
-        {item.link_path ? <Text style={styles.openText}>Открыть →</Text> : null}
+        {(item.link_path || resolveNotificationLink(item.notification_type)) ? <Text style={styles.openText}>Открыть →</Text> : null}
       </View>
     </Pressable>
   );

@@ -25,7 +25,7 @@ export function ContractorControlView() {
   const reload = useCallback(() => {
     if (user && activeProject) {
       api.listIssues(user.id, activeProject.id).then(setIssues).catch(() => setIssues([]));
-      api.listAcceptances(user.id, activeProject.id).then(setAcceptances).catch(() => setAcceptances([]));
+      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch(() => setAcceptances([]));
     }
   }, [user?.id, activeProject?.id]);
 
@@ -46,7 +46,7 @@ export function ContractorControlView() {
       </View>
 
       <Text style={s.section}>Ожидают приёмки</Text>
-      <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} />
+      <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} role="contractor" />
 
       <Text style={s.section}>Замечания</Text>
       {!issues.filter(i => i.status !== 'closed').length && <Text style={s.empty}>Нет открытых замечаний</Text>}

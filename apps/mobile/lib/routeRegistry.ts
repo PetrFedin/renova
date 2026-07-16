@@ -17,6 +17,10 @@ export type RenovaRoute = {
   status: RouteStatus;
   entryPoints: string[];
   descriptionRu?: string;
+  /** P0.2: tap on pending payment opens this sheet instead of direct confirm */
+  opensSheet?: 'payment';
+  /** Optional redirect when route is a thin wrapper over a tab */
+  redirectTo?: string;
 };
 
 /** Canonical product routes — единый реестр для меню и аудита. */
@@ -46,6 +50,9 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'more',
     status: 'beta',
     entryPoints: ['home.more'],
+    opensSheet: 'payment',
+    redirectTo: '/budget?tab=payments',
+    descriptionRu: 'Сводка финансов; оплата — через PaymentDetailSheet (gate приёмки)',
   },
   {
     id: 'quality-control',

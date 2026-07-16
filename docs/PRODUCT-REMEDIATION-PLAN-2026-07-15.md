@@ -207,3 +207,15 @@
 - `docs/ARCHITECTURE-AUDIT-RU.md` — закрытие A-xx пунктов
 
 **Волна P0 старт:** следующий коммит после этого документа — задача P0.1 (acceptance unify).
+
+---
+
+## P0 progress (2026-07-16)
+
+- [x] **P0.1** Единый канон приёмки — legacy 410, os proxy, mobile workAcceptancesApi
+- [x] **P0.2** Finance Center → PaymentDetailSheet (gate приёмки)
+- [x] **P0.3** Notify CO / payment confirm / document sign-archive activity
+- [x] **P0.4** Dead ends: Kontur hide, upload CTA, notification router, DesignPackage PDF native
+- [x] **P0.5** ACL: change_orders + receipts → require_project
+
+См. `docs/P0-ACCEPTANCE-UNIFY-2026-07-16.md`.
