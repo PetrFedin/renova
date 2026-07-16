@@ -63,6 +63,8 @@ async def lifespan(app: FastAPI):
 
     ocr_stop: asyncio.Event | None = None
     ocr_task: asyncio.Task | None = None
+    reminder_stop: asyncio.Event | None = None
+    reminder_task: asyncio.Task | None = None
     if (settings.document_ocr_mode or "sync").strip().lower() == "async":
         from app.services.document_ocr_worker import ocr_worker_loop
 
@@ -72,10 +74,32 @@ async def lifespan(app: FastAPI):
         )
         logger.info("OCR async worker enabled")
 
+    if settings.automation_reminders_enabled:
+        from app.services.automation_reminders_worker import automation_reminders_loop
+
+        reminder_stop = asyncio.Event()
+        reminder_task = asyncio.create_task(
+            automation_reminders_loop(
+                reminder_stop,
+                interval_sec=float(settings.automation_reminders_interval_sec),
+            )
+        )
+        logger.info(
+            "automation reminders enabled (interval=%ss)",
+            settings.automation_reminders_interval_sec,
+        )
+
     yield
 
     if ocr_stop is not None:
         ocr_stop.set()
+    if reminder_stop is not None:
+        reminder_stop.set()
+    if reminder_task is not None:
+        try:
+            await asyncio.wait_for(reminder_task, timeout=5)
+        except Exception:
+            reminder_task.cancel()
     if ocr_task is not None:
         try:
             await asyncio.wait_for(ocr_task, timeout=5)

@@ -89,15 +89,9 @@ async def approval_digest(user: User = Depends(get_current_user), db: AsyncSessi
 
 @router.post("/waste-reminders/check")
 async def waste_reminders(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from datetime import date, timedelta
-    from sqlalchemy import select
-    from app.models.entities import WasteOrder, WasteOrderStatus, Project
-    tomorrow = date.today() + timedelta(days=1)
-    r = await db.execute(select(WasteOrder).where(WasteOrder.scheduled_date == tomorrow, WasteOrder.status == WasteOrderStatus.scheduled))
-    sent = 0
-    for w in r.scalars().all():
-        p = await db.get(Project, w.project_id)
-        if p:
-            await notif_svc.notify(db, user_id=p.customer_id, project_id=w.project_id, notification_type="waste_reminder", title="Завтра вывоз мусора", body=f"{w.volume_m3} м³", link_path="/(customer)/(tabs)/estimate")
-            sent += 1
+    """Manual tick — same logic as automation_reminders_worker.scan_waste_reminders."""
+    from app.services.automation_reminders_worker import scan_waste_reminders
+
+    sent = await scan_waste_reminders(db)
+    await db.commit()
     return {"sent": sent}

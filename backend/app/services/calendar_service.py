@@ -45,6 +45,7 @@ def _append_work_period(events: list, wo) -> None:
 
 
 def build_calendar(project: Project, waste_orders=None) -> dict:
+    """Derived calendar view — SoT for schedule dates is project_work_schedules (see docs/SCHEDULE-SOT-2026-07-16.md)."""
     events = []
     for s in sorted(project.stages, key=lambda x: x.sort_order):
         _append_stage_period(events, s)

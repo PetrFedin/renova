@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # sync = classify in upload request; async = enqueue + worker tick/loop
     document_ocr_mode: str = "sync"
     document_ocr_worker_interval_sec: float = 5.0
+    # Periodic reminders: materials, overdue stages, waste pickup (dev default 15 min)
+    automation_reminders_enabled: bool = True
+    automation_reminders_interval_sec: float = 900.0
     # E-sign external (Wave 3f). Без ключей → 501 как раньше.
     kontur_api_key: str | None = None
     kontur_api_url: str = "https://api.kontur.ru/sign/v1"  # placeholder

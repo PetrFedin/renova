@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services import project_service as proj_svc
@@ -29,6 +29,7 @@ class LineCreate(BaseModel):
 async def patch_line(project_id: str, line_id: str, body: LinePatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель редактирует смету")
+    await require_project(db, project_id, user, write=True)
     line = await update_line(db, line_id, **body.model_dump(exclude_none=True))
     if not line:
         raise HTTPException(404, "Строка не найдена")
@@ -39,13 +40,12 @@ async def patch_line(project_id: str, line_id: str, body: LinePatch, user: User 
 async def create_line(project_id: str, body: LineCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель")
+    await require_project(db, project_id, user, write=True)
     line = await add_line(db, project_id, body.model_dump())
     return {"ok": True, "id": line.id}
 
 
 @router.get("/materials-stats")
 async def materials_stats(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     return material_stats(p.estimate_lines)

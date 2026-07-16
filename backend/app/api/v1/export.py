@@ -14,10 +14,7 @@ router = APIRouter(prefix="/projects", tags=["export"])
 
 @router.get("/{project_id}/estimate.pdf")
 async def export_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     pdf = new_pdf()
     pdf_line(pdf, f"Смета: {p.name}", size=14)
     for line in p.estimate_lines:
@@ -71,10 +68,7 @@ async def export_room_pdf(project_id: str, room_id: str, user: User = Depends(ge
 
 @router.get("/{project_id}/export.pdf")
 async def export_project_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     pdf = new_pdf()
     pdf_line(pdf, f"Проект: {p.name}", size=14)
     pdf_line(pdf, f"Бюджет: {p.budget_planned:.0f} / {p.budget_spent:.0f} ₽")
@@ -87,10 +81,7 @@ async def export_project_pdf(project_id: str, user: User = Depends(get_current_u
 
 @router.get("/{project_id}/estimate.csv")
 async def export_estimate_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     lines = ["name,unit,qty_plan,qty_fact,unit_price,total"]
     for line in p.estimate_lines:
         lines.append(f"{line.name},{line.unit},{line.quantity_planned},{line.quantity_actual},{line.unit_price},{line.quantity_planned * line.unit_price}")
@@ -102,10 +93,7 @@ async def export_estimate_csv(project_id: str, user: User = Depends(get_current_
 async def export_xlsx(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from itertools import groupby
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     total = sum(line.quantity_planned * line.unit_price for line in p.estimate_lines)
     sorted_lines = sorted(p.estimate_lines, key=lambda x: x.room_name or "Obschee")
     rows = ""
@@ -152,10 +140,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
     from sqlalchemy import select
     from app.models.entities import MarginSnapshot
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     since = datetime.utcnow() - timedelta(days=7)
     r = await db.execute(select(MarginSnapshot).where(MarginSnapshot.project_id == project_id, MarginSnapshot.recorded_at >= since))
     snaps = list(r.scalars().all())
@@ -176,10 +161,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
 async def export_dossier(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import activity_service as act
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     items = await act.project_feed(db, project_id, limit=100)
     pdf = new_pdf()
     pdf_line(pdf, f"Dossier: {p.name}", size=14)
@@ -192,10 +174,7 @@ async def export_dossier(project_id: str, user: User = Depends(get_current_user)
 async def full_dossier(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import activity_service as act
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     items = await act.project_feed(db, project_id, limit=50)
     pdf = new_pdf()
     pdf_line(pdf, f"Full dossier: {p.name}", size=14)
