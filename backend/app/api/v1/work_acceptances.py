@@ -156,6 +156,18 @@ async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
     return next_stage
 
 
+@router.get("/{project_id}/work-acceptances/pending-count")
+async def acceptances_pending_count(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services import acceptance_service as acc_svc
+
+    await require_project(db, project_id, user, write=False)
+    return {"count": await acc_svc.pending_count(db, project_id)}
+
+
 @router.get("/{project_id}/work-acceptances")
 async def list_acceptances(
     project_id: str,

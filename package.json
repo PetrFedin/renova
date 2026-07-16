@@ -32,7 +32,7 @@
     "test:routes": "node apps/mobile/lib/__tests__/routeRegistry.test.mjs",
     "test:docs-meta": "node apps/mobile/lib/__tests__/documentCenterMeta.test.mjs",
     "test:docs-upload": "node apps/mobile/lib/__tests__/documentUploadPick.test.mjs",
-    "test:guards": "cd backend && .venv/bin/python -m pytest tests/test_environment_guards.py tests/test_project_documents.py tests/test_document_media_acl.py tests/test_document_ocr.py tests/test_esign_providers.py tests/test_document_ocr_worker.py tests/test_notification_types.py -q",
+    "test:guards": "cd backend && .venv/bin/python -m pytest tests/test_environment_guards.py tests/test_acceptance_canon.py tests/test_cross_domain_notify.py tests/test_project_documents.py tests/test_document_media_acl.py tests/test_document_ocr.py tests/test_esign_providers.py tests/test_document_ocr_worker.py tests/test_notification_types.py -q",
     "test:priority": "npm run test:offline && npm run test:routes && npm run test:docs-meta && npm run test:docs-upload && npm run testflight:eas && npm run test:guards",
     "merge:check": "bash scripts/merge-readiness.sh",
     "staging:smoke": "bash scripts/staging-env-smoke.sh",
