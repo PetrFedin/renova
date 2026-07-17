@@ -1,7 +1,9 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Alert, AppState, ActivityIndicator } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Alert, AppState, ActivityIndicator, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as Clipboard from 'expo-clipboard';
+import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
@@ -122,6 +124,28 @@ export function PaymentDetailSheet({
           },
         },
       ],
+    );
+  };
+
+  const copySbpAmount = async () => {
+    const amountText = String(Math.round(payment.amount));
+    await Clipboard.setStringAsync(amountText);
+    Alert.alert(
+      'Сумма скопирована',
+      `${formatRub(payment.amount)} в буфере обмена. Откройте приложение банка и вставьте сумму для перевода по СБП.`,
+      Platform.OS === 'web'
+        ? [{ text: 'OK' }]
+        : [
+            { text: 'OK' },
+            {
+              text: 'Открыть банк',
+              onPress: () => {
+                Linking.openURL('bank100000000001://').catch(() => {
+                  Alert.alert('Подсказка', 'Откройте приложение вашего банка вручную и вставьте сумму.');
+                });
+              },
+            },
+          ],
     );
   };
 
@@ -257,6 +281,7 @@ export function PaymentDetailSheet({
               {requisites.split('\n').map((line) => (
                 <Text key={line} style={formMetaText.caption}>{line}</Text>
               ))}
+              <PrimaryButton title="Скопировать сумму" variant="outline" onPress={() => { copySbpAmount().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать сумму')); }} />
               <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={openSbp} />
               <PrimaryButton
                 title="Я перевёл — дальше"
