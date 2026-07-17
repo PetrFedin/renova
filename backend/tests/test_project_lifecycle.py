@@ -49,3 +49,20 @@ async def test_project_archive_trash_restore():
         rs = await client.post(f"/api/v1/projects/{pid}/restore", headers=headers)
         assert rs.status_code == 200
         assert rs.json()["trashed_at"] is None
+
+
+async def test_empty_trash_route():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        cust = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
+        headers = {"X-User-Id": cust["id"]}
+        pid = (await client.get("/api/v1/projects", headers=headers)).json()[0]["id"]
+
+        await client.post(f"/api/v1/projects/{pid}/trash", headers=headers)
+        emptied = await client.delete("/api/v1/projects/trash/empty", headers=headers)
+        assert emptied.status_code == 200
+        assert emptied.json()["deleted"] >= 1
+
+        trashed = await client.get("/api/v1/projects?bucket=trashed", headers=headers)
+        assert trashed.status_code == 200
+        assert trashed.json() == []

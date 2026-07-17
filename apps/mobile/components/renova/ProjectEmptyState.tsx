@@ -292,7 +292,4 @@ const s = StyleSheet.create({
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   name: { flex: 1, fontWeight: '700', fontSize: 15, color: RenovaTheme.colors.text },
   progressLine: { fontSize: 12, color: RenovaTheme.colors.textSubtle, marginTop: 2 },
-  cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8, justifyContent: 'flex-end' },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
 });
