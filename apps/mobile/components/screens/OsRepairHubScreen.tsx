@@ -15,7 +15,7 @@ import { tabsRoute, type OsRole } from '@/constants/osSections';
 const TAB_IDS = ['works', 'materials', 'control'] as const;
 
 export function OsRepairHubScreen({ role }: { role: OsRole }) {
-  const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
+  const { tab: tabParam, subtab: subtabParam } = useLocalSearchParams<{ tab?: string; subtab?: string }>();
   const { user, activeProject } = useRenova();
   const [active, setActive] = useHubTab(TAB_IDS, 'works');
   const [pendingAcceptance, setPendingAcceptance] = useState(0);
@@ -26,6 +26,13 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
       router.replace(tabsRoute(role, 'calendar') as any);
     }
   }, [tabParam, role]);
+
+  /** Deep link materials-procurement → materials + optional subtab */
+  useEffect(() => {
+    if (typeof subtabParam === 'string' && ['picks', 'purchases', 'receipts'].includes(subtabParam)) {
+      setActive('materials');
+    }
+  }, [subtabParam, setActive]);
 
   const reloadBadge = useCallback(() => {
     if (!user || !activeProject) return;

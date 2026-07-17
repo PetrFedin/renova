@@ -129,14 +129,14 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
   },
   {
     id: 'materials-procurement',
-    path: '/repair?tab=materials',
+    path: '/repair?tab=materials&subtab=purchases',
     titleRu: 'Закупки материалов',
     audience: 'both',
     visibility: 'deeplink',
-    status: 'beta',
+    status: 'ga',
     entryPoints: ['repair.materials'],
-    redirectTo: '/repair?tab=materials',
-    descriptionRu: 'Цепочка pick → purchase → receipt (см. docs/PROCUREMENT-HUB-2026-07-16.md)',
+    redirectTo: '/repair?tab=materials&subtab=purchases',
+    descriptionRu: 'Hub: Потребности · Закупки · Чеки (docs/PROCUREMENT-HUB-2026-07-16.md)',
   },
 
   // Hidden / deeplink legacy tabs

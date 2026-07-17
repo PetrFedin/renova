@@ -1,33 +1,54 @@
-/** Материалы — потребности, закупки, чеки */
-import { useCallback, useMemo, useState } from 'react';
+/** Материалы — hub: Потребности · Закупки · Чеки (P1.7) */
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { useFocusEffect, usePathname } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { MaterialPickList } from '@/components/renova/MaterialPickList';
 import { MaterialReceiptReconcile } from '@/components/renova/MaterialReceiptReconcile';
 import { PurchaseList } from '@/components/renova/PurchaseList';
+import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { api, MaterialPick, Purchase, ReceiptItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
 
-const FILTERS = [
+const PICK_FILTERS = [
   { key: 'all', label: 'Все' },
   { key: 'buy', label: 'Купить' },
   { key: 'ordered', label: 'Согласовано' },
   { key: 'delivered', label: 'В факте' },
   { key: 'shortage', label: 'Не хватает' },
-];
+] as const;
+
+const SUBTAB_IDS = ['picks', 'purchases', 'receipts'] as const;
+type MaterialSubtab = (typeof SUBTAB_IDS)[number];
+
+function isMaterialSubtab(v: string | undefined): v is MaterialSubtab {
+  return !!v && (SUBTAB_IDS as readonly string[]).includes(v);
+}
 
 export function OsMaterialsScreen({ role }: { role: import('@/constants/osSections').OsRole }) {
   const pathname = usePathname();
+  const { subtab: subtabParam } = useLocalSearchParams<{ subtab?: string }>();
   const { user, activeProject, readOnly } = useRenova();
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [filter, setFilter] = useState('all');
   const [busy, setBusy] = useState(false);
+  const [subtab, setSubtab] = useState<MaterialSubtab>('picks');
+
+  useEffect(() => {
+    if (isMaterialSubtab(typeof subtabParam === 'string' ? subtabParam : undefined)) {
+      setSubtab(subtabParam);
+    }
+  }, [subtabParam]);
+
+  const setMaterialSubtab = useCallback((tab: MaterialSubtab) => {
+    setSubtab(tab);
+    router.setParams({ tab: 'materials', subtab: tab });
+  }, []);
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
@@ -54,6 +75,14 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   const ordered = picks.filter((p) => p.status === 'approved').length;
   const delivered = picks.filter((p) => p.status === 'purchased').length;
   const shortage = picks.filter((p) => (p.qty_needed || p.qty) > (p.qty_delivered || 0) && p.status !== 'purchased').length;
+  const openPurchases = purchases.filter((p) => p.status !== 'delivered' && p.status !== 'cancelled').length;
+  const unlinkedReceipts = receipts.filter((r) => !r.verified).length;
+
+  const hubTabs: HubTab[] = [
+    { id: 'picks', label: 'Потребности', badge: needBuy || undefined },
+    { id: 'purchases', label: 'Закупки', badge: openPurchases || undefined },
+    { id: 'receipts', label: 'Чеки', badge: unlinkedReceipts || undefined },
+  ];
 
   const createPurchaseFromDrafts = async () => {
     const ids = picks.filter((p) => p.status === 'draft' || p.status === 'pending').map((p) => p.id);
@@ -62,6 +91,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     try {
       await api.createPurchase(user.id, activeProject.id, ids);
       reload();
+      setMaterialSubtab('purchases');
     } finally {
       setBusy(false);
     }
@@ -83,66 +113,94 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   };
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
-      <View style={s.summary}>
-        <View style={s.cell}><Text style={s.n}>{needBuy}</Text><Text style={s.l}>Купить</Text></View>
-        <View style={s.cell}><Text style={s.n}>{ordered}</Text><Text style={s.l}>Согласовано</Text></View>
-        <View style={s.cell}><Text style={s.n}>{delivered}</Text><Text style={s.l}>В факте</Text></View>
-        <View style={[s.cell, shortage > 0 && s.cellWarn]}><Text style={s.n}>{shortage}</Text><Text style={s.l}>Не хватает</Text></View>
-      </View>
-      <Text style={s.factHint}>
-        В факт бюджета попадает только «В факте» (куплено). «Согласовано» — ещё не трата. Убрать из факта — «Убрать из факта» в закупке.
-      </Text>
-
-      {!readOnly && (
-        <View style={s.actions}>
-          {needBuy > 0 && <PrimaryButton title="Создать закупку" onPress={createPurchaseFromDrafts} disabled={busy} />}
-          <PrimaryButton title="Из сметы" variant="outline" onPress={generateFromEstimate} disabled={busy} />
-          <Text style={s.fabHint}>Расход по чеку — кнопка «+» внизу экрана</Text>
+    <View style={s.root}>
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+        <View style={s.summary}>
+          <View style={s.cell}><Text style={s.n}>{needBuy}</Text><Text style={s.l}>Купить</Text></View>
+          <View style={s.cell}><Text style={s.n}>{ordered}</Text><Text style={s.l}>Согласовано</Text></View>
+          <View style={s.cell}><Text style={s.n}>{delivered}</Text><Text style={s.l}>В факте</Text></View>
+          <View style={[s.cell, shortage > 0 && s.cellWarn]}><Text style={s.n}>{shortage}</Text><Text style={s.l}>Не хватает</Text></View>
         </View>
-      )}
-
-      {!picks.length && (
-        <View style={s.empty}>
-          <Text style={s.emptyT}>Материалы ещё не рассчитаны</Text>
-          <Text style={s.emptyM}>Добавьте размеры комнат или сформируйте список из сметы</Text>
-          {!readOnly && <PrimaryButton title="Рассчитать из сметы" onPress={generateFromEstimate} />}
-        </View>
-      )}
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chips}>
-        {FILTERS.map((f) => (
-          <Pressable key={f.key} style={[s.chip, filter === f.key && s.chipOn]} onPress={() => setFilter(f.key)}>
-            <Text style={[s.chipT, filter === f.key && s.chipTOn]}>{f.label}</Text>
-          </Pressable>
-        ))}
+        <Text style={s.factHint}>
+          Цепочка: потребность → закупка → чек. В факт бюджета попадает только «В факте» (куплено).
+        </Text>
       </ScrollView>
 
-      <PurchaseList purchases={purchases} readOnly={readOnly} returnTo={pathname} onAdvance={advancePurchase} />
-      <MaterialPickList
-        userId={user.id}
-        projectId={activeProject.id}
-        role={role}
-        rooms={activeProject.rooms || []}
-        stages={activeProject.stages || []}
-        picksOverride={filteredPicks}
-        readOnly={readOnly}
-      />
-      <MaterialReceiptReconcile rooms={activeProject.rooms || []} picks={picks} receipts={receipts} />
-    </ScrollView>
+      <OsHubTabs tabs={hubTabs} value={subtab} onChange={(id) => setMaterialSubtab(id as MaterialSubtab)} />
+
+      <ScrollView style={s.body} contentContainerStyle={screenLayout.contentStyle}>
+        {subtab === 'picks' && (
+          <>
+            {!readOnly && (
+              <View style={s.actions}>
+                {needBuy > 0 && <PrimaryButton title="Создать закупку" onPress={createPurchaseFromDrafts} disabled={busy} />}
+                <PrimaryButton title="Из сметы" variant="outline" onPress={generateFromEstimate} disabled={busy} />
+              </View>
+            )}
+            {!picks.length && (
+              <View style={s.empty}>
+                <Text style={s.emptyT}>Материалы ещё не рассчитаны</Text>
+                <Text style={s.emptyM}>Добавьте размеры комнат или сформируйте список из сметы</Text>
+                {!readOnly && <PrimaryButton title="Рассчитать из сметы" onPress={generateFromEstimate} />}
+              </View>
+            )}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chips}>
+              {PICK_FILTERS.map((f) => (
+                <Pressable key={f.key} style={[s.chip, filter === f.key && s.chipOn]} onPress={() => setFilter(f.key)}>
+                  <Text style={[s.chipT, filter === f.key && s.chipTOn]}>{f.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <MaterialPickList
+              userId={user.id}
+              projectId={activeProject.id}
+              role={role}
+              rooms={activeProject.rooms || []}
+              stages={activeProject.stages || []}
+              picksOverride={filteredPicks}
+              readOnly={readOnly}
+            />
+          </>
+        )}
+
+        {subtab === 'purchases' && (
+          <>
+            {!readOnly && needBuy > 0 && (
+              <PrimaryButton title="Создать закупку из потребностей" onPress={createPurchaseFromDrafts} disabled={busy} />
+            )}
+            {!purchases.length ? (
+              <View style={s.empty}>
+                <Text style={s.emptyT}>Закупок пока нет</Text>
+                <Text style={s.emptyM}>Сформируйте закупку из потребностей или согласуйте позиции на вкладке «Потребности»</Text>
+              </View>
+            ) : null}
+            <PurchaseList purchases={purchases} readOnly={readOnly} returnTo={pathname} onAdvance={advancePurchase} />
+          </>
+        )}
+
+        {subtab === 'receipts' && (
+          <>
+            <Text style={s.fabHint}>Сканировать чек — кнопка «+» внизу экрана или раздел «Бюджет → Расходы»</Text>
+            <MaterialReceiptReconcile rooms={activeProject.rooms || []} picks={picks} receipts={receipts} />
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  summary: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
+  wrap: { flexGrow: 0 },
+  body: { flex: 1 },
+  summary: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   cell: { ...card, width: '47%', alignItems: 'center', marginBottom: 0, paddingVertical: 12 },
   cellWarn: { borderColor: '#D4A574', backgroundColor: '#FFFBF5' },
   n: { fontSize: 22, fontWeight: '800', color: RenovaTheme.colors.text },
   l: { fontSize: 12, color: RenovaTheme.colors.textMuted },
   actions: { gap: 8, marginBottom: 12 },
-  fabHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, textAlign: 'center' },
-  factHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 12 },
+  fabHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginBottom: 12 },
+  factHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 4 },
   empty: { ...card, marginBottom: 12 },
   emptyT: { fontWeight: '700', fontSize: 15 },
   emptyM: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginVertical: 8, lineHeight: 18 },

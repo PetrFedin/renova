@@ -14,6 +14,14 @@ npm run mobile:test
 echo "--- 2) eas.json profiles ---"
 node apps/mobile/lib/__tests__/easProfiles.test.mjs
 
+
+echo "--- 2b) staging URL placeholder ---"
+if grep -q 'api-staging.example.com' apps/mobile/eas.json; then
+  echo "WARN: eas.json still has api-staging.example.com — set real staging URL before TestFlight"
+else
+  echo "OK: eas.json staging URL not placeholder"
+fi
+
 echo "--- 3) app version / bundle id ---"
 node - <<'NODE'
 const fs = require('fs');
