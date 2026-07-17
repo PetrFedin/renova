@@ -102,11 +102,20 @@ async def portal_snapshot(
     from app.services import schedule_service as sched
     from app.services import payment_service as pay_svc
     from app.services import project_document_service as docs_svc
+    from sqlalchemy import select
+    from app.models.entities import SelectionItem
+    from app.api.v1.selections import _out as selection_out
 
     schedule = await sched.build_schedule_summary(db, p)
     payments = await pay_svc.list_payments(db, project_id)
     pending = [pay_svc.payment_dict(x) for x in payments if x.status.value == "pending"]
     canonical = await docs_svc.list_canonical_documents(db, project_id)
+    sel_rows = (
+        await db.execute(
+            select(SelectionItem).where(SelectionItem.project_id == project_id).order_by(SelectionItem.created_at.desc())
+        )
+    ).scalars().all()
+    selections = [selection_out(r) for r in sel_rows[:15]]
 
     return {
         "project": {"id": p.id, "name": p.name, "address": p.address, "progress_percent": p.progress_percent},
@@ -116,4 +125,6 @@ async def portal_snapshot(
         "pending_payments": pending,
         "documents": canonical[:20],
         "documents_total": len(canonical),
+        "selections": selections,
+        "selections_total": len(sel_rows),
     }

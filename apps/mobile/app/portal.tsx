@@ -83,6 +83,18 @@ export default function PortalScreen() {
         )}
       </View>
 
+
+      <View style={s.card}>
+        <Text style={s.cardHead}>Подбор материалов ({snapshot.selections_total})</Text>
+        {snapshot.selections.length === 0 ? (
+          <Text style={s.muted}>Нет позиций</Text>
+        ) : (
+          snapshot.selections.slice(0, 6).map((sel) => (
+            <Text key={sel.id} style={s.line}>{sel.title} · {sel.status}</Text>
+          ))
+        )}
+      </View>
+
       <View style={s.card}>
         <Text style={s.cardHead}>Документы ({snapshot.documents_total})</Text>
         {snapshot.documents.slice(0, 8).map((d) => (

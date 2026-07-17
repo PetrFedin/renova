@@ -154,8 +154,9 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
           {isCustomer && !readOnly && item.status === 'proposed' && (
             <View style={s.actions}>
               <PrimaryButton title="Согласовать" compact onPress={async () => {
-                await api.approveSelection(user.id, activeProject.id, item.id);
-                reload();
+      await api.approveSelection(user.id, activeProject.id, item.id);
+              reload();
+              Alert.alert('Согласовано', 'Позиция добавлена в «Материалы → Потребности» для закупки.');
               }} />
               <PrimaryButton title="Отклонить" variant="outline" compact onPress={() => {
                 Alert.alert('Отклонить', 'Укажите причину (опционально)', [

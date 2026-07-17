@@ -178,6 +178,9 @@ async def approve_selection(
         raise HTTPException(409, "not_proposed")
     row.status = SelectionStatus.approved
     row.approved_at = datetime.utcnow()
+    from app.services.selection_service import material_pick_from_selection
+
+    pick = await material_pick_from_selection(db, row)
     await db.commit()
     await act.log_event(
         db,
@@ -185,10 +188,13 @@ async def approve_selection(
         user_id=user.id,
         kind="approval",
         title=f"Подбор согласован: {row.title}",
+        body=f"→ закупка {pick.id[:8]}",
         room_id=row.room_id,
-        link_path="/(customer)/(tabs)/repair?tab=selections",
+        link_path="/(customer)/(tabs)/repair?tab=materials&subtab=picks",
     )
-    return _out(row)
+    out = _out(row)
+    out["material_pick_id"] = pick.id
+    return out
 
 
 @router.post("/{project_id}/selections/{selection_id}/reject")

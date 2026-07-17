@@ -30,6 +30,8 @@ export const miscApi = {
       pending_payments: { id: string; title: string; amount: number; status: string }[];
       documents: { id: string; title: string; kind?: string; status?: string }[];
       documents_total: number;
+      selections: { id: string; title: string; category: string; status: string; price: number; allowance?: number | null }[];
+      selections_total: number;
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
   rejectApproval: (userId: string, projectId: string, itemId: string, type: string, reason: string) => req(`/api/v1/projects/${projectId}/approvals/${itemId}/reject`, { method: 'POST', body: JSON.stringify({ type, reason }) }, userId),
