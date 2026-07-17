@@ -71,6 +71,19 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
     co = await co_svc.approve(db, order_id)
     if not co:
         raise HTTPException(404)
+    from app.models.project_documents import DocumentStatus, DocumentType
+    from app.services import project_document_service as docs_svc
+
+    draft = await docs_svc.create_document(
+        db,
+        project_id=project_id,
+        created_by=user.id,
+        title=f"Доп. работы: {co.title}",
+        document_type=DocumentType.contract.value,
+        notes=f"CO:{co.id}; сумма {co.amount:.0f} ₽; черновик для подписи",
+    )
+    draft.status = DocumentStatus.draft.value
+    await db.flush()
     await act.log_event(
         db,
         project_id=project_id,
@@ -93,6 +106,7 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
             link_path="/(contractor)/(tabs)/budget",
             return_to="/(contractor)/(tabs)/home",
         )
+    await db.commit()
     return {"ok": True, "status": co.status.value}
 
 

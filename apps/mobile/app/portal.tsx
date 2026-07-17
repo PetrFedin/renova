@@ -1,9 +1,11 @@
 /** P2.1 Web client portal — read-only по magic link ?token= */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Linking, Platform } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import * as WebBrowser from 'expo-web-browser';
+import * as Clipboard from 'expo-clipboard';
 import { api } from '@/lib/api';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
@@ -65,7 +67,7 @@ export default function PortalScreen() {
       <Text style={s.brand}>Renova · портал заказчика</Text>
       <Text style={s.title}>{snapshot.project.name}</Text>
       {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
-      <Text style={s.ro}>Только просмотр · {session.project_name}</Text>
+      <Text style={s.ro}>{session.scopes?.includes('accept_stage') ? 'Портал заказчика · приёмка и оплата' : 'Только просмотр'} · {session.project_name}</Text>
 
       {(snapshot.pending_acceptances?.length ?? 0) > 0 && (session.scopes?.includes('accept_stage') || snapshot.can_accept_stage) && !session.read_only ? (
         <View style={s.card}>
@@ -105,9 +107,58 @@ export default function PortalScreen() {
         {snapshot.pending_payments.length === 0 ? (
           <Text style={s.muted}>Нет счетов</Text>
         ) : (
-          snapshot.pending_payments.map((p) => (
-            <Text key={p.id} style={s.line}>{p.title} · {formatRub(p.amount)}</Text>
-          ))
+          snapshot.pending_payments.map((pay) => {
+            const requisites = [
+              'Получатель: исполнитель по договору',
+              'Сбербанк · карта 2202 2065 •••• 4521',
+              `Сумма: ${formatRub(pay.amount)}`,
+              `Назначение: ${pay.title}`,
+            ].join('\n');
+            return (
+              <View key={pay.id} style={s.payRow}>
+                <Text style={s.line}>{pay.title} · {formatRub(pay.amount)}</Text>
+                <View style={s.payActions}>
+                  <Pressable
+                    style={s.payBtn}
+                    onPress={async () => {
+                      try {
+                        const checkout = await api.checkoutYookassa(session.user_id, session.project_id, pay.id);
+                        if (checkout.demo) {
+                          const snap = await api.portalSnapshot(session.user_id, session.project_id);
+                          setSnapshot(snap);
+                          Alert.alert('Оплата', checkout.message || 'Оплата подтверждена (demo ЮKassa).');
+                          return;
+                        }
+                        if (checkout.confirmation_url) {
+                          await WebBrowser.openBrowserAsync(checkout.confirmation_url);
+                          Alert.alert('ЮKassa', 'После оплаты обновите страницу портала.');
+                        }
+                      } catch {
+                        Alert.alert('ЮKassa', 'Оплата картой недоступна. Используйте перевод по реквизитам.');
+                      }
+                    }}
+                  >
+                    <Text style={s.payBtnT}>Оплатить картой</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.payBtnOutline}
+                    onPress={async () => {
+                      try { await Clipboard.setStringAsync(String(Math.round(pay.amount))); } catch { /* noop */ }
+                      Alert.alert(
+                        'Перевод',
+                        `${requisites}\n\nСумма скопирована. Откройте банк или СБП.`,
+                        Platform.OS === 'web'
+                          ? [{ text: 'OK' }]
+                          : [{ text: 'OK' }, { text: 'Открыть банк', onPress: () => Linking.openURL('bank100000000001://').catch(() => {}) }],
+                      );
+                    }}
+                  >
+                    <Text style={s.payBtnOutlineT}>Реквизиты / СБП</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })
         )}
       </View>
 

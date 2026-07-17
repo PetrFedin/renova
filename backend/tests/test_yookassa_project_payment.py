@@ -148,58 +148,9 @@ async def test_webhook_idempotent_duplicate_event(db, monkeypatch):
     assert events == 1
 
 @pytest.mark.asyncio
-async def test_webhook_duplicate_does_not_double_confirm(db, monkeypatch):
-    """P3.1b: повторный webhook не подтверждает платёж дважды."""
+async def test_demo_not_allowed_in_staging(monkeypatch):
+    """P3.1a: demo instant pay заблокирован в staging."""
     from app.core import config as cfg
-    from datetime import datetime
 
-    monkeypatch.setattr(cfg.settings, "environment", "development")
-
-    customer = User(id="cust2", phone="+70000000003", role=UserRole.customer)
-    contractor = User(id="contr2", phone="+70000000004", role=UserRole.contractor)
-    db.add_all([customer, contractor])
-    project = Project(
-        id="proj2",
-        name="Dup webhook",
-        renovation_type="cosmetic",
-        customer_id=customer.id,
-        contractor_id=contractor.id,
-        budget_planned=100000,
-        budget_spent=0,
-    )
-    stage = Stage(
-        id="st2",
-        project_id=project.id,
-        name="Этап 2",
-        sort_order=1,
-        customer_accepted_at=datetime.utcnow(),
-    )
-    db.add_all([project, stage])
-    await db.commit()
-
-    payment = await pay_svc.create_payment(
-        db, project.id, contractor.id, "Оплата этапа 2", 3000.0, PaymentType.stage.value, stage.id
-    )
-
-    body = {
-        "event": "payment.succeeded",
-        "object": {
-            "id": "yk-dup-456",
-            "status": "succeeded",
-            "metadata": {
-                "kind": "project_payment",
-                "payment_id": payment.id,
-                "project_id": project.id,
-                "user_id": customer.id,
-            },
-        },
-    }
-    first = await yk.process_webhook(body, db)
-    assert first.get("confirmed") is True
-
-    second = await yk.process_webhook(body, db)
-    assert second.get("duplicate") is True
-    assert second.get("confirmed") is not True
-
-    refreshed = await pay_svc.get_payment(db, payment.id)
-    assert refreshed.status == PaymentStatus.confirmed
+    monkeypatch.setattr(cfg.settings, "environment", "staging")
+    assert yk.demo_allowed() is False

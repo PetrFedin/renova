@@ -22,6 +22,15 @@
 - [ ] `ALLOW_DEMO_SEED=0` / `environment=staging`
 - [ ] CORS / health: `GET /health` → 200
 
+
+## 4. ЮKassa (staging — без demo)
+
+- [ ] `YUKASSA_SHOP_ID` и `YUKASSA_SECRET_KEY` — **обязательны** в staging (demo instant pay отключён)
+- [ ] `YUKASSA_WEBHOOK_SECRET` — для верификации webhook
+- [ ] Webhook URL: `https://<staging-api>/api/v1/payments/yookassa/webhook`
+- [ ] Mobile `eas.json` профиль `staging` / `preview`: `EXPO_PUBLIC_API_URL` = HTTPS staging API
+- [ ] Smoke: `pytest tests/test_yookassa_project_payment.py::test_demo_not_allowed_in_staging -q`
+
 ## 3. Smoke перед build
 
 ```bash

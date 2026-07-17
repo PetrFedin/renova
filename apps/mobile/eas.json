@@ -46,6 +46,15 @@
         "SENTRY_ORG": "renova",
         "SENTRY_PROJECT": "mobile"
       }
+    },
+    "staging": {
+      "extends": "preview",
+      "distribution": "internal",
+      "channel": "staging",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
+        "EXPO_PUBLIC_DEMO": "0"
+      }
     }
   },
   "submit": {

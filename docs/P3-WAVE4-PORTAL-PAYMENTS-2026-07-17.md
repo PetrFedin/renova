@@ -1,35 +1,35 @@
-# P3-WAVE4 — Portal accept + payments guard (2026-07-17)
+# P3-WAVE4 — Portal v2, staging payments, CO draft (2026-07-17)
 
-**Ветка:** `develop`
+**Ветка:** `develop`  
+**Основание:** `P3-WAVE3-FIELD-PAYMENTS-IA-2026-07-17.md`, `RENOVA-COMPETITIVE-GAP-PLAN-2026-07-17.md`
 
-## Закрыто
+## Закрыто в этой волне
 
-| ID | Задача | Изменения |
-|----|--------|-----------|
-| P3.2a | Portal accept stage | `portal.py` scopes `accept_stage`, POST accept, `portal.tsx` кнопка «Принять этап» |
-| P3.2a | Customer portal link | POST `/projects/{id}/portal-link` с `allow_accept_stage` |
-| P3.1b | Webhook duplicate guard | `test_webhook_duplicate_does_not_double_confirm` |
-| P3.4 | Control → QC | `legacyRoutes.ts`, control tab screens |
-| P3.4 | Schedule registry | `work-schedule` redirect metadata в `routeRegistry.ts` |
-| P3.1a | Staging scaffold | `eas.json` staging URL placeholder (keys — в `.env.staging`) |
+| ID | Задача | Файлы | DoD |
+|----|--------|-------|-----|
+| Portal v2 | Accept stage по magic link | `portal.py`, `portal_token_service.py`, `portal.tsx`, `misc.ts`, `test_portal_accept.py` | POST accept + кнопка «Принять этап» при scope `accept_stage` |
+| Portal v2 | Pay pending в портале | `portal.tsx` | ЮKassa checkout + реквизиты/СБП для pending payments |
+| P3.1a | YuKassa staging scaffold | `eas.json` (profile `staging`), `STAGING-URL-CHECKLIST`, `yookassa_service.py` | Demo blocked в staging; checklist с `YUKASSA_SHOP_ID` |
+| P3.2d | CO → draft document | `change_orders.py`, `test_co_draft_document.py` | Approve CO → документ «Доп. работы: {title}» status `draft` |
+| P3.1d | Kontur webhook idempotent | `project_document_service.py`, `test_esign_providers.py` | Повторный webhook не меняет `signed_at` |
 
 ## API
 
-- `POST /api/v1/portal/session` — scopes в ответе
-- `POST /api/v1/portal/projects/{id}/accept/{acceptance_id}` — token + accept_stage scope
-- Mobile: `api.portalAcceptStage`, `api.createCustomerPortalLink`
+- `POST /api/v1/auth/portal/session` — возвращает `scopes`, `read_only`
+- `POST /api/v1/projects/{id}/portal-link` — body `{ "allow_accept_stage": true }`
+- `POST /api/v1/portal/projects/{id}/work-acceptances/{acc_id}/accept` — body `{ "token", "comment?" }`
 
 ## Тесты
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/test_co_budget_line.py tests/test_change_order_budget.py tests/test_yookassa_project_payment.py -q
+cd backend && .venv/bin/python -m pytest tests/test_co_budget_line.py tests/test_yookassa_project_payment.py tests/test_portal_accept.py tests/test_co_draft_document.py tests/test_esign_providers.py -q
 npm run test:priority
 ```
 
-## Следующий backlog (P3-W5)
+## Следующий backlog (P3-W5+)
 
-1. Portal v2 pay pending — YuKassa checkout из magic link
-2. CO → eSign act (draft document on approve)
-3. Kontur live webhook + idempotency audit
-4. Offline UI pattern (`offlineUi.ts`) на приёмке и issues
-5. Registry v3 — удалить wip routes
+1. Portal sign act (eSign по magic link)
+2. Kontur live webhook (production keys)
+3. YuKassa staging keys в `.env.staging` (реальные, не placeholder)
+4. Offline parity — issues/documents queue UI
+5. Registry v3 — promote GA, delete wip routes

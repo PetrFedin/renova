@@ -350,10 +350,12 @@ async def complete_external_signature(
     ).scalar_one_or_none()
     if not row:
         return None
+    if status == "signed" and row.status == "signed" and row.signed_at:
+        return row
     row.status = status
-    if status == "signed":
+    if status == "signed" and not row.signed_at:
         row.signed_at = datetime.utcnow()
-    elif status == "failed":
+    elif status == "failed" and not row.revoked_at:
         row.revoked_at = datetime.utcnow()
     await db.flush()
     return row
