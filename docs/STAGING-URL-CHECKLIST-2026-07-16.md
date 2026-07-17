@@ -51,3 +51,9 @@ eas build --profile testflight --platform ios
 - [ ] Login demo отключён (`EXPO_PUBLIC_DEMO=0`)
 - [ ] Deep links: payment return, notifications
 - [ ] Push (если включён) → staging FCM keys
+
+
+## P3-W6 Payments
+
+- [ ] `YOOKASSA_SHOP_ID` + `YOOKASSA_SECRET` в staging secrets
+- [ ] Demo instant pay **заблокирован** (`ENVIRONMENT=staging` → `yookassa_not_configured` без keys)

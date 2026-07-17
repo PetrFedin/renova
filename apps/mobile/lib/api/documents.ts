@@ -35,19 +35,32 @@ export const documentsApi = {
       body: JSON.stringify(body),
     }, userId),
 
-  signProjectDocument: (
+  signProjectDocument: async (
     userId: string,
     projectId: string,
     documentId: string,
     opts?: { provider?: string; signature_type?: string },
-  ) =>
-    req(`/api/v1/projects/${projectId}/documents/${documentId}/sign`, {
-      method: 'POST',
-      body: JSON.stringify({
-        signature_type: opts?.signature_type || opts?.provider || 'in_app',
-        provider: opts?.provider || 'in_app',
-      }),
-    }, userId),
+  ) => {
+    const body = JSON.stringify({
+      signature_type: opts?.signature_type || opts?.provider || 'in_app',
+      provider: opts?.provider || 'in_app',
+    });
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents/${documentId}/sign`, {
+        method: 'POST',
+        body,
+      }, userId);
+    } catch {
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/documents/${documentId}/sign`,
+        method: 'POST',
+        body,
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
   getDocumentOcr: (userId: string, projectId: string, documentId: string) =>
     req<{ document_id: string; document_type: string; ocr: Record<string, unknown> }>(

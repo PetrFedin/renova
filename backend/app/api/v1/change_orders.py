@@ -88,6 +88,15 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
         db,
         project_id=project_id,
         user_id=user.id,
+        kind="DocumentDraftForSign",
+        title=f"Подпишите доп. работы: {co.title}",
+        body=f"Документ {draft.id} · {co.amount:.0f} ₽",
+        link_path="/documents",
+    )
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
         kind="ChangeOrderApproved",
         title=f"Доп. работы согласованы: {co.title}",
         body=str(co.amount),

@@ -180,7 +180,26 @@ export default function PortalScreen() {
           <View style={s.draftBlock}>
             <Text style={s.draftHead}>Ожидают подписи</Text>
             {snapshot.documents.filter((d) => d.status === 'draft').map((d) => (
-              <Text key={d.id} style={s.line}>{d.title} · черновик</Text>
+              <View key={d.id} style={s.acceptRow}>
+                <Text style={s.line}>{d.title} · черновик</Text>
+                {(session.scopes?.includes('sign_document') || snapshot.can_sign_documents) && !session.read_only ? (
+                  <Pressable
+                    style={s.acceptBtn}
+                    onPress={async () => {
+                      try {
+                        await api.portalSignDocument(session.project_id, d.id, portalToken);
+                        const snap = await api.portalSnapshot(session.user_id, session.project_id);
+                        setSnapshot(snap);
+                        Alert.alert('Подписано', d.title);
+                      } catch {
+                        Alert.alert('Ошибка', 'Не удалось подписать документ');
+                      }
+                    }}
+                  >
+                    <Text style={s.acceptBtnT}>Подписать</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             ))}
             <Text style={s.muted}>Подпишите в приложении Renova → Документы проекта</Text>
           </View>

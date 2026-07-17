@@ -95,7 +95,7 @@ async def create_viewer_portal_link(
     if body.allow_accept_stage:
         if guest.id != p.customer_id:
             raise HTTPException(403, "accept_stage_only_for_customer")
-        scopes = ["read", "accept_stage"]
+        scopes = ["read", "accept_stage", "sign_document"]
     token = portal_tok.create_portal_token(project_id=project_id, user_id=viewer_user_id, scopes=scopes)
     return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
 
@@ -113,7 +113,9 @@ async def create_customer_portal_link(
     p = await require_project(db, project_id, user, write=True)
     if user.id != p.customer_id:
         raise HTTPException(403, "Только заказчик")
-    scopes = ["read", "accept_stage"] if body.allow_accept_stage else ["read"]
+    scopes = ["read"]
+    if body.allow_accept_stage:
+        scopes.extend(["accept_stage", "sign_document"])
     token = portal_tok.create_portal_token(project_id=project_id, user_id=user.id, scopes=scopes)
     return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
 
@@ -177,6 +179,8 @@ async def portal_snapshot(
         "selections_total": len(sel_rows),
         "pending_acceptances": pending_acceptances,
         "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
+        "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
+        "pending_draft_documents": [d for d in canonical if d.get("status") == "draft"],
     }
 
 class PortalAcceptIn(BaseModel):
@@ -254,3 +258,72 @@ async def portal_accept_work(
     await db.commit()
     await db.refresh(row)
     return acceptance_dict(row)
+
+
+class PortalSignIn(BaseModel):
+    token: str
+    provider: str = "in_app"
+
+
+@router.post("/portal/projects/{project_id}/documents/{document_id}/sign")
+async def portal_sign_document(
+    project_id: str,
+    document_id: str,
+    body: PortalSignIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """P3-W6: in-app подпись черновика по magic link (scope sign_document, заказчик)."""
+    try:
+        claims = portal_tok.verify_portal_token(body.token)
+    except ValueError:
+        raise HTTPException(401, "invalid_portal_token")
+    if claims["project_id"] != project_id:
+        raise HTTPException(401, "token_mismatch")
+    if "sign_document" not in claims.get("scopes", []):
+        raise HTTPException(403, "portal_read_only")
+
+    from app.models.project_documents import DocumentStatus
+    from app.services import project_document_service as docs_svc
+    from app.services import activity_service as act
+
+    user = await db.get(User, claims["user_id"])
+    if not user:
+        raise HTTPException(401, "user_not_found")
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project_not_found")
+    if user.id != project.customer_id or user.role != UserRole.customer:
+        raise HTTPException(403, "sign_customer_only")
+
+    doc = await db.get(__import__('app.models.project_documents', fromlist=['ProjectDocument']).ProjectDocument, document_id)
+    if not doc or doc.project_id != project_id or doc.status == DocumentStatus.deleted.value:
+        raise HTTPException(404, "document_not_found")
+    if doc.status not in (DocumentStatus.draft.value, DocumentStatus.active.value):
+        raise HTTPException(400, "document_not_signable")
+
+    try:
+        sig = await docs_svc.sign_document(
+            db,
+            doc,
+            signer_user_id=user.id,
+            signer_role=user.role.value,
+            signature_type=body.provider,
+            provider=body.provider,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    if doc.status == DocumentStatus.draft.value:
+        doc.status = DocumentStatus.active.value
+
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="DocumentSigned",
+        title=f"Подписан (портал): {doc.title}",
+        body=body.provider,
+        link_path="/documents",
+    )
+    await db.commit()
+    return {"ok": True, "signature_id": sig.id, "status": sig.status}
