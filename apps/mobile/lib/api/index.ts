@@ -51,6 +51,6 @@ export const api = {
   ...selectionsApi,
 };
 
-export { ApiError, isRateLimitError, req, cachedGet, API_BASE } from './client';
+export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, API_BASE } from './client';
 export * from './types';
 export type { SelectionItem } from './selections';

@@ -29,11 +29,18 @@ function IconBtn({
     <Pressable
       style={[s.btn, danger && s.btnDanger]}
       onPress={(e) => {
-        e?.stopPropagation?.();
+        // Web: не даём клику уйти на карточку проекта
+        if (e && typeof e === 'object' && 'stopPropagation' in e && typeof e.stopPropagation === 'function') {
+          e.stopPropagation();
+        }
+        if (e && typeof e === 'object' && 'preventDefault' in e && typeof e.preventDefault === 'function') {
+          e.preventDefault();
+        }
         onPress();
       }}
       hitSlop={8}
       accessibilityRole="button"
+      accessibilityLabel={name}
     >
       <Ionicons name={name} size={18} color={color} />
     </Pressable>
@@ -80,6 +87,8 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    zIndex: 10,
+    elevation: 10,
   },
   btn: {
     width: 32,

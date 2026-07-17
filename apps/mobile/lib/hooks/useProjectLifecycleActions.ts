@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { Alert } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { api } from '@/lib/api';
+import { api, invalidateProjectsCache } from '@/lib/api';
+import { alertMessage, confirmDestructive } from '@/lib/confirmAlert';
 
 /** Archive/trash/restore handlers shared by project pickers. */
 export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) {
@@ -9,24 +9,24 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
 
   const afterMutation = useCallback(
     async (projectId: string) => {
+      if (user) await invalidateProjectsCache(user.id);
       await refreshProjects();
       await reloadBuckets?.();
       if (activeProject?.id === projectId) {
         await clearActiveProject();
       }
     },
-    [refreshProjects, reloadBuckets, activeProject?.id, clearActiveProject],
+    [user, refreshProjects, reloadBuckets, activeProject?.id, clearActiveProject],
   );
 
-  const confirmAction = useCallback((title: string, message: string, action: () => Promise<void>) => {
-    Alert.alert(title, message, [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'OK',
-        style: 'destructive',
-        onPress: () => action().catch(() => Alert.alert('Ошибка', 'Не удалось выполнить действие')),
-      },
-    ]);
+  const confirmAction = useCallback(async (title: string, message: string, action: () => Promise<void>) => {
+    const ok = await confirmDestructive(title, message);
+    if (!ok) return;
+    try {
+      await action();
+    } catch {
+      alertMessage('Ошибка', 'Не удалось выполнить действие');
+    }
   }, []);
 
   const lifecycleHandlers = useCallback(
@@ -47,6 +47,7 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
         confirmAction('Из архива?', 'Объект снова появится в списке.', async () => {
           if (!user) return;
           await api.unarchiveProject(user.id, id);
+          await invalidateProjectsCache(user.id);
           await refreshProjects();
           await reloadBuckets?.();
         }),
@@ -54,6 +55,7 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
         confirmAction('Восстановить?', 'Объект вернётся в активные.', async () => {
           if (!user) return;
           await api.restoreProject(user.id, id);
+          await invalidateProjectsCache(user.id);
           await refreshProjects();
           await reloadBuckets?.();
         }),
@@ -72,6 +74,7 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
       confirmAction('Очистить корзину?', 'Все объекты в корзине будут удалены навсегда.', async () => {
         if (!user) return;
         await api.emptyProjectTrash(user.id);
+        await invalidateProjectsCache(user.id);
         await refreshProjects();
         await reloadBuckets?.();
       }),

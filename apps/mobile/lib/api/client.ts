@@ -86,6 +86,25 @@ async function readDurableCache<T>(path: string, userId?: string): Promise<T | n
   }
 }
 
+const PROJECT_LIST_PATHS = [
+  '/api/v1/projects',
+  '/api/v1/projects?bucket=active',
+  '/api/v1/projects?bucket=archived',
+  '/api/v1/projects?bucket=trashed',
+] as const;
+
+/** Сброс кэша списков проектов после archive/trash/restore — иначе UI до 30с показывает старые данные. */
+export async function invalidateProjectsCache(userId: string): Promise<void> {
+  for (const path of PROJECT_LIST_PATHS) {
+    _cache.delete(cacheKey(path, userId));
+    try {
+      await AsyncStorage.removeItem(storageKey(path, userId));
+    } catch {
+      /* cache is best-effort */
+    }
+  }
+}
+
 export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
   const k = cacheKey(path, userId);
   const hit = _cache.get(k);
