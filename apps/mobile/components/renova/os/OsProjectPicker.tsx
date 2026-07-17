@@ -1,6 +1,6 @@
 /** Выбор проекта в шапке — группы «В работе» / «Завершённые» + портфель */
 import { useState, useEffect, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -64,7 +64,7 @@ function ProjectPickerRow({
   };
 }) {
   return (
-    <View style={[s.itemWrap, active && s.itemOn]}>
+    <View style={[s.itemWrap, canManage && s.itemWithActions, active && s.itemOn]} pointerEvents="box-none">
       <Pressable
         style={s.item}
         onPress={() => onSelect(p.id)}
@@ -191,8 +191,15 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={s.backdrop}>
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} accessibilityLabel="Закрыть" />
-          <View style={[s.menuWrap, { paddingTop: topInset + 56, maxHeight: '85%' }]}>
-            <ScrollView style={s.menuScroll} contentContainerStyle={s.menuScrollIn} bounces={false}>
+          <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
+            <ScrollView
+              style={s.menuScroll}
+              contentContainerStyle={s.menuScrollIn}
+              bounces={false}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={Platform.OS === 'web'}
+              nestedScrollEnabled
+            >
               <View style={s.menu}>
                 <Text style={s.menuHead}>Объекты</Text>
                 <ProjectBucketToolbar bucket={bucket} onChange={setBucket} archivedCount={archivedCount} trashedCount={trashedCount} canManage={canManage} />
@@ -338,8 +345,22 @@ const s = StyleSheet.create({
   },
   countBadgeT: { color: RenovaTheme.colors.surface, fontSize: 8, fontWeight: '800' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
-  menuWrap: { position: 'absolute', top: 0, right: 12, left: 12, alignItems: 'flex-end' },
-  menuScroll: { maxWidth: 340, width: '100%' },
+  menuWrap: {
+    position: 'absolute',
+    top: 0,
+    right: 12,
+    left: 12,
+    alignItems: 'flex-end',
+    maxHeight: '85%',
+    overflow: 'hidden',
+  },
+  menuScroll: {
+    maxWidth: 340,
+    width: '100%',
+    flex: 1,
+    minHeight: 0,
+    ...(Platform.OS === 'web' ? { overflowY: 'auto' as const, maxHeight: 'min(85vh, 640px)' } : null),
+  },
   menuScrollIn: { alignItems: 'flex-end' },
   menu: {
     minWidth: 280,

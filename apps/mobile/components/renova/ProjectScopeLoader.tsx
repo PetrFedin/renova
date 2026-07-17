@@ -24,11 +24,19 @@ export function ProjectScopeLoader({ role, children }: Props) {
   }
 
   if (scope.status === 'empty') {
-    return <ProjectEmptyState role={role} title="Создайте первый объект" hideHomeButton />;
+    return (
+      <View style={s.fill}>
+        <ProjectEmptyState role={role} title="Создайте первый объект" hideHomeButton />
+      </View>
+    );
   }
 
   if (scope.status === 'pick') {
-    return <ProjectEmptyState role={role} title="Сменить объект" hideHomeButton />;
+    return (
+      <View style={s.fill}>
+        <ProjectEmptyState role={role} title="Сменить объект" hideHomeButton />
+      </View>
+    );
   }
 
   if (scope.status === 'no-user') return null;
@@ -37,6 +45,7 @@ export function ProjectScopeLoader({ role, children }: Props) {
 }
 
 const s = StyleSheet.create({
+  fill: { flex: 1, minHeight: 0 },
   center: {
     flex: 1,
     alignItems: 'center',

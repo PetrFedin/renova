@@ -1,6 +1,6 @@
 /** Пустое состояние — нет активного проекта; список с группами «В работе» / «Завершённые» */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
@@ -74,7 +74,7 @@ function ProjectPickCard({
       : `${formatRub(p.budget_spent)} из ${formatRub(p.budget_planned)}`;
 
   return (
-    <View style={s.card}>
+    <View style={s.card} pointerEvents="box-none">
       <Pressable style={s.cardPress} onPress={onPress} accessibilityRole="button">
         <View style={s.cardHead}>
           <Text style={s.name} numberOfLines={2}>{p.name}</Text>
@@ -218,7 +218,13 @@ export function ProjectEmptyState({
   };
 
   return (
-    <View style={s.wrap}>
+    <ScrollView
+      style={s.wrap}
+      contentContainerStyle={s.wrapContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={Platform.OS === 'web'}
+      nestedScrollEnabled
+    >
       {title ? <Text style={s.title}>{title}</Text> : null}
       {hint ? <Text style={formMetaText.caption}>{hint}</Text> : null}
 
@@ -269,12 +275,18 @@ export function ProjectEmptyState({
           onPress={() => router.replace(tabsRoute(role, 'index') as any)}
         />
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { flex: 1, padding: 16, backgroundColor: RenovaTheme.colors.background },
+  wrap: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: RenovaTheme.colors.background,
+    ...(Platform.OS === 'web' ? { overflowY: 'auto' as const } : null),
+  },
+  wrapContent: { padding: 16, paddingBottom: 32, flexGrow: 1 },
   title: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 8 },
   sectionHead: {
     fontSize: 11,

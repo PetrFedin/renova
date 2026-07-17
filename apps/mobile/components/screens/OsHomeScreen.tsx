@@ -153,13 +153,11 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       );
     }
     return (
-      <ScrollView style={s.container} contentContainerStyle={s.content}>
-        <ProjectEmptyState
-          role={role}
-          showCreate
-          hideHomeButton
-        />
-      </ScrollView>
+      <ProjectEmptyState
+        role={role}
+        showCreate
+        hideHomeButton
+      />
     );
   }
 

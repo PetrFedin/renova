@@ -24,12 +24,14 @@ export default function ProjectPickScreen() {
     <View style={s.wrap}>
       <Text style={s.logo}>Renova</Text>
       <Text style={s.title}>Выберите объект</Text>
-      <ProjectEmptyState
-        role={role}
-        autoPick={false}
-        hideHomeButton
-        onSelectProject={enterProject}
-      />
+      <View style={s.list}>
+        <ProjectEmptyState
+          role={role}
+          autoPick={false}
+          hideHomeButton
+          onSelectProject={enterProject}
+        />
+      </View>
     </View>
   );
 }
@@ -38,4 +40,5 @@ const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background, padding: 16 },
   logo: { fontSize: 22, fontWeight: '800', color: RenovaTheme.colors.primary, textAlign: 'center', marginTop: 24 },
   title: { fontSize: 18, fontWeight: '700', color: RenovaTheme.colors.text, textAlign: 'center', marginTop: 8, marginBottom: 6 },
+  list: { flex: 1, minHeight: 0 },
 });

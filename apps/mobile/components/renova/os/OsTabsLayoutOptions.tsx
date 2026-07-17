@@ -137,5 +137,5 @@ const profileBtn = StyleSheet.create({
 
 const shell = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAFC' },
-  body: { flex: 1, paddingBottom: Platform.OS === 'web' ? 4 : 0, overflow: 'hidden' },
+  body: { flex: 1, minHeight: 0, paddingBottom: Platform.OS === 'web' ? 4 : 0, overflow: 'hidden' },
 });
