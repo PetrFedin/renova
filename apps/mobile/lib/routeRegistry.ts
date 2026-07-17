@@ -142,6 +142,16 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
   // Hidden / deeplink legacy tabs
   { id: 'calendar', path: '/calendar', titleRu: 'Календарь', audience: 'both', visibility: 'deeplink', status: 'ga', entryPoints: ['home.schedule'] },
   { id: 'conflicts', path: '/conflicts', titleRu: 'Конфликты sync', audience: 'contractor', visibility: 'deeplink', status: 'ga', entryPoints: ['offline.banner'] },
+  {
+    id: 'portal',
+    path: '/portal?token=',
+    titleRu: 'Web-портал (гость)',
+    audience: 'customer',
+    visibility: 'deeplink',
+    status: 'beta',
+    entryPoints: ['object.viewers'],
+    descriptionRu: 'Read-only portal по magic link JWT (P2.1)',
+  },
   { id: 'reports', path: '/reports', titleRu: 'Отчёты', audience: 'both', visibility: 'hidden', status: 'wip', entryPoints: [] },
   { id: 'project-analytics', path: '/project-analytics', titleRu: 'Аналитика', audience: 'both', visibility: 'hidden', status: 'wip', entryPoints: [] },
 ];

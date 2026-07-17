@@ -77,6 +77,7 @@ export default function RootLayout() {
             <Stack.Screen name="conflicts" options={{ headerShown: false }} />
             <Stack.Screen name="scan-receipt" options={{ presentation: 'modal', headerShown: false }} />
             <Stack.Screen name="payment-return" options={{ headerShown: false }} />
+            <Stack.Screen name="portal" options={{ headerShown: false }} />
           </Stack>
         </SplashGate>
       </RenovaProvider>

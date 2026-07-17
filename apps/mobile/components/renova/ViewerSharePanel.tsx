@@ -1,6 +1,6 @@
 /** Заказчик: гостевой доступ (только просмотр) */
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator, Share } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -60,6 +60,20 @@ export function ViewerSharePanel({
                 <Text style={s.name}>{v.full_name || 'Гость'}</Text>
                 <Text style={s.phone}>{v.phone}</Text>
               </View>
+              <Pressable
+                accessibilityLabel="Ссылка портала"
+                style={s.linkBtn}
+                onPress={async () => {
+                  try {
+                    const link = await api.createViewerPortalLink(userId, projectId, v.user_id);
+                    await Share.share({ message: link.url, title: 'Renova — портал объекта' });
+                  } catch (e: unknown) {
+                    Alert.alert('Портал', apiErrorMessage(e, 'Не удалось создать ссылку'));
+                  }
+                }}
+              >
+                <Text style={s.linkBtnT}>🔗</Text>
+              </Pressable>
               <Pressable
                 accessibilityLabel="Удалить гостя"
                 style={s.remove}
@@ -152,6 +166,16 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FEE2E2',
   },
+  linkBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E0F2FE',
+    marginRight: 6,
+  },
+  linkBtnT: { fontSize: 14 },
   removeT: { color: '#B91C1C', fontWeight: '800', fontSize: 14 },
   inp: {
     borderWidth: 1,

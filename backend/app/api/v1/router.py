@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from app.api.v1 import portal
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, os, reports, marketplace, design_packages,
@@ -35,6 +36,7 @@ api_router.include_router(documents.router)
 api_router.include_router(esign.router)
 api_router.include_router(ocr_worker.router)
 api_router.include_router(os.router)
+api_router.include_router(portal.router)
 api_router.include_router(reports.router)
 
 # --- core / identity ---
