@@ -41,6 +41,18 @@ async def kontur_webhook(
     x_esign_secret: str | None = Header(default=None, alias="X-Esign-Secret"),
 ):
     _check_webhook_secret(x_esign_secret)
+    from sqlalchemy import select
+    from app.models.project_documents import DocumentSignature
+
+    existing = (
+        await db.execute(
+            select(DocumentSignature).where(
+                DocumentSignature.provider_name == "kontur",
+                DocumentSignature.provider_external_id == body.external_id,
+            )
+        )
+    ).scalar_one_or_none()
+    already_signed = bool(existing and existing.status == "signed" and existing.signed_at)
     sig = await docs_svc.complete_external_signature(
         db,
         provider_name="kontur",
@@ -52,6 +64,7 @@ async def kontur_webhook(
     await db.commit()
     return {
         "ok": True,
+        "duplicate": already_signed and body.status == "signed",
         "signature_id": sig.id,
         "status": sig.status,
         "provider": "kontur",

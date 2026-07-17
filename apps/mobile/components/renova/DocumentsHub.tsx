@@ -14,6 +14,8 @@ import {
   isCanonicalDocument,
 } from '@/lib/documentCenterMeta';
 import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documentUploadPick';
+import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/lib/offlineUi';
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 
 type DocRow = {
   id: string;

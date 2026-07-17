@@ -120,6 +120,10 @@ async def start_stage(db: AsyncSession, stage_id: str) -> tuple[Stage | None, di
     if stage.status != StageStatus.planned:
         return None, {"code": "invalid_status", "message": "Этап уже начат или завершён"}
     from app.services import dependency_service as dep_svc
+    from app.services import project_document_service as docs_svc
+    gate = await docs_svc.project_contract_gate(db, stage.project_id)
+    if not gate.get("ok"):
+        return None, {"code": gate.get("code", "contract_not_signed"), "message": gate.get("message"), "pending_titles": gate.get("pending_titles", [])}
     blocked = await dep_svc.evaluate_stage(db, stage)
     if blocked.get("blocked"):
         return None, {"code": "blocked", "reasons": blocked.get("reasons", [])}

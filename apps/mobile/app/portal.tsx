@@ -187,16 +187,38 @@ export default function PortalScreen() {
                     style={s.acceptBtn}
                     onPress={async () => {
                       try {
-                        await api.portalSignDocument(session.project_id, d.id, portalToken);
+                        const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 'in_app');
                         const snap = await api.portalSnapshot(session.user_id, session.project_id);
                         setSnapshot(snap);
-                        Alert.alert('Подписано', d.title);
+                        Alert.alert('Подписано', res.status === 'signed' ? d.title : 'Запрос на подпись создан');
                       } catch {
                         Alert.alert('Ошибка', 'Не удалось подписать документ');
                       }
                     }}
                   >
                     <Text style={s.acceptBtnT}>Подписать</Text>
+                  </Pressable>
+                ) : null}
+                {(session.scopes?.includes('sign_document') || snapshot.can_sign_documents) && !session.read_only ? (
+                  <Pressable
+                    style={s.konturBtn}
+                    onPress={async () => {
+                      try {
+                        const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 'kontur');
+                        if (res.signing_url) {
+                          await Linking.openURL(res.signing_url);
+                          Alert.alert('Контур', 'Завершите подпись в браузере. Статус обновится по webhook.');
+                        } else {
+                          Alert.alert('Контур', 'Запрос создан. Статус обновится позже.');
+                        }
+                        const snap = await api.portalSnapshot(session.user_id, session.project_id);
+                        setSnapshot(snap);
+                      } catch {
+                        Alert.alert('Контур', 'Не удалось открыть подпись');
+                      }
+                    }}
+                  >
+                    <Text style={s.konturBtnT}>Контур</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -226,4 +248,6 @@ const s = StyleSheet.create({
   acceptRow: { gap: 8, marginBottom: 8 },
   acceptBtn: { alignSelf: 'flex-start', backgroundColor: RenovaTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
   acceptBtnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 13 },
+  konturBtn: { alignSelf: 'flex-start', borderWidth: 1, borderColor: RenovaTheme.colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  konturBtnT: { color: RenovaTheme.colors.primary, fontWeight: '700', fontSize: 12 },
 });

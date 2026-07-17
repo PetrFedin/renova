@@ -325,5 +325,12 @@ async def portal_sign_document(
         body=body.provider,
         link_path="/documents",
     )
+    import json
+    meta = {}
+    if sig.meta_json:
+        try:
+            meta = json.loads(sig.meta_json)
+        except Exception:
+            meta = {}
     await db.commit()
-    return {"ok": True, "signature_id": sig.id, "status": sig.status}
+    return {"ok": True, "signature_id": sig.id, "status": sig.status, "signing_url": meta.get("signing_url")}

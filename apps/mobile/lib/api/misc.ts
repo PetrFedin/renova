@@ -23,7 +23,7 @@ export const miscApi = {
       undefined,
     ),
   portalSignDocument: (projectId: string, documentId: string, token: string, provider = 'in_app') =>
-    req<{ ok: boolean; signature_id: string; status: string }>(
+    req<{ ok: boolean; signature_id: string; status: string; signing_url?: string | null }>(
       `/api/v1/portal/projects/${projectId}/documents/${documentId}/sign`,
       { method: 'POST', body: JSON.stringify({ token, provider }) },
       undefined,

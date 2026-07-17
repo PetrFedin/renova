@@ -67,6 +67,13 @@ class KonturESignProvider:
         }
         if http_meta:
             base_meta["http"] = http_meta
+        signing_url = None
+        if isinstance(http_meta, dict):
+            signing_url = http_meta.get("signing_url") or http_meta.get("url")
+        if not signing_url and mode == "sandbox":
+            signing_url = f"https://sign.kontur.ru/sandbox/{external_id}"
+        if signing_url:
+            base_meta["signing_url"] = signing_url
         if mode == "live":
             base_meta["note"] = "live_scaffold — complete via Kontur webhook"
         return SignResult(

@@ -1,5 +1,6 @@
 /** Верх экрана этапа: статус, главное действие, краткий прогресс */
 import { View, Text, StyleSheet, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
@@ -30,6 +31,7 @@ export function StageDetailHero({
   onProjectReload,
   onSubmitStage,
 }: Props) {
+  const router = useRouter();
   const statusLabel = STAGE_STATUS_LABEL[stage.status] || stage.status;
 
   return (
@@ -69,6 +71,22 @@ export function StageDetailHero({
             } catch (e: unknown) {
               if (e instanceof ApiError && e.status === 409) {
                 Alert.alert('Блокировка', 'Сначала завершите зависимый этап');
+              } else if (e instanceof ApiError && e.status === 403) {
+                const d = e.detail as { code?: string; message?: string; pending_titles?: string[] } | undefined;
+                if (d?.code === 'contract_not_signed') {
+                  const titles = (d.pending_titles || []).join(', ');
+                  Alert.alert(
+                    'Нужен договор',
+                    [d.message || 'Подпишите договор перед началом работ', titles ? `Документы: ${titles}` : ''].filter(Boolean).join('
+'),
+                    [
+                      { text: 'Отмена', style: 'cancel' },
+                      { text: 'К документам', onPress: () => router.push('/documents' as never) },
+                    ],
+                  );
+                } else {
+                  Alert.alert('Доступ запрещён', d?.message || e.message);
+                }
               } else throw e;
             }
           }}

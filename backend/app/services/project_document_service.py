@@ -332,6 +332,45 @@ async def set_legal_hold(
 
 
 
+
+async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
+    """P3-W7: estimate → eSign → work unlock — блок start_stage без подписанного договора."""
+    from app.models.project_documents import DocumentType
+
+    contracts = list(
+        (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.contract.value,
+                    ProjectDocument.status != DocumentStatus.deleted.value,
+                )
+            )
+        ).scalars().all()
+    )
+    if not contracts:
+        return {"ok": True, "reason": "no_contract_required"}
+    for doc in contracts:
+        sigs = list(
+            (
+                await db.execute(
+                    select(DocumentSignature).where(
+                        DocumentSignature.document_id == doc.id,
+                        DocumentSignature.status == "signed",
+                    )
+                )
+            ).scalars().all()
+        )
+        if sigs:
+            return {"ok": True, "document_id": doc.id}
+    pending = [d.title for d in contracts if d.status == DocumentStatus.draft.value]
+    return {
+        "ok": False,
+        "code": "contract_not_signed",
+        "message": "Подпишите договор перед началом работ",
+        "pending_titles": pending[:3],
+    }
+
 async def complete_external_signature(
     db: AsyncSession,
     *,
