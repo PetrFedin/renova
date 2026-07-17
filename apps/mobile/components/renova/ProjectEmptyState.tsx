@@ -74,13 +74,15 @@ function ProjectPickCard({
       : `${formatRub(p.budget_spent)} из ${formatRub(p.budget_planned)}`;
 
   return (
-    <Pressable style={s.card} onPress={onPress} accessibilityRole="button">
-      <View style={s.cardHead}>
-        <Text style={s.name} numberOfLines={2}>{p.name}</Text>
-        <StatusPill label={phase} tone={phaseTone(phase)} />
-      </View>
-      <Text style={formMetaText.caption} numberOfLines={1}>{projectCardMeta(p, pendingById)}</Text>
-      <Text style={s.progressLine} numberOfLines={1}>{progressLine}</Text>
+    <View style={s.card}>
+      <Pressable style={s.cardPress} onPress={onPress} accessibilityRole="button">
+        <View style={s.cardHead}>
+          <Text style={s.name} numberOfLines={2}>{p.name}</Text>
+          <StatusPill label={phase} tone={phaseTone(phase)} />
+        </View>
+        <Text style={formMetaText.caption} numberOfLines={1}>{projectCardMeta(p, pendingById)}</Text>
+        <Text style={s.progressLine} numberOfLines={1}>{progressLine}</Text>
+      </Pressable>
       {canManage ? (
         <ProjectCardLifecycleIcons
           bucket={bucket}
@@ -91,7 +93,7 @@ function ProjectPickCard({
           onPurge={onPurge}
         />
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -288,7 +290,8 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: RenovaTheme.colors.borderLight,
   },
-  card: { position: 'relative' as const, paddingBottom: 44, ...card, marginBottom: 8, gap: 4 },
+  card: { position: 'relative' as const, paddingBottom: 44, ...card, marginBottom: 8 },
+  cardPress: { gap: 4 },
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   name: { flex: 1, fontWeight: '700', fontSize: 15, color: RenovaTheme.colors.text },
   progressLine: { fontSize: 12, color: RenovaTheme.colors.textSubtle, marginTop: 2 },
