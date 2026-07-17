@@ -1,8 +1,26 @@
 /** API: os */
 import { req, cachedGet, API_BASE } from './client';
 import type { ActivityItem, OsBudgetSummary, OsExpense, OsInsight, OsReport, OsRisk, User } from './types';
+import type { MaterialPick, Payment, ReceiptItem } from './types';
+
+export type BudgetHubResponse = {
+  summary: OsBudgetSummary;
+  expenses: OsExpense[];
+  payments: Payment[];
+  receipts: ReceiptItem[];
+  material_picks: MaterialPick[];
+  budget_alerts: { room_id: string; room_name: string; plan: number; fact: number; over_pct?: number }[];
+  pending_payments_count: number;
+  threshold_pct: number;
+};
+
 export const osApi = {
   osBudget: (userId: string, projectId: string) => req<OsBudgetSummary>(`/api/v1/projects/${projectId}/os/budget`, {}, userId),
+  budgetSummaryHub: async (userId: string, projectId: string) => {
+    const { getBudgetThreshold } = await import('@/lib/budgetThreshold');
+    const t = await getBudgetThreshold();
+    return req<BudgetHubResponse>(`/api/v1/projects/${projectId}/budget-summary?threshold_pct=${t}`, {}, userId);
+  },
   osExpenses: (userId: string, projectId: string, status?: string) => req<OsExpense[]>(`/api/v1/projects/${projectId}/os/expenses${status ? `?status=${status}` : ''}`, {}, userId),
   deleteOsExpense: (userId: string, projectId: string, expenseId: string) =>
     req<void>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'DELETE' }, userId),

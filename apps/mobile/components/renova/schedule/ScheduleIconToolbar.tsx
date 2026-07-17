@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Pressable, Platform, Alert } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
-import { readTextFileWeb } from '@/lib/mediaUpload';
+import { readIcalFile } from '@/lib/mediaUpload';
 
 type Action = {
   id: string;
@@ -66,11 +66,7 @@ export function ScheduleIconToolbar({
   const [busy, setBusy] = useState(false);
 
   const importIcal = async () => {
-    if (Platform.OS !== 'web') {
-      Alert.alert('Календарь', 'Импорт .ics доступен в веб-версии');
-      return;
-    }
-    const text = await readTextFileWeb('.ics,text/calendar');
+    const text = await readIcalFile();
     if (!text) return;
     if (!text.includes('BEGIN:VCALENDAR')) {
       Alert.alert('Календарь', 'Некорректный формат файла');

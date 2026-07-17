@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { api, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
+import { pollDocumentSignature } from '@/lib/esignPoll';
 import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import {
   documentCenterSubtitle,
@@ -309,14 +310,19 @@ export function DocumentsHub({
       ...(konturAvailable ? [{
         text: 'Подписать через Контур',
         onPress: () => withBusy(`sign-kontur-${doc.id}`, async () => {
-          const res: { document?: { meta?: { signatures?: unknown } } } = await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' });
+          await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' });
+          const status = await pollDocumentSignature(userId, projectId, doc.id, { provider: 'kontur' });
           await reloadIndex();
-          Alert.alert(
-            'Контур',
-            res?.document?.meta?.signatures
-              ? 'Запрос подписи создан (pending). Завершение — webhook.'
-              : 'Запрос отправлен (pending).',
-          );
+          if (status === 'signed') {
+            Alert.alert('Контур', 'Документ подписан.');
+          } else if (status === 'failed') {
+            Alert.alert('Контур', 'Подпись не завершена. Проверьте статус позже.');
+          } else {
+            Alert.alert(
+              'Контур',
+              'Запрос создан (pending). Статус обновится по webhook или при следующем открытии документов.',
+            );
+          }
         }),
       }] : []),
       {

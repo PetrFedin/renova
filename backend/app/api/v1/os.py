@@ -180,6 +180,21 @@ async def os_budget(project_id: str, user: User = Depends(get_current_user), db:
     return await bud.budget_summary(db, project_id)
 
 
+
+
+@router.get("/projects/{project_id}/budget-summary")
+async def budget_summary_hub(
+    project_id: str,
+    threshold_pct: float = 5,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P2.5: единый JSON для mobile «Бюджет» hub."""
+    from app.services import budget_service as bud
+
+    await require_project(db, project_id, user, write=False)
+    return await bud.budget_hub(db, project_id, threshold_pct=threshold_pct)
+
 @router.get("/projects/{project_id}/os/budget/lines")
 async def os_budget_lines(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import budget_service as bud

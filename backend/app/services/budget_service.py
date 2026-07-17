@@ -330,3 +330,85 @@ async def delete_expense(db: AsyncSession, expense: Expense) -> None:
     expense.status = "deleted"
     await db.flush()
     await refresh_budget_facts(db, expense.project_id)
+
+
+async def budget_hub(db: AsyncSession, project_id: str, *, threshold_pct: float = 5.0) -> dict:
+    """P2.5 BFF: один JSON для mobile budget hub."""
+    from sqlalchemy import select
+    from app.models.entities import MaterialPick, Project, Room, EstimateLine, Receipt
+    from app.services import payment_service as pay_svc
+
+    summary = await budget_summary(db, project_id)
+    expenses = [expense_dict(e) for e in await list_expenses(db, project_id)]
+    payments = []
+    for item in await pay_svc.list_payments(db, project_id):
+        receipt_id = await pay_svc.receipt_id_for_payment(db, item.id)
+        payments.append(pay_svc.payment_dict(item, receipt_id=receipt_id))
+    from app.services.fns.receipt_verify import receipt_meta
+
+    receipt_rows = (await db.execute(select(Receipt).where(Receipt.project_id == project_id))).scalars().all()
+    receipts = []
+    for r in receipt_rows:
+        meta = receipt_meta(r.qr_raw)
+        receipts.append({
+            "id": r.id,
+            "amount": r.amount,
+            "verified": r.fns_verified,
+            "created_at": r.created_at.isoformat(),
+            "receipt_at": meta.get("receipt_at"),
+            "fn": r.fn,
+            "expense_category": getattr(r, "expense_category", "materials"),
+            "room_id": getattr(r, "room_id", None),
+            "stage_id": getattr(r, "stage_id", None),
+            "source": "manual" if r.fn == "MANUAL" else "scan",
+            "description": r.qr_raw if r.fn == "MANUAL" else None,
+            "payment_id": getattr(r, "payment_id", None),
+        })
+    picks = []
+    pick_rows = (await db.execute(select(MaterialPick).where(MaterialPick.project_id == project_id))).scalars().all()
+    for mp in pick_rows:
+        picks.append({
+            "id": mp.id,
+            "name": mp.name,
+            "room_id": mp.room_id,
+            "stage_id": getattr(mp, "stage_id", None),
+            "qty": mp.qty,
+            "qty_needed": mp.qty_needed,
+            "qty_delivered": mp.qty_delivered or 0,
+            "unit": mp.unit,
+            "price": mp.price,
+            "shop_url": mp.shop_url,
+            "shop_name": mp.shop_name,
+            "work_type": mp.work_type,
+            "status": mp.status.value if hasattr(mp.status, "value") else mp.status,
+            "category": getattr(mp, "category", None),
+        })
+    alerts = []
+    rooms = (await db.execute(select(Room).where(Room.project_id == project_id))).scalars().all()
+    for room in rooms:
+        lines = (await db.execute(select(EstimateLine).where(EstimateLine.room_id == room.id))).scalars().all()
+        plan = sum(l.quantity_planned * l.unit_price for l in lines)
+        fact = sum(l.quantity_actual * l.unit_price for l in lines)
+        recs = (await db.execute(select(Receipt).where(Receipt.project_id == project_id, Receipt.room_id == room.id))).scalars().all()
+        receipts_spent = sum(r.amount for r in recs)
+        total_fact = max(fact, receipts_spent)
+        over_pct = round((total_fact / plan * 100) - 100, 1) if plan else 0
+        if plan or total_fact:
+            alerts.append({
+                "room_id": room.id,
+                "room_name": room.name,
+                "plan": round(plan, 2),
+                "fact": round(fact, 2),
+                "over_pct": over_pct,
+            })
+    pending_payments = sum(1 for pay in payments if pay.get("status") == "pending")
+    return {
+        "summary": summary,
+        "expenses": expenses,
+        "payments": payments,
+        "receipts": receipts,
+        "material_picks": picks,
+        "budget_alerts": alerts,
+        "pending_payments_count": pending_payments,
+        "threshold_pct": threshold_pct,
+    }

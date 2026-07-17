@@ -1,9 +1,9 @@
 /** Импорт iCal из файла (web) */
 import { useState } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Alert } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
-import { readTextFileWeb } from '@/lib/mediaUpload';
+import { readIcalFile } from '@/lib/mediaUpload';
 import { t } from '@/lib/i18n';
 
 export function IcalImportButton({
@@ -42,11 +42,7 @@ export function IcalImportButton({
       title={busy ? 'Импорт…' : t('importIcal')}
       variant="outline"
       onPress={async () => {
-        if (Platform.OS !== 'web') {
-          Alert.alert('Календарь', 'Импорт .ics доступен в веб-версии Renova');
-          return;
-        }
-        const text = await readTextFileWeb('.ics,text/calendar');
+        const text = await readIcalFile();
         if (text) await runImport(text);
       }}
     />

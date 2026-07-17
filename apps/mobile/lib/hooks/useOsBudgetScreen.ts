@@ -1,4 +1,4 @@
-/** Данные экрана «Бюджет» — загрузка и перезагрузка (отделено от UI вкладок) */
+/** Данные экрана «Бюджет» — загрузка и перезагрузка (P2.5 BFF + fallback) */
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, ReceiptItem } from '@/lib/api';
@@ -17,7 +17,7 @@ export function useOsBudgetScreen() {
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [payFilter, setPayFilter] = useState<PaymentFilter>('all');
 
-  const reload = useCallback(async () => {
+  const reloadLegacy = useCallback(async () => {
     if (!user || !activeProject) return;
     api.osBudget(user.id, activeProject.id).then(setSummary).catch(() => setSummary(null));
     api.osExpenses(user.id, activeProject.id).then(setExpenses).catch(() => setExpenses([]));
@@ -25,9 +25,23 @@ export function useOsBudgetScreen() {
     api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(() => setReceipts([]));
     api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(() => setPicks([]));
     api.budgetAlerts(user.id, activeProject.id).then(setBudgetAlerts).catch(() => setBudgetAlerts([]));
-    // Фоновая синхронизация сметы/этапов — без блокировки UI (см. useProjectScope)
+  }, [user?.id, activeProject?.id]);
+
+  const reload = useCallback(async () => {
+    if (!user || !activeProject) return;
+    try {
+      const hub = await api.budgetSummaryHub(user.id, activeProject.id);
+      setSummary(hub.summary);
+      setExpenses(hub.expenses);
+      setPayments(hub.payments);
+      setReceipts(hub.receipts);
+      setPicks(hub.material_picks);
+      setBudgetAlerts(hub.budget_alerts);
+    } catch {
+      await reloadLegacy();
+    }
     loadProject(activeProject.id).catch(() => {});
-  }, [user?.id, activeProject?.id, loadProject]);
+  }, [user?.id, activeProject?.id, loadProject, reloadLegacy]);
 
   useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
 
