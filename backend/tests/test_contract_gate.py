@@ -3,9 +3,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.db.session import init_db, SessionLocal
+from app.db.session import init_db
 from app.main import app
-from app.models.entities import Stage, StageStatus
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.services import project_document_service as docs_svc
 from app.services.seed_articles import seed_articles
@@ -31,6 +30,8 @@ async def setup_db(tmp_path, monkeypatch):
 
 
 async def test_start_stage_blocked_without_signed_contract():
+    from app.db import session as sess
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         cont = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
@@ -40,11 +41,11 @@ async def test_start_stage_blocked_without_signed_contract():
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
         await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
         detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cont)).json()
-        # Demo project: first stage is active; contract gate applies to planned stages
+        # Demo: first stage is active; pick a planned stage for start_stage
         planned = next((s for s in detail["stages"] if s["status"] == "planned"), None)
         assert planned, "expected at least one planned stage in demo project"
         stage_id = planned["id"]
-        async with SessionLocal() as db:
+        async with sess.SessionLocal() as db:
             await docs_svc.create_document(
                 db,
                 project_id=pid,

@@ -81,7 +81,7 @@ export function StageDetailHero({
 '),
                     [
                       { text: 'Отмена', style: 'cancel' },
-                      { text: 'К документам', onPress: () => router.push('/documents' as never) },
+                      { text: 'К документам', onPress: () => router.push({ pathname: '/documents', params: { returnTo: `/stage/${stage.id}` } } as never) },
                     ],
                   );
                 } else {
