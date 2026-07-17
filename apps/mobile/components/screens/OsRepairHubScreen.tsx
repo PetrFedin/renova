@@ -5,6 +5,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
 import { OsWorksScreen } from '@/components/screens/OsWorksScreen';
 import { OsMaterialsScreen } from '@/components/screens/OsMaterialsScreen';
+import { OsSelectionsScreen } from '@/components/screens/OsSelectionsScreen';
 import { OsControlScreen } from '@/components/screens/OsControlScreen';
 import { useHubTab } from '@/lib/useHubTab';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -12,13 +13,14 @@ import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { api } from '@/lib/api';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 
-const TAB_IDS = ['works', 'materials', 'control'] as const;
+const TAB_IDS = ['works', 'materials', 'selections', 'control'] as const;
 
 export function OsRepairHubScreen({ role }: { role: OsRole }) {
   const { tab: tabParam, subtab: subtabParam } = useLocalSearchParams<{ tab?: string; subtab?: string }>();
   const { user, activeProject } = useRenova();
   const [active, setActive] = useHubTab(TAB_IDS, 'works');
   const [pendingAcceptance, setPendingAcceptance] = useState(0);
+  const [pendingSelections, setPendingSelections] = useState(0);
 
   /** Календарь — отдельный раздел dock/меню, не вкладка «Ремонт» */
   useEffect(() => {
@@ -34,9 +36,16 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
     }
   }, [subtabParam, setActive]);
 
+  useEffect(() => {
+    if (tabParam === 'selections') {
+      setActive('selections');
+    }
+  }, [tabParam, setActive]);
+
   const reloadBadge = useCallback(() => {
     if (!user || !activeProject) return;
     api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)).catch(() => setPendingAcceptance(0));
+    api.selectionsPendingCount(user.id, activeProject.id).then((r) => setPendingSelections(r.count)).catch(() => setPendingSelections(0));
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reloadBadge(); }, [reloadBadge]));
@@ -46,6 +55,7 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
   const tabs: HubTab[] = [
     { id: 'works', label: 'Этапы' },
     { id: 'materials', label: 'Материалы' },
+    { id: 'selections', label: 'Подбор', badge: pendingSelections || undefined },
     { id: 'control', label: 'Приёмка', badge: controlBadge || undefined },
   ];
 
@@ -56,6 +66,7 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
         <View style={s.body}>
           {active === 'works' && <OsWorksScreen role={role} />}
           {active === 'materials' && <OsMaterialsScreen role={role} />}
+          {active === 'selections' && <OsSelectionsScreen role={role} />}
           {active === 'control' && <OsControlScreen role={role} />}
         </View>
       </View>

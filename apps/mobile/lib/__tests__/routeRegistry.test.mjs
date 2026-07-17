@@ -15,7 +15,7 @@ for (const id of ['finance-center', 'manager-dashboard', 'quality-control', 'wor
 }
 assert.ok(src.includes("assertRouteRegistryInvariants"), 'invariants helper');
 
-for (const id of ['inbox', 'scan-receipt', 'stage', 'materials-procurement', 'conflicts']) {
+for (const id of ['inbox', 'scan-receipt', 'stage', 'materials-procurement', 'selections', 'conflicts']) {
   assert.ok(src.includes(`id: '${id}'`), `missing ${id}`);
 }
 

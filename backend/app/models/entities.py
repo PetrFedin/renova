@@ -637,6 +637,36 @@ class MaterialPick(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+
+class SelectionStatus(str, enum.Enum):
+    draft = "draft"
+    proposed = "proposed"
+    approved = "approved"
+    rejected = "rejected"
+
+
+class SelectionItem(Base):
+    """P2.2: чистовые материалы — room × category × SKU × allowance × approve."""
+    __tablename__ = "selection_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(32), default="other", index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    sku: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    allowance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price: Mapped[float] = mapped_column(Float, default=0)
+    shop_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    shop_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[SelectionStatus] = mapped_column(Enum(SelectionStatus), default=SelectionStatus.draft)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_by_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ActivityEvent(Base):
     __tablename__ = "activity_events"
 

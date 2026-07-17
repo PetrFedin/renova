@@ -138,6 +138,17 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     redirectTo: '/repair?tab=materials&subtab=purchases',
     descriptionRu: 'Hub: Потребности · Закупки · Чеки (docs/PROCUREMENT-HUB-2026-07-16.md)',
   },
+  {
+    id: 'selections',
+    path: '/repair?tab=selections',
+    titleRu: 'Подбор чистовых материалов',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['repair.selections', 'approvals'],
+    redirectTo: '/repair?tab=selections',
+    descriptionRu: 'P2.2: room × category × allowance × approve',
+  },
 
   // Hidden / deeplink legacy tabs
   { id: 'calendar', path: '/calendar', titleRu: 'Календарь', audience: 'both', visibility: 'deeplink', status: 'ga', entryPoints: ['home.schedule'] },

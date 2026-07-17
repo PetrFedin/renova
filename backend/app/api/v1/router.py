@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1 import portal
+from app.api.v1 import selections
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, os, reports, marketplace, design_packages,
@@ -16,6 +17,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(design_packages.router)
 api_router.include_router(marketplace.router)
 api_router.include_router(materials.router)
+api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
 api_router.include_router(waste_orders.router)
 api_router.include_router(floor_plans.router)
