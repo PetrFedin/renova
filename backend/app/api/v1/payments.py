@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import PaymentType, Stage, User, UserRole
-from app.schemas.project import PaymentCreate, PaymentOut, YookassaCheckoutOut
+from app.schemas.project import PaymentCreate, PaymentOut, YookassaCheckoutIn, YookassaCheckoutOut
 from app.services import payment_service as pay_svc
 
 router = APIRouter(prefix="/projects", tags=["payments"])
@@ -127,6 +127,7 @@ async def confirm_payment(
 async def yookassa_checkout(
     project_id: str,
     payment_id: str,
+    body: YookassaCheckoutIn | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -150,8 +151,10 @@ async def yookassa_checkout(
     from app.services import yookassa_service as yk
 
     return_url = f"renova://payment-return?projectId={project_id}&paymentId={payment_id}"
-    if settings.public_base_url and not return_url.startswith("http"):
-        pass  # mobile deep link canonical
+    portal_token = (body.portal_token if body else None) or None
+    if portal_token:
+        from app.services import portal_token_service as portal_tok
+        return_url = f"{portal_tok.portal_url(portal_token).split('?', 1)[0]}?token={portal_token}&paid=1&paymentId={payment_id}"
 
     pay = await yk.create_payment(
         existing.amount,

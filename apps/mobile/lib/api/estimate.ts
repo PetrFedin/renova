@@ -7,6 +7,12 @@ export const estimateApi = {
   addEstimateLine: (userId: string, projectId: string, body: object) =>
     req(`/api/v1/projects/${projectId}/estimate/lines`, { method: 'POST', body: JSON.stringify(body) }, userId),
   materialStats: (userId: string, projectId: string) => req<MaterialStats>(`/api/v1/projects/${projectId}/estimate/materials-stats`, {}, userId),
+  lockEstimate: (userId: string, projectId: string) =>
+    req<{ ok: boolean; estimate_locked_at?: string; contract?: { document_id?: string; pending_titles?: string[] } }>(
+      `/api/v1/projects/${projectId}/estimate/lock`,
+      { method: 'POST' },
+      userId,
+    ),
   listChangeOrders: (userId: string, projectId: string) => req<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, {}, userId),
   createChangeOrder: (userId: string, projectId: string, body: object) =>
     req(`/api/v1/projects/${projectId}/change-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),

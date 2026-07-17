@@ -167,6 +167,7 @@ class ProjectOut(BaseModel):
     pending_payments: int | None = None
     is_archived: bool = False
     trashed_at: str | None = None
+    estimate_locked_at: str | None = None
 
 
 class ProjectDetail(ProjectOut):
@@ -175,6 +176,10 @@ class ProjectDetail(ProjectOut):
     estimate_lines: list[EstimateLineOut]
     stages: list[StageOut]
     rooms: list[RoomOut] = []
+
+
+class YookassaCheckoutIn(BaseModel):
+    portal_token: str | None = None
 
 
 class YookassaCheckoutOut(BaseModel):

@@ -24,6 +24,7 @@ export type ProjectSummary = {
   contractor_id?: string | null;
   is_archived?: boolean;
   trashed_at?: string | null;
+  estimate_locked_at?: string | null;
 };
 
 export type EstimateLine = {

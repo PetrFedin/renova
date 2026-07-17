@@ -18,10 +18,10 @@ export const paymentsApi = {
     const items = await req<Payment[]>(`/api/v1/projects/${projectId}/payments`, {}, userId);
     return items.filter((p) => p.status === 'pending').length;
   },
-  checkoutYookassa: (userId: string, projectId: string, paymentId: string) =>
+  checkoutYookassa: (userId: string, projectId: string, paymentId: string, body?: { portal_token?: string }) =>
     req<{ demo?: boolean; payment_id?: string; yookassa_payment_id?: string | null; confirmation_url?: string | null; status?: string; message?: string }>(
       `/api/v1/projects/${projectId}/payments/${paymentId}/yookassa-checkout`,
-      { method: 'POST' },
+      { method: 'POST', body: body ? JSON.stringify(body) : undefined },
       userId,
     ),
   confirmPayment: async (userId: string, projectId: string, paymentId: string) => {

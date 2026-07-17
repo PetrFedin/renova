@@ -47,6 +47,7 @@ def _project_out(p) -> ProjectOut:
         pending_payments=pending or None,
         is_archived=bool(getattr(p, "is_archived", False)),
         trashed_at=p.trashed_at.isoformat() if getattr(p, "trashed_at", None) else None,
+        estimate_locked_at=p.estimate_locked_at.isoformat() if getattr(p, "estimate_locked_at", None) else None,
     )
 
 

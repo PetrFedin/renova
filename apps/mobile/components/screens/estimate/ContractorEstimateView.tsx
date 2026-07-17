@@ -66,6 +66,9 @@ export function ContractorEstimateView() {
         <View style={styles.totalBox}>
           <Text style={styles.totalLabel}>Смета проекта</Text>
           <Text style={styles.total}>{formatRub(activeProject.budget_planned)}</Text>
+          {activeProject.estimate_locked_at ? (
+            <Text style={styles.locked}>Зафиксирована · {activeProject.estimate_locked_at.slice(0, 10)}</Text>
+          ) : null}
           <Text style={styles.breakdown}>
             Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} ({totals.materialsCount})
           </Text>
@@ -84,6 +87,27 @@ export function ContractorEstimateView() {
           Редактор · {filtered.length} поз. · {formatRub(filteredTotal)}
         </Text>
         <EstimateEditorByRoom lines={filtered} canWrite={canWrite} onPatch={patchLine} />
+
+        {user && canWrite && !activeProject.estimate_locked_at && allLines.length > 0 && (
+          <PrimaryButton
+            title="Зафиксировать смету"
+            variant="outline"
+            onPress={async () => {
+              try {
+                const res = await api.lockEstimate(user.id, activeProject.id);
+                await loadProject(activeProject.id);
+                Alert.alert(
+                  'Смета зафиксирована',
+                  res.contract?.pending_titles?.length
+                    ? `Создан черновик: ${res.contract.pending_titles.join(', ')}. Заказчик получит уведомление.`
+                    : 'Заказчик получит уведомление о подписи договора.',
+                );
+              } catch (e: unknown) {
+                Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка фиксации сметы');
+              }
+            }}
+          />
+        )}
 
         {user && canWrite && (
           <AddEstimateLineForm
@@ -125,6 +149,7 @@ const styles = StyleSheet.create({
   totalBox: { marginBottom: 12 },
   totalLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
   total: { fontSize: 28, fontWeight: '800', color: RenovaTheme.colors.primary, marginTop: 4 },
+  locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '600' },
   breakdown: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
   sectionTitle: { fontWeight: '700', fontSize: 13, marginBottom: 8, color: RenovaTheme.colors.text },
   meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16, marginTop: 8 },

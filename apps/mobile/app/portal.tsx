@@ -11,7 +11,7 @@ import { api } from '@/lib/api';
 const PORTAL_USER_KEY = 'renova:portal:user';
 
 export default function PortalScreen() {
-  const { token } = useLocalSearchParams<{ token?: string }>();
+  const { token, paid, paymentId } = useLocalSearchParams<{ token?: string; paid?: string; paymentId?: string }>();
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<{ user_id: string; project_id: string; project_name: string; scopes?: string[]; read_only?: boolean } | null>(null);
   const [portalToken, setPortalToken] = useState('');
@@ -40,6 +40,9 @@ export default function PortalScreen() {
         setSession(sess);
         const snap = await api.portalSnapshot(sess.user_id, sess.project_id);
         if (!cancelled) setSnapshot(snap);
+        if (!cancelled && paid === '1') {
+          Alert.alert('Оплата', paymentId ? `Платёж ${paymentId} обрабатывается` : 'Спасибо! Статус обновлён.');
+        }
       } catch {
         if (!cancelled) Alert.alert('Портал', 'Ссылка недействительна или истекла');
       } finally {
@@ -47,7 +50,7 @@ export default function PortalScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, paid, paymentId]);
 
   useEffect(() => {
     if (!session) return;
@@ -137,7 +140,7 @@ export default function PortalScreen() {
                     style={s.payBtn}
                     onPress={async () => {
                       try {
-                        const checkout = await api.checkoutYookassa(session.user_id, session.project_id, pay.id);
+                        const checkout = await api.checkoutYookassa(session.user_id, session.project_id, pay.id, { portal_token: portalToken });
                         if (checkout.demo) {
                           const snap = await api.portalSnapshot(session.user_id, session.project_id);
                           setSnapshot(snap);

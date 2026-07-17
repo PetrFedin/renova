@@ -61,3 +61,38 @@ def material_stats(lines: list[EstimateLine]) -> dict:
     actual = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
     overrun = ((actual - planned) / planned * 100) if planned else 0
     return {"planned": round(planned, 2), "actual": round(actual, 2), "overrun_percent": round(overrun, 1)}
+
+
+async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) -> tuple[Project | None, dict]:
+    """P3-W10: фиксация сметы — блок правок + черновик договора."""
+    from datetime import datetime
+    from app.services import project_document_service as docs_svc
+    from app.services import notification_service as notif_svc
+
+    proj = await db.get(Project, project_id)
+    if not proj:
+        return None, {"code": "not_found"}
+    if proj.estimate_locked_at:
+        return proj, {"code": "already_locked", "locked_at": proj.estimate_locked_at.isoformat()}
+    result = await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))
+    lines = list(result.scalars().all())
+    if not lines:
+        return None, {"code": "empty_estimate", "message": "Добавьте строки в смету перед фиксацией"}
+    proj.estimate_locked_at = datetime.utcnow()
+    await recalc_budget(db, project_id)
+    draft = await docs_svc.ensure_contract_draft(db, project_id=project_id, created_by=locked_by)
+    if proj.customer_id:
+        titles = ", ".join(draft.get("pending_titles") or [])
+        await notif_svc.notify(
+            db,
+            user_id=proj.customer_id,
+            project_id=project_id,
+            notification_type="document",
+            title="Смета зафиксирована — подпишите договор",
+            body=titles or "Исполнитель зафиксировал смету. Подпишите договор в документах.",
+            link_path="/documents",
+            return_to="/(customer)/(tabs)/control",
+        )
+    await db.commit()
+    await db.refresh(proj)
+    return proj, {"code": "locked", "contract": draft}

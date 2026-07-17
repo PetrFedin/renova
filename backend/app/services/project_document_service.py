@@ -333,6 +333,44 @@ async def set_legal_hold(
 
 
 
+
+
+async def ensure_contract_draft(db: AsyncSession, *, project_id: str, created_by: str | None) -> dict:
+    """P3-W10: создать draft contract если есть неподписанный договор или его нет."""
+    from app.models.project_documents import DocumentType
+
+    gate = await project_contract_gate(db, project_id)
+    if gate.get("ok") and gate.get("reason") != "no_contract_required":
+        return {"created": False, "document_id": gate.get("document_id"), "pending_titles": []}
+    contracts = list(
+        (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.contract.value,
+                    ProjectDocument.status != DocumentStatus.deleted.value,
+                )
+            )
+        ).scalars().all()
+    )
+    pending = [d for d in contracts if d.status == DocumentStatus.draft.value]
+    if pending:
+        return {"created": False, "document_id": pending[0].id, "pending_titles": [d.title for d in pending[:3]]}
+    if contracts and not pending:
+        return {"created": False, "document_id": contracts[0].id, "pending_titles": [contracts[0].title]}
+    doc = await create_document(
+        db,
+        project_id=project_id,
+        created_by=created_by,
+        title="Договор подряда",
+        document_type=DocumentType.contract.value,
+        notes="Создан автоматически при фиксации сметы",
+    )
+    doc.status = DocumentStatus.draft.value
+    await db.flush()
+    return {"created": True, "document_id": doc.id, "pending_titles": [doc.title]}
+
+
 async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
     """P3-W7: estimate → eSign → work unlock — блок start_stage без подписанного договора."""
     from app.models.project_documents import DocumentType
