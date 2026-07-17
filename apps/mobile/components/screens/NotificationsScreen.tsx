@@ -7,7 +7,8 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { AppNotification } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { resolveNotificationLink } from '@/lib/pushLinks';
+import { resolveNotificationLink, resolvePushLink } from '@/lib/pushLinks';
+import type { OsRole } from '@/constants/osSections';
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -27,23 +28,27 @@ function typeLabel(type: string) {
   }
 }
 
-function openNotification(notification: AppNotification) {
+function openNotification(notification: AppNotification, role: OsRole) {
+  const back = role === 'contractor' ? '/(contractor)/(tabs)/' : '/(customer)/(tabs)/';
   if (notification.link_path) {
-    router.push(notification.link_path as never);
-    return;
+    const target = resolvePushLink(notification.link_path, back, role);
+    if (target) {
+      router.push({ pathname: target.pathname, params: target.params } as never);
+      return;
+    }
   }
-  const target = resolveNotificationLink(notification.notification_type);
-  if (target) router.push(target.pathname as never);
+  const target = resolveNotificationLink(notification.notification_type, role);
+  if (target) router.push({ pathname: target.pathname, params: target.params } as never);
 }
 
-function NotificationCard({ item, onRead }: { item: AppNotification; onRead: (id: string) => void }) {
+function NotificationCard({ item, role, onRead }: { item: AppNotification; role: OsRole; onRead: (id: string) => void }) {
   return (
     <Pressable
       style={[styles.notificationCard, !item.read && styles.unreadCard]}
       accessibilityRole="button"
       onPress={() => {
         if (!item.read) onRead(item.id);
-        openNotification(item);
+        openNotification(item, role);
       }}
     >
       <View style={styles.cardHeader}>
@@ -56,7 +61,7 @@ function NotificationCard({ item, onRead }: { item: AppNotification; onRead: (id
       <Text style={styles.notificationBody}>{item.body}</Text>
       <View style={styles.cardFooter}>
         {!item.read ? <Text style={styles.unreadText}>Новое</Text> : <Text style={styles.readText}>Прочитано</Text>}
-        {(item.link_path || resolveNotificationLink(item.notification_type)) ? <Text style={styles.openText}>Открыть →</Text> : null}
+        {(item.link_path || resolveNotificationLink(item.notification_type, role)) ? <Text style={styles.openText}>Открыть →</Text> : null}
       </View>
     </Pressable>
   );
@@ -64,6 +69,7 @@ function NotificationCard({ item, onRead }: { item: AppNotification; onRead: (id
 
 export function NotificationsScreen() {
   const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -138,7 +144,7 @@ export function NotificationsScreen() {
 
       {items.length ? (
         <View style={styles.list}>
-          {items.map((item) => <NotificationCard key={item.id} item={item} onRead={markRead} />)}
+          {items.map((item) => <NotificationCard key={item.id} item={item} role={role} onRead={markRead} />)}
         </View>
       ) : (
         <View style={styles.emptyCard}>

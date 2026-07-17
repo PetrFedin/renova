@@ -167,6 +167,11 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
   { id: 'project-analytics', path: '/project-analytics', titleRu: 'Аналитика', audience: 'both', visibility: 'hidden', status: 'wip', entryPoints: [] },
 ];
 
+
+export function resolveRouteRedirect(path: string): string | undefined {
+  return RENOVA_ROUTES.find((r) => r.path === path)?.redirectTo;
+}
+
 export function routesForAudience(audience: 'customer' | 'contractor'): RenovaRoute[] {
   return RENOVA_ROUTES.filter((r) => r.audience === 'both' || r.audience === audience);
 }

@@ -1,5 +1,5 @@
 /** Нормализация deep link из push-уведомлений */
-import { parseOsHref } from '../constants/osSections';
+import { budgetTabRoute, parseOsHref, repairTabRoute, tabsRoute, type OsRole } from '../constants/osSections';
 import { TAB_ALIASES, legacyRouteCanonical, logLegacyRouteDeprecation } from './legacyRoutes';
 
 export type PushTarget = { pathname: string; params: Record<string, string> };
@@ -15,13 +15,22 @@ export function resolveLegacyTabHref(legacyPath: string) {
   return parseOsHref(canonical);
 }
 
-export function resolvePushLink(link?: string | null, returnTo?: string | null): PushTarget | null {
+export function resolvePushLink(
+  link?: string | null,
+  returnTo?: string | null,
+  role: OsRole = 'customer',
+): PushTarget | null {
   if (!link) return null;
   const [path, query = ''] = link.split('?');
   const rt = returnTo || '/';
   const canonical = TAB_ALIASES[path] || link;
   const canonicalPath = canonical.split('?')[0];
   const canonicalQuery = canonical.includes('?') ? canonical.split('?')[1] : query;
+
+  if (canonicalPath === '/finance-center') {
+    const target = budgetTabRoute(role, 'payments');
+    return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
+  }
 
   if (canonicalPath.startsWith('/stage/')) {
     const id = canonicalPath.replace('/stage/', '').split('/')[0];
@@ -60,21 +69,21 @@ export function resolvePushLink(link?: string | null, returnTo?: string | null):
 }
 
 /** Fallback router when push payload has no link_path */
-export function resolveNotificationLink(notificationType: string): PushTarget | null {
+export function resolveNotificationLink(notificationType: string, role: OsRole = 'customer'): PushTarget | null {
   switch (notificationType) {
     case 'payment_pending':
-      return { pathname: '/finance-center', params: {} };
+      return budgetTabRoute(role, 'payments');
     case 'stage_review':
     case 'stage_started':
       return { pathname: '/work-acceptance', params: {} };
     case 'change_order':
-      return { pathname: '/(customer)/(tabs)/budget', params: { tab: 'payments' } };
+      return budgetTabRoute(role, 'payments');
     case 'materials':
-      return { pathname: '/(customer)/(tabs)/repair', params: { tab: 'materials' } };
+      return repairTabRoute(role, 'materials');
     case 'chat_message':
-      return { pathname: '/(customer)/(tabs)/chat', params: {} };
+      return tabsRoute(role, 'chat');
     case 'budget_alert':
-      return { pathname: '/(customer)/(tabs)/budget', params: {} };
+      return budgetTabRoute(role, 'summary');
     case 'document':
       return { pathname: '/documents', params: {} };
     default:

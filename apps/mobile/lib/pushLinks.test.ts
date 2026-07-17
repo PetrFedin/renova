@@ -17,7 +17,12 @@ console.assert(resolvePushLink('/(customer)/(tabs)/calendar', '/home')?.pathname
 console.assert(resolvePushLink('/scratchpad', '/home')?.pathname === '/scratchpad', 'scratchpad stack');
 console.assert(resolvePushLink('/scratchpad', '/home')?.params?.returnTo === '/home', 'scratchpad returnTo');
 console.assert(resolvePushLink(null) === null, 'null');
-console.assert(resolveNotificationLink('payment_pending')?.pathname === '/finance-center', 'notify payment');
+
+const payCustomer = resolveNotificationLink('payment_pending', 'customer');
+console.assert(payCustomer?.pathname.includes('budget') && payCustomer.params.tab === 'payments', 'notify payment customer');
+const payContractor = resolveNotificationLink('payment_pending', 'contractor');
+console.assert(payContractor?.pathname.includes('(contractor)'), 'notify payment contractor');
+console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.tab === 'payments', 'finance-center redirect');
 console.assert(resolveNotificationLink('stage_review')?.pathname === '/work-acceptance', 'notify acceptance');
 console.assert(resolveNotificationLink('unknown_xyz') === null, 'notify unknown');
 console.log('pushLinks: OK');

@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChatMessage, ChatMessageType, Project, Stage, StageStatus, User, UserRole, ProjectViewer
+from app.models.entities import ChatMessage, ChatMessageType, Project, StageStatus, User, UserRole, ProjectViewer
 from app.services import project_service as proj_svc
 from app.services import payment_service as pay_svc
 from app.services import chat_service as chat_svc

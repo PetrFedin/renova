@@ -59,21 +59,42 @@ export function FloorPlanPanel({
 
   const onMapLayout = (e: LayoutChangeEvent) => setMapW(e.nativeEvent.layout.width);
 
+  const capturePunchPhoto = async (): Promise<string | undefined> => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return undefined;
+    const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (res.canceled || !res.assets[0]) return undefined;
+    const blob = await (await fetch(res.assets[0].uri)).blob();
+    return uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+  };
+
   const addPunchAt = async (locationX: number, locationY: number) => {
     if (!plan || !mapW || addingPunch) return;
     const x_pct = Math.min(98, Math.max(2, (locationX / mapW) * 100));
     const y_pct = Math.min(98, Math.max(2, (locationY / MAP_H) * 100));
     setAddingPunch(true);
     try {
+      let photo_key: string | undefined;
+      try {
+        photo_key = await capturePunchPhoto();
+      } catch {
+        /* punch без фото — допустимо */
+      }
       await api.createIssue(userId, projectId, {
         title: 'Замечание на плане',
         severity: 'medium',
         floor_plan_id: plan.id,
         x_pct,
         y_pct,
+        ...(photo_key ? { photo_key } : {}),
       });
       await load();
-      Alert.alert('Punch list', 'Замечание добавлено на план. Откройте «Контроль качества» для описания.');
+      Alert.alert(
+        'Punch list',
+        photo_key
+          ? 'Замечание с фото добавлено на план. Откройте «Контроль качества» для описания.'
+          : 'Замечание добавлено на план. Откройте «Контроль качества» для описания.',
+      );
     } catch {
       Alert.alert('Ошибка', 'Не удалось добавить замечание');
     } finally {
@@ -178,7 +199,7 @@ export function FloorPlanPanel({
             })}
           </View>
           {punchMode ? (
-            <Text style={s.punchModeHint}>Нажмите на план — добавится замечание в punch list</Text>
+            <Text style={s.punchModeHint}>Нажмите на план — камера для фото, затем замечание в punch list</Text>
           ) : null}
         </>
       ) : (
