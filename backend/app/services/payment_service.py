@@ -66,6 +66,14 @@ async def confirm_payment(
     return payment
 
 
+
+async def attach_yookassa_id(db: AsyncSession, payment_id: str, yookassa_id: str) -> None:
+    payment = await db.get(Payment, payment_id)
+    if payment:
+        payment.yookassa_payment_id = yookassa_id
+        await db.commit()
+
+
 async def get_payment(db: AsyncSession, payment_id: str) -> Payment | None:
     return await db.get(Payment, payment_id)
 
@@ -98,4 +106,5 @@ def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
         "confirmed_at": payment.confirmed_at.isoformat() if payment.confirmed_at else None,
         "created_at": payment.created_at.isoformat(),
         "receipt_id": receipt_id,
+        "yookassa_payment_id": payment.yookassa_payment_id,
     }

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import PaymentType, Stage, User, UserRole
-from app.schemas.project import PaymentCreate, PaymentOut
+from app.schemas.project import PaymentCreate, PaymentOut, YookassaCheckoutOut
 from app.services import payment_service as pay_svc
 
 router = APIRouter(prefix="/projects", tags=["payments"])
@@ -122,3 +122,89 @@ async def confirm_payment(
         )
     receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
+
+@router.post("/{project_id}/payments/{payment_id}/yookassa-checkout", response_model=YookassaCheckoutOut)
+async def yookassa_checkout(
+    project_id: str,
+    payment_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Заказчик: редирект на ЮKassa; webhook подтверждает оплату."""
+    await require_project(db, project_id, user, write=True)
+    if user.role != UserRole.customer:
+        raise HTTPException(403, "Оплату через ЮKassa инициирует заказчик")
+
+    existing = await pay_svc.get_payment(db, payment_id)
+    if not existing or existing.project_id != project_id:
+        raise HTTPException(404, "Платёж не найден")
+    if existing.status.value != "pending":
+        raise HTTPException(409, "Платёж уже обработан")
+
+    if existing.payment_type == PaymentType.stage and existing.stage_id:
+        stage = await db.get(Stage, existing.stage_id)
+        if not stage or not stage.customer_accepted_at:
+            raise HTTPException(409, "Сначала примите этап — оплата без приёмки запрещена")
+
+    from app.core.config import settings
+    from app.services import yookassa_service as yk
+
+    return_url = f"renova://payment-return?projectId={project_id}&paymentId={payment_id}"
+    if settings.public_base_url and not return_url.startswith("http"):
+        pass  # mobile deep link canonical
+
+    pay = await yk.create_payment(
+        existing.amount,
+        existing.title,
+        return_url,
+        user_id=user.id,
+        idempotence_key=f"proj-pay-{payment_id}",
+        metadata={
+            "kind": "project_payment",
+            "payment_id": payment_id,
+            "project_id": project_id,
+            "user_id": user.id,
+        },
+    )
+    if pay.get("error") == "yookassa_not_configured":
+        raise HTTPException(503, pay.get("message", "ЮKassa not configured"))
+
+    yk_id = pay.get("payment_id")
+    if pay.get("demo"):
+        if not yk.demo_allowed():
+            raise HTTPException(503, "ЮKassa keys required in staging/production")
+        demo_body = {
+            "event": "payment.succeeded",
+            "object": {
+                "id": yk_id or f"demo-{payment_id}",
+                "status": "succeeded",
+                "metadata": {
+                    "kind": "project_payment",
+                    "payment_id": payment_id,
+                    "project_id": project_id,
+                    "user_id": user.id,
+                },
+            },
+        }
+        await yk.process_webhook(demo_body, db)
+        await db.commit()
+        return YookassaCheckoutOut(
+            demo=True,
+            payment_id=payment_id,
+            yookassa_payment_id=yk_id,
+            confirmation_url=return_url,
+            status="succeeded",
+            message="Оплата подтверждена (demo ЮKassa)",
+        )
+
+    if yk_id:
+        await pay_svc.attach_yookassa_id(db, payment_id, yk_id)
+
+    return YookassaCheckoutOut(
+        demo=False,
+        payment_id=payment_id,
+        yookassa_payment_id=yk_id,
+        confirmation_url=pay.get("confirmation_url"),
+        status=pay.get("status"),
+    )
+

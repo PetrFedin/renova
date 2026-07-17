@@ -4,7 +4,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services.subscription_service import PRO_PRICE, activate_pro, get_sub, is_pro
-from app.services.yookassa_service import create_payment, check_webhook_ip, remember_webhook
+from app.services.yookassa_service import create_payment, check_webhook_ip, remember_webhook, process_webhook, demo_allowed
 from app.core.config import settings
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
@@ -18,8 +18,19 @@ async def my_sub(user: User = Depends(get_current_user), db: AsyncSession = Depe
 async def checkout(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
-    pay = await create_payment(PRO_PRICE, "Renova Pro — 30 дней", "http://127.0.0.1:8081/(contractor)/subscription", user.id, f"pro-{user.id}")
+    pay = await create_payment(
+        PRO_PRICE,
+        "Renova Pro — 30 дней",
+        "http://127.0.0.1:8081/(contractor)/subscription",
+        user.id,
+        f"pro-{user.id}",
+        metadata={"kind": "pro_subscription", "user_id": user.id},
+    )
+    if pay.get("error") == "yookassa_not_configured":
+        raise HTTPException(503, pay.get("message", "ЮKassa not configured"))
     if pay.get("demo"):
+        if not demo_allowed():
+            raise HTTPException(503, "ЮKassa keys required in staging/production")
         await activate_pro(db, user.id)
         return {"ok": True, "demo": True, "message": "Pro активирован (demo)"}
     return pay
@@ -38,8 +49,5 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
         return {"ok": True, "duplicate": True}
     event = body.get("event")
     obj = body.get("object") or {}
-    if event == "payment.succeeded" and obj.get("status") == "succeeded":
-        uid = (obj.get("metadata") or {}).get("user_id")
-        if uid:
-            await activate_pro(db, uid)
-    return {"ok": True}
+    result = await process_webhook(body, db)
+    return result

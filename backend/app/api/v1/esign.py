@@ -82,3 +82,23 @@ async def goskey_webhook(
         "provider": "goskey",
         "external_id": sig.provider_external_id,
     }
+
+@router.post("/dev/kontur/simulate")
+async def dev_kontur_simulate(
+    body: EsignWebhookIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """Development only: завершить pending подпись без внешнего Kontur."""
+    if settings.normalized_environment not in ("development", "test"):
+        raise HTTPException(404, "not_available")
+    sig = await docs_svc.complete_external_signature(
+        db,
+        provider_name="kontur",
+        external_id=body.external_id,
+        status=body.status or "signed",
+    )
+    if not sig:
+        raise HTTPException(404, "signature_not_found")
+    await db.commit()
+    return {"ok": True, "signature_id": sig.id, "simulated": True}
+

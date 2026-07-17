@@ -1,6 +1,7 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Alert, AppState } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Alert, AppState, ActivityIndicator } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
@@ -50,6 +51,7 @@ export function PaymentDetailSheet({
   const [step, setStep] = useState<PayStep>('info');
   const [transferAck, setTransferAck] = useState(false);
   const [receiptAttached, setReceiptAttached] = useState(false);
+  const [cardBusy, setCardBusy] = useState(false);
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
@@ -132,6 +134,46 @@ export function PaymentDetailSheet({
     pushOsNav(repairTabRoute(role, 'control'), pathname);
   };
 
+  const payWithCard = async () => {
+    if (stageNeedsAcceptance) {
+      Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
+        { text: 'Отмена', style: 'cancel' },
+        { text: 'Перейти к приёмке', onPress: goToAcceptance },
+      ]);
+      return;
+    }
+    setCardBusy(true);
+    try {
+      const pay = await api.checkoutYookassa(userId, projectId, payment.id);
+      if (pay.demo) {
+        onChanged?.();
+        onClose();
+        Alert.alert('Оплата', pay.message || 'Оплата подтверждена через ЮKassa (demo).');
+        return;
+      }
+      if (pay.confirmation_url) {
+        await WebBrowser.openBrowserAsync(pay.confirmation_url);
+        Alert.alert(
+          'ЮKassa',
+          'После оплаты вы вернётесь в приложение. Статус счёта обновится автоматически.',
+        );
+      }
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409) {
+        Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Перейти к приёмке', onPress: goToAcceptance },
+        ]);
+      } else if (e instanceof ApiError && e.status === 503) {
+        Alert.alert('ЮKassa', 'Оплата картой временно недоступна. Используйте перевод или чек.');
+      } else {
+        Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось открыть оплату картой'));
+      }
+    } finally {
+      setCardBusy(false);
+    }
+  };
+
   const confirm = async () => {
     if (stageNeedsAcceptance) {
       Alert.alert(
@@ -196,7 +238,13 @@ export function PaymentDetailSheet({
                 <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} />
               ) : (
                 <>
-                  <PrimaryButton title="Перевести (СБП / карта)" onPress={() => setStep('transfer')} />
+                  <PrimaryButton
+                    title={cardBusy ? 'Открываем ЮKassa…' : 'Оплатить картой (ЮKassa)'}
+                    onPress={payWithCard}
+                    disabled={cardBusy}
+                  />
+                  {cardBusy ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
+                  <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} />
                   <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} />
                 </>
               )}
