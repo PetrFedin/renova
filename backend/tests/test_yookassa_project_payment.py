@@ -80,3 +80,70 @@ async def test_webhook_confirms_project_payment(db, monkeypatch):
     refreshed = await pay_svc.get_payment(db, payment.id)
     assert refreshed.status == PaymentStatus.confirmed
     assert refreshed.yookassa_payment_id == "yk-test-123"
+
+@pytest.mark.asyncio
+async def test_webhook_idempotent_duplicate_event(db, monkeypatch):
+    """P3.1b: повторный webhook не подтверждает платёж второй раз."""
+    from app.core import config as cfg
+    from datetime import datetime
+    from app.models.entities import ActivityEvent
+
+    monkeypatch.setattr(cfg.settings, "environment", "development")
+
+    customer = User(id="cust2", phone="+70000000003", role=UserRole.customer)
+    contractor = User(id="contr2", phone="+70000000004", role=UserRole.contractor)
+    db.add_all([customer, contractor])
+    project = Project(
+        id="proj2",
+        name="Test2",
+        renovation_type="cosmetic",
+        customer_id=customer.id,
+        contractor_id=contractor.id,
+        budget_planned=100000,
+        budget_spent=0,
+    )
+    stage = Stage(
+        id="st2",
+        project_id=project.id,
+        name="Этап 2",
+        sort_order=1,
+        customer_accepted_at=datetime.utcnow(),
+    )
+    db.add_all([project, stage])
+    await db.commit()
+
+    payment = await pay_svc.create_payment(
+        db, project.id, contractor.id, "Оплата этапа 2", 3000.0, PaymentType.stage.value, stage.id
+    )
+
+    body = {
+        "event": "payment.succeeded",
+        "object": {
+            "id": "yk-dup-456",
+            "status": "succeeded",
+            "metadata": {
+                "kind": "project_payment",
+                "payment_id": payment.id,
+                "project_id": project.id,
+                "user_id": customer.id,
+            },
+        },
+    }
+    first = await yk.process_webhook(body, db)
+    assert first.get("confirmed") is True
+    await db.commit()
+
+    second = await yk.process_webhook(body, db)
+    assert second.get("duplicate") is True
+    assert second.get("confirmed") is not True
+
+    refreshed = await pay_svc.get_payment(db, payment.id)
+    assert refreshed.status == PaymentStatus.confirmed
+
+    from sqlalchemy import select, func
+    from app.models.entities import ActivityEvent as AE
+    events = (
+        await db.execute(select(func.count()).select_from(AE).where(AE.project_id == project.id, AE.kind == "PaymentApproved"))
+    ).scalar()
+    assert events == 1
+

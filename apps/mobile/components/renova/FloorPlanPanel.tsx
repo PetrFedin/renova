@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent, ActivityIndicator } from 'react-native';
 import { usePathname, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
@@ -61,7 +61,10 @@ export function FloorPlanPanel({
 
   const capturePunchPhoto = async (): Promise<string | undefined> => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return undefined;
+    if (!perm.granted) {
+      Alert.alert('Камера', 'Разрешите доступ к камере для фото замечания на плане.');
+      return undefined;
+    }
     const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
     if (res.canceled || !res.assets[0]) return undefined;
     const blob = await (await fetch(res.assets[0].uri)).blob();
@@ -201,7 +204,12 @@ export function FloorPlanPanel({
             })}
           </View>
           {punchMode ? (
-            <Text style={s.punchModeHint}>Нажмите на план — камера для фото, затем замечание в punch list</Text>
+            <View style={s.punchModeRow}>
+              {addingPunch ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
+              <Text style={s.punchModeHint}>
+                {addingPunch ? 'Сохраняем фото и замечание…' : 'Нажмите на план — откроется камера, фото прикрепится к замечанию'}
+              </Text>
+            </View>
           ) : null}
         </>
       ) : (
@@ -247,7 +255,8 @@ const s = StyleSheet.create({
   punchToggleT: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted },
   punchToggleTOn: { color: RenovaTheme.colors.dangerText },
   punchHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, flex: 1 },
-  punchModeHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4 },
+  punchModeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  punchModeHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, flex: 1 },
   mapWrap: { position: 'relative', minHeight: MAP_H },
   img: { width: '100%', height: MAP_H, backgroundColor: RenovaTheme.colors.surfaceMuted, borderRadius: 8 },
   punchOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2 },

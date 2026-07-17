@@ -30,3 +30,6 @@ console.log('pushLinks: OK');
 
 console.assert(resolveNotificationLink('issue', 'contractor')?.pathname === '/quality-control', 'issue notify');
 console.assert(resolveNotificationLink('payment_pending', 'contractor')?.pathname.includes('contractor'), 'contractor budget');
+
+console.assert(resolveLegacyTabHref('/(customer)/(tabs)/control').pathname === '/work-acceptance', 'legacy control customer');
+console.assert(resolveLegacyTabHref('/(contractor)/(tabs)/control').pathname === '/quality-control', 'legacy control contractor');

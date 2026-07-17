@@ -1,8 +1,8 @@
-/** Приёмка и качество — вкладка «Ремонт → Приёмка» */
+/** P3.4: deprecated «control» hub → канонические экраны приёмки / QC */
+import { Redirect } from 'expo-router';
 import type { OsRole } from '@/constants/osSections';
-import { CustomerControlView } from '@/components/screens/control/CustomerControlView';
-import { ContractorControlView } from '@/components/screens/control/ContractorControlView';
 
 export function OsControlScreen({ role }: { role: OsRole }) {
-  return role === 'contractor' ? <ContractorControlView /> : <CustomerControlView />;
+  const href = role === 'contractor' ? '/quality-control' : '/work-acceptance';
+  return <Redirect href={href as never} />;
 }

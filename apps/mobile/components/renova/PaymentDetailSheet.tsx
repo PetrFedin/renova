@@ -110,20 +110,30 @@ export function PaymentDetailSheet({
     Alert.alert('Чек', 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить».');
   };
 
-  const openSbp = () => {
+  const openSbp = async () => {
+    try {
+      await Clipboard.setStringAsync(String(Math.round(payment.amount)));
+    } catch { /* fallback — пользователь скопирует вручную */ }
     Alert.alert(
       'Перевод',
-      `${requisites}\n\nСкопируйте сумму и назначение в приложении банка или СБП.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Я перевёл',
-          onPress: () => {
-            setTransferAck(true);
-            setStep('confirm');
-          },
-        },
-      ],
+      `${requisites}\n\nСумма скопирована в буфер. Откройте приложение банка или СБП и вставьте сумму.`,
+      Platform.OS === 'web'
+        ? [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
+          ]
+        : [
+            { text: 'Отмена', style: 'cancel' },
+            {
+              text: 'Открыть банк',
+              onPress: () => {
+                Linking.openURL('bank100000000001://').catch(() => {
+                  Alert.alert('Подсказка', 'Откройте приложение вашего банка вручную.');
+                });
+              },
+            },
+            { text: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
+          ],
     );
   };
 
@@ -147,6 +157,12 @@ export function PaymentDetailSheet({
             },
           ],
     );
+  };
+
+
+  const copyRequisites = async () => {
+    await Clipboard.setStringAsync(requisites);
+    Alert.alert('Реквизиты скопированы', 'Вставьте в приложении банка для перевода по СБП или реквизитам.');
   };
 
   const goToAcceptance = () => {
@@ -282,7 +298,8 @@ export function PaymentDetailSheet({
                 <Text key={line} style={formMetaText.caption}>{line}</Text>
               ))}
               <PrimaryButton title="Скопировать сумму" variant="outline" onPress={() => { copySbpAmount().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать сумму')); }} />
-              <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={openSbp} />
+              <PrimaryButton title="Скопировать реквизиты" variant="outline" onPress={() => { copyRequisites().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать реквизиты')); }} />
+              <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={() => { openSbp().catch(() => {}); }} />
               <PrimaryButton
                 title="Я перевёл — дальше"
                 onPress={() => { setTransferAck(true); setStep('confirm'); }}

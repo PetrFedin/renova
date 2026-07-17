@@ -18,6 +18,7 @@ async def list_orders(db: AsyncSession, project_id: str) -> list[ChangeOrder]:
 
 
 async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
+    from app.services import budget_service as budget_svc
     co = await db.get(ChangeOrder, order_id)
     if not co or co.status != ChangeOrderStatus.pending:
         return None
@@ -25,6 +26,9 @@ async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
     proj = await db.get(Project, co.project_id)
     if proj:
         proj.budget_planned = round(proj.budget_planned + co.amount, 2)
+    from app.services.budget_service import apply_change_order_to_budget
+
+    await apply_change_order_to_budget(db, co)
     await db.commit()
     await db.refresh(co)
     return co

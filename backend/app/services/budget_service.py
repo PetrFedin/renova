@@ -246,6 +246,37 @@ async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
     await db.flush()
 
 
+
+async def apply_change_order_to_budget(db: AsyncSession, co) -> BudgetLine:
+    """P3.2c: при одобрении CO — строка бюджета «works» + delta planned."""
+    marker = f"[co:{co.id}]"
+    lines = (
+        await db.execute(
+            select(BudgetLine).where(
+                BudgetLine.project_id == co.project_id,
+                BudgetLine.description.contains(marker),
+            )
+        )
+    ).scalars().all()
+    if lines:
+        bl = lines[0]
+        bl.planned_amount = round(co.amount, 2)
+        bl.description = f"Доп. работы: {co.title} {marker}"
+        await db.flush()
+        return bl
+    bl = BudgetLine(
+        project_id=co.project_id,
+        category="works",
+        description=f"Доп. работы: {co.title} {marker}",
+        planned_amount=round(co.amount, 2),
+        expense_type="works",
+        status="active",
+    )
+    db.add(bl)
+    await db.flush()
+    return bl
+
+
 async def budget_summary(db: AsyncSession, project_id: str) -> dict:
     await refresh_budget_facts(db, project_id)
     proj = await db.get(Project, project_id)
@@ -330,6 +361,44 @@ async def delete_expense(db: AsyncSession, expense: Expense) -> None:
     expense.status = "deleted"
     await db.flush()
     await refresh_budget_facts(db, expense.project_id)
+
+
+
+async def add_change_order_budget_line(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    change_order_id: str,
+    title: str,
+    amount: float,
+) -> BudgetLine | None:
+    """P3.2c: строка бюджета при одобрении доп. работ (идемпотентно по CO id)."""
+    marker = f"CO:{change_order_id}"
+    existing = (
+        await db.execute(
+            select(BudgetLine).where(
+                BudgetLine.project_id == project_id,
+                BudgetLine.category == "change_order",
+                BudgetLine.description.like(f"{marker}%"),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+    bl = BudgetLine(
+        project_id=project_id,
+        category="change_order",
+        description=f"{marker} {title}",
+        planned_amount=round(amount, 2),
+        expense_type="works",
+    )
+    db.add(bl)
+    await db.flush()
+    proj = await db.get(Project, project_id)
+    if proj:
+        proj.budget_planned = round(proj.budget_planned + amount, 2)
+    await refresh_budget_facts(db, project_id)
+    return bl
 
 
 async def budget_hub(db: AsyncSession, project_id: str, *, threshold_pct: float = 5.0) -> dict:

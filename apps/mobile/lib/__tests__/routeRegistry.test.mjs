@@ -20,3 +20,5 @@ for (const id of ['inbox', 'scan-receipt', 'stage', 'materials-procurement', 'se
 }
 
 console.log('OK routeRegistry invariants (dock≤4, secondary centers listed)');
+
+assert.ok(src.includes("id: 'finance-center'") && src.includes("visibility: 'hidden'"), 'finance-center hidden');
