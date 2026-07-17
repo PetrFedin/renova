@@ -44,6 +44,8 @@ def _project_out(p) -> ProjectOut:
         planned_start_date=p.planned_start_date.isoformat() if p.planned_start_date else None,
         planned_end_date=p.planned_end_date.isoformat() if p.planned_end_date else None,
         pending_payments=pending or None,
+        is_archived=bool(getattr(p, "is_archived", False)),
+        trashed_at=p.trashed_at.isoformat() if getattr(p, "trashed_at", None) else None,
     )
 
 
@@ -97,8 +99,14 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
 
 
 @router.get("", response_model=list[ProjectOut])
-async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    projects = await svc.list_projects_for_user(db, user)
+async def list_projects(
+    bucket: str = "active",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if bucket not in ("active", "archived", "trashed"):
+        bucket = "active"
+    projects = await svc.list_projects_for_user(db, user, bucket=bucket)
     return [_project_out(p) for p in projects]
 
 
@@ -122,6 +130,66 @@ async def create_project(body: ProjectCreate, user: User = Depends(get_current_u
 
 
 
+
+
+
+@router.post("/{project_id}/archive")
+async def archive_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.archive_project(db, project_id, user)
+    except ValueError as e:
+        if str(e) == "forbidden":
+            raise HTTPException(403, "Только заказчик может архивировать объект")
+        raise HTTPException(404)
+    return _project_out(p)
+
+
+@router.post("/{project_id}/unarchive")
+async def unarchive_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.unarchive_project(db, project_id, user)
+    except ValueError:
+        raise HTTPException(403)
+    return _project_out(p)
+
+
+@router.post("/{project_id}/trash")
+async def trash_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.trash_project(db, project_id, user)
+    except ValueError as e:
+        if str(e) == "forbidden":
+            raise HTTPException(403, "Только заказчик может удалить объект")
+        raise HTTPException(404)
+    return _project_out(p)
+
+
+@router.post("/{project_id}/restore")
+async def restore_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.restore_project(db, project_id, user)
+    except ValueError:
+        raise HTTPException(403)
+    return _project_out(p)
+
+
+@router.delete("/trash/empty")
+async def empty_trash(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role != UserRole.customer:
+        raise HTTPException(403)
+    n = await svc.empty_trash(db, user)
+    return {"deleted": n}
+
+
+@router.delete("/{project_id}")
+async def purge_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        await svc.purge_project(db, project_id, user)
+    except ValueError as e:
+        if str(e) == "not_trashed":
+            raise HTTPException(400, "Сначала переместите объект в корзину")
+        raise HTTPException(403)
+    return {"ok": True}
 
 @router.patch("/{project_id}", response_model=ProjectDetail)
 async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

@@ -74,6 +74,8 @@ type Ctx = {
   loginWithSms: (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => Promise<void>;
   refreshProjects: () => Promise<void>;
   refreshMe: () => Promise<void>;
+  /** Сброс активного объекта (корзина/архив текущего проекта) */
+  clearActiveProject: () => Promise<void>;
   loadProject: (id: string) => Promise<void>;
   /** Подхват сохранённого объекта — один раз на все разделы OS */
   ensureActiveProject: () => Promise<void>;
@@ -126,6 +128,14 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const list = await enrichProjectsPendingPayments(user.id, raw, user.role);
     setProjects(list);
   }, [user]);
+
+  const clearActiveProject = useCallback(async () => {
+    setActiveProject(null);
+    setReadOnly(false);
+    await AsyncStorage.removeItem(KEYS.projectId);
+    await AsyncStorage.removeItem(SESSION_KEYS.projectExplicitlyPicked);
+    await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
+  }, []);
 
   const refreshMe = useCallback(async () => {
     if (!user) return;
@@ -514,6 +524,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       loginWithSms,
       refreshProjects,
       refreshMe,
+      clearActiveProject,
       loadProject,
       ensureActiveProject,
       projectResolving,
@@ -529,7 +540,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       hidePaywall: () => setPaywallVisible(false),
       readOnly,
     }),
-    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, readOnly],
+    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, readOnly],
   );
 
   return (

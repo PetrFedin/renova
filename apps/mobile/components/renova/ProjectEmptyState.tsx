@@ -11,6 +11,10 @@ import { api, type ProjectSummary } from '@/lib/api';
 import { formatProjectPhaseLabel } from '@/lib/domain/formatProjectPhaseLabel';
 import { partitionPortfolioProjects } from '@/lib/domain/portfolioProjects';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
+import { ProjectBucketToolbar, type ProjectBucket } from '@/components/renova/ProjectBucketToolbar';
+import { useProjectBuckets } from '@/lib/hooks/useProjectBuckets';
+import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActions';
+import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
 
 type Props = {
   role: OsRole;
@@ -44,10 +48,24 @@ function ProjectPickCard({
   p,
   pendingById,
   onPress,
+  bucket = 'active',
+  canManage = false,
+  onArchive,
+  onTrash,
+  onRestore,
+  onUnarchive,
+  onPurge,
 }: {
   p: ProjectSummary;
   pendingById: Record<string, number>;
   onPress: () => void;
+  bucket?: ProjectBucket;
+  canManage?: boolean;
+  onArchive?: () => void;
+  onTrash?: () => void;
+  onRestore?: () => void;
+  onUnarchive?: () => void;
+  onPurge?: () => void;
 }) {
   const phase = formatProjectPhaseLabel(p, pendingById[p.id]);
   const progressLine =
@@ -63,6 +81,16 @@ function ProjectPickCard({
       </View>
       <Text style={formMetaText.caption} numberOfLines={1}>{projectCardMeta(p, pendingById)}</Text>
       <Text style={s.progressLine} numberOfLines={1}>{progressLine}</Text>
+      {canManage ? (
+        <ProjectCardLifecycleIcons
+          bucket={bucket}
+          onArchive={onArchive}
+          onTrash={onTrash}
+          onRestore={onRestore}
+          onUnarchive={onUnarchive}
+          onPurge={onPurge}
+        />
+      ) : null}
     </Pressable>
   );
 }
@@ -73,19 +101,39 @@ function ProjectSection({
   pendingById,
   onPick,
   withGap,
+  bucket,
+  canManage,
+  lifecycleHandlers,
 }: {
   title: string;
   items: ProjectSummary[];
   pendingById: Record<string, number>;
   onPick: (id: string) => void;
   withGap?: boolean;
+  bucket?: ProjectBucket;
+  canManage?: boolean;
+  lifecycleHandlers?: (id: string) => {
+    onArchive?: () => void;
+    onTrash?: () => void;
+    onRestore?: () => void;
+    onUnarchive?: () => void;
+    onPurge?: () => void;
+  };
 }) {
   if (!items.length) return null;
   return (
     <View style={withGap ? s.sectionGap : undefined}>
       <Text style={s.sectionHead}>{title}</Text>
       {items.map((p) => (
-        <ProjectPickCard key={p.id} p={p} pendingById={pendingById} onPress={() => onPick(p.id)} />
+        <ProjectPickCard
+          key={p.id}
+          p={p}
+          pendingById={pendingById}
+          onPress={() => onPick(p.id)}
+          bucket={bucket}
+          canManage={canManage}
+          {...(lifecycleHandlers ? lifecycleHandlers(p.id) : {})}
+        />
       ))}
     </View>
   );
@@ -102,16 +150,20 @@ export function ProjectEmptyState({
 }: Props) {
   const pathname = usePathname();
   const { user, projects, loadProject, showPaywall, recoverSession, ensureActiveProject, projectResolving } = useRenova();
+  const canManage = user?.role === 'customer';
+  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, loading: bucketLoading, reload: reloadBuckets } = useProjectBuckets(user?.id, canManage);
+  const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
 
+  const displayProjects = bucket === 'active' ? projects : bucketItems;
   const { inProgress, completed } = useMemo(
-    () => partitionPortfolioProjects(projects, pendingById),
-    [projects, pendingById],
+    () => partitionPortfolioProjects(displayProjects, pendingById),
+    [displayProjects, pendingById],
   );
 
   useEffect(() => {
-    if (autoPick && projects.length) ensureActiveProject().catch(() => {});
-  }, [autoPick, projects.length, ensureActiveProject]);
+    if (autoPick && bucket === 'active' && projects.length) ensureActiveProject().catch(() => {});
+  }, [autoPick, bucket, projects.length, ensureActiveProject]);
 
   useEffect(() => {
     if (!user || !projects.length) {
@@ -149,7 +201,9 @@ export function ProjectEmptyState({
     );
   }
 
+
   const pick = (id: string) => {
+    if (bucket !== 'active') return;
     if (onSelectProject) {
       onSelectProject(id).catch((e) => {
         if (e?.code === 'subscription_required' || e?.status === 402) showPaywall();
@@ -166,22 +220,37 @@ export function ProjectEmptyState({
       {title ? <Text style={s.title}>{title}</Text> : null}
       {hint ? <Text style={formMetaText.caption}>{hint}</Text> : null}
 
-      {projects.length > 0 ? (
+      <ProjectBucketToolbar
+        bucket={bucket}
+        onChange={setBucket}
+        archivedCount={archivedCount}
+        trashedCount={trashedCount}
+        canManage={canManage}
+      />
+      {bucketLoading ? <ActivityIndicator color={RenovaTheme.colors.primary} style={{ marginVertical: 12 }} /> : null}
+      {bucket === 'trashed' && canManage && trashedCount > 0 ? (
+        <PrimaryButton title="Очистить корзину" variant="outline" onPress={emptyTrash} />
+      ) : null}
+
+      {displayProjects.length > 0 ? (
         <>
-          <ProjectSection title="В работе" items={inProgress} pendingById={pendingById} onPick={pick} />
+          <ProjectSection title="В работе" items={inProgress} pendingById={pendingById} onPick={pick} bucket={bucket} canManage={canManage} lifecycleHandlers={lifecycleHandlers} />
           <ProjectSection
             title="Завершённые"
             items={completed}
             pendingById={pendingById}
             onPick={pick}
             withGap={inProgress.length > 0}
+            bucket={bucket}
+            canManage={canManage}
+            lifecycleHandlers={lifecycleHandlers}
           />
         </>
       ) : (
-        <Text style={formMetaText.caption}>Нет проектов</Text>
+        <Text style={formMetaText.caption}>{bucket === 'active' ? 'Нет проектов' : bucket === 'archived' ? 'Архив пуст' : 'Корзина пуста'}</Text>
       )}
 
-      {showCreate && (
+      {showCreate && bucket === 'active' && (
         <PrimaryButton
           title="Создать объект"
           variant={projects.length ? 'outline' : 'primary'}
@@ -219,8 +288,11 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: RenovaTheme.colors.borderLight,
   },
-  card: { ...card, marginBottom: 8, gap: 4 },
+  card: { position: 'relative' as const, paddingBottom: 44, ...card, marginBottom: 8, gap: 4 },
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   name: { flex: 1, fontWeight: '700', fontSize: 15, color: RenovaTheme.colors.text },
   progressLine: { fontSize: 12, color: RenovaTheme.colors.textSubtle, marginTop: 2 },
+  cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8, justifyContent: 'flex-end' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  actionT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
 });

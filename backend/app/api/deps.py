@@ -29,6 +29,8 @@ async def require_project(db: AsyncSession, project_id: str, user: User, *, writ
         raise HTTPException(404, "Проект не найден")
     if not await team_svc.can_access_project(db, user, p, write=write):
         raise HTTPException(403, "Нет доступа")
+    if getattr(p, "trashed_at", None):
+        raise HTTPException(404, "Проект в корзине")
     return p
 
 

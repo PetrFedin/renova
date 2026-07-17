@@ -154,6 +154,7 @@ export function HomeScreenBody({
           <WorkScheduleSummaryCard
             userId={user.id}
             projectId={activeProject.id}
+            role={role}
             projectComplete={snap.isComplete}
             stageFactPercent={snap.schedule?.progressPercent ?? null}
           />

@@ -80,6 +80,8 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'more',
     status: 'beta',
     entryPoints: ['home.schedule', 'home.more'],
+    redirectTo: '/calendar',
+    descriptionRu: 'Redirect → календарь (единый hub «Сроки»; план — Work Schedule API)',
   },
   {
     id: 'documents',

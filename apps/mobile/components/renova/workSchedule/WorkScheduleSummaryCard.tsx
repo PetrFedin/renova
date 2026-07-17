@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { calendarTabRoute, type OsRole } from '@/constants/osSections';
 
 import { api } from '@/lib/api';
 import type { WorkSchedule, WorkScheduleItem } from '@/lib/api/workSchedule';
@@ -9,6 +10,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 type Props = {
   userId: string;
   projectId: string;
+  role?: OsRole;
   /** Факт исполнения по этапам (Stage / OS snapshot) — не путать с планом графика. */
   projectComplete?: boolean;
   /** Фактический % по этапам (0–100), если известен. */
@@ -52,6 +54,7 @@ function pickNextItems(items: WorkScheduleItem[]) {
 export function WorkScheduleSummaryCard({
   userId,
   projectId,
+  role = 'customer',
   projectComplete = false,
   stageFactPercent = null,
 }: Props) {
@@ -123,7 +126,11 @@ export function WorkScheduleSummaryCard({
   const tone = stats.delayed > 0 ? RenovaTheme.colors.dangerText : RenovaTheme.colors.textMuted;
 
   return (
-    <Pressable style={styles.card} onPress={() => router.push('/work-schedule')} accessibilityRole="button">
+    <Pressable
+      style={styles.card}
+      onPress={() => router.push(calendarTabRoute(role) as never)}
+      accessibilityRole="button"
+    >
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>График работ</Text>

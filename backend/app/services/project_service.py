@@ -180,36 +180,9 @@ async def get_project(db: AsyncSession, project_id: str) -> Project | None:
     return result.scalar_one_or_none()
 
 
-async def list_projects_for_user(db: AsyncSession, user: User) -> list[Project]:
-    q = select(Project).options(
-        selectinload(Project.stages),
-        selectinload(Project.rooms),
-        selectinload(Project.change_orders),
-        selectinload(Project.receipts),
-        selectinload(Project.payments),
-    )
-    from app.models.entities import ProjectViewer
-    if user.role.value == "customer":
-        q = q.where(Project.customer_id == user.id)
-        result = await db.execute(q.order_by(Project.created_at.desc()))
-        owned = list(result.scalars().all())
-        gq = select(Project).options(
-            selectinload(Project.stages), selectinload(Project.rooms),
-            selectinload(Project.change_orders), selectinload(Project.receipts),
-            selectinload(Project.payments),
-        ).join(ProjectViewer, ProjectViewer.project_id == Project.id).where(ProjectViewer.user_id == user.id)
-        guest = list((await db.execute(gq.order_by(Project.created_at.desc()))).scalars().all())
-        seen = {p.id for p in owned}
-        for p in guest:
-            if p.id not in seen:
-                owned.append(p)
-        return owned
+async def list_projects_for_user(db: AsyncSession, user: User, bucket: str = "active") -> list[Project]:
+    return await list_projects_for_user_bucket(db, user, bucket)
 
-    owners = await team_svc.team_owner_ids(db, user.id)
-    contractor_ids = {user.id} | owners
-    q = q.where(Project.contractor_id.in_(contractor_ids))
-    result = await db.execute(q.order_by(Project.created_at.desc()))
-    return list(result.scalars().all())
 
 
 def build_dashboard(project: Project) -> dict:
@@ -366,3 +339,111 @@ async def update_project(db: AsyncSession, project_id: str, **fields) -> Project
     await db.commit()
     await db.refresh(p)
     return p
+
+
+async def _assert_customer_owner(db: AsyncSession, project_id: str, user: User) -> Project:
+    p = await get_project(db, project_id)
+    if not p:
+        raise ValueError("not_found")
+    if user.role.value != "customer" or p.customer_id != user.id:
+        raise ValueError("forbidden")
+    return p
+
+
+def _bucket_filter(bucket: str):
+    from sqlalchemy import and_
+    if bucket == "archived":
+        return and_(Project.trashed_at.is_(None), Project.is_archived.is_(True))
+    if bucket == "trashed":
+        return Project.trashed_at.isnot(None)
+    return and_(Project.trashed_at.is_(None), Project.is_archived.is_(False))
+
+
+async def list_projects_for_user_bucket(db: AsyncSession, user: User, bucket: str = "active") -> list[Project]:
+    q = select(Project).options(
+        selectinload(Project.stages),
+        selectinload(Project.rooms),
+        selectinload(Project.change_orders),
+        selectinload(Project.receipts),
+        selectinload(Project.payments),
+    ).where(_bucket_filter(bucket))
+    from app.models.entities import ProjectViewer
+    if user.role.value == "customer":
+        q = q.where(Project.customer_id == user.id)
+        result = await db.execute(q.order_by(Project.created_at.desc()))
+        owned = list(result.scalars().all())
+        if bucket != "active":
+            return owned
+        gq = select(Project).options(
+            selectinload(Project.stages), selectinload(Project.rooms),
+            selectinload(Project.change_orders), selectinload(Project.receipts),
+            selectinload(Project.payments),
+        ).join(ProjectViewer, ProjectViewer.project_id == Project.id).where(
+            ProjectViewer.user_id == user.id, _bucket_filter("active")
+        )
+        guest = list((await db.execute(gq.order_by(Project.created_at.desc()))).scalars().all())
+        seen = {p.id for p in owned}
+        for p in guest:
+            if p.id not in seen:
+                owned.append(p)
+        return owned
+    owners = await team_svc.team_owner_ids(db, user.id)
+    contractor_ids = {user.id} | owners
+    q = q.where(Project.contractor_id.in_(contractor_ids))
+    result = await db.execute(q.order_by(Project.created_at.desc()))
+    return list(result.scalars().all())
+
+
+async def archive_project(db: AsyncSession, project_id: str, user: User) -> Project:
+    p = await _assert_customer_owner(db, project_id, user)
+    if p.trashed_at:
+        raise ValueError("trashed")
+    p.is_archived = True
+    await db.commit()
+    await db.refresh(p)
+    return p
+
+
+async def unarchive_project(db: AsyncSession, project_id: str, user: User) -> Project:
+    p = await _assert_customer_owner(db, project_id, user)
+    p.is_archived = False
+    await db.commit()
+    await db.refresh(p)
+    return p
+
+
+async def trash_project(db: AsyncSession, project_id: str, user: User) -> Project:
+    from datetime import datetime
+    p = await _assert_customer_owner(db, project_id, user)
+    p.trashed_at = datetime.utcnow()
+    p.is_archived = False
+    await db.commit()
+    await db.refresh(p)
+    return p
+
+
+async def restore_project(db: AsyncSession, project_id: str, user: User) -> Project:
+    p = await _assert_customer_owner(db, project_id, user)
+    p.trashed_at = None
+    await db.commit()
+    await db.refresh(p)
+    return p
+
+
+async def purge_project(db: AsyncSession, project_id: str, user: User) -> None:
+    p = await _assert_customer_owner(db, project_id, user)
+    if not p.trashed_at:
+        raise ValueError("not_trashed")
+    await db.delete(p)
+    await db.commit()
+
+
+async def empty_trash(db: AsyncSession, user: User) -> int:
+    if user.role.value != "customer":
+        return 0
+    from sqlalchemy import delete
+    r = await db.execute(
+        delete(Project).where(Project.customer_id == user.id, Project.trashed_at.isnot(None))
+    )
+    await db.commit()
+    return r.rowcount or 0

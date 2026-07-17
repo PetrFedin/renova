@@ -22,6 +22,8 @@ export type ProjectSummary = {
   pending_payments?: number | null;
   /** Подключённый исполнитель */
   contractor_id?: string | null;
+  is_archived?: boolean;
+  trashed_at?: string | null;
 };
 
 export type EstimateLine = {

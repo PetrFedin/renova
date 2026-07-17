@@ -165,6 +165,8 @@ class ProjectOut(BaseModel):
     planned_start_date: str | None = None
     planned_end_date: str | None = None
     pending_payments: int | None = None
+    is_archived: bool = False
+    trashed_at: str | None = None
 
 
 class ProjectDetail(ProjectOut):

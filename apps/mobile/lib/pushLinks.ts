@@ -1,5 +1,5 @@
 /** Нормализация deep link из push-уведомлений */
-import { budgetTabRoute, parseOsHref, repairTabRoute, tabsRoute, type OsRole } from '../constants/osSections';
+import { calendarTabRoute, budgetTabRoute, parseOsHref, repairTabRoute, tabsRoute, type OsRole } from '../constants/osSections';
 import { TAB_ALIASES, legacyRouteCanonical, logLegacyRouteDeprecation } from './legacyRoutes';
 
 export type PushTarget = { pathname: string; params: Record<string, string> };
@@ -29,6 +29,11 @@ export function resolvePushLink(
 
   if (canonicalPath === '/finance-center') {
     const target = budgetTabRoute(role, 'payments');
+    return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
+  }
+
+  if (canonicalPath === '/work-schedule') {
+    const target = calendarTabRoute(role);
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 

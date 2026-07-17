@@ -428,6 +428,20 @@ def ensure_os_schema() -> None:
             except Exception:
                 pass
 
+
+    if "projects" in tables:
+        pr = cols("projects")
+        if "is_archived" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN is_archived INTEGER DEFAULT 0")
+            except Exception:
+                pass
+        if "trashed_at" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN trashed_at TEXT")
+            except Exception:
+                pass
+
     if "chat_thread_participants" not in tables:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS chat_thread_participants (

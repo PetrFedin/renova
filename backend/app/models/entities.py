@@ -80,6 +80,8 @@ class Project(Base):
     planned_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    trashed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     estimate_lines: Mapped[list["EstimateLine"]] = relationship(back_populates="project", cascade="all, delete-orphan")
