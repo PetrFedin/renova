@@ -12,6 +12,7 @@ type Props = {
   isContractor: boolean;
   canWrite: boolean;
   blocked: { blocked: boolean; depends_on?: string } | null;
+  contractGate?: { ok: boolean; message?: string; pending_titles?: string[] } | null;
   userId: string;
   projectId: string;
   onReload: () => Promise<void>;
@@ -25,6 +26,7 @@ export function StageDetailHero({
   isContractor,
   canWrite,
   blocked,
+  contractGate,
   userId,
   projectId,
   onReload,
@@ -59,6 +61,22 @@ export function StageDetailHero({
         </View>
       ) : null}
 
+      {isContractor && stage.status === 'planned' && contractGate && !contractGate.ok ? (
+        <View style={s.warnBox}>
+          <Text style={s.warnHead}>Перед началом работ</Text>
+          <Text style={s.warnItem}>{contractGate.message || 'Подпишите договор'}</Text>
+          {(contractGate.pending_titles || []).slice(0, 2).map((title) => (
+            <Text key={title} style={s.warnItem}>• {title}</Text>
+          ))}
+          <PrimaryButton
+            title="К документам"
+            variant="outline"
+            compact
+            onPress={() => router.push({ pathname: '/documents', params: { returnTo: `/stage/${stage.id}` } } as never)}
+          />
+        </View>
+      ) : null}
+
       {isContractor && stage.status === 'planned' ? (
         <PrimaryButton
           disabled={!canWrite || blocked?.blocked}
@@ -77,8 +95,7 @@ export function StageDetailHero({
                   const titles = (d.pending_titles || []).join(', ');
                   Alert.alert(
                     'Нужен договор',
-                    [d.message || 'Подпишите договор перед началом работ', titles ? `Документы: ${titles}` : ''].filter(Boolean).join('
-'),
+                    [d.message || 'Подпишите договор перед началом работ', titles ? `Документы: ${titles}` : ''].filter(Boolean).join('\n'),
                     [
                       { text: 'Отмена', style: 'cancel' },
                       { text: 'К документам', onPress: () => router.push({ pathname: '/documents', params: { returnTo: `/stage/${stage.id}` } } as never) },

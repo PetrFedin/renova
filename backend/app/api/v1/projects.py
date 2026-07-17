@@ -10,6 +10,7 @@ from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectDetail, Pro
 from app.services import project_service as svc
 from app.services.stage_service import parse_room_ids
 from app.services import room_service as room_svc
+from app.services import project_document_service as docs_svc
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -330,6 +331,13 @@ async def share_viewer(project_id: str, body: ViewerShareIn, user: User = Depend
     await db.commit()
     return {"ok": True, "user_id": target.id, "full_name": target.full_name}
 
+
+
+@router.get("/{project_id}/contract-gate")
+async def get_contract_gate(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P3-W9: статус договора до start_stage — для баннера на экране этапа."""
+    await require_project(db, project_id, user, write=False)
+    return await docs_svc.project_contract_gate(db, project_id)
 
 @router.delete("/{project_id}/viewers/{viewer_user_id}")
 async def remove_viewer(project_id: str, viewer_user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

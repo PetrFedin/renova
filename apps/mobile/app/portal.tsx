@@ -1,6 +1,6 @@
 /** P2.1 Web client portal — read-only по magic link ?token= */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Linking, Platform, AppState } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
@@ -16,6 +16,13 @@ export default function PortalScreen() {
   const [session, setSession] = useState<{ user_id: string; project_id: string; project_name: string; scopes?: string[]; read_only?: boolean } | null>(null);
   const [portalToken, setPortalToken] = useState('');
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof api.portalSnapshot>> | null>(null);
+
+  const refreshPortalSnapshot = async (userId: string, projectId: string) => {
+    try {
+      const snap = await api.portalSnapshot(userId, projectId);
+      setSnapshot(snap);
+    } catch { /* best-effort */ }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +48,14 @@ export default function PortalScreen() {
     })();
     return () => { cancelled = true; };
   }, [token]);
+
+  useEffect(() => {
+    if (!session) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshPortalSnapshot(session.user_id, session.project_id);
+    });
+    return () => sub.remove();
+  }, [session?.user_id, session?.project_id]);
 
   if (loading) {
     return (
@@ -131,7 +146,8 @@ export default function PortalScreen() {
                         }
                         if (checkout.confirmation_url) {
                           await WebBrowser.openBrowserAsync(checkout.confirmation_url);
-                          Alert.alert('ЮKassa', 'После оплаты обновите страницу портала.');
+                          await refreshPortalSnapshot(session.user_id, session.project_id);
+                          Alert.alert('ЮKassa', 'Статус оплаты обновлён. Если платёж не отображается — подождите минуту.');
                         }
                       } catch {
                         Alert.alert('ЮKassa', 'Оплата картой недоступна. Используйте перевод по реквизитам.');

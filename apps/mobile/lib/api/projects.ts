@@ -25,4 +25,10 @@ export const projectsApi = {
   assignProject: (userId: string, projectId: string) => req<ProjectDetail>(`/api/v1/projects/${projectId}/assign`, { method: 'POST' }, userId),
   getAnalytics: (userId: string, projectId: string) => req(`/api/v1/projects/${projectId}/analytics`, {}, userId),
   getContractorAnalytics: (userId: string) => req<{ id: string; name: string; margin_estimated: number; progress_percent: number }[]>('/api/v1/projects/analytics/contractor-summary', {}, userId),
+  getContractGate: (userId: string, projectId: string) =>
+    req<{ ok: boolean; code?: string; message?: string; pending_titles?: string[]; reason?: string }>(
+      `/api/v1/projects/${projectId}/contract-gate`,
+      {},
+      userId,
+    ),
 };

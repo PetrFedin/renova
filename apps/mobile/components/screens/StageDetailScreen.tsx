@@ -90,6 +90,7 @@ export function StageDetailScreen() {
   const [customChecks, setCustomChecks] = useState<string[]>([]);
   const [wfChecks, setWfChecks] = useState<{ id: string; text: string; done: boolean }[]>([]);
   const [workSnap, setWorkSnap] = useState<WorkSnapshot | null>(null);
+  const [contractGate, setContractGate] = useState<{ ok: boolean; message?: string; pending_titles?: string[] } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const canWrite = useWriteAllowed();
 
@@ -99,6 +100,7 @@ export function StageDetailScreen() {
     setStage(st);
     api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch(() => setWfChecks([]));
     api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch(() => {});
+    api.getContractGate(user.id, activeProject.id).then(setContractGate).catch(() => setContractGate(null));
     api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch(() => setWorkSnap(null));
     getCustomChecks(id).then(setCustomChecks).catch(() => {});
   };
@@ -243,6 +245,7 @@ export function StageDetailScreen() {
           isContractor={isContractor}
           canWrite={canWrite}
           blocked={blocked}
+          contractGate={contractGate}
           userId={user.id}
           projectId={activeProject.id}
           onReload={reload}
