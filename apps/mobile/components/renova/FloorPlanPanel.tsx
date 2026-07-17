@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert } from 'react-native';
-import { usePathname } from 'expo-router';
+import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent } from 'react-native';
+import { usePathname, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
@@ -10,6 +10,14 @@ import { pushRoomDetail } from '@/lib/navigation';
 import { RenovaTheme } from '@/constants/Theme';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
+const MAP_H = 180;
+
+function punchTone(severity: string, status: string) {
+  if (status === 'closed') return RenovaTheme.colors.textMuted;
+  if (severity === 'critical' || severity === 'high') return RenovaTheme.colors.dangerText;
+  if (severity === 'medium') return RenovaTheme.colors.warningText;
+  return '#2563EB';
+}
 
 export function FloorPlanPanel({
   userId,
@@ -31,17 +39,48 @@ export function FloorPlanPanel({
   const [floor, setFloor] = useState(1);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [punchMode, setPunchMode] = useState(false);
+  const [mapW, setMapW] = useState(0);
+  const [addingPunch, setAddingPunch] = useState(false);
   const planRef = useRef<FloorPlan | null>(null);
   const load = () => api.listFloorPlans(userId, projectId).then(setPlans).catch(() => {});
   useEffect(() => { load(); }, [projectId]);
   const levels = [...new Set(plans.map((p) => (p as { floor_level?: number }).floor_level || 1))].sort();
   const plan = plans.find((p) => ((p as { floor_level?: number }).floor_level || 1) === floor) || plans[0];
   planRef.current = plan || null;
+  const punchItems = plan?.punch ?? [];
+  const openPunch = punchItems.filter((p) => p.status !== 'closed');
+
   const savePin = async (pinId: string, x: number, y: number) => {
     if (!plan) return;
     await api.moveFloorPin(userId, projectId, plan.id, pinId, x, y);
     load();
   };
+
+  const onMapLayout = (e: LayoutChangeEvent) => setMapW(e.nativeEvent.layout.width);
+
+  const addPunchAt = async (locationX: number, locationY: number) => {
+    if (!plan || !mapW || addingPunch) return;
+    const x_pct = Math.min(98, Math.max(2, (locationX / mapW) * 100));
+    const y_pct = Math.min(98, Math.max(2, (locationY / MAP_H) * 100));
+    setAddingPunch(true);
+    try {
+      await api.createIssue(userId, projectId, {
+        title: 'Замечание на плане',
+        severity: 'medium',
+        floor_plan_id: plan.id,
+        x_pct,
+        y_pct,
+      });
+      await load();
+      Alert.alert('Punch list', 'Замечание добавлено на план. Откройте «Контроль качества» для описания.');
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось добавить замечание');
+    } finally {
+      setAddingPunch(false);
+    }
+  };
+
   const uploadPlan = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert('Доступ', 'Нужен доступ к галерее'); return; }
@@ -61,6 +100,8 @@ export function FloorPlanPanel({
     }
   };
 
+  const canPunch = role === 'customer' || role === 'contractor';
+
   return (
     <View style={embedded ? s.embedded : s.box}>
       {!embedded ? <Text style={s.head}>Планировка</Text> : null}
@@ -74,42 +115,79 @@ export function FloorPlanPanel({
         </View>
       ) : null}
       {plan ? (
-        <View style={s.mapWrap}>
-          <Image source={{ uri: `${BASE}${plan.image_url}` }} style={s.img} resizeMode="contain" />
-          {plan.pins.map((p) => {
-            const pan = PanResponder.create({
-              onStartShouldSetPanResponder: () => role === 'contractor',
-              onPanResponderMove: (_, g) =>
-                setDrag({
-                  id: p.id,
-                  x: Math.min(98, Math.max(2, p.x_pct + g.dx / 2)),
-                  y: Math.min(98, Math.max(2, p.y_pct + g.dy / 2)),
-                }),
-              onPanResponderRelease: (_, g) => {
-                const nx = Math.min(98, Math.max(2, p.x_pct + g.dx / 2));
-                const ny = Math.min(98, Math.max(2, p.y_pct + g.dy / 2));
-                setDrag(null);
-                savePin(p.id, nx, ny);
-              },
-            });
-            const x = drag?.id === p.id ? drag.x : p.x_pct;
-            const y = drag?.id === p.id ? drag.y : p.y_pct;
-            return (
-              <View key={p.id} {...pan.panHandlers} style={[s.pin, { left: `${x}%`, top: `${y}%` }]}>
-                <Pressable onPress={() => pushRoomDetail(p.room_id, pathname)}>
-                  <Text style={s.pinT}>{p.label || '·'}</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
+        <>
+          {canPunch ? (
+            <View style={s.punchBar}>
+              <Pressable
+                style={[s.punchToggle, punchMode && s.punchToggleOn]}
+                onPress={() => setPunchMode((v) => !v)}
+              >
+                <Text style={[s.punchToggleT, punchMode && s.punchToggleTOn]}>
+                  {punchMode ? '● Режим замечаний' : '○ Punch list'}
+                </Text>
+              </Pressable>
+              <Text style={s.punchHint}>{openPunch.length} на плане</Text>
+              <Pressable onPress={() => router.push('/quality-control' as never)}>
+                <Text style={s.link}>Список →</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          <View style={s.mapWrap} onLayout={onMapLayout}>
+            <Image source={{ uri: `${BASE}${plan.image_url}` }} style={s.img} resizeMode="contain" />
+            {punchMode ? (
+              <Pressable
+                style={s.punchOverlay}
+                disabled={addingPunch}
+                onPress={(e) => addPunchAt(e.nativeEvent.locationX, e.nativeEvent.locationY)}
+              />
+            ) : null}
+            {(plan.punch ?? []).map((item) => (
+              <Pressable
+                key={item.id}
+                style={[s.punchPin, { left: `${item.x_pct}%`, top: `${item.y_pct}%`, borderColor: punchTone(item.severity, item.status) }]}
+                onPress={() => router.push('/quality-control' as never)}
+              >
+                <Text style={[s.punchPinT, { color: punchTone(item.severity, item.status) }]}>!</Text>
+              </Pressable>
+            ))}
+            {!punchMode && plan.pins.map((p) => {
+              const pan = PanResponder.create({
+                onStartShouldSetPanResponder: () => role === 'contractor',
+                onPanResponderMove: (_, g) =>
+                  setDrag({
+                    id: p.id,
+                    x: Math.min(98, Math.max(2, p.x_pct + g.dx / 2)),
+                    y: Math.min(98, Math.max(2, p.y_pct + g.dy / 2)),
+                  }),
+                onPanResponderRelease: (_, g) => {
+                  const nx = Math.min(98, Math.max(2, p.x_pct + g.dx / 2));
+                  const ny = Math.min(98, Math.max(2, p.y_pct + g.dy / 2));
+                  setDrag(null);
+                  savePin(p.id, nx, ny);
+                },
+              });
+              const x = drag?.id === p.id ? drag.x : p.x_pct;
+              const y = drag?.id === p.id ? drag.y : p.y_pct;
+              return (
+                <View key={p.id} {...pan.panHandlers} style={[s.pin, { left: `${x}%`, top: `${y}%` }]}>
+                  <Pressable onPress={() => pushRoomDetail(p.room_id, pathname)}>
+                    <Text style={s.pinT}>{p.label || '·'}</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+          {punchMode ? (
+            <Text style={s.punchModeHint}>Нажмите на план — добавится замечание в punch list</Text>
+          ) : null}
+        </>
       ) : (
         <View style={s.emptyBox}>
           <Text style={s.emptyTitle}>План не загружен</Text>
           <Text style={s.emptyHint}>
             1. Загрузите чертёж этажа{'\n'}
             2. Сверьте метки комнат с вкладкой «Комнаты» ({roomsCount} шт.){'\n'}
-            3. Нажмите метку — откроется карточка комнаты
+            3. Включите Punch list — отметьте дефект на плане
           </Text>
           {onOpenRooms ? (
             <Pressable onPress={onOpenRooms}>
@@ -140,8 +218,16 @@ const s = StyleSheet.create({
   fon: { backgroundColor: RenovaTheme.colors.primary },
   ft: { fontSize: 11 },
   fonT: { fontSize: 11, color: RenovaTheme.colors.surface },
-  mapWrap: { position: 'relative', minHeight: 180 },
-  img: { width: '100%', height: 180, backgroundColor: RenovaTheme.colors.surfaceMuted, borderRadius: 8 },
+  punchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  punchToggle: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  punchToggleOn: { backgroundColor: '#FEF2F2', borderColor: RenovaTheme.colors.dangerText },
+  punchToggleT: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted },
+  punchToggleTOn: { color: RenovaTheme.colors.dangerText },
+  punchHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, flex: 1 },
+  punchModeHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4 },
+  mapWrap: { position: 'relative', minHeight: MAP_H },
+  img: { width: '100%', height: MAP_H, backgroundColor: RenovaTheme.colors.surfaceMuted, borderRadius: 8 },
+  punchOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2 },
   emptyBox: {
     padding: 14,
     borderRadius: 10,
@@ -153,6 +239,20 @@ const s = StyleSheet.create({
   emptyTitle: { fontWeight: '700', fontSize: 14 },
   emptyHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
   link: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, marginTop: 4 },
-  pin: { position: 'absolute' },
+  pin: { position: 'absolute', zIndex: 1 },
   pinT: { backgroundColor: RenovaTheme.colors.primary, color: RenovaTheme.colors.surface, fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  punchPin: {
+    position: 'absolute',
+    zIndex: 3,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -11,
+    marginTop: -11,
+  },
+  punchPinT: { fontWeight: '900', fontSize: 13, lineHeight: 14 },
 });

@@ -846,6 +846,10 @@ class ProjectIssue(Base):
     status: Mapped[str] = mapped_column(String(16), default="open", index=True)
     assignee_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    floor_plan_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("floor_plans.id"), nullable=True, index=True)
+    x_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    y_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    photo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

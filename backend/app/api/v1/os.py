@@ -23,6 +23,10 @@ class IssueIn(BaseModel):
     room_id: str | None = None
     stage_id: str | None = None
     severity: str = "medium"
+    floor_plan_id: str | None = None
+    x_pct: float | None = None
+    y_pct: float | None = None
+    photo_key: str | None = None
 
 
 class CheckIn(BaseModel):
@@ -94,6 +98,7 @@ async def create_issue(
     issue = await iss.create_issue(
         db, project_id, body.title,
         description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
+        floor_plan_id=body.floor_plan_id, x_pct=body.x_pct, y_pct=body.y_pct, photo_key=body.photo_key,
     )
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueCreated", title=issue.title, body=issue.severity, link_path="/(customer)/(tabs)/control")
     return iss.issue_dict(issue)

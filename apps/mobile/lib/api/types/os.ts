@@ -82,4 +82,9 @@ export type ProjectIssue = {
   room_id?: string | null;
   stage_id?: string | null;
   due_at?: string | null;
+  floor_plan_id?: string | null;
+  x_pct?: number | null;
+  y_pct?: number | null;
+  photo_key?: string | null;
+  photo_url?: string | null;
 };

@@ -52,7 +52,7 @@ function IssueCard({ item, onClose, acting }: { item: ProjectIssue; onClose: (is
       <View style={styles.issueHeader}>
         <View style={styles.issueMain}>
           <Text style={styles.issueTitle}>{item.title}</Text>
-          <Text style={styles.issueMeta}>{statusLabel(item.status)} · {severityLabel(item.severity)}{dueLabel(item.due_at) ? ` · до ${dueLabel(item.due_at)}` : ''}</Text>
+          <Text style={styles.issueMeta}>{statusLabel(item.status)} · {severityLabel(item.severity)}{item.floor_plan_id ? ' · на плане' : ''}{dueLabel(item.due_at) ? ` · до ${dueLabel(item.due_at)}` : ''}</Text>
         </View>
         <View style={[styles.badge, { borderColor: tone }]}> 
           <Text style={[styles.badgeText, { color: tone }]}>{severityLabel(item.severity)}</Text>
