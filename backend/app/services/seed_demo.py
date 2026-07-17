@@ -1,4 +1,10 @@
-"""Демо-данные — 2 роли + гостевой заказчик для read-only."""
+"""Демо-данные — 2 роли + гостевой заказчик для read-only.
+
+Demo login (EXPO_PUBLIC_DEMO=1 in dev):
+  customer   +70000000001
+  contractor +70000000002
+  guest RO   +70000000003
+"""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -6,7 +12,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChatMessage, ChatMessageType, Project, User, UserRole, ProjectViewer
+from app.models.entities import ChatMessage, ChatMessageType, Project, Stage, StageStatus, User, UserRole, ProjectViewer
 from app.services import project_service as proj_svc
 from app.services import payment_service as pay_svc
 from app.services import chat_service as chat_svc
@@ -219,6 +225,27 @@ async def _seed_house_chats(
     )
 
 
+
+
+async def _ensure_apartment_in_progress(db: AsyncSession, project_id: str, contractor_id: str) -> None:
+    """Канонический demo-объект: исполнитель назначен, первый этап в работе."""
+    p = await proj_svc.get_project(db, project_id)
+    if not p:
+        return
+    if not p.contractor_id:
+        await proj_svc.assign_contractor(db, project_id, contractor_id)
+        p = await proj_svc.get_project(db, project_id)
+    if not p or not p.stages:
+        return
+    first = sorted(p.stages, key=lambda s: s.sort_order)[0]
+    if first.status != StageStatus.active:
+        first.status = StageStatus.active
+    if first.percent_complete < 15:
+        first.percent_complete = 15
+    if (p.progress_percent or 0) < 12:
+        p.progress_percent = 12.0
+    await db.commit()
+
 async def _ensure_house_demo(db: AsyncSession, customer_id: str) -> None:
     r = await db.execute(select(Project).where(Project.customer_id == customer_id, Project.property_type == "house"))
     if r.scalar_one_or_none():
@@ -295,6 +322,9 @@ async def ensure_demo_users(db: AsyncSession) -> None:
         await _ensure_house_demo(db, customer.id)
         r2 = await db.execute(select(Project).where(Project.customer_id == customer.id))
         existing_projects = list(r2.scalars().all())
+        apt = next((x for x in existing_projects if getattr(x, "property_type", "apartment") != "house"), None)
+        if apt:
+            await _ensure_apartment_in_progress(db, apt.id, contractor.id)
         await _seed_chats_for_customer_projects(db, customer, contractor, existing_projects)
         await _link_guest(db, existing_projects)
         return
@@ -315,5 +345,6 @@ async def ensure_demo_users(db: AsyncSession) -> None:
         ],
     )
     await pay_svc.create_payment(db, p.id, customer.id, "Аванс 30%", round(p.budget_planned * 0.3, 2), "advance", notes="Демо: подтвердите оплату на вкладке Финансы")
+    await _ensure_apartment_in_progress(db, p.id, contractor.id)
     await _seed_apartment_chats(db, p.id, customer.id, contractor.id)
     await _link_guest(db, [p])

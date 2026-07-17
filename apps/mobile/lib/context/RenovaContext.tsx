@@ -401,34 +401,41 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const draft = { ...wizard, ...extra };
     if (!draft.name.trim()) throw new Error('Укажите название проекта');
     const body = buildProjectCreatePayload(draft);
-    const p = await api.createProject(user.id, body);
+    const created = await api.createProject(user.id, body);
     if (draft.customer_budget && draft.customer_budget > 0) {
-      await api.patchProject(user.id, p.id, { customer_budget: Math.round(draft.customer_budget) });
+      await api.patchProject(user.id, created.id, { customer_budget: Math.round(draft.customer_budget) });
     }
-    const limit = normalizeCustomerBudget(p.customer_budget) ?? normalizeCustomerBudget(draft.customer_budget);
-    if (limit) await setCustomerBudget(p.id, limit);
+    const limit = normalizeCustomerBudget(created.customer_budget) ?? normalizeCustomerBudget(draft.customer_budget);
+    if (limit) await setCustomerBudget(created.id, limit);
+    let detail = created;
+    try {
+      detail = await api.getProject(user.id, created.id);
+    } catch {
+      /* POST-ответ достаточен как fallback */
+    }
     const refreshed = await enrichProjectsPendingPayments(user.id, await api.listProjects(user.id), user.role as UserRole);
     setProjects(refreshed);
-    const junkWizard = isDemoPhone(user.phone) && isJunkProjectName(p.name);
+    const junkWizard = isDemoPhone(user.phone) && isJunkProjectName(created.name);
     if (junkWizard) {
       const primary = pickPrimaryDemoProject(refreshed);
       const primaryId = primary?.id;
       if (primaryId) {
-        const detail = await api.getProject(user.id, primaryId);
-        setActiveProject(detail);
+        const primaryDetail = await api.getProject(user.id, primaryId);
+        setActiveProject(primaryDetail);
         await AsyncStorage.setItem(KEYS.projectId, primaryId);
         await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
         return {
-          id: p.id,
-          demoKeptPrimary: { createdName: p.name, activeName: primary?.name || detail.name },
+          id: created.id,
+          demoKeptPrimary: { createdName: created.name, activeName: primary?.name || primaryDetail.name },
         };
       }
     }
-    setActiveProject(p);
-    await AsyncStorage.setItem(KEYS.projectId, p.id);
+    setActiveProject(detail);
+    await AsyncStorage.setItem(KEYS.projectId, created.id);
+    await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
     await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
     await refreshProjects();
-    return { id: p.id };
+    return { id: created.id };
   }, [user, wizard, refreshProjects]);
 
   const updateProjectProfile = useCallback(async (patch: ProjectProfilePatch) => {
