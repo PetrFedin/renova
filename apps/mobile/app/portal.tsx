@@ -176,8 +176,17 @@ export default function PortalScreen() {
 
       <View style={s.card}>
         <Text style={s.cardHead}>Документы ({snapshot.documents_total})</Text>
+        {snapshot.documents.filter((d) => d.status === 'draft').length > 0 ? (
+          <View style={s.draftBlock}>
+            <Text style={s.draftHead}>Ожидают подписи</Text>
+            {snapshot.documents.filter((d) => d.status === 'draft').map((d) => (
+              <Text key={d.id} style={s.line}>{d.title} · черновик</Text>
+            ))}
+            <Text style={s.muted}>Подпишите в приложении Renova → Документы проекта</Text>
+          </View>
+        ) : null}
         {snapshot.documents.slice(0, 8).map((d) => (
-          <Text key={d.id} style={s.line}>{d.title}</Text>
+          <Text key={d.id} style={s.line}>{d.title}{d.status === 'draft' ? ' · черновик' : ''}</Text>
         ))}
       </View>
     </ScrollView>

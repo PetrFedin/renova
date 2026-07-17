@@ -3,10 +3,12 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { router } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { ProjectIssue } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 function statusLabel(status: string) {
   switch (status) {
@@ -99,6 +101,8 @@ export function QualityControlScreen() {
     try {
       await api.closeIssue(user.id, activeProject.id, issue.id);
       await load();
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');
     } finally {
       setActingId(null);
     }
@@ -132,6 +136,7 @@ export function QualityControlScreen() {
         <Pressable onPress={() => router.back()} hitSlop={12}><Text style={styles.back}>‹ Назад</Text></Pressable>
         <Text style={styles.title}>Контроль качества</Text>
         <Text style={styles.subtitle}>Замечания, дефекты и контроль устранения по проекту.</Text>
+        <OfflineSyncStatus compact />
       </View>
 
       {readOnly ? (
