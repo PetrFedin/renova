@@ -62,6 +62,16 @@ export async function downloadProjectPdf(userId: string, path: string, filename:
   await openPdfBlob(blob, filename, Platform.OS === 'web' ? 'download' : 'share');
 }
 
+/** Скачать файл по API path — PDF через share sheet на native, остальное через downloadFromApi */
+export async function downloadApiPath(userId: string, path: string, filename: string) {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  if (filename.toLowerCase().endsWith('.pdf') || normalized.toLowerCase().includes('.pdf')) {
+    await downloadProjectPdf(userId, normalized, filename);
+    return;
+  }
+  await downloadFromApi(userId, apiFileUrl(normalized), filename);
+}
+
 export function apiFileUrl(path: string) {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
   return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;

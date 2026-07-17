@@ -39,13 +39,13 @@ export const roomsApi = {
   },
   calcRoomMaterials: (userId: string, projectId: string, roomId: string) => req<{ room_id: string; items: { name: string; unit: string; qty: number; category: string; note?: string }[] }>(`/api/v1/projects/${projectId}/rooms/${roomId}/calc-materials`, { method: 'POST' }, userId),
   exportRoomPdf: async (userId: string, projectId: string, roomId: string) => {
-    const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/rooms/${roomId}/export.pdf`, { headers: { 'X-User-Id': userId } });
-    if (!r.ok) throw new Error('export failed');
-    const blob = await r.blob();
-    if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = `room-${roomId.slice(0,8)}.pdf`; a.click(); URL.revokeObjectURL(u); }
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/rooms/${roomId}/export.pdf`, `room-${roomId.slice(0, 8)}.pdf`);
   },
-  exportRoomAuditPdf: async (userId: string, projectId: string, roomId: string) => { const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100'; const r = await fetch(`${base}/api/v1/projects/${projectId}/rooms/${roomId}/audit.pdf`, { headers: { 'X-User-Id': userId } }); if (!r.ok) throw new Error('audit pdf'); const blob = await r.blob(); if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = `audit-${roomId.slice(0,8)}.pdf`; a.click(); URL.revokeObjectURL(u); } },
+  exportRoomAuditPdf: async (userId: string, projectId: string, roomId: string) => {
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/rooms/${roomId}/audit.pdf`, `audit-${roomId.slice(0, 8)}.pdf`);
+  },
   listRoomChangeRequests: (userId: string, projectId: string) =>
     req<RoomChangeRequest[]>(`/api/v1/projects/${projectId}/room-change-requests`, {}, userId),
   createRoomChangeRequest: (userId: string, projectId: string, body: object) =>

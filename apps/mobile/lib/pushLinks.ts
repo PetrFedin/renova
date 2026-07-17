@@ -86,6 +86,13 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
       return budgetTabRoute(role, 'summary');
     case 'document':
       return { pathname: '/documents', params: {} };
+    case 'issue':
+      return { pathname: '/quality-control', params: {} };
+    case 'approval':
+      return { pathname: '/approvals', params: {} };
+    case 'deadline':
+    case 'waste_reminder':
+      return tabsRoute(role, 'calendar');
     default:
       return null;
   }

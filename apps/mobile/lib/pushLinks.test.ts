@@ -26,3 +26,6 @@ console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.
 console.assert(resolveNotificationLink('stage_review')?.pathname === '/work-acceptance', 'notify acceptance');
 console.assert(resolveNotificationLink('unknown_xyz') === null, 'notify unknown');
 console.log('pushLinks: OK');
+
+console.assert(resolveNotificationLink('issue', 'contractor')?.pathname === '/quality-control', 'issue notify');
+console.assert(resolveNotificationLink('payment_pending', 'contractor')?.pathname.includes('contractor'), 'contractor budget');

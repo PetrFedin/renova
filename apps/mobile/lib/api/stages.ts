@@ -133,17 +133,12 @@ export const stagesApi = {
   getCommentReactions: (userId: string, projectId: string, stageId: string, commentId: string) => req<{ reactions: { user_id: string; reaction: string }[] }>(`/api/v1/projects/${projectId}/stages/${stageId}/comments/${commentId}/react`, {}, userId),
   exportStageAcceptance: async (userId: string, projectId: string, stageId: string, checklist?: string[]) => {
     const qs = checklist?.length ? `?checks=${encodeURIComponent(checklist.join('|'))}` : '';
-    const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/stages/${stageId}/acceptance.pdf${qs}`, { headers: { 'X-User-Id': userId } });
-    if (!response.ok) throw new Error('export failed');
-    const blob = await response.blob();
-    if (typeof window !== 'undefined') {
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `acceptance-${stageId.slice(0, 8)}.pdf`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    }
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(
+      userId,
+      `/api/v1/projects/${projectId}/stages/${stageId}/acceptance.pdf${qs}`,
+      `acceptance-${stageId.slice(0, 8)}.pdf`,
+    );
   },
   extendReworkSla: (userId: string, projectId: string, stageId: string, days = 1) => req(`/api/v1/projects/${projectId}/rework-sla/extend?stage_id=${stageId}&days=${days}`, { method: 'POST' }, userId),
   reworkSlaCheck: (userId: string, projectId: string) => req(`/api/v1/projects/${projectId}/rework-sla/check`, { method: 'POST' }, userId),

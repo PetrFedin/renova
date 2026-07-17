@@ -100,7 +100,35 @@ async def create_issue(
         description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
         floor_plan_id=body.floor_plan_id, x_pct=body.x_pct, y_pct=body.y_pct, photo_key=body.photo_key,
     )
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueCreated", title=issue.title, body=issue.severity, link_path="/(customer)/(tabs)/control")
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="IssueCreated",
+        title=issue.title,
+        body=issue.severity,
+        link_path="/quality-control",
+    )
+    from app.services import notification_service as notif_svc
+    from app.services import project_service as proj_svc
+
+    proj = await proj_svc.get_project(db, project_id)
+    if proj:
+        notify_targets = {
+            uid
+            for uid in (proj.customer_id, proj.contractor_id)
+            if uid and uid != user.id
+        }
+        for uid in notify_targets:
+            await notif_svc.notify(
+                db,
+                user_id=uid,
+                project_id=project_id,
+                notification_type="issue",
+                title=f"Новое замечание: {issue.title}",
+                body=issue.description or issue.severity,
+                link_path="/quality-control",
+            )
     return iss.issue_dict(issue)
 
 

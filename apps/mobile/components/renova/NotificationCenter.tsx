@@ -3,15 +3,18 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, AppNotification } from '@/lib/api';
-import { resolvePushLink } from '@/lib/pushLinks';
+import { resolveNotificationLink, resolvePushLink } from '@/lib/pushLinks';
+import type { OsRole } from '@/constants/osSections';
 import { SnoozeUntilPicker } from '@/components/renova/SnoozeUntilPicker';
 
 export function NotificationCenter({
   userId,
+  role = 'customer',
   compact,
   hideHeader,
 }: {
   userId: string;
+  role?: OsRole;
   compact?: boolean;
   /** Без заголовка — когда секция уже озаглавлена в профиле */
   hideHeader?: boolean;
@@ -41,10 +44,18 @@ export function NotificationCenter({
       {list.map(n => (
         <Pressable key={n.id} style={[s.item, !n.read && s.unread]} onPress={async () => {
           await api.readNotification(userId, n.id);
-          const back = n.return_to || '/(customer)/(tabs)/profile';
-          const target = resolvePushLink(n.link_path, back);
-          if (target) {
-            router.push({ pathname: target.pathname, params: target.params } as any);
+          const back = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
+          if (n.link_path) {
+            const target = resolvePushLink(n.link_path, back, role);
+            if (target) {
+              router.push({ pathname: target.pathname, params: target.params } as any);
+              setItems(await api.listNotifications(userId));
+              return;
+            }
+          }
+          const fallback = resolveNotificationLink(n.notification_type, role);
+          if (fallback) {
+            router.push({ pathname: fallback.pathname, params: fallback.params } as any);
           }
           setItems(await api.listNotifications(userId));
         }}>

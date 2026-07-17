@@ -43,21 +43,21 @@ export const osApi = {
     return req<ActivityItem[]>(`/api/v1/projects/${projectId}/activity${qs ? `?${qs}` : ''}`, {}, userId);
   },
   exportActivityDossier: async (userId: string, projectId: string) => {
-    const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/activity-dossier.pdf`, { headers: { 'X-User-Id': userId } });
-    if (!r.ok) throw new Error('dossier');
-    const blob = await r.blob();
-    if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = 'dossier.pdf'; a.click(); URL.revokeObjectURL(u); }
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/activity-dossier.pdf`, 'dossier.pdf');
   },
-  exportFullDossier: async (userId: string, projectId: string) => { const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100'; const r = await fetch(`${base}/api/v1/projects/${projectId}/full-dossier.pdf`, { headers: { 'X-User-Id': userId } }); if (!r.ok) throw new Error('pdf'); const blob = await r.blob(); if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = 'full-dossier.pdf'; a.click(); URL.revokeObjectURL(u); } },
+  exportFullDossier: async (userId: string, projectId: string) => {
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/full-dossier.pdf`, 'full-dossier.pdf');
+  },
   exportProjectPdf: async (userId: string, projectId: string) => {
-    const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/export.pdf`, { headers: { 'X-User-Id': userId } });
-    if (!r.ok) throw new Error('export failed');
-    const blob = await r.blob();
-    if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = `project-${projectId.slice(0,8)}.pdf`; a.click(); URL.revokeObjectURL(u); }
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/export.pdf`, `project-${projectId.slice(0, 8)}.pdf`);
   },
-  exportKpiWeeklyPdf: async (userId: string, projectId: string) => { const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100'; const r = await fetch(`${base}/api/v1/projects/${projectId}/kpi-weekly.pdf`, { headers: { 'X-User-Id': userId } }); if (!r.ok) throw new Error('kpi pdf'); const blob = await r.blob(); if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = 'kpi-week.pdf'; a.click(); URL.revokeObjectURL(u); } },
+  exportKpiWeeklyPdf: async (userId: string, projectId: string) => {
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/kpi-weekly.pdf`, 'kpi-week.pdf');
+  },
   kpiHistory: (userId: string, projectId: string) => req<{ margin: number; at: string }[]>(`/api/v1/projects/${projectId}/kpi-history`, {}, userId),
   kpiSnapshot: (userId: string, projectId: string) => req(`/api/v1/projects/${projectId}/kpi-snapshot`, { method: 'POST' }, userId),
 };
