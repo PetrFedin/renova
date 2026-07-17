@@ -25,6 +25,8 @@ export type ProjectSummary = {
   is_archived?: boolean;
   trashed_at?: string | null;
   estimate_locked_at?: string | null;
+  /** owner — можно archive/trash; guest — только просмотр в списке active */
+  access_mode?: 'owner' | 'contractor' | 'guest' | 'none';
 };
 
 export type EstimateLine = {

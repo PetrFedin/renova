@@ -438,6 +438,13 @@ async def purge_project(db: AsyncSession, project_id: str, user: User) -> None:
     await db.commit()
 
 
+
+async def user_owns_any_project(db: AsyncSession, user_id: str) -> bool:
+    from sqlalchemy import select, func
+    n = await db.scalar(select(func.count()).select_from(Project).where(Project.customer_id == user_id))
+    return bool(n)
+
+
 async def empty_trash(db: AsyncSession, user: User) -> int:
     if user.role.value != "customer":
         return 0

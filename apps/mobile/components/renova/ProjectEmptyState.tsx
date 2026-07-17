@@ -15,6 +15,7 @@ import { ProjectBucketToolbar, type ProjectBucket } from '@/components/renova/Pr
 import { useProjectBuckets } from '@/lib/hooks/useProjectBuckets';
 import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActions';
 import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
+import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 
 type Props = {
   role: OsRole;
@@ -49,7 +50,7 @@ function ProjectPickCard({
   pendingById,
   onPress,
   bucket = 'active',
-  canManage = false,
+  canManageProject = false,
   onArchive,
   onTrash,
   onRestore,
@@ -60,7 +61,7 @@ function ProjectPickCard({
   pendingById: Record<string, number>;
   onPress: () => void;
   bucket?: ProjectBucket;
-  canManage?: boolean;
+  canManageProject?: boolean;
   onArchive?: () => void;
   onTrash?: () => void;
   onRestore?: () => void;
@@ -83,7 +84,7 @@ function ProjectPickCard({
         <Text style={formMetaText.caption} numberOfLines={1}>{projectCardMeta(p, pendingById)}</Text>
         <Text style={s.progressLine} numberOfLines={1}>{progressLine}</Text>
       </Pressable>
-      {canManage ? (
+      {canManageProject ? (
         <ProjectCardLifecycleIcons
           bucket={bucket}
           onArchive={onArchive}
@@ -104,7 +105,8 @@ function ProjectSection({
   onPick,
   withGap,
   bucket,
-  canManage,
+  role,
+  readOnly,
   lifecycleHandlers,
 }: {
   title: string;
@@ -113,7 +115,8 @@ function ProjectSection({
   onPick: (id: string) => void;
   withGap?: boolean;
   bucket?: ProjectBucket;
-  canManage?: boolean;
+  role?: import('@/lib/api').UserRole;
+  readOnly?: boolean;
   lifecycleHandlers?: (id: string) => {
     onArchive?: () => void;
     onTrash?: () => void;
@@ -133,7 +136,7 @@ function ProjectSection({
           pendingById={pendingById}
           onPress={() => onPick(p.id)}
           bucket={bucket}
-          canManage={canManage}
+          canManageProject={canManageProjectLifecycle(p, role, readOnly)}
           {...(lifecycleHandlers ? lifecycleHandlers(p.id) : {})}
         />
       ))}
@@ -151,9 +154,9 @@ export function ProjectEmptyState({
   onSelectProject,
 }: Props) {
   const pathname = usePathname();
-  const { user, projects, loadProject, showPaywall, recoverSession, ensureActiveProject, projectResolving } = useRenova();
-  const canManage = user?.role === 'customer';
-  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, loading: bucketLoading, reload: reloadBuckets } = useProjectBuckets(user?.id, canManage);
+  const { user, projects, loadProject, showPaywall, recoverSession, ensureActiveProject, projectResolving, readOnly } = useRenova();
+  const canManageBuckets = user?.role === 'customer' && !readOnly;
+  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, loading: bucketLoading, reload: reloadBuckets } = useProjectBuckets(user?.id, canManageBuckets);
   const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
 
@@ -233,16 +236,16 @@ export function ProjectEmptyState({
         onChange={setBucket}
         archivedCount={archivedCount}
         trashedCount={trashedCount}
-        canManage={canManage}
+        canManage={canManageBuckets}
       />
       {bucketLoading ? <ActivityIndicator color={RenovaTheme.colors.primary} style={{ marginVertical: 12 }} /> : null}
-      {bucket === 'trashed' && canManage && trashedCount > 0 ? (
+      {bucket === 'trashed' && canManageBuckets && trashedCount > 0 ? (
         <PrimaryButton title="Очистить корзину" variant="outline" onPress={emptyTrash} />
       ) : null}
 
       {displayProjects.length > 0 ? (
         <>
-          <ProjectSection title="В работе" items={inProgress} pendingById={pendingById} onPick={pick} bucket={bucket} canManage={canManage} lifecycleHandlers={lifecycleHandlers} />
+          <ProjectSection title="В работе" items={inProgress} pendingById={pendingById} onPick={pick} bucket={bucket} role={user?.role} readOnly={readOnly} lifecycleHandlers={lifecycleHandlers} />
           <ProjectSection
             title="Завершённые"
             items={completed}
@@ -250,7 +253,8 @@ export function ProjectEmptyState({
             onPick={pick}
             withGap={inProgress.length > 0}
             bucket={bucket}
-            canManage={canManage}
+            role={user?.role}
+            readOnly={readOnly}
             lifecycleHandlers={lifecycleHandlers}
           />
         </>

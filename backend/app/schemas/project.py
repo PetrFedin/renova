@@ -168,11 +168,12 @@ class ProjectOut(BaseModel):
     is_archived: bool = False
     trashed_at: str | None = None
     estimate_locked_at: str | None = None
+    # owner | contractor | guest | none — archive/trash только для owner
+    access_mode: str = "owner"
 
 
 class ProjectDetail(ProjectOut):
     read_only: bool = False
-    access_mode: str = "owner"  # owner | contractor | guest
     estimate_lines: list[EstimateLineOut]
     stages: list[StageOut]
     rooms: list[RoomOut] = []

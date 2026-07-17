@@ -28,7 +28,7 @@ def _filter_stages_for_user(p, user: User):
 
 
 
-def _project_out(p) -> ProjectOut:
+def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
     payments = getattr(p, "payments", None) or []
     pending = sum(1 for pay in payments if pay.status == PaymentStatus.pending)
     return ProjectOut(
@@ -48,7 +48,26 @@ def _project_out(p) -> ProjectOut:
         is_archived=bool(getattr(p, "is_archived", False)),
         trashed_at=p.trashed_at.isoformat() if getattr(p, "trashed_at", None) else None,
         estimate_locked_at=p.estimate_locked_at.isoformat() if getattr(p, "estimate_locked_at", None) else None,
+        access_mode=access_mode,
     )
+
+
+async def _project_out_for_user(db, user: User, p) -> ProjectOut:
+    from app.services import team_service as team_svc
+
+    access_mode, _read_only = await team_svc.project_access_mode(db, user, p)
+    return _project_out(p, access_mode=access_mode)
+
+
+def _lifecycle_http_error(e: ValueError) -> HTTPException:
+    code = str(e)
+    if code == "forbidden":
+        return HTTPException(403, "Только владелец объекта может выполнить это действие")
+    if code == "trashed":
+        return HTTPException(409, "Объект в корзине — восстановите или удалите навсегда")
+    if code == "not_found":
+        return HTTPException(404, "Проект не найден")
+    return HTTPException(404, "Проект не найден")
 
 
 async def _detail(db, p, user: User | None = None) -> ProjectDetail:
@@ -97,7 +116,13 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
     if user:
         from app.services import team_service as team_svc
         access_mode, read_only = await team_svc.project_access_mode(db, user, p)
-    return ProjectDetail(**_project_out(p).model_dump(), estimate_lines=lines, stages=stages, rooms=rooms, read_only=read_only, access_mode=access_mode)
+    return ProjectDetail(
+        **_project_out(p, access_mode=access_mode).model_dump(),
+        estimate_lines=lines,
+        stages=stages,
+        rooms=rooms,
+        read_only=read_only,
+    )
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -109,7 +134,7 @@ async def list_projects(
     if bucket not in ("active", "archived", "trashed"):
         bucket = "active"
     projects = await svc.list_projects_for_user(db, user, bucket=bucket)
-    return [_project_out(p) for p in projects]
+    return [await _project_out_for_user(db, user, p) for p in projects]
 
 
 @router.post("", response_model=ProjectDetail)
@@ -140,19 +165,17 @@ async def archive_project(project_id: str, user: User = Depends(get_current_user
     try:
         p = await svc.archive_project(db, project_id, user)
     except ValueError as e:
-        if str(e) == "forbidden":
-            raise HTTPException(403, "Только заказчик может архивировать объект")
-        raise HTTPException(404)
-    return _project_out(p)
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
 
 
 @router.post("/{project_id}/unarchive")
 async def unarchive_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     try:
         p = await svc.unarchive_project(db, project_id, user)
-    except ValueError:
-        raise HTTPException(403)
-    return _project_out(p)
+    except ValueError as e:
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
 
 
 @router.post("/{project_id}/trash")
@@ -160,25 +183,25 @@ async def trash_project(project_id: str, user: User = Depends(get_current_user),
     try:
         p = await svc.trash_project(db, project_id, user)
     except ValueError as e:
-        if str(e) == "forbidden":
-            raise HTTPException(403, "Только заказчик может удалить объект")
-        raise HTTPException(404)
-    return _project_out(p)
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
 
 
 @router.post("/{project_id}/restore")
 async def restore_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     try:
         p = await svc.restore_project(db, project_id, user)
-    except ValueError:
-        raise HTTPException(403)
-    return _project_out(p)
+    except ValueError as e:
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
 
 
 @router.delete("/trash/empty")
 async def empty_trash(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.customer:
         raise HTTPException(403)
+    if not await svc.user_owns_any_project(db, user.id):
+        raise HTTPException(403, "Только владелец объекта может выполнить это действие")
     n = await svc.empty_trash(db, user)
     return {"deleted": n}
 
@@ -190,7 +213,7 @@ async def purge_project(project_id: str, user: User = Depends(get_current_user),
     except ValueError as e:
         if str(e) == "not_trashed":
             raise HTTPException(400, "Сначала переместите объект в корзину")
-        raise HTTPException(403)
+        raise _lifecycle_http_error(e)
     return {"ok": True}
 
 @router.patch("/{project_id}", response_model=ProjectDetail)

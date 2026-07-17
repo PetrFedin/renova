@@ -15,6 +15,7 @@ import { ProjectBucketToolbar, type ProjectBucket } from '@/components/renova/Pr
 import { useProjectBuckets } from '@/lib/hooks/useProjectBuckets';
 import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActions';
 import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
+import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import type { OsRole } from '@/constants/osSections';
 
 function projectMeta(p: ProjectSummary, pendingById: Record<string, number>): string {
@@ -44,7 +45,7 @@ function ProjectPickerRow({
   pendingById,
   onSelect,
   bucket = 'active',
-  canManage = false,
+  canManageProject = false,
   lifecycle,
 }: {
   p: ProjectSummary;
@@ -54,7 +55,7 @@ function ProjectPickerRow({
   pendingById: Record<string, number>;
   onSelect: (id: string) => void;
   bucket?: ProjectBucket;
-  canManage?: boolean;
+  canManageProject?: boolean;
   lifecycle?: {
     onArchive?: () => void;
     onTrash?: () => void;
@@ -64,7 +65,7 @@ function ProjectPickerRow({
   };
 }) {
   return (
-    <View style={[s.itemWrap, canManage && s.itemWithActions, active && s.itemOn]} pointerEvents="box-none">
+    <View style={[s.itemWrap, canManageProject && s.itemWithActions, active && s.itemOn]} pointerEvents="box-none">
       <Pressable
         style={s.item}
         onPress={() => onSelect(p.id)}
@@ -86,7 +87,7 @@ function ProjectPickerRow({
           <Ionicons name="checkmark-circle" size={20} color={RenovaTheme.colors.accent} />
         ) : null}
       </Pressable>
-      {canManage ? (
+      {canManageProject ? (
         <ProjectCardLifecycleIcons
           bucket={bucket}
           onArchive={lifecycle?.onArchive}
@@ -104,10 +105,10 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
   const pathname = usePathname();
   const topInset = useTopInset();
   const { pushTab, pushScreen } = useOsNavFromHere(role);
-  const { user, projects, activeProject, loadProject, showPaywall } = useRenova();
-  const canManage = user?.role === 'customer';
+  const { user, projects, activeProject, loadProject, showPaywall, readOnly } = useRenova();
+  const canManageBuckets = user?.role === 'customer' && !readOnly;
   const [open, setOpen] = useState(false);
-  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, reload: reloadBuckets } = useProjectBuckets(open ? user?.id : undefined, canManage);
+  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, reload: reloadBuckets } = useProjectBuckets(open ? user?.id : undefined, canManageBuckets);
   const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
@@ -202,8 +203,8 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
             >
               <View style={s.menu}>
                 <Text style={s.menuHead}>Объекты</Text>
-                <ProjectBucketToolbar bucket={bucket} onChange={setBucket} archivedCount={archivedCount} trashedCount={trashedCount} canManage={canManage} />
-                {bucket === 'trashed' && canManage && trashedCount > 0 ? (
+                <ProjectBucketToolbar bucket={bucket} onChange={setBucket} archivedCount={archivedCount} trashedCount={trashedCount} canManage={canManageBuckets} />
+                {bucket === 'trashed' && canManageBuckets && trashedCount > 0 ? (
                   <Pressable style={s.emptyTrashBtn} onPress={emptyTrash}>
                     <Text style={s.emptyTrashT}>Очистить корзину</Text>
                   </Pressable>
@@ -254,7 +255,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                         pendingById={pendingById}
                         onSelect={select}
                         bucket={bucket}
-                        canManage={canManage}
+                        canManageProject={canManageProjectLifecycle(p, user?.role, readOnly)}
                         lifecycle={lifecycleHandlers(p.id)}
                       />
                     ))}
@@ -274,7 +275,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                         pendingById={pendingById}
                         onSelect={select}
                         bucket={bucket}
-                        canManage={canManage}
+                        canManageProject={canManageProjectLifecycle(p, user?.role, readOnly)}
                         lifecycle={lifecycleHandlers(p.id)}
                       />
                     ))}
