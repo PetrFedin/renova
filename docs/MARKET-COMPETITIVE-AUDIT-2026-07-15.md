@@ -1,5 +1,8 @@
 # Renova — рыночный аудит и внутренний gap-анализ
 
+> **Post-P2.5 update →** [`RENOVA-COMPETITIVE-GAP-PLAN-2026-07-17.md`](RENOVA-COMPETITIVE-GAP-PLAN-2026-07-17.md) — синтез конкурентов, UI/UX, тупиков и P3/P4 roadmap.
+
+
 **Дата:** 2026-07-15  
 **Репозиторий:** https://github.com/PetrFedin/renova  
 **Ветка анализа:** `develop` (после v0.2.0 на `main`)  
