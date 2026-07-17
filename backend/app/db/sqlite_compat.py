@@ -77,10 +77,26 @@ def ensure_os_schema() -> None:
             CREATE TABLE IF NOT EXISTS project_issues (
               id TEXT PRIMARY KEY, project_id TEXT NOT NULL, room_id TEXT, stage_id TEXT,
               title TEXT NOT NULL, description TEXT, severity TEXT DEFAULT 'medium',
-              status TEXT DEFAULT 'open', assignee_id TEXT, due_at TEXT, created_at TEXT, closed_at TEXT
+              status TEXT DEFAULT 'open', assignee_id TEXT, due_at TEXT,
+              floor_plan_id TEXT, x_pct REAL, y_pct REAL, photo_key TEXT,
+              created_at TEXT, closed_at TEXT
             );
             """
         )
+    if "project_issues" in tables:
+        pi = cols("project_issues")
+        for col, typ in [
+            ("floor_plan_id", "TEXT"),
+            ("x_pct", "REAL"),
+            ("y_pct", "REAL"),
+            ("photo_key", "TEXT"),
+        ]:
+            if col not in pi:
+                try:
+                    c.execute(f"ALTER TABLE project_issues ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
     if "stages" in tables:
         st = cols("stages") if "stages" in tables else set()
         if "checklist_json" not in st:
@@ -218,6 +234,20 @@ def ensure_os_schema() -> None:
         """)
 
     # Renova OS: поля работ (исполнитель, фактические даты)
+    if "project_issues" in tables:
+        pi = cols("project_issues")
+        for col, typ in [
+            ("floor_plan_id", "TEXT"),
+            ("x_pct", "REAL"),
+            ("y_pct", "REAL"),
+            ("photo_key", "TEXT"),
+        ]:
+            if col not in pi:
+                try:
+                    c.execute(f"ALTER TABLE project_issues ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
     if "stages" in tables:
         st = cols("stages")
         for col, ddl in [
