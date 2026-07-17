@@ -28,6 +28,22 @@ def _check_webhook_secret(x_esign_secret: str | None) -> None:
         raise HTTPException(401, "invalid_webhook_secret")
 
 
+@router.get("/health")
+async def esign_health(_user: User = Depends(get_current_user)):
+    """P3-W11: staging probe — kontur mode + webhook URLs для DevOps."""
+    base = (settings.public_base_url or "http://127.0.0.1:8100").rstrip("/")
+    secret_set = bool(settings.esign_webhook_secret)
+    mode = (settings.kontur_mode or "off").strip().lower()
+    return {
+        "kontur_mode": mode,
+        "kontur_configured": bool(settings.kontur_api_key) and mode in ("sandbox", "live"),
+        "webhook_kontur": f"{base}/api/v1/esign/webhooks/kontur",
+        "webhook_goskey": f"{base}/api/v1/esign/webhooks/goskey",
+        "esign_webhook_secret_set": secret_set,
+        "providers": list_providers(),
+    }
+
+
 @router.get("/providers")
 async def esign_providers(_user: User = Depends(get_current_user)):
     """Список провайдеров подписи: available зависит от env (KONTUR_*/GOSKEY_*)."""

@@ -142,3 +142,19 @@ async def test_kontur_webhook_idempotent(db, monkeypatch):
     )
     assert second is not None
     assert second.signed_at == signed_at
+
+
+@pytest.mark.asyncio
+async def test_esign_health_endpoint():
+    from httpx import ASGITransport, AsyncClient
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        user = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
+        r = await client.get("/api/v1/esign/health", headers={"X-User-Id": user["id"]})
+        assert r.status_code == 200
+        body = r.json()
+        assert "webhook_kontur" in body
+        assert body["webhook_kontur"].endswith("/api/v1/esign/webhooks/kontur")
+        assert "kontur_mode" in body
