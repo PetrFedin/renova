@@ -247,7 +247,9 @@ async def _ensure_apartment_in_progress(db: AsyncSession, project_id: str, contr
     await db.commit()
 
 async def _ensure_house_demo(db: AsyncSession, customer_id: str) -> None:
-    r = await db.execute(select(Project).where(Project.customer_id == customer_id, Project.property_type == "house"))
+    r = await db.execute(
+        select(Project.id).where(Project.customer_id == customer_id, Project.property_type == "house").limit(1)
+    )
     if r.scalar_one_or_none():
         return
     await proj_svc.create_project(

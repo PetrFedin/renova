@@ -416,6 +416,18 @@ def ensure_os_schema() -> None:
             except Exception:
                 pass
 
+
+    if "payments" in tables:
+        pay = cols("payments")
+        if "yookassa_payment_id" not in pay:
+            try:
+                c.execute("ALTER TABLE payments ADD COLUMN yookassa_payment_id TEXT")
+                c.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_payments_yookassa_payment_id ON payments(yookassa_payment_id)"
+                )
+            except Exception:
+                pass
+
     if "chat_thread_participants" not in tables:
         c.executescript("""
             CREATE TABLE IF NOT EXISTS chat_thread_participants (

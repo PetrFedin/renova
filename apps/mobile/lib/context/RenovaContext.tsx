@@ -199,18 +199,25 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       setReadOnly(false);
     }
     const pendingPick = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
-    const explicitPick = await AsyncStorage.getItem(SESSION_KEYS.projectExplicitlyPicked);
-    if (pendingPick === '1' || (isDemoPhone(u.phone) && !explicitPick && enriched.length > 0)) {
-      if (!pendingPick) await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
+    // pendingProjectPick=1 — только явный экран выбора (onboarding); demo auto-load ниже
+    if (pendingPick === '1') {
       setActiveProject(null);
       return;
     }
     const pid = await AsyncStorage.getItem(KEYS.projectId);
     const role = inferDemoRole(u, await AsyncStorage.getItem('renova_user_role'));
-    const p = await loadActiveProject(u.id, enriched, pid, role);
+    const demoPick =
+      isDemoPhone(u.phone) && enriched.length > 0
+        ? pickPrimaryDemoProject(enriched)?.id ?? enriched[0]?.id
+        : null;
+    const p = await loadActiveProject(u.id, enriched, demoPick ?? pid, role);
     if (p) {
       setReadOnly(!!p.read_only);
       setActiveProject(p);
+      if (isDemoPhone(u.phone)) {
+        await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
+        await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
+      }
     } else {
       setActiveProject(null);
     }

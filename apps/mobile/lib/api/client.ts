@@ -109,6 +109,8 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
 
 export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
+const REQUEST_TIMEOUT_MS = 20_000;
+
 export async function req<T>(path: string, opts: RequestInit = {}, userId?: string): Promise<T> {
   const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   const headers: Record<string, string> = {
@@ -118,8 +120,14 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
   if (userId) headers['X-User-Id'] = userId;
   // FormData must manage its own multipart boundary — drop forced JSON content-type
   if (isFormData) delete headers['Content-Type'];
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...opts,
+      headers,
+      signal: opts.signal ?? controller.signal,
+    });
     if (!res.ok) {
       const txt = await res.text();
       const parsed = parseApiErrorBody(txt, res.status);
@@ -130,11 +138,16 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
     if (canUseDurableCache(opts) && data !== undefined) await saveDurableCache(path, userId, data);
     return data as T;
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(0, 'Сервер не отвечает. Проверьте, что backend запущен (npm run backend:dev).');
+    }
     if (canUseDurableCache(opts) && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) return fallback;
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
