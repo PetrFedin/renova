@@ -17,9 +17,15 @@ export const miscApi = {
       userId,
     ),
   exchangePortalToken: (token: string) =>
-    req<{ user_id: string; project_id: string; project_name: string; read_only: boolean; access_mode: string; role: string }>(
+    req<{ user_id: string; project_id: string; project_name: string; read_only: boolean; access_mode: string; role: string; scopes?: string[] }>(
       '/api/v1/auth/portal/session',
       { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalAcceptStage: (projectId: string, acceptanceId: string, token: string, comment?: string) =>
+    req<{ id: string; stage_id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/work-acceptances/${acceptanceId}/accept`,
+      { method: 'POST', body: JSON.stringify({ token, comment }) },
       undefined,
     ),
   portalSnapshot: (userId: string, projectId: string) =>
@@ -32,6 +38,8 @@ export const miscApi = {
       documents_total: number;
       selections: { id: string; title: string; category: string; status: string; price: number; allowance?: number | null }[];
       selections_total: number;
+      pending_acceptances?: { id: string; stage_id: string; stage_name?: string | null; status: string }[];
+      can_accept_stage?: boolean;
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
   rejectApproval: (userId: string, projectId: string, itemId: string, type: string, reason: string) => req(`/api/v1/projects/${projectId}/approvals/${itemId}/reject`, { method: 'POST', body: JSON.stringify({ type, reason }) }, userId),

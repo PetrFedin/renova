@@ -1,31 +1,53 @@
-# P3-WAVE3 — Field, payments, IA (2026-07-17)
+# P3 Wave 3 — Field, Payments, IA
 
+**Дата:** 2026-07-17  
 **Ветка:** `develop`  
-**Основание:** `RENOVA-COMPETITIVE-GAP-PLAN-2026-07-17.md`
+**Связь:** `docs/RENOVA-COMPETITIVE-GAP-PLAN-2026-07-17.md` (P3.1b, P3.2a/c, P3.3a, P3.4)
 
-## Закрыто в этой волне
+## Сделано
 
-| ID | Задача | Файлы | DoD |
-|----|--------|-------|-----|
-| P3.1c | SBP clipboard | `PaymentDetailSheet.tsx`, `expo-clipboard` | Кнопка «Скопировать сумму» + подсказка открыть банк |
-| P3.1b | YuKassa webhook idempotency | `yookassa_service.py`, `test_yookassa_project_payment.py` | Повторный webhook → `duplicate: true`, один PaymentApproved |
-| P3.2c | CO → budget line | `change_order_service.py`, `budget_service.apply_change_order_to_budget`, `test_co_budget_line.py` | Approve CO → `budget_planned` + строка works `[co:id]` |
-| P3.3a | Punch photo on tap | `FloorPlanPanel.tsx` | Камера при tap в punch mode → `photo_key` на issue → QC |
-| P3.4 | Control deprecated | `legacyRoutes.ts` | `/control` → `/quality-control` (customer + contractor) |
-| P3.4 | finance-center | `routeRegistry.ts`, `finance-center.tsx` | `visibility: hidden`, redirect → budget › payments |
-| P3.4 | Schedule hub | `work-schedule.tsx`, `WorkScheduleSummaryCard` | Redirect → `/calendar` |
+### A. P3.2c — CO approve → budget line
+- `budget_service.apply_change_order_to_budget()` — строка «Доп. работы» с маркером `[co:{id}]`, идемпотентно
+- `change_order_service.approve()` — budget line + `project.budget_planned += amount`
+- `budget_summary()` — `total_plan = max(line_total, project.budget_planned)` для корректного hub после CO
+- Тест: `backend/tests/test_change_order_budget.py`
+- Mobile: `EstimateChangesLayer` уже вызывает `onProjectReload()` после approve
 
-## Тесты
+### B. P3.3a — Punch photo on tap
+- `FloorPlanPanel.tsx` — tap в punch mode → камера → `photo_key` → `createIssue`
+- Backend: `issue_service.create_issue(photo_key=…)` + колонка `project_issues.photo_key`
+- Verified: flow redirect → `/quality-control` + Alert
+
+### C. P3.4 — IA cleanup
+- `/control` tab → redirect `/quality-control` (legacyRoutes, control.tsx, pushLinks)
+- `finance-center` — `visibility: 'hidden'` в routeRegistry (redirect route сохранён)
+- `/work-schedule` → calendar (уже было; WorkScheduleScreen returnTo → `/calendar`)
+
+### D. P3.1b — YuKassa webhook idempotency
+- `yookassa_service.process_webhook()` — `duplicate: True` если payment не pending
+- Тест: `test_webhook_duplicate_does_not_double_confirm` (+ существующий idempotent test)
+
+### E. P3.2a — Portal accept stage (partial)
+- `portal_token_service` — scopes: `read`, `accept_stage`
+- `POST /projects/{id}/portal-link` — заказчик, опция `allow_accept_stage`
+- `POST /portal/projects/{id}/work-acceptances/{id}/accept` — magic token + scope
+- `portal.tsx` — кнопка «Принять этап» при pending + write scope
+- Snapshot: `pending_acceptances`, `can_accept_stage`
+
+## Verify
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/test_co_budget_line.py tests/test_yookassa_project_payment.py tests/test_project_lifecycle.py -q
+cd backend && .venv/bin/python -m pytest tests/test_project_lifecycle.py tests/test_yookassa_project_payment.py tests/test_change_order_budget.py -q
+npm run test:priority
 ```
 
-## Следующий backlog (P3-W4+)
+## Backlog (следующая волна)
 
-1. **Portal v2** — accept stage + sign act + pay pending (magic link write)
-2. **YuKassa staging keys** — `eas.json`, `.env.staging`, no auto-demo in staging
-3. **Kontur live webhook** — `signed_at` from sandbox/production
-4. **CO → eSign act** — документ на доп. работы после approve
-5. **Offline parity** — issues/documents queue UI (`offlineUi.ts`)
-6. **Registry v3** — promote GA, delete wip routes (analytics, reports)
+| ID | Задача | Effort |
+|----|--------|--------|
+| P3.2a+ | Portal sign act + pay pending | L |
+| P3.1 | YuKassa staging E2E с live keys | M |
+| P3.1 | Kontur webhook → signed_at | M |
+| P3.4e | Home unified action queue | M |
+| P3.5 | Registry v3 — delete wip routes | S |
+| P4 | Offline: documents, issues queue UI | L |

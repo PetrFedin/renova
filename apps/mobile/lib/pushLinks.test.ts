@@ -24,6 +24,7 @@ const payContractor = resolveNotificationLink('payment_pending', 'contractor');
 console.assert(payContractor?.pathname.includes('(contractor)'), 'notify payment contractor');
 console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.tab === 'payments', 'finance-center redirect');
 console.assert(resolvePushLink('/work-schedule', '/home', 'customer')?.pathname.includes('calendar'), 'work-schedule redirect');
+console.assert(resolvePushLink('/control', '/home', 'customer')?.pathname === '/quality-control', 'control redirect');
 console.assert(resolveNotificationLink('stage_review')?.pathname === '/work-acceptance', 'notify acceptance');
 console.assert(resolveNotificationLink('unknown_xyz') === null, 'notify unknown');
 console.log('pushLinks: OK');

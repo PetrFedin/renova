@@ -53,9 +53,10 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
         "user_id": user.id,
         "project_id": project.id,
         "project_name": project.name,
-        "read_only": read_only,
+        "read_only": bool(claims.get("read_only", read_only)),
         "access_mode": mode,
         "role": user.role.value,
+        "scopes": claims.get("scopes", ["read"]),
     }
 
 
@@ -63,6 +64,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
 async def create_viewer_portal_link(
     project_id: str,
     viewer_user_id: str,
+    body: PortalLinkCreate = PortalLinkCreate(),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -89,7 +91,30 @@ async def create_viewer_portal_link(
     if not guest:
         raise HTTPException(404, "viewer_not_found")
 
-    token = portal_tok.create_portal_token(project_id=project_id, user_id=viewer_user_id)
+    scopes = ["read"]
+    if body.allow_accept_stage:
+        if guest.id != p.customer_id:
+            raise HTTPException(403, "accept_stage_only_for_customer")
+        scopes = ["read", "accept_stage"]
+    token = portal_tok.create_portal_token(project_id=project_id, user_id=viewer_user_id, scopes=scopes)
+    return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
+
+
+
+
+@router.post("/projects/{project_id}/portal-link", response_model=PortalLinkOut)
+async def create_customer_portal_link(
+    project_id: str,
+    body: PortalLinkCreate = PortalLinkCreate(),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Заказчик: magic link для себя (web portal, опционально приёмка этапа)."""
+    p = await require_project(db, project_id, user, write=True)
+    if user.id != p.customer_id:
+        raise HTTPException(403, "Только заказчик")
+    scopes = ["read", "accept_stage"] if body.allow_accept_stage else ["read"]
+    token = portal_tok.create_portal_token(project_id=project_id, user_id=user.id, scopes=scopes)
     return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
 
 
@@ -105,8 +130,7 @@ async def portal_snapshot(
 
     from app.services import schedule_service as sched
     from app.services import payment_service as pay_svc
-    from app.services import acceptance_service as acc_svc
-    from app.models.entities import WorkAcceptance, AcceptanceStatus
+    from app.models.entities import WorkAcceptance, AcceptanceStatus, Stage
     from app.services import project_document_service as docs_svc
     from sqlalchemy import select
     from app.models.entities import SelectionItem
@@ -132,7 +156,7 @@ async def portal_snapshot(
     ).scalars().all()
     pending_acceptances = []
     for row in pending_acc_rows[:5]:
-        stage = await db.get(__import__('app.models.entities', fromlist=['Stage']).Stage, row.stage_id)
+        stage = await db.get(Stage, row.stage_id)
         pending_acceptances.append({
             "id": row.id,
             "stage_id": row.stage_id,
@@ -188,7 +212,6 @@ async def portal_accept_work(
         activate_next_stage,
     )
     from app.services import activity_service as act
-    from app.services import notification_service as notif
 
     user = await db.get(User, claims["user_id"])
     if not user:

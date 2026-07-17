@@ -52,7 +52,7 @@ function itemMeta(item: WorkScheduleItem) {
 }
 
 function openStageFromSchedule(stageId: string) {
-  router.push(`/stage/${stageId}?returnTo=${encodeURIComponent('/work-schedule')}`);
+  router.push(`/stage/${stageId}?returnTo=${encodeURIComponent('/calendar')}`);
 }
 
 type ItemCardProps = {

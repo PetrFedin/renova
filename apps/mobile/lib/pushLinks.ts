@@ -32,6 +32,10 @@ export function resolvePushLink(
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
+  if (canonicalPath === '/control') {
+    return { pathname: '/quality-control', params: { returnTo: rt } };
+  }
+
   if (canonicalPath === '/work-schedule') {
     const target = calendarTabRoute(role);
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };

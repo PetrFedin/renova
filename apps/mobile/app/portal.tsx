@@ -1,6 +1,6 @@
 /** P2.1 Web client portal — read-only по magic link ?token= */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
@@ -11,7 +11,8 @@ const PORTAL_USER_KEY = 'renova:portal:user';
 export default function PortalScreen() {
   const { token } = useLocalSearchParams<{ token?: string }>();
   const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<{ user_id: string; project_id: string; project_name: string } | null>(null);
+  const [session, setSession] = useState<{ user_id: string; project_id: string; project_name: string; scopes?: string[]; read_only?: boolean } | null>(null);
+  const [portalToken, setPortalToken] = useState('');
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof api.portalSnapshot>> | null>(null);
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function PortalScreen() {
           Alert.alert('Портал', 'Нужна ссылка с token');
           return;
         }
+        setPortalToken(tok);
         const sess = await api.exchangePortalToken(tok);
         await AsyncStorage.setItem(PORTAL_USER_KEY, sess.user_id);
         if (cancelled) return;
@@ -64,6 +66,32 @@ export default function PortalScreen() {
       <Text style={s.title}>{snapshot.project.name}</Text>
       {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
       <Text style={s.ro}>Только просмотр · {session.project_name}</Text>
+
+      {(snapshot.pending_acceptances?.length ?? 0) > 0 && (session.scopes?.includes('accept_stage') || snapshot.can_accept_stage) && !session.read_only ? (
+        <View style={s.card}>
+          <Text style={s.cardHead}>Приёмка этапов</Text>
+          {snapshot.pending_acceptances!.map((acc) => (
+            <View key={acc.id} style={s.acceptRow}>
+              <Text style={s.line}>{acc.stage_name || 'Этап'} · ждёт решения</Text>
+              <Pressable
+                style={s.acceptBtn}
+                onPress={async () => {
+                  try {
+                    await api.portalAcceptStage(session.project_id, acc.id, portalToken);
+                    const snap = await api.portalSnapshot(session.user_id, session.project_id);
+                    setSnapshot(snap);
+                    Alert.alert('Принято', `Этап «${acc.stage_name || 'работы'}» принят`);
+                  } catch {
+                    Alert.alert('Ошибка', 'Не удалось принять этап');
+                  }
+                }}
+              >
+                <Text style={s.acceptBtnT}>Принять этап</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <View style={s.card}>
         <Text style={s.cardHead}>Расписание</Text>
@@ -116,4 +144,7 @@ const s = StyleSheet.create({
   card: { ...card, gap: 6 },
   cardHead: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
   line: { fontSize: 14, color: RenovaTheme.colors.text },
+  acceptRow: { gap: 8, marginBottom: 8 },
+  acceptBtn: { alignSelf: 'flex-start', backgroundColor: RenovaTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  acceptBtnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 13 },
 });

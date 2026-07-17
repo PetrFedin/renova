@@ -17,4 +17,8 @@ if (!resolveLegacyRoute('/(customer)/(tabs)/finance').pathname.includes('budget'
 logLegacyRouteDeprecation('/a', '/b');
 logLegacyRouteDeprecation('/a', '/b');
 
+if (legacyRouteCanonical('/(customer)/(tabs)/control') !== '/quality-control') {
+  throw new Error('control → quality-control');
+}
+
 console.log('legacyRoutes.test OK');

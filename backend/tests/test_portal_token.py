@@ -33,3 +33,18 @@ async def test_portal_token_roundtrip(db, monkeypatch):
     assert claims["user_id"] == guest.id
     assert claims["read_only"] is True
     assert "token=" in portal_tok.portal_url(token)
+
+
+@pytest.mark.asyncio
+async def test_portal_token_scopes(db, monkeypatch):
+    from app.models.entities import Project, User, UserRole
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-portal")
+    from app.core import config
+    config.settings.secret_key = "test-secret-key-for-portal"
+    customer = User(id="cust-p", phone="+79990000001", role=UserRole.customer)
+    project = Project(id="proj-p", name="P", renovation_type="cosmetic", customer_id=customer.id, budget_planned=1, budget_spent=0)
+    db.add_all([customer, project])
+    await db.commit()
+    token = portal_tok.create_portal_token(project_id=project.id, user_id=customer.id, scopes=["read", "accept_stage"])
+    claims = portal_tok.verify_portal_token(token)
+    assert "accept_stage" in claims.get("scopes", [])
