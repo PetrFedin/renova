@@ -10,7 +10,8 @@ import { RenovaTheme } from '@/constants/Theme';
 import { router } from 'expo-router';
 import { APPROVAL_TYPE_LABEL, approvalSourceLabel, resolveApprovalHref } from '@/lib/approvalLinks';
 import { navigateApproval } from '@/lib/navigation';
-import type { OsRole } from '@/constants/osSections';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { objectTabRoute, type OsRole } from '@/constants/osSections';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -31,12 +32,16 @@ export default function ApprovalsScreen() {
     if (!user || !activeProject || !isCustomer) return;
     const { id: userId } = user;
     const pid = activeProject.id;
-    if (it.type === 'material') await api.approveMaterialPick(userId, pid, it.id);
-    if (it.type === 'change_order') await api.approveChangeOrder(userId, pid, it.id);
-    if (it.type === 'room_change') await api.approveRoomChange(userId, pid, it.id);
-    if (it.type === 'design') await api.approveDesignPackage(userId, pid, it.id);
-    if (it.type === 'waste') await api.approveWasteOrder(userId, pid, it.id);
-    load();
+    try {
+      if (it.type === 'material') await api.approveMaterialPick(userId, pid, it.id);
+      if (it.type === 'change_order') await api.approveChangeOrder(userId, pid, it.id);
+      if (it.type === 'room_change') await api.approveRoomChange(userId, pid, it.id);
+      if (it.type === 'design') await api.approveDesignPackage(userId, pid, it.id);
+      if (it.type === 'waste') await api.approveWasteOrder(userId, pid, it.id);
+      load();
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Согласование');
+    }
   };
 
   return (
@@ -68,8 +73,12 @@ export default function ApprovalsScreen() {
                   <PrimaryButton title="Согласовать" onPress={() => approve(it)} />
                   <PrimaryButton title="Отклонить" variant="outline" onPress={async () => {
                     if (!user || !activeProject) return;
-                    await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
-                    load();
+                    try {
+                      await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
+                      load();
+                    } catch (e) {
+                      if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение');
+                    }
                   }} />
                 </View>
               </>
@@ -78,7 +87,21 @@ export default function ApprovalsScreen() {
             )}
           </View>
         ))}
-        {!items.length && <Text style={s.empty}>Нет ожидающих согласований</Text>}
+        {!items.length && (
+          <View style={s.emptyBox}>
+            <Text style={s.empty}>Нет ожидающих согласований</Text>
+            {isCustomer ? (
+              <PrimaryButton
+                title="Открыть доп. работы в смете"
+                variant="outline"
+                onPress={() => {
+                  const route = objectTabRoute('customer', 'estimate');
+                  router.push({ pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } } as never);
+                }}
+              />
+            ) : null}
+          </View>
+        )}
       </ScrollView>
     </>
   );
@@ -95,5 +118,6 @@ const s = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 8 },
   wait: { marginTop: 8, fontSize: 13, color: RenovaTheme.colors.warning, fontWeight: '600' },
   link: { fontSize: 12, color: RenovaTheme.colors.primary, marginTop: 4, fontWeight: '600' },
-  empty: { textAlign: 'center', color: RenovaTheme.colors.textMuted, marginTop: 40 },
+  emptyBox: { alignItems: 'center', gap: 12, marginTop: 40 },
+  empty: { textAlign: 'center', color: RenovaTheme.colors.textMuted },
 });

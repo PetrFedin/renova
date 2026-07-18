@@ -27,7 +27,8 @@ export const paymentsApi = {
   confirmPayment: async (userId: string, projectId: string, paymentId: string) => {
     try {
       return await req<Payment>(`/api/v1/projects/${projectId}/payments/${paymentId}/confirm`, { method: 'POST' }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/payments/${paymentId}/confirm`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');

@@ -6,7 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
+import { apiErrorMessage } from '@/lib/formatPhone';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -80,6 +81,12 @@ export default function PortalScreen() {
 
   const sched = snapshot.schedule as { current_stage?: string; progress_percent?: number; planned_end?: string };
 
+  const portalReadOnly = session.read_only || snapshot.read_only;
+  const canPayPortal = !portalReadOnly && (session.scopes?.includes('pay') || snapshot.pending_payments.length > 0);
+  const canAcceptPortal = !portalReadOnly && (session.scopes?.includes('accept_stage') || snapshot.can_accept_stage);
+  const canSignPortal = !portalReadOnly && (session.scopes?.includes('sign_document') || snapshot.can_sign_documents);
+
+
   return (
     <ScrollView style={s.wrap} contentContainerStyle={s.content}>
       <Text style={s.brand}>Renova · портал заказчика</Text>
@@ -87,7 +94,7 @@ export default function PortalScreen() {
       {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
       <Text style={s.ro}>{session.scopes?.includes('accept_stage') ? 'Портал заказчика · приёмка и оплата' : 'Только просмотр'} · {session.project_name}</Text>
 
-      {(snapshot.pending_acceptances?.length ?? 0) > 0 && (session.scopes?.includes('accept_stage') || snapshot.can_accept_stage) && !session.read_only ? (
+      {(snapshot.pending_acceptances?.length ?? 0) > 0 && canAcceptPortal ? (
         <View style={s.card}>
           <Text style={s.cardHead}>Приёмка этапов</Text>
           {snapshot.pending_acceptances!.map((acc) => (
@@ -122,7 +129,9 @@ export default function PortalScreen() {
 
       <View style={s.card}>
         <Text style={s.cardHead}>Ожидают оплаты ({snapshot.pending_payments.length})</Text>
-        {snapshot.pending_payments.length === 0 ? (
+        {portalReadOnly ? (
+          <Text style={s.muted}>Оплата недоступна в режиме просмотра. Откройте полное приложение Renova.</Text>
+        ) : snapshot.pending_payments.length === 0 ? (
           <Text style={s.muted}>Нет счетов</Text>
         ) : (
           snapshot.pending_payments.map((pay) => {
@@ -135,6 +144,7 @@ export default function PortalScreen() {
             return (
               <View key={pay.id} style={s.payRow}>
                 <Text style={s.line}>{pay.title} · {formatRub(pay.amount)}</Text>
+                {canPayPortal ? (
                 <View style={s.payActions}>
                   <Pressable
                     style={s.payBtn}
@@ -152,8 +162,9 @@ export default function PortalScreen() {
                           await refreshPortalSnapshot(session.user_id, session.project_id);
                           Alert.alert('ЮKassa', 'Статус оплаты обновлён. Если платёж не отображается — подождите минуту.');
                         }
-                      } catch {
-                        Alert.alert('ЮKassa', 'Оплата картой недоступна. Используйте перевод по реквизитам.');
+                      } catch (e) {
+                        const msg = apiErrorMessage(e, 'Оплата картой недоступна. Используйте перевод по реквизитам.');
+                        Alert.alert('ЮKassa', msg);
                       }
                     }}
                   >
@@ -162,10 +173,10 @@ export default function PortalScreen() {
                   <Pressable
                     style={s.payBtnOutline}
                     onPress={async () => {
-                      try { await Clipboard.setStringAsync(String(Math.round(pay.amount))); } catch { /* noop */ }
+                      try { await Clipboard.setStringAsync(requisites); } catch { /* noop */ }
                       Alert.alert(
                         'Перевод',
-                        `${requisites}\n\nСумма скопирована. Откройте банк или СБП.`,
+                        `${requisites}\n\nРеквизиты скопированы. Откройте банк или СБП.`,
                         Platform.OS === 'web'
                           ? [{ text: 'OK' }]
                           : [{ text: 'OK' }, { text: 'Открыть банк', onPress: () => Linking.openURL('bank100000000001://').catch(() => {}) }],
@@ -175,6 +186,9 @@ export default function PortalScreen() {
                     <Text style={s.payBtnOutlineT}>Реквизиты / СБП</Text>
                   </Pressable>
                 </View>
+                ) : (
+                  <Text style={s.muted}>Оплата по ссылке недоступна — попросите исполнителя выставить счёт в приложении.</Text>
+                )}
               </View>
             );
           })
@@ -201,7 +215,7 @@ export default function PortalScreen() {
             {snapshot.documents.filter((d) => d.status === 'draft').map((d) => (
               <View key={d.id} style={s.acceptRow}>
                 <Text style={s.line}>{d.title} · черновик</Text>
-                {(session.scopes?.includes('sign_document') || snapshot.can_sign_documents) && !session.read_only ? (
+                {canSignPortal ? (
                   <Pressable
                     style={s.acceptBtn}
                     onPress={async () => {
@@ -210,15 +224,15 @@ export default function PortalScreen() {
                         const snap = await api.portalSnapshot(session.user_id, session.project_id);
                         setSnapshot(snap);
                         Alert.alert('Подписано', res.status === 'signed' ? d.title : 'Запрос на подпись создан');
-                      } catch {
-                        Alert.alert('Ошибка', 'Не удалось подписать документ');
+                      } catch (e) {
+                        Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось подписать документ'));
                       }
                     }}
                   >
                     <Text style={s.acceptBtnT}>Подписать</Text>
                   </Pressable>
                 ) : null}
-                {(session.scopes?.includes('sign_document') || snapshot.can_sign_documents) && !session.read_only ? (
+                {canSignPortal ? (
                   <Pressable
                     style={s.konturBtn}
                     onPress={async () => {
@@ -232,8 +246,9 @@ export default function PortalScreen() {
                         }
                         const snap = await api.portalSnapshot(session.user_id, session.project_id);
                         setSnapshot(snap);
-                      } catch {
-                        Alert.alert('Контур', 'Не удалось открыть подпись');
+                      } catch (e) {
+                        const msg = apiErrorMessage(e, 'Не удалось открыть подпись');
+                        Alert.alert('Контур', (e instanceof ApiError && e.status === 501) ? 'Контур недоступен. Используйте подпись в приложении.' : msg);
                       }
                     }}
                   >
@@ -269,4 +284,12 @@ const s = StyleSheet.create({
   acceptBtnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 13 },
   konturBtn: { alignSelf: 'flex-start', borderWidth: 1, borderColor: RenovaTheme.colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   konturBtnT: { color: RenovaTheme.colors.primary, fontWeight: '700', fontSize: 12 },
+  payRow: { gap: 8, marginBottom: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: RenovaTheme.colors.border },
+  payActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  payBtn: { backgroundColor: RenovaTheme.colors.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  payBtnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 13 },
+  payBtnOutline: { borderWidth: 1, borderColor: RenovaTheme.colors.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  payBtnOutlineT: { color: RenovaTheme.colors.primary, fontWeight: '700', fontSize: 13 },
+  draftBlock: { gap: 6, marginBottom: 8 },
+  draftHead: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.warningText },
 });

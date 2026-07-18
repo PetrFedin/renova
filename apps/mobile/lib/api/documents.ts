@@ -50,7 +50,8 @@ export const documentsApi = {
         method: 'POST',
         body,
       }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/documents/${documentId}/sign`,
