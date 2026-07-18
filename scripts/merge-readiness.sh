@@ -11,6 +11,7 @@ echo "=== 2) e2e (needs API :8100) ==="
 if curl -sf --max-time 2 http://127.0.0.1:8100/health >/dev/null; then
   bash scripts/e2e-smoke.sh
   npm run e2e:api
+  npm run cleanup:e2e-gate || true
 else
   echo "WARN: API :8100 down — skip live e2e (run with API up before merge)"
 fi

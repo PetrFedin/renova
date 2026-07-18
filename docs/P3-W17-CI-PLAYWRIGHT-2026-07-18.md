@@ -155,3 +155,9 @@ jobs:
 ```
 
 </details>
+
+## P3-W18 (follow-up)
+
+- `scripts/ci-playwright.sh` — DRY для CI/local: `api` | `ui` | `all`, trap cleanup, post-run `cleanup:e2e-gate`
+- CI job `test-priority` — unit/backend guards на каждый push
+- `npm run ci:playwright` / `e2e:ci` → `ci-playwright.sh all`

@@ -21,7 +21,7 @@
     "e2e:portal-ui": "npx playwright test -c e2e/playwright.config.ts e2e/portal-documents-ui.spec.ts",
     "e2e:contract-gate-ui": "npx playwright test -c e2e/playwright.config.ts e2e/contract-gate-ui.spec.ts",
     "e2e:api": "npx playwright test -c e2e/playwright.config.ts e2e/project-lifecycle.spec.ts e2e/portal-documents.spec.ts e2e/contract-gate-path.spec.ts",
-    "e2e:ci": "npm run e2e:api && npm run e2e:portal-ui && npm run e2e:contract-gate-ui",
+    "e2e:ci": "bash scripts/ci-playwright.sh all",
     "cleanup:e2e-gate": "bash scripts/cleanup-e2e-gate-projects.sh",
     "release:notes:v0.3": "bash scripts/release-notes-v0.3.sh",
     "verify": "npm run e2e:all && npm run e2e:playwright",
@@ -45,7 +45,8 @@
     "staging:postgres": "bash scripts/staging-postgres-smoke.sh",
     "release:notes": "bash scripts/release-notes-v0.2.sh",
     "testflight:preflight": "bash scripts/testflight-preflight.sh",
-    "testflight:eas": "node apps/mobile/lib/__tests__/easProfiles.test.mjs"
+    "testflight:eas": "node apps/mobile/lib/__tests__/easProfiles.test.mjs",
+    "ci:playwright": "bash scripts/ci-playwright.sh all"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
