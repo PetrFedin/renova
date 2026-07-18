@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent, ActivityIndicator } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent, ActivityIndicator, Platform } from 'react-native';
 import { usePathname, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
+import { pickImageForDocumentUpload } from '@/lib/documentUploadPick';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { FurnitureLayer } from '@/components/renova/FurnitureLayer';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushRoomDetail } from '@/lib/navigation';
@@ -60,10 +62,21 @@ export function FloorPlanPanel({
   const onMapLayout = (e: LayoutChangeEvent) => setMapW(e.nativeEvent.layout.width);
 
   const capturePunchPhoto = async (): Promise<string | undefined> => {
+    if (Platform.OS === 'web') {
+      const picked = await pickImageForDocumentUpload();
+      if (!picked) return undefined;
+      const blob = await (await fetch(picked.uri)).blob();
+      return uploadMediaBlob(userId, blob, picked.type || 'image/jpeg');
+    }
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Камера', 'Разрешите доступ к камере для фото замечания на плане.');
-      return undefined;
+      const picked = await pickImageForDocumentUpload();
+      if (!picked) {
+        Alert.alert('Фото', 'Разрешите камеру или выберите снимок из галереи.');
+        return undefined;
+      }
+      const blob = await (await fetch(picked.uri)).blob();
+      return uploadMediaBlob(userId, blob, picked.type || 'image/jpeg');
     }
     const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
     if (res.canceled || !res.assets[0]) return undefined;
@@ -100,7 +113,12 @@ export function FloorPlanPanel({
           ? 'Фото на плане сохранено. Откройте «Контроль качества» для описания.'
           : 'Откройте «Контроль качества» для описания замечания.',
       );
-    } catch {
+    } catch (e) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Замечание на плане');
+        setPunchMode(false);
+        return;
+      }
       Alert.alert('Ошибка', 'Не удалось добавить замечание');
     } finally {
       setAddingPunch(false);
@@ -173,7 +191,7 @@ export function FloorPlanPanel({
                 style={[s.punchPin, { left: `${item.x_pct}%`, top: `${item.y_pct}%`, borderColor: punchTone(item.severity, item.status) }]}
                 onPress={() => router.push('/quality-control' as never)}
               >
-                <Text style={[s.punchPinT, { color: punchTone(item.severity, item.status) }]}>!</Text>
+                <Text style={[s.punchPinT, { color: punchTone(item.severity, item.status) }]}>{item.photo_url ? '▣' : '!'}</Text>
               </Pressable>
             ))}
             {!punchMode && plan.pins.map((p) => {

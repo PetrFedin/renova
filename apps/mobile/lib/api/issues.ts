@@ -1,5 +1,5 @@
 /** API: issues */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ProjectIssue } from './types';
 
 async function enqueueOffline(path: string, method: string, body: string | undefined, userId: string) {
@@ -13,14 +13,16 @@ export const issuesApi = {
   createIssue: async (userId: string, projectId: string, body: object) => {
     try {
       return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues`, { method: 'POST', body: JSON.stringify(body) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       await enqueueOffline(`/api/v1/projects/${projectId}/issues`, 'POST', JSON.stringify(body), userId);
     }
   },
   closeIssue: async (userId: string, projectId: string, issueId: string) => {
     try {
       return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues/${issueId}/close`, { method: 'POST' }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       await enqueueOffline(`/api/v1/projects/${projectId}/issues/${issueId}/close`, 'POST', undefined, userId);
     }
   },

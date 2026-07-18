@@ -27,6 +27,7 @@ console.assert(resolvePushLink('/work-schedule', '/home', 'customer')?.pathname.
 console.assert(resolvePushLink('/control', '/home', 'customer')?.pathname === '/work-acceptance', 'control redirect customer');
 console.assert(resolvePushLink('/control', '/home', 'contractor')?.pathname === '/quality-control', 'control redirect contractor');
 console.assert(resolveNotificationLink('stage_review')?.pathname === '/work-acceptance', 'notify acceptance');
+console.assert(resolveNotificationLink('change_order')?.pathname === '/approvals', 'change_order → approvals');
 const unknownNotify = resolveNotificationLink('unknown_xyz');
 console.assert(unknownNotify?.pathname === '/notifications', 'notify unknown → notifications');
 console.log('pushLinks: OK');

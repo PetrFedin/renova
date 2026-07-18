@@ -87,7 +87,7 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'stage_started':
       return { pathname: '/work-acceptance', params: {} };
     case 'change_order':
-      return budgetTabRoute(role, 'payments');
+      return { pathname: '/approvals', params: {} };
     case 'materials':
       return repairTabRoute(role, 'materials');
     case 'chat_message':
