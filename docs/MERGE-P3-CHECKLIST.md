@@ -27,3 +27,9 @@ npm run release:notes:v0.3
 - Job `playwright`: `npm run e2e:api` + UI specs (не `e2e:web || true`)
 - Локальная уборка E2E Gate проектов: `npm run cleanup:e2e-gate`
 
+
+## P3-W18 (CI DRY + hygiene)
+
+- `scripts/ci-playwright.sh` — локально/CI: `npm run ci:playwright` или `e2e:ci`
+- После API e2e в `merge:check`: `npm run cleanup:e2e-gate` (best-effort)
+- CI: job `test-priority` + playwright steps через `ci-playwright.sh`
