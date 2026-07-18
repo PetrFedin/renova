@@ -117,7 +117,7 @@ export function OsProjectProfileScreen({
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       {readOnly && <ReadOnlyBanner />}
-      <ObjectTabGuide tab="profile" role={role} onNextTab={onNextTab} compact />
+      <ObjectTabGuide tab="profile" role={role} onNextTab={onNextTab} />
       <ProjectProfileFields
         variant="profile"
         role={role}

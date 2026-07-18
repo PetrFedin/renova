@@ -63,7 +63,7 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
     <>
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
-        <ObjectTabGuide tab="rooms" onNextTab={onNextTab} compact />
+        <ObjectTabGuide tab="rooms" onNextTab={onNextTab} />
         {!activeProject.contractor_id && (
           <InfoBanner
             tone="info"
@@ -75,14 +75,14 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
           <PrimaryButton
             title="→ Подключить исполнителя"
             variant="outline"
-            compact
+           
             onPress={() => pushOsNav(objectTabHref('customer', 'profile'), nav.from)}
           />
         ) : (
           <PrimaryButton
             title="→ Ход работ и этапы"
             variant="outline"
-            compact
+           
             onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from)}
           />
         )}

@@ -80,7 +80,7 @@ export function OsPlanTabScreen({
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
-      <ObjectTabGuide tab="plan" role={role} onNextTab={onNextTab} compact />
+      <ObjectTabGuide tab="plan" role={role} onNextTab={onNextTab} />
       <ReadOnlyBanner />
       <PlanTabOverview role={role} project={activeProject} userId={user.id} />
       <OsHubTabs tabs={SUBTABS} value={sub} onChange={(id) => setSubTab(id as PlanSub)} />

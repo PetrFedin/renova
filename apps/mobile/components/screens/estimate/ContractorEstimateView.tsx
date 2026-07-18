@@ -61,7 +61,7 @@ export function ContractorEstimateView() {
     <>
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
-        <ObjectTabGuide tab="estimate" compact />
+        <ObjectTabGuide tab="estimate" />
 
         <View style={styles.totalBox}>
           <Text style={styles.totalLabel}>Смета проекта</Text>
@@ -74,7 +74,7 @@ export function ContractorEstimateView() {
           </Text>
         </View>
 
-        <EstimateSourceLegend compact />
+        <EstimateSourceLegend />
         <EstimateFilterBar
           lines={allLines}
           lineType={lineType}
@@ -130,8 +130,8 @@ export function ContractorEstimateView() {
 
         <Text style={styles.meta}>{DOCUMENTS_MENU_HINT}</Text>
         <View style={styles.links}>
-          <PrimaryButton title="→ Бюджет" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute('contractor', 'summary'), pathname)} />
-          <PrimaryButton title="→ Материалы" variant="outline" compact onPress={() => pushOsNav(repairTabRoute('contractor', 'materials'), pathname)} />
+          <PrimaryButton title="→ Бюджет" variant="outline" onPress={() => pushOsNav(budgetTabRoute('contractor', 'summary'), pathname)} />
+          <PrimaryButton title="→ Материалы" variant="outline" onPress={() => pushOsNav(repairTabRoute('contractor', 'materials'), pathname)} />
         </View>
 
         <Text style={styles.section}>Изменение сметы (доп. работа)</Text>

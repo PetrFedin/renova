@@ -5,7 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { usePathname } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
 import { InfoBanner } from '@/components/ui/InfoBanner';
@@ -171,7 +171,8 @@ export function PaymentDetailSheet({
       pushStageDetail(stage.id, pathname);
       return;
     }
-    pushOsNav(repairTabRoute(role, 'control'), pathname);
+    const acceptanceHref = role === 'contractor' ? '/quality-control' : '/work-acceptance';
+    router.push({ pathname: acceptanceHref, params: { returnTo: pathname } } as never);
   };
 
   const payWithCard = async () => {

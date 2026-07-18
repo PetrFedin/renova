@@ -60,7 +60,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
-      <ObjectTabGuide tab="estimate" onNextTab={onNextTab} compact />
+      <ObjectTabGuide tab="estimate" onNextTab={onNextTab} />
       <ReadOnlyBanner />
 
       <OsHubTabs tabs={tabs} value={activeLayer} onChange={(id) => setLayer(normalizeEstimateLayer(id))} />

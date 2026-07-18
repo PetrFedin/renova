@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -255,6 +256,8 @@ export function WorkAcceptanceScreen() {
         <Text style={styles.title}>Приёмка работ</Text>
         <Text style={styles.subtitle}>Запрос, проверка, принятие этапов и возврат на доработку.</Text>
       </View>
+
+      {!readOnly && role === 'contractor' ? <OfflineSyncStatus compact /> : null}
 
       {readOnly ? (
         <View style={styles.noteCard}><Text style={styles.noteText}>Режим просмотра: решения по приёмке недоступны.</Text></View>
