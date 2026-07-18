@@ -39,7 +39,14 @@ start_api() {
   export DATABASE_URL="sqlite+aiosqlite:///${db_file}"
   export PUBLIC_BASE_URL="$API_URL"
   export SECRET_KEY="${SECRET_KEY:-ci-secret-key-at-least-16}"
-  poetry run uvicorn app.main:app --host 127.0.0.1 --port "$API_PORT" &
+  if command -v poetry >/dev/null 2>&1; then
+    poetry run uvicorn app.main:app --host 127.0.0.1 --port "$API_PORT" &
+  elif [ -x "$ROOT/backend/.venv/bin/uvicorn" ]; then
+    "$ROOT/backend/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$API_PORT" &
+  else
+    echo "FAIL: need poetry or backend/.venv/bin/uvicorn"
+    exit 1
+  fi
   BACK_PID=$!
   cd "$ROOT"
   wait_http "${API_URL}/health" "API"

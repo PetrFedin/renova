@@ -25,6 +25,16 @@ poetry run uvicorn app.main:app --reload --port 8100
 cd apps/mobile && npm install && npm run ios
 ```
 
+## CI и локальные gates
+
+```bash
+npm run test:priority              # priority gate (~49 tests)
+bash scripts/ci-playwright.sh api  # Playwright API E2E (backend via script)
+npm run ci:playwright              # api + ui — как job playwright в CI
+```
+
+Подробнее: `docs/P3-W18-CI-PLAYWRIGHT-SCRIPT-2026-07-18.md`, `docs/P3-W19-CI-WORKFLOW-PUSH-2026-07-18.md`.
+
 ## Документация
 
 - `docs/MVP-SPEC-RU.md` — полная спецификация MVP

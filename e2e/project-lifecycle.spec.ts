@@ -11,20 +11,20 @@ test.describe('P3-W12 Project lifecycle', () => {
     const hCust = { 'X-User-Id': cust.id as string };
     const hGuest = { 'X-User-Id': guest.id as string };
 
-    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: hCust })).json()) as {
-      id: string;
-      access_mode: string;
-    }[];
-    expect(projects.length).toBeGreaterThan(0);
-    const pid = projects[0].id;
-    expect(projects[0].access_mode).toBe('owner');
-
     const guestProjects = (await (await request.get(`${API}/api/v1/projects`, { headers: hGuest })).json()) as {
       id: string;
       access_mode: string;
     }[];
-    const guestRow = guestProjects.find((p) => p.id === pid);
-    expect(guestRow?.access_mode).toBe('guest');
+    const guestRow = guestProjects.find((p) => p.access_mode === 'guest');
+    expect(guestRow, 'guest needs a demo project_viewers link').toBeTruthy();
+    const pid = guestRow!.id;
+
+    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: hCust })).json()) as {
+      id: string;
+      access_mode: string;
+    }[];
+    const ownerRow = projects.find((p) => p.id === pid);
+    expect(ownerRow?.access_mode).toBe('owner');
 
     const guestArchive = await request.post(`${API}/api/v1/projects/${pid}/archive`, { headers: hGuest });
     expect(guestArchive.status()).toBe(403);
@@ -42,6 +42,7 @@ test.describe('P3-W12 Project lifecycle', () => {
 
     const docs = await request.get(`${API}/api/v1/projects/${pid}/documents`, { headers: hCust });
     expect(docs.status()).toBe(200);
-    expect(Array.isArray(await docs.json())).toBe(true);
+    const docsBody = (await docs.json()) as { items?: unknown[] };
+    expect(Array.isArray(docsBody.items)).toBe(true);
   });
 });

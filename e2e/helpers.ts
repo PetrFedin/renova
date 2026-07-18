@@ -111,7 +111,9 @@ export async function prepareContractGateScenario(
   if (!created.ok()) throw new Error(`create project failed: ${created.status()}`);
   const pid = ((await created.json()) as { id: string }).id;
 
-  await request.post(`${API}/api/v1/projects/${pid}/assign`, { headers: hCont });
+  await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
+  const assigned = await request.post(`${API}/api/v1/projects/${pid}/assign`, { headers: hCont });
+  if (!assigned.ok()) throw new Error(`assign failed: ${assigned.status()}`);
   const locked = await request.post(`${API}/api/v1/projects/${pid}/estimate/lock`, { headers: hCont });
   if (!locked.ok()) throw new Error(`estimate lock failed: ${locked.status()}`);
   const lockBody = (await locked.json()) as { contract?: { document_id?: string } };
