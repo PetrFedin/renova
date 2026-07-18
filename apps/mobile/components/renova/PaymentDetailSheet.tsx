@@ -189,7 +189,7 @@ export function PaymentDetailSheet({
       if (pay.demo) {
         onChanged?.();
         onClose();
-        Alert.alert('Оплата', pay.message || 'Оплата подтверждена через ЮKassa (demo).');
+        Alert.alert('Оплата (demo)', pay.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.');
         return;
       }
       if (pay.confirmation_url) {
@@ -206,7 +206,7 @@ export function PaymentDetailSheet({
           { text: 'Перейти к приёмке', onPress: goToAcceptance },
         ]);
       } else if (e instanceof ApiError && e.status === 503) {
-        Alert.alert('ЮKassa', 'Оплата картой временно недоступна. Используйте перевод или чек.');
+        Alert.alert('ЮKassa', 'Оплата картой недоступна на этом сервере (нет ключей ЮKassa). Используйте перевод по реквизитам или чек.');
       } else {
         Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось открыть оплату картой'));
       }

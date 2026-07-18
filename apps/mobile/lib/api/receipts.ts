@@ -1,12 +1,13 @@
 /** API: receipts */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { BudgetBreakdown, ReceiptItem, User } from './types';
 export const receiptsApi = {
   addManualReceipt: async (userId: string, projectId: string, amount: number, description: string, expense_category = 'materials', room_id?: string | null, stage_id?: string | null, payment_id?: string | null) => {
     const body = { amount, description, expense_category, room_id, stage_id, payment_id };
     try {
       return await req(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: JSON.stringify(body) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/receipts/manual`, method: 'POST', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -16,7 +17,8 @@ export const receiptsApi = {
     const body = { qr_raw, expense_category, room_id, stage_id, payment_id };
     try {
       return await req(`/api/v1/projects/${projectId}/receipts/scan`, { method: 'POST', body: JSON.stringify(body) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/receipts/scan`, method: 'POST', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');

@@ -18,7 +18,8 @@ export const stagesApi = {
   addStageComment: async (userId: string, projectId: string, stageId: string, text: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/comments`, { method: 'POST', body: JSON.stringify({ text }) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/comments`, method: 'POST', body: JSON.stringify({ text }), userId });
       throw new Error('offline_queued');
@@ -35,7 +36,8 @@ export const stagesApi = {
   addStagePhoto: async (userId: string, projectId: string, stageId: string, image_data?: string, caption?: string, storage_key?: string, image_url?: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/photos`, { method: 'POST', body: JSON.stringify({ image_data, caption, storage_key, image_url }) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       if (image_data) {
         const { enqueue } = await import('@/lib/offlineQueue');
         await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/photos`, method: 'POST', body: JSON.stringify({ image_data, caption }), userId });

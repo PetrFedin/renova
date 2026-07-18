@@ -1,5 +1,5 @@
 /** API: chats */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
@@ -44,7 +44,8 @@ export const chatsApi = {
   sendChatMessage: async (userId: string, projectId: string, threadId: string, text: string, message_type = 'text', image_data?: string, reply_to_id?: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/chats/${threadId}/messages`, { method: 'POST', body: JSON.stringify({ text, message_type, image_data, reply_to_id }) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/chats/${threadId}/messages`, method: 'POST', body: JSON.stringify({ text, message_type, image_data }), userId });
       throw new Error('offline_queued');

@@ -1,5 +1,5 @@
 /** API: rooms */
-import { req, cachedGet, API_BASE, OFFLINE_ROOMS } from './client';
+import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
 export const roomsApi = {
   listRooms: async (userId: string, projectId: string, opts?: { archived?: boolean }) => {
@@ -21,7 +21,8 @@ export const roomsApi = {
   updateRoom: async (userId: string, projectId: string, roomId: string, body: object) => {
     try {
       return await req<Room>(`/api/v1/projects/${projectId}/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/rooms/${roomId}`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -48,8 +49,16 @@ export const roomsApi = {
   },
   listRoomChangeRequests: (userId: string, projectId: string) =>
     req<RoomChangeRequest[]>(`/api/v1/projects/${projectId}/room-change-requests`, {}, userId),
-  createRoomChangeRequest: (userId: string, projectId: string, body: object) =>
-    req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  createRoomChangeRequest: async (userId: string, projectId: string, body: object) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
   approveRoomChange: (userId: string, projectId: string, reqId: string) =>
     req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId),
   rejectRoomChange: (userId: string, projectId: string, reqId: string) =>
