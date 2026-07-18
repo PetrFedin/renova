@@ -82,10 +82,16 @@ export async function seedDemoContractorSession(
   await page.reload();
 }
 
-/** Lock estimate → unsigned contract + planned stage для contract-gate UI. */
+/** Fresh project + lock estimate → planned stage + unsigned contract (E2E gate). */
 export async function prepareContractGateScenario(
   request: import('@playwright/test').APIRequestContext,
-): Promise<{ contractorId: string; projectId: string; stageId: string }> {
+): Promise<{
+  contractorId: string;
+  customerId: string;
+  projectId: string;
+  stageId: string;
+  documentId: string;
+}> {
   const cont = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json();
   const cust = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json();
   const hCont = { 'X-User-Id': cont.id as string };
@@ -108,11 +114,20 @@ export async function prepareContractGateScenario(
   await request.post(`${API}/api/v1/projects/${pid}/assign`, { headers: hCont });
   const locked = await request.post(`${API}/api/v1/projects/${pid}/estimate/lock`, { headers: hCont });
   if (!locked.ok()) throw new Error(`estimate lock failed: ${locked.status()}`);
+  const lockBody = (await locked.json()) as { contract?: { document_id?: string } };
+  const documentId = lockBody.contract?.document_id;
+  if (!documentId) throw new Error('estimate lock missing contract.document_id');
 
   const detail = await (await request.get(`${API}/api/v1/projects/${pid}`, { headers: hCont })).json();
   const planned = (detail.stages as { id: string; status: string }[]).find((s) => s.status === 'planned');
-  if (!planned) throw new Error('no planned stage for contract gate UI');
-  return { contractorId: cont.id as string, projectId: pid, stageId: planned.id };
+  if (!planned) throw new Error('no planned stage for contract gate');
+  return {
+    contractorId: cont.id as string,
+    customerId: cust.id as string,
+    projectId: pid,
+    stageId: planned.id,
+    documentId,
+  };
 }
 
 export async function apiReachable(): Promise<boolean> {
