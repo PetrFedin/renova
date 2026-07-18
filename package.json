@@ -46,7 +46,9 @@
     "release:notes": "bash scripts/release-notes-v0.2.sh",
     "testflight:preflight": "bash scripts/testflight-preflight.sh",
     "testflight:eas": "node apps/mobile/lib/__tests__/easProfiles.test.mjs",
-    "ci:playwright": "bash scripts/ci-playwright.sh all"
+    "ci:playwright": "bash scripts/ci-playwright.sh all",
+    "merge:check:live": "bash scripts/merge-check-live.sh",
+    "ci:push-workflow": "bash scripts/push-ci-workflow.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

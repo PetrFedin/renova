@@ -33,3 +33,8 @@ npm run release:notes:v0.3
 - `scripts/ci-playwright.sh` — локально/CI: `npm run ci:playwright` или `e2e:ci`
 - После API e2e в `merge:check`: `npm run cleanup:e2e-gate` (best-effort)
 - CI: job `test-priority` + playwright steps через `ci-playwright.sh`
+## P3-W20
+
+- `npm run merge:check:live` — merge gate с auto-start API
+- `npm run ci:push-workflow` — push CI workflow (нужен `gh auth refresh -s workflow`)
+
