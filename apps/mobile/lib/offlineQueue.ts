@@ -5,6 +5,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { decideFlushOutcome } from '@/lib/offline/flushPolicy';
+import { filterJobsExceptProject } from '@/lib/offline/projectQueueFilter';
 
 const KEY = 'renova_offline_queue';
 /** Legacy keys from parallel outbox stacks — migrate once into KEY. */
@@ -281,5 +282,15 @@ export async function flush(apiBase: string): Promise<OfflineFlushResult> {
 export async function writeQueue(jobs: OfflineJob[]) {
   await AsyncStorage.setItem(KEY, JSON.stringify(jobs));
 }
+
+/** После archive/trash/purge — не replay мутации по этому project_id. */
+export async function dropJobsForProject(projectId: string): Promise<number> {
+  const q = await getQueue();
+  const next = filterJobsExceptProject(q, projectId);
+  const dropped = q.length - next.length;
+  if (dropped > 0) await AsyncStorage.setItem(KEY, JSON.stringify(next));
+  return dropped;
+}
+
 export const OFFLINE_QUEUE_KEY = KEY;
 export const OFFLINE_MAX_ATTEMPTS = MAX_ATTEMPTS;

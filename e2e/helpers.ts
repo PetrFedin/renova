@@ -62,6 +62,59 @@ export async function seedDemoCustomerSession(
   await page.reload();
 }
 
+export async function seedDemoContractorSession(
+  page: Page,
+  userId: string,
+  projectId: string,
+): Promise<void> {
+  await page.goto('/');
+  await page.evaluate(
+    ({ uid, pid }) => {
+      localStorage.setItem('renova_user_id', uid);
+      localStorage.setItem('renova_project_id', pid);
+      localStorage.setItem('renova_user_role', 'contractor');
+      localStorage.setItem('renova_detail_quiz_done', '1');
+      localStorage.removeItem('renova_pending_project_pick');
+      localStorage.setItem('renova_project_explicitly_picked', '1');
+    },
+    { uid: userId, pid: projectId },
+  );
+  await page.reload();
+}
+
+/** Lock estimate → unsigned contract + planned stage для contract-gate UI. */
+export async function prepareContractGateScenario(
+  request: import('@playwright/test').APIRequestContext,
+): Promise<{ contractorId: string; projectId: string; stageId: string }> {
+  const cont = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json();
+  const cust = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json();
+  const hCont = { 'X-User-Id': cont.id as string };
+  const hCust = { 'X-User-Id': cust.id as string };
+
+  const created = await request.post(`${API}/api/v1/projects`, {
+    headers: hCust,
+    data: {
+      name: `E2E Contract Gate ${Date.now()}`,
+      address: 'E2E',
+      renovation_type: 'cosmetic',
+      property_type: 'apartment',
+      total_area_sqm: 40,
+      rooms: [{ name: 'Комната', area_sqm: 20, length_m: 5, width_m: 4 }],
+    },
+  });
+  if (!created.ok()) throw new Error(`create project failed: ${created.status()}`);
+  const pid = ((await created.json()) as { id: string }).id;
+
+  await request.post(`${API}/api/v1/projects/${pid}/assign`, { headers: hCont });
+  const locked = await request.post(`${API}/api/v1/projects/${pid}/estimate/lock`, { headers: hCont });
+  if (!locked.ok()) throw new Error(`estimate lock failed: ${locked.status()}`);
+
+  const detail = await (await request.get(`${API}/api/v1/projects/${pid}`, { headers: hCont })).json();
+  const planned = (detail.stages as { id: string; status: string }[]).find((s) => s.status === 'planned');
+  if (!planned) throw new Error('no planned stage for contract gate UI');
+  return { contractorId: cont.id as string, projectId: pid, stageId: planned.id };
+}
+
 export async function apiReachable(): Promise<boolean> {
   try {
     const res = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });

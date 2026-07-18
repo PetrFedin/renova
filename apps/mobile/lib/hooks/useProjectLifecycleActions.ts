@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { ApiError, api, invalidateProjectsCache } from '@/lib/api';
+import { dropJobsForProject } from '@/lib/offlineQueue';
 import { alertMessage, confirmDestructive } from '@/lib/confirmAlert';
 
 /** Archive/trash/restore handlers shared by project pickers. */
@@ -10,6 +11,7 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
   const afterMutation = useCallback(
     async (projectId: string) => {
       if (user) await invalidateProjectsCache(user.id);
+      await dropJobsForProject(projectId).catch(() => {});
       await refreshProjects();
       await reloadBuckets?.();
       if (activeProject?.id === projectId) {
