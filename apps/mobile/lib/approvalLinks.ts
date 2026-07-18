@@ -1,6 +1,6 @@
 /** Единые deep links для согласований → источник (комната / материал / смета / план) */
 import type { ApprovalItem } from '@/lib/api';
-import { objectTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
+import { objectTabRoute, repairTabHref, type OsRole } from '@/constants/osSections';
 
 export type ApprovalLink = { pathname: string; params?: Record<string, string> };
 
@@ -17,7 +17,11 @@ export function resolveApprovalHref(
     return { pathname: '/material/[id]', params: { id: item.id, returnTo: rt } };
   }
   if (item.type === 'change_order') {
-    return { pathname: objectTabHref(role, 'estimate'), params: { returnTo: rt } };
+    const route = objectTabRoute(role, 'estimate');
+    return {
+      pathname: route.pathname,
+      params: { ...route.params, estimateLayer: 'changes', returnTo: rt },
+    };
   }
   if (item.type === 'room_change') {
     return item.room_id
@@ -44,7 +48,7 @@ export { APPROVAL_TYPE_LABEL } from '@/constants/labels';
 /** Подпись кнопки drill-down */
 export function approvalSourceLabel(item: ApprovalItem): string {
   if (item.type === 'material') return 'Открыть материал →';
-  if (item.type === 'change_order') return 'Открыть смету →';
+  if (item.type === 'change_order') return 'Открыть доп. работы →';
   if (item.type === 'room_change' && item.room_id) return 'Открыть комнату →';
   if (item.type === 'design') return 'Открыть дизайн →';
   if (item.stage_id) return 'Открыть этап →';

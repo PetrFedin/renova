@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'expo-router';
+import { useLocalSearchParams, usePathname } from 'expo-router';
 import { ScrollView, StyleSheet } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
@@ -25,6 +25,7 @@ import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
 export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => void }) {
   const pathname = usePathname();
+  const { estimateLayer: estimateLayerParam } = useLocalSearchParams<{ estimateLayer?: string }>();
   const detailLevel = useDetailLevel();
   const canWrite = useWriteAllowed();
   const { user, activeProject, loadProject } = useRenova();
@@ -39,6 +40,12 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
     api.materialStats(user.id, activeProject.id).then(setStats).catch(() => {});
     api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(() => {});
   }, [user, activeProject?.id]);
+
+  useEffect(() => {
+    if (typeof estimateLayerParam === 'string' && estimateLayerParam) {
+      setLayer(normalizeEstimateLayer(estimateLayerParam));
+    }
+  }, [estimateLayerParam]);
 
   const allLines = activeProject?.estimate_lines || [];
   const totals = useMemo(() => estimateTotals(allLines), [allLines]);

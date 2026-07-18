@@ -209,12 +209,16 @@ export function DocumentsHub({
     setBusy(id);
     try {
       await fn();
-    } catch (e: any) {
-      const msg = String(e?.message || e || '');
+    } catch (e: unknown) {
+      const msg = apiErrorMessage(e, '');
+      const providerDown =
+        (e instanceof ApiError && e.status === 501) ||
+        msg.includes('501') ||
+        msg.includes('provider_unavailable');
       Alert.alert(
         'Ошибка',
-        msg.includes('501') || msg.includes('provider_unavailable')
-          ? 'Провайдер подписи пока недоступен (ожидаемо для Kontur/Госключ).'
+        providerDown
+          ? 'Провайдер подписи пока недоступен. Используйте «Подписать в приложении» или повторите позже.'
           : (msg.slice(0, 180) || 'Не удалось выполнить действие. Проверьте связь с API.'),
       );
     } finally {

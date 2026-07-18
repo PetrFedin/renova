@@ -22,3 +22,10 @@ if (!roomLink || roomLink.params?.id !== 'r2' || roomLink.params?.returnTo !== '
 if (approvalSourceLabel(item) !== 'Открыть материал →') throw new Error('label failed');
 
 console.log('approvalLinks.test OK');
+
+const co: ApprovalItem = { id: 'co1', type: 'change_order', title: 'CO', status: 'pending' };
+const coLink = resolveApprovalHref(co, 'customer');
+if (!coLink || coLink.params?.estimateLayer !== 'changes' || coLink.params?.returnTo !== '/approvals') {
+  throw new Error('change_order must deep-link to estimate changes layer');
+}
+if (approvalSourceLabel(co) !== 'Открыть доп. работы →') throw new Error('change_order label');
