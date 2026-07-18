@@ -2,6 +2,7 @@
 import pytest
 
 from app.core.environment import (
+    collect_warnings,
     normalize_environment,
     policy_for,
     validate_runtime_settings,
@@ -77,3 +78,25 @@ def test_staging_ok():
 def test_unknown_environment():
     with pytest.raises(ValueError, match="Unknown"):
         policy_for("qa")
+
+def test_staging_kontur_missing_api_key_warns():
+    warnings = collect_warnings(
+        environment="staging",
+        database_url="postgresql+asyncpg://u:p@db/renova",
+        secret_key="staging-secret-key-16+",
+        kontur_mode="sandbox",
+        kontur_api_key=None,
+    )
+    assert any("KONTUR_API_KEY" in w for w in warnings)
+
+
+def test_staging_kontur_off_no_warning():
+    warnings = collect_warnings(
+        environment="staging",
+        database_url="postgresql+asyncpg://u:p@db/renova",
+        secret_key="staging-secret-key-16+",
+        kontur_mode="off",
+        kontur_api_key=None,
+    )
+    assert not any("KONTUR" in w for w in warnings)
+

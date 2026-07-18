@@ -10,9 +10,10 @@ const src = readFileSync(join(__dirname, '../routeRegistry.ts'), 'utf8');
 // Minimal extract: count dock entries and require more centers
 const dockCount = (src.match(/visibility: 'dock'/g) || []).length;
 assert.ok(dockCount <= 4, `dock=${dockCount}`);
-for (const id of ['finance-center', 'manager-dashboard', 'quality-control', 'work-acceptance', 'documents', 'work-schedule']) {
+for (const id of ['finance-center', 'manager-dashboard', 'quality-control', 'work-acceptance', 'documents', 'work-schedule', 'reports']) {
   assert.ok(src.includes(`id: '${id}'`), `missing ${id}`);
 }
+assert.ok(src.includes("status: 'wip'") === false || !src.match(/id: 'reports'[\s\S]*status: 'wip'/), 'reports should not be wip');
 assert.ok(src.includes("assertRouteRegistryInvariants"), 'invariants helper');
 
 for (const id of ['inbox', 'scan-receipt', 'stage', 'materials-procurement', 'selections', 'conflicts']) {
@@ -22,3 +23,12 @@ for (const id of ['inbox', 'scan-receipt', 'stage', 'materials-procurement', 'se
 console.log('OK routeRegistry invariants (dock≤4, secondary centers listed)');
 
 assert.ok(src.includes("id: 'finance-center'") && src.includes("visibility: 'hidden'"), 'finance-center hidden');
+
+assert.ok(src.includes("id: 'reports'") && src.includes("visibility: 'more'") && src.includes("status: 'beta'"), 'reports promoted to more/beta');
+assert.ok(src.includes("entryPoints: ['home.completion', 'home.more', 'os.menu']"), 'reports entryPoints');
+assert.ok(
+  src.includes("redirectTo: '/(customer)/(tabs)/budget?tab=deviations'") && src.includes("id: 'project-analytics'"),
+  'project-analytics redirect',
+);
+assert.ok(!src.match(/id: 'reports'[\s\S]*?status: 'wip'/), 'reports not wip');
+assert.ok(!src.match(/id: 'project-analytics'[\s\S]*?status: 'wip'/), 'project-analytics not wip');

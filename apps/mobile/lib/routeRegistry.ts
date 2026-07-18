@@ -176,8 +176,27 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     entryPoints: ['object.viewers'],
     descriptionRu: 'Read-only portal по magic link JWT (P2.1)',
   },
-  { id: 'reports', path: '/reports', titleRu: 'Отчёты', audience: 'both', visibility: 'hidden', status: 'wip', entryPoints: [] },
-  { id: 'project-analytics', path: '/project-analytics', titleRu: 'Аналитика', audience: 'both', visibility: 'hidden', status: 'wip', entryPoints: [] },
+  {
+    id: 'reports',
+    path: '/reports',
+    titleRu: 'Отчёты',
+    audience: 'both',
+    visibility: 'more',
+    status: 'beta',
+    entryPoints: ['home.completion', 'home.more', 'os.menu'],
+    descriptionRu: 'Daily / weekly / final отчёты + PDF',
+  },
+  {
+    id: 'project-analytics',
+    path: '/project-analytics',
+    titleRu: 'Аналитика',
+    audience: 'both',
+    visibility: 'hidden',
+    status: 'beta',
+    entryPoints: ['deeplink'],
+    redirectTo: '/(customer)/(tabs)/budget?tab=deviations',
+    descriptionRu: 'Legacy deeplink → бюджет / отклонения',
+  },
 ];
 
 

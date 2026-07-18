@@ -169,8 +169,10 @@ def collect_warnings(
     environment: str,
     database_url: str,
     secret_key: str,
+    kontur_mode: str | None = None,
+    kontur_api_key: str | None = None,
 ) -> list[str]:
-    """Soft warnings for development (do not fail startup)."""
+    """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
     warnings: list[str] = []
     if name == "development":
@@ -178,4 +180,9 @@ def collect_warnings(
             warnings.append("development: SECRET_KEY is default — OK for local only")
         if _is_sqlite(database_url):
             warnings.append("development: using SQLite — switch to Postgres before staging")
+    mode = (kontur_mode or "off").strip().lower()
+    if name == "staging" and mode in ("sandbox", "live") and not (kontur_api_key or "").strip():
+        warnings.append(
+            f"staging: KONTUR_MODE={mode} but KONTUR_API_KEY is missing — e-sign will stay unconfigured"
+        )
     return warnings

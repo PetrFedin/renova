@@ -42,6 +42,10 @@ echo "=== 3) optional live health ==="
 if [ -n "${API_BASE:-}" ]; then
   curl -sf "$API_BASE/health" | tee /tmp/renova-staging-health.json
   python3 -c "import json; d=json.load(open('/tmp/renova-staging-health.json')); assert d.get('environment') in ('staging','production'), d; print('health env OK:', d.get('environment'))"
+  DEMO_JSON="$(curl -sf -X POST "$API_BASE/api/v1/auth/demo" -H 'Content-Type: application/json' -d '{"role":"customer"}')"
+  DEMO_ID="$(python3 -c "import json,sys; print(json.load(sys.stdin)['id'])" <<< "$DEMO_JSON")"
+  curl -sf "$API_BASE/api/v1/esign/health" -H "X-User-Id: $DEMO_ID" | tee /tmp/renova-staging-esign-health.json
+  python3 -c "import json; d=json.load(open('/tmp/renova-staging-esign-health.json')); print('kontur_configured:', d.get('kontur_configured')); print('kontur_mode:', d.get('kontur_mode'))"
 else
   echo "SKIP live health (set API_BASE=https://… to enable)"
 fi

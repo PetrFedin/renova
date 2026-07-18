@@ -43,6 +43,8 @@ async def lifespan(app: FastAPI):
         environment=settings.environment,
         database_url=settings.database_url,
         secret_key=settings.secret_key,
+        kontur_mode=settings.kontur_mode,
+        kontur_api_key=settings.kontur_api_key,
     ):
         logger.warning(warning)
 
