@@ -59,8 +59,24 @@ export const roomsApi = {
       throw new Error('offline_queued');
     }
   },
-  approveRoomChange: (userId: string, projectId: string, reqId: string) =>
-    req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId),
-  rejectRoomChange: (userId: string, projectId: string, reqId: string) =>
-    req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, { method: 'POST' }, userId),
+  approveRoomChange: async (userId: string, projectId: string, reqId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
+  rejectRoomChange: async (userId: string, projectId: string, reqId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
 };

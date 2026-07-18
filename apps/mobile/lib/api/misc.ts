@@ -1,5 +1,5 @@
 /** API: misc */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ApprovalItem, ArticleDetail, ArticleSummary, ProjectDetail } from './types';
 export const miscApi = {
   listArticles: (category?: string) => req<ArticleSummary[]>(`/api/v1/articles${category ? `?category=${category}` : ''}`),
@@ -50,6 +50,16 @@ export const miscApi = {
       pending_draft_documents?: { id: string; title: string; status?: string }[];
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
-  rejectApproval: (userId: string, projectId: string, itemId: string, type: string, reason: string) => req(`/api/v1/projects/${projectId}/approvals/${itemId}/reject`, { method: 'POST', body: JSON.stringify({ type, reason }) }, userId),
+  rejectApproval: async (userId: string, projectId: string, itemId: string, type: string, reason: string) => {
+    const body = { type, reason };
+    try {
+      return await req(`/api/v1/projects/${projectId}/approvals/${itemId}/reject`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/approvals/${itemId}/reject`, method: 'POST', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
   enqueueOfflineCreate: async (path: string, method: string, body: object, userId: string) => { const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path, method, body: JSON.stringify(body), userId }); },
 };

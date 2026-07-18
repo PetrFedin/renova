@@ -1,5 +1,5 @@
 /** API: estimate */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ChangeOrder, MaterialStats, User } from './types';
 export const estimateApi = {
   patchEstimateLine: (userId: string, projectId: string, lineId: string, body: object) =>
@@ -16,10 +16,26 @@ export const estimateApi = {
   listChangeOrders: (userId: string, projectId: string) => req<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, {}, userId),
   createChangeOrder: (userId: string, projectId: string, body: object) =>
     req(`/api/v1/projects/${projectId}/change-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),
-  approveChangeOrder: (userId: string, projectId: string, orderId: string) =>
-    req(`/api/v1/projects/${projectId}/change-orders/${orderId}/approve`, { method: 'POST' }, userId),
-  rejectChangeOrder: (userId: string, projectId: string, orderId: string) =>
-    req(`/api/v1/projects/${projectId}/change-orders/${orderId}/reject`, { method: 'POST' }, userId),
+  approveChangeOrder: async (userId: string, projectId: string, orderId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/change-orders/${orderId}/approve`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/change-orders/${orderId}/approve`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
+  rejectChangeOrder: async (userId: string, projectId: string, orderId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/change-orders/${orderId}/reject`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/change-orders/${orderId}/reject`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   downloadEstimatePdf: async (userId: string, projectId: string) => {
     const { downloadApiPath } = await import('@/lib/downloadFile');
     await downloadApiPath(userId, `/api/v1/projects/${projectId}/estimate.pdf`, 'estimate.pdf');

@@ -170,12 +170,12 @@ async def yookassa_checkout(
         },
     )
     if pay.get("error") == "yookassa_not_configured":
-        raise HTTPException(503, pay.get("message", "ЮKassa not configured"))
+        raise HTTPException(503, pay.get("message", "ЮKassa не настроена на сервере"))
 
     yk_id = pay.get("payment_id")
     if pay.get("demo"):
         if not yk.demo_allowed():
-            raise HTTPException(503, "ЮKassa keys required in staging/production")
+            raise HTTPException(503, "Для staging/production нужны ключи ЮKassa")
         demo_body = {
             "event": "payment.succeeded",
             "object": {

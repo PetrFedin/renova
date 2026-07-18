@@ -126,8 +126,17 @@ export const stagesApi = {
   toggleStageChecklist: (userId: string, projectId: string, stageId: string, item_id: string, done: boolean) =>
     req(`/api/v1/projects/${projectId}/stages/${stageId}/checklist/toggle`, { method: 'POST', body: JSON.stringify({ item_id, done }) }, userId),
   stageBlocked: (userId: string, projectId: string, stageId: string) => req<{ blocked: boolean; depends_on?: string }>(`/api/v1/projects/${projectId}/stages/${stageId}/blocked`, {}, userId),
-  patchStageRooms: (userId: string, projectId: string, stageId: string, roomIds: string[]) =>
-    req(`/api/v1/projects/${projectId}/stages/${stageId}/rooms`, { method: 'PATCH', body: JSON.stringify({ room_ids: roomIds }) }, userId),
+  patchStageRooms: async (userId: string, projectId: string, stageId: string, roomIds: string[]) => {
+    const body = { room_ids: roomIds };
+    try {
+      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/rooms`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/rooms`, method: 'PATCH', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
   patchStageDepends: (userId: string, projectId: string, stageId: string, dependsOn: string | null) => req(`/api/v1/projects/${projectId}/stages/${stageId}/depends`, { method: 'PATCH', body: JSON.stringify({ depends_on_stage_id: dependsOn }) }, userId),
   patchStageWorkType: (userId: string, projectId: string, stageId: string, work_type: string | null) => req(`/api/v1/projects/${projectId}/stages/${stageId}/work-type`, { method: 'PATCH', body: JSON.stringify({ work_type }) }, userId),
   reactionCounts: (userId: string, projectId: string, stageId: string) => req<Record<string, Record<string, number>>>(`/api/v1/projects/${projectId}/stages/${stageId}/reaction-counts`, {}, userId),

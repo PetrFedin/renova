@@ -1,9 +1,6 @@
-import { Redirect } from 'expo-router';
-import { useRenova } from '@/lib/context/RenovaContext';
+import { LegacyTabRedirect } from '@/components/routing/LegacyTabRedirect';
 
-/** P3.4c: customer → work-acceptance, contractor → quality-control */
+/** P3.4c / P3-W28: единый redirect через TAB_ALIASES */
 export default function ControlTabRedirect() {
-  const { user } = useRenova();
-  const href = user?.role === 'contractor' ? '/quality-control' : '/work-acceptance';
-  return <Redirect href={href} />;
+  return <LegacyTabRedirect path="/(contractor)/(tabs)/control" />;
 }

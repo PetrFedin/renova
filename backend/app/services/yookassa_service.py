@@ -42,7 +42,7 @@ async def create_payment(
             return {
                 "demo": False,
                 "error": "yookassa_not_configured",
-                "message": "ЮKassa keys required for this environment",
+                "message": "На сервере не настроены ключи ЮKassa (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)",
             }
         return {
             "demo": True,

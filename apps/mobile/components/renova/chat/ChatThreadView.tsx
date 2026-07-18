@@ -12,6 +12,7 @@ import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, ChatDetail, ChatMessage } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
@@ -239,8 +240,8 @@ export function ChatThreadView({
     const prefix = replyTo?.text ? `↩ ${replyTo.text.slice(0, 40)}…\n` : '';
     try {
       await api.sendChatMessage(user.id, projectId, threadId, prefix + body, type, image, replyTo?.id);
-    } catch (e: any) {
-      if (e?.message === 'offline_queued') { Alert.alert('Офлайн', 'Отправится при подключении'); return; }
+    } catch (e) {
+      if (isOfflineQueued(e)) { notifyOfflineQueued('Сообщение'); return; }
       throw e;
     } finally {
       setReplyTo(null);
