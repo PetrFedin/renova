@@ -1,6 +1,9 @@
 import { Redirect } from 'expo-router';
+import { useRenova } from '@/lib/context/RenovaContext';
 
-/** P3.4: legacy control tab → quality-control hub */
+/** P3.4c: customer → work-acceptance, contractor → quality-control */
 export default function ControlTabRedirect() {
-  return <Redirect href="/quality-control" />;
+  const { user } = useRenova();
+  const href = user?.role === 'contractor' ? '/quality-control' : '/work-acceptance';
+  return <Redirect href={href} />;
 }

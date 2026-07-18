@@ -200,6 +200,26 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
 ];
 
 
+
+export type MenuRouteFilter = {
+  readOnly?: boolean;
+  phase?: 'setup' | 'active' | 'closing' | 'complete';
+  /** IDs to hide (e.g. notifications already on home) */
+  excludeIds?: string[];
+};
+
+/** Redirect-only entries — not shown in «Ещё» */
+const REDIRECT_ONLY_MENU_IDS = new Set([
+  'work-schedule',
+  'finance-center',
+  'project-analytics',
+  'materials-procurement',
+  'selections',
+]);
+
+const READ_ONLY_MORE_IDS = new Set(['documents', 'notifications', 'quality-control']);
+const COMPLETION_PHASE_ONLY_IDS = new Set(['manager-dashboard', 'reports']);
+
 export function resolveRouteRedirect(path: string): string | undefined {
   return RENOVA_ROUTES.find((r) => r.path === path)?.redirectTo;
 }
@@ -211,11 +231,28 @@ export function routesForAudience(audience: 'customer' | 'contractor'): RenovaRo
 export function menuRoutes(
   audience: 'customer' | 'contractor',
   visibility: RouteVisibility | RouteVisibility[] = 'more',
+  filter?: MenuRouteFilter,
 ): RenovaRoute[] {
   const vis = Array.isArray(visibility) ? visibility : [visibility];
-  return routesForAudience(audience).filter(
+  let routes = routesForAudience(audience).filter(
     (r) => vis.includes(r.visibility) && r.status !== 'wip',
   );
+  routes = routes.filter((r) => !REDIRECT_ONLY_MENU_IDS.has(r.id));
+  if (filter?.readOnly) {
+    routes = routes.filter((r) => READ_ONLY_MORE_IDS.has(r.id));
+  } else if (audience === 'customer') {
+    routes = routes.filter((r) => r.id !== 'quality-control');
+  } else {
+    routes = routes.filter((r) => r.id !== 'work-acceptance');
+  }
+  if (filter?.phase !== 'complete') {
+    routes = routes.filter((r) => !COMPLETION_PHASE_ONLY_IDS.has(r.id));
+  }
+  if (filter?.excludeIds?.length) {
+    const ex = new Set(filter.excludeIds);
+    routes = routes.filter((r) => !ex.has(r.id));
+  }
+  return routes;
 }
 
 export function assertRouteRegistryInvariants(routes: RenovaRoute[] = RENOVA_ROUTES): void {

@@ -165,7 +165,7 @@ export function HomeScreenBody({
       {/* Дополнительно — свёрнуто; для завершённого проекта отчёты тоже здесь */}
       {showMore && (
         <HomeMoreSection summary={moreSectionSummary}>
-          {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more').map((route) => (
+          {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more', { readOnly, phase, excludeIds: ['notifications'] }).map((route) => (
             <HomeLinkRow
               key={route.id}
               title={route.titleRu}

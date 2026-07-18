@@ -33,7 +33,8 @@ export function resolvePushLink(
   }
 
   if (canonicalPath === '/control') {
-    return { pathname: '/quality-control', params: { returnTo: rt } };
+    const pathname = role === 'contractor' ? '/quality-control' : '/work-acceptance';
+    return { pathname, params: { returnTo: rt } };
   }
 
   if (canonicalPath === '/work-schedule') {
@@ -103,6 +104,6 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'waste_reminder':
       return tabsRoute(role, 'calendar');
     default:
-      return null;
+      return { pathname: '/notifications', params: {} };
   }
 }
