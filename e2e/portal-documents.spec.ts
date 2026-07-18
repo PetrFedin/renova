@@ -33,7 +33,8 @@ test.describe('P3-W13 Portal + documents + reports', () => {
 
     const docsRes = await request.get(`${API}/api/v1/projects/${pid}/documents`, { headers: hCust });
     expect(docsRes.status()).toBe(200);
-    expect(Array.isArray(await docsRes.json())).toBe(true);
+    const docsBody = (await docsRes.json()) as { items?: unknown[] };
+    expect(Array.isArray(docsBody.items)).toBe(true);
 
     const dailyRes = await request.get(`${API}/api/v1/projects/${pid}/reports/daily`, { headers: hCust });
     expect(dailyRes.status()).toBe(200);
