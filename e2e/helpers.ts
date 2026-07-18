@@ -130,6 +130,21 @@ export async function prepareContractGateScenario(
   };
 }
 
+/** Убрать E2E Gate Test проект после spec (best-effort trash). */
+export async function cleanupE2eGateProject(
+  request: import('@playwright/test').APIRequestContext,
+  customerId: string,
+  projectId: string,
+): Promise<void> {
+  try {
+    await request.post(`${API}/api/v1/projects/${projectId}/trash`, {
+      headers: { 'X-User-Id': customerId },
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 export async function apiReachable(): Promise<boolean> {
   try {
     const res = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });

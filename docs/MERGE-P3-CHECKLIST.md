@@ -22,3 +22,8 @@ npm run release:notes:v0.3
 - Contract gate UI banner + API golden path
 - Offline: drop queue jobs on archive/trash
 - Reports в меню «Ещё»
+## CI (P3-W17)
+
+- Job `playwright`: `npm run e2e:api` + UI specs (не `e2e:web || true`)
+- Локальная уборка E2E Gate проектов: `npm run cleanup:e2e-gate`
+

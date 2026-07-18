@@ -7,6 +7,7 @@ import {
   webReachable,
   prepareContractGateScenario,
   seedDemoContractorSession,
+  cleanupE2eGateProject,
 } from './helpers';
 
 test.describe('P3-W15 Contract gate UI', () => {
@@ -16,11 +17,16 @@ test.describe('P3-W15 Contract gate UI', () => {
   });
 
   test('planned stage shows sign-contract banner', async ({ page, request }) => {
-    const { contractorId, projectId, stageId } = await prepareContractGateScenario(request);
-    await seedDemoContractorSession(page, contractorId, projectId);
-    await page.goto(`/stage/${stageId}`);
-    await expect(page.getByText('Перед началом работ')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/Подпишите договор|договор/i).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'К документам' })).toBeVisible();
+    const scenario = await prepareContractGateScenario(request);
+    const { contractorId, customerId, projectId, stageId } = scenario;
+    try {
+      await seedDemoContractorSession(page, contractorId, projectId);
+      await page.goto(`/stage/${stageId}`);
+      await expect(page.getByText('Перед началом работ')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText(/Подпишите договор|договор/i).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: 'К документам' })).toBeVisible();
+    } finally {
+      await cleanupE2eGateProject(request, customerId, projectId);
+    }
   });
 });
