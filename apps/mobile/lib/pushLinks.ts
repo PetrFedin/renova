@@ -1,5 +1,5 @@
 /** Нормализация deep link из push-уведомлений */
-import { calendarTabRoute, budgetTabRoute, parseOsHref, repairTabRoute, tabsRoute, type OsRole } from '../constants/osSections';
+import { calendarTabRoute, budgetTabRoute, objectTabRoute, parseOsHref, repairTabRoute, tabsRoute, type OsRole } from '../constants/osSections';
 import { TAB_ALIASES, legacyRouteCanonical, logLegacyRouteDeprecation } from './legacyRoutes';
 
 export type PushTarget = { pathname: string; params: Record<string, string> };
@@ -78,6 +78,15 @@ export function resolvePushLink(
   return { pathname: canonicalPath, params: { returnTo: rt } };
 }
 
+/** change_order → объект/смета, слой «Доп. работы» (согласовано с approvalLinks) */
+export function changeOrderEstimateRoute(role: OsRole, returnTo?: string): PushTarget {
+  const route = objectTabRoute(role, 'estimate');
+  return {
+    pathname: route.pathname,
+    params: { ...(route.params || {}), estimateLayer: 'changes', ...(returnTo ? { returnTo } : {}) },
+  };
+}
+
 /** Fallback router when push payload has no link_path */
 export function resolveNotificationLink(notificationType: string, role: OsRole = 'customer'): PushTarget | null {
   switch (notificationType) {
@@ -87,7 +96,7 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'stage_started':
       return { pathname: '/work-acceptance', params: {} };
     case 'change_order':
-      return { pathname: '/approvals', params: {} };
+      return changeOrderEstimateRoute(role);
     case 'materials':
       return repairTabRoute(role, 'materials');
     case 'chat_message':

@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, AppNotification } from '@/lib/api';
-import { resolveNotificationLink, resolvePushLink } from '@/lib/pushLinks';
+import { resolveNotificationLink, resolvePushLink, changeOrderEstimateRoute } from '@/lib/pushLinks';
 import type { OsRole } from '@/constants/osSections';
 import { SnoozeUntilPicker } from '@/components/renova/SnoozeUntilPicker';
 
@@ -45,6 +45,12 @@ export function NotificationCenter({
         <Pressable key={n.id} style={[s.item, !n.read && s.unread]} onPress={async () => {
           await api.readNotification(userId, n.id);
           const back = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
+          if (n.notification_type === 'change_order') {
+            const target = changeOrderEstimateRoute(role, back);
+            router.push({ pathname: target.pathname, params: target.params } as any);
+            setItems(await api.listNotifications(userId));
+            return;
+          }
           if (n.link_path) {
             const target = resolvePushLink(n.link_path, back, role);
             if (target) {

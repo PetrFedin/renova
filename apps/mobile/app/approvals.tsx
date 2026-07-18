@@ -15,7 +15,7 @@ import { objectTabRoute, type OsRole } from '@/constants/osSections';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, readOnly } = useRenova();
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const isCustomer = user?.role === 'customer';
@@ -29,7 +29,7 @@ export default function ApprovalsScreen() {
   const reason = (it: ApprovalItem) => reasons[key(it)] || '';
 
   const approve = async (it: ApprovalItem) => {
-    if (!user || !activeProject || !isCustomer) return;
+    if (!user || !activeProject || !isCustomer || readOnly) return;
     const { id: userId } = user;
     const pid = activeProject.id;
     try {
@@ -61,7 +61,9 @@ export default function ApprovalsScreen() {
             ) : null}
           </Pressable>
             {it.subtitle ? <Text style={s.sub}>{it.subtitle}</Text> : null}
-            {isCustomer ? (
+            {readOnly ? (
+              <Text style={s.wait}>Только просмотр — решения недоступны</Text>
+            ) : isCustomer ? (
               <>
                 <TextInput
                   style={s.inp}
@@ -72,7 +74,7 @@ export default function ApprovalsScreen() {
                 <View style={s.actions}>
                   <PrimaryButton title="Согласовать" onPress={() => approve(it)} />
                   <PrimaryButton title="Отклонить" variant="outline" onPress={async () => {
-                    if (!user || !activeProject) return;
+                    if (!user || !activeProject || readOnly) return;
                     try {
                       await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
                       load();

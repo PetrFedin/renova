@@ -215,9 +215,11 @@ const REDIRECT_ONLY_MENU_IDS = new Set([
   'project-analytics',
   'materials-procurement',
   'selections',
+  'control',
 ]);
 
-const READ_ONLY_MORE_IDS = new Set(['documents', 'notifications', 'quality-control']);
+/** Guest/readOnly «Ещё» — только просмотр с понятным CTA, без beta-центров без действий */
+const READ_ONLY_MORE_IDS = new Set(['documents', 'notifications']);
 const COMPLETION_PHASE_ONLY_IDS = new Set(['manager-dashboard', 'reports']);
 
 export function resolveRouteRedirect(path: string): string | undefined {

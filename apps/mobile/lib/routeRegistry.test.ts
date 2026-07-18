@@ -13,6 +13,7 @@ const guestIds = new Set(guestMore.map((r) => r.id));
 for (const id of ['documents', 'notifications']) {
   if (!guestIds.has(id)) throw new Error(`readOnly guest must see ${id}`);
 }
-if (guestMore.length > 4) throw new Error('readOnly more menu too large');
+if (guestIds.has('quality-control')) throw new Error('readOnly guest must not see quality-control dead end');
+if (guestMore.length > 3) throw new Error('readOnly more menu too large');
 
 console.log('routeRegistry.test OK');

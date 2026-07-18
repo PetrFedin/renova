@@ -7,7 +7,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { AppNotification } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { resolveNotificationLink, resolvePushLink } from '@/lib/pushLinks';
+import { resolveNotificationLink, resolvePushLink, changeOrderEstimateRoute } from '@/lib/pushLinks';
 import type { OsRole } from '@/constants/osSections';
 
 function formatDate(value: string) {
@@ -30,6 +30,12 @@ function typeLabel(type: string) {
 
 function openNotification(notification: AppNotification, role: OsRole) {
   const back = role === 'contractor' ? '/(contractor)/(tabs)/' : '/(customer)/(tabs)/';
+  // P3-W25: change_order → смета/доп. работы даже если link_path устарел (/approvals)
+  if (notification.notification_type === 'change_order') {
+    const target = changeOrderEstimateRoute(role, back);
+    router.push({ pathname: target.pathname, params: target.params } as never);
+    return;
+  }
   if (notification.link_path) {
     const target = resolvePushLink(notification.link_path, back, role);
     if (target) {

@@ -14,6 +14,7 @@ import { SearchFilter } from '@/components/renova/SearchFilter';
 import { CreateRoomSheet } from '@/components/renova/CreateRoomSheet';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { api, Room, RoomChangeRequest, isRateLimitError } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomChangeStatusLabel } from '@/constants/labels';
 import { ROOM_FORM_HINTS } from '@/constants/roomFormHints';
@@ -108,7 +109,8 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
                     await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
                     setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
                   } catch (e) {
-                    if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+                    if (isOfflineQueued(e)) notifyOfflineQueued('Запрос на изменение');
+                    else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
                   }
                 }} />
               </Pressable>
@@ -186,9 +188,9 @@ function ContractorRoomsBody() {
             try {
               await api.patchStageRooms(user.id, activeProject.id, stageId, roomIds);
               await loadProject(activeProject.id);
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : '';
-              Alert.alert('Ошибка', msg === 'offline_queued' ? 'Изменение в очереди синхронизации' : 'Не удалось обновить привязку');
+            } catch (e) {
+              if (isOfflineQueued(e)) notifyOfflineQueued('Привязка комнат');
+              else Alert.alert('Ошибка', 'Не удалось обновить привязку');
             }
           }}
         />
@@ -208,7 +210,8 @@ function ContractorRoomsBody() {
                   await loadProject(activeProject.id);
                   await reloadRooms();
                 } catch (e) {
-                  if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
+                  else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
                 }
               }} />
               <PrimaryButton disabled={!canWrite} title="Отклонить" variant="outline" onPress={async () => {
@@ -216,7 +219,8 @@ function ContractorRoomsBody() {
                   await api.rejectRoomChange(user.id, activeProject.id, r.id);
                   await reloadRequests();
                 } catch (e) {
-                  if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение запроса');
+                  else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
                 }
               }} />
             </View>
@@ -245,14 +249,10 @@ function ContractorRoomsBody() {
                       Alert.alert('В архиве', `«${room.name}» скрыта из активных. Смотрите вкладку «Архив».`);
                     }
                   } catch (e: unknown) {
-                    const msg = e instanceof Error ? e.message : '';
-                    Alert.alert(
+                    if (isOfflineQueued(e)) notifyOfflineQueued(archived ? 'Архивирование' : 'Восстановление');
+                    else Alert.alert(
                       'Ошибка',
-                      msg === 'offline_queued'
-                        ? 'Команда в очереди синхронизации'
-                        : archived
-                          ? 'Не удалось отправить комнату в архив'
-                          : 'Не удалось восстановить комнату',
+                      archived ? 'Не удалось отправить комнату в архив' : 'Не удалось восстановить комнату',
                     );
                   }
                 }}
