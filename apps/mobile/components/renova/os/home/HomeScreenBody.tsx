@@ -109,7 +109,9 @@ export function HomeScreenBody({
         <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
       )}
 
-      <HomeLinkRow title="Уведомления проекта" onPress={() => pushScreen('/notifications')} />
+      {!readOnly ? (
+        <HomeLinkRow title="Уведомления проекта" onPress={() => pushScreen('/notifications')} />
+      ) : null}
 
       {/* 2. Главное действие */}
       {role === 'customer' && snap.quality.awaitingAcceptance > 0 ? (

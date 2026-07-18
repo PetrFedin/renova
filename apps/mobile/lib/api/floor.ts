@@ -1,5 +1,5 @@
 /** API: floor */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { FloorPlan, FurnitureItem, WasteOrder } from './types';
 export const floorApi = {
   listFloorPlans: (userId: string, projectId: string) => req<FloorPlan[]>(`/api/v1/projects/${projectId}/floor-plans`, {}, userId),
@@ -12,6 +12,15 @@ export const floorApi = {
   listWasteOrders: (userId: string, projectId: string) => req<WasteOrder[]>(`/api/v1/projects/${projectId}/waste-orders`, {}, userId),
   createWasteOrder: (userId: string, projectId: string, body: object) => req<WasteOrder>(`/api/v1/projects/${projectId}/waste-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),
   requestWasteOrder: (userId: string, projectId: string, id: string) => req(`/api/v1/projects/${projectId}/waste-orders/${id}/request`, { method: 'POST' }, userId),
-  approveWasteOrder: (userId: string, projectId: string, id: string) => req(`/api/v1/projects/${projectId}/waste-orders/${id}/approve`, { method: 'POST' }, userId),
+  approveWasteOrder: async (userId: string, projectId: string, id: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/approve`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/waste-orders/${id}/approve`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   completeWasteOrder: (userId: string, projectId: string, id: string) => req(`/api/v1/projects/${projectId}/waste-orders/${id}/complete`, { method: 'POST' }, userId),
 };
