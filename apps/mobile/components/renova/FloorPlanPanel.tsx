@@ -163,21 +163,23 @@ export function FloorPlanPanel({
       {plan ? (
         <>
           {canPunch ? (
-            <OfflineSyncStatus compact />
-            <View style={s.punchBar}>
-              <Pressable
-                style={[s.punchToggle, punchMode && s.punchToggleOn]}
-                onPress={() => setPunchMode((v) => !v)}
-              >
-                <Text style={[s.punchToggleT, punchMode && s.punchToggleTOn]}>
-                  {punchMode ? '● Режим замечаний' : '○ Punch list'}
-                </Text>
-              </Pressable>
-              <Text style={s.punchHint}>{openPunch.length} на плане</Text>
-              <Pressable onPress={() => router.push('/quality-control' as never)}>
-                <Text style={s.link}>Список →</Text>
-              </Pressable>
-            </View>
+            <>
+              <OfflineSyncStatus compact />
+              <View style={s.punchBar}>
+                <Pressable
+                  style={[s.punchToggle, punchMode && s.punchToggleOn]}
+                  onPress={() => setPunchMode((v) => !v)}
+                >
+                  <Text style={[s.punchToggleT, punchMode && s.punchToggleTOn]}>
+                    {punchMode ? '● Режим замечаний' : '○ Punch list'}
+                  </Text>
+                </Pressable>
+                <Text style={s.punchHint}>{openPunch.length} на плане</Text>
+                <Pressable onPress={() => router.push('/quality-control' as never)}>
+                  <Text style={s.link}>Список →</Text>
+                </Pressable>
+              </View>
+            </>
           ) : null}
           <View style={s.mapWrap} onLayout={onMapLayout}>
             <Image source={{ uri: `${BASE}${plan.image_url}` }} style={s.img} resizeMode="contain" />
