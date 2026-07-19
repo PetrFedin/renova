@@ -250,3 +250,14 @@ W44 AcceptOrchestrator (+ stage_id в events) → W45 Budget SoT + YuKassa/porta
 8. Показать weekly digest / паспорт объекта из Document Center  
 
 Ведущему демо: деньги = confirm + clipboard; карту — только с keys.
+
+---
+
+## 11. Статус исполнения (2026-07-19)
+
+| Волна | Статус |
+|-------|--------|
+| W44 AcceptOrchestrator | ✅ |
+| W45 Budget SoT + bank confirm | ✅ |
+| W45 YuKassa live keys | ⏳ ops |
+| W46 Schedule UI + Home polish | 📋 next |

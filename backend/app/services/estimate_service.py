@@ -5,12 +5,10 @@ from app.models.entities import EstimateLine, LineType, Project
 
 
 async def recalc_budget(db: AsyncSession, project_id: str) -> float:
-    result = await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))
-    lines = list(result.scalars().all())
-    total = sum(l.quantity_planned * l.unit_price for l in lines)
-    proj = await db.get(Project, project_id)
-    if proj:
-        proj.budget_planned = round(total, 2)
+    """W45: делегирует в sync_project_budget_planned (estimate + approved CO)."""
+    from app.services.budget_service import sync_project_budget_planned
+
+    total = await sync_project_budget_planned(db, project_id)
     await db.commit()
     return total
 

@@ -423,3 +423,60 @@ async def import_bank_statement(
         raise HTTPException(400, "Не удалось разобрать CSV (нужны сумма и опционально дата)")
     result = await match_bank_rows_to_payments(db, project, rows)
     return {"ok": True, "parsed_rows": len(rows), **result}
+
+
+class BankConfirmIn(BaseModel):
+    payment_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+@router.post("/{project_id}/import/bank-statement/confirm")
+async def confirm_bank_statement_matches(
+    project_id: str,
+    body: BankConfirmIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W45: подтвердить matched pending-платежи (те же gate, что PaymentDetailSheet)."""
+    from app.services import payment_service as pay_svc
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    project = await require_project(db, project_id, user, write=True)
+    if not body.payment_ids:
+        raise HTTPException(400, "payment_ids_required")
+
+    confirmed: list[str] = []
+    blocked: list[str] = []
+    for pid in body.payment_ids:
+        payment = await pay_svc.confirm_payment(db, pid, project_id=project_id)
+        if payment:
+            confirmed.append(pid)
+            await act.log_event(
+                db,
+                project_id=project_id,
+                user_id=user.id,
+                kind="PaymentApproved",
+                title=f"Оплата подтверждена (выписка): {payment.title}",
+                body=f"{payment.amount} ₽",
+                link_path="/(customer)/(tabs)/budget?tab=payments",
+                stage_id=payment.stage_id,
+            )
+            if project.contractor_id and project.contractor_id != user.id:
+                await notif.notify(
+                    db,
+                    user_id=project.contractor_id,
+                    project_id=project_id,
+                    notification_type="payment_confirmed",
+                    title="Оплата подтверждена",
+                    body=payment.title,
+                    link_path="/(contractor)/(tabs)/budget?tab=payments",
+                )
+        else:
+            blocked.append(pid)
+    return {
+        "ok": True,
+        "confirmed": confirmed,
+        "blocked": blocked,
+        "confirmed_count": len(confirmed),
+        "blocked_count": len(blocked),
+    }

@@ -530,9 +530,37 @@ export function DocumentsHub({
       const res = await api.importBankStatement(userId, projectId, text);
       setBankImportOpen(false);
       setBankCsvText('');
+      const pendingIds = (res.matches || [])
+        .filter((m) => m.payment_status === 'pending')
+        .map((m) => m.payment_id);
+      const summary = `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${res.unmatched_rows}`;
+      if (!pendingIds.length) {
+        Alert.alert('Импорт выписки', summary);
+        return;
+      }
       Alert.alert(
         'Импорт выписки',
-        `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${res.unmatched_rows}`,
+        `${summary}\n\nПодтвердить ${pendingIds.length} pending-оплат(ы)? (gate: приёмка этапа)`,
+        [
+          { text: 'Только матч', style: 'cancel' },
+          {
+            text: 'Подтвердить',
+            onPress: () => {
+              setBusy('bank-confirm');
+              api.confirmBankStatementMatches(userId, projectId, pendingIds)
+                .then((r) => {
+                  Alert.alert(
+                    'Выписка → оплаты',
+                    `Подтверждено: ${r.confirmed_count} · заблокировано gate: ${r.blocked_count}`,
+                  );
+                })
+                .catch((e: unknown) => {
+                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось подтвердить');
+                })
+                .finally(() => setBusy(null));
+            },
+          },
+        ],
       );
     } catch (e: unknown) {
       Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось импортировать');

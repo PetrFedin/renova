@@ -85,10 +85,28 @@ export const osApi = {
       parsed_rows: number;
       matched: number;
       unmatched_rows: number;
-      matches: { payment_id: string; payment_title: string; score: number }[];
+      matches: {
+        payment_id: string;
+        payment_title: string;
+        payment_status: string;
+        payment_amount: number;
+        score: number;
+      }[];
     }>(
       `/api/v1/projects/${projectId}/import/bank-statement`,
       { method: 'POST', body: JSON.stringify({ csv_text }) },
+      userId,
+    ),
+  confirmBankStatementMatches: (userId: string, projectId: string, payment_ids: string[]) =>
+    req<{
+      ok: boolean;
+      confirmed: string[];
+      blocked: string[];
+      confirmed_count: number;
+      blocked_count: number;
+    }>(
+      `/api/v1/projects/${projectId}/import/bank-statement/confirm`,
+      { method: 'POST', body: JSON.stringify({ payment_ids }) },
       userId,
     ),
   createWarrantyClaim: (userId: string, projectId: string, body: { title?: string; description?: string }) =>

@@ -247,6 +247,34 @@ async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
 
 
 
+
+async def sync_project_budget_planned(db: AsyncSession, project_id: str) -> float:
+    """W45: единственный writer projects.budget_planned = Σ estimate + Σ approved CO."""
+    from app.models.entities import ChangeOrder, ChangeOrderStatus, EstimateLine
+
+    est_lines = list(
+        (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
+    )
+    estimate_total = sum(float(l.quantity_planned or 0) * float(l.unit_price or 0) for l in est_lines)
+    cos = list(
+        (
+            await db.execute(
+                select(ChangeOrder).where(
+                    ChangeOrder.project_id == project_id,
+                    ChangeOrder.status == ChangeOrderStatus.approved,
+                )
+            )
+        ).scalars().all()
+    )
+    co_total = sum(float(c.amount or 0) for c in cos)
+    total = round(estimate_total + co_total, 2)
+    proj = await db.get(Project, project_id)
+    if proj:
+        proj.budget_planned = total
+    await db.flush()
+    return total
+
+
 async def apply_change_order_to_budget(db: AsyncSession, co) -> BudgetLine:
     """P3.2c: при одобрении CO — строка бюджета «works» + delta planned."""
     marker = f"[co:{co.id}]"
@@ -285,8 +313,11 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
     lines = (await db.execute(select(BudgetLine).where(BudgetLine.project_id == project_id))).scalars().all()
     planned = sum(bl.planned_amount for bl in lines if bl.category != "reserve")
     reserve = sum(bl.planned_amount for bl in lines if bl.category == "reserve")
-    line_total = planned + reserve
-    total_plan = max(line_total, proj.budget_planned or 0) if (line_total or proj.budget_planned) else 0
+    # W45: план проекта — SoT (estimate + approved CO), не max(lines, project)
+    await sync_project_budget_planned(db, project_id)
+    await db.commit()
+    await db.refresh(proj)
+    total_plan = float(proj.budget_planned or 0)
     actual = proj.budget_spent
     deviation = round(actual - total_plan, 2)
     deviation_pct = round(deviation / total_plan * 100, 1) if total_plan else 0

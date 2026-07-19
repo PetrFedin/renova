@@ -1,7 +1,7 @@
 """Change orders — доп. работы с согласованием заказчиком."""
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.entities import ChangeOrder, ChangeOrderStatus, Project
+from app.models.entities import ChangeOrder, ChangeOrderStatus
 from app.services.budget_service import apply_change_order_to_budget
 
 
@@ -24,9 +24,8 @@ async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
         return None
     co.status = ChangeOrderStatus.approved
     await apply_change_order_to_budget(db, co)
-    proj = await db.get(Project, co.project_id)
-    if proj:
-        proj.budget_planned = round(proj.budget_planned + co.amount, 2)
+    from app.services.budget_service import sync_project_budget_planned
+    await sync_project_budget_planned(db, co.project_id)
     await db.commit()
     await db.refresh(co)
     return co
