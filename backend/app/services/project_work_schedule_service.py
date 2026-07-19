@@ -318,11 +318,9 @@ async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkSchedul
         stage.status = StageStatus.review
         stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 90)
     elif status == WorkScheduleItemStatus.accepted:
-        stage.status = StageStatus.done
-        stage.actual_end = stage.actual_end or date.today()
-        stage.customer_accepted_at = stage.customer_accepted_at or datetime.utcnow()
-        stage.percent_complete = 100
-        await ensure_pending_stage_payment(db, stage)
+        # W44: график не обходит work-acceptances — только review, без customer_accepted_at/оплаты
+        stage.status = StageStatus.review
+        stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 95)
 
 
 async def update_item_status(

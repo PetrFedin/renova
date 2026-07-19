@@ -295,6 +295,37 @@ async def _seed_chats_for_customer_projects(
             await _seed_apartment_chats(db, proj.id, customer.id, contractor.id)
 
 
+async def _ensure_demo_contractor_profile(db: AsyncSession, contractor_id: str) -> None:
+    """W44: демо-реквизиты СБП — portal/SBP не упираются в «спросите в чате»."""
+    from app.models.entities import ContractorProfile
+
+    existing = (
+        await db.execute(select(ContractorProfile).where(ContractorProfile.user_id == contractor_id))
+    ).scalar_one_or_none()
+    requisites = (
+        "СБП: +70000000002\n"
+        "Получатель: Демо исполнитель\n"
+        "Банк: Т-Банк (demo seed)\n"
+        "Назначение: оплата этапа ремонта Renova"
+    )
+    if existing:
+        if not (existing.payment_requisites or "").strip():
+            existing.payment_requisites = requisites
+        if not existing.company_name:
+            existing.company_name = "Демо Подрядчик Renova"
+        return
+    db.add(
+        ContractorProfile(
+            user_id=contractor_id,
+            company_name="Демо Подрядчик Renova",
+            city="Москва",
+            payment_requisites=requisites,
+            bio="Демо-профиль для investor/pilot walkthrough",
+        )
+    )
+
+
+
 async def ensure_demo_users(db: AsyncSession) -> None:
     names = {"customer": "Демо заказчик", "contractor": "Демо исполнитель", "guest": "Демо гость (read-only)"}
     for key, phone in DEMO_PHONES.items():
@@ -317,6 +348,8 @@ async def ensure_demo_users(db: AsyncSession) -> None:
     customer = r.scalar_one()
     rc = await db.execute(select(User).where(User.phone == DEMO_PHONES["contractor"]))
     contractor = rc.scalar_one()
+    await _ensure_demo_contractor_profile(db, contractor.id)
+    await db.commit()
 
     r2 = await db.execute(select(Project).where(Project.customer_id == customer.id))
     existing_projects = list(r2.scalars().all())

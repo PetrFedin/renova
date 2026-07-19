@@ -21,6 +21,7 @@ import { clearHomeSearchHints, setHomeSearchHints } from '@/lib/homeSearchHints'
 import { fallbackDashboard } from '@/lib/domain/fallbackDashboard';
 import { api, Dashboard, ReceiptItem, MaterialPick, Purchase, OsRisk, OsScheduleSummary, OsInsight, OsBudgetSummary } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
+import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyBadge';
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
   const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading } = useRenova();
@@ -196,7 +197,8 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      <HomeScreenBody
+      <IntegrationHonestyBadge />
+        <HomeScreenBody
         role={role}
         user={user}
         activeProject={activeProject}

@@ -224,17 +224,13 @@ async def portal_accept_work(
     if "accept_stage" not in claims.get("scopes", []):
         raise HTTPException(403, "portal_read_only")
 
-    from sqlalchemy import select
-    from datetime import datetime, date
-    from app.models.entities import WorkAcceptance, AcceptanceStatus, Stage, StageStatus, ProjectIssue
+    from app.models.entities import WorkAcceptance
     from app.api.v1.work_acceptances import (
         acceptance_dict,
         require_pending_decision,
         require_stage,
-        ensure_stage_payment,
-        activate_next_stage,
     )
-    from app.services import activity_service as act
+    from app.services.accept_orchestrator import emit_acceptance_side_effects, finalize_work_acceptance
 
     user = await db.get(User, claims["user_id"])
     if not user:
@@ -251,32 +247,28 @@ async def portal_accept_work(
     require_pending_decision(row)
     stage = await require_stage(db, project_id, row.stage_id)
 
-    now = datetime.utcnow()
-    row.status = AcceptanceStatus.accepted.value
-    row.accepted_by = user.id
-    row.accepted_at = now
-    row.comment = body.comment or row.comment
-    stage.status = StageStatus.done
-    stage.customer_accepted_at = stage.customer_accepted_at or now
-    stage.actual_end = stage.actual_end or date.today()
-    stage.percent_complete = 100
-    stage.needs_rework = False
-
-    await ensure_stage_payment(db, project, stage, user.id)
-    await activate_next_stage(db, stage)
-
-    await act.log_event(
+    result = await finalize_work_acceptance(
         db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="AcceptancePassed",
-        title=f"Этап принят (портал): {stage.name}",
-        body=body.comment,
-        link_path=f"/stage/{stage.id}",
+        project=project,
+        stage=stage,
+        row=row,
+        accepted_by=user.id,
+        comment=body.comment,
     )
     await db.commit()
-    await db.refresh(row)
-    return acceptance_dict(row)
+    await db.refresh(result.acceptance)
+
+    await emit_acceptance_side_effects(
+        db,
+        project=project,
+        stage=result.stage,
+        accepted_by=user.id,
+        comment=body.comment,
+        payment=result.payment,
+        next_stage=result.next_stage,
+        source="portal",
+    )
+    return acceptance_dict(result.acceptance)
 
 
 class PortalSignIn(BaseModel):

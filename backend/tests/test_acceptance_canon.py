@@ -101,3 +101,68 @@ async def test_os_acceptance_proxy_uses_canon():
         )
         assert r.status_code == 200
         assert r.json()["status"] == "accepted"
+
+
+async def test_accept_emits_acceptance_passed_with_stage_context():
+    """W44: AcceptancePassed must carry stage_id into automation via log_event."""
+    from unittest.mock import AsyncMock, patch
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pid, h_cust, h_cont = await _demo_project(client)
+        stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
+        active = next(s for s in stages if s["status"] == "active")
+        created = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances",
+            headers=h_cont,
+            json={"stage_id": active["id"], "comment": "готов"},
+        )
+        acc_id = created.json()["id"]
+
+        with patch("app.services.automation_engine.process_event", new_callable=AsyncMock) as pe:
+            accepted = await client.post(
+                f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
+                headers=h_cust,
+                json={"quality_score": 9, "comment": "ок"},
+            )
+            assert accepted.status_code == 200
+            passed_calls = [c for c in pe.await_args_list if c.kwargs.get("kind") == "AcceptancePassed"]
+            assert passed_calls, pe.await_args_list
+            assert passed_calls[0].kwargs.get("stage_id") == active["id"]
+
+        detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()
+        stage = next(s for s in detail["stages"] if s["id"] == active["id"])
+        assert stage["status"] == "done"
+        assert stage.get("customer_accepted_at")
+
+
+async def test_schedule_item_accepted_does_not_bypass_work_acceptance():
+    """W44: schedule status=accepted → review, без customer_accepted_at."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pid, h_cust, h_cont = await _demo_project(client)
+        stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
+        active_id = next(s for s in stages if s["status"] == "active")["id"]
+        created = await client.post(
+            f"/api/v1/projects/{pid}/work-schedules",
+            headers=h_cont,
+            json={},
+        )
+        if created.status_code not in (200, 201):
+            pytest.skip(f"work-schedules create unavailable: {created.status_code} {created.text}")
+        sched = created.json()
+        items = sched.get("items") or []
+        item = next((i for i in items if i.get("stage_id") == active_id), items[0] if items else None)
+        if not item:
+            pytest.skip("no schedule items")
+        upd = await client.post(
+            f"/api/v1/projects/{pid}/work-schedules/{sched['id']}/items/{item['id']}/status",
+            headers=h_cont,
+            json={"status": "accepted"},
+        )
+        assert upd.status_code < 400, upd.text
+
+        detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()
+        stage = next(s for s in detail["stages"] if s["id"] == active_id)
+        assert stage["status"] == "review", stage
+        assert not stage.get("customer_accepted_at"), "schedule must not set customer_accepted_at"
