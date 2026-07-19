@@ -184,3 +184,43 @@ async def build_1c_payments_xml(db: AsyncSession, project: Project) -> str:
     parts.append("  </Documents>")
     parts.append("</RenovaExchange>")
     return "\n".join(parts) + "\n"
+
+
+
+async def build_1c_commerceml_xml(db: AsyncSession, project: Project) -> str:
+    """P4.1a++: подмножество CommerceML 2.04 (Документ/Оплата) для ручного импорта в 1С."""
+    payments = (
+        await db.execute(
+            select(Payment).where(Payment.project_id == project.id).order_by(Payment.created_at.asc())
+        )
+    ).scalars().all()
+    formed = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    pname = _xml_escape(project.name or project.id)
+    parts = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<КоммерческаяИнформация ВерсияСхемы="2.04" ДатаФормирования="{formed}">',
+    ]
+    for i, p in enumerate(payments, start=1):
+        st = p.status.value if hasattr(p.status, "value") else str(p.status)
+        pt = p.payment_type.value if hasattr(p.payment_type, "value") else str(p.payment_type)
+        dt = (p.confirmed_at or p.created_at).strftime("%Y-%m-%d")
+        parts.append("  <Документ>")
+        parts.append(f"    <Ид>{_xml_escape(p.id)}</Ид>")
+        parts.append(f"    <Номер>{i}</Номер>")
+        parts.append(f"    <Дата>{dt}</Дата>")
+        parts.append("    <ХозОперация>Оплата</ХозОперация>")
+        parts.append("    <Роль>Продавец</Роль>")
+        parts.append(f"    <Валюта>руб</Валюта>")
+        parts.append(f"    <Курс>1</Курс>")
+        parts.append(f"    <Сумма>{p.amount:.2f}</Сумма>")
+        parts.append(f"    <Комментарий>{_xml_escape(f'{pname} · {p.title} · {pt} · {st}')}</Комментарий>")
+        if p.yookassa_payment_id:
+            parts.append(
+                f"    <ЗначенияРеквизитов><ЗначениеРеквизита>"
+                f"<Наименование>ЮKassaId</Наименование>"
+                f"<Значение>{_xml_escape(p.yookassa_payment_id)}</Значение>"
+                f"</ЗначениеРеквизита></ЗначенияРеквизитов>"
+            )
+        parts.append("  </Документ>")
+    parts.append("</КоммерческаяИнформация>")
+    return "\n".join(parts) + "\n"

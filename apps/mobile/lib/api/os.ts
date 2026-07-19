@@ -69,6 +69,10 @@ export const osApi = {
     const { exportProjectCsvFile } = await import('@/lib/exportProjectCsv');
     await exportProjectCsvFile(userId, `/api/v1/projects/${projectId}/export/1c-payments.xml`, `renova-1c-${projectId.slice(0, 8)}.xml`);
   },
+  export1cCommercemlXml: async (userId: string, projectId: string) => {
+    const { exportProjectCsvFile } = await import('@/lib/exportProjectCsv');
+    await exportProjectCsvFile(userId, `/api/v1/projects/${projectId}/export/1c-commerceml.xml`, `renova-cml-${projectId.slice(0, 8)}.xml`);
+  },
   exportBankRegisterCsv: async (userId: string, projectId: string) => {
     const { exportProjectCsvFile } = await import('@/lib/exportProjectCsv');
     await exportProjectCsvFile(userId, `/api/v1/projects/${projectId}/export/bank-register.csv`, `renova-bank-${projectId.slice(0, 8)}.csv`);

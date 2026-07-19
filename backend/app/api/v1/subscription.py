@@ -9,6 +9,15 @@ from app.core.config import settings
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
 
+
+@router.get("/yookassa/health")
+async def yookassa_health_probe(user: User = Depends(get_current_user)):
+    """P4: staging readiness для ЮKassa (без секретов)."""
+    from app.services.yookassa_service import yookassa_health
+    _ = user
+    return yookassa_health()
+
+
 @router.get("/me")
 async def my_sub(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     s = await get_sub(db, user.id)

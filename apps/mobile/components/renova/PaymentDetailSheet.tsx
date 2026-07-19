@@ -243,7 +243,7 @@ export function PaymentDetailSheet({
           { text: 'Перейти к приёмке', onPress: goToAcceptance },
         ]);
       } else if (e instanceof ApiError && e.status === 503) {
-        Alert.alert('ЮKassa', 'Оплата картой недоступна на этом сервере (нет ключей ЮKassa). Используйте перевод по реквизитам или чек.');
+        Alert.alert('ЮKassa', 'Нет ключей YOOKASSA_* на сервере (staging/prod demo выключен). Задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET или оплатите по реквизитам/чеку.');
       } else {
         Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось открыть оплату картой'));
       }

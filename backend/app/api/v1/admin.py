@@ -48,4 +48,32 @@ async def revenue_chart(user: User = Depends(get_current_user), db: AsyncSession
 async def release_health(user: User = Depends(get_current_user)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
-    return {"version": "1.0.0", "crash_free_rate": 99.2, "sessions": 1200, "source": "sentry-stub"}
+    from app.core.config import settings
+    from app.services.yookassa_service import yookassa_health
+    from app.services.automation_reminders_worker import automation_worker_metrics
+
+    yk = yookassa_health()
+    worker = automation_worker_metrics()
+    return {
+        "version": "1.0.0",
+        "crash_free_rate": 99.2,
+        "sessions": 1200,
+        "source": "sentry-stub",
+        "environment": settings.normalized_environment,
+        "integrations": {
+            "yookassa": {
+                "configured": yk["configured"],
+                "live_checkout_ready": yk["live_checkout_ready"],
+                "demo_allowed": yk["demo_allowed"],
+            },
+            "smtp": {"configured": bool(settings.smtp_host)},
+            "ollama_digest": {
+                "enabled": bool(settings.ollama_digest_enabled),
+                "base_url_set": bool(settings.ollama_base_url),
+            },
+            "automation_worker": {
+                "healthy": int(worker.get("consecutive_failures") or 0) < 3,
+                "consecutive_failures": worker.get("consecutive_failures"),
+            },
+        },
+    }

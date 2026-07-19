@@ -156,6 +156,13 @@ export function DocumentsHub({
         format: 'XML',
         run: () => api.export1cPaymentsXml(userId, projectId),
       },
+      onecCml: {
+        id: 'onec-cml',
+        label: '1С CommerceML',
+        desc: 'КоммерческаяИнформация 2.04 (оплаты)',
+        format: 'XML',
+        run: () => api.export1cCommercemlXml(userId, projectId),
+      },
       bankCsv: {
         id: 'bank',
         label: 'Реестр для банка',
@@ -250,7 +257,7 @@ export function DocumentsHub({
       {
         title: 'Учёт RU',
         hint: '1С, банк, дайджест и гарантия',
-        rows: [rows.onecCsv, rows.onecXml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim],
+        rows: [rows.onecCsv, rows.onecXml, rows.onecCml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim],
       },
       {
         title: 'Архив и сроки',

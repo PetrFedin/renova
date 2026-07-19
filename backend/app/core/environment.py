@@ -171,6 +171,8 @@ def collect_warnings(
     secret_key: str,
     kontur_mode: str | None = None,
     kontur_api_key: str | None = None,
+    yookassa_shop_id: str | None = None,
+    yookassa_secret: str | None = None,
 ) -> list[str]:
     """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
@@ -185,4 +187,9 @@ def collect_warnings(
         warnings.append(
             f"staging: KONTUR_MODE={mode} but KONTUR_API_KEY is missing — e-sign will stay unconfigured"
         )
+    if name in ("staging", "production"):
+        if not ((yookassa_shop_id or "").strip() and (yookassa_secret or "").strip()):
+            warnings.append(
+                f"{name}: YOOKASSA_SHOP_ID/YOOKASSA_SECRET missing — card checkout returns 503 (demo disabled)"
+            )
     return warnings

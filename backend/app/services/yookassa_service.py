@@ -24,9 +24,34 @@ def yookassa_configured() -> bool:
     return bool(settings.yookassa_shop_id and settings.yookassa_secret)
 
 
+
+
 def demo_allowed() -> bool:
     """Demo instant pay только development/test — не staging/production."""
     return settings.normalized_environment in ("development", "test")
+
+def yookassa_health() -> dict[str, Any]:
+    """P4 staging probe — без секретов, только флаги готовности."""
+    base = (settings.public_base_url or "http://127.0.0.1:8100").rstrip("/")
+    configured = yookassa_configured()
+    env = settings.normalized_environment
+    return {
+        "environment": env,
+        "configured": configured,
+        "shop_id_set": bool(settings.yookassa_shop_id),
+        "secret_set": bool(settings.yookassa_secret),
+        "webhook_secret_set": bool(settings.yookassa_webhook_secret),
+        "demo_allowed": demo_allowed(),
+        "live_checkout_ready": configured and env in ("staging", "production"),
+        "webhook_url": f"{base}/api/v1/subscription/webhook",
+        "return_scheme": "renova://payment-return",
+        "hint": (
+            None
+            if configured
+            else "Задайте YOOKASSA_SHOP_ID + YOOKASSA_SECRET (и YOOKASSA_WEBHOOK_SECRET) для staging/production"
+        ),
+    }
+
 
 
 async def create_payment(

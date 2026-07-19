@@ -8,6 +8,11 @@ export const adminApi = {
   joinTeam: (userId: string, token: string) => req('/api/v1/teams/join', { method: 'POST', body: JSON.stringify({ token }) }, userId),
   getRevenueChart: (userId: string) => req<any[]>('/api/v1/admin/revenue-chart', {}, userId),
   getReleaseHealth: (userId: string) => req<any>('/api/v1/admin/release-health', {}, userId),
+  getYookassaHealth: (userId: string) => req<{
+    configured: boolean; live_checkout_ready: boolean; demo_allowed: boolean;
+    shop_id_set: boolean; secret_set: boolean; webhook_secret_set: boolean;
+    webhook_url: string; hint: string | null; environment: string;
+  }>('/api/v1/subscription/yookassa/health', {}, userId),
   getProjectsChart: (userId: string) => req<any[]>('/api/v1/admin/projects-chart', {}, userId),
   getAdminStats: (userId: string) => req<any>('/api/v1/admin/stats', {}, userId),
   getUploadUrl: (userId: string) => req<any>('/api/v1/media/upload-url', { method: 'POST' }, userId),

@@ -202,6 +202,20 @@ async def export_1c_payments_csv(project_id: str, user: User = Depends(get_curre
     )
 
 
+@router.get("/{project_id}/export/1c-commerceml.xml")
+async def export_1c_commerceml(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.1a++: CommerceML 2.04 subset для 1С."""
+    from app.services.integrations.onec_export import build_1c_commerceml_xml
+
+    project = await require_project(db, project_id, user, write=False)
+    body = await build_1c_commerceml_xml(db, project)
+    return Response(
+        body.encode("utf-8") if isinstance(body, str) else body,
+        media_type="application/xml; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=renova-cml-{project_id[:8]}.xml"},
+    )
+
+
 @router.get("/{project_id}/export/1c-payments.xml")
 async def export_1c_payments_xml(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """P4.1a+: XML для 1С (RenovaExchange)."""

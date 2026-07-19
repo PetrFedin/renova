@@ -25,15 +25,17 @@ export default function AdminDashboardScreen() {
   const [s, setS] = useState<any>(null);
   const [rev, setRev] = useState<any[]>([]);
   const [health, setHealth] = useState<any>(null);
+  const [yk, setYk] = useState<any>(null);
   const [chart, setChart] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
     api.getAdminStats(user.id).then(setS).catch(() => {});
+    api.getReleaseHealth(user.id).then(setHealth).catch(() => {});
+    api.getYookassaHealth(user.id).then(setYk).catch(() => {});
     if (Platform.OS === 'web') {
       api.getProjectsChart(user.id).then(setChart).catch(() => {});
       api.getRevenueChart(user.id).then(setRev).catch(() => {});
-      api.getReleaseHealth(user.id).then(setHealth).catch(() => {});
     }
   }, [user?.id]);
 
@@ -51,6 +53,21 @@ export default function AdminDashboardScreen() {
               <Text style={st.row}>Пользователи: {s.users}</Text>
             </>
           ) : null}
+
+        {yk ? (
+          <Text style={st.sub}>
+            ЮKassa: {yk.configured ? 'ключи заданы' : 'нет ключей'}
+            {yk.live_checkout_ready ? ' · live ready' : ''}
+            {yk.demo_allowed ? ' · demo OK' : ''}
+            {yk.hint ? ` · ${yk.hint}` : ''}
+          </Text>
+        ) : null}
+        {health?.integrations ? (
+          <Text style={st.sub}>
+            SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
+            {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
+          </Text>
+        ) : null}
         </View>
       </>
     );
@@ -62,6 +79,21 @@ export default function AdminDashboardScreen() {
       <Stack.Screen options={{ title: 'Панель' }} />
       <View style={st.wrap}>
         {health ? <Text style={{ marginBottom: 8 }}>Релиз: {health.crash_free_rate}% без сбоев</Text> : null}
+        {yk ? (
+          <Text style={st.sub}>
+            ЮKassa: {yk.configured ? 'ключи заданы' : 'нет ключей'}
+            {yk.live_checkout_ready ? ' · live ready' : ''}
+            {yk.demo_allowed ? ' · demo OK' : ''}
+            {yk.hint ? ` · ${yk.hint}` : ''}
+          </Text>
+        ) : null}
+        {health?.integrations ? (
+          <Text style={st.sub}>
+            SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
+            {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
+          </Text>
+        ) : null}
+
         {rev.map((p) => (
           <Bar key={`${p.name}r`} label={`${p.name} ₽`} value={p.margin} max={Math.max(...rev.map((x) => x.planned), 1)} />
         ))}
