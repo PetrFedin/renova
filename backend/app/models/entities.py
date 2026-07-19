@@ -773,6 +773,8 @@ class ContractorProfile(Base):
     jobs_done: Mapped[int] = mapped_column(Integer, default=0)
     city: Mapped[str | None] = mapped_column(String(64), nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Реквизиты для перевода (СБП/карта/счёт) — без hardcoded demo-карт в UI
+    payment_requisites: Mapped[str | None] = mapped_column(Text, nullable=True)
     visible: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

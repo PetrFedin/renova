@@ -7,6 +7,12 @@ export const marketApi = {
   projectMarketEstimate: (userId: string, projectId: string, body: object) =>
     req<import('@/constants/regions').MarketEstimate>(`/api/v1/projects/${projectId}/budget/market-estimate`, { method: 'POST', body: JSON.stringify(body) }, userId),
   listContractors: (userId: string, city?: string) => req<{ id: string; name: string; company?: string; specialties?: string; rating: number; jobs_done: number; city?: string }[]>(`/api/v1/contractors${city ? `?city=${city}` : ''}`, {}, userId),
+  getMyContractorProfile: (userId: string) =>
+    req<{ id?: string; company_name?: string | null; payment_requisites?: string | null; full_name?: string | null; phone?: string }>(
+      '/api/v1/contractors/me/profile',
+      {},
+      userId,
+    ),
   upsertContractorProfile: (userId: string, body: object) => req('/api/v1/contractors/profile', { method: 'POST', body: JSON.stringify(body) }, userId),
   matchContractors: (userId: string, renovationType?: string, specialty?: string) => { const q = new URLSearchParams(); if (renovationType) q.set('renovation_type', renovationType); if (specialty) q.set('specialty', specialty); return req<{ id: string; name: string; company?: string; score: number; rating: number }[]>(`/api/v1/contractors/match?${q}`, {}, userId); },
   contractorPortfolio: (userId: string, profileId: string) => req<{ id: string; image_url: string; caption?: string }[]>(`/api/v1/contractors/${profileId}/portfolio`, {}, userId),

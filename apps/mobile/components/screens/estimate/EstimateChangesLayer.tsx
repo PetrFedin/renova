@@ -30,15 +30,28 @@ export function EstimateChangesLayer({
   const { user } = useRenova();
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
-  const notifyBudgetDelta = (order: ChangeOrder) => {
+  const notifyBudgetDelta = (order: ChangeOrder, documentId?: string) => {
     const budget = budgetTabRoute(role, 'summary');
+    const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [
+      { text: 'OK', style: 'cancel' },
+      {
+        text: 'Открыть бюджет',
+        onPress: () => router.push({ pathname: budget.pathname, params: budget.params } as never),
+      },
+    ];
+    if (documentId) {
+      buttons.push({
+        text: 'Подписать',
+        onPress: () =>
+          router.push({ pathname: '/documents', params: { returnTo: '/(customer)/(tabs)/object' } } as never),
+      });
+    }
     Alert.alert(
       'Доп. работы одобрены',
-      `${formatRub(order.amount)} добавлено к плану бюджета.`,
-      [
-        { text: 'OK', style: 'cancel' },
-        { text: 'Открыть бюджет', onPress: () => router.push({ pathname: budget.pathname, params: budget.params } as never) },
-      ],
+      documentId
+        ? `${formatRub(order.amount)} в плане бюджета. Подпишите черновик в Документах.`
+        : `${formatRub(order.amount)} добавлено к плану бюджета.`,
+      buttons,
     );
   };
   const pending = orders.filter((o) => o.status === 'pending');
@@ -58,10 +71,10 @@ export function EstimateChangesLayer({
             canWrite={canWrite}
             onApprove={async () => {
               try {
-                await api.approveChangeOrder(userId, projectId, o.id);
+                const res = await api.approveChangeOrder(userId, projectId, o.id);
                 await onProjectReload();
                 onOrdersChanged(await api.listChangeOrders(userId, projectId));
-                notifyBudgetDelta(o);
+                notifyBudgetDelta(o, res?.document_id);
               } catch (e) {
                 if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение доп. работ');
               }

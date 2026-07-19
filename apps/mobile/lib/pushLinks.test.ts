@@ -30,11 +30,12 @@ console.assert(resolveNotificationLink('stage_review')?.pathname === '/work-acce
 console.assert(resolveNotificationLink('change_order')?.params?.estimateLayer === 'changes', 'change_order → estimate changes');
 console.assert(resolveNotificationLink('change_order', 'contractor')?.pathname.includes('object'), 'change_order contractor → object estimate');
 const unknownNotify = resolveNotificationLink('unknown_xyz');
-console.assert(unknownNotify?.pathname === '/notifications', 'notify unknown → notifications');
+console.assert(unknownNotify?.pathname === '/inbox', 'notify unknown → inbox');
 console.log('pushLinks: OK');
 
 console.assert(resolveNotificationLink('issue', 'contractor')?.pathname === '/quality-control', 'issue notify');
 console.assert(resolveNotificationLink('payment_pending', 'contractor')?.pathname.includes('contractor'), 'contractor budget');
+console.assert(resolvePushLink('/notifications', '/home', 'customer')?.pathname === '/inbox', 'notifications → inbox');
 
 console.assert(resolveLegacyTabHref('/(customer)/(tabs)/control').pathname === '/work-acceptance', 'legacy control customer');
 console.assert(resolveLegacyTabHref('/(contractor)/(tabs)/control').pathname === '/quality-control', 'legacy control contractor');

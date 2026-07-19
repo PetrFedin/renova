@@ -160,6 +160,9 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ApiError(0, 'Сервер не отвечает. Проверьте, что backend запущен (npm run backend:dev).');
     }
+    if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
+      throw new ApiError(0, 'Сервер недоступен. Запустите backend на порту 8100: cd renova && backend/.venv/bin/uvicorn app.main:app --reload --port 8100');
+    }
     if (canUseDurableCache(opts) && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) return fallback;

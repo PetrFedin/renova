@@ -16,6 +16,9 @@ Renova — **staging-ready RU B2B MVP+** (~84% vs Smetter/Vition по ядру).
 
 **Не строить:** Procore RFIs/BIM, marketplace в чате, AI chatbot на каждом экране.
 
+**Вне скоупа:** Syntha / Platform Core / fashion OS — отдельный репозиторий, не смешивать с планом Renova.
+**Next:** WP1–WP3 (оплата, CTA приёмки, schedule hub).
+
 ---
 
 ## Конкуренты (must-have RU)

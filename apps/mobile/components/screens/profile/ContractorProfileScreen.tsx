@@ -18,9 +18,9 @@ import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 
+/** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
   { label: 'Помощь', href: '/guide' },
-  { label: 'Архив', href: '/activity' },
   { label: 'Заявки', href: '/job-leads' },
 ];
 
@@ -92,6 +92,15 @@ export function ContractorProfileScreen() {
   const { user, refreshMe } = useRenova();
   const [inn, setInn] = useState(user?.inn || '');
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
+  const [payReq, setPayReq] = useState('');
+  const [company, setCompany] = useState('');
+  useEffect(() => {
+    if (!user) return;
+    api.getMyContractorProfile(user.id).then((p) => {
+      setPayReq(p.payment_requisites || '');
+      setCompany(p.company_name || '');
+    }).catch(() => {});
+  }, [user?.id]);
   const roleLabel = roleDisplayLabel(user?.role);
 
   return (
@@ -107,6 +116,39 @@ export function ContractorProfileScreen() {
 
       <ProfileSection title="Аккаунт" bare>
         <Text style={ps.userMeta}>Сейчас: {roleLabel}</Text>
+      </ProfileSection>
+
+      <ProfileSection title="Реквизиты для оплаты">
+        <Text style={ps.userMeta}>Заказчик увидит эти данные при переводе (СБП / карта / счёт). Без демо-карт.</Text>
+        <TextInput
+          style={ps.input}
+          placeholder="Название ИП / ООО"
+          value={company}
+          onChangeText={setCompany}
+        />
+        <TextInput
+          style={[ps.input, { minHeight: 88, textAlignVertical: 'top' }]}
+          placeholder={"СБП · +7…\nБанк · карта/счёт"}
+          value={payReq}
+          onChangeText={setPayReq}
+          multiline
+        />
+        <PrimaryButton
+          title="Сохранить реквизиты"
+          variant="outline"
+          onPress={async () => {
+            if (!user) return;
+            try {
+              await api.upsertContractorProfile(user.id, {
+                company_name: company || null,
+                payment_requisites: payReq || null,
+              });
+              Alert.alert('Сохранено', 'Реквизиты будут показаны заказчику при оплате.');
+            } catch {
+              Alert.alert('Ошибка', 'Не удалось сохранить реквизиты');
+            }
+          }}
+        />
       </ProfileSection>
 
       <ProfileSection title="Персонализация">

@@ -167,12 +167,31 @@ async def portal_snapshot(
             "requested_at": row.requested_at.isoformat() if row.requested_at else None,
         })
 
+    recipient_name = None
+    payment_requisites = None
+    if p.contractor_id:
+        from app.models.entities import ContractorProfile
+        contractor = await db.get(User, p.contractor_id)
+        if contractor:
+            recipient_name = contractor.full_name
+        cprof = (
+            await db.execute(
+                select(ContractorProfile).where(ContractorProfile.user_id == p.contractor_id)
+            )
+        ).scalar_one_or_none()
+        if cprof:
+            payment_requisites = cprof.payment_requisites
+            if cprof.company_name:
+                recipient_name = cprof.company_name
+
     return {
         "project": {"id": p.id, "name": p.name, "address": p.address, "progress_percent": p.progress_percent},
         "read_only": read_only,
         "access_mode": mode,
         "schedule": schedule,
         "pending_payments": pending,
+        "contractor_recipient_name": recipient_name,
+        "contractor_payment_requisites": payment_requisites,
         "documents": canonical[:20],
         "documents_total": len(canonical),
         "selections": selections,

@@ -62,12 +62,17 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const [dayDetailOpen, setDayDetailOpen] = useState(false);
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
   const [cursor, setCursor] = useState(() => new Date());
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planHint, setPlanHint] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
     api.getCalendar(user.id, activeProject.id).then(setCal).catch(() => setCal(null));
     api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch(() => setWorkOrders([]));
     api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => setPurchases([]));
+    api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => {
+      setPlanHint(s ? `План: ${s.status}` : null);
+    }).catch(() => setPlanHint(null));
   }, [user?.id, activeProject?.id]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -203,6 +208,34 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
       <ScrollView style={s.planPane} contentContainerStyle={s.planContent}>
         <Text style={s.planTitle}>Расписание и задачи</Text>
         <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
+        {role === 'contractor' && !readOnly ? (
+          <Pressable
+            style={s.planCta}
+            disabled={planBusy}
+            onPress={async () => {
+              if (!user || !activeProject) return;
+              setPlanBusy(true);
+              try {
+                const existing = await api.getActiveWorkSchedule(user.id, activeProject.id);
+                if (existing) {
+                  setPlanHint(`План уже есть · ${existing.status}`);
+                } else {
+                  const created = await api.createWorkSchedule(user.id, activeProject.id, { title: 'План-график работ' });
+                  setPlanHint(`План создан · ${created.status}`);
+                }
+                reload();
+              } catch {
+                setPlanHint('Не удалось создать план из этапов');
+              } finally {
+                setPlanBusy(false);
+              }
+            }}
+          >
+            <Text style={s.planCtaT}>{planBusy ? 'Создаём…' : (planHint || 'Создать план-график из этапов')}</Text>
+          </Pressable>
+        ) : planHint ? (
+          <Text style={s.planSub}>{planHint}</Text>
+        ) : null}
         <ScheduleExecutionStrip stats={executionStats} />
 
         <ScheduleIconToolbar
@@ -293,6 +326,8 @@ const s = StyleSheet.create({
   calendarPane: { flexShrink: 0, minHeight: 200, paddingBottom: 4 },
   planPane: { flex: 1, minHeight: 0 },
   planContent: { padding: 16, paddingBottom: 32 },
+  planCta: { marginTop: 8, marginBottom: 4, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: RenovaTheme.colors.surfaceMuted, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  planCtaT: { fontSize: 14, fontWeight: '600', color: RenovaTheme.colors.accent },
   planTitle: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },
   planSub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2, marginBottom: 10 },
   sectionHead: { marginBottom: 8 },

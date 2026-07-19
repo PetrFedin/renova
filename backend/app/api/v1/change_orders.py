@@ -47,7 +47,7 @@ async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depen
         kind="ChangeOrderCreated",
         title=f"Доп. работы: {co.title}",
         body=body.description,
-        link_path="/(customer)/(tabs)/budget",
+        link_path="/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
     )
     if project.customer_id:
         await notif.notify(
@@ -56,9 +56,9 @@ async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depen
             project_id=project_id,
             notification_type="change_order",
             title=f"Согласуйте доп. работы: {co.title}",
-            body=f"{co.amount:.0f} ₽",
-            link_path="/(customer)/(tabs)/budget",
-            return_to="/(customer)/(tabs)/home",
+            body=f"{co.amount:.0f} ₽ · смета → Доп. работы",
+            link_path="/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
+            return_to="/(customer)/(tabs)/",
         )
     return {"id": co.id, "status": co.status.value}
 
@@ -115,8 +115,19 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
             link_path="/(contractor)/(tabs)/budget",
             return_to="/(contractor)/(tabs)/home",
         )
+    if project.customer_id:
+        await notif.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=project_id,
+            notification_type="document",
+            title=f"Подпишите доп. работы: {co.title}",
+            body=f"Черновик в Документах · {co.amount:.0f} ₽",
+            link_path="/documents",
+            return_to="/(customer)/(tabs)/",
+        )
     await db.commit()
-    return {"ok": True, "status": co.status.value}
+    return {"ok": True, "status": co.status.value, "document_id": draft.id, "amount": co.amount, "title": co.title}
 
 
 @router.post("/{order_id}/reject")

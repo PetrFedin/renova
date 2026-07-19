@@ -20,6 +20,7 @@ import { paymentReceiptKey } from '@/constants/sessionKeys';
 
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL, PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
 import { buildPaymentHistory, formatPaymentEventDate } from '@/lib/domain/paymentHistory';
+import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
@@ -87,8 +88,43 @@ export function PaymentDetailSheet({
     return () => sub.remove();
   }, [payment?.id, reloadReceiptFlag]);
 
+  const [reqText, setReqText] = useState('');
+  const [reqMissing, setReqMissing] = useState<string | null>(null);
+  const [reqLoaded, setReqLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!payment || !userId || !projectId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await api.getPaymentRequisites(userId, projectId);
+        if (cancelled) return;
+        const built = buildPaymentRequisites({
+          recipientName: raw.recipient_name,
+          paymentRequisites: raw.payment_requisites,
+          amount: payment.amount,
+          title: payment.title,
+        });
+        setReqText(built.text);
+        setReqMissing(built.missingHint);
+      } catch {
+        if (cancelled) return;
+        const built = buildPaymentRequisites({
+          amount: payment.amount,
+          title: payment.title,
+        });
+        setReqText(built.text);
+        setReqMissing(built.missingHint);
+      } finally {
+        if (!cancelled) setReqLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [payment?.id, payment?.amount, payment?.title, userId, projectId]);
+
   if (!payment) return null;
 
+  const requisites = reqText || buildPaymentRequisites({ amount: payment.amount, title: payment.title }).text;
   const stage = stages.find((st) => st.id === payment.stage_id);
   const isCustomer = role === 'customer';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
@@ -97,13 +133,6 @@ export function PaymentDetailSheet({
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
   const history = buildPaymentHistory(payment);
 
-  const requisites = [
-    'Получатель: исполнитель по договору',
-    'Сбербанк · карта 2202 2065 •••• 4521',
-    `Сумма: ${formatRub(payment.amount)}`,
-    `Назначение: ${payment.title}`,
-  ].join('\n');
-
   const openReceipt = () => {
     setReceiptAttached(true);
     pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname);
@@ -111,6 +140,10 @@ export function PaymentDetailSheet({
   };
 
   const openSbp = async () => {
+    if (reqMissing) {
+      Alert.alert('Реквизиты не указаны', reqMissing);
+      return;
+    }
     try {
       await Clipboard.setStringAsync(String(Math.round(payment.amount)));
     } catch { /* fallback — пользователь скопирует вручную */ }
@@ -161,6 +194,10 @@ export function PaymentDetailSheet({
 
 
   const copyRequisites = async () => {
+    if (reqMissing) {
+      Alert.alert('Реквизиты не указаны', reqMissing);
+      return;
+    }
     await Clipboard.setStringAsync(requisites);
     Alert.alert('Реквизиты скопированы', 'Вставьте в приложении банка для перевода по СБП или реквизитам.');
   };
@@ -295,6 +332,8 @@ export function PaymentDetailSheet({
           {canConfirm && step === 'transfer' ? (
             <View style={s.block}>
               <Text style={s.sectionHead}>Реквизиты</Text>
+              {reqMissing ? <Text style={{ color: RenovaTheme.colors.warningText, marginBottom: 8, fontSize: 13 }}>{reqMissing}</Text> : null}
+              {!reqLoaded ? <ActivityIndicator /> : null}
               {requisites.split('\n').map((line) => (
                 <Text key={line} style={formMetaText.caption}>{line}</Text>
               ))}

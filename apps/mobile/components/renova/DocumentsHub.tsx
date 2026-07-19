@@ -210,6 +210,10 @@ export function DocumentsHub({
     try {
       await fn();
     } catch (e: unknown) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Документы');
+        return;
+      }
       const msg = apiErrorMessage(e, '');
       const providerDown =
         (e instanceof ApiError && e.status === 501) ||

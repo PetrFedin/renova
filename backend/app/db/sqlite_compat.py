@@ -428,6 +428,15 @@ def ensure_os_schema() -> None:
             except Exception:
                 pass
 
+    # Trust: честные реквизиты перевода в профиле исполнителя
+    if "contractor_profiles" in tables:
+        cp = cols("contractor_profiles")
+        if "payment_requisites" not in cp:
+            try:
+                c.execute("ALTER TABLE contractor_profiles ADD COLUMN payment_requisites TEXT")
+            except Exception:
+                pass
+
 
     if "projects" in tables:
         pr = cols("projects")

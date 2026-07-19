@@ -27,7 +27,18 @@ export function pushOsNav(target: OsNavHref, returnTo?: string) {
 
 export function replaceOsNav(target: OsNavHref, returnTo?: string) {
   const route = toOsRoute(target);
-  router.replace((returnTo ? withReturnTo(route, returnTo) : route) as any);
+  const href = returnTo ? withReturnTo(route, returnTo) : route;
+  // Expo Router web: replace({ pathname }) для tabs часто no-op — строка pathname работает
+  if (isOsTabPath(href.pathname)) {
+    const params = href.params;
+    if (params && Object.keys(params).length > 0) {
+      router.replace({ pathname: href.pathname, params } as any);
+    } else {
+      router.replace(href.pathname as any);
+    }
+    return;
+  }
+  router.replace(href as any);
 }
 
 /** returnTo для stack-экранов (documents и т.д.) */

@@ -48,6 +48,9 @@ export const miscApi = {
       can_accept_stage?: boolean;
       can_sign_documents?: boolean;
       pending_draft_documents?: { id: string; title: string; status?: string }[];
+      /** Trust: реквизиты исполнителя — без demo-карт */
+      contractor_recipient_name?: string | null;
+      contractor_payment_requisites?: string | null;
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
   rejectApproval: async (userId: string, projectId: string, itemId: string, type: string, reason: string) => {

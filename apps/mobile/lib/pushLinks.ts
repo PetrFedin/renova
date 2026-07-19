@@ -42,6 +42,10 @@ export function resolvePushLink(
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
+  if (canonicalPath === '/notifications') {
+    return { pathname: '/inbox', params: { returnTo: rt } };
+  }
+
   if (canonicalPath.startsWith('/stage/')) {
     const id = canonicalPath.replace('/stage/', '').split('/')[0];
     return { pathname: '/stage/[id]', params: { id, returnTo: rt } };
@@ -113,6 +117,6 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'waste_reminder':
       return tabsRoute(role, 'calendar');
     default:
-      return { pathname: '/notifications', params: {} };
+      return { pathname: '/inbox', params: {} };
   }
 }

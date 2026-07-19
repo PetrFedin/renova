@@ -1,19 +1,46 @@
 /** Smoke: menu invariants — npx tsx lib/routeRegistry.test.ts */
-import { assertRouteRegistryInvariants, menuRoutes } from './routeRegistry';
+import { assertRouteRegistryInvariants, menuRoutes, MAX_MORE_MENU_ITEMS, RENOVA_ROUTES } from './routeRegistry';
+import { OS_MENU_SECTIONS, OS_MORE_UTIL_LINKS, MAX_HEADER_MORE_ITEMS } from '../constants/osSections';
 
 assertRouteRegistryInvariants();
 
 const moreCustomer = menuRoutes('customer', 'more');
-if (moreCustomer.some((r) => r.id === 'finance-center' || r.id === 'work-schedule')) {
+if (moreCustomer.some((r) => r.id === 'finance-center' || r.id === 'work-schedule' || r.id === 'notifications')) {
   throw new Error('redirect-only routes must not appear in more menu');
 }
+/** Приёмка / QC / notifications — не в «Ещё» (канон: Ремонт / inbox) */
+for (const id of ['work-acceptance', 'quality-control', 'notifications']) {
+  if (moreCustomer.some((r) => r.id === id)) {
+    throw new Error(`${id} must not appear in more menu`);
+  }
+}
+if (!moreCustomer.some((r) => r.id === 'inbox')) {
+  throw new Error('inbox must be in more menu (attention SoT)');
+}
+if (moreCustomer.length > MAX_MORE_MENU_ITEMS) {
+  throw new Error(`Home more menu exceeds ${MAX_MORE_MENU_ITEMS}`);
+}
+
+const headerMoreCount =
+  OS_MENU_SECTIONS.customer.length + OS_MORE_UTIL_LINKS.length;
+if (headerMoreCount > MAX_HEADER_MORE_ITEMS) {
+  throw new Error(`Header «Ещё» exceeds ${MAX_HEADER_MORE_ITEMS}: ${headerMoreCount}`);
+}
+
+const wa = RENOVA_ROUTES.find((r) => r.id === 'work-acceptance');
+if (wa?.visibility !== 'deeplink') throw new Error('work-acceptance must be deeplink');
+
+const notif = RENOVA_ROUTES.find((r) => r.id === 'notifications');
+if (notif?.redirectTo !== '/inbox') throw new Error('notifications must redirect to /inbox');
 
 const guestMore = menuRoutes('customer', 'more', { readOnly: true });
 const guestIds = new Set(guestMore.map((r) => r.id));
-for (const id of ['documents', 'notifications']) {
+for (const id of ['documents', 'inbox']) {
   if (!guestIds.has(id)) throw new Error(`readOnly guest must see ${id}`);
 }
-if (guestIds.has('quality-control')) throw new Error('readOnly guest must not see quality-control dead end');
+if (guestIds.has('quality-control') || guestIds.has('notifications')) {
+  throw new Error('readOnly guest must not see QC/notifications dead ends');
+}
 if (guestMore.length > 3) throw new Error('readOnly more menu too large');
 
 console.log('routeRegistry.test OK');

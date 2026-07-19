@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert, ScrollView, TextInput } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
+import { alertMessage } from '@/lib/confirmAlert';
+import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { UserRole } from '@/lib/api';
 import { api } from '@/lib/api';
-import { osEntryRoute, projectPickRoute } from '@/lib/osEntry';
-import { SESSION_KEYS } from '@/constants/sessionKeys';
+import { navigateAfterLogin } from '@/lib/osEntry';
 
 type Mode = 'demo' | 'sms';
 
@@ -22,6 +22,7 @@ export default function RoleScreen() {
   const [codeSent, setCodeSent] = useState(false);
   const [demoCode, setDemoCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function afterLogin() {
     if (teamToken && role === 'contractor') {
@@ -31,22 +32,12 @@ export default function RoleScreen() {
         if (id) await api.joinTeam(id, teamToken);
       } catch { /* team */ }
     }
-    await (await import('@react-native-async-storage/async-storage')).default.setItem('renova_user_role', role);
-    const done = await (await import('@react-native-async-storage/async-storage')).default.getItem('renova_detail_quiz_done');
-    if (!done) {
-      router.replace('/onboarding/detail-quiz');
-      return;
-    }
-    const pending = await (await import('@react-native-async-storage/async-storage')).default.getItem(SESSION_KEYS.pendingProjectPick);
-    if (pending === '1') {
-      router.replace(projectPickRoute() as any);
-      return;
-    }
-    router.replace(osEntryRoute(role) as any);
+    await navigateAfterLogin(role);
   }
 
   async function onContinue() {
     setBusy(true);
+    setError(null);
     try {
       if (mode === 'demo') {
         await demoLogin(role);
@@ -55,14 +46,16 @@ export default function RoleScreen() {
           const r = await api.sendSmsCode(phone);
           setCodeSent(true);
           if (r.demo_code) setDemoCode(r.demo_code);
-          Alert.alert('Код отправлен', r.demo_code ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
+          alertMessage('Код отправлен', r.demo_code ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
           return;
         }
         await loginWithSms(phone, code, role, name ? { full_name: name } : undefined);
       }
       await afterLogin();
     } catch (e: any) {
-      Alert.alert('Ошибка', e?.message || 'Сервер недоступен');
+      const msg = e?.message || 'Сервер недоступен';
+      setError(msg);
+      alertMessage('Ошибка входа', msg);
     } finally {
       setBusy(false);
     }
@@ -94,7 +87,8 @@ export default function RoleScreen() {
           {demoCode && <Text style={styles.demoCode}>Демо-код: {demoCode}</Text>}
         </>
       )}
-      <PrimaryButton title={busy ? '…' : mode === 'sms' && !codeSent ? 'Отправить код' : 'Продолжить'} onPress={onContinue} />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <PrimaryButton title={mode === 'sms' && !codeSent ? 'Отправить код' : 'Продолжить'} onPress={onContinue} loading={busy} />
       <Text style={styles.note}>{mode === 'demo' ? 'Демо без регистрации' : 'SMS — для пилота с реальными бригадами'}</Text>
       <Text style={styles.noteHint}>После входа: «Ещё» → «← Выбор роли»</Text>
     </ScrollView>
@@ -120,4 +114,5 @@ const styles = StyleSheet.create({
   demoCode: { textAlign: 'center', color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 8 },
   note: { textAlign: 'center', fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 16, lineHeight: 18 },
   noteHint: { fontSize: 11, color: '#94a3b8', marginTop: 6, textAlign: 'center', lineHeight: 16 },
+  error: { color: RenovaTheme.colors.dangerText, fontSize: 13, textAlign: 'center', marginBottom: 10, lineHeight: 18 },
 });

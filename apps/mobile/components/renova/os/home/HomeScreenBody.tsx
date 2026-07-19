@@ -18,7 +18,6 @@ import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import { WeekScheduleStrip } from '@/components/renova/os/WeekScheduleStrip';
-import { WorkScheduleSummaryCard } from '@/components/renova/workSchedule/WorkScheduleSummaryCard';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
@@ -109,11 +108,7 @@ export function HomeScreenBody({
         <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
       )}
 
-      {!readOnly ? (
-        <HomeLinkRow title="Уведомления проекта" onPress={() => pushScreen('/notifications')} />
-      ) : null}
-
-      {/* 2. Главное действие */}
+      {/* 2. Очередь дел — единственный attention SoT (hero + inbox; без отдельной строки «Входящие») */}
       {role === 'customer' && snap.quality.awaitingAcceptance > 0 ? (
         <HomeAcceptanceBanner count={snap.quality.awaitingAcceptance} role={role} />
       ) : null}
@@ -146,28 +141,25 @@ export function HomeScreenBody({
         </HomeZone>
       )}
 
-      {/* 5. План и сроки */}
+      {/* 5. Сроки — один preview → hub /calendar (без второго WorkSchedule card) */}
       {isVisible('schedule') && (
         <HomeZone
-          title="План и сроки"
-          linkLabel="Календарь →"
+          title="Сроки"
+          linkLabel="Открыть →"
           onLinkPress={() => pushTab('calendar')}
         >
-          <WorkScheduleSummaryCard
-            userId={user.id}
-            projectId={activeProject.id}
-            role={role}
-            projectComplete={snap.isComplete}
-            stageFactPercent={snap.schedule?.progressPercent ?? null}
-          />
           <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
         </HomeZone>
       )}
 
-      {/* Дополнительно — свёрнуто; для завершённого проекта отчёты тоже здесь */}
+      {/* Дополнительно — свёрнуто; приёмка/уведомления не дублируем (Ремонт / Входящие) */}
       {showMore && (
         <HomeMoreSection summary={moreSectionSummary}>
-          {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more', { readOnly, phase, excludeIds: ['notifications'] }).map((route) => (
+          {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more', {
+            readOnly,
+            phase,
+            excludeIds: ['inbox'], // уже строка «Входящие» выше
+          }).map((route) => (
             <HomeLinkRow
               key={route.id}
               title={route.titleRu}

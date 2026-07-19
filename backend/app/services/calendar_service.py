@@ -49,6 +49,16 @@ def build_calendar(project: Project, waste_orders=None) -> dict:
     events = []
     for s in sorted(project.stages, key=lambda x: x.sort_order):
         _append_stage_period(events, s)
+        if getattr(s, "actual_start", None):
+            events.append({
+                "id": f"started-{s.id}",
+                "kind": "stage_started",
+                "title": f"Старт: {s.name}",
+                "date": s.actual_start.isoformat(),
+                "stage_id": s.id,
+                "uid": getattr(s, "ical_uid", None) or f"renova-{s.id}@app",
+                "status": s.status.value,
+            })
         if s.contractor_ready_at:
             events.append({
                 "id": f"ready-{s.id}",

@@ -1,3 +1,4 @@
+import { budgetTabRoute } from '@/constants/osSections';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -194,6 +195,21 @@ export function WorkAcceptanceScreen() {
         comment: 'Работы приняты',
       });
       await load();
+      Alert.alert(
+        'Этап принят',
+        'Можно оплатить работы по этапу.',
+        [
+          { text: 'Позже', style: 'cancel' },
+          {
+            text: 'Оплатить',
+            onPress: () => {
+              router.push({
+                ...budgetTabRoute(role === 'contractor' ? 'contractor' : 'customer', 'payments'),
+              } as never);
+            },
+          },
+        ],
+      );
     } catch (e) {
       handleActionError(e, 'Принятие этапа');
     } finally {

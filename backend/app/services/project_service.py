@@ -272,7 +272,7 @@ async def accept_stage(db: AsyncSession, stage_id: str) -> Stage | None:
             None,
         )
         if project.customer_id:
-            await notif_svc.notify(db, user_id=project.customer_id, project_id=project.id, notification_type="payment_pending", title="Подтвердите оплату этапа", body=stage.name, link_path="/(customer)/(tabs)/finance", return_to="/(customer)/(tabs)")
+            await notif_svc.notify(db, user_id=project.customer_id, project_id=project.id, notification_type="payment_pending", title="Подтвердите оплату этапа", body=stage.name, link_path="/(customer)/(tabs)/budget?tab=payments", return_to="/(customer)/(tabs)")
         if not existing and stage.payment_amount > 0:
             await pay_svc.create_payment(
                 db,

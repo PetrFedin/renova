@@ -43,19 +43,22 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
     ? insights.find((i) => i.kind !== 'payment') || insights[0]
     : null;
 
-  const hasContent = showHero || secondary.length > 0 || copilotFallback || inboxForLink.length > 0;
+  const hasContent = showHero || secondary.length > 0 || copilotFallback || showInbox;
   if (!hasContent) return null;
+
+  const inboxCount = inboxForLink.length;
+  const inboxLinkLabel = inboxCount > 0 ? `Все задачи (${inboxCount}) →` : 'Входящие →';
 
   return (
     <View style={s.wrap}>
       <View style={s.zoneHead}>
         <Text style={homeTypography.zoneLabel}>{homeHeroLabel({ role, readOnly })}</Text>
-        {inboxForLink.length > 0 ? (
+        {showInbox && !readOnly ? (
           <Pressable
             onPress={() => router.push({ pathname: '/inbox', params: { returnTo, heroKind: hero.kind } } as any)}
             hitSlop={8}
           >
-            <Text style={homeTypography.link}>Все задачи ({inboxForLink.length}) →</Text>
+            <Text style={homeTypography.link}>{inboxLinkLabel}</Text>
           </Pressable>
         ) : null}
       </View>

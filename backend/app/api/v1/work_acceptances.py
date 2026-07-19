@@ -344,7 +344,7 @@ async def accept_work(
             notification_type="payment_pending",
             title="Подтвердите оплату этапа",
             body=stage.name,
-            link_path="/(customer)/(tabs)/finance",
+            link_path="/(customer)/(tabs)/budget?tab=payments",
             return_to="/(customer)/(tabs)/home",
         )
 

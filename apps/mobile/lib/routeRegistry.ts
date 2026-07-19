@@ -69,30 +69,32 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     id: 'quality-control',
     path: '/quality-control',
     titleRu: 'Контроль качества',
-    audience: 'both',
-    visibility: 'more',
+    audience: 'contractor',
+    visibility: 'deeplink',
     status: 'beta',
-    entryPoints: ['home.more', 'repair.control'],
+    entryPoints: ['repair.control'],
+    descriptionRu: 'Канон входа: Ремонт → Приёмка (contractor). Не в «Ещё».',
   },
   {
     id: 'work-acceptance',
     path: '/work-acceptance',
     titleRu: 'Приёмка работ',
-    audience: 'both',
-    visibility: 'more',
+    audience: 'customer',
+    visibility: 'deeplink',
     status: 'ga',
-    entryPoints: ['home.more', 'stage'],
+    entryPoints: ['repair.control', 'stage', 'home.banner'],
+    descriptionRu: 'Канон входа: Ремонт → Приёмка (customer). Не в «Ещё».',
   },
   {
     id: 'work-schedule',
     path: '/work-schedule',
     titleRu: 'График работ',
     audience: 'both',
-    visibility: 'more',
+    visibility: 'hidden',
     status: 'beta',
-    entryPoints: ['home.schedule', 'home.more'],
+    entryPoints: ['deeplink'],
     redirectTo: '/calendar',
-    descriptionRu: 'Redirect → календарь (единый hub «Сроки»; план — Work Schedule API)',
+    descriptionRu: 'Redirect → календарь (единый hub «Сроки»)',
   },
   {
     id: 'documents',
@@ -101,16 +103,18 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     audience: 'both',
     visibility: 'more',
     status: 'beta',
-    entryPoints: ['os.menu'],
+    entryPoints: ['os.menu', 'home.more'],
   },
   {
     id: 'notifications',
     path: '/notifications',
     titleRu: 'Уведомления',
     audience: 'both',
-    visibility: 'more',
+    visibility: 'hidden',
     status: 'beta',
-    entryPoints: ['home.more', 'deeplink'],
+    entryPoints: ['deeplink'],
+    redirectTo: '/inbox',
+    descriptionRu: 'Redirect → /inbox (единый attention channel). Не отдельный экран в меню.',
   },
 
   {
@@ -118,9 +122,10 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     path: '/inbox',
     titleRu: 'Входящие',
     audience: 'both',
-    visibility: 'deeplink',
+    visibility: 'more',
     status: 'ga',
-    entryPoints: ['os.menu', 'home.more'],
+    entryPoints: ['os.menu', 'home.more', 'home.attention'],
+    descriptionRu: 'Единый attention channel: задачи + уведомления',
   },
   {
     id: 'scan-receipt',
@@ -164,7 +169,16 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
   },
 
   // Hidden / deeplink legacy tabs
-  { id: 'calendar', path: '/calendar', titleRu: 'Календарь', audience: 'both', visibility: 'deeplink', status: 'ga', entryPoints: ['home.schedule'] },
+  {
+    id: 'calendar',
+    path: '/calendar',
+    titleRu: 'Сроки',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['os.menu', 'home.schedule', 'dock.optional'],
+    descriptionRu: 'Единый hub сроков (календарь + план). Не дублировать work-schedule.',
+  },
   { id: 'conflicts', path: '/conflicts', titleRu: 'Конфликты sync', audience: 'contractor', visibility: 'deeplink', status: 'ga', entryPoints: ['offline.banner'] },
   {
     id: 'portal',
@@ -216,10 +230,14 @@ const REDIRECT_ONLY_MENU_IDS = new Set([
   'materials-procurement',
   'selections',
   'control',
+  'notifications',
 ]);
 
-/** Guest/readOnly «Ещё» — только просмотр с понятным CTA, без beta-центров без действий */
-const READ_ONLY_MORE_IDS = new Set(['documents', 'notifications']);
+/** Hard cap: Home «Ещё» и secondary centers ≤ 5 (Sprint IA DoD) */
+export const MAX_MORE_MENU_ITEMS = 5;
+
+/** Guest/readOnly «Ещё» — документы + входящие (без beta-центров) */
+const READ_ONLY_MORE_IDS = new Set(['documents', 'inbox']);
 const COMPLETION_PHASE_ONLY_IDS = new Set(['manager-dashboard', 'reports']);
 
 export function resolveRouteRedirect(path: string): string | undefined {
@@ -230,6 +248,11 @@ export function routesForAudience(audience: 'customer' | 'contractor'): RenovaRo
   return RENOVA_ROUTES.filter((r) => r.audience === 'both' || r.audience === audience);
 }
 
+/**
+ * Меню «Ещё» на главной / secondary centers.
+ * Приёмка и QC — только через Ремонт → Приёмка (не здесь).
+ * Уведомления — через /inbox (не отдельный пункт).
+ */
 export function menuRoutes(
   audience: 'customer' | 'contractor',
   visibility: RouteVisibility | RouteVisibility[] = 'more',
@@ -242,10 +265,6 @@ export function menuRoutes(
   routes = routes.filter((r) => !REDIRECT_ONLY_MENU_IDS.has(r.id));
   if (filter?.readOnly) {
     routes = routes.filter((r) => READ_ONLY_MORE_IDS.has(r.id));
-  } else if (audience === 'customer') {
-    routes = routes.filter((r) => r.id !== 'quality-control');
-  } else {
-    routes = routes.filter((r) => r.id !== 'work-acceptance');
   }
   if (filter?.phase !== 'complete') {
     routes = routes.filter((r) => !COMPLETION_PHASE_ONLY_IDS.has(r.id));
@@ -254,7 +273,7 @@ export function menuRoutes(
     const ex = new Set(filter.excludeIds);
     routes = routes.filter((r) => !ex.has(r.id));
   }
-  return routes;
+  return routes.slice(0, MAX_MORE_MENU_ITEMS);
 }
 
 export function assertRouteRegistryInvariants(routes: RenovaRoute[] = RENOVA_ROUTES): void {

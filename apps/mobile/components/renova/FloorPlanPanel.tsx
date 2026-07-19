@@ -6,6 +6,7 @@ import { api, FloorPlan } from '@/lib/api';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
 import { pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { FurnitureLayer } from '@/components/renova/FurnitureLayer';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushRoomDetail } from '@/lib/navigation';
@@ -66,25 +67,22 @@ export function FloorPlanPanel({
   const onMapLayout = (e: LayoutChangeEvent) => setMapW(e.nativeEvent.layout.width);
 
   const capturePunchPhoto = async (): Promise<string | undefined> => {
-    if (Platform.OS === 'web') {
-      const picked = await pickImageForDocumentUpload();
-      if (!picked) return undefined;
-      const blob = await (await fetch(picked.uri)).blob();
-      return uploadMediaBlob(userId, blob, picked.type || 'image/jpeg');
-    }
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      const picked = await pickImageForDocumentUpload();
-      if (!picked) {
-        Alert.alert('Фото', 'Разрешите камеру или выберите снимок из галереи.');
+    // Камера → иначе галерея (поле без камеры / отказ в permission)
+    let uri: string | undefined;
+    try {
+      const cam = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
+      if (!cam.canceled && cam.assets[0]) uri = cam.assets[0].uri;
+    } catch { /* fall through */ }
+    if (!uri) {
+      try {
+        const lib = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+        if (!lib.canceled && lib.assets[0]) uri = lib.assets[0].uri;
+      } catch {
         return undefined;
       }
-      const blob = await (await fetch(picked.uri)).blob();
-      return uploadMediaBlob(userId, blob, picked.type || 'image/jpeg');
     }
-    const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
-    if (res.canceled || !res.assets[0]) return undefined;
-    const blob = await (await fetch(res.assets[0].uri)).blob();
+    if (!uri) return undefined;
+    const blob = await (await fetch(uri)).blob();
     return uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
   };
 
@@ -165,6 +163,7 @@ export function FloorPlanPanel({
       {plan ? (
         <>
           {canPunch ? (
+            <OfflineSyncStatus compact />
             <View style={s.punchBar}>
               <Pressable
                 style={[s.punchToggle, punchMode && s.punchToggleOn]}

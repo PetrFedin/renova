@@ -23,6 +23,7 @@ class ProfileIn(BaseModel):
     specialties: str | None = None
     city: str | None = None
     bio: str | None = None
+    payment_requisites: str | None = None
 
 
 class LeadIn(BaseModel):
@@ -101,6 +102,43 @@ async def list_contractors(
         }
         for profile, contractor in rows
     ]
+
+
+
+
+@router.get("/contractors/me/profile")
+async def get_my_profile(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Профиль исполнителя (в т.ч. payment_requisites для переводов)."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, "Только для исполнителя")
+    profile = (
+        await db.execute(select(ContractorProfile).where(ContractorProfile.user_id == user.id))
+    ).scalar_one_or_none()
+    if not profile:
+        return {
+            "user_id": user.id,
+            "company_name": None,
+            "specialties": None,
+            "city": None,
+            "bio": None,
+            "payment_requisites": None,
+            "full_name": user.full_name,
+            "phone": user.phone,
+        }
+    return {
+        "user_id": user.id,
+        "company_name": profile.company_name,
+        "specialties": profile.specialties,
+        "city": profile.city,
+        "bio": profile.bio,
+        "payment_requisites": profile.payment_requisites,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "id": profile.id,
+    }
 
 
 @router.post("/contractors/profile")

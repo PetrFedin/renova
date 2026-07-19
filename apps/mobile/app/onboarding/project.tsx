@@ -1,23 +1,35 @@
 /** Выбор объекта после входа — до главной OS */
+import { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme } from '@/constants/Theme';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { osEntryRoute } from '@/lib/osEntry';
+import { replaceOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { alertMessage } from '@/lib/confirmAlert';
 
 export default function ProjectPickScreen() {
   const { user, loadProject } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
 
+  const [entering, setEntering] = useState(false);
+
   const enterProject = async (projectId: string) => {
-    await loadProject(projectId);
-    await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
-    await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
-    router.replace(osEntryRoute(role) as any);
+    if (entering) return;
+    setEntering(true);
+    try {
+      await loadProject(projectId);
+      await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
+      await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
+      replaceOsNav(osEntryRoute(role));
+    } catch (e: any) {
+      alertMessage('Не удалось открыть объект', e?.message || 'Повторите попытку');
+    } finally {
+      setEntering(false);
+    }
   };
 
   return (

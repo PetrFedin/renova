@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
+import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { api, ApiError } from '@/lib/api';
 import { apiErrorMessage } from '@/lib/formatPhone';
 
@@ -87,12 +88,31 @@ export default function PortalScreen() {
   const canSignPortal = !portalReadOnly && (session.scopes?.includes('sign_document') || snapshot.can_sign_documents);
 
 
+  const progress = sched.progress_percent ?? snapshot.project.progress_percent ?? 0;
+  const todoBits = [
+    (snapshot.pending_acceptances?.length ?? 0) > 0 ? `приёмка ${snapshot.pending_acceptances!.length}` : null,
+    snapshot.pending_payments.length > 0 ? `оплата ${snapshot.pending_payments.length}` : null,
+    (snapshot.pending_draft_documents?.length ?? 0) > 0 ? `подпись ${snapshot.pending_draft_documents!.length}` : null,
+  ].filter(Boolean);
+
   return (
     <ScrollView style={s.wrap} contentContainerStyle={s.content}>
-      <Text style={s.brand}>Renova · портал заказчика</Text>
-      <Text style={s.title}>{snapshot.project.name}</Text>
-      {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
-      <Text style={s.ro}>{session.scopes?.includes('accept_stage') ? 'Портал заказчика · приёмка и оплата' : 'Только просмотр'} · {session.project_name}</Text>
+      <View style={s.hero}>
+        <Text style={s.brand}>RENOVA</Text>
+        <Text style={s.brandSub}>Портал заказчика</Text>
+        <Text style={s.title}>{snapshot.project.name}</Text>
+        {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
+        <Text style={s.progressLine}>Прогресс · {progress}%</Text>
+        <View style={s.progressTrack}>
+          <View style={[s.progressFill, { width: `${Math.min(100, Math.max(0, Number(progress))}%` }]} />
+        </View>
+        {todoBits.length ? (
+          <Text style={s.todoLine}>Сейчас: {todoBits.join(' · ')}</Text>
+        ) : (
+          <Text style={s.todoLine}>Нет срочных действий</Text>
+        )}
+        <Text style={s.ro}>{portalReadOnly ? 'Только просмотр' : 'Приёмка · оплата · подпись'} · {session.project_name}</Text>
+      </View>
 
       {(snapshot.pending_acceptances?.length ?? 0) > 0 && canAcceptPortal ? (
         <View style={s.card}>
@@ -107,7 +127,14 @@ export default function PortalScreen() {
                     await api.portalAcceptStage(session.project_id, acc.id, portalToken);
                     const snap = await api.portalSnapshot(session.user_id, session.project_id);
                     setSnapshot(snap);
-                    Alert.alert('Принято', `Этап «${acc.stage_name || 'работы'}» принят`);
+                    const payN = snap.pending_payments?.length ?? 0;
+                    Alert.alert(
+                      'Этап принят',
+                      payN
+                        ? `«${acc.stage_name || 'работы'}» принят. Ниже — ${payN} счёт(а) к оплате.`
+                        : `«${acc.stage_name || 'работы'}» принят.`,
+                      [{ text: 'OK' }],
+                    );
                   } catch {
                     Alert.alert('Ошибка', 'Не удалось принять этап');
                   }
@@ -135,12 +162,13 @@ export default function PortalScreen() {
           <Text style={s.muted}>Нет счетов</Text>
         ) : (
           snapshot.pending_payments.map((pay) => {
-            const requisites = [
-              'Получатель: исполнитель по договору',
-              'Сбербанк · карта 2202 2065 •••• 4521',
-              `Сумма: ${formatRub(pay.amount)}`,
-              `Назначение: ${pay.title}`,
-            ].join('\n');
+            const built = buildPaymentRequisites({
+              recipientName: snapshot.contractor_recipient_name,
+              paymentRequisites: snapshot.contractor_payment_requisites,
+              amount: pay.amount,
+              title: pay.title,
+            });
+            const requisites = built.text;
             return (
               <View key={pay.id} style={s.payRow}>
                 <Text style={s.line}>{pay.title} · {formatRub(pay.amount)}</Text>
@@ -154,7 +182,7 @@ export default function PortalScreen() {
                         if (checkout.demo) {
                           const snap = await api.portalSnapshot(session.user_id, session.project_id);
                           setSnapshot(snap);
-                          Alert.alert('Оплата', checkout.message || 'Оплата подтверждена (demo ЮKassa).');
+                          Alert.alert('Оплата (demo)', checkout.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.');
                           return;
                         }
                         if (checkout.confirmation_url) {
@@ -173,6 +201,10 @@ export default function PortalScreen() {
                   <Pressable
                     style={s.payBtnOutline}
                     onPress={async () => {
+                      if (built.missingHint) {
+                        Alert.alert('Реквизиты не указаны', built.missingHint);
+                        return;
+                      }
                       try { await Clipboard.setStringAsync(requisites); } catch { /* noop */ }
                       Alert.alert(
                         'Перевод',
@@ -272,7 +304,14 @@ const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   content: { padding: 20, paddingBottom: 40, gap: 12 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  brand: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.primary, textTransform: 'uppercase' },
+  hero: { ...card, gap: 6, marginBottom: 4, borderColor: RenovaTheme.colors.primary, borderWidth: 1 },
+  brand: { fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: RenovaTheme.colors.primary },
+  brandSub: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginTop: -2 },
+  progressLine: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.text, marginTop: 4 },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: RenovaTheme.colors.border, overflow: 'hidden' },
+  progressFill: { height: 6, backgroundColor: RenovaTheme.colors.primary },
+  todoLine: { fontSize: 13, color: RenovaTheme.colors.text, fontWeight: '600' },
+
   title: { fontSize: 24, fontWeight: '800', color: RenovaTheme.colors.text },
   muted: { fontSize: 14, color: RenovaTheme.colors.textMuted },
   ro: { fontSize: 12, color: RenovaTheme.colors.warning, fontWeight: '600', marginBottom: 8 },

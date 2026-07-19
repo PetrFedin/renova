@@ -18,7 +18,11 @@ export const estimateApi = {
     req(`/api/v1/projects/${projectId}/change-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),
   approveChangeOrder: async (userId: string, projectId: string, orderId: string) => {
     try {
-      return await req(`/api/v1/projects/${projectId}/change-orders/${orderId}/approve`, { method: 'POST' }, userId);
+      return await req<{ ok: boolean; status: string; document_id?: string; amount?: number; title?: string }>(
+        `/api/v1/projects/${projectId}/change-orders/${orderId}/approve`,
+        { method: 'POST' },
+        userId,
+      );
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');

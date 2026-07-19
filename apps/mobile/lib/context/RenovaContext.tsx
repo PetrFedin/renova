@@ -28,6 +28,32 @@ import { resolveActiveProjectId, isJunkProjectName } from '@/lib/resolveActivePr
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { setCustomerBudget } from '@/lib/customerBudgetPrefs';
 import { normalizeCustomerBudget } from '@/lib/customerBudgetSync';
+import { Platform } from 'react-native';
+
+const LOGIN_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
+
+/** Push registration can hang on web — defer and skip non-native platforms */
+function deferPushRegistration(userId: string) {
+  if (Platform.OS === 'web' || typeof window !== 'undefined') return;
+  setTimeout(async () => {
+    try {
+      const Notifications = await import('expo-notifications');
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status === 'granted') {
+        const tok = (await Notifications.getExpoPushTokenAsync()).data;
+        await api.registerPushToken(userId, tok);
+      }
+    } catch { /* push optional */ }
+  }, 0);
+}
+
 import { syncCustomerBudgetOnLoad } from '@/lib/customerBudgetMigrate';
 import { buildProjectCreatePayload } from '@/lib/wizard/buildProjectCreatePayload';
 
@@ -333,26 +359,20 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
 
   const demoLogin = useCallback(async (role: UserRole) => {
-    const u = await api.demoLogin(role);
+    const u = await withTimeout(api.demoLogin(role), LOGIN_TIMEOUT_MS, 'Превышено время ожидания сервера');
     setUser(u);
-        try {
-          const team = await api.getTeam(u.id);
-          const me = team?.members?.find((m: any) => m.user_id === u.id);
-          setReadOnly(me?.role === 'viewer');
-        } catch { setReadOnly(false); }
-        try {
-          const Notifications = await import('expo-notifications');
-          const { status } = await Notifications.requestPermissionsAsync();
-          if (status === 'granted') {
-            const tok = (await Notifications.getExpoPushTokenAsync()).data;
-            await api.registerPushToken(u.id, tok);
-          }
-        } catch {}
+    try {
+      const team = await api.getTeam(u.id);
+      const me = team?.members?.find((m: any) => m.user_id === u.id);
+      setReadOnly(me?.role === 'viewer');
+    } catch { setReadOnly(false); }
+    deferPushRegistration(u.id);
     await AsyncStorage.setItem(KEYS.userId, u.id);
     await AsyncStorage.setItem('renova_user_role', role);
     let list: ProjectSummary[] = [];
     try {
-      list = await enrichProjectsPendingPayments(u.id, await listProjectsWithRetry(u.id, 4), role);
+      const raw = await withTimeout(listProjectsWithRetry(u.id, 4), LOGIN_TIMEOUT_MS, 'Превышено время ожидания загрузки проектов');
+      list = await enrichProjectsPendingPayments(u.id, raw, role);
     } catch {
       list = [];
     }

@@ -17,11 +17,10 @@ import { profileScreenStyles as ps } from './profileScreenStyles';
 import { pushOsNav } from '@/lib/pushOsNav';
 
 const EXTRA_BASIC = [
-  { label: 'Архив', href: '/activity' },
   { label: 'Помощь', href: '/guide' },
 ];
 
-/** После подключения исполнителя — архив и помощь; согласования через «Входящие» */
+/** После подключения исполнителя — доп. ссылки; архив в шапке «Ещё», согласования через inbox */
 const EXTRA_WITH_CONTRACTOR: typeof EXTRA_BASIC = [];
 
 export function CustomerProfileScreen() {

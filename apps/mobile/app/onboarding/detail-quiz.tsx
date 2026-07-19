@@ -6,8 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme } from '@/constants/Theme';
-import { osEntryRoute, projectPickRoute } from '@/lib/osEntry';
-import { SESSION_KEYS } from '@/constants/sessionKeys';
+import { navigateAfterLogin } from '@/lib/osEntry';
 import { DetailLevelPreview } from '@/components/renova/DetailLevelPreview';
 
 const MODES = [
@@ -20,17 +19,17 @@ export default function DetailQuizScreen() {
   const { logout } = useRenova();
   const [mode, setMode] = useState('standard');
   useEffect(() => { AsyncStorage.getItem('renova_user_role').then(r => setMode(r === 'contractor' ? 'detailed' : r === 'customer' ? 'standard' : 'standard')); }, []);
+  const [busy, setBusy] = useState(false);
   const finish = async () => {
-    await AsyncStorage.setItem('renova_detail_level', mode);
-    await AsyncStorage.setItem('renova_detail_quiz_done', '1');
-    const role = (await AsyncStorage.getItem('renova_user_role')) === 'contractor' ? 'contractor' : 'customer';
-    await new Promise((r) => setTimeout(r, 0));
-    const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
-    if (pending === '1') {
-      router.replace(projectPickRoute() as any);
-      return;
+    setBusy(true);
+    try {
+      await AsyncStorage.setItem('renova_detail_level', mode);
+      await AsyncStorage.setItem('renova_detail_quiz_done', '1');
+      const role = (await AsyncStorage.getItem('renova_user_role')) === 'contractor' ? 'contractor' : 'customer';
+      await navigateAfterLogin(role);
+    } finally {
+      setBusy(false);
     }
-    router.replace(osEntryRoute(role) as any);
   };
   const backToRole = async () => {
     await logout();
@@ -50,7 +49,7 @@ export default function DetailQuizScreen() {
         </Pressable>
       ))}
       <DetailLevelPreview mode={mode} />
-      <PrimaryButton title="Продолжить" onPress={finish} />
+      <PrimaryButton title="Продолжить" onPress={finish} loading={busy} />
     </View>
   );
 }

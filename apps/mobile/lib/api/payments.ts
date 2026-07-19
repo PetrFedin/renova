@@ -4,6 +4,12 @@ import { OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
 import type { Payment } from './types';
 export const paymentsApi = {
   listPayments: (userId: string, projectId: string) => req<Payment[]>(`/api/v1/projects/${projectId}/payments`, {}, userId),
+  getPaymentRequisites: (userId: string, projectId: string) =>
+    req<{ recipient_name?: string | null; payment_requisites?: string | null; phone?: string | null; has_bank_details: boolean }>(
+      `/api/v1/projects/${projectId}/payment-requisites`,
+      {},
+      userId,
+    ),
   createPayment: async (userId: string, projectId: string, body: object) => {
     try {
       return await req<Payment>(`/api/v1/projects/${projectId}/payments`, { method: 'POST', body: JSON.stringify(body) }, userId);

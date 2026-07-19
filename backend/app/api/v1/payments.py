@@ -22,6 +22,43 @@ async def list_payments(project_id: str, user: User = Depends(get_current_user),
     return out
 
 
+
+@router.get("/{project_id}/payment-requisites")
+async def project_payment_requisites(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Реквизиты исполнителя для перевода (без demo-карт в клиенте)."""
+    from sqlalchemy import select
+    from app.models.entities import ContractorProfile, Project
+
+    project = await require_project(db, project_id, user, write=False)
+    recipient_name = None
+    payment_requisites = None
+    phone = None
+    if project.contractor_id:
+        contractor = await db.get(User, project.contractor_id)
+        if contractor:
+            recipient_name = contractor.full_name
+            phone = contractor.phone
+        profile = (
+            await db.execute(
+                select(ContractorProfile).where(ContractorProfile.user_id == project.contractor_id)
+            )
+        ).scalar_one_or_none()
+        if profile:
+            payment_requisites = profile.payment_requisites
+            if profile.company_name:
+                recipient_name = profile.company_name
+    return {
+        "recipient_name": recipient_name,
+        "payment_requisites": payment_requisites,
+        "phone": phone,
+        "has_bank_details": bool((payment_requisites or "").strip()),
+    }
+
+
 @router.post("/{project_id}/payments", response_model=PaymentOut)
 async def create_payment(
     project_id: str,

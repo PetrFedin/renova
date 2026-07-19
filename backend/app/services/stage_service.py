@@ -144,6 +144,8 @@ async def start_stage(db: AsyncSession, stage_id: str) -> tuple[Stage | None, di
     stage.status = StageStatus.active
     if not getattr(stage, "actual_start", None):
         stage.actual_start = date.today()
+    if not getattr(stage, "ical_uid", None):
+        stage.ical_uid = f"renova-{stage.id}@app"
     from app.models.entities import Project
     proj = await db.get(Project, stage.project_id)
     if proj and proj.contractor_id:
