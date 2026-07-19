@@ -8,7 +8,7 @@ import { tabBarScreenOptions } from '@/constants/tabBar';
 import { OsSectionMenu } from '@/components/renova/os/OsSectionMenu';
 import { OsProjectPicker } from '@/components/renova/os/OsProjectPicker';
 import { OsAppHeader } from '@/components/renova/os/OsAppHeader';
-import { OsHeaderBreadcrumb } from '@/components/renova/os/OsHeaderBreadcrumb';
+import { OsHeaderLogo, OsPathBar } from '@/components/renova/os/OsHeaderBreadcrumb';
 import { OsDockBar } from '@/components/renova/os/OsDockBar';
 import { pushOsTabNav } from '@/lib/osTabNav';
 import { type OsRole } from '@/constants/osSections';
@@ -22,7 +22,7 @@ import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { projectPickRoute } from '@/lib/osEntry';
 
-/** Шапка: лого + путь слева, меню разделов справа */
+/** Шапка: лого + иконки в ряду; путь — отдельный контейнер под линией */
 export function OsTabsHeaderBar({ role }: { role: OsRole }) {
   const pathname = usePathname();
   const { user, activeProject, apiReachable } = useRenova();
@@ -31,7 +31,7 @@ export function OsTabsHeaderBar({ role }: { role: OsRole }) {
   return (
     <>
     <OsAppHeader
-      left={<OsHeaderBreadcrumb role={role} />}
+      left={<OsHeaderLogo role={role} />}
       right={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           {activeProject && user && role === 'contractor' && (
@@ -60,6 +60,8 @@ export function OsTabsHeaderBar({ role }: { role: OsRole }) {
         </View>
       }
     />
+    {/* Под border шапки — путь по любому разделу роли/объекта */}
+    <OsPathBar role={role} />
     {activeProject && user && role === 'contractor' && (
       <OsSearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} project={activeProject} userId={user.id} />
     )}
