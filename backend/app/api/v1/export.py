@@ -486,7 +486,26 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
             )
         ).scalars().all()
     )
-    ready = bool(stages_done and not pending_pay and len(warranty_open) == 0)
+    # W60: documents — без активного акта приёмки closeout запрещён (канон → documents → warranty)
+    has_acceptance_docs = len(acts_active) > 0
+    ready = bool(
+        stages_done
+        and not pending_pay
+        and has_acceptance_docs
+        and len(warranty_open) == 0
+    )
+    if bool(getattr(project, "is_archived", False)):
+        next_action = "Объект уже в архиве"
+    elif ready:
+        next_action = "Можно завершить объект"
+    elif not stages_done:
+        next_action = "Закройте этапы"
+    elif pending_pay:
+        next_action = "Подтвердите оплаты"
+    elif not has_acceptance_docs:
+        next_action = "Оформите акт приёмки в документах"
+    else:
+        next_action = "Закройте гарантийные обращения"
     return {
         "project_id": project_id,
         "project_name": project.name,
@@ -499,19 +518,7 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
         "warranty_open": len(warranty_open),
         "ready": ready,
         "archived": bool(getattr(project, "is_archived", False)),
-        "next_action": (
-            "Объект уже в архиве"
-            if bool(getattr(project, "is_archived", False))
-            else (
-                "Можно завершить объект"
-                if ready
-                else (
-                    "Закройте этапы"
-                    if not stages_done
-                    else ("Подтвердите оплаты" if pending_pay else "Закройте гарантийные обращения")
-                )
-            )
-        ),
+        "next_action": next_action,
     }
 
 

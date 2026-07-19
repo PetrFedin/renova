@@ -394,6 +394,22 @@ class PortalScheduleIn(BaseModel):
     reason: str | None = None
 
 
+def _portal_claims(token: str, project_id: str) -> dict:
+    """Verify magic-link; 401 on bad/expired token."""
+    try:
+        claims = portal_tok.verify_portal_token(token)
+    except ValueError:
+        raise HTTPException(401, "invalid_portal_token")
+    if claims.get("project_id") != project_id:
+        raise HTTPException(403, "token_project_mismatch")
+    return claims
+
+
+def _require_portal_scope(claims: dict, scope: str) -> None:
+    if scope not in (claims.get("scopes") or []):
+        raise HTTPException(403, f"portal_{scope}_scope_required")
+
+
 @router.post("/portal/projects/{project_id}/work-schedules/{schedule_id}/confirm")
 async def portal_confirm_schedule(
     project_id: str,
@@ -401,10 +417,10 @@ async def portal_confirm_schedule(
     body: PortalScheduleIn,
     db: AsyncSession = Depends(get_db),
 ):
-    """W57: подтверждение графика по magic link (заказчик)."""
-    claims = portal_tok.verify_portal_token(body.token)
-    if claims.get("project_id") != project_id:
-        raise HTTPException(403, "token_project_mismatch")
+    """W57/W60: подтверждение графика по magic link — нужен accept_stage scope."""
+    claims = _portal_claims(body.token, project_id)
+    # Schedule confirm = согласие заказчика; тот же write-scope, что и приёмка
+    _require_portal_scope(claims, "accept_stage")
     user = await db.get(User, claims["user_id"])
     if not user:
         raise HTTPException(401, "invalid_token_user")
@@ -424,10 +440,9 @@ async def portal_reject_schedule(
     body: PortalScheduleIn,
     db: AsyncSession = Depends(get_db),
 ):
-    """W57: отклонение графика по magic link."""
-    claims = portal_tok.verify_portal_token(body.token)
-    if claims.get("project_id") != project_id:
-        raise HTTPException(403, "token_project_mismatch")
+    """W57/W60: отклонение графика — нужен accept_stage scope."""
+    claims = _portal_claims(body.token, project_id)
+    _require_portal_scope(claims, "accept_stage")
     user = await db.get(User, claims["user_id"])
     if not user:
         raise HTTPException(401, "invalid_token_user")

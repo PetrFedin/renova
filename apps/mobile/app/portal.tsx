@@ -124,7 +124,7 @@ export default function PortalScreen() {
         <View style={s.card}>
           <Text style={s.cardHead}>План-график</Text>
           <Text style={s.line}>{(snapshot as any).pending_work_schedule.title || 'График работ'} · на согласовании</Text>
-          {(snapshot as any).can_confirm_schedule && !portalReadOnly ? (
+          {(snapshot as any).can_confirm_schedule && canAcceptPortal ? (
             <View style={s.payActions}>
               <Pressable
                 style={s.acceptBtn}
