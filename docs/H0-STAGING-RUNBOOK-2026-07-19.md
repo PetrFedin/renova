@@ -14,6 +14,18 @@
 | 6 | 1 тестовая оплата + webhook | Pro или stage payment |
 | 7 | Portal: реквизиты исполнителя живые | не hardcode |
 
+## Команда (W54)
+
+```bash
+cp env.staging.example backend/.env   # fill secrets
+npm run h0:check
+npm run h0:check:strict
+API_BASE=https://api… npm run h0:check:live
+npm run demo:investor
+```
+
+EAS: `EXPO_PUBLIC_APP_ENV=staging` on preview/testflight.
+
 ## Проверка в продукте
 
 ```bash

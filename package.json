@@ -48,7 +48,11 @@
     "testflight:eas": "node apps/mobile/lib/__tests__/easProfiles.test.mjs",
     "ci:playwright": "bash scripts/ci-playwright.sh all",
     "merge:check:live": "bash scripts/merge-check-live.sh",
-    "ci:push-workflow": "bash scripts/push-ci-workflow.sh"
+    "ci:push-workflow": "bash scripts/push-ci-workflow.sh",
+    "h0:check": "bash scripts/h0-check.sh",
+    "h0:check:strict": "bash scripts/h0-check.sh --strict",
+    "h0:check:live": "bash scripts/h0-check.sh --live",
+    "demo:investor": "bash scripts/demo-investor-15.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

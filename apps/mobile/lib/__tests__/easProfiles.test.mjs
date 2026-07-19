@@ -31,4 +31,12 @@ if (!tf.env?.EXPO_PUBLIC_DEMO || tf.env.EXPO_PUBLIC_DEMO === '1') {
   throw new Error('testflight must set EXPO_PUBLIC_DEMO=0');
 }
 
+for (const name of ['preview', 'testflight', 'staging', 'production']) {
+  const appEnv = eas.build[name]?.env?.EXPO_PUBLIC_APP_ENV;
+  if (!appEnv || appEnv === 'development') {
+    throw new Error(`${name}: EXPO_PUBLIC_APP_ENV must be staging|production (got ${appEnv})`);
+  }
+}
+
 console.log('easProfiles.test.mjs: OK');
+
