@@ -19,6 +19,7 @@ export function PurchaseList({ purchases, readOnly, returnTo, onAdvance }: Props
   return (
     <View style={s.wrap}>
       <Text style={s.h}>Закупки</Text>
+      <Text style={s.pipe}>Черновик → Заказано → Оплачено → Доставлено (факт)</Text>
       {purchases.map((p) => {
         const next = PURCHASE_NEXT_STATUS[p.status];
         const cancel = purchaseCancelStatus(p.status);
@@ -59,7 +60,8 @@ export function PurchaseList({ purchases, readOnly, returnTo, onAdvance }: Props
 
 const s = StyleSheet.create({
   wrap: { marginTop: 8, marginBottom: 12 },
-  h: { fontSize: 17, fontWeight: '700', marginBottom: 8, color: RenovaTheme.colors.text },
+  h: { fontSize: 17, fontWeight: '700', marginBottom: 4, color: RenovaTheme.colors.text },
+  pipe: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 10 },
   card: { ...card, marginBottom: 10 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   title: { fontSize: 15, fontWeight: '700', flex: 1, color: RenovaTheme.colors.text },

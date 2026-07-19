@@ -1,7 +1,7 @@
 /** P2.2: Подбор чистовых материалов — room × category × approve */
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, Alert, TextInput } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { InfoBanner } from '@/components/ui/InfoBanner';
@@ -9,7 +9,8 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { api, type SelectionItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
-import type { OsRole } from '@/constants/osSections';
+import { repairTabRoute, type OsRole } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 const CATEGORIES: { key: string; label: string }[] = [
   { key: 'all', label: 'Все' },
@@ -30,6 +31,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export function OsSelectionsScreen({ role }: { role: OsRole }) {
+  const pathname = usePathname();
   const { user, activeProject, readOnly } = useRenova();
   const [items, setItems] = useState<SelectionItem[]>([]);
   const [filter, setFilter] = useState('all');
@@ -96,6 +98,14 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
         <InfoBanner tone="warning" title={`${pending} на согласовании`} message="Примите или отклоните позиции подбора." />
       ) : null}
 
+      {!isCustomer && items.some((i) => i.status === 'approved') ? (
+        <PrimaryButton
+          title="Согласованные → Материалы / закупки"
+          variant="outline"
+          onPress={() => pushOsNav(repairTabRoute(role, 'materials'), pathname)}
+        />
+      ) : null}
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chips}>
         {CATEGORIES.map((c) => (
           <Pressable key={c.key} style={[s.chip, filter === c.key && s.chipOn]} onPress={() => setFilter(c.key)}>
@@ -154,9 +164,19 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
           {isCustomer && !readOnly && item.status === 'proposed' && (
             <View style={s.actions}>
               <PrimaryButton title="Согласовать" compact onPress={async () => {
-      await api.approveSelection(user.id, activeProject.id, item.id);
-              reload();
-              Alert.alert('Согласовано', 'Позиция добавлена в «Материалы → Потребности» для закупки.');
+                await api.approveSelection(user.id, activeProject.id, item.id);
+                reload();
+                Alert.alert(
+                  'Согласовано',
+                  'Позиция в «Ремонт → Материалы → Потребности». Создайте закупку.',
+                  [
+                    { text: 'OK', style: 'cancel' },
+                    {
+                      text: 'К закупкам',
+                      onPress: () => pushOsNav(repairTabRoute(role, 'materials'), pathname),
+                    },
+                  ],
+                );
               }} />
               <PrimaryButton title="Отклонить" variant="outline" compact onPress={() => {
                 Alert.alert('Отклонить', 'Укажите причину (опционально)', [

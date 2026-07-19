@@ -12,6 +12,9 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { api, MaterialPick, Purchase, ReceiptItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
+import { procurementNextAction, readyPickIds } from '@/lib/domain/procurementNextAction';
+import { repairTabRoute } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 const PICK_FILTERS = [
   { key: 'all', label: 'Все' },
@@ -84,8 +87,18 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     { id: 'receipts', label: 'Чеки', badge: unlinkedReceipts || undefined },
   ];
 
-  const createPurchaseFromDrafts = async () => {
-    const ids = picks.filter((p) => p.status === 'draft' || p.status === 'pending').map((p) => p.id);
+  const generateFromEstimate = async () => {
+    setBusy(true);
+    try {
+      await api.generateMaterialNeeds(user.id, activeProject.id);
+      reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createPurchaseFromReady = async () => {
+    const ids = readyPickIds(picks, purchases);
     if (!ids.length) return;
     setBusy(true);
     try {
@@ -97,14 +110,23 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     }
   };
 
-  const generateFromEstimate = async () => {
-    setBusy(true);
-    try {
-      await api.generateMaterialNeeds(user.id, activeProject.id);
-      reload();
-    } finally {
-      setBusy(false);
+  const next = procurementNextAction(picks, purchases, receipts);
+  const readyCount = readyPickIds(picks, purchases).length;
+
+  const runNextCta = async () => {
+    if (next.id === 'generate') {
+      await generateFromEstimate();
+      return;
     }
+    if (next.id === 'create_purchase') {
+      await createPurchaseFromReady();
+      return;
+    }
+    if (next.id === 'scan_receipt') {
+      pushOsNav('/scan-receipt', pathname);
+      return;
+    }
+    setMaterialSubtab(next.subtab);
   };
 
   const advancePurchase = async (id: string, status: string) => {
@@ -124,6 +146,21 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
         <Text style={s.factHint}>
           Цепочка: потребность → закупка → чек. В факт бюджета попадает только «В факте» (куплено).
         </Text>
+        <View style={s.nextBox}>
+          <Text style={s.nextLabel}>Сейчас</Text>
+          <Text style={s.nextTitle}>{next.title}</Text>
+          {!readOnly || next.id === 'approve_picks' ? (
+            <PrimaryButton title={busy ? '…' : next.cta} disabled={busy} onPress={() => { void runNextCta(); }} />
+          ) : null}
+          {role === 'contractor' ? (
+            <PrimaryButton
+              title="Подбор чистовых →"
+              variant="outline"
+              compact
+              onPress={() => pushOsNav(repairTabRoute(role, 'selections'), pathname)}
+            />
+          ) : null}
+        </View>
       </ScrollView>
 
       <OsHubTabs tabs={hubTabs} value={subtab} onChange={(id) => setMaterialSubtab(id as MaterialSubtab)} />
@@ -133,7 +170,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
           <>
             {!readOnly && (
               <View style={s.actions}>
-                {needBuy > 0 && <PrimaryButton title="Создать закупку" onPress={createPurchaseFromDrafts} disabled={busy} />}
+                {readyCount > 0 && <PrimaryButton title={`Создать закупку (${readyCount})`} onPress={createPurchaseFromReady} disabled={busy} />}
                 <PrimaryButton title="Из сметы" variant="outline" onPress={generateFromEstimate} disabled={busy} />
               </View>
             )}
@@ -165,8 +202,8 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
         {subtab === 'purchases' && (
           <>
-            {!readOnly && needBuy > 0 && (
-              <PrimaryButton title="Создать закупку из потребностей" onPress={createPurchaseFromDrafts} disabled={busy} />
+            {!readOnly && readyCount > 0 && (
+              <PrimaryButton title={`Создать закупку (${readyCount})`} onPress={createPurchaseFromReady} disabled={busy} />
             )}
             {!purchases.length ? (
               <View style={s.empty}>
@@ -180,7 +217,8 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
         {subtab === 'receipts' && (
           <>
-            <Text style={s.fabHint}>Сканировать чек — кнопка «+» внизу экрана или раздел «Бюджет → Расходы»</Text>
+            <PrimaryButton title="Сканировать QR чека" onPress={() => pushOsNav('/scan-receipt', pathname)} />
+            <Text style={s.fabHint}>После скана сверка ниже. Факт бюджета — только по доставленным закупкам / верифицированным чекам.</Text>
             <MaterialReceiptReconcile rooms={activeProject.rooms || []} picks={picks} receipts={receipts} />
           </>
         )}
@@ -201,6 +239,9 @@ const s = StyleSheet.create({
   actions: { gap: 8, marginBottom: 12 },
   fabHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginBottom: 12 },
   factHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 4 },
+  nextBox: { ...card, marginTop: 8, marginBottom: 4, gap: 8 },
+  nextLabel: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
+  nextTitle: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text, lineHeight: 20 },
   empty: { ...card, marginBottom: 12 },
   emptyT: { fontWeight: '700', fontSize: 15 },
   emptyM: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginVertical: 8, lineHeight: 18 },

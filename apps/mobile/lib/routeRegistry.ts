@@ -162,9 +162,9 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     audience: 'both',
     visibility: 'deeplink',
     status: 'ga',
-    entryPoints: ['repair.materials'],
+    entryPoints: ['repair.materials', 'home.next', 'selections'],
     redirectTo: '/repair?tab=materials&subtab=purchases',
-    descriptionRu: 'Hub: Потребности · Закупки · Чеки (docs/PROCUREMENT-HUB-2026-07-16.md)',
+    descriptionRu: 'P2.4/W50 hub: потребность → закупка → чек. Не пункт «Ещё».',
   },
   {
     id: 'selections',

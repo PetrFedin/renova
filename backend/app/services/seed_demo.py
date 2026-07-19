@@ -312,6 +312,7 @@ async def _ensure_apartment_in_progress(db: AsyncSession, project_id: str, contr
         p.progress_percent = 12.0
     await db.commit()
     await _ensure_demo_acceptance_queue(db, project_id, contractor_id)
+    await _ensure_demo_procurement(db, project_id)
 
 async def _ensure_house_demo(db: AsyncSession, customer_id: str) -> None:
     r = await db.execute(
@@ -360,6 +361,23 @@ async def _seed_chats_for_customer_projects(
             await _seed_house_chats(db, proj.id, customer.id, contractor.id)
         else:
             await _seed_apartment_chats(db, proj.id, customer.id, contractor.id)
+
+
+
+async def _ensure_demo_procurement(db: AsyncSession, project_id: str) -> None:
+    """W50: демо-цепочка снабжения — потребности из сметы, если пусто."""
+    from sqlalchemy import select as sa_select
+    from app.models.entities import MaterialPick
+    from app.services import purchase_service as pur_svc
+
+    existing = (await db.execute(sa_select(MaterialPick).where(MaterialPick.project_id == project_id).limit(1))).scalar_one_or_none()
+    if existing:
+        return
+    created = await pur_svc.generate_needs_from_estimate(db, project_id)
+    if created:
+        # одна закупка из первых позиций — чтобы на демо был открытый шаг
+        ids = [c.id for c in created[:3]]
+        await pur_svc.create_from_picks(db, project_id, ids, supplier_name="Леруа (демо)")
 
 
 async def _ensure_demo_contractor_profile(db: AsyncSession, contractor_id: str) -> None:
@@ -428,6 +446,7 @@ async def ensure_demo_users(db: AsyncSession) -> None:
         if apt:
             await _ensure_apartment_in_progress(db, apt.id, contractor.id)
             await _ensure_demo_acceptance_queue(db, apt.id, contractor.id)
+            await _ensure_demo_procurement(db, apt.id)
         await _seed_chats_for_customer_projects(db, customer, contractor, existing_projects)
         await _link_guest(db, existing_projects)
         return
@@ -450,5 +469,6 @@ async def ensure_demo_users(db: AsyncSession) -> None:
     await pay_svc.create_payment(db, p.id, customer.id, "Аванс 30%", round(p.budget_planned * 0.3, 2), "advance", notes="Демо: подтвердите оплату на вкладке Финансы")
     await _ensure_apartment_in_progress(db, p.id, contractor.id)
     await _ensure_demo_acceptance_queue(db, p.id, contractor.id)
+    await _ensure_demo_procurement(db, p.id)
     await _seed_apartment_chats(db, p.id, customer.id, contractor.id)
     await _link_guest(db, [p])
