@@ -1,5 +1,5 @@
 /** Smoke: menu invariants — npx tsx lib/routeRegistry.test.ts */
-import { assertRouteRegistryInvariants, menuRoutes, MAX_MORE_MENU_ITEMS, RENOVA_ROUTES } from './routeRegistry';
+import { assertRouteRegistryInvariants, menuRoutes, MAX_MORE_MENU_ITEMS, RENOVA_ROUTES, userFacingRouteIds } from './routeRegistry';
 import { OS_MENU_SECTIONS, OS_MORE_UTIL_LINKS, MAX_HEADER_MORE_ITEMS } from '../constants/osSections';
 
 assertRouteRegistryInvariants();
@@ -13,6 +13,10 @@ for (const id of ['work-acceptance', 'quality-control', 'notifications']) {
   if (moreCustomer.some((r) => r.id === id)) {
     throw new Error(`${id} must not appear in more menu`);
   }
+}
+
+if (!moreCustomer.some((r) => r.id === 'approvals')) {
+  throw new Error('approvals must be in more menu (P0.4 lock/CO path)');
 }
 if (!moreCustomer.some((r) => r.id === 'inbox')) {
   throw new Error('inbox must be in more menu (attention SoT)');
@@ -43,4 +47,13 @@ if (guestIds.has('quality-control') || guestIds.has('notifications')) {
 }
 if (guestMore.length > 3) throw new Error('readOnly more menu too large');
 
-console.log('routeRegistry.test OK');
+const uf = userFacingRouteIds();
+if (uf.length > 40) {
+  throw new Error(`user-facing routes exceed 40 (P2.7 IA): ${uf.length}`);
+}
+if (!uf.includes('approvals')) {
+  throw new Error('approvals must be user-facing');
+}
+
+console.log('routeRegistry.test OK', { more: moreCustomer.map((r) => r.id), userFacing: uf.length });
+

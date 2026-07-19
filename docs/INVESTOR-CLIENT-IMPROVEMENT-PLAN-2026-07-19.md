@@ -156,7 +156,8 @@
 ## 6. Порядок исполнения (рекомендация команде)
 
 ```
-W44  P0.1 orchestrator + P0.4 lock estimate + P0.5 honesty + P0.6 demo seed
+W44  P0.1 orchestrator + P0.5 honesty + P0.6 demo seed
+W48  P0.4 customer lock + approvals More + P2.7 IA registry (partial)
 W45  P0.2 YuKassa live + P0.3 portal accept/pay + P1.1 CO→budget + P1.2 bank confirm
 W46  P1.3 budget BFF + P1.4 schedule UI + P1.5–P1.8 sellable polish
 W47  P2.1–P2.3 trust/RU integrations
@@ -262,3 +263,4 @@ W44 AcceptOrchestrator (+ stage_id в events) → W45 Budget SoT + YuKassa/porta
 | W45 YuKassa live keys | ⏳ ops |
 | W46 Schedule UI + closeout | ✅ |
 | W47 Demo path + portal honesty | ✅ |
+| W48 Lock customer + Approvals More + IA | ✅ |

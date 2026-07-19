@@ -64,8 +64,9 @@ async def materials_stats(project_id: str, user: User = Depends(get_current_user
 
 @router.post("/lock")
 async def lock_project_estimate(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role != UserRole.contractor:
-        raise HTTPException(403, "Только исполнитель фиксирует смету")
+    # P0.4 / W48: заказчик согласует базовую смету; исполнитель может зафиксировать первым.
+    if user.role not in (UserRole.contractor, UserRole.customer):
+        raise HTTPException(403, "Фиксация сметы доступна заказчику и исполнителю")
     await require_project(db, project_id, user, write=True)
     proj, result = await lock_estimate(db, project_id, locked_by=user.id)
     if not proj:

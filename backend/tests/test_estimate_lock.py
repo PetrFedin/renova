@@ -75,3 +75,18 @@ async def test_lock_blocks_estimate_patch():
         )
         assert blocked.status_code == 409
         assert blocked.json().get("detail", {}).get("code") == "estimate_locked"
+
+
+async def test_customer_can_lock_estimate():
+    """P0.4 / W48: заказчик согласует и фиксирует базовую смету."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        cont = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
+        cust = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
+        h_cont = {"X-User-Id": cont["id"]}
+        h_cust = {"X-User-Id": cust["id"]}
+        pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
+        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        locked = await client.post(f"/api/v1/projects/{pid}/estimate/lock", headers=h_cust)
+        assert locked.status_code == 200, locked.text
+        assert locked.json().get("estimate_locked_at")

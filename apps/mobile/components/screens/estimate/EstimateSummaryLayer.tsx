@@ -1,5 +1,5 @@
 /** Слой «Итог» — сумма сметы и быстрые переходы в деньги / материалы */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { Alert, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourceLegend';
@@ -16,6 +16,10 @@ type Props = {
   roomsCount: number;
   stagesCount: number;
   pendingChanges: number;
+  /** Заказчик / исполнитель может зафиксировать базовую смету (P0.4) */
+  canLock?: boolean;
+  locking?: boolean;
+  onLockEstimate?: () => Promise<void>;
 };
 
 export function EstimateSummaryLayer({
@@ -25,12 +29,21 @@ export function EstimateSummaryLayer({
   roomsCount,
   stagesCount,
   pendingChanges,
+  canLock,
+  locking,
+  onLockEstimate,
 }: Props) {
+  const lockedAt = project.estimate_locked_at;
   return (
     <View style={s.wrap}>
       <View style={s.totalBox}>
         <Text style={s.totalLabel}>Итого по смете</Text>
         <Text style={s.total}>{formatRub(project.budget_planned)}</Text>
+        {lockedAt ? (
+          <Text style={s.locked}>Согласована · зафиксирована {lockedAt.slice(0, 10)}</Text>
+        ) : (
+          <Text style={s.unlocked}>Черновик — согласуйте сумму, чтобы открыть договор и этапы</Text>
+        )}
         <Text style={s.breakdown}>
           Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} (
           {totals.materialsCount})
@@ -48,6 +61,26 @@ export function EstimateSummaryLayer({
       <Text style={s.hint}>
         Детализация по комнатам — вкладка «Детализация». Доп. работы и решения — «Изменения». PDF и Excel — «Документы».
       </Text>
+
+      {!lockedAt && canLock && onLockEstimate ? (
+        <PrimaryButton
+          title={locking ? 'Фиксация…' : 'Согласовать и зафиксировать смету'}
+          disabled={!!locking}
+          onPress={() => {
+            void onLockEstimate().catch((e: unknown) => {
+              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка фиксации сметы');
+            });
+          }}
+        />
+      ) : null}
+      {lockedAt ? (
+        <PrimaryButton
+          title="→ Документы (договор)"
+          variant="outline"
+          compact
+          onPress={() => pushOsNav('/documents', pathname)}
+        />
+      ) : null}
 
       <View style={s.links}>
         <PrimaryButton
@@ -99,6 +132,8 @@ const s = StyleSheet.create({
   totalBox: { marginBottom: 4 },
   totalLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
   total: { fontSize: 32, fontWeight: '800', color: RenovaTheme.colors.primary, marginTop: 4 },
+  locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '700' },
+  unlocked: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
   breakdown: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 17 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {

@@ -102,8 +102,18 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     titleRu: 'Документы проекта',
     audience: 'both',
     visibility: 'more',
-    status: 'beta',
+    status: 'ga',
     entryPoints: ['os.menu', 'home.more'],
+  },
+  {
+    id: 'approvals',
+    path: '/approvals',
+    titleRu: 'Согласования',
+    audience: 'both',
+    visibility: 'more',
+    status: 'ga',
+    entryPoints: ['home.more', 'os.menu', 'inbox', 'push'],
+    descriptionRu: 'P0.4: CO / материалы / дизайн — решает заказчик. В «Ещё» на Home.',
   },
   {
     id: 'notifications',
@@ -196,9 +206,9 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     titleRu: 'Web-портал (гость)',
     audience: 'customer',
     visibility: 'deeplink',
-    status: 'beta',
+    status: 'ga',
     entryPoints: ['object.viewers'],
-    descriptionRu: 'Read-only portal по magic link JWT (P2.1)',
+    descriptionRu: 'Magic link: snapshot + accept/pay (W47 honesty). Не пункт меню.',
   },
   {
     id: 'reports',
@@ -246,9 +256,17 @@ const REDIRECT_ONLY_MENU_IDS = new Set([
 /** Hard cap: Home «Ещё» и secondary centers ≤ 5 (Sprint IA DoD) */
 export const MAX_MORE_MENU_ITEMS = 5;
 
-/** Guest/readOnly «Ещё» — документы + входящие (без beta-центров) */
+/** Guest/readOnly «Ещё» — документы + входящие (без центров решений) */
 const READ_ONLY_MORE_IDS = new Set(['documents', 'inbox']);
+/** KPI/отчёты — только на фазе complete (не раздувать «Ещё» в active) */
 const COMPLETION_PHASE_ONLY_IDS = new Set(['manager-dashboard', 'reports']);
+
+/** User-facing (dock + more + deeplink GA) — для аудита IA; redirect-only не считаем. */
+export function userFacingRouteIds(routes: RenovaRoute[] = RENOVA_ROUTES): string[] {
+  return routes
+    .filter((r) => r.status !== 'wip' && !r.redirectTo && r.visibility !== 'hidden')
+    .map((r) => r.id);
+}
 
 export function resolveRouteRedirect(path: string): string | undefined {
   return RENOVA_ROUTES.find((r) => r.path === path)?.redirectTo;

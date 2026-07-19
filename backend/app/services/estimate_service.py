@@ -79,17 +79,32 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
     proj.estimate_locked_at = datetime.utcnow()
     await recalc_budget(db, project_id)
     draft = await docs_svc.ensure_contract_draft(db, project_id=project_id, created_by=locked_by)
-    if proj.customer_id:
-        titles = ", ".join(draft.get("pending_titles") or [])
+    titles = ", ".join(draft.get("pending_titles") or [])
+    # Уведомляем контрагента (не того, кто зафиксировал).
+    notify_user_id = None
+    title = body = link_path = return_to = ""
+    if locked_by == proj.customer_id and proj.contractor_id:
+        notify_user_id = proj.contractor_id
+        title = "Заказчик согласовал смету"
+        body = titles or "Базовая смета зафиксирована. Можно запускать этапы и договор."
+        link_path = "/documents"
+        return_to = "/(contractor)/(tabs)/object"
+    elif proj.customer_id and locked_by != proj.customer_id:
+        notify_user_id = proj.customer_id
+        title = "Смета зафиксирована — подпишите договор"
+        body = titles or "Исполнитель зафиксировал смету. Подпишите договор в документах."
+        link_path = "/documents"
+        return_to = "/(customer)/(tabs)/object"
+    if notify_user_id:
         await notif_svc.notify(
             db,
-            user_id=proj.customer_id,
+            user_id=notify_user_id,
             project_id=project_id,
             notification_type="document",
-            title="Смета зафиксирована — подпишите договор",
-            body=titles or "Исполнитель зафиксировал смету. Подпишите договор в документах.",
-            link_path="/documents",
-            return_to="/(customer)/(tabs)/control",
+            title=title,
+            body=body,
+            link_path=link_path,
+            return_to=return_to,
         )
     await db.commit()
     await db.refresh(proj)

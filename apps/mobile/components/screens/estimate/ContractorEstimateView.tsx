@@ -90,7 +90,7 @@ export function ContractorEstimateView() {
 
         {user && canWrite && !activeProject.estimate_locked_at && allLines.length > 0 && (
           <PrimaryButton
-            title="Зафиксировать смету"
+            title="Зафиксировать смету (отправить заказчику)"
             variant="outline"
             onPress={async () => {
               try {

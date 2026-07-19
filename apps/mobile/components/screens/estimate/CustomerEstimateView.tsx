@@ -34,6 +34,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const [layer, setLayer] = useState<EstimateLayer>('summary');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
+  const [locking, setLocking] = useState(false);
 
   useEffect(() => {
     if (!user || !activeProject) return;
@@ -80,6 +81,18 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
           roomsCount={roomsCount}
           stagesCount={stagesCount}
           pendingChanges={pendingOrders.length}
+          canLock={canWrite && (activeProject.estimate_lines?.length || 0) > 0}
+          locking={locking}
+          onLockEstimate={async () => {
+            if (!user || !activeProject) return;
+            setLocking(true);
+            try {
+              await api.lockEstimate(user.id, activeProject.id);
+              await loadProject(activeProject.id);
+            } finally {
+              setLocking(false);
+            }
+          }}
         />
       )}
 
