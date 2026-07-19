@@ -93,3 +93,12 @@ async def release_health(user: User = Depends(get_current_user)):
             },
         },
     }
+
+
+@router.get("/h0-readiness")
+async def h0_readiness(user: User = Depends(get_current_user)):
+    """W53: H0 staging checklist для пилота/инвестора (без секретов)."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403)
+    from app.services.staging_readiness import build_h0_readiness
+    return build_h0_readiness()

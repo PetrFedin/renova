@@ -1,9 +1,10 @@
-/** Честный статус интеграций на Home — без ложных «live» (W44). */
+/** Честный статус интеграций + H0 readiness на Home (W44/W53). */
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { API_BASE_GUARD } from '@/lib/api/client';
 
 type Chip = { id: string; label: string; ok: boolean };
 
@@ -15,10 +16,11 @@ export function IntegrationHonestyBadge() {
     if (!user?.id) return;
     let alive = true;
     (async () => {
-      const [y, f, e] = await Promise.all([
+      const [y, f, e, h0] = await Promise.all([
         api.getYookassaHealth(user.id).catch(() => null),
         api.getFnsHealth(user.id).catch(() => null),
         api.getEsignHealth(user.id).catch(() => null),
+        user.role === 'contractor' ? api.getH0Readiness(user.id).catch(() => null) : Promise.resolve(null),
       ]);
       if (!alive) return;
 
@@ -28,14 +30,32 @@ export function IntegrationHonestyBadge() {
       const providers = (e as { providers?: { available?: boolean }[] } | null)?.providers;
       const eLive = Boolean(providers?.some((p) => p?.available));
 
-      setChips([
+      const next: Chip[] = [
         { id: 'pay', label: yLive ? 'ЮKassa: live' : 'ЮKassa: demo/off', ok: yLive },
         { id: 'fns', label: fLive ? 'ФНС: live' : 'ФНС: offline', ok: fLive },
         { id: 'sign', label: eLive ? 'Kontur: on' : 'Подпись: in_app', ok: eLive },
-      ]);
+      ];
+
+      if (API_BASE_GUARD.blocked) {
+        next.unshift({ id: 'api', label: 'API: localhost (блок)', ok: false });
+      } else if (API_BASE_GUARD.isLocalhost) {
+        next.unshift({ id: 'api', label: 'API: localhost', ok: false });
+      }
+
+      if (h0) {
+        next.push({
+          id: 'h0',
+          label: h0.ready_for_investor_demo
+            ? `H0: ready ${h0.score}%`
+            : `H0: ${h0.blockers?.length || 0} blockers`,
+          ok: Boolean(h0.ready_for_investor_demo),
+        });
+      }
+
+      setChips(next);
     })();
     return () => { alive = false; };
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   if (!chips.length) return null;
 

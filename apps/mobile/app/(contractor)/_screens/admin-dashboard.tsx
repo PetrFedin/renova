@@ -27,6 +27,7 @@ export default function AdminDashboardScreen() {
   const [health, setHealth] = useState<any>(null);
   const [yk, setYk] = useState<any>(null);
   const [fns, setFns] = useState<any>(null);
+  const [h0, setH0] = useState<any>(null);
   const [chart, setChart] = useState<any[]>([]);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function AdminDashboardScreen() {
     api.getReleaseHealth(user.id).then(setHealth).catch(() => {});
     api.getYookassaHealth(user.id).then(setYk).catch(() => {});
     api.getFnsHealth(user.id).then(setFns).catch(() => {});
+    api.getH0Readiness(user.id).then(setH0).catch(() => {});
     if (Platform.OS === 'web') {
       api.getProjectsChart(user.id).then(setChart).catch(() => {});
       api.getRevenueChart(user.id).then(setRev).catch(() => {});
@@ -73,6 +75,14 @@ export default function AdminDashboardScreen() {
           </Text>
         ) : null}
 
+        
+        {h0 ? (
+          <Text style={st.sub}>
+            H0 investor: {h0.ready_for_investor_demo ? 'READY' : 'NOT READY'} · score {h0.score}%
+            {h0.blockers?.length ? ` · blockers: ${h0.blockers.map((b: { id: string }) => b.id).join(', ')}` : ''}
+            {h0.hint ? ` · ${h0.hint}` : ''}
+          </Text>
+        ) : null}
         {fns ? (
           <Text style={st.sub}>
             ФНС чеки: {fns.receipt_auth_configured ? 'auth OK' : 'без auth'}
@@ -97,6 +107,12 @@ export default function AdminDashboardScreen() {
             {yk.live_checkout_ready ? ' · live ready' : ''}
             {yk.demo_allowed ? ' · demo OK' : ''}
             {yk.hint ? ` · ${yk.hint}` : ''}
+          </Text>
+        ) : null}
+                {h0 ? (
+          <Text style={st.sub}>
+            H0 investor: {h0.ready_for_investor_demo ? 'READY' : 'NOT READY'} · score {h0.score}%
+            {h0.blockers?.length ? ` · blockers: ${h0.blockers.map((b: { id: string }) => b.id).join(', ')}` : ''}
           </Text>
         ) : null}
         {health?.integrations ? (

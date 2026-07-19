@@ -268,3 +268,15 @@ W44 AcceptOrchestrator (+ stage_id в events) → W45 Budget SoT + YuKassa/porta
 | W50 Procurement hub UX | ✅ |
 | W51 Digest lite push+PDF | ✅ |
 | W52 IA catch-all + messenger gap | ✅ |
+| W53 H0 staging readiness API/UI | ✅ |
+
+
+## 12. Статус после W53 (код vs ops)
+
+**Код golden path закрыт (W44–W53).** Дальше ценность только ops:
+
+1. Выполнить `docs/H0-STAGING-RUNBOOK-2026-07-19.md` до `ready_for_investor_demo: true`
+2. TestFlight с HTTPS API
+3. 1 live YuKassa + 3 paid Pro (H1.8)
+
+Новые продуктовые фичи без H0 **не увеличивают** доверие инвестора.

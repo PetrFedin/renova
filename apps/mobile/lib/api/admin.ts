@@ -8,6 +8,15 @@ export const adminApi = {
   joinTeam: (userId: string, token: string) => req('/api/v1/teams/join', { method: 'POST', body: JSON.stringify({ token }) }, userId),
   getRevenueChart: (userId: string) => req<any[]>('/api/v1/admin/revenue-chart', {}, userId),
   getReleaseHealth: (userId: string) => req<any>('/api/v1/admin/release-health', {}, userId),
+  getH0Readiness: (userId: string) =>
+    req<{
+      environment: string;
+      ready_for_investor_demo: boolean;
+      score: number;
+      hint: string;
+      blockers: { id: string; label: string; ok: boolean; how: string }[];
+      checks: { id: string; label: string; ok: boolean; how: string }[];
+    }>('/api/v1/admin/h0-readiness', {}, userId),
   getEsignHealth: (userId: string) => req<{
     kontur_mode: string; kontur_configured: boolean; live_webhook_ready: boolean;
     esign_webhook_secret_set: boolean; hint: string | null;

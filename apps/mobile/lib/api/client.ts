@@ -1,5 +1,6 @@
 /** HTTP-клиент Renova API */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 
 export class ApiError extends Error {
   status: number;
@@ -126,7 +127,19 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
   }
 }
 
-export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
+const _apiGuard = evaluateApiBaseGuard(
+  process.env.EXPO_PUBLIC_API_URL,
+  process.env.EXPO_PUBLIC_APP_ENV ?? process.env.APP_ENV,
+);
+if (_apiGuard.warning && typeof __DEV__ !== 'undefined' && __DEV__) {
+  console.warn(`[renova:api-base] ${_apiGuard.warning}`);
+}
+if (_apiGuard.blocked) {
+  console.error(`[renova:api-base] BLOCKED: ${_apiGuard.warning}`);
+}
+export const API_BASE = _apiGuard.apiBase;
+export const API_BASE_GUARD = _apiGuard;
+
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
