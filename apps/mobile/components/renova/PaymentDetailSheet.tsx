@@ -160,9 +160,11 @@ export function PaymentDetailSheet({
             {
               text: 'Открыть банк',
               onPress: () => {
-                Linking.openURL('bank100000000001://').catch(() => {
-                  Alert.alert('Подсказка', 'Откройте приложение вашего банка вручную.');
-                });
+                // W58: без fake bank:// scheme — пользователь открывает свой банк
+                Alert.alert(
+                  'Реквизиты скопированы',
+                  'Откройте приложение вашего банка или СБП и вставьте реквизиты из буфера.',
+                );
               },
             },
             { text: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
@@ -183,9 +185,10 @@ export function PaymentDetailSheet({
             {
               text: 'Открыть банк',
               onPress: () => {
-                Linking.openURL('bank100000000001://').catch(() => {
-                  Alert.alert('Подсказка', 'Откройте приложение вашего банка вручную и вставьте сумму.');
-                });
+                Alert.alert(
+                  'Сумма в буфере',
+                  'Откройте приложение банка или СБП и вставьте сумму вручную.',
+                );
               },
             },
           ],

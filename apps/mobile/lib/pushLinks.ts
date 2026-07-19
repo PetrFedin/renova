@@ -33,14 +33,9 @@ export function resolvePushLink(
   }
 
   if (canonicalPath === '/control') {
-    // W56: contractor hub приёмки = repair control (QC — /quality-control / issue)
-    if (role === 'contractor') {
-      return {
-        pathname: '/(contractor)/(tabs)/repair',
-        params: { tab: 'control', returnTo: rt },
-      };
-    }
-    return { pathname: '/work-acceptance', params: { returnTo: rt } };
+    // W58: обе роли → hub Приёмка (repair?tab=control); /work-acceptance остаётся API-экраном
+    const tab = role === 'contractor' ? '/(contractor)/(tabs)/repair' : '/(customer)/(tabs)/repair';
+    return { pathname: tab, params: { tab: 'control', returnTo: rt } };
   }
 
   if (canonicalPath === '/work-schedule') {
@@ -105,7 +100,11 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
       return budgetTabRoute(role, 'payments');
     case 'stage_review':
     case 'stage_started':
-      return { pathname: '/work-acceptance', params: {} };
+    case 'acceptance':
+      return {
+        pathname: role === 'contractor' ? '/(contractor)/(tabs)/repair' : '/(customer)/(tabs)/repair',
+        params: { tab: 'control' },
+      };
     case 'change_order':
       return changeOrderEstimateRoute(role);
     case 'materials':

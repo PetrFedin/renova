@@ -126,7 +126,7 @@ function ChangeOrderRow({
       <Text style={s.meta}>Статус: {changeOrderStatusLabel(order.status)}</Text>
       {canWrite && (
         <View style={s.actions}>
-          <PrimaryButton title="Одобрить" onPress={onApprove} />
+          <PrimaryButton title="Согласовать" onPress={onApprove} />
           <View style={{ height: 8 }} />
           <PrimaryButton title="Отклонить" variant="outline" onPress={onReject} />
         </View>

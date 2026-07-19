@@ -261,7 +261,7 @@ export default function PortalScreen() {
                         `${requisites}\n\nРеквизиты скопированы. Откройте банк или СБП.`,
                         Platform.OS === 'web'
                           ? [{ text: 'OK' }]
-                          : [{ text: 'OK' }, { text: 'Открыть банк', onPress: () => Linking.openURL('bank100000000001://').catch(() => {}) }],
+                          : [{ text: 'OK' }, { text: 'Готово', onPress: () => {} }],
                       );
                     }}
                   >

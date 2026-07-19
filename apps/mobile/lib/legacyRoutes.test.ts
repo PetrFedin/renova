@@ -20,8 +20,8 @@ if (!resolveLegacyRoute('/(customer)/(tabs)/finance').pathname.includes('budget'
 logLegacyRouteDeprecation('/a', '/b');
 logLegacyRouteDeprecation('/a', '/b');
 
-if (legacyRouteCanonical('/(customer)/(tabs)/control') !== '/work-acceptance') {
-  throw new Error('customer control → work-acceptance');
+if (legacyRouteCanonical('/(customer)/(tabs)/control') !== '/(customer)/(tabs)/repair?tab=control') {
+  throw new Error('customer control → repair?tab=control');
 }
 if (legacyRouteCanonical('/(contractor)/(tabs)/control') !== '/(contractor)/(tabs)/repair?tab=control') {
   throw new Error('contractor control → repair?tab=control');

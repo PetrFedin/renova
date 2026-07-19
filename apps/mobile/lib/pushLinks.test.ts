@@ -28,10 +28,12 @@ const confirmedContractor = resolveNotificationLink('payment_confirmed', 'contra
 console.assert(confirmedContractor?.pathname.includes('(contractor)'), 'notify payment confirmed contractor');
 console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.tab === 'payments', 'finance-center redirect');
 console.assert(resolvePushLink('/work-schedule', '/home', 'customer')?.pathname.includes('calendar'), 'work-schedule redirect');
-console.assert(resolvePushLink('/control', '/home', 'customer')?.pathname === '/work-acceptance', 'control redirect customer');
+console.assert(resolvePushLink('/control', '/home', 'customer')?.pathname === '/(customer)/(tabs)/repair', 'control redirect customer');
+console.assert(resolvePushLink('/control', '/home', 'customer')?.params?.tab === 'control', 'control tab customer');
 console.assert(resolvePushLink('/control', '/home', 'contractor')?.pathname === '/(contractor)/(tabs)/repair', 'control redirect contractor');
 console.assert(resolvePushLink('/control', '/home', 'contractor')?.params?.tab === 'control', 'control tab contractor');
-console.assert(resolveNotificationLink('stage_review')?.pathname === '/work-acceptance', 'notify acceptance');
+console.assert(resolveNotificationLink('stage_review')?.pathname === '/(customer)/(tabs)/repair', 'notify acceptance');
+console.assert(resolveNotificationLink('stage_review')?.params?.tab === 'control', 'notify acceptance tab');
 console.assert(resolveNotificationLink('change_order')?.params?.estimateLayer === 'changes', 'change_order → estimate changes');
 console.assert(resolveNotificationLink('change_order', 'contractor')?.pathname.includes('object'), 'change_order contractor → object estimate');
 const unknownNotify = resolveNotificationLink('unknown_xyz');
@@ -42,6 +44,7 @@ console.assert(resolveNotificationLink('issue', 'contractor')?.pathname === '/qu
 console.assert(resolveNotificationLink('payment_pending', 'contractor')?.pathname.includes('contractor'), 'contractor budget');
 console.assert(resolvePushLink('/notifications', '/home', 'customer')?.pathname === '/inbox', 'notifications → inbox');
 
-console.assert(resolveLegacyTabHref('/(customer)/(tabs)/control').pathname === '/work-acceptance', 'legacy control customer');
+console.assert(resolveLegacyTabHref('/(customer)/(tabs)/control').pathname === '/(customer)/(tabs)/repair', 'legacy control customer');
+console.assert(resolveLegacyTabHref('/(customer)/(tabs)/control').params?.tab === 'control', 'legacy control tab customer');
 console.assert(resolveLegacyTabHref('/(contractor)/(tabs)/control').pathname === '/(contractor)/(tabs)/repair', 'legacy control contractor');
 console.assert(resolveLegacyTabHref('/(contractor)/(tabs)/control').params?.tab === 'control', 'legacy control tab');

@@ -203,7 +203,7 @@ function ContractorRoomsBody() {
             <Text style={styles.reqTitle}>Запрос заказчика</Text>
             <Text>{r.message}</Text>
             <View style={styles.row}>
-              <PrimaryButton disabled={!canWrite} title="Одобрить" onPress={async () => {
+              <PrimaryButton disabled={!canWrite} title="Согласовать" onPress={async () => {
                 try {
                   await api.approveRoomChange(user.id, activeProject.id, r.id);
                   await reloadRequests();
