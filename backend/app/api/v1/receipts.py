@@ -205,3 +205,29 @@ async def list_receipts(project_id: str, user: User = Depends(get_current_user),
             "payment_id": getattr(r, "payment_id", None),
         })
     return out
+
+
+@router.post("/{receipt_id}/reverify")
+async def reverify_receipt(
+    project_id: str,
+    receipt_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P4: повторная live-проверка сохранённого чека по QR."""
+    await require_project(db, project_id, user, write=True)
+    rec = await db.get(Receipt, receipt_id)
+    if not rec or rec.project_id != project_id:
+        raise HTTPException(404, "receipt_not_found")
+    if not rec.qr_raw:
+        raise HTTPException(400, "no_qr_raw")
+    parsed = parse_receipt_qr(rec.qr_raw)
+    check = await verify_receipt(parsed)
+    rec.fns_verified = bool(check.get("verified"))
+    await db.commit()
+    return {
+        "id": rec.id,
+        "verified": rec.fns_verified,
+        "message": check.get("message"),
+        "mode": check.get("mode"),
+    }

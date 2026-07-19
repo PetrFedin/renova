@@ -193,14 +193,28 @@ export function DocumentsHub({
       warrantyClaim: {
         id: 'warranty',
         label: 'Гарантийное обращение',
-        desc: 'Тикет + черновик документа',
+        desc: 'Тикет + черновик → QC',
         format: 'Заявка',
         run: async () => {
+          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] }));
           const res = await api.createWarrantyClaim(userId, projectId, {
             title: 'Гарантийное обращение',
             description: 'Создано из Document Center',
           });
-          Alert.alert('Гарантия', `Обращение создано. Документ: ${res.document_id.slice(0, 8)}…`);
+          Alert.alert(
+            'Гарантия',
+            `Создано. Открытых: ${(open.open || 0) + 1}. Документ: ${res.document_id.slice(0, 8)}…`,
+            [
+              { text: 'OK' },
+              {
+                text: 'Открыть QC',
+                onPress: () => {
+                  const { router } = require('expo-router');
+                  router.push((res.qc_path || '/quality-control') as never);
+                },
+              },
+            ],
+          );
         },
       },
       activityPdf: {

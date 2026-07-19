@@ -50,9 +50,11 @@ async def release_health(user: User = Depends(get_current_user)):
         raise HTTPException(403)
     from app.core.config import settings
     from app.services.yookassa_service import yookassa_health
+    from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.automation_reminders_worker import automation_worker_metrics
 
     yk = yookassa_health()
+    fns = fns_receipt_health()
     worker = automation_worker_metrics()
     return {
         "version": "1.0.0",
@@ -65,6 +67,11 @@ async def release_health(user: User = Depends(get_current_user)):
                 "configured": yk["configured"],
                 "live_checkout_ready": yk["live_checkout_ready"],
                 "demo_allowed": yk["demo_allowed"],
+            },
+            "fns": {
+                "receipt_auth_configured": fns["receipt_auth_configured"],
+                "live_verify_ready": fns["live_verify_ready"],
+                "demo_verify_allowed": fns["demo_verify_allowed"],
             },
             "smtp": {"configured": bool(settings.smtp_host)},
             "ollama_digest": {

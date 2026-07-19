@@ -40,4 +40,10 @@ export const receiptsApi = {
   budgetForecast: (userId: string, projectId: string) => req<{ forecast_total: number; forecast_over: number; risk: string }>(`/api/v1/projects/${projectId}/analytics/budget-forecast`, {}, userId),
   budgetScenario: (userId: string, projectId: string, pct?: number) => req<{ materials_plan: number; delta: number; new_total: number }>(`/api/v1/projects/${projectId}/analytics/budget-scenario?materials_pct=${pct||10}`, {}, userId),
   budgetBreakdown: (userId: string, projectId: string) => req<BudgetBreakdown>(`/api/v1/projects/${projectId}/analytics/budget-breakdown`, {}, userId),
+  reverifyReceipt: (userId: string, projectId: string, receiptId: string) =>
+    req<{ id: string; verified: boolean; message?: string; mode?: string }>(
+      `/api/v1/projects/${projectId}/receipts/${receiptId}/reverify`,
+      { method: 'POST' },
+      userId,
+    ),
 };

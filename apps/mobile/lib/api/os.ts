@@ -92,9 +92,17 @@ export const osApi = {
       userId,
     ),
   createWarrantyClaim: (userId: string, projectId: string, body: { title?: string; description?: string }) =>
-    req<{ ok: boolean; issue_id: string; document_id: string }>(
+    req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string }>(
       `/api/v1/projects/${projectId}/warranty-claims`,
       { method: 'POST', body: JSON.stringify(body) },
       userId,
     ),
+  listWarrantyClaims: (userId: string, projectId: string) =>
+    req<{ items: { id: string; title: string; status: string; created_at?: string }[]; open: number }>(
+      `/api/v1/projects/${projectId}/warranty-claims`,
+      {},
+      userId,
+    ),
+  closeWarrantyClaim: (userId: string, projectId: string, issueId: string) =>
+    req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId),
 };

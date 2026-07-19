@@ -11,6 +11,15 @@ from app.services.fns import check_taxpayer_npd_status, FnsNpdError
 router = APIRouter(prefix="/fns", tags=["fns"])
 
 
+@router.get("/health")
+async def fns_health(_user: User = Depends(get_current_user)):
+    """P4: staging probe ФНС чеки / НПД (без секретов)."""
+    from app.services.fns.receipt_verify import fns_receipt_health
+    _ = _user
+    return fns_receipt_health()
+
+
+
 class CheckNpdRequest(BaseModel):
     inn: str = Field(..., min_length=12, max_length=12, description="ИНН физлица")
     request_date: date | None = None
@@ -57,7 +66,25 @@ async def verify_me(body: CheckNpdRequest, user: User = Depends(get_current_user
 
 @router.post("/moy-nalog/link", response_model=MoyNalogLinkResponse)
 async def link_moy_nalog(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """v1.1 stub: OAuth «Мой налог» — в production заменить на OAuth ФНС."""
+    """OAuth «Мой налог»: demo только development/test или MOY_NALOG_ENABLED."""
+    from app.core.config import settings
+    from app.core.environment import normalize_environment
+
+    env = normalize_environment(settings.environment)
+    demo_ok = env in ("development", "test")
+    if not settings.moy_nalog_enabled and not demo_ok:
+        raise HTTPException(
+            501,
+            "«Мой налог» OAuth ещё не подключён. Задайте MOY_NALOG_ENABLED=true после интеграции или используйте demo в development.",
+        )
     user.moy_nalog_linked = True
     await db.commit()
-    return MoyNalogLinkResponse(linked=True, message="«Мой налог» подключён (demo). Чеки будут создаваться при приёмке этапа.")
+    mode = "demo" if demo_ok and not settings.moy_nalog_enabled else "enabled"
+    return MoyNalogLinkResponse(
+        linked=True,
+        message=(
+            "«Мой налог» подключён (demo). Чеки будут создаваться при приёмке этапа."
+            if mode == "demo"
+            else "«Мой налог» отмечен как подключённый."
+        ),
+    )

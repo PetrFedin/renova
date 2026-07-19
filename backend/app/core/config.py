@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     yookassa_secret: str | None = None
     yookassa_webhook_secret: str | None = None
     fns_receipt_api_url: str = "https://proverkacheka.nalog.ru:9999/v1/inns/*/kkts/*/fss/*"
+    # Optional Basic auth for proverkacheka (phone/INN + password from «Мой налог» / FNS)
+    fns_receipt_login: str | None = None
+    fns_receipt_password: str | None = None
     public_base_url: str = "http://127.0.0.1:8100"
 
     cloudfront_domain: str | None = None

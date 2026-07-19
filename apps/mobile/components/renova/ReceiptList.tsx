@@ -22,6 +22,19 @@ export function ReceiptList({
   const sum = receipts.reduce((a, r) => a + r.amount, 0);
   const verified = receipts.filter((r) => r.verified).length;
 
+  const reverify = async (r: ReceiptItem) => {
+    if (!userId || !projectId || r.source === 'manual') return;
+    try {
+      const res = await api.reverifyReceipt(userId, projectId, r.id);
+      Alert.alert(res.verified ? 'ФНС: ок' : 'ФНС', res.message || (res.verified ? 'Подтверждён' : 'Не подтверждён'));
+      onUpdated?.();
+    } catch (e: unknown) {
+      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось проверить');
+    }
+  };
+
+
+
   async function patch(r: ReceiptItem, patch: { expense_category?: ExpenseCategoryId; room_id?: string | null; stage_id?: string | null }) {
     if (!userId || !projectId) return;
     try {
@@ -80,7 +93,13 @@ export function ReceiptList({
               </View>
             )}
           </View>
-          <Text style={[s.badge, r.verified ? s.ok : s.pending]}>{r.verified ? '✓ ФНС' : 'Не проверен'}</Text>
+          {r.verified || r.source === 'manual' ? (
+            <Text style={[s.badge, r.verified ? s.ok : s.pending]}>{r.verified ? '✓ ФНС' : 'Не проверен'}</Text>
+          ) : (
+            <Pressable onPress={() => reverify(r)} hitSlop={8}>
+              <Text style={[s.badge, s.pending]}>Проверить ФНС</Text>
+            </Pressable>
+          )}
         </Pressable>
       ))}
     </View>

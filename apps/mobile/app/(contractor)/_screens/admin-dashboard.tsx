@@ -26,6 +26,7 @@ export default function AdminDashboardScreen() {
   const [rev, setRev] = useState<any[]>([]);
   const [health, setHealth] = useState<any>(null);
   const [yk, setYk] = useState<any>(null);
+  const [fns, setFns] = useState<any>(null);
   const [chart, setChart] = useState<any[]>([]);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function AdminDashboardScreen() {
     api.getAdminStats(user.id).then(setS).catch(() => {});
     api.getReleaseHealth(user.id).then(setHealth).catch(() => {});
     api.getYookassaHealth(user.id).then(setYk).catch(() => {});
+    api.getFnsHealth(user.id).then(setFns).catch(() => {});
     if (Platform.OS === 'web') {
       api.getProjectsChart(user.id).then(setChart).catch(() => {});
       api.getRevenueChart(user.id).then(setRev).catch(() => {});
@@ -66,6 +68,15 @@ export default function AdminDashboardScreen() {
           <Text style={st.sub}>
             SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
             {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
+            {health.integrations.fns ? ` · ФНС live: ${health.integrations.fns.live_verify_ready ? 'yes' : 'no'}` : ''}
+          </Text>
+        ) : null}
+
+        {fns ? (
+          <Text style={st.sub}>
+            ФНС чеки: {fns.receipt_auth_configured ? 'auth OK' : 'без auth'}
+            {fns.live_verify_ready ? ' · live ready' : ''}
+            {fns.demo_verify_allowed ? ' · demo OK' : ''}
           </Text>
         ) : null}
         </View>
@@ -91,6 +102,15 @@ export default function AdminDashboardScreen() {
           <Text style={st.sub}>
             SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
             {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
+            {health.integrations.fns ? ` · ФНС live: ${health.integrations.fns.live_verify_ready ? 'yes' : 'no'}` : ''}
+          </Text>
+        ) : null}
+
+        {fns ? (
+          <Text style={st.sub}>
+            ФНС чеки: {fns.receipt_auth_configured ? 'auth OK' : 'без auth'}
+            {fns.live_verify_ready ? ' · live ready' : ''}
+            {fns.demo_verify_allowed ? ' · demo OK' : ''}
           </Text>
         ) : null}
 

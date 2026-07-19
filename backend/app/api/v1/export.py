@@ -346,7 +346,61 @@ async def create_warranty_claim(
             return_to="/(customer)/(tabs)/",
         )
     await db.commit()
-    return {"ok": True, "issue_id": issue.id, "document_id": draft.id}
+    return {
+        "ok": True,
+        "issue_id": issue.id,
+        "document_id": draft.id,
+        "qc_path": f"/quality-control?issueId={issue.id}",
+    }
+
+
+@router.get("/{project_id}/warranty-claims")
+async def list_warranty_claims(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P5.1: список гарантийных обращений (issues с префиксом [Гарантия])."""
+    from app.services import issue_service as iss
+
+    await require_project(db, project_id, user, write=False)
+    items = await iss.list_issues(db, project_id, status=None)
+    warranty = [iss.issue_dict(i) for i in items if (i.title or "").startswith("[Гарантия]")]
+    return {"items": warranty, "open": sum(1 for i in warranty if i.get("status") != "closed")}
+
+
+@router.post("/{project_id}/warranty-claims/{issue_id}/close")
+async def close_warranty_claim(
+    project_id: str,
+    issue_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Закрыть гарантийное обращение."""
+    from datetime import datetime
+    from app.models.entities import ProjectIssue
+    from app.services import issue_service as iss
+    from app.services import activity_service as act
+
+    await require_project(db, project_id, user, write=True)
+    issue = await db.get(ProjectIssue, issue_id)
+    if not issue or issue.project_id != project_id:
+        raise HTTPException(404, "warranty_not_found")
+    if not (issue.title or "").startswith("[Гарантия]"):
+        raise HTTPException(400, "not_a_warranty_claim")
+    issue.status = "closed"
+    issue.closed_at = datetime.utcnow()
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="WarrantyClosed",
+        title=issue.title,
+        link_path="/quality-control",
+    )
+    await db.commit()
+    await db.refresh(issue)
+    return {"ok": True, "issue": iss.issue_dict(issue)}
 
 
 class BankStatementIn(BaseModel):
