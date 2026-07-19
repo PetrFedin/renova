@@ -54,6 +54,7 @@ Canvas: `renova-journey-audit.canvas.tsx` (Cursor canvases).
 | P3 | Portal schedule confirm без scope | **закрыто W60** |
 | P4 | Closeout без акта приёмки | **закрыто W60** |
 | P5 | Closeout доступен исполнителю | **закрыто W61** |
+| P6 | Warranty close исполнителем снимает closeout-блокер | **закрыто W62** |
 | O1 | H0 staging HTTPS + live pay + TestFlight | **блокер пилота (ops)** |
 
 ---
@@ -77,7 +78,8 @@ npx tsx lib/domain/buildHomeKpiDetail.test.ts
 | W58 | `ea76b40` | U3 verbs, control→repair hub |
 | W59 | `41cec44` | portal `pay` scope + chat confirm project bind |
 | W60 | `93920c3` | schedule scope + closeout docs gate |
-| W61 | *(этот коммит)* | closeout customer-only |
+| W61 | `0211060` | closeout customer-only |
+| W62 | *(этот коммит)* | warranty close customer-only |
 
 **Остаётся блокером пилота:** O1 H0 ops (HTTPS staging + live YuKassa + TestFlight).
 

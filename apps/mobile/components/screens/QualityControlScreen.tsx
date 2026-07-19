@@ -46,7 +46,21 @@ function dueLabel(value?: string | null) {
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
 }
 
-function IssueCard({ item, onClose, acting, focused }: { item: ProjectIssue; onClose: (issue: ProjectIssue) => void; acting: boolean; focused?: boolean }) {
+function IssueCard({
+  item,
+  onClose,
+  acting,
+  focused,
+  canClose,
+  closeHint,
+}: {
+  item: ProjectIssue;
+  onClose: (issue: ProjectIssue) => void;
+  acting: boolean;
+  focused?: boolean;
+  canClose: boolean;
+  closeHint?: string;
+}) {
   const isClosed = item.status === 'closed';
   const tone = severityTone(item.severity);
   return (
@@ -65,7 +79,10 @@ function IssueCard({ item, onClose, acting, focused }: { item: ProjectIssue; onC
         {item.stage_id ? (
           <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${item.stage_id}?returnTo=${encodeURIComponent('/quality-control')}` as never)} />
         ) : null}
-        {!isClosed ? <PrimaryButton title="Закрыть" compact onPress={() => onClose(item)} loading={acting} disabled={acting} /> : null}
+        {!isClosed && canClose ? (
+          <PrimaryButton title="Закрыть" compact onPress={() => onClose(item)} loading={acting} disabled={acting} />
+        ) : null}
+        {!isClosed && !canClose && closeHint ? <Text style={styles.issueMeta}>{closeHint}</Text> : null}
       </View>
     </View>
   );
@@ -73,6 +90,7 @@ function IssueCard({ item, onClose, acting, focused }: { item: ProjectIssue; onC
 
 export function QualityControlScreen() {
   const { user, activeProject, readOnly } = useRenova();
+  const isCustomer = user?.role === 'customer';
   const params = useLocalSearchParams<{ issueId?: string }>();
   const focusIssueId = Array.isArray(params.issueId) ? params.issueId[0] : params.issueId;
   const [items, setItems] = useState<ProjectIssue[]>([]);
@@ -102,8 +120,9 @@ export function QualityControlScreen() {
   const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
 
   const closeIssue = async (issue: ProjectIssue) => {
-    // W46: гарантия → отдельный close + archive doc
+    // W46/W62: гарантию закрывает только заказчик
     if (!user || !activeProject || readOnly) return;
+    if ((issue.title || '').startsWith('[Гарантия]') && user.role !== 'customer') return;
     setActingId(issue.id);
     try {
       if ((issue.title || '').startsWith('[Гарантия]')) {
@@ -174,7 +193,15 @@ export function QualityControlScreen() {
       <View style={styles.cardBlock}>
         <Text style={styles.sectionTitle}>Требуют внимания</Text>
         {openIssues.length ? openIssues.map((item) => (
-          <IssueCard key={item.id} focused={item.id === focusIssueId} item={item} onClose={closeIssue} acting={actingId === item.id} />
+          <IssueCard
+            key={item.id}
+            focused={item.id === focusIssueId}
+            item={item}
+            onClose={closeIssue}
+            acting={actingId === item.id}
+            canClose={!readOnly && (!(item.title || '').startsWith('[Гарантия]') || Boolean(isCustomer))}
+            closeHint={(item.title || '').startsWith('[Гарантия]') && !isCustomer ? 'Гарантию закрывает заказчик' : undefined}
+          />
         )) : <Text style={styles.emptyText}>Открытых замечаний нет. Редкий случай, когда тишина — хороший KPI.</Text>}
       </View>
 
@@ -182,7 +209,14 @@ export function QualityControlScreen() {
         <View style={styles.cardBlock}>
           <Text style={styles.sectionTitle}>Закрытые</Text>
           {closedIssues.slice(0, 5).map((item) => (
-            <IssueCard key={item.id} focused={item.id === focusIssueId} item={item} onClose={closeIssue} acting={false} />
+            <IssueCard
+              key={item.id}
+              focused={item.id === focusIssueId}
+              item={item}
+              onClose={closeIssue}
+              acting={false}
+              canClose={false}
+            />
           ))}
         </View>
       ) : null}

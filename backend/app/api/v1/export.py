@@ -405,13 +405,15 @@ async def close_warranty_claim(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Закрыть гарантийное обращение."""
+    """W62: закрыть гарантию — только заказчик (снимает блокер closeout)."""
     from datetime import datetime
-    from app.models.entities import ProjectIssue
+    from app.models.entities import ProjectIssue, UserRole
     from app.services import issue_service as iss
     from app.services import activity_service as act
 
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
+    if user.role != UserRole.customer or user.id != project.customer_id:
+        raise HTTPException(403, "warranty_close_customer_only")
     issue = await db.get(ProjectIssue, issue_id)
     if not issue or issue.project_id != project_id:
         raise HTTPException(404, "warranty_not_found")

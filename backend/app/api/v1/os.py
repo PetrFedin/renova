@@ -134,7 +134,12 @@ async def create_issue(
 
 @router.post("/projects/{project_id}/issues/{issue_id}/close")
 async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    from app.models.entities import ProjectIssue, UserRole
+    project = await require_project(db, project_id, user, write=True)
+    existing = await db.get(ProjectIssue, issue_id)
+    if existing and (existing.title or "").startswith("[Гарантия]"):
+        if user.role != UserRole.customer or user.id != project.customer_id:
+            raise HTTPException(403, "warranty_close_customer_only")
     issue = await iss.update_issue_status(db, issue_id, "closed")
     if not issue or issue.project_id != project_id:
         raise HTTPException(404)
