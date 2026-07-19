@@ -56,7 +56,6 @@ export const adminApi = {
     }>('/api/v1/subscription/me', {}, userId),
   startProTrial: (userId: string) => req('/api/v1/subscription/start-trial', { method: 'POST' }, userId),
   checkoutPro: (userId: string) => req('/api/v1/subscription/checkout', { method: 'POST' }, userId),
-    req<{ token: string; link: string }>('/api/v1/teams/invite-link', { method: 'POST', body: JSON.stringify({ role }) }, userId),
   listArticlesAdmin: (userId: string) => req<{ slug: string; title: string; category: string; published: boolean }[]>('/api/v1/articles/admin', {}, userId),
   createArticleAdmin: (userId: string, body: object) => req('/api/v1/articles/admin', { method: 'POST', body: JSON.stringify(body) }, userId),
   updateArticleAdmin: (userId: string, slug: string, body: object) => req(`/api/v1/articles/admin/${slug}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
