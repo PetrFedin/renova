@@ -1,10 +1,11 @@
 /** Слой «Итог» — сумма сметы и быстрые переходы в деньги / материалы */
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourceLegend';
-import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, objectTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { router } from 'expo-router';
 import type { ProjectDetail } from '@/lib/api';
 import { estimateTotals } from '@/lib/domain/estimateFilters';
 
@@ -39,11 +40,7 @@ export function EstimateSummaryLayer({
       <View style={s.metaRow}>
         <MetaChip label="Комнаты" value={roomsCount ? `${roomsCount}` : '—'} />
         <MetaChip label="Этапы" value={stagesCount ? `${stagesCount}` : '—'} />
-        <MetaChip
-          label="На согласовании"
-          value={pendingChanges ? `${pendingChanges}` : '0'}
-          warn={pendingChanges > 0}
-        />
+        <PendingChangesChip count={pendingChanges} pathname={pathname} />
       </View>
 
       <EstimateSourceLegend compact />
@@ -67,6 +64,24 @@ export function EstimateSummaryLayer({
         />
       </View>
     </View>
+  );
+}
+
+function PendingChangesChip({ count, pathname }: { count: number; pathname: string }) {
+  const chip = (
+    <MetaChip label="На согласовании" value={count ? `${count}` : '0'} warn={count > 0} />
+  );
+  if (!count) return chip;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => {
+        const route = objectTabRoute('customer', 'estimate');
+        router.push({ pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes', returnTo: pathname } } as never);
+      }}
+    >
+      {chip}
+    </Pressable>
   );
 }
 

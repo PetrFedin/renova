@@ -257,7 +257,7 @@ export function WorkAcceptanceScreen() {
         <Text style={styles.subtitle}>Запрос, проверка, принятие этапов и возврат на доработку.</Text>
       </View>
 
-      {!readOnly && role === 'contractor' ? <OfflineSyncStatus compact /> : null}
+      {!readOnly ? <OfflineSyncStatus compact /> : null}
 
       {readOnly ? (
         <View style={styles.noteCard}><Text style={styles.noteText}>Режим просмотра: решения по приёмке недоступны.</Text></View>

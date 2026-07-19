@@ -2,7 +2,7 @@
 
 **Дата:** 2026-07-19  
 **Основание:** параллельный аудит (competitive / UX-IA / dead-ends) + `RENOVA-COMPETITIVE-GAP-PLAN-2026-07-17.md`  
-**Ветка:** `develop` (post-P3-W20)
+**Ветка:** `develop` (post-P3-W30)
 
 ---
 
@@ -87,3 +87,18 @@ Renova — **staging-ready RU B2B MVP+** (~84% vs Smetter/Vition по ядру).
 - `DEAD-ENDS-INVENTORY-2026-07-15.md` — реестр тупиков
 - `MARKET-COMPETITIVE-AUDIT-2026-07-15.md` — исходный рынок
 - `UX-FLOWS-RU.md` — принципы IA
+---
+
+## Прогресс P3-W23…W30 (develop)
+
+| Блок | Статус |
+|------|--------|
+| Trust demo→RU 503 | 🟡 backend RU messages (W28) |
+| IA control/redirect | ✅ LegacyTabRedirect (W28) |
+| Field offline | ✅ batch guards W27–W30 |
+| CO→budget chain | 🟡 alert+CTA budget (W30) |
+| Portal pay styles | ✅ W25 |
+| Guest/readOnly menu | ✅ W25–W29 |
+| Punch photo web | ✅ W23 |
+
+**Остаётся P0:** live ЮKassa keys, CI workflow scope, merge PR #3.

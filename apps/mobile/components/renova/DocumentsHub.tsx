@@ -419,6 +419,7 @@ export function DocumentsHub({
   return (
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
+      <OfflineSyncStatus compact />
 
       <View style={s.indexCard}>
         <View style={s.indexHeader}>
