@@ -49,7 +49,7 @@ export function CreatePaymentForm({
       setAmount('');
       setNotes('');
       onSaved?.();
-      Alert.alert('Отправлено', 'Счёт отправлен заказчику на подтверждение');
+      Alert.alert('Счёт создан', 'Заказчику отправлено уведомление об оплате');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
       Alert.alert(

@@ -128,13 +128,21 @@ async def _purge_orphan_receipt_expenses(db: AsyncSession, project_id: str) -> N
     await db.flush()
 
 
-async def _dedupe_linked_expenses(db: AsyncSession, *, receipt_id: str | None = None, payment_id: str | None = None) -> Expense | None:
-    """Оставляет одну запись Expense на receipt/payment — убирает дубликаты из старых данных."""
+async def _dedupe_linked_expenses(
+    db: AsyncSession,
+    *,
+    receipt_id: str | None = None,
+    payment_id: str | None = None,
+    purchase_id: str | None = None,
+) -> Expense | None:
+    """Оставляет одну запись Expense на receipt/payment/purchase — убирает дубликаты из старых данных."""
     q = select(Expense)
     if receipt_id:
         q = q.where(Expense.receipt_id == receipt_id)
     elif payment_id:
         q = q.where(Expense.payment_id == payment_id)
+    elif purchase_id:
+        q = q.where(Expense.purchase_id == purchase_id)
     else:
         return None
     rows = (await db.execute(q.order_by(Expense.created_at))).scalars().all()
@@ -211,6 +219,43 @@ async def expense_from_payment(db: AsyncSession, pay: Payment) -> Expense | None
         status="confirmed",
         payment_method="transfer",
         expense_date=pay.confirmed_at or pay.created_at,
+    )
+    db.add(exp)
+    await db.flush()
+    return exp
+
+
+async def expense_from_purchase(db: AsyncSession, purchase) -> Expense | None:
+    """W56: факт материалов — Expense на purchase при paid/delivered (идемпотентно по purchase_id)."""
+    from app.models.entities import PurchaseStatus
+
+    if purchase.status not in (PurchaseStatus.paid, PurchaseStatus.delivered):
+        return None
+    amount = float(getattr(purchase, "total_amount", None) or getattr(purchase, "amount", None) or 0)
+    if amount <= 0 and getattr(purchase, "items", None):
+        amount = sum(float(i.qty or 0) * float(getattr(i, "unit_price", 0) or 0) for i in purchase.items)
+    if amount <= 0:
+        return None
+    existing = await _dedupe_linked_expenses(db, purchase_id=purchase.id)
+    if existing:
+        existing.amount = amount
+        existing.status = "confirmed"
+        existing.title = existing.title or (getattr(purchase, "title", None) or "Закупка материалов")
+        await db.flush()
+        return existing
+    title = getattr(purchase, "title", None) or getattr(purchase, "supplier_name", None) or "Закупка материалов"
+    exp = Expense(
+        project_id=purchase.project_id,
+        purchase_id=purchase.id,
+        title=str(title)[:200],
+        category="materials",
+        amount=amount,
+        status="confirmed",
+        payment_method="transfer",
+        expense_date=getattr(purchase, "paid_at", None)
+        or getattr(purchase, "delivered_at", None)
+        or getattr(purchase, "created_at", None)
+        or datetime.utcnow(),
     )
     db.add(exp)
     await db.flush()

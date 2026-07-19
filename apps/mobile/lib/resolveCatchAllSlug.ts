@@ -31,7 +31,10 @@ export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | stri
     case 'design':
       return objectTabHref(role, 'plan', 'design');
     case 'control':
-      return role === 'contractor' ? '/quality-control' : '/work-acceptance';
+      // W56: contractor hub приёмки = repair control; QC — отдельный /quality-control
+      return role === 'contractor'
+        ? { pathname: '/(contractor)/(tabs)/repair', params: { tab: 'control' } }
+        : '/work-acceptance';
     case 'warranty-claim':
     case 'warranty':
       // W55: заказчик → документы; исполнитель → QC

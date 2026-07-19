@@ -127,6 +127,13 @@ async def set_status(db: AsyncSession, purchase_id: str, status: PurchaseStatus)
         await _on_delivered(db, p)
     elif status == PurchaseStatus.cancelled:
         await _on_cancelled(db, p)
+
+    # W56: paid|delivered → Expense(purchase_id) + refresh fact SoT
+    if status in (PurchaseStatus.paid, PurchaseStatus.delivered):
+        from app.services import budget_service as bud
+        await bud.expense_from_purchase(db, p)
+        await bud.refresh_budget_facts(db, p.project_id)
+
     await db.commit()
     await db.refresh(p, ["items"])
     return p

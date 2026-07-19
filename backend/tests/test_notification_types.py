@@ -31,5 +31,6 @@ def test_known_extra_types():
         "waste_reminder",
         "room_created",
         "document",
+        "payment_confirmed",
     ):
         assert resolve_notification_type(name) is NotificationType(name)

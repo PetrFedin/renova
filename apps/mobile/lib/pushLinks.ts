@@ -33,8 +33,14 @@ export function resolvePushLink(
   }
 
   if (canonicalPath === '/control') {
-    const pathname = role === 'contractor' ? '/quality-control' : '/work-acceptance';
-    return { pathname, params: { returnTo: rt } };
+    // W56: contractor hub приёмки = repair control (QC — /quality-control / issue)
+    if (role === 'contractor') {
+      return {
+        pathname: '/(contractor)/(tabs)/repair',
+        params: { tab: 'control', returnTo: rt },
+      };
+    }
+    return { pathname: '/work-acceptance', params: { returnTo: rt } };
   }
 
   if (canonicalPath === '/work-schedule') {
@@ -95,6 +101,7 @@ export function changeOrderEstimateRoute(role: OsRole, returnTo?: string): PushT
 export function resolveNotificationLink(notificationType: string, role: OsRole = 'customer'): PushTarget | null {
   switch (notificationType) {
     case 'payment_pending':
+    case 'payment_confirmed':
       return budgetTabRoute(role, 'payments');
     case 'stage_review':
     case 'stage_started':

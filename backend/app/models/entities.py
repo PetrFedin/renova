@@ -286,6 +286,7 @@ class NotificationType(str, enum.Enum):
     room_updated = "room_updated"
     room_created = "room_created"
     payment_pending = "payment_pending"
+    payment_confirmed = "payment_confirmed"
     change_order = "change_order"
     room_change = "room_change"
     chat_message = "chat_message"

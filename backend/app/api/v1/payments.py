@@ -66,7 +66,7 @@ async def create_payment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     if user.role == UserRole.customer and body.payment_type not in ("advance", "final"):
         raise HTTPException(403, "Заказчик создаёт аванс/финал")
     if user.role == UserRole.contractor and body.payment_type not in ("stage", "material"):
@@ -93,6 +93,19 @@ async def create_payment(
         body.stage_id,
         body.notes,
     )
+    # W56: ручной счёт → notify заказчику (честный «отправлен»)
+    if project.customer_id and project.customer_id != user.id:
+        from app.services import notification_service as notif
+        await notif.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=project_id,
+            notification_type="payment_pending",
+            title=f"Счёт к оплате: {payment.title}",
+            body=str(payment.amount),
+            link_path="/(customer)/(tabs)/budget?tab=payments",
+            return_to="/(customer)/(tabs)/home",
+        )
     receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
 
@@ -151,7 +164,7 @@ async def confirm_payment(
             db,
             user_id=member_id,
             project_id=project_id,
-            notification_type="payment_pending",
+            notification_type="payment_confirmed",
             title=f"Оплата подтверждена: {payment.title}",
             body=str(payment.amount),
             link_path="/(customer)/(tabs)/budget" if member_id == project.customer_id else "/(contractor)/(tabs)/budget",

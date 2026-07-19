@@ -39,6 +39,7 @@ export function StageDetailPaymentBlock({
 
   const pending = payments.find((p) => p.stage_id === stageId && p.status === 'pending');
   const isCustomer = role === 'customer';
+  const showContractorPending = role === 'contractor' && !!pending && stageStatus !== 'review';
 
   if (stageStatus === 'review' && isCustomer && stagePaymentAmount > 0) {
     return (
@@ -48,7 +49,17 @@ export function StageDetailPaymentBlock({
     );
   }
 
-  if (!pending || !isCustomer) return null;
+  if (!pending) return null;
+
+  if (showContractorPending) {
+    return (
+      <View style={s.hintBox}>
+        <Text style={s.hint}>Ожидает оплаты заказчиком</Text>
+      </View>
+    );
+  }
+
+  if (!isCustomer) return null;
 
   return (
     <>

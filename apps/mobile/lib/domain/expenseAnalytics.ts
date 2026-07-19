@@ -98,8 +98,13 @@ export function buildExpenseDetailRows(
   const receiptKeys = new Set(
     receipts.map((r) => `${r.room_id || ''}|${r.stage_id || ''}|${Math.round(r.amount)}`),
   );
+  // W56: если есть Expense(purchase_id) — не дублируем purchased picks в fact
+  const purchaseFactTotal = expenses
+    .filter((e) => e.purchase_id && (e.status === 'confirmed' || e.status === 'pending_receipt'))
+    .reduce((s, e) => s + e.amount, 0);
 
   for (const p of picks.filter((x) => x.status === 'purchased')) {
+    if (purchaseFactTotal > 0) continue;
     const amt = p.total || p.qty * p.price;
     if (!amt) continue;
     if (coveredPickIds.has(p.id)) continue;

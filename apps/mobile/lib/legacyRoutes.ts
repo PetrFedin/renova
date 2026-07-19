@@ -17,7 +17,7 @@ export const TAB_ALIASES: Record<string, string> = {
   '/(contractor)/(tabs)/more': '/(contractor)/(tabs)/profile',
   '/(contractor)/(tabs)/works': '/(contractor)/(tabs)/repair?tab=works',
   '/(contractor)/(tabs)/materials': '/(contractor)/(tabs)/repair?tab=materials',
-  '/(contractor)/(tabs)/control': '/quality-control',
+  '/(contractor)/(tabs)/control': '/(contractor)/(tabs)/repair?tab=control',
   '/(contractor)/(tabs)/stages': '/(contractor)/(tabs)/repair?tab=works',
   '/(contractor)/(tabs)/rooms': '/(contractor)/(tabs)/object?tab=rooms',
   '/(contractor)/(tabs)/estimate': '/(contractor)/(tabs)/object?tab=estimate',

@@ -58,6 +58,11 @@ export type OsExpense = {
   expense_date?: string | null;
   room_id?: string | null;
   stage_id?: string | null;
+  /** W56: связанная закупка — факт материалов с сервера */
+  purchase_id?: string | null;
+  material_pick_id?: string | null;
+  receipt_id?: string | null;
+  payment_id?: string | null;
 };
 
 export type OsReport = Record<string, unknown>;

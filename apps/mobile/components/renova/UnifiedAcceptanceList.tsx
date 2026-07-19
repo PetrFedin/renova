@@ -1,4 +1,4 @@
-/** Единый список приёмки — очередь решений для заказчика */
+/** Единый список приёмки — заказчик решает; исполнитель видит статус ожидания (W56) */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { pushStageDetail } from '@/lib/navigation';
 import { RenovaTheme, card } from '@/constants/Theme';
@@ -20,16 +20,20 @@ export function UnifiedAcceptanceList({
   role?: 'customer' | 'contractor';
 }) {
   const items = buildUnifiedAcceptanceItems(stages, acceptances);
+  const isContractor = role === 'contractor';
 
   if (!items.length) {
     return (
       <View style={s.emptyBox}>
-        <Text style={s.empty}>Сейчас ничего не ждёт вашей приёмки</Text>
+        <Text style={s.empty}>
+          {isContractor ? 'Нет этапов на приёмке у заказчика' : 'Сейчас ничего не ждёт вашей приёмки'}
+        </Text>
         <PrimaryButton
           title="Открыть этапы"
           variant="outline"
           compact
-          onPress={() => pushOsNav(repairTabRoute(role, 'works', 'awaiting'), returnTo)}
+          // W56: filter=review есть у Works; awaiting — нет у contractor
+          onPress={() => pushOsNav(repairTabRoute(role, 'works', 'review'), returnTo)}
         />
       </View>
     );
@@ -37,11 +41,16 @@ export function UnifiedAcceptanceList({
 
   return (
     <>
-      <Text style={s.hint}>{items.length} этап(ов) ждут проверки — откройте, отметьте чеклист и примите или верните на доработку.</Text>
+      <Text style={s.hint}>
+        {isContractor
+          ? `${items.length} этап(ов) у заказчика на проверке — откройте этап или отправьте повторно из работ.`
+          : `${items.length} этап(ов) ждут проверки — откройте, отметьте чеклист и примите или верните на доработку.`}
+      </Text>
       {items.map((it) => (
         <AcceptanceRow
           key={it.id}
           item={it}
+          isContractor={isContractor}
           onOpen={() => pushStageDetail(it.stageId, returnTo)}
         />
       ))}
@@ -52,9 +61,11 @@ export function UnifiedAcceptanceList({
 function AcceptanceRow({
   item,
   onOpen,
+  isContractor,
 }: {
   item: UnifiedAcceptanceItem;
   onOpen: () => void;
+  isContractor: boolean;
 }) {
   return (
     <View style={s.row}>
@@ -62,10 +73,14 @@ function AcceptanceRow({
         <Text style={s.title}>{item.title}</Text>
         <Text style={s.meta}>
           {item.sub}
-          {item.kind === 'acceptance' ? ' · приёмка' : ''}
+          {item.kind === 'acceptance' ? (isContractor ? ' · у заказчика' : ' · приёмка') : ''}
         </Text>
       </Pressable>
-      <PrimaryButton title="Проверить" compact onPress={onOpen} />
+      <PrimaryButton
+        title={isContractor ? 'Открыть этап' : 'Проверить'}
+        compact
+        onPress={onOpen}
+      />
     </View>
   );
 }

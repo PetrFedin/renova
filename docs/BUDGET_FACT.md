@@ -15,9 +15,13 @@
 
 ```
 unified = receipts
-        + os_expenses (без дубля receipt_id)
+        + os_expenses (без дубля receipt_id / payment_id)
         + material_picks WHERE status = 'purchased'
+          (только если нет Expense с purchase_id — W56)
 ```
+
+**W56:** `Purchase` → `paid`/`delivered` создаёт `Expense(purchase_id)` на сервере;
+`budget_spent` и mobile list сходятся. Не дублировать purchased picks, если уже есть purchase Expense.
 
 **Не входят в факт:**
 

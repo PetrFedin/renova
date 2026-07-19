@@ -255,56 +255,12 @@ async def reject_stage(db: AsyncSession, stage_id: str, user_id: str, reason: st
 
 
 async def accept_stage(db: AsyncSession, stage_id: str) -> Stage | None:
-    result = await db.execute(select(Stage).where(Stage.id == stage_id))
-    stage = result.scalar_one_or_none()
-    if not stage or stage.status != StageStatus.review:
-        return None
-    stage.status = StageStatus.done
-    stage.needs_rework = False
-    stage.customer_accepted_at = datetime.utcnow()
-    if not getattr(stage, "actual_end", None):
-        stage.actual_end = date.today()
+    """W56: legacy writer запрещён — только AcceptOrchestrator.finalize_work_acceptance.
 
-    project = await get_project(db, stage.project_id)
-    if project:
-        existing = next(
-            (p for p in project.payments if p.stage_id == stage.id and p.payment_type == PaymentType.stage),
-            None,
-        )
-        if project.customer_id:
-            await notif_svc.notify(db, user_id=project.customer_id, project_id=project.id, notification_type="payment_pending", title="Подтвердите оплату этапа", body=stage.name, link_path="/(customer)/(tabs)/budget?tab=payments", return_to="/(customer)/(tabs)")
-        if not existing and stage.payment_amount > 0:
-            await pay_svc.create_payment(
-                db,
-                project.id,
-                project.customer_id,
-                f"Оплата этапа: {stage.name}",
-                stage.payment_amount,
-                "stage",
-                stage.id,
-                notes="Создано при приёмке этапа",
-            )
-        nxt = next(
-            (s for s in sorted(project.stages, key=lambda x: x.sort_order) if s.sort_order > stage.sort_order and s.status == StageStatus.planned),
-            None,
-        )
-        if nxt:
-            nxt.status = StageStatus.active
-            if not getattr(nxt, "actual_start", None):
-                nxt.actual_start = date.today()
-    from app.services import acceptance_service as acc_svc
-    acc = await acc_svc.get_by_stage(db, stage.id)
-    if acc and acc.status in ("requested", "in_review", "returned"):
-        from app.services import issue_service as iss
-        issues = await iss.list_issues(db, stage.project_id, status=None)
-        open_n = len([i for i in issues if i.stage_id == stage.id and i.status != "closed"])
-        await acc_svc.accept(db, acc.id, accepted_by=project.customer_id or "", open_issues=open_n)
-    await db.commit()
-    await db.refresh(stage)
-    from app.services import activity_service as act
-    await act.log_event(db, project_id=stage.project_id, user_id=None, kind="AcceptancePassed", title=f"Принято: {stage.name}", link_path=f"/stage/{stage.id}", stage_id=stage.id)
-    await act.log_event(db, project_id=stage.project_id, user_id=None, kind="StageClosed", title=f"Этап закрыт: {stage.name}", link_path=f"/stage/{stage.id}", stage_id=stage.id)
-    return stage
+    HTTP POST …/stages/{id}/accept уже 410; этот метод оставлен как trap для внутренних вызовов.
+    """
+    raise RuntimeError("use_orchestrator: call finalize_work_acceptance / work-acceptances API")
+
 
 
 async def count_contractor_projects(db: AsyncSession, contractor_id: str) -> int:

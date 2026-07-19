@@ -23,8 +23,8 @@ logLegacyRouteDeprecation('/a', '/b');
 if (legacyRouteCanonical('/(customer)/(tabs)/control') !== '/work-acceptance') {
   throw new Error('customer control → work-acceptance');
 }
-if (legacyRouteCanonical('/(contractor)/(tabs)/control') !== '/quality-control') {
-  throw new Error('contractor control → quality-control');
+if (legacyRouteCanonical('/(contractor)/(tabs)/control') !== '/(contractor)/(tabs)/repair?tab=control') {
+  throw new Error('contractor control → repair?tab=control');
 }
 
 /** P3-W37: legacy tabs → [legacyTab].tsx catch-all (static tabs имеют приоритет) */
