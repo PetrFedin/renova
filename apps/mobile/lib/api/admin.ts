@@ -25,13 +25,29 @@ export const adminApi = {
   getAdminStats: (userId: string) => req<any>('/api/v1/admin/stats', {}, userId),
   getUploadUrl: (userId: string) => req<any>('/api/v1/media/upload-url', { method: 'POST' }, userId),
   getMediaUploadUrl: (userId: string) => req<{ key: string; upload_url: string; public_url: string }>('/api/v1/media/upload-url', { method: 'POST' }, userId),
-  createTeamInviteLink: (userId: string) => req<any>('/api/v1/teams/invite-link', { method: 'POST' }, userId),
+  createTeamInviteLink: (userId: string, role = 'member') =>
+    req<{ token: string; link: string }>('/api/v1/teams/invite-link', { method: 'POST', body: JSON.stringify({ role }) }, userId),
   inviteTeamMember: (userId: string, phone: string, role = 'member') => req('/api/v1/teams/invite', { method: 'POST', body: JSON.stringify({ phone, role }) }, userId),
   getAuditLogs: (userId: string) => req<{ id: string; method: string; path: string; status_code: number; created_at: string }[]>('/api/v1/audit/logs', {}, userId),
   getTeam: (userId: string) => req<{ id: string; name: string; members: { user_id: string; phone: string; role: string }[] } | null>('/api/v1/teams/me', {}, userId),
   createTeam: (userId: string, name: string) => req('/api/v1/teams', { method: 'POST', body: JSON.stringify({ name }) }, userId),
-  getSubscription: (userId: string) => req<{ plan: string; is_pro: boolean; price: number; free_limit: number }>('/api/v1/subscription/me', {}, userId),
+  getSubscription: (userId: string) =>
+    req<{
+      plan: string;
+      status?: string;
+      is_pro: boolean;
+      is_trial?: boolean;
+      trial_available?: boolean;
+      trial_days?: number;
+      days_left?: number | null;
+      price: number;
+      free_limit: number;
+      payments_mode?: 'live' | 'demo' | 'off';
+      expires_at?: string | null;
+    }>('/api/v1/subscription/me', {}, userId),
+  startProTrial: (userId: string) => req('/api/v1/subscription/start-trial', { method: 'POST' }, userId),
   checkoutPro: (userId: string) => req('/api/v1/subscription/checkout', { method: 'POST' }, userId),
+    req<{ token: string; link: string }>('/api/v1/teams/invite-link', { method: 'POST', body: JSON.stringify({ role }) }, userId),
   listArticlesAdmin: (userId: string) => req<{ slug: string; title: string; category: string; published: boolean }[]>('/api/v1/articles/admin', {}, userId),
   createArticleAdmin: (userId: string, body: object) => req('/api/v1/articles/admin', { method: 'POST', body: JSON.stringify(body) }, userId),
   updateArticleAdmin: (userId: string, slug: string, body: object) => req(`/api/v1/articles/admin/${slug}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),

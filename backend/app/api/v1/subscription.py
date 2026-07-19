@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import User, UserRole
-from app.services.subscription_service import PRO_PRICE, activate_pro, get_sub, is_pro
+from app.services.subscription_service import PRO_PRICE, activate_pro, start_trial, subscription_payload
 from app.services.yookassa_service import create_payment, check_webhook_ip, remember_webhook, process_webhook, demo_allowed
 from app.core.config import settings
 
@@ -20,17 +20,31 @@ async def yookassa_health_probe(user: User = Depends(get_current_user)):
 
 @router.get("/me")
 async def my_sub(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    s = await get_sub(db, user.id)
-    return {"plan": s.plan, "status": s.status.value, "expires_at": s.expires_at.isoformat() if s.expires_at else None, "is_pro": await is_pro(db, user.id), "price": PRO_PRICE, "free_limit": settings.contractor_free_project_limit}
+    return await subscription_payload(db, user.id)
+
+
+@router.post("/start-trial")
+async def start_pro_trial(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """H1.1: 14 дней Pro без карты (один раз)."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403)
+    sub, result = await start_trial(db, user.id)
+    if result.get("code") == "trial_used":
+        raise HTTPException(409, detail=result)
+    if result.get("code") == "already_active":
+        return {"ok": True, **result, **(await subscription_payload(db, user.id))}
+    return {"ok": True, **result, **(await subscription_payload(db, user.id))}
 
 @router.post("/checkout")
 async def checkout(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
+    # Deep link return — не localhost (H0 honesty для TestFlight)
+    return_url = "renova://subscription-return"
     pay = await create_payment(
         PRO_PRICE,
         "Renova Pro — 30 дней",
-        "http://127.0.0.1:8081/(contractor)/subscription",
+        return_url,
         user.id,
         f"pro-{user.id}",
         metadata={"kind": "pro_subscription", "user_id": user.id},
@@ -41,8 +55,13 @@ async def checkout(user: User = Depends(get_current_user), db: AsyncSession = De
         if not demo_allowed():
             raise HTTPException(503, "ЮKassa keys required in staging/production")
         await activate_pro(db, user.id)
-        return {"ok": True, "demo": True, "message": "Pro активирован (demo)"}
-    return pay
+        return {
+            "ok": True,
+            "demo": True,
+            "message": "Pro активирован в demo-режиме (development). Staging/prod требуют YOOKASSA_* ключи.",
+            "payments_mode": "demo",
+        }
+    return {**pay, "demo": False, "payments_mode": "live"}
 
 @router.post("/webhook")
 async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db)):

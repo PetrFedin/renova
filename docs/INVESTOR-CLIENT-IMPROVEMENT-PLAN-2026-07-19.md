@@ -264,3 +264,4 @@ W44 AcceptOrchestrator (+ stage_id в events) → W45 Budget SoT + YuKassa/porta
 | W46 Schedule UI + closeout | ✅ |
 | W47 Demo path + portal honesty | ✅ |
 | W48 Lock customer + Approvals More + IA | ✅ |
+| W49 Pro trial + Team QR roles | ✅ |
