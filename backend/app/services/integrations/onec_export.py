@@ -120,3 +120,67 @@ async def build_bank_register_csv(db: AsyncSession, project: Project) -> str:
             ]
         )
     return buf.getvalue()
+
+
+def _xml_escape(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+async def build_1c_payments_xml(db: AsyncSession, project: Project) -> str:
+    """P4.1a+: XML-обмен для 1С (ручной импорт). Не CommerceML full — компактный RenovaExchange."""
+    payments = (
+        await db.execute(
+            select(Payment).where(Payment.project_id == project.id).order_by(Payment.created_at.asc())
+        )
+    ).scalars().all()
+    cos = (
+        await db.execute(
+            select(ChangeOrder).where(ChangeOrder.project_id == project.id).order_by(ChangeOrder.created_at.asc())
+        )
+    ).scalars().all()
+    pname = _xml_escape(project.name or project.id)
+    exported = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    parts = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<RenovaExchange version="1.0" exported_at="{exported}" project_id="{_xml_escape(project.id)}">',
+        f"  <Project><Name>{pname}</Name></Project>",
+        "  <Documents>",
+    ]
+    for p in payments:
+        st = p.status.value if hasattr(p.status, "value") else str(p.status)
+        pt = p.payment_type.value if hasattr(p.payment_type, "value") else str(p.payment_type)
+        dt = (p.confirmed_at or p.created_at).isoformat(timespec="seconds")
+        parts.append(
+            "    <Document>"
+            f"<Type>payment</Type>"
+            f"<PaymentType>{_xml_escape(pt)}</PaymentType>"
+            f"<Id>{_xml_escape(p.id)}</Id>"
+            f"<Title>{_xml_escape(p.title or '')}</Title>"
+            f"<Amount>{p.amount:.2f}</Amount>"
+            f"<Status>{_xml_escape(st)}</Status>"
+            f"<Date>{dt}</Date>"
+            f"<YooKassaId>{_xml_escape(p.yookassa_payment_id or '')}</YooKassaId>"
+            f"<Comment>{_xml_escape((p.notes or '')[:200])}</Comment>"
+            "</Document>"
+        )
+    for co in cos:
+        st = co.status.value if hasattr(co.status, "value") else str(co.status)
+        parts.append(
+            "    <Document>"
+            f"<Type>change_order</Type>"
+            f"<Id>{_xml_escape(co.id)}</Id>"
+            f"<Title>{_xml_escape(co.title or '')}</Title>"
+            f"<Amount>{co.amount:.2f}</Amount>"
+            f"<Status>{_xml_escape(st)}</Status>"
+            f"<Date>{co.created_at.isoformat(timespec='seconds')}</Date>"
+            f"<Comment>{_xml_escape((co.description or '')[:200])}</Comment>"
+            "</Document>"
+        )
+    parts.append("  </Documents>")
+    parts.append("</RenovaExchange>")
+    return "\n".join(parts) + "\n"

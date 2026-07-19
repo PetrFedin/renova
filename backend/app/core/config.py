@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     ollama_base_url: str | None = None  # e.g. http://127.0.0.1:11434
     ollama_model: str = "qwen3"
     ollama_digest_enabled: bool = False
+    # SMTP (optional). Без host — log-only stub.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    smtp_use_tls: bool = True
     # E-sign external (Wave 3f). Без ключей → 501 как раньше.
     kontur_api_key: str | None = None
     kontur_api_url: str = "https://api.kontur.ru/sign/v1"  # placeholder

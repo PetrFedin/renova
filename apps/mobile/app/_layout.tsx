@@ -56,9 +56,7 @@ export default function RootLayout() {
           <NavTracker />
           <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
             <Stack.Screen name="index" />
-            <Stack.Screen name="onboarding/role" />
-            <Stack.Screen name="onboarding/project" />
-            <Stack.Screen name="onboarding/detail-quiz" options={{ title: 'Детализация' }} />
+            <Stack.Screen name="onboarding/[step]" options={{ title: 'Онбординг' }} />
             <Stack.Screen name="wizard" options={{ presentation: 'modal' }} />
             <Stack.Screen name="(customer)" />
             <Stack.Screen name="(contractor)" />
@@ -67,14 +65,10 @@ export default function RootLayout() {
             <Stack.Screen name="chat/[threadId]" />
             <Stack.Screen name="article/[slug]" options={{ headerShown: false }} />
             <Stack.Screen name="contractor-wizard/[leadId]" options={{ headerShown: false }} />
-            <Stack.Screen name="job-leads" options={{ headerShown: false }} />
-            <Stack.Screen name="portfolio" options={{ headerShown: false }} />
-            <Stack.Screen name="reports" options={{ headerShown: false }} />
-            <Stack.Screen name="design" options={{ headerShown: false }} />
+            <Stack.Screen name="[slug]" options={{ headerShown: false }} />
             <Stack.Screen name="approvals" options={{ headerShown: false }} />
             <Stack.Screen name="activity" options={{ headerShown: false }} />
             <Stack.Screen name="documents" options={{ headerShown: false }} />
-            <Stack.Screen name="conflicts" options={{ headerShown: false }} />
             <Stack.Screen name="scan-receipt" options={{ presentation: 'modal', headerShown: false }} />
             <Stack.Screen name="payment-return" options={{ headerShown: false }} />
             <Stack.Screen name="portal" options={{ headerShown: false }} />

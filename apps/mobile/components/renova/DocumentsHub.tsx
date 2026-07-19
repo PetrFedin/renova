@@ -144,10 +144,17 @@ export function DocumentsHub({
       },
       onecCsv: {
         id: 'onec',
-        label: 'Выгрузка в 1С',
+        label: 'Выгрузка в 1С (CSV)',
         desc: 'Платежи и доп. работы (CSV ;)',
         format: 'CSV',
         run: () => api.export1cPaymentsCsv(userId, projectId),
+      },
+      onecXml: {
+        id: 'onec-xml',
+        label: 'Выгрузка в 1С (XML)',
+        desc: 'RenovaExchange — платежи и доп. работы',
+        format: 'XML',
+        run: () => api.export1cPaymentsXml(userId, projectId),
       },
       bankCsv: {
         id: 'bank',
@@ -243,7 +250,7 @@ export function DocumentsHub({
       {
         title: 'Учёт RU',
         hint: '1С, банк, дайджест и гарантия',
-        rows: [rows.onecCsv, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim],
+        rows: [rows.onecCsv, rows.onecXml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim],
       },
       {
         title: 'Архив и сроки',
