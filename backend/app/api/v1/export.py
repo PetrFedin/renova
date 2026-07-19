@@ -539,11 +539,14 @@ async def closeout_project(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """W46: завершить объект при ready — помечаем archived если поле есть."""
+    """W46/W61: завершить объект — только заказчик (финал golden path)."""
     from datetime import datetime
     from app.services import activity_service as act
+    from app.models.entities import UserRole
 
     project = await require_project(db, project_id, user, write=True)
+    if user.role != UserRole.customer or user.id != project.customer_id:
+        raise HTTPException(403, "closeout_customer_only")
     snap = await _closeout_snapshot(db, project_id, project)
     if not snap["ready"]:
         raise HTTPException(409, detail={"code": "closeout_not_ready", **snap})

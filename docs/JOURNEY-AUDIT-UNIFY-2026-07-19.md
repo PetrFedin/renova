@@ -53,6 +53,7 @@ Canvas: `renova-journey-audit.canvas.tsx` (Cursor canvases).
 | P2 | Chat confirm_payment без project_id | **закрыто W59** |
 | P3 | Portal schedule confirm без scope | **закрыто W60** |
 | P4 | Closeout без акта приёмки | **закрыто W60** |
+| P5 | Closeout доступен исполнителю | **закрыто W61** |
 | O1 | H0 staging HTTPS + live pay + TestFlight | **блокер пилота (ops)** |
 
 ---
@@ -75,7 +76,8 @@ npx tsx lib/domain/buildHomeKpiDetail.test.ts
 | W57 | `b4da976` | D3 mutual lock, D4 picks gate, U1/U2 portal schedule |
 | W58 | `ea76b40` | U3 verbs, control→repair hub |
 | W59 | `41cec44` | portal `pay` scope + chat confirm project bind |
-| W60 | *(этот коммит)* | schedule scope + closeout docs gate |
+| W60 | `93920c3` | schedule scope + closeout docs gate |
+| W61 | *(этот коммит)* | closeout customer-only |
 
 **Остаётся блокером пилота:** O1 H0 ops (HTTPS staging + live YuKassa + TestFlight).
 

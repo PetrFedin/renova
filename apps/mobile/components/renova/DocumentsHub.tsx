@@ -245,7 +245,9 @@ ${(res.body || '').slice(0, 220)}`,
       closeout: {
         id: 'closeout',
         label: 'Завершение объекта',
-        desc: 'Чеклист этапов / оплат / гарантии',
+        desc: isContractor
+          ? 'Статус готовности (завершает только заказчик)'
+          : 'Чеклист этапов / оплат / гарантии',
         format: 'Closeout',
         run: async () => {
           const snap = await api.closeoutChecklist(userId, projectId);
@@ -260,6 +262,11 @@ ${(res.body || '').slice(0, 220)}`,
             `Гарантия open: ${snap.warranty_open}`,
             `Акты: ${snap.acceptance_acts_active}`,
           ].join('\n');
+          // W61: исполнитель видит чеклист, архивирует только заказчик
+          if (isContractor) {
+            Alert.alert('Готовность объекта', `${body}\n\nЗавершить объект может только заказчик.`);
+            return;
+          }
           if (!snap.ready) {
             Alert.alert('Ещё не готово', body);
             return;
