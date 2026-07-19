@@ -267,3 +267,4 @@ W44 AcceptOrchestrator (+ stage_id в events) → W45 Budget SoT + YuKassa/porta
 | W49 Pro trial + Team QR roles | ✅ |
 | W50 Procurement hub UX | ✅ |
 | W51 Digest lite push+PDF | ✅ |
+| W52 IA catch-all + messenger gap | ✅ |

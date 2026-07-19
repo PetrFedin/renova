@@ -199,6 +199,18 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     entryPoints: ['documents.export', 'home.completion'],
     descriptionRu: 'P5.1 lite: тикет через Document Center → QC',
   },
+
+  {
+    id: 'design',
+    path: '/design',
+    titleRu: 'Дизайн (legacy)',
+    audience: 'both',
+    visibility: 'hidden',
+    status: 'ga',
+    entryPoints: ['deeplink'],
+    redirectTo: '/object?tab=plan&sub=design',
+    descriptionRu: 'W52: catch-all → Object / plan',
+  },
   { id: 'conflicts', path: '/conflicts', titleRu: 'Конфликты sync', audience: 'contractor', visibility: 'deeplink', status: 'ga', entryPoints: ['offline.banner'] },
   {
     id: 'portal',
@@ -250,6 +262,7 @@ const REDIRECT_ONLY_MENU_IDS = new Set([
   'materials-procurement',
   'selections',
   'control',
+  'design',
   'notifications',
 ]);
 

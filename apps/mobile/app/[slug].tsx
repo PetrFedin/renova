@@ -4,14 +4,9 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@/components/Themed';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
-import {
-  budgetTabRoute,
-  calendarTabRoute,
-  objectTabHref,
-  type OsRole,
-} from '@/constants/osSections';
+import { type OsRole } from '@/constants/osSections';
 import { goBack, goHome } from '@/lib/navigation';
-import { logLegacyRouteDeprecation } from '@/lib/legacyRoutes';
+import { resolveCatchAllSlug } from '@/lib/resolveCatchAllSlug';
 import S_budget_planner from './_stack/budget-planner';
 import S_checklist_templates from './_stack/checklist-templates';
 import S_conflicts from './_stack/conflicts';
@@ -34,18 +29,11 @@ const STACK: Record<string, ComponentType> = {
   'scratchpad': S_scratchpad,
 };
 
-const LEGACY = new Set([
-  'design',
-  'finance-center',
-  'work-schedule',
-  'notifications',
-  'project-analytics',
-]);
+const STACK_KEYS = Object.keys(STACK);
 
 /**
- * P3-W39: единый root catch-all —
- * legacy redirects + secondary stack screens.
- * Статические маршруты имеют приоритет.
+ * P3-W52: root catch-all — stack screens + legacy/registry redirects.
+ * Неизвестные slug → честный 404 (не «второй продукт»).
  */
 export default function RootSlugCatchAll() {
   const params = useLocalSearchParams<{ slug?: string; tab?: string; returnTo?: string }>();
@@ -54,38 +42,29 @@ export default function RootSlugCatchAll() {
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const rt = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
 
-  if (seg && STACK[seg]) {
+  const resolved = resolveCatchAllSlug(seg, role, STACK_KEYS);
+
+  if (resolved.kind === 'stack' && seg && STACK[seg]) {
     const Comp = STACK[seg];
     return <Comp />;
   }
 
-  if (seg && LEGACY.has(seg)) {
-    logLegacyRouteDeprecation(`/${seg}`, 'canonical');
-  }
-
-  if (seg === 'notifications') {
+  if (resolved.kind === 'redirect') {
+    const href = resolved.href;
+    if (typeof href === 'string') {
+      return <Redirect href={href as never} />;
+    }
     return (
       <Redirect
         href={{
-          pathname: '/inbox',
-          params: rt ? { returnTo: rt } : undefined,
-        }}
+          pathname: href.pathname,
+          params: {
+            ...(href.params || {}),
+            ...(rt ? { returnTo: rt } : {}),
+          },
+        } as never}
       />
     );
-  }
-  if (seg === 'work-schedule') {
-    return <Redirect href={calendarTabRoute(role) as never} />;
-  }
-  if (seg === 'finance-center') {
-    return <Redirect href={budgetTabRoute(role, 'payments') as never} />;
-  }
-  if (seg === 'project-analytics') {
-    return <Redirect href={budgetTabRoute(role, 'deviations') as never} />;
-  }
-  if (seg === 'design') {
-    const tab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
-    const sub = tab === 'schedule' ? 'schedule' : 'design';
-    return <Redirect href={objectTabHref(role, 'plan', sub) as never} />;
   }
 
   return (
@@ -93,7 +72,11 @@ export default function RootSlugCatchAll() {
       <Stack.Screen options={{ title: 'Не найдено', headerShown: true, headerBackVisible: false }} />
       <View style={styles.container}>
         <Text style={styles.title}>Такого экрана нет</Text>
-        <Text style={styles.sub}>Проверьте ссылку или вернитесь на главную</Text>
+        <Text style={styles.sub}>
+          {resolved.slug
+            ? `Маршрут «/${resolved.slug}» устарел или не существует. Откройте главную или документы.`
+            : 'Проверьте ссылку или вернитесь на главную'}
+        </Text>
         <View style={styles.actions}>
           <PrimaryButton title="← Назад" variant="outline" onPress={() => goBack(undefined, role)} />
           <PrimaryButton title="На главную" onPress={() => goHome(role)} />

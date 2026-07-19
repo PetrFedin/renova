@@ -1,10 +1,11 @@
 /** Заказчик: гостевой доступ (только просмотр) */
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator, Share } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
+import { shareRenovaLink } from '@/lib/messengerShare';
 
 type V = { user_id: string; phone: string; full_name?: string; role: string };
 
@@ -66,7 +67,7 @@ export function ViewerSharePanel({
                 onPress={async () => {
                   try {
                     const link = await api.createViewerPortalLink(userId, projectId, v.user_id);
-                    await Share.share({ message: link.url, title: 'Renova — портал объекта' });
+                    await shareRenovaLink(link.url, 'портал объекта (гость)');
                   } catch (e: unknown) {
                     Alert.alert('Портал', apiErrorMessage(e, 'Не удалось создать ссылку'));
                   }
@@ -93,6 +94,9 @@ export function ViewerSharePanel({
         </View>
       ) : (
         <Text style={s.empty}>Нет гостей</Text>
+        <Text style={s.hint}>
+          Ссылка портала шарится через систему (WhatsApp / Telegram). Отдельного WA Business API в MVP нет.
+        </Text>
       )}
 
       <View style={s.addBlock}>
@@ -154,6 +158,7 @@ const s = StyleSheet.create({
   meta: { flex: 1, paddingRight: 8 },
   name: { fontWeight: '600', fontSize: 15, color: RenovaTheme.colors.text },
   phone: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 15, marginBottom: 8 },
   empty: { fontSize: 14, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
   addBlock: { gap: 8 },
   addLabel: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
