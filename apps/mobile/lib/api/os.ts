@@ -71,6 +71,18 @@ export const osApi = {
   },
   pushWeeklyDigest: (userId: string, projectId: string) =>
     req<{ ok: boolean; notified: number }>(`/api/v1/projects/${projectId}/digest/weekly`, { method: 'POST' }, userId),
+  importBankStatement: (userId: string, projectId: string, csv_text: string) =>
+    req<{
+      ok: boolean;
+      parsed_rows: number;
+      matched: number;
+      unmatched_rows: number;
+      matches: { payment_id: string; payment_title: string; score: number }[];
+    }>(
+      `/api/v1/projects/${projectId}/import/bank-statement`,
+      { method: 'POST', body: JSON.stringify({ csv_text }) },
+      userId,
+    ),
   createWarrantyClaim: (userId: string, projectId: string, body: { title?: string; description?: string }) =>
     req<{ ok: boolean; issue_id: string; document_id: string }>(
       `/api/v1/projects/${projectId}/warranty-claims`,

@@ -303,3 +303,25 @@ async def create_warranty_claim(
         )
     await db.commit()
     return {"ok": True, "issue_id": issue.id, "document_id": draft.id}
+
+
+class BankStatementIn(BaseModel):
+    csv_text: str = Field(min_length=1, max_length=2_000_000)
+
+
+@router.post("/{project_id}/import/bank-statement")
+async def import_bank_statement(
+    project_id: str,
+    body: BankStatementIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P4.1b: CSV выписки → матч к платежам (сумма ±1 ₽, дата ±3 дня)."""
+    from app.services.integrations.bank_import import match_bank_rows_to_payments, parse_bank_statement_csv
+
+    project = await require_project(db, project_id, user, write=False)
+    rows = parse_bank_statement_csv(body.csv_text)
+    if not rows:
+        raise HTTPException(400, "Не удалось разобрать CSV (нужны сумма и опционально дата)")
+    result = await match_bank_rows_to_payments(db, project, rows)
+    return {"ok": True, "parsed_rows": len(rows), **result}

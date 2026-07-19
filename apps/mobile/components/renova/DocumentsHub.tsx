@@ -153,6 +153,28 @@ export function DocumentsHub({
         format: 'CSV',
         run: () => api.exportBankRegisterCsv(userId, projectId),
       },
+      bankImport: {
+        id: 'bank-import',
+        label: 'Импорт выписки',
+        desc: 'CSV банка → матч к счетам',
+        format: 'CSV',
+        run: async () => {
+          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            const text = window.prompt('Вставьте CSV выписки (дата;сумма;назначение)');
+            if (!text) return;
+            const res = await api.importBankStatement(userId, projectId, text);
+            Alert.alert(
+              'Импорт выписки',
+              `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${res.unmatched_rows}`,
+            );
+            return;
+          }
+          Alert.alert(
+            'Импорт выписки',
+            'На web: вставьте CSV в диалог. Формат: дата;сумма;назначение (или с заголовками).',
+          );
+        },
+      },
       weeklyDigest: {
         id: 'digest',
         label: 'Недельный дайджест',
@@ -230,7 +252,7 @@ export function DocumentsHub({
       {
         title: 'Учёт RU',
         hint: '1С, банк, дайджест и гарантия',
-        rows: [rows.onecCsv, rows.bankCsv, rows.weeklyDigest, rows.warrantyClaim],
+        rows: [rows.onecCsv, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim],
       },
       {
         title: 'Архив и сроки',

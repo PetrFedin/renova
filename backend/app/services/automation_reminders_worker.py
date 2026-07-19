@@ -1,9 +1,10 @@
-"""Periodic automation tick — project reminders + waste pickup."""
+"""Periodic automation tick — project reminders + waste pickup + health metrics."""
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,47 @@ from app.services import notification_service as notif_svc
 from app.services.automation_engine import scan_project_reminders
 
 logger = logging.getLogger(__name__)
+
+# P4.2a — in-process health (ops: GET /api/v1/automation/worker)
+_METRICS: dict[str, Any] = {
+    "last_tick_at": None,
+    "last_ok_at": None,
+    "last_error": None,
+    "consecutive_failures": 0,
+    "ticks_total": 0,
+    "ticks_ok": 0,
+    "last_result": None,
+}
+
+
+def automation_worker_metrics() -> dict[str, Any]:
+    return dict(_METRICS)
+
+
+def _record_ok(result: dict) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    _METRICS["last_tick_at"] = now
+    _METRICS["last_ok_at"] = now
+    _METRICS["last_error"] = None
+    _METRICS["consecutive_failures"] = 0
+    _METRICS["ticks_total"] = int(_METRICS["ticks_total"]) + 1
+    _METRICS["ticks_ok"] = int(_METRICS["ticks_ok"]) + 1
+    _METRICS["last_result"] = result
+
+
+def _record_fail(exc: BaseException) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    _METRICS["last_tick_at"] = now
+    _METRICS["last_error"] = f"{type(exc).__name__}: {exc}"[:500]
+    _METRICS["consecutive_failures"] = int(_METRICS["consecutive_failures"]) + 1
+    _METRICS["ticks_total"] = int(_METRICS["ticks_total"]) + 1
+    fails = int(_METRICS["consecutive_failures"])
+    if fails >= 3:
+        logger.error(
+            "ALERT automation_reminders: %s consecutive failures — last=%s",
+            fails,
+            _METRICS["last_error"],
+        )
 
 
 async def scan_waste_reminders(db: AsyncSession, *, on_date: date | None = None) -> int:
@@ -35,7 +77,7 @@ async def scan_waste_reminders(db: AsyncSession, *, on_date: date | None = None)
                 notification_type="waste_reminder",
                 title="Завтра вывоз мусора",
                 body=f"{w.volume_m3} м³",
-                link_path="/(customer)/(tabs)/estimate",
+                link_path="/(customer)/(tabs)/calendar",
             )
             sent += 1
     return sent
@@ -63,9 +105,11 @@ async def automation_reminders_loop(stop: asyncio.Event, *, interval_sec: float)
     while not stop.is_set():
         try:
             result = await run_automation_reminder_tick()
+            _record_ok(result)
             if result["project_actions"] or result["waste_sent"]:
                 logger.info("automation tick: %s", result)
-        except Exception:
+        except Exception as exc:
+            _record_fail(exc)
             logger.exception("automation reminders tick failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=max(60.0, interval_sec))
