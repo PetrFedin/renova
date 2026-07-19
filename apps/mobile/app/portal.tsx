@@ -109,7 +109,7 @@ export default function PortalScreen() {
         ) : null}
         <Text style={s.progressLine}>Прогресс · {progress}%</Text>
         <View style={s.progressTrack}>
-          <View style={[s.progressFill, { width: `${Math.min(100, Math.max(0, Number(progress))}%` }]} />
+          <View style={[s.progressFill, { width: `${Math.min(100, Math.max(0, Number(progress)))}%` }]} />
         </View>
         {todoBits.length ? (
           <Text style={s.todoLine}>Сейчас: {todoBits.join(' · ')}</Text>
