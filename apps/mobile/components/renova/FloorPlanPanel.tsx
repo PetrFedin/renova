@@ -55,8 +55,12 @@ export function FloorPlanPanel({
 
   const savePin = async (pinId: string, x: number, y: number) => {
     if (!plan) return;
-    await api.moveFloorPin(userId, projectId, plan.id, pinId, x, y);
-    load();
+    try {
+      await api.moveFloorPin(userId, projectId, plan.id, pinId, x, y);
+      load();
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Позиция на плане');
+    }
   };
 
   const onMapLayout = (e: LayoutChangeEvent) => setMapW(e.nativeEvent.layout.width);

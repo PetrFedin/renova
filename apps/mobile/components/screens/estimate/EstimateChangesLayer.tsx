@@ -1,10 +1,14 @@
 /** Слой «Изменения» — доп. работы и согласование заказчиком */
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
+import { router } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
 import { changeOrderStatusLabel } from '@/constants/labels';
 import { api, type ChangeOrder } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { budgetTabRoute } from '@/constants/osSections';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 type Props = {
   userId: string;
@@ -23,6 +27,20 @@ export function EstimateChangesLayer({
   onOrdersChanged,
   onProjectReload,
 }: Props) {
+  const { user } = useRenova();
+  const role = user?.role === 'contractor' ? 'contractor' : 'customer';
+
+  const notifyBudgetDelta = (order: ChangeOrder) => {
+    const budget = budgetTabRoute(role, 'summary');
+    Alert.alert(
+      'Доп. работы одобрены',
+      `${formatRub(order.amount)} добавлено к плану бюджета.`,
+      [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Открыть бюджет', onPress: () => router.push({ pathname: budget.pathname, params: budget.params } as never) },
+      ],
+    );
+  };
   const pending = orders.filter((o) => o.status === 'pending');
   const decided = orders.filter((o) => o.status !== 'pending');
 
@@ -39,13 +57,22 @@ export function EstimateChangesLayer({
             order={o}
             canWrite={canWrite}
             onApprove={async () => {
-              await api.approveChangeOrder(userId, projectId, o.id);
-              await onProjectReload();
-              onOrdersChanged(await api.listChangeOrders(userId, projectId));
+              try {
+                await api.approveChangeOrder(userId, projectId, o.id);
+                await onProjectReload();
+                onOrdersChanged(await api.listChangeOrders(userId, projectId));
+                notifyBudgetDelta(o);
+              } catch (e) {
+                if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение доп. работ');
+              }
             }}
             onReject={async () => {
-              await api.rejectChangeOrder(userId, projectId, o.id);
-              onOrdersChanged(await api.listChangeOrders(userId, projectId));
+              try {
+                await api.rejectChangeOrder(userId, projectId, o.id);
+                onOrdersChanged(await api.listChangeOrders(userId, projectId));
+              } catch (e) {
+                if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение доп. работ');
+              }
             }}
           />
         ))}

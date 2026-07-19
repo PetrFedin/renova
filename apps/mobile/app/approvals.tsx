@@ -11,7 +11,7 @@ import { router } from 'expo-router';
 import { APPROVAL_TYPE_LABEL, approvalSourceLabel, resolveApprovalHref } from '@/lib/approvalLinks';
 import { navigateApproval } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
-import { objectTabRoute, type OsRole } from '@/constants/osSections';
+import { budgetTabRoute, objectTabRoute, type OsRole } from '@/constants/osSections';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -39,6 +39,17 @@ export default function ApprovalsScreen() {
       if (it.type === 'design') await api.approveDesignPackage(userId, pid, it.id);
       if (it.type === 'waste') await api.approveWasteOrder(userId, pid, it.id);
       load();
+      if (it.type === 'change_order') {
+        const budget = budgetTabRoute('customer', 'summary');
+        Alert.alert(
+          'Доп. работы одобрены',
+          'План бюджета обновлён. Проверьте plan-fact во вкладке «Бюджет».',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Открыть бюджет', onPress: () => router.push({ pathname: budget.pathname, params: budget.params } as never) },
+          ],
+        );
+      }
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Согласование');
     }

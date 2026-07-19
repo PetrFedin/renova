@@ -9,6 +9,7 @@ import { PhotoSwipeCompare } from '@/components/renova/PhotoSwipeCompare';
 import type { StageDetail } from '@/lib/api';
 
 type StagePhoto = StageDetail['photos'][number];
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { api } from '@/lib/api';
 import { addCustomCheck } from '@/lib/customChecklist';
 
@@ -87,8 +88,12 @@ export function StageDetailAcceptanceFold({
             style={s.checkRow}
             onPress={async () => {
               if (wf) {
-                await api.toggleStageChecklist(userId, projectId, stage.id, wf.id, !wf.done);
-                await onReload();
+                try {
+                  await api.toggleStageChecklist(userId, projectId, stage.id, wf.id, !wf.done);
+                  await onReload();
+                } catch (e) {
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Чеклист этапа');
+                }
               } else {
                 setChecks((x) => ({ ...x, [c]: !x[c] }));
               }

@@ -123,8 +123,17 @@ export const stagesApi = {
   workSnapshot: (userId: string, projectId: string, stageId: string) => req<WorkSnapshot>(`/api/v1/projects/${projectId}/stages/${stageId}/snapshot`, {}, userId),
   workCompletionCheck: (userId: string, projectId: string, stageId: string) => req<{ ok: boolean; checks: WorkCompletionCheck[]; failed: WorkCompletionCheck[] }>(`/api/v1/projects/${projectId}/stages/${stageId}/completion-check`, {}, userId),
   stageWorkflow: (userId: string, projectId: string, stageId: string) => req<{ work_type: string; steps: string[]; checklist: StageChecklistItem[]; checklist_progress: number }>(`/api/v1/projects/${projectId}/stages/${stageId}/workflow`, {}, userId),
-  toggleStageChecklist: (userId: string, projectId: string, stageId: string, item_id: string, done: boolean) =>
-    req(`/api/v1/projects/${projectId}/stages/${stageId}/checklist/toggle`, { method: 'POST', body: JSON.stringify({ item_id, done }) }, userId),
+  toggleStageChecklist: async (userId: string, projectId: string, stageId: string, item_id: string, done: boolean) => {
+    const body = { item_id, done };
+    try {
+      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/checklist/toggle`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/checklist/toggle`, method: 'POST', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
   stageBlocked: (userId: string, projectId: string, stageId: string) => req<{ blocked: boolean; depends_on?: string }>(`/api/v1/projects/${projectId}/stages/${stageId}/blocked`, {}, userId),
   patchStageRooms: async (userId: string, projectId: string, stageId: string, roomIds: string[]) => {
     const body = { room_ids: roomIds };

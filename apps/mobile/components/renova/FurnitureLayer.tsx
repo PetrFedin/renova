@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { api, FurnitureItem } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 
 export function FurnitureLayer({ userId, projectId, planId, role }: { userId: string; projectId: string; planId?: string; role: string }) {
@@ -10,8 +11,12 @@ export function FurnitureLayer({ userId, projectId, planId, role }: { userId: st
   const move = async (id: string, dx: number, dy: number, x?: number | null, y?: number | null) => {
     const nx = Math.min(95, Math.max(5, (x ?? 50) + dx));
     const ny = Math.min(95, Math.max(5, (y ?? 50) + dy));
-    await api.moveFurniture(userId, projectId, id, nx, ny);
-    load();
+    try {
+      await api.moveFurniture(userId, projectId, id, nx, ny);
+      load();
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Мебель на плане');
+    }
   };
   return (
     <View style={s.box}>
