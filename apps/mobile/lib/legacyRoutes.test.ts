@@ -27,20 +27,27 @@ if (legacyRouteCanonical('/(contractor)/(tabs)/control') !== '/quality-control')
   throw new Error('contractor control → quality-control');
 }
 
-/** P3-W11 registry v3: каждый legacy tab-файл существует и — thin redirect */
+/** P3-W37: legacy tabs → [legacyTab].tsx catch-all (static tabs имеют приоритет) */
 const appRoot = join(__dirname, '..', 'app');
+for (const role of ['customer', 'contractor'] as const) {
+  const catchAll = join(appRoot, `(${role})`, '(tabs)', '[legacyTab].tsx');
+  if (!existsSync(catchAll)) {
+    throw new Error(`missing legacy catch-all: ${catchAll}`);
+  }
+  const src = readFileSync(catchAll, 'utf8');
+  if (!/LegacyTabRedirect/.test(src)) {
+    throw new Error(`catch-all must use LegacyTabRedirect: ${catchAll}`);
+  }
+}
 for (const legacyPath of Object.keys(TAB_ALIASES)) {
   const m = legacyPath.match(/^\/\((\w+)\)\/\(tabs\)\/(.+)$/);
   if (!m) continue;
-  const role = m[1];
   const tab = m[2];
-  const file = join(appRoot, `(${role})`, '(tabs)', `${tab}.tsx`);
-  if (!existsSync(file)) {
-    throw new Error(`missing legacy tab file: ${file}`);
-  }
-  const src = readFileSync(file, 'utf8');
-  if (!/LegacyTabRedirect|Redirect/.test(src)) {
-    throw new Error(`legacy tab not a redirect: ${file}`);
+  // Static tab screens (budget/index/…) must not be overwritten by catch-all
+  const staticFile = join(appRoot, `(${m[1]})`, '(tabs)', `${tab}.tsx`);
+  if (existsSync(staticFile) && !/LegacyTabRedirect|Redirect/.test(readFileSync(staticFile, 'utf8'))) {
+    // real screen — OK
+    continue;
   }
 }
 

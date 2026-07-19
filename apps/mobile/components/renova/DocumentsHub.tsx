@@ -1,7 +1,7 @@
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
+  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -78,6 +78,9 @@ export function DocumentsHub({
   projectName?: string;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [bankImportOpen, setBankImportOpen] = useState(false);
+  const [bankCsvText, setBankCsvText] = useState('');
+
   const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
   const [konturAvailable, setKonturAvailable] = useState(false);
@@ -159,26 +162,14 @@ export function DocumentsHub({
         desc: 'CSV банка → матч к счетам',
         format: 'CSV',
         run: async () => {
-          if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            const text = window.prompt('Вставьте CSV выписки (дата;сумма;назначение)');
-            if (!text) return;
-            const res = await api.importBankStatement(userId, projectId, text);
-            Alert.alert(
-              'Импорт выписки',
-              `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${res.unmatched_rows}`,
-            );
-            return;
-          }
-          Alert.alert(
-            'Импорт выписки',
-            'На web: вставьте CSV в диалог. Формат: дата;сумма;назначение (или с заголовками).',
-          );
+          setBankCsvText('');
+          setBankImportOpen(true);
         },
       },
       weeklyDigest: {
         id: 'digest',
         label: 'Недельный дайджест',
-        desc: 'Push участникам + KPI PDF',
+        desc: 'Push + KPI PDF (AI при OLLAMA)',
         format: 'Push',
         run: async () => {
           await api.pushWeeklyDigest(userId, projectId);
@@ -484,7 +475,57 @@ export function DocumentsHub({
     }
   }
 
+  const submitBankImport = async () => {
+    const text = bankCsvText.trim();
+    if (!text) {
+      Alert.alert('Импорт выписки', 'Вставьте CSV: дата;сумма;назначение');
+      return;
+    }
+    setBusy('bank-import');
+    try {
+      const res = await api.importBankStatement(userId, projectId, text);
+      setBankImportOpen(false);
+      setBankCsvText('');
+      Alert.alert(
+        'Импорт выписки',
+        `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${res.unmatched_rows}`,
+      );
+    } catch (e: unknown) {
+      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось импортировать');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+
   return (
+    <>
+      <Modal visible={bankImportOpen} animationType="slide" transparent onRequestClose={() => setBankImportOpen(false)}>
+        <View style={s.bankModalBackdrop}>
+          <View style={s.bankModalCard}>
+            <Text style={s.bankModalTitle}>Импорт банковской выписки</Text>
+            <Text style={s.bankModalHint}>Формат: дата;сумма;назначение (или CSV с заголовками)</Text>
+            <TextInput
+              style={s.bankModalInput}
+              multiline
+              placeholder={"01.07.2026;150000;Оплата по счёту"}
+              placeholderTextColor={RenovaTheme.colors.textMuted}
+              value={bankCsvText}
+              onChangeText={setBankCsvText}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={s.bankModalActions}>
+              <Pressable onPress={() => setBankImportOpen(false)} style={s.bankModalBtnGhost}>
+                <Text style={s.bankModalBtnGhostText}>Отмена</Text>
+              </Pressable>
+              <Pressable onPress={submitBankImport} style={s.bankModalBtn} disabled={busy === 'bank-import'}>
+                <Text style={s.bankModalBtnText}>{busy === 'bank-import' ? '…' : 'Импортировать'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
       <OfflineSyncStatus compact />
@@ -583,6 +624,7 @@ export function DocumentsHub({
         </View>
       ))}
     </View>
+    </>
   );
 }
 
@@ -630,4 +672,39 @@ const s = StyleSheet.create({
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },
   rowTail: { alignItems: 'flex-end', gap: 4, minWidth: 56 },
   format: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.primary, textTransform: 'uppercase' },
+  bankModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  bankModalCard: {
+    backgroundColor: RenovaTheme.colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+  },
+  bankModalTitle: { fontSize: 17, fontWeight: '700', color: RenovaTheme.colors.text },
+  bankModalHint: { fontSize: 13, color: RenovaTheme.colors.textMuted },
+  bankModalInput: {
+    minHeight: 140,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.border,
+    borderRadius: 8,
+    padding: 10,
+    textAlignVertical: 'top',
+    color: RenovaTheme.colors.text,
+    fontSize: 13,
+  },
+  bankModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 4 },
+  bankModalBtnGhost: { paddingVertical: 10, paddingHorizontal: 12 },
+  bankModalBtnGhostText: { color: RenovaTheme.colors.textMuted, fontSize: 15 },
+  bankModalBtn: {
+    backgroundColor: RenovaTheme.colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  bankModalBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
 });

@@ -218,13 +218,24 @@ async def export_bank_register_csv(project_id: str, user: User = Depends(get_cur
 
 @router.post("/{project_id}/digest/weekly")
 async def push_weekly_digest(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """P4.2c lite: push-дайджест со ссылкой на KPI week PDF (без обязательного Ollama)."""
+    """P4.2c: push-дайджест + KPI PDF; опционально Ollama narrative (fail-open)."""
     from app.services import notification_service as notif
+    from app.services import report_service as rep
+    from app.services.integrations.ollama_digest import generate_digest_narrative
 
     project = await require_project(db, project_id, user, write=True)
+    weekly = await rep.weekly_report(db, project_id)
+    narrative = await generate_digest_narrative(project.name, weekly or {})
     members = [x for x in {project.customer_id, project.contractor_id, user.id} if x]
     title = f"Недельный дайджест: {project.name}"
-    body = f"План {project.budget_planned:.0f} ₽ · факт {project.budget_spent:.0f} ₽ · откройте KPI PDF"
+    if narrative:
+        body = narrative[:280]
+    else:
+        progress = (weekly or {}).get("progress_percent")
+        body = (
+            f"Прогресс {progress}% · план {project.budget_planned:.0f} ₽ · "
+            f"факт {project.budget_spent:.0f} ₽ · откройте KPI PDF"
+        )
     for uid in members:
         role_budget = "/(customer)/(tabs)/budget" if uid == project.customer_id else "/(contractor)/(tabs)/budget"
         await notif.notify(
@@ -238,7 +249,12 @@ async def push_weekly_digest(project_id: str, user: User = Depends(get_current_u
             return_to="/documents",
         )
     await db.commit()
-    return {"ok": True, "notified": len(members), "kpi_path": f"/api/v1/projects/{project_id}/kpi-weekly.pdf"}
+    return {
+        "ok": True,
+        "notified": len(members),
+        "kpi_path": f"/api/v1/projects/{project_id}/kpi-weekly.pdf",
+        "ai_narrative": bool(narrative),
+    }
 
 
 class WarrantyClaimIn(BaseModel):

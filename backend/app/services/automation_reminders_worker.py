@@ -30,8 +30,41 @@ _METRICS: dict[str, Any] = {
 def automation_worker_metrics() -> dict[str, Any]:
     return dict(_METRICS)
 
+_ops_alert_sent_for_streak = False
+
+
+async def _maybe_ops_alert() -> None:
+    """P4.2a: при 3+ consecutive failures — один email на streak (если ops_alert_email)."""
+    global _ops_alert_sent_for_streak
+    fails = int(_METRICS["consecutive_failures"])
+    if fails < 3:
+        _ops_alert_sent_for_streak = False
+        return
+    if _ops_alert_sent_for_streak:
+        return
+    from app.core.config import settings
+    to = (settings.ops_alert_email or "").strip()
+    if not to:
+        return
+    try:
+        from app.services.email_stub import send_ops_alert_email
+        await send_ops_alert_email(
+            to,
+            f"Renova ALERT: automation worker ({fails} fails)",
+            f"consecutive_failures={fails}\nlast_error={_METRICS.get('last_error')}\n"
+            f"last_tick_at={_METRICS.get('last_tick_at')}\n"
+            "Check GET /api/v1/automation/worker",
+        )
+        _ops_alert_sent_for_streak = True
+        logger.error("ops alert email queued to %s", to)
+    except Exception:
+        logger.exception("ops alert email failed")
+
+
 
 def _record_ok(result: dict) -> None:
+    global _ops_alert_sent_for_streak
+    _ops_alert_sent_for_streak = False
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     _METRICS["last_tick_at"] = now
     _METRICS["last_ok_at"] = now
@@ -111,6 +144,10 @@ async def automation_reminders_loop(stop: asyncio.Event, *, interval_sec: float)
         except Exception as exc:
             _record_fail(exc)
             logger.exception("automation reminders tick failed")
+            try:
+                await _maybe_ops_alert()
+            except Exception:
+                logger.exception("ops alert hook failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=max(60.0, interval_sec))
             break

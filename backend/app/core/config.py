@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     # Periodic reminders: materials, overdue stages, waste pickup (dev default 15 min)
     automation_reminders_enabled: bool = True
     automation_reminders_interval_sec: float = 900.0
+    # Ops: email при 3+ consecutive failures automation worker (stub → SMTP)
+    ops_alert_email: str | None = None
+    # Optional Ollama for weekly digest narrative (empty = rule-based only)
+    ollama_base_url: str | None = None  # e.g. http://127.0.0.1:11434
+    ollama_model: str = "qwen3"
+    ollama_digest_enabled: bool = False
     # E-sign external (Wave 3f). Без ключей → 501 как раньше.
     kontur_api_key: str | None = None
     kontur_api_url: str = "https://api.kontur.ru/sign/v1"  # placeholder
