@@ -83,6 +83,33 @@ export default function ReportsScreen() {
             </>
           ) : <Text style={s.meta}>Загрузка…</Text>}
           <ReportPdfActions userId={user.id} projectId={activeProject.id} kind="weekly" onError={onPdfError} />
+          <HomeLinkRow
+            title="Отправить недельный дайджест"
+            subtitle="Push заказчику и исполнителю · rule-based (Ollama опционально)"
+            onPress={async () => {
+              try {
+                const res = await api.pushWeeklyDigest(user.id, activeProject.id);
+                Alert.alert(
+                  'Дайджест',
+                  `${res.source === 'ollama' ? 'Ollama' : 'Rule-based'} · уведомлений ${res.notified}`,
+                );
+              } catch (e: unknown) {
+                Alert.alert('Дайджест', e instanceof Error ? e.message : 'Не удалось отправить');
+              }
+            }}
+          />
+          <HomeLinkRow
+            title="Превью дайджеста"
+            subtitle="Без push — проверить текст перед инвестором"
+            onPress={async () => {
+              try {
+                const res = await api.previewWeeklyDigest(user.id, activeProject.id);
+                Alert.alert(res.title || 'Превью', (res.body || '').slice(0, 500));
+              } catch (e: unknown) {
+                Alert.alert('Превью', e instanceof Error ? e.message : 'Ошибка');
+              }
+            }}
+          />
         </View>
 
         <View style={s.block}>

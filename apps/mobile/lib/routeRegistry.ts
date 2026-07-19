@@ -218,7 +218,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'more',
     status: 'beta',
     entryPoints: ['home.completion', 'home.more', 'os.menu'],
-    descriptionRu: 'Daily / weekly / final отчёты + PDF',
+    descriptionRu: 'Daily / weekly / final + дайджест push (W51 rule-based)',
   },
   {
     id: 'project-analytics',

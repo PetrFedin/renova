@@ -244,28 +244,39 @@ async def export_bank_register_csv(project_id: str, user: User = Depends(get_cur
     )
 
 
+@router.get("/{project_id}/digest/weekly/preview")
+async def preview_weekly_digest(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W51: превью дайджеста без push — для демо и Отчётов."""
+    from app.services import report_service as rep
+    from app.services.digest_lite_service import compose_weekly_digest
+
+    project = await require_project(db, project_id, user, write=False)
+    weekly = await rep.weekly_report(db, project_id)
+    composed = await compose_weekly_digest(db, project_name=project.name, weekly=weekly or {})
+    return {
+        "ok": True,
+        **composed,
+        "kpi_path": f"/api/v1/projects/{project_id}/kpi-weekly.pdf",
+    }
+
+
 @router.post("/{project_id}/digest/weekly")
 async def push_weekly_digest(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """P4.2c: push-дайджест + KPI PDF; опционально Ollama narrative (fail-open)."""
+    """P2.5/W51: push rule-based (или Ollama) + ссылка на KPI PDF; архив в документах."""
     from app.services import notification_service as notif
     from app.services import report_service as rep
-    from app.services.integrations.ollama_digest import generate_digest_narrative
+    from app.services import project_document_service as docs_svc
+    from app.services.digest_lite_service import compose_weekly_digest
+    from app.models.project_documents import DocumentType
 
     project = await require_project(db, project_id, user, write=True)
     weekly = await rep.weekly_report(db, project_id)
-    narrative = await generate_digest_narrative(project.name, weekly or {})
+    composed = await compose_weekly_digest(db, project_name=project.name, weekly=weekly or {})
     members = [x for x in {project.customer_id, project.contractor_id, user.id} if x]
-    title = f"Недельный дайджест: {project.name}"
-    if narrative:
-        body = narrative[:280]
-    else:
-        progress = (weekly or {}).get("progress_percent")
-        body = (
-            f"Прогресс {progress}% · план {project.budget_planned:.0f} ₽ · "
-            f"факт {project.budget_spent:.0f} ₽ · откройте KPI PDF"
-        )
+    title = composed["title"]
+    body = composed["push_body"]
     for uid in members:
-        role_budget = "/(customer)/(tabs)/budget" if uid == project.customer_id else "/(contractor)/(tabs)/budget"
+        role_reports = "/reports" if uid else "/documents"
         await notif.notify(
             db,
             user_id=uid,
@@ -273,15 +284,30 @@ async def push_weekly_digest(project_id: str, user: User = Depends(get_current_u
             notification_type="document",
             title=title,
             body=body,
-            link_path=role_budget,
+            link_path=role_reports,
             return_to="/documents",
         )
+    # Архив текста в Document Center (без PDF blob — KPI отдельно)
+    kpi_path = f"/api/v1/projects/{project_id}/kpi-weekly.pdf"
+    doc = await docs_svc.create_document(
+        db,
+        project_id=project_id,
+        created_by=user.id,
+        document_type=DocumentType.other.value,
+        title=f"Дайджест {composed['generated_at'][:10]}",
+        notes=composed["body"][:4000],
+        href=kpi_path,
+    )
     await db.commit()
     return {
         "ok": True,
         "notified": len(members),
-        "kpi_path": f"/api/v1/projects/{project_id}/kpi-weekly.pdf",
-        "ai_narrative": bool(narrative),
+        "kpi_path": kpi_path,
+        "ai_narrative": composed["source"] == "ollama",
+        "source": composed["source"],
+        "mode": composed["mode"],
+        "body": composed["body"],
+        "document_id": doc.id,
     }
 
 

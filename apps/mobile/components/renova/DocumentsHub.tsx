@@ -186,11 +186,28 @@ export function DocumentsHub({
       weeklyDigest: {
         id: 'digest',
         label: 'Недельный дайджест',
-        desc: 'Push + KPI PDF (AI при OLLAMA)',
+        desc: 'Push + KPI PDF · rule-based (Ollama опционально)',
         format: 'Push',
         run: async () => {
-          await api.pushWeeklyDigest(userId, projectId);
-          await api.exportKpiWeeklyPdf(userId, projectId);
+          const res = await api.pushWeeklyDigest(userId, projectId);
+          const modeLabel =
+            res.source === 'ollama' ? 'Текст: Ollama' : 'Текст: rule-based (без LLM)';
+          Alert.alert(
+            'Дайджест отправлен',
+            `${modeLabel}
+Уведомлений: ${res.notified}
+
+${(res.body || '').slice(0, 220)}`,
+            [
+              { text: 'OK', style: 'cancel' },
+              {
+                text: 'KPI PDF',
+                onPress: () => {
+                  void api.exportKpiWeeklyPdf(userId, projectId);
+                },
+              },
+            ],
+          );
         },
       },
       warrantyClaim: {

@@ -77,8 +77,26 @@ export const osApi = {
     const { exportProjectCsvFile } = await import('@/lib/exportProjectCsv');
     await exportProjectCsvFile(userId, `/api/v1/projects/${projectId}/export/bank-register.csv`, `renova-bank-${projectId.slice(0, 8)}.csv`);
   },
+  previewWeeklyDigest: (userId: string, projectId: string) =>
+    req<{
+      ok: boolean;
+      title: string;
+      body: string;
+      source: string;
+      mode: string;
+      kpi_path?: string;
+    }>(`/api/v1/projects/${projectId}/digest/weekly/preview`, {}, userId),
   pushWeeklyDigest: (userId: string, projectId: string) =>
-    req<{ ok: boolean; notified: number }>(`/api/v1/projects/${projectId}/digest/weekly`, { method: 'POST' }, userId),
+    req<{
+      ok: boolean;
+      notified: number;
+      source?: string;
+      mode?: string;
+      body?: string;
+      document_id?: string;
+      kpi_path?: string;
+      ai_narrative?: boolean;
+    }>(`/api/v1/projects/${projectId}/digest/weekly`, { method: 'POST' }, userId),
   importBankStatement: (userId: string, projectId: string, csv_text: string) =>
     req<{
       ok: boolean;
