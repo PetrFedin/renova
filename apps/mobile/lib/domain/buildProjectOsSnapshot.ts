@@ -132,7 +132,7 @@ export function buildProjectOsSnapshot(
       title: `Принять этап: ${reviewStage.name}`,
       subtitle: 'Этап ждёт приёмки',
       button: 'Принять',
-      href: `/stage/${reviewStage.id}`,
+      href: repairTabRoute(role, 'control'),
       kind: 'accept',
     };
   } else if (osSchedule && (osSchedule.forecast_delay_days || 0) > 3 && role !== 'contractor') {

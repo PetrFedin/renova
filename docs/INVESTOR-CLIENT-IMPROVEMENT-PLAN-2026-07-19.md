@@ -261,3 +261,4 @@ W44 AcceptOrchestrator (+ stage_id в events) → W45 Budget SoT + YuKassa/porta
 | W45 Budget SoT + bank confirm | ✅ |
 | W45 YuKassa live keys | ⏳ ops |
 | W46 Schedule UI + closeout | ✅ |
+| W47 Demo path + portal honesty | ✅ |

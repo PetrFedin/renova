@@ -184,6 +184,15 @@ async def portal_snapshot(
             if cprof.company_name:
                 recipient_name = cprof.company_name
 
+    # W47: честный режим оплаты для portal UI
+    try:
+        from app.services.yookassa_service import yookassa_health
+        yh = yookassa_health()
+        pay_live = bool(yh.get("live_checkout_ready"))
+    except Exception:
+        pay_live = False
+    payments_mode = "live" if pay_live else ("requisites" if payment_requisites else "demo")
+
     return {
         "project": {"id": p.id, "name": p.name, "address": p.address, "progress_percent": p.progress_percent},
         "read_only": read_only,
@@ -191,7 +200,9 @@ async def portal_snapshot(
         "schedule": schedule,
         "pending_payments": pending,
         "contractor_recipient_name": recipient_name,
+        "contractor_company_name": recipient_name,
         "contractor_payment_requisites": payment_requisites,
+        "payments_mode": payments_mode,
         "documents": canonical[:20],
         "documents_total": len(canonical),
         "selections": selections,

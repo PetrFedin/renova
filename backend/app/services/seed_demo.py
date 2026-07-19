@@ -12,7 +12,17 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChatMessage, ChatMessageType, Project, StageStatus, User, UserRole, ProjectViewer
+from app.models.entities import (
+    AcceptanceStatus,
+    ChatMessage,
+    ChatMessageType,
+    Project,
+    StageStatus,
+    User,
+    UserRole,
+    ProjectViewer,
+    WorkAcceptance,
+)
 from app.services import project_service as proj_svc
 from app.services import payment_service as pay_svc
 from app.services import chat_service as chat_svc
@@ -227,6 +237,62 @@ async def _seed_house_chats(
 
 
 
+
+async def _ensure_demo_acceptance_queue(db: AsyncSession, project_id: str, contractor_id: str) -> None:
+    """W47: demo сразу показывает «Принять этап» (investor 15-min path)."""
+    from app.models.entities import Stage
+
+    p = await db.get(Project, project_id)
+    if not p:
+        return
+    stages = list(
+        (
+            await db.execute(
+                select(Stage).where(Stage.project_id == project_id).order_by(Stage.sort_order.asc())
+            )
+        ).scalars().all()
+    )
+    if not stages:
+        return
+    active = next((s for s in stages if s.status in (StageStatus.active, StageStatus.review)), stages[0])
+    if not active.payment_amount or active.payment_amount <= 0:
+        active.payment_amount = round(max(float(p.budget_planned or 0) * 0.15, 25000.0), 2)
+
+    existing = (
+        await db.execute(
+            select(WorkAcceptance).where(
+                WorkAcceptance.project_id == project_id,
+                WorkAcceptance.stage_id == active.id,
+                WorkAcceptance.status.in_(
+                    (AcceptanceStatus.requested.value, AcceptanceStatus.in_review.value)
+                ),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        if active.status != StageStatus.review:
+            active.status = StageStatus.review
+            active.percent_complete = max(active.percent_complete or 0, 90)
+            await db.commit()
+        return
+
+    db.add(
+        WorkAcceptance(
+            project_id=project_id,
+            stage_id=active.id,
+            requested_by=contractor_id,
+            requested_at=datetime.utcnow(),
+            status=AcceptanceStatus.requested.value,
+            comment="Демо: этап готов к приёмке",
+            created_at=datetime.utcnow(),
+        )
+    )
+    active.status = StageStatus.review
+    active.contractor_ready = True
+    active.percent_complete = max(active.percent_complete or 0, 90)
+    await db.commit()
+
+
 async def _ensure_apartment_in_progress(db: AsyncSession, project_id: str, contractor_id: str) -> None:
     """Канонический demo-объект: исполнитель назначен, первый этап в работе."""
     p = await proj_svc.get_project(db, project_id)
@@ -245,6 +311,7 @@ async def _ensure_apartment_in_progress(db: AsyncSession, project_id: str, contr
     if (p.progress_percent or 0) < 12:
         p.progress_percent = 12.0
     await db.commit()
+    await _ensure_demo_acceptance_queue(db, project_id, contractor_id)
 
 async def _ensure_house_demo(db: AsyncSession, customer_id: str) -> None:
     r = await db.execute(
@@ -360,6 +427,7 @@ async def ensure_demo_users(db: AsyncSession) -> None:
         apt = next((x for x in existing_projects if getattr(x, "property_type", "apartment") != "house"), None)
         if apt:
             await _ensure_apartment_in_progress(db, apt.id, contractor.id)
+            await _ensure_demo_acceptance_queue(db, apt.id, contractor.id)
         await _seed_chats_for_customer_projects(db, customer, contractor, existing_projects)
         await _link_guest(db, existing_projects)
         return
@@ -381,5 +449,6 @@ async def ensure_demo_users(db: AsyncSession) -> None:
     )
     await pay_svc.create_payment(db, p.id, customer.id, "Аванс 30%", round(p.budget_planned * 0.3, 2), "advance", notes="Демо: подтвердите оплату на вкладке Финансы")
     await _ensure_apartment_in_progress(db, p.id, contractor.id)
+    await _ensure_demo_acceptance_queue(db, p.id, contractor.id)
     await _seed_apartment_chats(db, p.id, customer.id, contractor.id)
     await _link_guest(db, [p])

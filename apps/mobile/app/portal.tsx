@@ -102,6 +102,11 @@ export default function PortalScreen() {
         <Text style={s.brandSub}>Портал заказчика</Text>
         <Text style={s.title}>{snapshot.project.name}</Text>
         {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
+        {(snapshot as any).contractor_recipient_name || (snapshot as any).contractor_company_name ? (
+          <Text style={s.muted}>
+            Исполнитель · {(snapshot as any).contractor_company_name || (snapshot as any).contractor_recipient_name}
+          </Text>
+        ) : null}
         <Text style={s.progressLine}>Прогресс · {progress}%</Text>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${Math.min(100, Math.max(0, Number(progress))}%` }]} />
@@ -156,6 +161,13 @@ export default function PortalScreen() {
 
       <View style={s.card}>
         <Text style={s.cardHead}>Ожидают оплаты ({snapshot.pending_payments.length})</Text>
+        <Text style={s.muted}>
+          {(snapshot as any).payments_mode === 'live'
+            ? 'Оплата картой: ЮKassa live'
+            : (snapshot as any).payments_mode === 'requisites'
+              ? 'Оплата: перевод по реквизитам (карта — demo/off)'
+              : 'Оплата: demo / укажите реквизиты исполнителя'}
+        </Text>
         {portalReadOnly ? (
           <Text style={s.muted}>Оплата недоступна в режиме просмотра. Откройте полное приложение Renova.</Text>
         ) : snapshot.pending_payments.length === 0 ? (
@@ -196,7 +208,9 @@ export default function PortalScreen() {
                       }
                     }}
                   >
-                    <Text style={s.payBtnT}>Оплатить картой</Text>
+                    <Text style={s.payBtnT}>
+                      {(snapshot as any).payments_mode === 'live' ? 'Оплатить картой' : 'Карта (demo / staging)'}
+                    </Text>
                   </Pressable>
                   <Pressable
                     style={s.payBtnOutline}

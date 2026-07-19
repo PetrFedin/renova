@@ -109,7 +109,8 @@ export function HomeScreenBody({
       )}
 
       {/* 2. Очередь дел — единственный attention SoT (hero + inbox; без отдельной строки «Входящие») */}
-      {role === 'customer' && snap.quality.awaitingAcceptance > 0 ? (
+      {/* W47: не дублируем hero «Принять», если nextAction уже accept */}
+      {role === 'customer' && snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
         <HomeAcceptanceBanner count={snap.quality.awaitingAcceptance} role={role} />
       ) : null}
       {showAttention && phase !== 'complete' && (
