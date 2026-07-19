@@ -234,6 +234,9 @@ async def sign_document(
     )
     db.add(sig)
     await db.flush()
+    if result.status == "signed" and doc.status == DocumentStatus.draft.value:
+        doc.status = DocumentStatus.active.value
+        await db.flush()
     return sig
 
 

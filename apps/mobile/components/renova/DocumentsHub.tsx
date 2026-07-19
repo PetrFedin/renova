@@ -17,6 +17,7 @@ import {
 import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/lib/offlineUi';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 type DocRow = {
   id: string;
@@ -78,6 +79,7 @@ export function DocumentsHub({
   projectId: string;
   projectName?: string;
 }) {
+  const { user } = useRenova();
   const [busy, setBusy] = useState<string | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [bankCsvText, setBankCsvText] = useState('');
@@ -194,7 +196,7 @@ export function DocumentsHub({
       warrantyClaim: {
         id: 'warranty',
         label: 'Гарантийное обращение',
-        desc: 'Тикет + черновик → QC',
+        desc: 'Тикет + черновик → приёмка / QC',
         format: 'Заявка',
         run: async () => {
           const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] }));
@@ -202,16 +204,20 @@ export function DocumentsHub({
             title: 'Гарантийное обращение',
             description: 'Создано из Document Center',
           });
+          const isContractor = user?.role === 'contractor';
+          const nextPath = isContractor
+            ? (res.qc_path || `/quality-control?issueId=${res.issue_id}`)
+            : '/(customer)/(tabs)/repair?tab=control';
           Alert.alert(
             'Гарантия',
             `Создано. Открытых: ${(open.open || 0) + 1}. Документ: ${res.document_id.slice(0, 8)}…`,
             [
               { text: 'OK' },
               {
-                text: 'Открыть QC',
+                text: isContractor ? 'Открыть QC' : 'К приёмке',
                 onPress: () => {
                   const { router } = require('expo-router');
-                  router.push((res.qc_path || '/quality-control') as never);
+                  router.push(nextPath as never);
                 },
               },
             ],
@@ -287,7 +293,7 @@ export function DocumentsHub({
         rows: [rows.dossierPdf, rows.gdpr],
       },
     ];
-  }, [userId, projectId]);
+  }, [userId, projectId, user?.role]);
 
   async function withBusy(id: string, fn: () => Promise<void>) {
     setBusy(id);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
@@ -46,11 +46,11 @@ function dueLabel(value?: string | null) {
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
 }
 
-function IssueCard({ item, onClose, acting }: { item: ProjectIssue; onClose: (issue: ProjectIssue) => void; acting: boolean }) {
+function IssueCard({ item, onClose, acting, focused }: { item: ProjectIssue; onClose: (issue: ProjectIssue) => void; acting: boolean; focused?: boolean }) {
   const isClosed = item.status === 'closed';
   const tone = severityTone(item.severity);
   return (
-    <View style={[styles.issueCard, isClosed && styles.closedCard]}>
+    <View style={[styles.issueCard, isClosed && styles.closedCard, focused && styles.focusedCard]}>
       <View style={styles.issueHeader}>
         <View style={styles.issueMain}>
           <Text style={styles.issueTitle}>{item.title}</Text>
@@ -73,6 +73,8 @@ function IssueCard({ item, onClose, acting }: { item: ProjectIssue; onClose: (is
 
 export function QualityControlScreen() {
   const { user, activeProject, readOnly } = useRenova();
+  const params = useLocalSearchParams<{ issueId?: string }>();
+  const focusIssueId = Array.isArray(params.issueId) ? params.issueId[0] : params.issueId;
   const [items, setItems] = useState<ProjectIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -91,7 +93,11 @@ export function QualityControlScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openIssues = useMemo(() => items.filter((item) => item.status !== 'closed'), [items]);
+  const openIssues = useMemo(() => {
+    const open = items.filter((item) => item.status !== 'closed');
+    if (!focusIssueId) return open;
+    return [...open].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId));
+  }, [items, focusIssueId]);
   const closedIssues = useMemo(() => items.filter((item) => item.status === 'closed'), [items]);
   const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
 
@@ -163,7 +169,7 @@ export function QualityControlScreen() {
       <View style={styles.cardBlock}>
         <Text style={styles.sectionTitle}>Требуют внимания</Text>
         {openIssues.length ? openIssues.map((item) => (
-          <IssueCard key={item.id} item={item} onClose={closeIssue} acting={actingId === item.id} />
+          <IssueCard key={item.id} focused={item.id === focusIssueId} item={item} onClose={closeIssue} acting={actingId === item.id} />
         )) : <Text style={styles.emptyText}>Открытых замечаний нет. Редкий случай, когда тишина — хороший KPI.</Text>}
       </View>
 
@@ -171,7 +177,7 @@ export function QualityControlScreen() {
         <View style={styles.cardBlock}>
           <Text style={styles.sectionTitle}>Закрытые</Text>
           {closedIssues.slice(0, 5).map((item) => (
-            <IssueCard key={item.id} item={item} onClose={closeIssue} acting={false} />
+            <IssueCard key={item.id} focused={item.id === focusIssueId} item={item} onClose={closeIssue} acting={false} />
           ))}
         </View>
       ) : null}

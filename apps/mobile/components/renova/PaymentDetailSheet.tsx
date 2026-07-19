@@ -208,7 +208,7 @@ export function PaymentDetailSheet({
       pushStageDetail(stage.id, pathname);
       return;
     }
-    const acceptanceHref = role === 'contractor' ? '/quality-control' : '/work-acceptance';
+    const acceptanceHref = role === 'contractor' ? '/(contractor)/(tabs)/repair?tab=control' : '/(customer)/(tabs)/repair?tab=control';
     router.push({ pathname: acceptanceHref, params: { returnTo: pathname } } as never);
   };
 
@@ -273,7 +273,7 @@ export function PaymentDetailSheet({
       await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(() => {});
       onChanged?.();
       onClose();
-      Alert.alert('Оплата подтверждена', 'Исполнитель увидит статус в бюджете и чате.');
+      Alert.alert('Оплата подтверждена', 'Исполнитель увидит статус в бюджете и во «Входящих».');
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 409) {
         Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [

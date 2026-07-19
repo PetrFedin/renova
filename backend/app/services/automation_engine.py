@@ -58,7 +58,7 @@ async def process_event(
     if kind == "StageStarted" and stage_id:
         actions.append("stage_started")
 
-    if kind == "AcceptancePassed" and stage_id:
+    if kind in ("AcceptancePassed", "AcceptanceAccepted") and stage_id:
         actions.append("payment_allowed")
         stage = await db.get(Stage, stage_id)
         if proj and proj.customer_id and stage:

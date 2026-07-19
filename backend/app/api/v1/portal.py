@@ -269,7 +269,7 @@ async def portal_accept_work(
         db,
         project_id=project_id,
         user_id=user.id,
-        kind="AcceptanceAccepted",
+        kind="AcceptancePassed",
         title=f"Этап принят (портал): {stage.name}",
         body=body.comment,
         link_path=f"/stage/{stage.id}",
