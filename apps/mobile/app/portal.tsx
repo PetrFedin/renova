@@ -165,8 +165,10 @@ export default function PortalScreen() {
           {(snapshot as any).payments_mode === 'live'
             ? 'Оплата картой: ЮKassa live'
             : (snapshot as any).payments_mode === 'requisites'
-              ? 'Оплата: перевод по реквизитам (карта — demo/off)'
-              : 'Оплата: demo / укажите реквизиты исполнителя'}
+              ? 'Оплата: перевод по реквизитам (карта недоступна)'
+              : (snapshot as any).payments_mode === 'off'
+                ? 'Оплата картой недоступна на этом сервере. Используйте реквизиты или полное приложение.'
+                : 'Оплата: demo / укажите реквизиты исполнителя'}
         </Text>
         {portalReadOnly ? (
           <Text style={s.muted}>Оплата недоступна в режиме просмотра. Откройте полное приложение Renova.</Text>
@@ -186,6 +188,7 @@ export default function PortalScreen() {
                 <Text style={s.line}>{pay.title} · {formatRub(pay.amount)}</Text>
                 {canPayPortal ? (
                 <View style={s.payActions}>
+                  {((snapshot as any).payments_mode === 'live' || (snapshot as any).payments_mode === 'demo') ? (
                   <Pressable
                     style={s.payBtn}
                     onPress={async () => {
@@ -209,9 +212,10 @@ export default function PortalScreen() {
                     }}
                   >
                     <Text style={s.payBtnT}>
-                      {(snapshot as any).payments_mode === 'live' ? 'Оплатить картой' : 'Карта (demo / staging)'}
+                      {(snapshot as any).payments_mode === 'live' ? 'Оплатить картой' : 'Карта (demo)'}
                     </Text>
                   </Pressable>
+                  ) : null}
                   <Pressable
                     style={s.payBtnOutline}
                     onPress={async () => {

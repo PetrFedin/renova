@@ -91,22 +91,23 @@ function scheduleDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean,
         { label: 'Статус', value: 'Закрытие проекта' },
       ],
       bars: [{ label: 'Этапы выполнены', percent: 100, tone: 'good' }],
-      actionLabel: 'Отчёты →',
-      actionHref: '/reports',
+      actionLabel: 'Оплатить →',
+      actionHref: budgetTabRoute(role, 'payments'),
     };
   }
 
   if (complete) {
     return {
       title: 'Сроки',
-      lead: 'Проект завершён',
+      lead: 'Проект завершён — закрытие и гарантия',
       rows: [
         { label: 'Прогресс', value: '100%' },
         { label: 'Статус', value: 'Завершён' },
       ],
       bars: [{ label: 'Выполнено', percent: 100, tone: 'good' }],
-      actionLabel: 'Отчёты →',
-      actionHref: '/reports',
+      // W55: closeout в Document Center, не только KPI-отчёты
+      actionLabel: 'Документы →',
+      actionHref: '/documents',
     };
   }
 

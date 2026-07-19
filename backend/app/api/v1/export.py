@@ -350,6 +350,8 @@ async def create_warranty_claim(
     )
     draft.status = DocumentStatus.draft.value
     await db.flush()
+    # W55: заказчик → Document Center; исполнитель → QC
+    creator_link = "/quality-control" if user.role.value == "contractor" else "/documents"
     await act.log_event(
         db,
         project_id=project_id,
@@ -357,10 +359,11 @@ async def create_warranty_claim(
         kind="WarrantyClaim",
         title=issue.title,
         body=body.description,
-        link_path="/quality-control",
+        link_path=creator_link,
     )
     other = project.contractor_id if user.id == project.customer_id else project.customer_id
     if other:
+        other_is_contractor = other == project.contractor_id
         await notif.notify(
             db,
             user_id=other,
@@ -368,8 +371,8 @@ async def create_warranty_claim(
             notification_type="issue",
             title=issue.title,
             body=body.description or "Новое гарантийное обращение",
-            link_path="/quality-control",
-            return_to="/(customer)/(tabs)/",
+            link_path="/quality-control" if other_is_contractor else "/documents",
+            return_to="/(contractor)/(tabs)/home" if other_is_contractor else "/(customer)/(tabs)/home",
         )
     await db.commit()
     return {
@@ -440,7 +443,7 @@ async def close_warranty_claim(
         user_id=user.id,
         kind="WarrantyClosed",
         title=issue.title,
-        link_path="/quality-control",
+        link_path="/documents" if user.role.value == "customer" else "/quality-control",
     )
     await db.commit()
     await db.refresh(issue)

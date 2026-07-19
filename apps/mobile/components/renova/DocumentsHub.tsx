@@ -213,7 +213,7 @@ ${(res.body || '').slice(0, 220)}`,
       warrantyClaim: {
         id: 'warranty',
         label: 'Гарантийное обращение',
-        desc: 'Тикет + черновик → приёмка / QC',
+        desc: 'Тикет + черновик → документы / QC исполнителя',
         format: 'Заявка',
         run: async () => {
           const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] }));
@@ -222,16 +222,17 @@ ${(res.body || '').slice(0, 220)}`,
             description: 'Создано из Document Center',
           });
           const isContractor = user?.role === 'contractor';
+          // W55: заказчик не уходит в QC / очередь приёмки — тикет живёт в Document Center
           const nextPath = isContractor
             ? (res.qc_path || `/quality-control?issueId=${res.issue_id}`)
-            : '/(customer)/(tabs)/repair?tab=control';
+            : '/documents';
           Alert.alert(
             'Гарантия',
             `Создано. Открытых: ${(open.open || 0) + 1}. Документ: ${res.document_id.slice(0, 8)}…`,
             [
               { text: 'OK' },
               {
-                text: isContractor ? 'Открыть QC' : 'К приёмке',
+                text: isContractor ? 'Открыть QC' : 'К документам',
                 onPress: () => {
                   const { router } = require('expo-router');
                   router.push(nextPath as never);

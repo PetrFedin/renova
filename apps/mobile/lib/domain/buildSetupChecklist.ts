@@ -60,8 +60,9 @@ export function buildSetupChecklist(
     },
     {
       id: 'estimate',
-      label: 'Смета',
-      done: estimateLines > 0,
+      // W55: «готово» только после фиксации — иначе setup можно закрыть на черновике
+      label: 'Смета согласована',
+      done: !!project.estimate_locked_at && estimateLines > 0,
       href: objectTabHref(role, 'estimate'),
       priority: 4,
     },

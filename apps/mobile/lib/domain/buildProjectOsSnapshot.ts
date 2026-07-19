@@ -7,7 +7,10 @@ import type { ProjectOsSnapshot } from './osTypes';
 import { computeProjectHealth, forecastFinalCost, capOverrunRisk } from './projectHealth';
 import { sanitizeRiskImpact } from './sanitizeRiskImpact';
 import { resolveProjectProgress } from './resolveProjectProgress';
-import { repairTabRoute, tabsRoute, budgetTabRoute } from '@/constants/osSections';
+import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute } from '@/constants/osSections';
+
+/** Опциональный статус активного work-schedule (W55 nextAction). */
+export type WorkScheduleHint = { status?: string | null };
 
 const ST_SHORT: Record<string, string> = {
   done: 'Завершено', review: 'Ждёт приёмки', active: 'В работе', planned: 'Не начато', rework: 'Доработка',
@@ -36,6 +39,7 @@ export function buildProjectOsSnapshot(
   pendingAcceptanceCount?: number,
   pendingPaymentCount = 0,
   pendingPaymentTotal = 0,
+  workSchedule?: WorkScheduleHint | null,
 ): ProjectOsSnapshot {
   const today = new Date().toISOString().slice(0, 10);
   const stages = project.stages || [];
@@ -51,9 +55,10 @@ export function buildProjectOsSnapshot(
   const isComplete = allDone || progressPercent >= 100;
   const forecast = forecastFinalCost(planned, spent, progressPercent);
   const needBuy = picks.filter((p) => p.status === 'draft' || p.status === 'pending').length;
+  const pendingApprove = picks.filter((p) => p.status === 'pending').length;
   const shortage = picks.filter((p) => p.status === 'pending' && !p.qty).length;
-  const pendingPay = stages.filter((s) => s.status === 'done' && !s.customer_accepted_at).length;
-  const unpaid = Math.max(pendingPay, pendingPaymentCount);
+  // W55: только реальные Payment.pending — без proxy «done без accept»
+  const unpaid = Math.max(0, pendingPaymentCount);
 
   let health = computeProjectHealth({
     budgetPlanned: planned,
@@ -107,6 +112,9 @@ export function buildProjectOsSnapshot(
   const overdueStage = overdue[0];
   const dashTitle = dash.next_action_title || '';
   const dashSaysComplete = /заверш/i.test(dashTitle);
+  const scheduleSubmitted = workSchedule?.status === 'submitted';
+  const estimateLines = project.estimate_lines?.length ?? 0;
+  const estimateNeedsLock = estimateLines > 0 && !project.estimate_locked_at;
 
   let nextAction: ProjectOsSnapshot['nextAction'];
   if (isComplete) {
@@ -121,13 +129,23 @@ export function buildProjectOsSnapshot(
           kind: 'payment',
         }
       : {
-          title: 'Проект завершён',
-          subtitle: 'Отчёты и документы',
-          button: 'Отчёты',
-          href: '/reports',
+          title: 'Закрытие объекта',
+          subtitle: 'Чеклист closeout и гарантия',
+          button: 'Документы',
+          href: '/documents',
           kind: 'review',
         };
-  } else if (reviewStage && role !== 'contractor') {
+  } else if (unpaid > 0 && role === 'customer') {
+    nextAction = {
+      title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,
+      subtitle: pendingPaymentTotal > 0
+        ? `${formatRub(pendingPaymentTotal)} к оплате`
+        : 'Счёт после приёмки',
+      button: 'Оплатить',
+      href: budgetTabRoute(role, 'payments'),
+      kind: 'payment',
+    };
+  } else if (reviewStage && role === 'customer') {
     nextAction = {
       title: `Принять этап: ${reviewStage.name}`,
       subtitle: 'Этап ждёт приёмки',
@@ -135,12 +153,66 @@ export function buildProjectOsSnapshot(
       href: repairTabRoute(role, 'control'),
       kind: 'accept',
     };
+  } else if (reviewStage && role === 'contractor') {
+    nextAction = {
+      title: `Ждём приёмку: ${reviewStage.name}`,
+      subtitle: 'Заказчик проверяет этап',
+      button: 'Статус',
+      href: repairTabRoute(role, 'control'),
+      kind: 'accept',
+    };
+  } else if (scheduleSubmitted && role === 'customer') {
+    nextAction = {
+      title: 'Подтвердить график работ',
+      subtitle: 'Исполнитель отправил план на согласование',
+      button: 'График',
+      href: calendarTabRoute(role),
+      kind: 'work',
+    };
+  } else if (scheduleSubmitted && role === 'contractor') {
+    nextAction = {
+      title: 'График у заказчика',
+      subtitle: 'Ждём подтверждение плана',
+      button: 'Открыть',
+      href: calendarTabRoute(role),
+      kind: 'work',
+    };
+  } else if (estimateNeedsLock && role === 'customer') {
+    nextAction = {
+      title: 'Согласовать смету',
+      subtitle: `${estimateLines} поз. · зафиксировать перед договором`,
+      button: 'Смета',
+      href: objectTabRoute(role, 'estimate'),
+      kind: 'expense',
+    };
+  } else if (estimateNeedsLock && role === 'contractor') {
+    nextAction = {
+      title: 'Зафиксировать смету',
+      subtitle: 'Отправить заказчику на согласование',
+      button: 'Смета',
+      href: objectTabRoute(role, 'estimate'),
+      kind: 'expense',
+    };
   } else if (osSchedule && (osSchedule.forecast_delay_days || 0) > 3 && role !== 'contractor') {
     nextAction = { title: 'Риск задержки проекта', subtitle: `Прогноз +${osSchedule.forecast_delay_days} дн.`, button: 'График', href: repairTabRoute(role, 'works'), kind: 'work' };
   } else if (overdueStage) {
     nextAction = { title: `Просрочка: ${overdueStage.name}`, subtitle: `Дедлайн ${overdueStage.planned_end}`, button: 'Открыть', href: `/stage/${overdueStage.id}`, kind: 'work' };
-  } else if (needBuy > 0) {
-    nextAction = { title: 'Закупить материалы', subtitle: `${needBuy} поз. ждут заказа`, button: 'Материалы', href: repairTabRoute(role, 'materials'), kind: 'material' };
+  } else if (role === 'customer' && pendingApprove > 0) {
+    nextAction = {
+      title: 'Согласовать материалы',
+      subtitle: `${pendingApprove} поз. ждут решения`,
+      button: 'Материалы',
+      href: repairTabRoute(role, 'materials'),
+      kind: 'material',
+    };
+  } else if (role === 'contractor' && needBuy > 0) {
+    nextAction = {
+      title: 'Закупить материалы',
+      subtitle: `${needBuy} поз. ждут заказа`,
+      button: 'Материалы',
+      href: repairTabRoute(role, 'materials'),
+      kind: 'material',
+    };
   } else if (dashTitle && !dashSaysComplete) {
     const deadline = osSchedule?.planned_end || project.planned_end_date;
     nextAction = {

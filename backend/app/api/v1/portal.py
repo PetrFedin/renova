@@ -184,14 +184,23 @@ async def portal_snapshot(
             if cprof.company_name:
                 recipient_name = cprof.company_name
 
-    # W47: честный режим оплаты для portal UI
+    # W47/W55: live | requisites | demo | off (off когда staging без ключей и без demo)
     try:
-        from app.services.yookassa_service import yookassa_health
+        from app.services.yookassa_service import yookassa_health, demo_allowed
         yh = yookassa_health()
         pay_live = bool(yh.get("live_checkout_ready"))
+        allow_demo = bool(demo_allowed())
     except Exception:
         pay_live = False
-    payments_mode = "live" if pay_live else ("requisites" if payment_requisites else "demo")
+        allow_demo = False
+    if pay_live:
+        payments_mode = "live"
+    elif payment_requisites:
+        payments_mode = "requisites"
+    elif allow_demo:
+        payments_mode = "demo"
+    else:
+        payments_mode = "off"
 
     return {
         "project": {"id": p.id, "name": p.name, "address": p.address, "progress_percent": p.progress_percent},

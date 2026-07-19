@@ -283,11 +283,17 @@ async def accept_stage(project_id: str, stage_id: str, user: User = Depends(get_
 
 @router.post("/{project_id}/assign")
 async def assign_contractor(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W55: 404/409/402 раздельно — не маскировать «уже занят» под paywall."""
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель")
+    existing = await svc.get_project(db, project_id)
+    if not existing:
+        raise HTTPException(404, "Объект не найден")
+    if existing.contractor_id and existing.contractor_id != user.id:
+        raise HTTPException(409, detail={"code": "already_assigned", "message": "На объекте уже другой исполнитель"})
     p = await svc.assign_contractor(db, project_id, user.id)
     if not p:
-        raise HTTPException(402, detail={"code": "subscription_required", "message": "Нужен Pro"})
+        raise HTTPException(402, detail={"code": "subscription_required", "message": "Нужен Pro для нового объекта"})
     return await _detail(db, p, user)
 
 class ViewerShareIn(BaseModel):

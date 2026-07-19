@@ -32,6 +32,10 @@ export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | stri
       return objectTabHref(role, 'plan', 'design');
     case 'control':
       return role === 'contractor' ? '/quality-control' : '/work-acceptance';
+    case 'warranty-claim':
+    case 'warranty':
+      // W55: заказчик → документы; исполнитель → QC
+      return role === 'contractor' ? '/quality-control' : '/documents';
     default:
       break;
   }

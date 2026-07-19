@@ -191,13 +191,14 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
   },
   {
     id: 'warranty-claim',
-    path: '/quality-control',
+    // W55: канон входа — Document Center; QC только для исполнителя (через DocumentsHub)
+    path: '/documents',
     titleRu: 'Гарантия',
     audience: 'both',
     visibility: 'deeplink',
     status: 'beta',
     entryPoints: ['documents.export', 'home.completion'],
-    descriptionRu: 'P5.1 lite: тикет через Document Center → QC',
+    descriptionRu: 'P5.1 lite: тикет в Document Center; исполнитель → QC',
   },
 
   {

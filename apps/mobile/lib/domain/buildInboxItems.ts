@@ -1,7 +1,7 @@
 /** Сборка элементов единого inbox — главная, /inbox, badge в шапке */
 import { api, type ApprovalItem, type ProjectDetail, type Stage } from '@/lib/api';
 import { formatRub } from '@/constants/Theme';
-import { budgetTabHref, calendarTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
+import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 
 export type InboxItem =
   | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
@@ -86,6 +86,32 @@ export async function buildInboxItems(opts: {
       });
     }
 
+    // W55: график submitted + незафиксированная смета — в inbox заказчика
+    try {
+      const sched = await api.getActiveWorkSchedule(userId, projectId);
+      if (sched?.status === 'submitted') {
+        next.push({
+          id: 'schedule-confirm',
+          kind: 'schedule',
+          title: 'Подтвердить график работ',
+          sub: sched.title || 'План на согласовании',
+          href: calendarTabHref(role),
+          priority: 86,
+        });
+      }
+    } catch { /* noop */ }
+
+    if (project && (project.estimate_lines?.length ?? 0) > 0 && !project.estimate_locked_at) {
+      next.push({
+        id: 'estimate-lock',
+        kind: 'estimate',
+        title: 'Согласовать смету',
+        sub: `${project.estimate_lines!.length} поз.`,
+        href: objectTabHref(role, 'estimate'),
+        priority: 82,
+      });
+    }
+
     try {
       const picks = await api.listMaterialPicks(userId, projectId);
       const pendingMat = picks.filter((p) => p.status === 'pending');
@@ -113,6 +139,33 @@ export async function buildInboxItems(opts: {
         priority: 87,
       });
     }
+
+    // W55: исполнитель видит ожидание приёмки / графика, а не «Закупить» чужими глазами
+    const review = stages.filter((s) => s.status === 'review');
+    if (review.length > 0) {
+      next.push({
+        id: 'await-acceptance',
+        kind: 'acceptance',
+        title: 'Ждём приёмку заказчика',
+        sub: `${review.length} · ${review[0]?.name || ''}`,
+        href: repairTabHref(role, 'control'),
+        priority: 88,
+      });
+    }
+
+    try {
+      const sched = await api.getActiveWorkSchedule(userId, projectId);
+      if (sched?.status === 'submitted') {
+        next.push({
+          id: 'schedule-waiting',
+          kind: 'schedule',
+          title: 'График у заказчика',
+          sub: 'Ждём подтверждение',
+          href: calendarTabHref(role),
+          priority: 86,
+        });
+      }
+    } catch { /* noop */ }
 
     try {
       const picks = await api.listMaterialPicks(userId, projectId);
@@ -176,9 +229,10 @@ export function filterInboxForHero(items: InboxItem[], heroKind: string): InboxI
   if (!heroKind || heroKind === 'idle') return items;
   return items.filter((it) => {
     if (heroKind === 'payment' && it.kind === 'payment') return false;
-    if (heroKind === 'accept' && (it.kind === 'acceptance' || it.id === 'acceptance' || it.id === 'wo-review')) return false;
-    if (heroKind === 'work' && (it.id === 'wo-review' || (it.kind === 'work' && /приёмк/i.test(it.title)))) return false;
+    if (heroKind === 'accept' && (it.kind === 'acceptance' || it.id === 'acceptance' || it.id === 'await-acceptance' || it.id === 'wo-review')) return false;
+    if (heroKind === 'work' && (it.id === 'wo-review' || it.id === 'schedule-confirm' || it.id === 'schedule-waiting' || (it.kind === 'work' && /приёмк/i.test(it.title)))) return false;
     if (heroKind === 'work' && it.kind === 'stage' && /просроч/i.test(it.title)) return false;
+    if (heroKind === 'expense' && (it.kind === 'estimate' || it.id === 'estimate-lock')) return false;
     if (heroKind === 'material' && it.kind === 'material') return false;
     return true;
   });

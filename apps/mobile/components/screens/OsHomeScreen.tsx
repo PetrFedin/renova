@@ -37,6 +37,8 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [pendingAcceptance, setPendingAcceptance] = useState(0);
   const [pendingPayments, setPendingPayments] = useState(0);
   const [pendingPaymentTotal, setPendingPaymentTotal] = useState(0);
+  /** W55: статус active work-schedule для nextAction (submitted → подтвердить) */
+  const [workScheduleStatus, setWorkScheduleStatus] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,6 +87,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         api.budgetAlerts(user.id, activeProject.id).then(setBudgetAlerts),
         api.osBudget(user.id, activeProject.id).then(setOsBudget),
         api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)),
+        api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => setWorkScheduleStatus(s?.status ?? null)),
       ]);
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
@@ -98,6 +101,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
             () => setBudgetAlerts([]),
             () => setOsBudget(null),
             () => setPendingAcceptance(0),
+            () => setWorkScheduleStatus(null),
           ];
           fallbacks[i]?.();
         }
@@ -113,8 +117,22 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
   const snap = useMemo(() => {
     if (!activeProject || !dash) return null;
-    return buildProjectOsSnapshot(activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole as any, osBudget, pendingAcceptance, pendingPayments, pendingPaymentTotal);
-  }, [activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget, pendingAcceptance, pendingPayments, pendingPaymentTotal]);
+    return buildProjectOsSnapshot(
+      activeProject,
+      dash,
+      receipts,
+      picks,
+      purchases,
+      apiRisks,
+      osSchedule,
+      snapRole as any,
+      osBudget,
+      pendingAcceptance,
+      pendingPayments,
+      pendingPaymentTotal,
+      { status: workScheduleStatus },
+    );
+  }, [activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget, pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus]);
 
   useEffect(() => {
     if (!snap) {

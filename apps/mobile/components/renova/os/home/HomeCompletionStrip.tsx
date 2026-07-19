@@ -29,6 +29,8 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
 
   return (
     <>
+      {/* W55: closeout/warranty в Document Center — главный финал, не только KPI PDF */}
+      <HomeLinkRow title="Закрытие и документы" onPress={() => pushScreen('/documents')} />
       <HomeLinkRow title="Отчёты проекта" onPress={() => pushScreen('/reports')} />
       <HomeLinkRow
         title={busy ? 'Выгрузка…' : 'Экспорт расходов (CSV)'}
