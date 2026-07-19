@@ -1,7 +1,7 @@
 /** Данные экрана «Бюджет» — загрузка и перезагрузка (P2.5 BFF + fallback) */
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, ReceiptItem } from '@/lib/api';
+import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, Purchase, ReceiptItem } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { BudgetAlert } from '@/components/renova/BudgetAlerts';
 
@@ -13,6 +13,7 @@ export function useOsBudgetScreen() {
   const [expenses, setExpenses] = useState<OsExpense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [payFilter, setPayFilter] = useState<PaymentFilter>('all');
@@ -23,6 +24,7 @@ export function useOsBudgetScreen() {
     api.osExpenses(user.id, activeProject.id).then(setExpenses).catch(() => setExpenses([]));
     api.listPayments(user.id, activeProject.id).then(setPayments).catch(() => setPayments([]));
     api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(() => setReceipts([]));
+    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => setPurchases([]));
     api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(() => setPicks([]));
     api.budgetAlerts(user.id, activeProject.id).then(setBudgetAlerts).catch(() => setBudgetAlerts([]));
   }, [user?.id, activeProject?.id]);
@@ -30,11 +32,15 @@ export function useOsBudgetScreen() {
   const reload = useCallback(async () => {
     if (!user || !activeProject) return;
     try {
-      const hub = await api.budgetSummaryHub(user.id, activeProject.id);
+      const [hub, purchaseRows] = await Promise.all([
+        api.budgetSummaryHub(user.id, activeProject.id),
+        api.listPurchases(user.id, activeProject.id).catch(() => [] as Purchase[]),
+      ]);
       setSummary(hub.summary);
       setExpenses(hub.expenses);
       setPayments(hub.payments);
       setReceipts(hub.receipts);
+      setPurchases(purchaseRows);
       setPicks(hub.material_picks);
       setBudgetAlerts(hub.budget_alerts);
     } catch {
@@ -60,6 +66,7 @@ export function useOsBudgetScreen() {
     expenses,
     payments,
     receipts,
+    purchases,
     picks,
     budgetAlerts,
     payFilter,

@@ -34,11 +34,20 @@ export const miscApi = {
       { method: 'POST', body: JSON.stringify({ token, comment }) },
       undefined,
     ),
+  /** W57: подтверждение графика с portal token */
+  portalConfirmSchedule: (userId: string, projectId: string, scheduleId: string, token: string) =>
+    req(
+      `/api/v1/portal/projects/${projectId}/work-schedules/${scheduleId}/confirm`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      userId,
+    ),
   portalSnapshot: (userId: string, projectId: string) =>
     req<{
       project: { id: string; name: string; address?: string | null; progress_percent?: number };
       read_only: boolean;
       schedule: Record<string, unknown>;
+      pending_work_schedule?: { id: string; title?: string; status: string } | null;
+      can_confirm_schedule?: boolean;
       pending_payments: { id: string; title: string; amount: number; status: string }[];
       documents: { id: string; title: string; kind?: string; status?: string }[];
       documents_total: number;
@@ -51,6 +60,7 @@ export const miscApi = {
       /** Trust: реквизиты исполнителя — без demo-карт */
       contractor_recipient_name?: string | null;
       contractor_payment_requisites?: string | null;
+      payments_mode?: 'live' | 'requisites' | 'demo' | 'off';
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
   rejectApproval: async (userId: string, projectId: string, itemId: string, type: string, reason: string) => {

@@ -83,6 +83,9 @@ class Project(Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     trashed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     estimate_locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # W57: исполнитель предлагает фиксацию; заказчик подтверждает → estimate_locked_at
+    estimate_lock_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    estimate_lock_proposed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     estimate_lines: Mapped[list["EstimateLine"]] = relationship(back_populates="project", cascade="all, delete-orphan")

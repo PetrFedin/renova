@@ -78,6 +78,10 @@ async def create_from_picks(
     picks = list(r.scalars().all())
     if not picks:
         return None
+    # W57: закупка только из согласованных picks — без auto-approve draft/pending
+    not_approved = [x for x in picks if x.status != MaterialPickStatus.approved]
+    if not_approved:
+        raise ValueError("picks_not_approved")
     purchase = Purchase(
         id=_uuid(),
         project_id=project_id,
@@ -103,7 +107,6 @@ async def create_from_picks(
                 stage_id=pick.stage_id,
             )
         )
-        pick.status = MaterialPickStatus.approved
     purchase.total_amount = round(total, 2)
     purchase.items = items
     db.add(purchase)
@@ -128,10 +131,9 @@ async def set_status(db: AsyncSession, purchase_id: str, status: PurchaseStatus)
     elif status == PurchaseStatus.cancelled:
         await _on_cancelled(db, p)
 
-    # W56: paid|delivered → Expense(purchase_id) + refresh fact SoT
-    if status in (PurchaseStatus.paid, PurchaseStatus.delivered):
+    # W56: канон факта материалов живёт в Expense; refresh сам создаёт/обновляет purchase-ledger.
+    if status in (PurchaseStatus.paid, PurchaseStatus.delivered, PurchaseStatus.cancelled, PurchaseStatus.returned):
         from app.services import budget_service as bud
-        await bud.expense_from_purchase(db, p)
         await bud.refresh_budget_facts(db, p.project_id)
 
     await db.commit()
@@ -141,7 +143,6 @@ async def set_status(db: AsyncSession, purchase_id: str, status: PurchaseStatus)
 
 async def _on_cancelled(db: AsyncSession, purchase: Purchase) -> None:
     """Отмена доставки → вернуть материал и снова проверить зависимые этапы."""
-    from app.services import budget_service as bud
     from app.services import dependency_service as dep_svc
 
     touched_stage_ids: set[str] = set()
@@ -165,7 +166,6 @@ async def _on_cancelled(db: AsyncSession, purchase: Purchase) -> None:
         if ev["blocked"]:
             stage.status = StageStatus.planned
 
-    await bud.refresh_budget_facts(db, purchase.project_id)
 
 
 async def _on_delivered(db: AsyncSession, purchase: Purchase) -> None:

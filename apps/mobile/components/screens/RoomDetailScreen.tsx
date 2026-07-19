@@ -16,7 +16,7 @@ import { roomSpentUnified } from '@/lib/domain/expenseAnalytics';
 import { calcRoomMetrics } from '@/lib/roomMetrics';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
-import { api, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick } from '@/lib/api';
+import { api, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase } from '@/lib/api';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
 
@@ -33,6 +33,7 @@ export function RoomDetailScreen() {
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [expenses, setExpenses] = useState<OsExpense[]>([]);
   const [picks, setPicks] = useState<MaterialPick[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [overrunLines, setOverrunLines] = useState<{ name: string; over: number }[]>([]);
   const [calcItems, setCalcItems] = useState<{ name: string; qty: number; unit: string; note?: string }[]>([]);
   const [roomSnap, setRoomSnap] = useState<RoomSnapshot | null>(null);
@@ -52,6 +53,7 @@ export function RoomDetailScreen() {
       api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(() => {});
       api.osExpenses(user.id, activeProject.id).then(setExpenses).catch(() => {});
       api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(() => {});
+      api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => {});
       setLen(String(r.length_m)); setWid(String(r.width_m)); setHei(String(r.height_m));
       setOutlets(String(r.outlets_count)); setPlumbing(String(r.plumbing_points)); setSwitches(String(r.switches_count));
     }
@@ -131,6 +133,7 @@ export function RoomDetailScreen() {
             activeProject.rooms || [],
             activeProject.stages || [],
             room.id,
+            purchases,
           );
           return (
           <View style={s.card}><Text style={s.h}>Расходы</Text>

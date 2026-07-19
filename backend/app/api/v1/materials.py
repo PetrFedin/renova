@@ -64,6 +64,19 @@ async def approve_pick(project_id: str, pick_id: str, user: User = Depends(get_c
     p.status = MaterialPickStatus.approved
     await db.commit()
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="approval", title=f"Согласовано: {p.name}", work_type=p.work_type)
+    from app.services import notification_service as ns
+    from app.models.entities import Project
+    proj = await db.get(Project, project_id)
+    if proj and proj.contractor_id:
+        await ns.notify(
+            db,
+            user_id=proj.contractor_id,
+            project_id=project_id,
+            notification_type="approval",
+            title="Материал согласован",
+            body=p.name,
+            link_path="/(contractor)/(tabs)/repair?tab=materials",
+        )
     return _out(p)
 
 @router.post("/{project_id}/material-picks/{pick_id}/analog")

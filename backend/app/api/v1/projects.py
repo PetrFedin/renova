@@ -48,6 +48,8 @@ def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
         is_archived=bool(getattr(p, "is_archived", False)),
         trashed_at=p.trashed_at.isoformat() if getattr(p, "trashed_at", None) else None,
         estimate_locked_at=p.estimate_locked_at.isoformat() if getattr(p, "estimate_locked_at", None) else None,
+        estimate_lock_proposed_at=p.estimate_lock_proposed_at.isoformat() if getattr(p, "estimate_lock_proposed_at", None) else None,
+        estimate_lock_proposed_by=getattr(p, "estimate_lock_proposed_by", None),
         access_mode=access_mode,
     )
 

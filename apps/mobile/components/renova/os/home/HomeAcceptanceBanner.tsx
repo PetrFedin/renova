@@ -6,7 +6,7 @@ import { useOsNavFromHere } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 
 export function HomeAcceptanceBanner({ count, role }: { count: number; role: OsRole }) {
-  const { pushScreen, returnTo } = useOsNavFromHere(role);
+  const { returnTo } = useOsNavFromHere(role);
   if (count <= 0) return null;
 
   const isContractor = role === 'contractor';
@@ -19,11 +19,8 @@ export function HomeAcceptanceBanner({ count, role }: { count: number; role: OsR
     <Pressable
       style={s.box}
       onPress={() => {
-        if (isContractor) {
-          pushOsNav(repairTabRoute(role, 'control'), returnTo);
-        } else {
-          pushScreen('/work-acceptance');
-        }
+        // W57: одна поверхность с nextAction accept → repair?tab=control
+        pushOsNav(repairTabRoute(role, 'control'), returnTo);
       }}
       accessibilityRole="button"
       accessibilityLabel={head}

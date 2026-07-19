@@ -41,6 +41,8 @@ export function EstimateSummaryLayer({
         <Text style={s.total}>{formatRub(project.budget_planned)}</Text>
         {lockedAt ? (
           <Text style={s.locked}>Согласована · зафиксирована {lockedAt.slice(0, 10)}</Text>
+        ) : project.estimate_lock_proposed_at ? (
+          <Text style={s.unlocked}>На согласовании у заказчика · {project.estimate_lock_proposed_at.slice(0, 10)}</Text>
         ) : (
           <Text style={s.unlocked}>Черновик — согласуйте сумму, чтобы открыть договор и этапы</Text>
         )}

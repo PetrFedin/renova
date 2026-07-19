@@ -17,11 +17,12 @@
 unified = receipts
         + os_expenses (без дубля receipt_id / payment_id)
         + material_picks WHERE status = 'purchased'
-          (только если нет Expense с purchase_id — W56)
+          (только для pick, который ещё не покрыт Expense той же purchase)
 ```
 
-**W56:** `Purchase` → `paid`/`delivered` создаёт `Expense(purchase_id)` на сервере;
-`budget_spent` и mobile list сходятся. Не дублировать purchased picks, если уже есть purchase Expense.
+**W56 canon:** сервер создаёт `Expense(purchase_id)` на статусе `paid`.
+Если `paid` был пропущен и закупку сразу перевели в `delivered`, `delivered` создаёт тот же Expense как fallback.
+Mobile-list предпочитает `Expense`-строки и убирает только те `purchased` picks, которые входят в уже учтённую закупку.
 
 **Не входят в факт:**
 
@@ -52,10 +53,12 @@ unified = receipts
 Источник `budget_spent` на сервере: `backend/app/services/budget_service.py` → `refresh_budget_facts()`:
 
 - синхронизация чеков → `Expense` (confirmed)
-- подтверждённые оплаты → expense
+- подтверждённые оплаты → Expense
+- закупки материалов `paid` → `Expense(purchase_id)`; `delivered` создаёт fallback, если оплата пропущена
+- отменённые / возвращённые закупки удаляются из purchase-ledger при `refresh_budget_facts()`
 - `budget_spent = sum(confirmed expenses)`
 
-Mobile unified list строится из receipts + os_expenses + purchased picks и сверяется с API через `BudgetFactReconcileBanner`.
+Mobile unified list строится из receipts + os_expenses + purchased picks, но при наличии `Expense(purchase_id)` не дублирует его material-picks и сверяется с API через `BudgetFactReconcileBanner`.
 
 ## Убрать material из факта
 

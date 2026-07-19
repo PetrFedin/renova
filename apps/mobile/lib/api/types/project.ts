@@ -25,6 +25,9 @@ export type ProjectSummary = {
   is_archived?: boolean;
   trashed_at?: string | null;
   estimate_locked_at?: string | null;
+  /** W57: исполнитель предложил фиксацию — ждёт заказчика */
+  estimate_lock_proposed_at?: string | null;
+  estimate_lock_proposed_by?: string | null;
   /** owner — можно archive/trash; guest — только просмотр в списке active */
   access_mode?: 'owner' | 'contractor' | 'guest' | 'none';
 };

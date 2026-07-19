@@ -168,6 +168,8 @@ class ProjectOut(BaseModel):
     is_archived: bool = False
     trashed_at: str | None = None
     estimate_locked_at: str | None = None
+    estimate_lock_proposed_at: str | None = None
+    estimate_lock_proposed_by: str | None = None
     # owner | contractor | guest | none — archive/trash только для owner
     access_mode: str = "owner"
 

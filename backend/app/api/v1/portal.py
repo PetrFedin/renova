@@ -139,6 +139,17 @@ async def portal_snapshot(
     from app.api.v1.selections import _out as selection_out
 
     schedule = await sched.build_schedule_summary(db, p)
+
+    # W57: submitted work-schedule for portal confirm honesty
+    pending_work_schedule = None
+    try:
+        from app.services import project_work_schedule_service as wss
+        active = await wss.get_active_schedule(db, p)
+        st = getattr(active.status, "value", None) if active else None
+        if active and st == "submitted":
+            pending_work_schedule = {"id": active.id, "title": active.title, "status": "submitted"}
+    except Exception:
+        pending_work_schedule = None
     payments = await pay_svc.list_payments(db, project_id)
     pending = [pay_svc.payment_dict(x) for x in payments if x.status.value == "pending"]
     canonical = await docs_svc.list_canonical_documents(db, project_id)
@@ -207,6 +218,7 @@ async def portal_snapshot(
         "read_only": read_only,
         "access_mode": mode,
         "schedule": schedule,
+        "pending_work_schedule": pending_work_schedule,
         "pending_payments": pending,
         "contractor_recipient_name": recipient_name,
         "contractor_company_name": recipient_name,
@@ -218,6 +230,7 @@ async def portal_snapshot(
         "selections_total": len(sel_rows),
         "pending_acceptances": pending_acceptances,
         "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
+        "can_confirm_schedule": user.id == p.customer_id and user.role == UserRole.customer and not read_only,
         "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
         "pending_draft_documents": [d for d in canonical if d.get("status") == "draft"],
     }
@@ -365,3 +378,55 @@ async def portal_sign_document(
             meta = {}
     await db.commit()
     return {"ok": True, "signature_id": sig.id, "status": sig.status, "signing_url": meta.get("signing_url")}
+
+
+class PortalScheduleIn(BaseModel):
+    token: str
+    reason: str | None = None
+
+
+@router.post("/portal/projects/{project_id}/work-schedules/{schedule_id}/confirm")
+async def portal_confirm_schedule(
+    project_id: str,
+    schedule_id: str,
+    body: PortalScheduleIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """W57: подтверждение графика по magic link (заказчик)."""
+    claims = portal_tok.verify_portal_token(body.token)
+    if claims.get("project_id") != project_id:
+        raise HTTPException(403, "token_project_mismatch")
+    user = await db.get(User, claims["user_id"])
+    if not user:
+        raise HTTPException(401, "invalid_token_user")
+    project = await require_project(db, project_id, user, write=True)
+    from app.services import project_work_schedule_service as wss
+    from app.models.entities import ProjectWorkSchedule
+    schedule = await db.get(ProjectWorkSchedule, schedule_id)
+    if not schedule or schedule.project_id != project_id:
+        raise HTTPException(404, "schedule_not_found")
+    return await wss.confirm_schedule(db, project=project, schedule=schedule, user=user)
+
+
+@router.post("/portal/projects/{project_id}/work-schedules/{schedule_id}/reject")
+async def portal_reject_schedule(
+    project_id: str,
+    schedule_id: str,
+    body: PortalScheduleIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """W57: отклонение графика по magic link."""
+    claims = portal_tok.verify_portal_token(body.token)
+    if claims.get("project_id") != project_id:
+        raise HTTPException(403, "token_project_mismatch")
+    user = await db.get(User, claims["user_id"])
+    if not user:
+        raise HTTPException(401, "invalid_token_user")
+    project = await require_project(db, project_id, user, write=True)
+    from app.services import project_work_schedule_service as wss
+    from app.models.entities import ProjectWorkSchedule
+    schedule = await db.get(ProjectWorkSchedule, schedule_id)
+    if not schedule or schedule.project_id != project_id:
+        raise HTTPException(404, "schedule_not_found")
+    return await wss.reject_schedule(db, project=project, schedule=schedule, user=user, reason=body.reason)
+

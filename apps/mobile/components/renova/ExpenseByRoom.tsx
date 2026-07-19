@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomSpentUnified } from '@/lib/domain/expenseAnalytics';
-import type { Room, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Stage } from '@/lib/api';
+import type { Room, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Purchase, Stage } from '@/lib/api';
 
 type Row = { room: Room; plan: number; spent: number };
 
@@ -15,30 +15,32 @@ function buildRows(
   expenses: OsExpense[],
   picks: MaterialPick[],
   stages: Stage[],
+  purchases: Purchase[],
 ): Row[] {
   return rooms.map((room) => {
     const rl = lines.filter((l) => (l.room_id && l.room_id === room.id) || l.room_name === room.name);
     const plan = rl.reduce((a, l) => a + l.quantity_planned * l.unit_price, 0);
     const estFact = rl.reduce((a, l) => a + (l.quantity_actual || 0) * l.unit_price, 0);
-    const spent = Math.max(estFact, roomSpentUnified(receipts, expenses, picks, rooms, stages, room.id));
+    const spent = Math.max(estFact, roomSpentUnified(receipts, expenses, picks, rooms, stages, room.id, purchases));
     return { room, plan, spent };
   }).filter((x) => x.plan > 0 || x.spent > 0);
 }
 
 export function ExpenseByRoom({
-  rooms, lines, receipts, expenses, picks = [], stages = [], compact, returnTo,
+  rooms, lines, receipts, expenses, picks = [], purchases = [], stages = [], compact, returnTo,
 }: {
   rooms: Room[];
   lines: EstimateLine[];
   receipts: ReceiptItem[];
   expenses?: OsExpense[];
   picks?: MaterialPick[];
+  purchases?: Purchase[];
   stages?: Stage[];
   compact?: boolean;
   returnTo?: string;
 }) {
   const ex = expenses || [];
-  const rows = buildRows(rooms, lines, receipts, ex, picks, stages);
+  const rows = buildRows(rooms, lines, receipts, ex, picks, stages, purchases);
   if (!rows.length) {
     return (
       <View style={s.box}>

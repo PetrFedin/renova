@@ -90,20 +90,16 @@ export function ContractorEstimateView() {
 
         {user && canWrite && !activeProject.estimate_locked_at && allLines.length > 0 && (
           <PrimaryButton
-            title="Зафиксировать смету (отправить заказчику)"
+            title={activeProject.estimate_lock_proposed_at ? 'Смета у заказчика на согласовании' : 'Отправить смету на согласование'}
             variant="outline"
+            disabled={!!activeProject.estimate_lock_proposed_at}
             onPress={async () => {
               try {
-                const res = await api.lockEstimate(user.id, activeProject.id);
+                await api.proposeEstimateLock(user.id, activeProject.id);
                 await loadProject(activeProject.id);
-                Alert.alert(
-                  'Смета зафиксирована',
-                  res.contract?.pending_titles?.length
-                    ? `Создан черновик: ${res.contract.pending_titles.join(', ')}. Заказчик получит уведомление.`
-                    : 'Заказчик получит уведомление о подписи договора.',
-                );
+                Alert.alert('Отправлено', 'Заказчик получит уведомление — фиксацию сметы подтверждает он.');
               } catch (e: unknown) {
-                Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка фиксации сметы');
+                Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отправки сметы');
               }
             }}
           />

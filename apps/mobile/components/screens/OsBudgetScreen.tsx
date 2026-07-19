@@ -44,7 +44,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
   const [paymentDetail, setPaymentDetail] = useState<Payment | null>(null);
 
   const {
-    user, activeProject, summary, expenses, payments, receipts, picks, budgetAlerts,
+    user, activeProject, summary, expenses, payments, receipts, purchases, picks, budgetAlerts,
     payFilter, setPayFilter, pending, filteredPayments, reload,
   } = useOsBudgetScreen();
 
@@ -72,6 +72,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     activeProject.rooms || [],
     activeProject.stages || [],
     picks,
+    purchases,
   );
   const listTotal = unifiedExpenseTotal(unifiedRows);
   const serverFact = summary?.budget_spent ?? figures.spent;
@@ -132,6 +133,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             budgetAlerts={budgetAlerts}
             expenses={expenses}
             pendingPayments={pending}
+            purchases={purchases}
             stages={activeProject.stages || []}
             rooms={activeProject.rooms || []}
             picks={picks}
@@ -154,6 +156,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             receipts={receipts}
             expenses={expenses}
             picks={picks}
+            purchases={purchases}
             role={role}
             canWrite={canWrite}
             readOnly={!!readOnly}

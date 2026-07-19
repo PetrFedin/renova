@@ -1,6 +1,6 @@
 /** Как считается факт бюджета — контракт UI ↔ API. Подробнее: docs/BUDGET_FACT.md */
 export const BUDGET_FACT_FORMULA_HINT =
-  'Факт на сводке = budget_spent с сервера. Список расходов = чеки + os-записи + закупки «Куплено» без дублей. Согласованные материалы без покупки в факт не входят.';
+  'Факт на сводке = budget_spent с сервера. Закупка попадает в факт на paid, а delivered добирает пропущенную оплату. Список расходов предпочитает Expense-строки и не дублирует их purchased-материалами той же закупки.';
 export type BudgetFactReconcile = {
   serverFact: number;
   listTotal: number;

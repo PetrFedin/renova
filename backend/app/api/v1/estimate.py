@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.models.entities import Project
 from app.services import project_service as proj_svc
-from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate
+from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
 
@@ -62,13 +62,13 @@ async def materials_stats(project_id: str, user: User = Depends(get_current_user
     return material_stats(p.estimate_lines)
 
 
-@router.post("/lock")
-async def lock_project_estimate(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # P0.4 / W48: заказчик согласует базовую смету; исполнитель может зафиксировать первым.
-    if user.role not in (UserRole.contractor, UserRole.customer):
-        raise HTTPException(403, "Фиксация сметы доступна заказчику и исполнителю")
+@router.post("/propose-lock")
+async def propose_project_estimate_lock(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W57: исполнитель отправляет смету на согласование (без estimate_locked_at)."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, "Предложить фиксацию может только исполнитель")
     await require_project(db, project_id, user, write=True)
-    proj, result = await lock_estimate(db, project_id, locked_by=user.id)
+    proj, result = await propose_estimate_lock(db, project_id, proposed_by=user.id)
     if not proj:
         code = result.get("code")
         if code == "empty_estimate":
@@ -78,6 +78,32 @@ async def lock_project_estimate(project_id: str, user: User = Depends(get_curren
         raise HTTPException(409, detail=result)
     return {
         "ok": True,
+        "code": "proposed",
+        "estimate_lock_proposed_at": proj.estimate_lock_proposed_at.isoformat() if proj.estimate_lock_proposed_at else None,
+        "estimate_locked_at": None,
+    }
+
+
+@router.post("/lock")
+async def lock_project_estimate(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W57: фиксацию подтверждает только заказчик."""
+    if user.role != UserRole.customer:
+        raise HTTPException(403, detail={"code": "customer_lock_required", "message": "Фиксацию сметы подтверждает заказчик"})
+    await require_project(db, project_id, user, write=True)
+    proj, result = await lock_estimate(db, project_id, locked_by=user.id)
+    if not proj:
+        code = result.get("code")
+        if code == "empty_estimate":
+            raise HTTPException(400, detail=result)
+        raise HTTPException(404, "Проект не найден")
+    if result.get("code") == "already_locked":
+        raise HTTPException(409, detail=result)
+    if result.get("code") == "customer_lock_required":
+        raise HTTPException(403, detail=result)
+    return {
+        "ok": True,
         "estimate_locked_at": proj.estimate_locked_at.isoformat() if proj.estimate_locked_at else None,
         "contract": result.get("contract"),
     }
+
+

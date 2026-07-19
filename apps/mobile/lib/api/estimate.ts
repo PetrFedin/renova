@@ -13,6 +13,13 @@ export const estimateApi = {
       { method: 'POST' },
       userId,
     ),
+  /** W57: исполнитель предлагает фиксацию (без lock) */
+  proposeEstimateLock: (userId: string, projectId: string) =>
+    req<{ ok: boolean; code?: string; estimate_lock_proposed_at?: string }>(
+      `/api/v1/projects/${projectId}/estimate/propose-lock`,
+      { method: 'POST' },
+      userId,
+    ),
   listChangeOrders: (userId: string, projectId: string) => req<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, {}, userId),
   createChangeOrder: (userId: string, projectId: string, body: object) =>
     req(`/api/v1/projects/${projectId}/change-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),

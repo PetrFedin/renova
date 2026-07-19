@@ -1,5 +1,5 @@
 /** Единый список трат на вкладке «Бюджет → Расходы»: чеки + osExpenses + закупки материалов */
-import type { MaterialPick, OsExpense, ReceiptItem, Room, Stage } from '@/lib/api';
+import type { MaterialPick, OsExpense, Purchase, ReceiptItem, Room, Stage } from '@/lib/api';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { buildExpenseDetailRows, type ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 
@@ -9,8 +9,9 @@ export function buildUnifiedBudgetExpenses(
   rooms: Room[],
   stages: Stage[],
   picks: MaterialPick[] = [],
+  purchases: Purchase[] = [],
 ): ExpenseDetailRow[] {
-  return buildExpenseDetailRows(receipts, expenses, picks, rooms, stages)
+  return buildExpenseDetailRows(receipts, expenses, picks, rooms, stages, purchases)
     .filter((row) => row.kind === 'receipt' || row.kind === 'expense' || row.kind === 'material')
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }

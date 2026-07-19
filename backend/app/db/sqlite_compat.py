@@ -455,6 +455,16 @@ def ensure_os_schema() -> None:
                 c.execute("ALTER TABLE projects ADD COLUMN estimate_locked_at TEXT")
             except Exception:
                 pass
+        if "estimate_lock_proposed_at" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN estimate_lock_proposed_at TEXT")
+            except Exception:
+                pass
+        if "estimate_lock_proposed_by" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN estimate_lock_proposed_by TEXT")
+            except Exception:
+                pass
 
     if "chat_thread_participants" not in tables:
         c.executescript("""

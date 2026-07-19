@@ -186,9 +186,10 @@ export function buildProjectOsSnapshot(
       kind: 'expense',
     };
   } else if (estimateNeedsLock && role === 'contractor') {
+    const proposed = !!project.estimate_lock_proposed_at;
     nextAction = {
-      title: 'Зафиксировать смету',
-      subtitle: 'Отправить заказчику на согласование',
+      title: proposed ? 'Смета у заказчика' : 'Отправить смету на согласование',
+      subtitle: proposed ? 'Ждём фиксацию заказчиком' : 'Предложить фиксацию без одностороннего lock',
       button: 'Смета',
       href: objectTabRoute(role, 'estimate'),
       kind: 'expense',

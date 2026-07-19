@@ -6,7 +6,18 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import BudgetLine, EstimateLine, Expense, LineType, Payment, PaymentStatus, Project, Receipt
+from app.models.entities import (
+    BudgetLine,
+    EstimateLine,
+    Expense,
+    LineType,
+    Payment,
+    PaymentStatus,
+    Project,
+    Purchase,
+    PurchaseStatus,
+    Receipt,
+)
 
 RESERVE_PCT = 0.12
 CATEGORY_MAP = {
@@ -225,39 +236,106 @@ async def expense_from_payment(db: AsyncSession, pay: Payment) -> Expense | None
     return exp
 
 
-async def expense_from_purchase(db: AsyncSession, purchase) -> Expense | None:
-    """W56: факт материалов — Expense на purchase при paid/delivered (идемпотентно по purchase_id)."""
-    from app.models.entities import PurchaseStatus
+def _single_purchase_field(purchase: Purchase, field: str) -> str | None:
+    values = {
+        value
+        for item in (purchase.items or [])
+        if (value := getattr(item, field, None))
+    }
+    if len(values) == 1:
+        return next(iter(values))
+    return None
 
+
+def _purchase_title(purchase: Purchase) -> str:
+    supplier_name = (purchase.supplier_name or "").strip()
+    if supplier_name:
+        return f"Закупка · {supplier_name}"
+    item_names = [item.name for item in (purchase.items or []) if item.name]
+    if len(item_names) == 1:
+        return f"Закупка · {item_names[0]}"
+    return "Закупка материалов"
+
+
+async def _purge_stale_purchase_expenses(db: AsyncSession, project_id: str) -> None:
+    """Убирает ledger-записи по закупкам, которые уже не должны участвовать в факте."""
+    active_purchase_ids = {
+        purchase_id
+        for purchase_id, in (
+            await db.execute(
+                select(Purchase.id).where(
+                    Purchase.project_id == project_id,
+                    Purchase.status.in_((PurchaseStatus.paid, PurchaseStatus.delivered)),
+                )
+            )
+        ).all()
+    }
+    rows = (
+        await db.execute(
+            select(Expense).where(
+                Expense.project_id == project_id,
+                Expense.purchase_id.is_not(None),
+            )
+        )
+    ).scalars().all()
+    removed = False
+    for row in rows:
+        if row.purchase_id not in active_purchase_ids:
+            await db.delete(row)
+            removed = True
+    if removed:
+        await db.flush()
+
+
+async def expense_from_purchase(db: AsyncSession, purchase: Purchase) -> Expense | None:
+    """W56: канон факта материалов — Expense создаётся на paid, delivered добирает пропущенную оплату."""
     if purchase.status not in (PurchaseStatus.paid, PurchaseStatus.delivered):
         return None
-    amount = float(getattr(purchase, "total_amount", None) or getattr(purchase, "amount", None) or 0)
-    if amount <= 0 and getattr(purchase, "items", None):
-        amount = sum(float(i.qty or 0) * float(getattr(i, "unit_price", 0) or 0) for i in purchase.items)
+
+    amount = round(float(purchase.total_amount or 0), 2)
+    if amount <= 0:
+        amount = round(
+            sum(float(item.qty or 0) * float(item.unit_price or 0) for item in (purchase.items or [])),
+            2,
+        )
     if amount <= 0:
         return None
+
+    receipt_existing = None
+    if purchase.receipt_id:
+        receipt_existing = await _dedupe_linked_expenses(db, receipt_id=purchase.receipt_id)
     existing = await _dedupe_linked_expenses(db, purchase_id=purchase.id)
-    if existing:
-        existing.amount = amount
-        existing.status = "confirmed"
-        existing.title = existing.title or (getattr(purchase, "title", None) or "Закупка материалов")
+    exp = existing or receipt_existing
+    if existing and receipt_existing and existing.id != receipt_existing.id:
+        await db.delete(receipt_existing)
         await db.flush()
-        return existing
-    title = getattr(purchase, "title", None) or getattr(purchase, "supplier_name", None) or "Закупка материалов"
-    exp = Expense(
-        project_id=purchase.project_id,
-        purchase_id=purchase.id,
-        title=str(title)[:200],
-        category="materials",
-        amount=amount,
-        status="confirmed",
-        payment_method="transfer",
-        expense_date=getattr(purchase, "paid_at", None)
-        or getattr(purchase, "delivered_at", None)
-        or getattr(purchase, "created_at", None)
-        or datetime.utcnow(),
-    )
-    db.add(exp)
+
+    if not exp:
+        exp = Expense(
+            project_id=purchase.project_id,
+            purchase_id=purchase.id,
+            title=_purchase_title(purchase),
+            category="materials",
+            amount=amount,
+            status="confirmed",
+            payment_method="transfer",
+            expense_date=purchase.paid_at or purchase.delivered_at or purchase.created_at or datetime.utcnow(),
+        )
+        db.add(exp)
+
+    exp.project_id = purchase.project_id
+    exp.purchase_id = purchase.id
+    exp.receipt_id = purchase.receipt_id
+    exp.room_id = _single_purchase_field(purchase, "room_id")
+    exp.stage_id = _single_purchase_field(purchase, "stage_id")
+    exp.material_pick_id = _single_purchase_field(purchase, "material_pick_id")
+    exp.title = _purchase_title(purchase)
+    exp.category = "materials"
+    exp.amount = amount
+    exp.status = "confirmed"
+    exp.payment_method = exp.payment_method or "transfer"
+    exp.supplier_name = purchase.supplier_name
+    exp.expense_date = purchase.paid_at or purchase.delivered_at or exp.expense_date or purchase.created_at or datetime.utcnow()
     await db.flush()
     return exp
 
@@ -271,6 +349,18 @@ async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
     payments = (await db.execute(select(Payment).where(Payment.project_id == project_id, Payment.status == PaymentStatus.confirmed))).scalars().all()
     for pay in payments:
         await expense_from_payment(db, pay)
+    purchases = (
+        await db.execute(
+            select(Purchase)
+            .where(
+                Purchase.project_id == project_id,
+                Purchase.status.in_((PurchaseStatus.paid, PurchaseStatus.delivered)),
+            )
+        )
+    ).scalars().all()
+    for purchase in purchases:
+        await expense_from_purchase(db, purchase)
+    await _purge_stale_purchase_expenses(db, project_id)
     expenses = (await db.execute(select(Expense).where(Expense.project_id == project_id, Expense.status.in_(("confirmed", "pending_receipt"))))).scalars().all()
     lines = (await db.execute(select(BudgetLine).where(BudgetLine.project_id == project_id))).scalars().all()
     cat_totals: dict[str, float] = {}

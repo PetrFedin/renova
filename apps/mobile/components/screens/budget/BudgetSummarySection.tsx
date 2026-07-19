@@ -10,7 +10,7 @@ import { RepairControlSummary } from '@/components/renova/RepairControlSummary';
 import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
 import { BUDGET_SEGMENT_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
-import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, ReceiptItem, Room, Stage } from '@/lib/api';
+import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, Purchase, ReceiptItem, Room, Stage } from '@/lib/api';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import { formatForecastOverLabel } from '@/lib/domain/formatBudgetHint';
@@ -32,6 +32,7 @@ type Props = {
   budgetAlerts: BudgetAlert[];
   expenses: OsExpense[];
   pendingPayments: Payment[];
+  purchases?: Purchase[];
   stages?: Stage[];
   rooms?: Room[];
   picks?: MaterialPick[];
@@ -50,11 +51,11 @@ type Props = {
 export function BudgetSummarySection(props: Props) {
   const {
     userId, projectId, summary, summaryWidgets, figures, riskColor, receipts, payments,
-    budgetAlerts, expenses, pendingPayments, stages = [], rooms = [], picks = [], bwVisible, role, readOnly, customerBudget,
+    budgetAlerts, expenses, pendingPayments, purchases = [], stages = [], rooms = [], picks = [], bwVisible, role, readOnly, customerBudget,
     projectStart, projectEnd, periodParam, focusParam, onPaymentPress, onExpensePress,
   } = props;
   const pathname = usePathname();
-  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks);
+  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks, purchases);
   const period = parseBudgetPeriod(periodParam);
   const focus = parseBudgetFocus(focusParam);
 

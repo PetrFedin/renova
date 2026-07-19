@@ -119,7 +119,39 @@ export default function PortalScreen() {
         <Text style={s.ro}>{portalReadOnly ? 'Только просмотр' : 'Приёмка · оплата · подпись'} · {session.project_name}</Text>
       </View>
 
-      {(snapshot.pending_acceptances?.length ?? 0) > 0 && canAcceptPortal ? (
+      {(snapshot as any).pending_work_schedule ? (
+        <View style={s.card}>
+          <Text style={s.cardHead}>План-график</Text>
+          <Text style={s.line}>{(snapshot as any).pending_work_schedule.title || 'График работ'} · на согласовании</Text>
+          {(snapshot as any).can_confirm_schedule && !portalReadOnly ? (
+            <View style={s.payActions}>
+              <Pressable
+                style={s.acceptBtn}
+                onPress={async () => {
+                  try {
+                    await api.portalConfirmSchedule(
+                      session.user_id,
+                      session.project_id,
+                      (snapshot as any).pending_work_schedule.id,
+                      portalToken,
+                    );
+                    await refreshPortalSnapshot(session.user_id, session.project_id);
+                    Alert.alert('График', 'План-график согласован');
+                  } catch (e) {
+                    Alert.alert('График', apiErrorMessage(e, 'Не удалось подтвердить'));
+                  }
+                }}
+              >
+                <Text style={s.acceptBtnT}>Согласовать график</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={s.muted}>Ожидает подтверждения заказчиком в приложении Renova</Text>
+          )}
+        </View>
+      ) : null}
+
+{(snapshot.pending_acceptances?.length ?? 0) > 0 && canAcceptPortal ? (
         <View style={s.card}>
           <Text style={s.cardHead}>Приёмка этапов</Text>
           {snapshot.pending_acceptances!.map((acc) => (

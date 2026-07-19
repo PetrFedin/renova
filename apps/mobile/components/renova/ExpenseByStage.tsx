@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { stagePlanFromEstimate } from '@/lib/stageEstimate';
 import { stageSpentUnified } from '@/lib/domain/expenseAnalytics';
-import type { Stage, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Room } from '@/lib/api';
+import type { Stage, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Purchase, Room } from '@/lib/api';
 
 export function ExpenseByStage({
   stages,
@@ -12,6 +12,7 @@ export function ExpenseByStage({
   receipts,
   expenses,
   picks = [],
+  purchases = [],
   rooms = [],
   returnTo,
 }: {
@@ -20,13 +21,14 @@ export function ExpenseByStage({
   receipts: ReceiptItem[];
   expenses?: OsExpense[];
   picks?: MaterialPick[];
+  purchases?: Purchase[];
   rooms?: Room[];
   returnTo?: string;
 }) {
   const ex = expenses || [];
   const rows = stages.map((st) => ({
     st,
-    spent: stageSpentUnified(receipts, ex, picks, rooms, stages, st.id),
+    spent: stageSpentUnified(receipts, ex, picks, rooms, stages, st.id, purchases),
     plan: stagePlanFromEstimate(st, lines),
   })).filter((x) => x.plan > 0 || x.spent > 0);
 

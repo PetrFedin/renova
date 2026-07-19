@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { api, type MaterialPick, type OsExpense, type ReceiptItem } from '@/lib/api';
+import { api, type MaterialPick, type OsExpense, type Purchase, type ReceiptItem } from '@/lib/api';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { ExpenseByCategory } from '@/components/renova/ExpenseByCategory';
 import { ExpenseByFloor } from '@/components/renova/ExpenseByFloor';
@@ -33,6 +33,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [expenses, setExpenses] = useState<OsExpense[]>([]);
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiSummary, setApiSummary] = useState<{ receipts_total: number; expenses_total?: number } | null>(null);
   const [osBudget, setOsBudget] = useState<import('@/lib/api').OsBudgetSummary | null>(null);
@@ -51,10 +52,11 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     setLoading(true);
     try {
       await loadProject(activeProject.id);
-      const [rc, ex, pk, sm, ob, kh] = await Promise.all([
+      const [rc, ex, pk, pur, sm, ob, kh] = await Promise.all([
         api.listReceipts(user.id, activeProject.id).catch(() => [] as ReceiptItem[]),
         api.osExpenses(user.id, activeProject.id).catch(() => [] as OsExpense[]),
         api.listMaterialPicks(user.id, activeProject.id).catch(() => [] as MaterialPick[]),
+        api.listPurchases(user.id, activeProject.id).catch(() => [] as Purchase[]),
         api.expensesSummary(user.id, activeProject.id).catch(() => null),
         api.osBudget(user.id, activeProject.id).catch(() => null),
         api.kpiHistory(user.id, activeProject.id).catch(() => []),
@@ -62,6 +64,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
       setReceipts(rc);
       setExpenses(ex);
       setPicks(pk);
+      setPurchases(pur);
       setApiSummary(sm);
       setOsBudget(ob);
       setKpiPoints((kh as { margin: number; at: string }[]).slice(-6).map((p) => ({
@@ -89,7 +92,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   const stages = activeProject.stages || [];
   const lines = activeProject.estimate_lines || [];
   const receiptTotal = apiSummary?.receipts_total ?? receipts.reduce((a, r) => a + r.amount, 0);
-  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks);
+  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks, purchases);
   const listTotal = unifiedExpenseTotal(unifiedRows);
 
   const planFact = resolveBudgetFigures(activeProject, osBudget);
@@ -128,6 +131,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
         receipts={receipts}
         expenses={expenses}
         picks={picks}
+        purchases={purchases}
         rooms={rooms}
         stages={stages}
         compact={!full}
