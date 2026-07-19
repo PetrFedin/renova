@@ -60,4 +60,21 @@ export const osApi = {
   },
   kpiHistory: (userId: string, projectId: string) => req<{ margin: number; at: string }[]>(`/api/v1/projects/${projectId}/kpi-history`, {}, userId),
   kpiSnapshot: (userId: string, projectId: string) => req(`/api/v1/projects/${projectId}/kpi-snapshot`, { method: 'POST' }, userId),
+
+  export1cPaymentsCsv: async (userId: string, projectId: string) => {
+    const { exportProjectCsvFile } = await import('@/lib/exportProjectCsv');
+    await exportProjectCsvFile(userId, `/api/v1/projects/${projectId}/export/1c-payments.csv`, `renova-1c-${projectId.slice(0, 8)}.csv`);
+  },
+  exportBankRegisterCsv: async (userId: string, projectId: string) => {
+    const { exportProjectCsvFile } = await import('@/lib/exportProjectCsv');
+    await exportProjectCsvFile(userId, `/api/v1/projects/${projectId}/export/bank-register.csv`, `renova-bank-${projectId.slice(0, 8)}.csv`);
+  },
+  pushWeeklyDigest: (userId: string, projectId: string) =>
+    req<{ ok: boolean; notified: number }>(`/api/v1/projects/${projectId}/digest/weekly`, { method: 'POST' }, userId),
+  createWarrantyClaim: (userId: string, projectId: string, body: { title?: string; description?: string }) =>
+    req<{ ok: boolean; issue_id: string; document_id: string }>(
+      `/api/v1/projects/${projectId}/warranty-claims`,
+      { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
 };

@@ -139,6 +139,43 @@ export function DocumentsHub({
         format: 'CSV',
         run: () => api.exportExpensesCsv(userId, projectId),
       },
+      onecCsv: {
+        id: 'onec',
+        label: 'Выгрузка в 1С',
+        desc: 'Платежи и доп. работы (CSV ;)',
+        format: 'CSV',
+        run: () => api.export1cPaymentsCsv(userId, projectId),
+      },
+      bankCsv: {
+        id: 'bank',
+        label: 'Реестр для банка',
+        desc: 'Оплаты для сверки с выпиской',
+        format: 'CSV',
+        run: () => api.exportBankRegisterCsv(userId, projectId),
+      },
+      weeklyDigest: {
+        id: 'digest',
+        label: 'Недельный дайджест',
+        desc: 'Push участникам + KPI PDF',
+        format: 'Push',
+        run: async () => {
+          await api.pushWeeklyDigest(userId, projectId);
+          await api.exportKpiWeeklyPdf(userId, projectId);
+        },
+      },
+      warrantyClaim: {
+        id: 'warranty',
+        label: 'Гарантийное обращение',
+        desc: 'Тикет + черновик документа',
+        format: 'Заявка',
+        run: async () => {
+          const res = await api.createWarrantyClaim(userId, projectId, {
+            title: 'Гарантийное обращение',
+            description: 'Создано из Document Center',
+          });
+          Alert.alert('Гарантия', `Обращение создано. Документ: ${res.document_id.slice(0, 8)}…`);
+        },
+      },
       activityPdf: {
         id: 'activity',
         label: 'Архив ремонта',
@@ -189,6 +226,11 @@ export function DocumentsHub({
         title: 'Главное',
         hint: 'То, что чаще всего нужно заказчику',
         rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv],
+      },
+      {
+        title: 'Учёт RU',
+        hint: '1С, банк, дайджест и гарантия',
+        rows: [rows.onecCsv, rows.bankCsv, rows.weeklyDigest, rows.warrantyClaim],
       },
       {
         title: 'Архив и сроки',

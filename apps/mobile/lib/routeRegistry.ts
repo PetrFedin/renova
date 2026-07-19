@@ -179,6 +179,16 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     entryPoints: ['os.menu', 'home.schedule', 'dock.optional'],
     descriptionRu: 'Единый hub сроков (календарь + план). Не дублировать work-schedule.',
   },
+  {
+    id: 'warranty-claim',
+    path: '/quality-control',
+    titleRu: 'Гарантия',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'beta',
+    entryPoints: ['documents.export', 'home.completion'],
+    descriptionRu: 'P5.1 lite: тикет через Document Center → QC',
+  },
   { id: 'conflicts', path: '/conflicts', titleRu: 'Конфликты sync', audience: 'contractor', visibility: 'deeplink', status: 'ga', entryPoints: ['offline.banner'] },
   {
     id: 'portal',

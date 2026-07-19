@@ -1,5 +1,6 @@
 """PDF и экспорт проекта — fpdf2 с транслитерацией кириллицы."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -185,3 +186,120 @@ async def full_dossier(project_id: str, user: User = Depends(get_current_user), 
     for it in items[:40]:
         pdf_line(pdf, f"{it.get('at', '')[:10]} {it.get('title', '')}", size=8)
     return pdf_response(pdf, f"full-{project_id[:8]}.pdf")
+
+
+@router.get("/{project_id}/export/1c-payments.csv")
+async def export_1c_payments_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.1a: платежи + CO для 1С (CSV ;)."""
+    from app.services.integrations.onec_export import build_1c_payments_csv
+
+    project = await require_project(db, project_id, user, write=False)
+    body = await build_1c_payments_csv(db, project)
+    return Response(
+        body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=renova-1c-{project_id[:8]}.csv"},
+    )
+
+
+@router.get("/{project_id}/export/bank-register.csv")
+async def export_bank_register_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.1b: реестр оплат для сверки с банком."""
+    from app.services.integrations.onec_export import build_bank_register_csv
+
+    project = await require_project(db, project_id, user, write=False)
+    body = await build_bank_register_csv(db, project)
+    return Response(
+        body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=renova-bank-{project_id[:8]}.csv"},
+    )
+
+
+@router.post("/{project_id}/digest/weekly")
+async def push_weekly_digest(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.2c lite: push-дайджест со ссылкой на KPI week PDF (без обязательного Ollama)."""
+    from app.services import notification_service as notif
+
+    project = await require_project(db, project_id, user, write=True)
+    members = [x for x in {project.customer_id, project.contractor_id, user.id} if x]
+    title = f"Недельный дайджест: {project.name}"
+    body = f"План {project.budget_planned:.0f} ₽ · факт {project.budget_spent:.0f} ₽ · откройте KPI PDF"
+    for uid in members:
+        role_budget = "/(customer)/(tabs)/budget" if uid == project.customer_id else "/(contractor)/(tabs)/budget"
+        await notif.notify(
+            db,
+            user_id=uid,
+            project_id=project_id,
+            notification_type="document",
+            title=title,
+            body=body,
+            link_path=role_budget,
+            return_to="/documents",
+        )
+    await db.commit()
+    return {"ok": True, "notified": len(members), "kpi_path": f"/api/v1/projects/{project_id}/kpi-weekly.pdf"}
+
+
+class WarrantyClaimIn(BaseModel):
+    title: str = Field(default="Гарантийное обращение", min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+
+
+@router.post("/{project_id}/warranty-claims")
+async def create_warranty_claim(
+    project_id: str,
+    body: WarrantyClaimIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P5.1 lite: гарантийный тикет = issue + черновик документа warranty."""
+    from app.models.entities import ProjectIssue
+    from app.models.project_documents import DocumentStatus, DocumentType
+    from app.services import project_document_service as docs_svc
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    project = await require_project(db, project_id, user, write=True)
+    issue = ProjectIssue(
+        project_id=project_id,
+        title=f"[Гарантия] {body.title}"[:255],
+        description=body.description,
+        severity="high",
+        status="open",
+    )
+    db.add(issue)
+    await db.flush()
+    draft = await docs_svc.create_document(
+        db,
+        project_id=project_id,
+        created_by=user.id,
+        title=f"Гарантия: {body.title}"[:200],
+        document_type=DocumentType.warranty.value,
+        notes=f"warranty_issue:{issue.id}",
+    )
+    draft.status = DocumentStatus.draft.value
+    await db.flush()
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="WarrantyClaim",
+        title=issue.title,
+        body=body.description,
+        link_path="/quality-control",
+    )
+    other = project.contractor_id if user.id == project.customer_id else project.customer_id
+    if other:
+        await notif.notify(
+            db,
+            user_id=other,
+            project_id=project_id,
+            notification_type="issue",
+            title=issue.title,
+            body=body.description or "Новое гарантийное обращение",
+            link_path="/quality-control",
+            return_to="/(customer)/(tabs)/",
+        )
+    await db.commit()
+    return {"ok": True, "issue_id": issue.id, "document_id": draft.id}
