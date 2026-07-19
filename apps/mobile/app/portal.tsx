@@ -83,9 +83,10 @@ export default function PortalScreen() {
   const sched = snapshot.schedule as { current_stage?: string; progress_percent?: number; planned_end?: string };
 
   const portalReadOnly = session.read_only || snapshot.read_only;
-  const canPayPortal = !portalReadOnly && (session.scopes?.includes('pay') || snapshot.pending_payments.length > 0);
-  const canAcceptPortal = !portalReadOnly && (session.scopes?.includes('accept_stage') || snapshot.can_accept_stage);
-  const canSignPortal = !portalReadOnly && (session.scopes?.includes('sign_document') || snapshot.can_sign_documents);
+  // Честность scopes: не выводить оплату/приёмку/подпись из «есть pending» без явного права в токене
+  const canPayPortal = !portalReadOnly && Boolean(session.scopes?.includes('pay'));
+  const canAcceptPortal = !portalReadOnly && Boolean(session.scopes?.includes('accept_stage'));
+  const canSignPortal = !portalReadOnly && Boolean(session.scopes?.includes('sign_document'));
 
 
   const progress = sched.progress_percent ?? snapshot.project.progress_percent ?? 0;

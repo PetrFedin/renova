@@ -18,6 +18,8 @@ class PortalSessionIn(BaseModel):
 
 class PortalLinkCreate(BaseModel):
     allow_accept_stage: bool = False
+    # Явное право оплаты по magic-link (не выводить из pending_payments на клиенте)
+    allow_pay: bool = False
 
 
 class PortalLinkOut(BaseModel):
@@ -96,6 +98,11 @@ async def create_viewer_portal_link(
         if guest.id != p.customer_id:
             raise HTTPException(403, "accept_stage_only_for_customer")
         scopes = ["read", "accept_stage", "sign_document"]
+    if body.allow_pay:
+        if guest.id != p.customer_id:
+            raise HTTPException(403, "pay_only_for_customer")
+        if "pay" not in scopes:
+            scopes.append("pay")
     token = portal_tok.create_portal_token(project_id=project_id, user_id=viewer_user_id, scopes=scopes)
     return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
 
@@ -116,6 +123,8 @@ async def create_customer_portal_link(
     scopes = ["read"]
     if body.allow_accept_stage:
         scopes.extend(["accept_stage", "sign_document"])
+    if body.allow_pay and "pay" not in scopes:
+        scopes.append("pay")
     token = portal_tok.create_portal_token(project_id=project_id, user_id=user.id, scopes=scopes)
     return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
 

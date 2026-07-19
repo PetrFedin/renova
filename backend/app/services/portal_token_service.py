@@ -19,7 +19,11 @@ def create_portal_token(*, project_id: str, user_id: str, ttl_hours: int = 168, 
     payload = {
         "sub": user_id,
         "project_id": project_id,
-        "read_only": not (scopes and "accept_stage" in scopes),
+        # read_only только если нет write-scopes (приёмка / оплата / подпись)
+        "read_only": not (
+            scopes
+            and any(s in scopes for s in ("accept_stage", "pay", "sign_document"))
+        ),
         "scopes": scopes or ["read"],
         "iat": now,
         "exp": now + ttl_hours * 3600,

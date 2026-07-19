@@ -150,8 +150,14 @@ async def _confirm_message(project_id: str, thread_id: str, message_id: str, use
         meta = chat_svc._parse_meta(msg.meta_json)
         pid = meta.get("payment_id")
         if pid and user.role.value == "customer":
+            # Привязка к project_id маршрута — нельзя подтвердить чужой платёж из чата A
+            meta_project = meta.get("project_id")
+            if meta_project and str(meta_project) != str(project_id):
+                raise HTTPException(409, "payment_project_mismatch")
             from app.services import payment_service as pay_svc
-            await pay_svc.confirm_payment(db, pid)
+            confirmed = await pay_svc.confirm_payment(db, pid, project_id=project_id)
+            if not confirmed:
+                raise HTTPException(404, "payment_not_found_or_not_pending")
     return chat_svc.msg_dict(msg)
 
 

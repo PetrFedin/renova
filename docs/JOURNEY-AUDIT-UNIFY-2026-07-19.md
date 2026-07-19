@@ -42,14 +42,16 @@ Canvas: `renova-journey-audit.canvas.tsx` (Cursor canvases).
 
 | ID | Проблема | Почему важно |
 |----|----------|--------------|
-| D1 | `purchase` paid/delivered не создаёт `Expense` | Fact бюджета mobile≠server |
-| D2 | Legacy `project_service.accept_stage` | Обход AcceptOrchestrator |
-| D3 | Unilateral estimate lock | Нет mutual consent |
-| D4 | Auto-approve picks при create purchase | Минует customer approve |
-| U1 | Dual accept surfaces (banner vs list «Проверить») | Когнитивный fork |
-| U2 | Portal без schedule/estimate/approvals | Guest неполный golden path |
-| U3 | CO verbs «Согласовать» vs «Одобрить» | Дубль языка |
-| O1 | H0 staging HTTPS + live pay + 3 paid Pro | Доверие инвестора |
+| D1 | ~~Purchase→Expense~~ | **закрыто W56** |
+| D2 | ~~legacy accept_stage~~ | **закрыто W56** (410 / RuntimeError) |
+| D3 | ~~Unilateral estimate lock~~ | **закрыто W57** |
+| D4 | ~~Auto-approve picks~~ | **закрыто W57** |
+| U1 | ~~Dual accept surfaces~~ | **закрыто W57/W58** |
+| U2 | ~~Portal schedule/estimate~~ | **закрыто W57** |
+| U3 | ~~CO verbs~~ | **закрыто W58** |
+| P1 | Portal pay без scope `pay` | **закрыто W59** |
+| P2 | Chat confirm_payment без project_id | **закрыто W59** |
+| O1 | H0 staging HTTPS + live pay + TestFlight | **блокер пилота (ops)** |
 
 ---
 
@@ -61,3 +63,16 @@ npx tsx lib/domain/buildHomeKpiDetail.test.ts
 ```
 
 Демо: customer Home при `schedule.status=submitted` → CTA «Подтвердить график»; complete → Документы.
+
+## Статус волн после аудита (develop)
+
+| Волна | Коммит | Закрыто |
+|-------|--------|---------|
+| W55 | `982edcd` | nextAction/inbox, warranty, portal mode, assign |
+| W56 | `c3e1db9` | D1 Purchase→Expense, D2 legacy accept |
+| W57 | `b4da976` | D3 mutual lock, D4 picks gate, U1/U2 portal schedule |
+| W58 | `ea76b40` | U3 verbs, control→repair hub |
+| W59 | *(этот коммит)* | portal `pay` scope + chat confirm project bind |
+
+**Остаётся блокером пилота:** O1 H0 ops (HTTPS staging + live YuKassa + TestFlight).
+

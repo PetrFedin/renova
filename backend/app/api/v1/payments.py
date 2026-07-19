@@ -204,6 +204,14 @@ async def yookassa_checkout(
     portal_token = (body.portal_token if body else None) or None
     if portal_token:
         from app.services import portal_token_service as portal_tok
+        try:
+            claims = portal_tok.verify_portal_token(portal_token)
+        except ValueError:
+            raise HTTPException(401, "invalid_portal_token")
+        if claims.get("project_id") != project_id or claims.get("user_id") != user.id:
+            raise HTTPException(403, "portal_token_mismatch")
+        if "pay" not in (claims.get("scopes") or []):
+            raise HTTPException(403, "portal_pay_scope_required")
         return_url = f"{portal_tok.portal_url(portal_token).split('?', 1)[0]}?token={portal_token}&paid=1&paymentId={payment_id}"
 
     pay = await yk.create_payment(

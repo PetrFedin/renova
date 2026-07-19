@@ -10,10 +10,38 @@ export const miscApi = {
   linkContractor: (userId: string, projectId: string, contractorId: string) =>
     req<ProjectDetail>(`/api/v1/projects/${projectId}/contractor`, { method: 'POST', body: JSON.stringify({ contractor_id: contractorId }) }, userId),
   removeViewer: (userId: string, projectId: string, viewerUserId: string) => req(`/api/v1/projects/${projectId}/viewers/${viewerUserId}`, { method: 'DELETE' }, userId),
-  createViewerPortalLink: (userId: string, projectId: string, viewerUserId: string) =>
+  createViewerPortalLink: (
+    userId: string,
+    projectId: string,
+    viewerUserId: string,
+    opts?: { allow_accept_stage?: boolean; allow_pay?: boolean },
+  ) =>
     req<{ token: string; url: string; expires_hours: number }>(
       `/api/v1/projects/${projectId}/viewers/${viewerUserId}/portal-link`,
-      { method: 'POST', body: '{}' },
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          allow_accept_stage: Boolean(opts?.allow_accept_stage),
+          allow_pay: Boolean(opts?.allow_pay),
+        }),
+      },
+      userId,
+    ),
+  /** Magic-link для самого заказчика (приёмка / оплата по явным scopes) */
+  createCustomerPortalLink: (
+    userId: string,
+    projectId: string,
+    opts?: { allow_accept_stage?: boolean; allow_pay?: boolean },
+  ) =>
+    req<{ token: string; url: string; expires_hours: number }>(
+      `/api/v1/projects/${projectId}/portal-link`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          allow_accept_stage: opts?.allow_accept_stage !== false,
+          allow_pay: opts?.allow_pay !== false,
+        }),
+      },
       userId,
     ),
   exchangePortalToken: (token: string) =>
