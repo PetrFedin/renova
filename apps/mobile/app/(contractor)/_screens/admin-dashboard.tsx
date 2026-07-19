@@ -69,6 +69,7 @@ export default function AdminDashboardScreen() {
             SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
             {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
             {health.integrations.fns ? ` · ФНС live: ${health.integrations.fns.live_verify_ready ? 'yes' : 'no'}` : ''}
+            {health.integrations.esign ? ` · Kontur: ${health.integrations.esign.kontur_mode}` : ''}
           </Text>
         ) : null}
 
@@ -103,6 +104,7 @@ export default function AdminDashboardScreen() {
             SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
             {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
             {health.integrations.fns ? ` · ФНС live: ${health.integrations.fns.live_verify_ready ? 'yes' : 'no'}` : ''}
+            {health.integrations.esign ? ` · Kontur: ${health.integrations.esign.kontur_mode}` : ''}
           </Text>
         ) : null}
 

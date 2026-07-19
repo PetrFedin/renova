@@ -52,10 +52,18 @@ async def release_health(user: User = Depends(get_current_user)):
     from app.services.yookassa_service import yookassa_health
     from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.automation_reminders_worker import automation_worker_metrics
+    from app.services.esign import list_providers
 
     yk = yookassa_health()
     fns = fns_receipt_health()
     worker = automation_worker_metrics()
+    kontur_mode = (settings.kontur_mode or "off").strip().lower()
+    esign = {
+        "kontur_mode": kontur_mode,
+        "kontur_configured": bool(settings.kontur_api_key) and kontur_mode in ("sandbox", "live"),
+        "webhook_secret_set": bool(settings.esign_webhook_secret),
+        "providers": list_providers(),
+    }
     return {
         "version": "1.0.0",
         "crash_free_rate": 99.2,
@@ -73,6 +81,7 @@ async def release_health(user: User = Depends(get_current_user)):
                 "live_verify_ready": fns["live_verify_ready"],
                 "demo_verify_allowed": fns["demo_verify_allowed"],
             },
+            "esign": esign,
             "smtp": {"configured": bool(settings.smtp_host)},
             "ollama_digest": {
                 "enabled": bool(settings.ollama_digest_enabled),

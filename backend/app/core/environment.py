@@ -173,6 +173,7 @@ def collect_warnings(
     kontur_api_key: str | None = None,
     yookassa_shop_id: str | None = None,
     yookassa_secret: str | None = None,
+    esign_webhook_secret: str | None = None,
 ) -> list[str]:
     """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
@@ -186,6 +187,10 @@ def collect_warnings(
     if name == "staging" and mode in ("sandbox", "live") and not (kontur_api_key or "").strip():
         warnings.append(
             f"staging: KONTUR_MODE={mode} but KONTUR_API_KEY is missing — e-sign will stay unconfigured"
+        )
+    if name in ("staging", "production") and mode in ("sandbox", "live") and not (esign_webhook_secret or "").strip():
+        warnings.append(
+            f"{name}: KONTUR_MODE={mode} but ESIGN_WEBHOOK_SECRET missing — webhooks will 503"
         )
     if name in ("staging", "production"):
         if not ((yookassa_shop_id or "").strip() and (yookassa_secret or "").strip()):

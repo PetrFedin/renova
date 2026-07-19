@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
         kontur_api_key=settings.kontur_api_key,
         yookassa_shop_id=settings.yookassa_shop_id,
         yookassa_secret=settings.yookassa_secret,
+        esign_webhook_secret=settings.esign_webhook_secret,
     ):
         logger.warning(warning)
 

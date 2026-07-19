@@ -47,7 +47,9 @@ def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, 
                     "signer_role": s.signer_role,
                     "signed_at": s.signed_at.isoformat() if s.signed_at else None,
                     "status": s.status,
+                    "provider": getattr(s, "provider_name", None) or s.signature_type,
                     "provider_name": getattr(s, "provider_name", None) or s.signature_type,
+                    "signature_type": s.signature_type,
                     "provider_external_id": getattr(s, "provider_external_id", None),
                 }
                 for s in (signatures or [])
@@ -416,7 +418,7 @@ async def complete_external_signature(
     external_id: str,
     status: str = "signed",
 ) -> DocumentSignature | None:
-    """Wave 3f: webhook завершает pending подпись внешнего провайдера."""
+    """Wave 3f: webhook завершает pending подпись внешнего провайдера + activate doc."""
     row = (
         await db.execute(
             select(DocumentSignature).where(
@@ -432,6 +434,9 @@ async def complete_external_signature(
     row.status = status
     if status == "signed" and not row.signed_at:
         row.signed_at = datetime.utcnow()
+        doc = await db.get(ProjectDocument, row.document_id)
+        if doc and doc.status == DocumentStatus.draft.value:
+            doc.status = DocumentStatus.active.value
     elif status == "failed" and not row.revoked_at:
         row.revoked_at = datetime.utcnow()
     await db.flush()

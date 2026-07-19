@@ -4,6 +4,7 @@ import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { api, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
@@ -403,7 +404,14 @@ export function DocumentsHub({
       ...(konturAvailable ? [{
         text: 'Подписать через Контур',
         onPress: () => withBusy(`sign-kontur-${doc.id}`, async () => {
-          await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' });
+          const signed = await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' }) as {
+            signing_url?: string | null;
+            external_id?: string | null;
+            status?: string;
+          };
+          if (signed?.signing_url) {
+            await WebBrowser.openBrowserAsync(signed.signing_url);
+          }
           const status = await pollDocumentSignature(userId, projectId, doc.id, { provider: 'kontur' });
           await reloadIndex();
           if (status === 'signed') {
@@ -413,7 +421,9 @@ export function DocumentsHub({
           } else {
             Alert.alert(
               'Контур',
-              'Запрос создан (pending). Статус обновится по webhook или при следующем открытии документов.',
+              signed?.signing_url
+                ? 'Подпишите в браузере Контура. Статус обновится по webhook.'
+                : 'Запрос создан (pending). Статус обновится по webhook или при следующем открытии документов.',
             );
           }
         }),

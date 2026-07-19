@@ -1,5 +1,6 @@
 """Document Center: index + canonical ProjectDocument API (D-01…D-07)."""
 import hashlib
+import json
 from datetime import datetime
 import mimetypes
 
@@ -324,7 +325,20 @@ async def sign_project_document(
             )
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
-    return {"signature_id": sig.id, "document": docs_svc.document_dict(doc, version, [sig])}
+    meta = {}
+    if getattr(sig, "meta_json", None):
+        try:
+            meta = json.loads(sig.meta_json)
+        except Exception:
+            meta = {}
+    return {
+        "signature_id": sig.id,
+        "status": sig.status,
+        "external_id": sig.provider_external_id,
+        "signing_url": meta.get("signing_url"),
+        "provider": sig.provider_name or sig.signature_type,
+        "document": docs_svc.document_dict(doc, version, [sig]),
+    }
 
 
 @router.post("/{project_id}/documents/{document_id}/archive")
