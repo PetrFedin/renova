@@ -390,6 +390,24 @@ async def close_warranty_claim(
         raise HTTPException(400, "not_a_warranty_claim")
     issue.status = "closed"
     issue.closed_at = datetime.utcnow()
+    # W46: архивируем связанный warranty-документ
+    try:
+        from sqlalchemy import select
+        from app.models.project_documents import ProjectDocument, DocumentStatus, DocumentType
+        docs = (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.warranty.value,
+                    ProjectDocument.notes.contains(f"warranty_issue:{issue.id}"),
+                )
+            )
+        ).scalars().all()
+        for doc in docs:
+            if doc.status != DocumentStatus.archived.value:
+                doc.status = DocumentStatus.archived.value
+    except Exception:
+        pass
     await act.log_event(
         db,
         project_id=project_id,
@@ -401,6 +419,111 @@ async def close_warranty_claim(
     await db.commit()
     await db.refresh(issue)
     return {"ok": True, "issue": iss.issue_dict(issue)}
+
+
+
+async def _closeout_snapshot(db, project_id: str, project) -> dict:
+    from sqlalchemy import select
+    from app.models.entities import Stage, StageStatus, Payment, PaymentStatus, ProjectIssue
+    from app.models.project_documents import ProjectDocument, DocumentStatus
+
+    stages = list((await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all())
+    stages_done = all(s.status == StageStatus.done for s in stages) if stages else False
+    payments = list((await db.execute(select(Payment).where(Payment.project_id == project_id))).scalars().all())
+    pending_pay = [p for p in payments if p.status == PaymentStatus.pending]
+    acts = list(
+        (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == "acceptance_act",
+                )
+            )
+        ).scalars().all()
+    )
+    acts_active = [
+        d for d in acts
+        if (d.status.value if hasattr(d.status, "value") else d.status)
+        in (DocumentStatus.active.value, DocumentStatus.archived.value, "active", "archived")
+    ]
+    warranty_open = list(
+        (
+            await db.execute(
+                select(ProjectIssue).where(
+                    ProjectIssue.project_id == project_id,
+                    ProjectIssue.title.startswith("[Гарантия]"),
+                    ProjectIssue.status != "closed",
+                )
+            )
+        ).scalars().all()
+    )
+    ready = bool(stages_done and not pending_pay and len(warranty_open) == 0)
+    return {
+        "project_id": project_id,
+        "project_name": project.name,
+        "stages_total": len(stages),
+        "stages_done": sum(1 for s in stages if s.status == StageStatus.done),
+        "all_stages_done": stages_done,
+        "pending_payments": len(pending_pay),
+        "acceptance_acts": len(acts),
+        "acceptance_acts_active": len(acts_active),
+        "warranty_open": len(warranty_open),
+        "ready": ready,
+        "archived": bool(getattr(project, "is_archived", False)),
+        "next_action": (
+            "Объект уже в архиве"
+            if bool(getattr(project, "is_archived", False))
+            else (
+                "Можно завершить объект"
+                if ready
+                else (
+                    "Закройте этапы"
+                    if not stages_done
+                    else ("Подтвердите оплаты" if pending_pay else "Закройте гарантийные обращения")
+                )
+            )
+        ),
+    }
+
+
+@router.get("/{project_id}/closeout-checklist")
+async def closeout_checklist(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W46 lite: готовность объекта к завершению."""
+    project = await require_project(db, project_id, user, write=False)
+    return await _closeout_snapshot(db, project_id, project)
+
+
+@router.post("/{project_id}/closeout")
+async def closeout_project(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W46: завершить объект при ready — помечаем archived если поле есть."""
+    from datetime import datetime
+    from app.services import activity_service as act
+
+    project = await require_project(db, project_id, user, write=True)
+    snap = await _closeout_snapshot(db, project_id, project)
+    if not snap["ready"]:
+        raise HTTPException(409, detail={"code": "closeout_not_ready", **snap})
+    project.is_archived = True
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="ProjectCloseout",
+        title=f"Объект завершён: {project.name}",
+        link_path="/(customer)/(tabs)/home",
+    )
+    await db.commit()
+    snap["archived"] = True
+    snap["next_action"] = "Объект завершён"
+    return {"ok": True, **snap}
 
 
 class BankStatementIn(BaseModel):

@@ -102,10 +102,15 @@ export function QualityControlScreen() {
   const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
 
   const closeIssue = async (issue: ProjectIssue) => {
+    // W46: гарантия → отдельный close + archive doc
     if (!user || !activeProject || readOnly) return;
     setActingId(issue.id);
     try {
-      await api.closeIssue(user.id, activeProject.id, issue.id);
+      if ((issue.title || '').startsWith('[Гарантия]')) {
+        await api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
+      } else {
+        await api.closeIssue(user.id, activeProject.id, issue.id);
+      }
       await load();
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');

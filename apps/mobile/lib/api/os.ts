@@ -123,4 +123,20 @@ export const osApi = {
     ),
   closeWarrantyClaim: (userId: string, projectId: string, issueId: string) =>
     req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId),
+  closeoutChecklist: (userId: string, projectId: string) =>
+    req<{
+      ready: boolean;
+      all_stages_done: boolean;
+      pending_payments: number;
+      warranty_open: number;
+      acceptance_acts_active: number;
+      next_action: string;
+      archived: boolean;
+    }>(`/api/v1/projects/${projectId}/closeout-checklist`, {}, userId),
+  closeoutProject: (userId: string, projectId: string) =>
+    req<{ ok: boolean; ready: boolean; next_action: string }>(
+      `/api/v1/projects/${projectId}/closeout`,
+      { method: 'POST' },
+      userId,
+    ),
 };

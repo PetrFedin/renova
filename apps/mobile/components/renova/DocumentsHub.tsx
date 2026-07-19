@@ -224,6 +224,44 @@ export function DocumentsHub({
           );
         },
       },
+      closeout: {
+        id: 'closeout',
+        label: 'Завершение объекта',
+        desc: 'Чеклист этапов / оплат / гарантии',
+        format: 'Closeout',
+        run: async () => {
+          const snap = await api.closeoutChecklist(userId, projectId);
+          if (snap.archived) {
+            Alert.alert('Closeout', 'Объект уже в архиве');
+            return;
+          }
+          const body = [
+            snap.next_action,
+            `Этапы: ${snap.all_stages_done ? 'все сданы' : 'есть открытые'}`,
+            `Оплаты pending: ${snap.pending_payments}`,
+            `Гарантия open: ${snap.warranty_open}`,
+            `Акты: ${snap.acceptance_acts_active}`,
+          ].join('\n');
+          if (!snap.ready) {
+            Alert.alert('Ещё не готово', body);
+            return;
+          }
+          Alert.alert('Завершить объект?', body, [
+            { text: 'Отмена', style: 'cancel' },
+            {
+              text: 'Завершить',
+              onPress: async () => {
+                try {
+                  const res = await api.closeoutProject(userId, projectId);
+                  Alert.alert('Готово', res.next_action || 'Объект завершён');
+                } catch (e: unknown) {
+                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось завершить');
+                }
+              },
+            },
+          ]);
+        },
+      },
       activityPdf: {
         id: 'activity',
         label: 'Архив ремонта',
@@ -278,7 +316,7 @@ export function DocumentsHub({
       {
         title: 'Учёт RU',
         hint: '1С, банк, дайджест и гарантия',
-        rows: [rows.onecCsv, rows.onecXml, rows.onecCml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim],
+        rows: [rows.onecCsv, rows.onecXml, rows.onecCml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim, rows.closeout],
       },
       {
         title: 'Архив и сроки',

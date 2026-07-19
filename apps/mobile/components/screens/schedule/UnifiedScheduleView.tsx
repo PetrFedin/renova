@@ -1,6 +1,6 @@
 /** Единый календарь: компактный календарь + план работ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { Alert, ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
@@ -64,6 +64,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const [cursor, setCursor] = useState(() => new Date());
   const [planBusy, setPlanBusy] = useState(false);
   const [planHint, setPlanHint] = useState<string | null>(null);
+  const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
@@ -71,8 +72,9 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
     api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch(() => setWorkOrders([]));
     api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => setPurchases([]));
     api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => {
+      setSchedule(s);
       setPlanHint(s ? `План: ${s.status}` : null);
-    }).catch(() => setPlanHint(null));
+    }).catch(() => { setSchedule(null); setPlanHint(null); });
   }, [user?.id, activeProject?.id]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -208,34 +210,124 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
       <ScrollView style={s.planPane} contentContainerStyle={s.planContent}>
         <Text style={s.planTitle}>Расписание и задачи</Text>
         <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
-        {role === 'contractor' && !readOnly ? (
-          <Pressable
-            style={s.planCta}
-            disabled={planBusy}
-            onPress={async () => {
-              if (!user || !activeProject) return;
-              setPlanBusy(true);
-              try {
-                const existing = await api.getActiveWorkSchedule(user.id, activeProject.id);
-                if (existing) {
-                  setPlanHint(`План уже есть · ${existing.status}`);
-                } else {
+        <View style={s.agreeBox}>
+          <Text style={s.agreeTitle}>План-график</Text>
+          <Text style={s.planSub}>
+            {schedule
+              ? `Статус: ${schedule.status}${schedule.items?.length ? ` · ${schedule.items.length} этапов` : ''}`
+              : 'План ещё не создан'}
+          </Text>
+          {!readOnly && role === 'contractor' && !schedule ? (
+            <Pressable
+              style={s.planCta}
+              disabled={planBusy}
+              onPress={async () => {
+                setPlanBusy(true);
+                try {
                   const created = await api.createWorkSchedule(user.id, activeProject.id, { title: 'План-график работ' });
+                  setSchedule(created);
                   setPlanHint(`План создан · ${created.status}`);
+                  reload();
+                } catch {
+                  setPlanHint('Не удалось создать план из этапов');
+                } finally {
+                  setPlanBusy(false);
                 }
-                reload();
-              } catch {
-                setPlanHint('Не удалось создать план из этапов');
-              } finally {
-                setPlanBusy(false);
-              }
-            }}
-          >
-            <Text style={s.planCtaT}>{planBusy ? 'Создаём…' : (planHint || 'Создать план-график из этапов')}</Text>
-          </Pressable>
-        ) : planHint ? (
-          <Text style={s.planSub}>{planHint}</Text>
-        ) : null}
+              }}
+            >
+              <Text style={s.planCtaT}>{planBusy ? 'Создаём…' : 'Создать план-график из этапов'}</Text>
+            </Pressable>
+          ) : null}
+          {!readOnly && role === 'contractor' && schedule && (schedule.status === 'draft' || schedule.status === 'rejected') ? (
+            <Pressable
+              style={s.planCta}
+              disabled={planBusy}
+              onPress={async () => {
+                setPlanBusy(true);
+                try {
+                  const next = await api.submitWorkSchedule(user.id, activeProject.id, schedule.id);
+                  setSchedule(next);
+                  Alert.alert('Отправлено', 'Заказчик получит запрос на согласование графика');
+                  reload();
+                } catch (e: unknown) {
+                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
+                } finally {
+                  setPlanBusy(false);
+                }
+              }}
+            >
+              <Text style={s.planCtaT}>{planBusy ? '…' : 'Отправить заказчику на согласование'}</Text>
+            </Pressable>
+          ) : null}
+          {!readOnly && role === 'customer' && schedule?.status === 'submitted' ? (
+            <View style={s.agreeActions}>
+              <Pressable
+                style={[s.planCta, s.agreeConfirm]}
+                disabled={planBusy}
+                onPress={async () => {
+                  setPlanBusy(true);
+                  try {
+                    const next = await api.confirmWorkSchedule(user.id, activeProject.id, schedule.id);
+                    setSchedule(next);
+                    Alert.alert('Согласовано', 'Даты этапов обновлены по графику');
+                    reload();
+                  } catch (e: unknown) {
+                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось согласовать');
+                  } finally {
+                    setPlanBusy(false);
+                  }
+                }}
+              >
+                <Text style={s.planCtaT}>{planBusy ? '…' : 'Согласовать график'}</Text>
+              </Pressable>
+              <Pressable
+                style={s.planCta}
+                disabled={planBusy}
+                onPress={() => {
+                  Alert.prompt?.(
+                    'Отклонить график',
+                    'Причина (необязательно)',
+                    async (reason) => {
+                      setPlanBusy(true);
+                      try {
+                        const next = await api.rejectWorkSchedule(user.id, activeProject.id, schedule.id, reason || undefined);
+                        setSchedule(next);
+                        reload();
+                      } catch (e: unknown) {
+                        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
+                      } finally {
+                        setPlanBusy(false);
+                      }
+                    },
+                  ) ?? Alert.alert('Отклонить график?', 'Исполнитель получит уведомление', [
+                    { text: 'Отмена', style: 'cancel' },
+                    {
+                      text: 'Отклонить',
+                      style: 'destructive',
+                      onPress: async () => {
+                        setPlanBusy(true);
+                        try {
+                          const next = await api.rejectWorkSchedule(user.id, activeProject.id, schedule.id, 'Нужна правка сроков');
+                          setSchedule(next);
+                          reload();
+                        } catch (e: unknown) {
+                          Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
+                        } finally {
+                          setPlanBusy(false);
+                        }
+                      },
+                    },
+                  ]);
+                }}
+              >
+                <Text style={s.planCtaT}>Отклонить</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {role === 'customer' && schedule?.status === 'confirmed' ? (
+            <Text style={s.planSub}>График согласован — сроки зафиксированы</Text>
+          ) : null}
+        </View>
         <ScheduleExecutionStrip stats={executionStats} />
 
         <ScheduleIconToolbar
@@ -326,6 +418,10 @@ const s = StyleSheet.create({
   calendarPane: { flexShrink: 0, minHeight: 200, paddingBottom: 4 },
   planPane: { flex: 1, minHeight: 0 },
   planContent: { padding: 16, paddingBottom: 32 },
+  agreeBox: { marginBottom: 10, padding: 12, borderRadius: 12, backgroundColor: RenovaTheme.colors.surface, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  agreeTitle: { fontSize: 15, fontWeight: '800', color: RenovaTheme.colors.text },
+  agreeActions: { gap: 8, marginTop: 4 },
+  agreeConfirm: { backgroundColor: 'rgba(34,140,80,0.12)' },
   planCta: { marginTop: 8, marginBottom: 4, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: RenovaTheme.colors.surfaceMuted, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   planCtaT: { fontSize: 14, fontWeight: '600', color: RenovaTheme.colors.accent },
   planTitle: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },

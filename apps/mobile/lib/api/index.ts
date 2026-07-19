@@ -54,3 +54,4 @@ export const api = {
 export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, API_BASE } from './client';
 export * from './types';
 export type { SelectionItem } from './selections';
+export type { WorkSchedule, WorkScheduleStatus } from './workSchedule';

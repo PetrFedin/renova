@@ -227,6 +227,24 @@ async def update_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
     return await attach_items(db, schedule)
 
 
+
+async def sync_stages_from_schedule_items(db: AsyncSession, schedule: ProjectWorkSchedule) -> int:
+    """W46: после confirm даты items → stages (одно направление, SCHEDULE-SOT)."""
+    items = await load_items(db, schedule.id)
+    updated = 0
+    for item in items:
+        if not item.stage_id:
+            continue
+        stage = await db.get(Stage, item.stage_id)
+        if not stage or stage.project_id != schedule.project_id:
+            continue
+        stage.planned_start = item.planned_start_date
+        stage.planned_end = item.planned_finish_date
+        updated += 1
+    await db.flush()
+    return updated
+
+
 async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User) -> ProjectWorkSchedule:
     items = await load_items(db, schedule.id)
     if not items:
@@ -237,6 +255,31 @@ async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
     schedule.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(schedule)
+
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+    from app.models.entities import Project
+
+    project = await db.get(Project, schedule.project_id)
+    await act.log_event(
+        db,
+        project_id=schedule.project_id,
+        user_id=user.id,
+        kind="ScheduleSubmitted",
+        title=f"График на согласование: {schedule.title}",
+        link_path="/(customer)/(tabs)/calendar",
+    )
+    if project and project.customer_id and project.customer_id != user.id:
+        await notif.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=schedule.project_id,
+            notification_type="schedule_review",
+            title="Согласуйте план-график",
+            body=schedule.title,
+            link_path="/(customer)/(tabs)/calendar",
+            return_to="/(customer)/(tabs)/home",
+        )
     return await attach_items(db, schedule)
 
 
@@ -249,8 +292,32 @@ async def confirm_schedule(db: AsyncSession, project: Project, schedule: Project
     schedule.confirmed_by = user.id
     schedule.confirmed_at = datetime.utcnow()
     schedule.updated_at = datetime.utcnow()
+    await sync_stages_from_schedule_items(db, schedule)
     await db.commit()
     await db.refresh(schedule)
+
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    await act.log_event(
+        db,
+        project_id=schedule.project_id,
+        user_id=user.id,
+        kind="ScheduleConfirmed",
+        title=f"График согласован: {schedule.title}",
+        link_path="/(contractor)/(tabs)/calendar",
+    )
+    if project.contractor_id and project.contractor_id != user.id:
+        await notif.notify(
+            db,
+            user_id=project.contractor_id,
+            project_id=schedule.project_id,
+            notification_type="schedule_confirmed",
+            title="План-график согласован",
+            body=schedule.title,
+            link_path="/(contractor)/(tabs)/calendar",
+            return_to="/(contractor)/(tabs)/home",
+        )
     return await attach_items(db, schedule)
 
 
@@ -266,6 +333,30 @@ async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectW
     schedule.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(schedule)
+
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    await act.log_event(
+        db,
+        project_id=schedule.project_id,
+        user_id=user.id,
+        kind="ScheduleRejected",
+        title=f"График отклонён: {schedule.title}",
+        body=reason,
+        link_path="/(contractor)/(tabs)/calendar",
+    )
+    if project.contractor_id and project.contractor_id != user.id:
+        await notif.notify(
+            db,
+            user_id=project.contractor_id,
+            project_id=schedule.project_id,
+            notification_type="schedule_rejected",
+            title="План-график на доработку",
+            body=reason or schedule.title,
+            link_path="/(contractor)/(tabs)/calendar",
+            return_to="/(contractor)/(tabs)/home",
+        )
     return await attach_items(db, schedule)
 
 
