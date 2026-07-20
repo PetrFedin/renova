@@ -4,6 +4,8 @@ import { View, Text, StyleSheet, Pressable, Platform, Alert } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { readIcalFile } from '@/lib/mediaUpload';
 
 type Action = {
@@ -63,6 +65,7 @@ export function ScheduleIconToolbar({
   onMaterials: () => void;
   onImported?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   const [busy, setBusy] = useState(false);
 
   const importIcal = async () => {
@@ -75,6 +78,10 @@ export function ScheduleIconToolbar({
     setBusy(true);
     try {
       const r = await api.importIcal(userId, projectId, text);
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
       Alert.alert('Календарь', `Обновлено этапов: ${(r as { updated_stages?: number }).updated_stages ?? '—'}`);
       onImported?.();
     } catch {

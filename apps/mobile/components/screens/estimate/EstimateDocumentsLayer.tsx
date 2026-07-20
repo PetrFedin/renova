@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { documentsHref } from '@/lib/documentsNav';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -29,6 +31,7 @@ export function EstimateDocumentsLayer({
   projectId: string;
   pathname: string;
 }) {
+  const { user, activeProject, loadProject } = useRenova();
   const [busy, setBusy] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [csvText, setCsvText] = useState('name,line_type,unit,quantity_planned,unit_price,room_name\nШтукатурка стен,work,м2,40,450,Гостиная\n');
@@ -67,6 +70,12 @@ export function EstimateDocumentsLayer({
     try {
       const res = await api.importEstimateCsv(userId, projectId, csvText);
       setImportOpen(false);
+      await loadProject(projectId).catch(() => {});
+      // W99: смета/бюджет/inbox после CSV import
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
       Alert.alert(
         'Импорт сметы',
         `Добавлено: ${res.created}. Пропущено: ${res.skipped}.` +

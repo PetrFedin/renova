@@ -5,6 +5,7 @@ import { router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { createProjectChat } from '@/lib/createProjectChat';
@@ -224,6 +225,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
           onClose={() => setShowWork(false)}
           onCreated={async () => {
             await loadProject(activeProject.id);
+            await syncProjectSideEffects({ user, project: activeProject, role });
             setShowWork(false);
           }}
         />
