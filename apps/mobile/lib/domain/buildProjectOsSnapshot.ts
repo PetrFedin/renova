@@ -23,6 +23,9 @@ export type WorkScheduleHint = {
   pendingChangeOrders?: number;
   /** Документы status=draft (ждут подписи) */
   pendingSignDocs?: number;
+  /** W78: offline outbox (pending+blocked+conflicts) */
+  offlinePending?: number;
+  offlineBlocked?: number;
 };
 
 /** @deprecated alias — используйте WorkScheduleHint */
@@ -146,6 +149,8 @@ export function buildProjectOsSnapshot(
   const warrantyOverdue = Math.max(0, workSchedule?.warrantyOverdue ?? 0);
   const pendingChangeOrders = Math.max(0, workSchedule?.pendingChangeOrders ?? 0);
   const pendingSignDocs = Math.max(0, workSchedule?.pendingSignDocs ?? 0);
+  const offlinePending = Math.max(0, workSchedule?.offlinePending ?? 0);
+  const offlineBlocked = Math.max(0, workSchedule?.offlineBlocked ?? 0);
   const waPending = Math.max(0, pendingAcceptanceCount ?? 0);
   const estimateLines = project.estimate_lines?.length ?? 0;
   const estimateNeedsLock = estimateLines > 0 && !project.estimate_locked_at;
@@ -231,6 +236,15 @@ export function buildProjectOsSnapshot(
       button: 'Оплатить',
       href: budgetTabRoute(role, 'payments'),
       kind: 'payment',
+    };
+  } else if (offlineBlocked > 0) {
+    // W78: blocked/conflict offline — иначе действия «висят» незаметно
+    nextAction = {
+      title: 'Разобрать офлайн-очередь',
+      subtitle: `${offlineBlocked} требуют внимания`,
+      button: 'Входящие',
+      href: '/inbox',
+      kind: 'work',
     };
   } else if (waPending > 0 && role === 'customer') {
     // W76: WorkAcceptance.requested/in_review — даже если stage ещё не review
@@ -338,6 +352,14 @@ export function buildProjectOsSnapshot(
     nextAction = { title: 'Риск задержки проекта', subtitle: `Прогноз +${osSchedule.forecast_delay_days} дн.`, button: 'График', href: repairTabRoute(role, 'works'), kind: 'work' };
   } else if (overdueStage) {
     nextAction = { title: `Просрочка: ${overdueStage.name}`, subtitle: `Дедлайн ${overdueStage.planned_end}`, button: 'Открыть', href: `/stage/${overdueStage.id}`, kind: 'work' };
+  } else if (offlinePending > 0) {
+    nextAction = {
+      title: offlinePending === 1 ? 'Отправить 1 офлайн-действие' : `Отправить ${offlinePending} офлайн`,
+      subtitle: 'Есть неотправленные изменения',
+      button: 'Входящие',
+      href: '/inbox',
+      kind: 'work',
+    };
   } else if (role === 'customer' && pendingApprove > 0) {
     nextAction = {
       title: 'Согласовать материалы',

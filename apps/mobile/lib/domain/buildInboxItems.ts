@@ -354,8 +354,11 @@ export function filterInboxForHero(items: InboxItem[], heroKind: string): InboxI
     if (heroKind === 'accept' && (it.kind === 'acceptance' || it.id === 'acceptance' || it.id === 'await-acceptance' || it.id === 'wo-review')) return false;
     if (heroKind === 'work' && (it.id === 'wo-review' || it.id === 'schedule-confirm' || it.id === 'schedule-waiting' || (it.kind === 'work' && /приёмк/i.test(it.title)))) return false;
     if (heroKind === 'work' && it.kind === 'stage' && /просроч/i.test(it.title)) return false;
-    if (heroKind === 'expense' && (it.kind === 'estimate' || it.id === 'estimate-lock')) return false;
+    if (heroKind === 'work' && it.kind === 'offline') return false;
+    if (heroKind === 'expense' && (it.kind === 'estimate' || it.id === 'estimate-lock' || it.kind === 'change_order')) return false;
     if (heroKind === 'material' && it.kind === 'material') return false;
+    if (heroKind === 'issue' && it.kind === 'warranty') return false;
+    if (heroKind === 'review' && it.kind === 'document') return false;
     return true;
   });
 }

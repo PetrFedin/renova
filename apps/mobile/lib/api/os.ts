@@ -85,6 +85,12 @@ export const osApi = {
       source: string;
       mode: string;
       kpi_path?: string;
+      weekly?: {
+        warranty_open?: number | null;
+        warranty_overdue?: number | null;
+        pending_acceptances?: number | null;
+        open_issues_count?: number | null;
+      };
     }>(`/api/v1/projects/${projectId}/digest/weekly/preview`, {}, userId),
   pushWeeklyDigest: (userId: string, projectId: string) =>
     req<{

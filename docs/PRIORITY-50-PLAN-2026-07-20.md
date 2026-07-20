@@ -139,6 +139,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W75 | offline accept UI, CO→schedule, digest warranty, eSign doc status | **закрыто** `develop` (без оплат) |
 | W76 | home nextAction WA/CO/sign/warranty + dashboard enrich | **закрыто** `develop` (без оплат) |
 | W77 | badge IA tasks≠chat, inbox←CO/warranty/sign/WA | **закрыто** `develop` (без оплат) |
+| W78 | offline↔inbox/nextAction, digest→home insights | **закрыто** `develop` (без оплат) |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

@@ -1,6 +1,8 @@
 /** Единый store: chat threads, unread, inbox задачи — один reload и одно WS */
 import { api, type ChatThread, type ProjectDetail, type UserRole } from '@/lib/api';
 import { buildInboxItems, type InboxItem } from '@/lib/domain/buildInboxItems';
+import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
+import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
 
@@ -271,6 +273,11 @@ export async function reloadInboxSync(
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
+        // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
+        try {
+          const off = await getOfflineOutboxStatus();
+          inboxItems = mergeOfflineInboxItem(inboxItems, off);
+        } catch { /* noop */ }
         const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
         inboxBadge = taskRows + chatCount;
       } catch {

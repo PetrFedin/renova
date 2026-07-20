@@ -22,6 +22,8 @@ import { fallbackDashboard } from '@/lib/domain/fallbackDashboard';
 import { api, Dashboard, ReceiptItem, MaterialPick, Purchase, OsRisk, OsScheduleSummary, OsInsight, OsBudgetSummary } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyBadge';
+import { getOfflineOutboxStatus } from '@/lib/offline';
+import { mergeDigestInsight } from '@/lib/domain/digestHomeInsight';
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
   const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading } = useRenova();
@@ -43,6 +45,8 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [warrantyOverdue, setWarrantyOverdue] = useState(0);
   const [pendingChangeOrders, setPendingChangeOrders] = useState(0);
   const [pendingSignDocs, setPendingSignDocs] = useState(0);
+  const [offlinePending, setOfflinePending] = useState(0);
+  const [offlineBlocked, setOfflineBlocked] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -83,7 +87,14 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         api.listPurchases(user.id, activeProject.id).then(setPurchases),
         api.osRisks(user.id, activeProject.id).then((r) => setApiRisks(r.items)),
         api.osSchedule(user.id, activeProject.id).then(setOsSchedule),
-        api.osInsights(user.id, activeProject.id).then((r) => setInsights(r.items)),
+        api.osInsights(user.id, activeProject.id).then(async (r) => {
+          let items = r.items || [];
+          try {
+            const dig = await api.previewWeeklyDigest(user.id, activeProject.id);
+            items = mergeDigestInsight(items, dig);
+          } catch { /* noop */ }
+          setInsights(items);
+        }),
         api.budgetAlerts(user.id, activeProject.id).then(setBudgetAlerts),
         api.osBudget(user.id, activeProject.id).then(setOsBudget),
         api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)),
@@ -98,6 +109,10 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         }),
         api.listProjectDocuments(user.id, activeProject.id).then((res) => {
           setPendingSignDocs((res.items || []).filter((d) => d.status === 'draft').length);
+        }),
+        getOfflineOutboxStatus().then((st) => {
+          setOfflinePending(st.pending || 0);
+          setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
         }),
       ]);
       results.forEach((r, i) => {
@@ -116,6 +131,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
             () => { setWarrantyOpen(0); setWarrantyOverdue(0); },
             () => setPendingChangeOrders(0),
             () => setPendingSignDocs(0),
+            () => { setOfflinePending(0); setOfflineBlocked(0); },
           ];
           fallbacks[i]?.();
         }
@@ -141,15 +157,16 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       osSchedule,
       snapRole as any,
       osBudget,
-      pendingAcceptance,
+      pendingAcceptance || dash.pending_acceptances || 0,
       pendingPayments,
       pendingPaymentTotal,
-      { status: workScheduleStatus, warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs },
+      { status: workScheduleStatus, warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs, offlinePending, offlineBlocked },
     );
   }, [
     activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
     pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
     warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
+    offlinePending, offlineBlocked,
   ]);
 
   useEffect(() => {
