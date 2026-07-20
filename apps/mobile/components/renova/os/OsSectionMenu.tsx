@@ -15,6 +15,7 @@ import { TabIcon } from '@/components/renova/TabIcon';
 import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
 import { moreMenuA11yLabel } from '@/lib/domain/moreMenuA11y';
+import { resolveHeaderMoreBadge } from '@/lib/domain/headerChatBadges';
 
 export { moreMenuA11yLabel };
 
@@ -45,8 +46,11 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
     );
   }
 
-  /** Badge на «Ещё» = только задачи inbox. Чат — красный бейдж на dock. */
-  const menuIconBadge = taskBadge;
+  /**
+   * W80: непрочитанный чат на «Ещё» = то же число, что на dock «Сообщения»
+   * (один store). Задачи — только если чата нет (янтарный), и всегда в пункте «Входящие».
+   */
+  const headerBadge = resolveHeaderMoreBadge(taskBadge, chatUnread);
 
   const go = (sec: (typeof sections)[0]) => {
     setOpen(false);
@@ -59,14 +63,13 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
         style={[s.btn, iconOnly && s.btnIcon]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
-        accessibilityLabel={moreMenuA11yLabel(menuIconBadge, chatUnread)}
+        accessibilityLabel={moreMenuA11yLabel(taskBadge, chatUnread)}
         hitSlop={8}
       >
-        {/* menu-outline — не путать с chatbubble (W77) */}
         <Ionicons name="menu-outline" size={22} color={RenovaTheme.colors.text} />
-        {menuIconBadge > 0 ? (
-          <View style={[s.badge, s.badgeTasks]}>
-            <Text style={s.badgeT}>{menuIconBadge > 99 ? '99+' : menuIconBadge}</Text>
+        {headerBadge ? (
+          <View style={[s.badge, headerBadge.tone === 'warning' ? s.badgeTasks : s.badgeChat]}>
+            <Text style={s.badgeT}>{headerBadge.count > 99 ? '99+' : headerBadge.count}</Text>
           </View>
         ) : null}
       </Pressable>
@@ -148,8 +151,9 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 3,
   },
-  /** Янтарный = задачи; красный — только чат в dock */
+  /** Янтарный = задачи; красный = непрочитанный чат (как dock «Сообщения») */
   badgeTasks: { backgroundColor: RenovaTheme.colors.warning },
+  badgeChat: { backgroundColor: RenovaTheme.colors.danger },
   badgeT: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
   menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },

@@ -141,6 +141,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W77 | badge IA tasks≠chat, inbox←CO/warranty/sign/WA | **закрыто** `develop` (без оплат) |
 | W78 | offline↔inbox/nextAction, digest→home insights | **закрыто** `develop` (без оплат) |
 | W79 | offline flush→inbox, closeout checklist→home | **закрыто** `develop` (без оплат) |
+| W80 | chatUnread sync: Ещё ↔ Сообщения | **закрыто** `develop` |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

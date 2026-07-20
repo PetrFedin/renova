@@ -17,6 +17,7 @@ import {
 import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
+import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
@@ -30,7 +31,9 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const bottomPad = useBottomInset();
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
-  const { count: chatUnread } = useChatUnread(user?.id, user?.role);
+  const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
+  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
+  const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
   const section = resolveSectionId(pathname);
@@ -142,7 +145,14 @@ const s = StyleSheet.create({
     paddingVertical: 4,
   },
   pressed: { opacity: 0.65 },
-  iconWrap: { position: 'relative', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' },
+  iconWrap: {
+    position: 'relative',
+    width: 32,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
   label: {
     fontSize: 10,
     fontWeight: '600',
