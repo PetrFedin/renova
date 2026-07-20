@@ -112,6 +112,53 @@ import secrets
 from datetime import datetime, timedelta
 from app.models.entities import TeamInvite
 
+
+
+async def require_capability(
+    db: AsyncSession,
+    user: User,
+    project: Project,
+    capability: str,
+) -> str | None:
+    """W73: матрица прав бригады на объекте.
+
+    capability:
+      field_write — замечания/punch (owner|foreman|member|customer)
+      escalate — спор (owner|foreman|customer)
+      schedule — план-график (owner|foreman; customer отдельно)
+      estimate_lock — lock/propose сметы (только contractor owner)
+    Возвращает team_role или "customer".
+    """
+    from fastapi import HTTPException
+
+    if project.customer_id == user.id:
+        if capability == "estimate_lock":
+            raise HTTPException(403, "estimate_lock_contractor_owner_only")
+        return "customer"
+
+    role = await team_role_for_project(db, user, project)
+    if role is None and user.id != project.contractor_id:
+        raise HTTPException(403, "project_forbidden")
+
+    effective = role or ("owner" if user.id == project.contractor_id else None)
+    if capability == "field_write":
+        if effective in ("owner", "foreman", "member"):
+            return effective
+        raise HTTPException(403, "field_write_forbidden")
+    if capability == "escalate":
+        if effective in ("owner", "foreman"):
+            return effective
+        raise HTTPException(403, "escalate_foreman_or_owner_only")
+    if capability == "schedule":
+        if effective in ("owner", "foreman"):
+            return effective
+        raise HTTPException(403, "schedule_foreman_or_owner_only")
+    if capability == "estimate_lock":
+        if effective == "owner":
+            return effective
+        raise HTTPException(403, "estimate_lock_contractor_owner_only")
+    raise HTTPException(400, f"unknown_capability:{capability}")
+
 async def create_invite_link(db: AsyncSession, team_id: str, role: str = "member", hours: int = 72) -> dict:
     token = secrets.token_urlsafe(16)
     inv = TeamInvite(team_id=team_id, token=token, role=role, expires_at=datetime.utcnow() + timedelta(hours=hours))

@@ -133,7 +133,7 @@ export const osApi = {
     body: { title?: string; description?: string },
   ) => {
     try {
-      return await req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string }>(
+      return await req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string; due_at?: string | null; post_closeout?: boolean; sla_days?: number }>(
         `/api/v1/projects/${projectId}/warranty-claims`,
         { method: 'POST', body: JSON.stringify(body) },
         userId,
@@ -179,6 +179,9 @@ export const osApi = {
       all_stages_done: boolean;
       pending_payments: number;
       warranty_open: number;
+      warranty_overdue?: number;
+      post_closeout?: boolean;
+      warranty_post_closeout_allowed?: boolean;
       acceptance_acts_active: number;
       next_action: string;
       archived: boolean;

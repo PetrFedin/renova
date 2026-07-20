@@ -75,7 +75,7 @@ export const estimateApi = {
   },
   /** W71: импорт строк сметы из CSV (Excel → CSV) */
   importEstimateCsv: (userId: string, projectId: string, csv_text: string) =>
-    req<{ ok: boolean; created: number; skipped: number; errors?: string[] }>(
+    req<{ ok: boolean; created: number; skipped: number; errors?: string[]; delimiter?: string }>(
       `/api/v1/projects/${projectId}/estimate/import-csv`,
       { method: 'POST', body: JSON.stringify({ csv_text }) },
       userId,

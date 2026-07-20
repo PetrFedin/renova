@@ -80,8 +80,9 @@ export function DocumentsHub({
   projectId: string;
   projectName?: string;
 }) {
-  const { user } = useRenova();
+  const { user, activeProject } = useRenova();
   const isContractor = user?.role === 'contractor';
+  const isArchived = Boolean(activeProject?.is_archived);
   const [busy, setBusy] = useState<string | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [bankCsvText, setBankCsvText] = useState('');
@@ -214,11 +215,13 @@ ${(res.body || '').slice(0, 220)}`,
       },
       warrantyClaim: {
         id: 'warranty',
-        label: 'Гарантийное обращение',
-        desc: isContractor
-          ? 'Тикет → QC исполнителя'
-          : 'Создать / закрыть открытые (нужно для closeout)',
-        format: 'Заявка',
+        label: isArchived ? 'Гарантия после сдачи' : 'Гарантийное обращение',
+        desc: isArchived
+          ? (isContractor ? 'Post-closeout тикет → QC (SLA 14 дней)' : 'После сдачи объекта — SLA 14 дней')
+          : isContractor
+            ? 'Тикет → QC исполнителя'
+            : 'Создать / закрыть открытые (нужно для closeout)',
+        format: isArchived ? 'Post-closeout' : 'Заявка',
         run: async () => {
           const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
           const openItems = (open.items || []).filter((i) => i.status !== 'closed');
@@ -248,7 +251,7 @@ ${(res.body || '').slice(0, 220)}`,
                       title: 'Гарантийное обращение',
                       description: 'Создано из Document Center',
                     });
-                    Alert.alert('Гарантия', `Создано. Документ: ${res.document_id.slice(0, 8)}…`);
+                    Alert.alert('Гарантия', `Создано${res.post_closeout ? ' (после сдачи)' : ''}. SLA ${res.sla_days || 14} дн. Документ: ${res.document_id.slice(0, 8)}…`);
                   },
                 },
               ],
@@ -264,7 +267,7 @@ ${(res.body || '').slice(0, 220)}`,
             : '/documents';
           Alert.alert(
             'Гарантия',
-            `Создано. Открытых: ${(open.open || 0) + 1}. Документ: ${res.document_id.slice(0, 8)}…`,
+            `Создано${res.post_closeout ? ' (после сдачи)' : ''}. Открытых: ${(open.open || 0) + 1}. SLA ${res.sla_days || 14} дн. Документ: ${res.document_id.slice(0, 8)}…`,
             [
               { text: 'OK' },
               {
@@ -295,7 +298,7 @@ ${(res.body || '').slice(0, 220)}`,
             snap.next_action,
             `Этапы: ${snap.all_stages_done ? 'все сданы' : 'есть открытые'}`,
             `Оплаты pending: ${snap.pending_payments}`,
-            `Гарантия open: ${snap.warranty_open}`,
+            `Гарантия open: ${snap.warranty_open}${snap.warranty_overdue ? ` (просрочено: ${snap.warranty_overdue})` : ''}`,
             `Акты: ${snap.acceptance_acts_active}`,
           ].join('\n');
           // W61: исполнитель видит чеклист, архивирует только заказчик

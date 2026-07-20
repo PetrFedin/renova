@@ -94,7 +94,9 @@ async def create_issue(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    from app.services import team_service as team_svc
+    project = await require_project(db, project_id, user, write=True)
+    await team_svc.require_capability(db, user, project, "field_write")
     issue = await iss.create_issue(
         db, project_id, body.title,
         description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
@@ -162,9 +164,11 @@ async def escalate_issue(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """W69 #50: эскалация спора — critical + префикс [Спор], notify обеим сторонам."""
+    """W69 #50 / W73: эскалация — customer или owner/foreman бригады."""
     from app.models.entities import ProjectIssue, UserRole
+    from app.services import team_service as team_svc
     project = await require_project(db, project_id, user, write=True)
+    await team_svc.require_capability(db, user, project, "escalate")
     existing = await db.get(ProjectIssue, issue_id)
     if not existing or existing.project_id != project_id:
         raise HTTPException(404)

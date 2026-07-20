@@ -134,6 +134,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W70 | 20, 38 (+ H0 blockers doc; #37 local) | **закрыто** `develop` `76a2340` |
 | W71 | CO↔budget↔docs, CSV import, hub Сроки | **закрыто** `develop` (без оплат) |
 | W72 | accept→plan pin, schedule ACL, offline warranty/escalate, portal/QC | **закрыто** `develop` (без оплат) |
+| W73 | warranty post-closeout+SLA, Grand-Smeta CSV, escalate ACL | **закрыто** `develop` (без оплат) |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

@@ -70,6 +70,7 @@ export function EstimateDocumentsLayer({
       Alert.alert(
         'Импорт сметы',
         `Добавлено: ${res.created}. Пропущено: ${res.skipped}.` +
+          (res.delimiter ? ` Разделитель: ${res.delimiter}.` : '') +
           (res.errors?.length ? `\nОшибки: ${res.errors.join('; ')}` : ''),
       );
     } catch {
@@ -170,7 +171,10 @@ export function EstimateDocumentsLayer({
       <Modal visible={importOpen} animationType="slide" transparent onRequestClose={() => setImportOpen(false)}>
         <View style={s.modalBackdrop}>
           <View style={s.modalCard}>
-            <Text style={s.label}>Импорт сметы (CSV)</Text>
+            <Text style={s.label}>Импорт сметы (CSV / Excel / ГрандСмета)</Text>
+            <Text style={{ color: '#64748B', fontSize: 12, marginBottom: 8 }}>
+              Заголовки: Наименование; Ед.; Кол-во; Цена (или сумма). Разделитель ; , или tab.
+            </Text>
             <Text style={s.desc}>
               Колонки: name, line_type (work|material), unit, quantity_planned, unit_price, room_name
             </Text>

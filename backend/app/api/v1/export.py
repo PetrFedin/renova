@@ -331,12 +331,16 @@ async def create_warranty_claim(
     from app.services import notification_service as notif
 
     project = await require_project(db, project_id, user, write=True)
+    # W73: гарантия работает и после closeout (архив); SLA 14 дней
+    from datetime import datetime, timedelta
+    post_closeout = bool(getattr(project, "is_archived", False))
     issue = ProjectIssue(
         project_id=project_id,
         title=f"[Гарантия] {body.title}"[:255],
         description=body.description,
         severity="high",
         status="open",
+        due_at=datetime.utcnow() + timedelta(days=14),
     )
     db.add(issue)
     await db.flush()
@@ -380,6 +384,9 @@ async def create_warranty_claim(
         "issue_id": issue.id,
         "document_id": draft.id,
         "qc_path": f"/quality-control?issueId={issue.id}",
+        "due_at": issue.due_at.isoformat() if issue.due_at else None,
+        "post_closeout": post_closeout,
+        "sla_days": 14,
     }
 
 
@@ -394,8 +401,24 @@ async def list_warranty_claims(
 
     await require_project(db, project_id, user, write=False)
     items = await iss.list_issues(db, project_id, status=None)
+    from datetime import datetime
     warranty = [iss.issue_dict(i) for i in items if (i.title or "").startswith("[Гарантия]")]
-    return {"items": warranty, "open": sum(1 for i in warranty if i.get("status") != "closed")}
+    now = datetime.utcnow()
+    open_items = [i for i in warranty if i.get("status") != "closed"]
+    overdue = 0
+    for raw, d in zip(
+        [i for i in items if (i.title or "").startswith("[Гарантия]") and i.status != "closed"],
+        open_items,
+    ):
+        d["overdue"] = bool(raw.due_at and raw.due_at < now)
+        if d["overdue"]:
+            overdue += 1
+    return {
+        "items": warranty,
+        "open": len(open_items),
+        "overdue": overdue,
+        "post_closeout_allowed": True,
+    }
 
 
 @router.post("/{project_id}/warranty-claims/{issue_id}/close")
@@ -508,6 +531,10 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
         next_action = "Оформите акт приёмки в документах"
     else:
         next_action = "Закройте гарантийные обращения"
+    from datetime import datetime as _dt
+    _now = _dt.utcnow()
+    warranty_overdue = sum(1 for w in warranty_open if w.due_at and w.due_at < _now)
+    archived = bool(getattr(project, "is_archived", False))
     return {
         "project_id": project_id,
         "project_name": project.name,
@@ -518,9 +545,16 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
         "acceptance_acts": len(acts),
         "acceptance_acts_active": len(acts_active),
         "warranty_open": len(warranty_open),
+        "warranty_overdue": warranty_overdue,
         "ready": ready,
-        "archived": bool(getattr(project, "is_archived", False)),
-        "next_action": next_action,
+        "archived": archived,
+        "post_closeout": archived,
+        "warranty_post_closeout_allowed": True,
+        "next_action": (
+            "Гарантийный режим: можно создавать обращения после сдачи"
+            if archived
+            else next_action
+        ),
     }
 
 

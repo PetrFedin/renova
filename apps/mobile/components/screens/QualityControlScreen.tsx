@@ -135,7 +135,10 @@ export function QualityControlScreen() {
         description: 'Создано из Контроля качества',
       });
       await load();
-      Alert.alert('Гарантия', 'Тикет создан — исполнитель уведомлён');
+      Alert.alert(
+        'Гарантия',
+        `Тикет создан${wRes.post_closeout ? ' (после сдачи)' : ''}. SLA ${wRes.sla_days || 14} дн. — исполнитель уведомлён`,
+      );
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Гарантийный тикет');
       else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать');

@@ -284,52 +284,77 @@ async def clear_estimate_proposal(
 
 
 async def import_estimate_csv(db: AsyncSession, project_id: str, csv_text: str) -> dict:
-    """W71: импорт строк сметы из CSV (name,line_type,unit,qty,price[,room]).
+    """W71/W73: импорт сметы CSV/TSV/; — Excel + ГрандСмета-подобные выгрузки.
 
-    Формат как у export_estimate_csv — совместим с Excel «Сохранить как CSV».
+    Разделитель определяется автоматически (, ; tab).
+    Заголовки: name/наименование/работы, qty/количество, price/цена,
+    unit/ед; если есть сумма без цены → цена = сумма/кол-во.
     """
     import csv
     import io
+    import re as _re
 
     text = (csv_text or "").strip().lstrip("\ufeff")
     if not text:
         raise ValueError("empty_csv")
 
-    reader = csv.DictReader(io.StringIO(text))
+    sample = text[:4096]
+    semi, comma, tab = sample.count(";"), sample.count(","), sample.count("\t")
+    delimiter = ";" if semi >= comma and semi >= tab and semi > 0 else ("\t" if tab > comma else ",")
+
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
     if not reader.fieldnames:
         raise ValueError("csv_no_header")
 
-    # normalize headers
     def norm(h: str) -> str:
-        return (h or "").strip().lower().replace(" ", "_")
+        h = (h or "").strip().lower().replace("ё", "е")
+        h = _re.sub(r"[\s.]+", "_", h)
+        h = _re.sub(r"_+", "_", h).strip("_")
+        return h
 
-    field_map = {norm(h): h for h in reader.fieldnames}
+    field_map = {norm(h): h for h in reader.fieldnames if h is not None}
 
     def cell(row: dict, *keys: str) -> str:
         for k in keys:
-            src = field_map.get(k) or field_map.get(k.replace("_", ""))
+            nk = norm(k)
+            src = field_map.get(nk)
             if src and row.get(src) not in (None, ""):
                 return str(row.get(src)).strip()
-        # fallback: try exact keys
-        for k in keys:
-            if row.get(k) not in (None, ""):
-                return str(row.get(k)).strip()
         return ""
+
+    def parse_num(raw: str) -> float:
+        s = (raw or "").strip().replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        if not s:
+            return 0.0
+        return float(s)
 
     created = 0
     skipped = 0
     errors: list[str] = []
     for i, row in enumerate(reader, start=2):
-        name = cell(row, "name", "название", "наименование", "title")
-        if not name:
+        name = cell(
+            row,
+            "name", "название", "наименование", "наименование_работ", "работы",
+            "title", "наименование_позиции",
+        )
+        if not name or name.isdigit() or name.lower() in ("итого", "всего"):
             skipped += 1
             continue
-        lt_raw = cell(row, "line_type", "type", "тип") or "work"
-        lt = "material" if lt_raw.lower() in ("material", "материал", "mat") else "work"
-        unit = cell(row, "unit", "ед", "единица") or "pcs"
+        lt_raw = cell(row, "line_type", "type", "тип", "раздел") or "work"
+        lt = "material" if lt_raw.lower() in ("material", "материал", "mat", "материалы") else "work"
+        unit = cell(row, "unit", "ед", "ед_изм", "единица", "единица_измерения") or "pcs"
         try:
-            qty = float(cell(row, "quantity_planned", "qty", "количество", "кол-во", "quantity") or "1")
-            price = float(cell(row, "unit_price", "price", "цена", "price_unit") or "0")
+            qty = parse_num(
+                cell(row, "quantity_planned", "qty", "количество", "кол-во", "кол", "quantity", "кол_во") or "1"
+            )
+            price_raw = cell(row, "unit_price", "price", "цена", "price_unit", "цена_ед", "цена_за_ед")
+            total_raw = cell(row, "sum", "сумма", "стоимость", "total", "amount")
+            if price_raw:
+                price = parse_num(price_raw)
+            elif total_raw and qty:
+                price = parse_num(total_raw) / qty
+            else:
+                price = 0.0
         except ValueError:
             errors.append(f"строка {i}: число qty/price")
             skipped += 1
@@ -337,7 +362,7 @@ async def import_estimate_csv(db: AsyncSession, project_id: str, csv_text: str) 
         if qty <= 0:
             skipped += 1
             continue
-        room = cell(row, "room_name", "room", "комната") or None
+        room = cell(row, "room_name", "room", "комната", "помещение") or None
         line = EstimateLine(
             project_id=project_id,
             line_type=LineType(lt),
@@ -354,7 +379,12 @@ async def import_estimate_csv(db: AsyncSession, project_id: str, csv_text: str) 
         await db.flush()
         await sync_after_import(db, project_id)
     await db.commit()
-    return {"created": created, "skipped": skipped, "errors": errors[:10]}
+    return {
+        "created": created,
+        "skipped": skipped,
+        "errors": errors[:10],
+        "delimiter": "tab" if delimiter == "\t" else delimiter,
+    }
 
 
 async def sync_after_import(db: AsyncSession, project_id: str) -> None:
