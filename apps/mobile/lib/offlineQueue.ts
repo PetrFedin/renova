@@ -194,7 +194,9 @@ export async function retryJob(id: string) {
       ),
     ),
   );
+  await emitQueueChanged();
 }
+
 
 /**
  * Replay queue against API.
@@ -293,6 +295,7 @@ export async function flush(apiBase: string): Promise<OfflineFlushResult> {
 
 export async function writeQueue(jobs: OfflineJob[]) {
   await AsyncStorage.setItem(KEY, JSON.stringify(jobs));
+  await emitQueueChanged();
 }
 
 /** После archive/trash/purge — не replay мутации по этому project_id. */
@@ -300,7 +303,10 @@ export async function dropJobsForProject(projectId: string): Promise<number> {
   const q = await getQueue();
   const next = filterJobsExceptProject(q, projectId);
   const dropped = q.length - next.length;
-  if (dropped > 0) await AsyncStorage.setItem(KEY, JSON.stringify(next));
+  if (dropped > 0) {
+    await AsyncStorage.setItem(KEY, JSON.stringify(next));
+    await emitQueueChanged();
+  }
   return dropped;
 }
 

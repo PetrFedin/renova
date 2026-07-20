@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
 
@@ -23,6 +24,8 @@ export default function PaymentReturnScreen() {
         const pay = items.find((p) => p.id === paymentId);
         await refreshProjects();
         await loadProject(projectId).catch(() => {});
+        // W94: бюджет/inbox после YuKassa return (loadProject → void)
+        await syncProjectSideEffects({ user, project: { id: projectId } as any });
         if (cancelled) return;
         if (pay?.status === 'confirmed') {
           setNote('Оплата подтверждена');

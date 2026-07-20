@@ -1,5 +1,5 @@
 /** Документы проекта — по разделам + единый индекс Document Center */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput,
 } from 'react-native';
@@ -20,6 +20,7 @@ import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/li
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 
 type DocRow = {
   id: string;
@@ -110,13 +111,16 @@ export function DocumentsHub({
     return () => { alive = false; };
   }, [userId, projectId]);
 
-  const reloadIndex = () => {
+  const reloadIndex = useCallback(() => {
     setIndexLoading(true);
     return api.listProjectDocuments(userId, projectId)
       .then((result) => setDocIndex(result))
       .catch(() => setDocIndex(null))
       .finally(() => setIndexLoading(false));
-  };
+  }, [userId, projectId]);
+
+  // W94: после приёмки/подписи/оплаты — индекс документов без remount
+  useProjectDataReload(reloadIndex);
 
   const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 8), [docIndex]);
 

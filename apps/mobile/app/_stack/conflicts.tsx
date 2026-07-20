@@ -7,7 +7,7 @@ import { OfflineDiffViewer } from '@/components/renova/OfflineDiffViewer';
 import { FieldMergePicker } from '@/components/renova/FieldMergePicker';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { dedupeQueue } from '@/lib/smartMerge';
-import { getQueue, removeJob, type OfflineJob } from '@/lib/offlineQueue';
+import { getQueue, removeJob, writeQueue, type OfflineJob } from '@/lib/offlineQueue';
 import { flushOfflineOutbox, subscribeOfflineFlush } from '@/lib/offline';
 import { RenovaTheme } from '@/constants/Theme';
 import { offlineJobLabel, offlineJobPreview } from '@/lib/offlineJobLabel';
@@ -42,8 +42,7 @@ export default function ConflictsScreen() {
             <OfflineDiffViewer local={j.body} />
             <FieldMergePicker local={j.body} onMerge={async (m) => {
               const next = jobs.map((x) => (x.id === j.id ? { ...x, body: m } : x));
-              const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
-              await AsyncStorage.setItem('renova_offline_queue', JSON.stringify(next));
+              await writeQueue(next); // W94: канон + flushBus
               setJobs(next);
             }} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
@@ -55,8 +54,7 @@ export default function ConflictsScreen() {
           <>
             <PrimaryButton title="Умное слияние" variant="outline" onPress={async () => {
               const deduped = dedupeQueue(jobs);
-              const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
-              await AsyncStorage.setItem('renova_offline_queue', JSON.stringify(deduped));
+              await writeQueue(deduped); // W94: канон + flushBus
               setJobs(deduped);
             }} />
             <View style={{ height: 8 }} />

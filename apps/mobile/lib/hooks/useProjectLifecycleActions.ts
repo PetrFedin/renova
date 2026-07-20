@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { ApiError, api, invalidateProjectsCache } from '@/lib/api';
 import { dropJobsForProject } from '@/lib/offlineQueue';
+import { notifyProjectDataChanged } from '@/lib/projectDataBus';
 import { alertMessage, confirmDestructive } from '@/lib/confirmAlert';
 
 /** Archive/trash/restore handlers shared by project pickers. */
@@ -17,6 +18,8 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
       if (activeProject?.id === projectId) {
         await clearActiveProject();
       }
+      // W94: home/inbox после archive/trash (очередь уже notify через dropJobs)
+      notifyProjectDataChanged();
     },
     [user, refreshProjects, reloadBuckets, activeProject?.id, clearActiveProject],
   );
@@ -29,6 +32,7 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
       if (projectId && activeProject?.id === projectId) {
         await clearActiveProject();
       }
+      notifyProjectDataChanged();
     },
     [user, refreshProjects, reloadBuckets, activeProject?.id, clearActiveProject],
   );

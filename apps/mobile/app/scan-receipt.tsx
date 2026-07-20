@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { resolveStageForRoom } from '@/lib/stageResolve';
 import { ManualExpenseForm } from '@/components/renova/ManualExpenseForm';
@@ -56,6 +57,7 @@ export default function ScanReceiptScreen() {
         await AsyncStorage.setItem(paymentReceiptKey(String(paymentId)), '1');
       }
       await loadProject(activeProject.id);
+      await syncProjectSideEffects({ user, project: activeProject }); // W94: бюджет/аналитика
     } catch {
       scanned.current = false;
       Alert.alert('Ошибка', 'Не удалось проверить чек. Проверьте QR или сервер.');
