@@ -63,8 +63,10 @@ def material_stats(lines: list[EstimateLine]) -> dict:
 
 async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_by: str) -> tuple[Project | None, dict]:
     """W57: исполнитель предлагает фиксацию — без estimate_locked_at."""
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from app.services import notification_service as notif_svc
+
+    PROPOSE_TTL_DAYS = 14  # W66 #26
 
     proj = await db.get(Project, project_id)
     if not proj:
@@ -75,6 +77,7 @@ async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_b
     lines = list(result.scalars().all())
     if not lines:
         return None, {"code": "empty_estimate", "message": "Добавьте строки в смету перед фиксацией"}
+    # Повторный propose всегда обновляет TTL и шлёт напоминание
     proj.estimate_lock_proposed_at = datetime.utcnow()
     proj.estimate_lock_proposed_by = proposed_by
     if proj.customer_id and proposed_by != proj.customer_id:
@@ -84,7 +87,7 @@ async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_b
             project_id=project_id,
             notification_type="approval",
             title="Смета на согласование",
-            body="Исполнитель отправил смету на фиксацию. Проверьте и согласуйте.",
+            body=f"Исполнитель отправил смету на фиксацию (действует {PROPOSE_TTL_DAYS} дн.). Проверьте и согласуйте.",
             link_path="/(customer)/(tabs)/object?tab=estimate",
             return_to="/(customer)/(tabs)/home",
         )
@@ -117,6 +120,15 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
             "code": "proposal_required",
             "message": "Сначала исполнитель должен отправить смету на согласование",
         }
+    # W66 #26: просроченный propose — нужна повторная отправка
+    if proj.contractor_id and proj.estimate_lock_proposed_at:
+        from datetime import timedelta
+        age = datetime.utcnow() - proj.estimate_lock_proposed_at
+        if age > timedelta(days=14):
+            return proj, {
+                "code": "proposal_stale",
+                "message": "Предложение сметы устарело (>14 дн.). Исполнитель должен отправить снова.",
+            }
     proj.estimate_locked_at = datetime.utcnow()
     proj.estimate_lock_proposed_at = None
     proj.estimate_lock_proposed_by = None

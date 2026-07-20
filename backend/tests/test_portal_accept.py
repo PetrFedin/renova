@@ -42,15 +42,23 @@ async def _seed_acceptance(client: AsyncClient):
     h_cont = {"X-User-Id": cont["id"]}
     pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
     await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+    # Demo: первый этап уже в review с pending acceptance
+    pending = (await client.get(f"/api/v1/projects/{pid}/work-acceptances", headers=h_cust)).json()
+    open_acc = next(
+        (a for a in pending if a.get("status") in ("requested", "in_review", "pending")),
+        None,
+    )
+    if open_acc:
+        return pid, cust["id"], open_acc["id"], open_acc.get("stage_id")
     stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
-    active = next(s for s in stages if s["status"] == "active")
+    stage = next((s for s in stages if s["status"] in ("active", "review")), stages[0])
     created = await client.post(
         f"/api/v1/projects/{pid}/work-acceptances",
         headers=h_cont,
-        json={"stage_id": active["id"], "comment": "готов"},
+        json={"stage_id": stage["id"], "comment": "готов"},
     )
     assert created.status_code == 200
-    return pid, cust["id"], created.json()["id"], active["id"]
+    return pid, cust["id"], created.json()["id"], stage["id"]
 
 
 async def test_portal_accept_stage_via_token():

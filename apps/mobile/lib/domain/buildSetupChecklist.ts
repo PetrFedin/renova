@@ -31,10 +31,10 @@ export function buildSetupChecklist(
   const estimateLines = project.estimate_lines?.length ?? 0;
   const stages = project.stages?.length ?? 0;
   const profileDone = getProjectProfileGaps(project).length === 0;
+  // W66 #19: прогресс графика ≠ бюджет под контролем
   const budgetTracked =
     (project.customer_budget ?? 0) > 0
-    || (project.budget_planned ?? 0) > 0
-    || snap.schedule?.progressPercent != null;
+    || (project.budget_planned ?? 0) > 0;
 
   return [
     {

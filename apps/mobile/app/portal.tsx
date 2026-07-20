@@ -178,28 +178,45 @@ export default function PortalScreen() {
           {snapshot.pending_acceptances!.map((acc) => (
             <View key={acc.id} style={s.acceptRow}>
               <Text style={s.line}>{acc.stage_name || 'Этап'} · ждёт решения</Text>
-              <Pressable
-                style={s.acceptBtn}
-                onPress={async () => {
-                  try {
-                    await api.portalAcceptStage(session.project_id, acc.id, portalToken);
-                    const snap = await api.portalSnapshot(session.user_id, session.project_id);
-                    setSnapshot(snap);
-                    const payN = snap.pending_payments?.length ?? 0;
-                    Alert.alert(
-                      'Этап принят',
-                      payN
-                        ? `«${acc.stage_name || 'работы'}» принят. Ниже — ${payN} счёт(а) к оплате.`
-                        : `«${acc.stage_name || 'работы'}» принят.`,
-                      [{ text: 'OK' }],
-                    );
-                  } catch {
-                    Alert.alert('Ошибка', 'Не удалось принять этап');
-                  }
-                }}
-              >
-                <Text style={s.acceptBtnT}>Принять этап</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <Pressable
+                  style={s.acceptBtn}
+                  onPress={async () => {
+                    try {
+                      await api.portalAcceptStage(session.project_id, acc.id, portalToken);
+                      const snap = await api.portalSnapshot(session.user_id, session.project_id);
+                      setSnapshot(snap);
+                      const payN = snap.pending_payments?.length ?? 0;
+                      Alert.alert(
+                        'Этап принят',
+                        payN
+                          ? `«${acc.stage_name || 'работы'}» принят. Ниже — ${payN} счёт(а) к оплате.`
+                          : `«${acc.stage_name || 'работы'}» принят.`,
+                        [{ text: 'OK' }],
+                      );
+                    } catch {
+                      Alert.alert('Ошибка', 'Не удалось принять этап');
+                    }
+                  }}
+                >
+                  <Text style={s.acceptBtnT}>Принять этап</Text>
+                </Pressable>
+                <Pressable
+                  style={[s.acceptBtn, { backgroundColor: RenovaTheme.colors.border }]}
+                  onPress={async () => {
+                    try {
+                      await api.portalReturnStage(session.project_id, acc.id, portalToken, 'Нужна доработка');
+                      const snap = await api.portalSnapshot(session.user_id, session.project_id);
+                      setSnapshot(snap);
+                      Alert.alert('Возвращено', `«${acc.stage_name || 'работы'}» отправлены на доработку`);
+                    } catch {
+                      Alert.alert('Ошибка', 'Не удалось вернуть этап');
+                    }
+                  }}
+                >
+                  <Text style={[s.acceptBtnT, { color: RenovaTheme.colors.text }]}>На доработку</Text>
+                </Pressable>
+              </View>
             </View>
           ))}
         </View>

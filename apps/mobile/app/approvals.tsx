@@ -33,11 +33,8 @@ export default function ApprovalsScreen() {
     const { id: userId } = user;
     const pid = activeProject.id;
     try {
-      if (it.type === 'material') await api.approveMaterialPick(userId, pid, it.id);
-      if (it.type === 'change_order') await api.approveChangeOrder(userId, pid, it.id);
-      if (it.type === 'room_change') await api.approveRoomChange(userId, pid, it.id);
-      if (it.type === 'design') await api.approveDesignPackage(userId, pid, it.id);
-      if (it.type === 'waste') await api.approveWasteOrder(userId, pid, it.id);
+      // W66 #14: единый hub-approve (+ offline queue)
+      await api.approveApproval(userId, pid, it.id, it.type);
       load();
       if (it.type === 'change_order') {
         const budget = budgetTabRoute('customer', 'summary');

@@ -62,6 +62,13 @@ export const miscApi = {
       { method: 'POST', body: JSON.stringify({ token, comment }) },
       undefined,
     ),
+  /** W66 #13: возврат этапа на доработку через portal */
+  portalReturnStage: (projectId: string, acceptanceId: string, token: string, comment?: string) =>
+    req<{ id: string; stage_id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/work-acceptances/${acceptanceId}/return`,
+      { method: 'POST', body: JSON.stringify({ token, comment }) },
+      undefined,
+    ),
   /** W57: подтверждение графика с portal token */
   portalConfirmSchedule: (userId: string, projectId: string, scheduleId: string, token: string) =>
     req(
@@ -98,6 +105,18 @@ export const miscApi = {
       payments_mode?: 'live' | 'requisites' | 'demo' | 'off';
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
+  /** W66 #14: единый approve через hub (офлайн-очередь) */
+  approveApproval: async (userId: string, projectId: string, itemId: string, type: string) => {
+    const body = { type };
+    try {
+      return await req(`/api/v1/projects/${projectId}/approvals/${itemId}/approve`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/approvals/${itemId}/approve`, method: 'POST', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
   rejectApproval: async (userId: string, projectId: string, itemId: string, type: string, reason: string) => {
     const body = { type, reason };
     try {

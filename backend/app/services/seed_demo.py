@@ -375,7 +375,11 @@ async def _ensure_demo_procurement(db: AsyncSession, project_id: str) -> None:
         return
     created = await pur_svc.generate_needs_from_estimate(db, project_id)
     if created:
-        # одна закупка из первых позиций — чтобы на демо был открытый шаг
+        # W66: create_from_picks требует approved (W57) — демо сначала согласует
+        from app.models.entities import MaterialPickStatus
+        for c in created[:3]:
+            c.status = MaterialPickStatus.approved
+        await db.flush()
         ids = [c.id for c in created[:3]]
         await pur_svc.create_from_picks(db, project_id, ids, supplier_name="Леруа (демо)")
 

@@ -294,7 +294,8 @@ export function buildProjectOsSnapshot(
     },
     materials: {
       needBuy,
-      ordered: Math.max(picks.filter((p) => p.status === 'approved').length, purchases.filter((p) => !['delivered', 'cancelled'].includes(p.status)).length),
+      // W66 #18: «Заказано» ≠ «Согласовано» — только закупки в работе
+      ordered: purchases.filter((p) => ['ordered', 'paid', 'partial', 'approved'].includes(p.status)).length,
       delivered: Math.max(picks.filter((p) => p.status === 'purchased').length, purchases.filter((p) => p.status === 'delivered').length),
       shortage,
     },

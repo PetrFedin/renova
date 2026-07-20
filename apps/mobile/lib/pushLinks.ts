@@ -113,6 +113,11 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
       return tabsRoute(role, 'chat');
     case 'budget_alert':
       return budgetTabRoute(role, 'summary');
+    case 'schedule_review':
+      return {
+        pathname: role === 'contractor' ? '/(contractor)/(tabs)/calendar' : '/(customer)/(tabs)/calendar',
+        params: {},
+      };
     case 'document':
       return { pathname: '/documents', params: {} };
     case 'issue':

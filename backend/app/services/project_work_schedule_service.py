@@ -22,6 +22,16 @@ def is_project_customer(user: User, project: Project) -> bool:
     return user.id == project.customer_id
 
 
+
+def can_manage_schedule(user: User, project: Project) -> bool:
+    """W66 #17: график создаёт/отправляет исполнитель; без подрядчика — заказчик."""
+    if user.id == project.contractor_id:
+        return True
+    if not project.contractor_id and user.id == project.customer_id:
+        return True
+    return False
+
+
 async def load_items(db: AsyncSession, schedule_id: str) -> list[ProjectWorkScheduleItem]:
     return list(
         (
@@ -183,6 +193,8 @@ async def get_schedule(db: AsyncSession, project_id: str, schedule_id: str) -> P
 async def create_schedule(db: AsyncSession, project: Project, user: User, body: WorkScheduleCreateIn) -> ProjectWorkSchedule:
     if not is_project_member(user, project):
         raise HTTPException(status_code=403, detail="only_project_members_can_create_schedule")
+    if not can_manage_schedule(user, project):
+        raise HTTPException(status_code=403, detail="only_contractor_can_create_schedule")
     schedule = ProjectWorkSchedule(
         project_id=project.id,
         title=body.title,
@@ -246,6 +258,11 @@ async def sync_stages_from_schedule_items(db: AsyncSession, schedule: ProjectWor
 
 
 async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User) -> ProjectWorkSchedule:
+    project_gate = await db.get(Project, schedule.project_id)
+    if not project_gate or not is_project_member(user, project_gate):
+        raise HTTPException(status_code=403, detail="project_forbidden")
+    if not can_manage_schedule(user, project_gate):
+        raise HTTPException(status_code=403, detail="only_contractor_can_submit_schedule")
     items = await load_items(db, schedule.id)
     if not items:
         raise HTTPException(status_code=409, detail="schedule_items_required")

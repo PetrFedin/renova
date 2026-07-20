@@ -38,7 +38,13 @@ console.assert(resolveNotificationLink('change_order')?.params?.estimateLayer ==
 console.assert(resolveNotificationLink('change_order', 'contractor')?.pathname.includes('object'), 'change_order contractor → object estimate');
 const unknownNotify = resolveNotificationLink('unknown_xyz');
 console.assert(unknownNotify?.pathname === '/inbox', 'notify unknown → inbox');
+// W66 #25: smoke deep-links for contract / QC / schedule notify
+console.assert(resolvePushLink('/documents', '/home', 'customer')?.pathname === '/documents', 'documents');
+console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.pathname === '/quality-control', 'qc');
+console.assert(resolveNotificationLink('schedule_review', 'customer')?.pathname.includes('calendar'), 'schedule_review customer');
+console.assert(resolveNotificationLink('document', 'contractor')?.pathname === '/documents', 'document notify');
 console.log('pushLinks: OK');
+
 
 console.assert(resolveNotificationLink('issue', 'contractor')?.pathname === '/quality-control', 'issue notify');
 console.assert(resolveNotificationLink('payment_pending', 'contractor')?.pathname.includes('contractor'), 'contractor budget');

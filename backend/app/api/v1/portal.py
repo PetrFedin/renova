@@ -313,6 +313,84 @@ async def portal_accept_work(
     return acceptance_dict(result.acceptance)
 
 
+@router.post("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/return")
+async def portal_return_work(
+    project_id: str,
+    acceptance_id: str,
+    body: PortalAcceptIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """W66 #13: возврат этапа на доработку по magic link (scope accept_stage)."""
+    from app.models.entities import AcceptanceStatus, StageStatus, WorkAcceptance
+    from app.api.v1.work_acceptances import (
+        acceptance_dict,
+        require_pending_decision,
+        require_stage,
+        project_member_ids,
+    )
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    try:
+        claims = portal_tok.verify_portal_token(body.token)
+    except ValueError:
+        raise HTTPException(401, "invalid_portal_token")
+    if claims["project_id"] != project_id:
+        raise HTTPException(401, "token_mismatch")
+    if "accept_stage" not in claims.get("scopes", []):
+        raise HTTPException(403, "portal_read_only")
+
+    user = await db.get(User, claims["user_id"])
+    if not user:
+        raise HTTPException(401, "user_not_found")
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project_not_found")
+    if user.id != project.customer_id or user.role != UserRole.customer:
+        raise HTTPException(403, "acceptance_decision_customer_only")
+
+    row = await db.get(WorkAcceptance, acceptance_id)
+    if not row or row.project_id != project_id:
+        raise HTTPException(404, "acceptance_not_found")
+    require_pending_decision(row)
+    stage = await require_stage(db, project_id, row.stage_id)
+
+    row.status = AcceptanceStatus.returned.value
+    row.accepted_by = user.id
+    row.comment = body.comment or row.comment
+    stage.status = StageStatus.active
+    stage.contractor_ready = False
+    stage.contractor_ready_at = None
+    stage.needs_rework = True
+    stage.percent_complete = min(stage.percent_complete or 90, 90)
+    await db.commit()
+    await db.refresh(row)
+
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="AcceptanceReturned",
+        title=f"Этап возвращён (portal): {stage.name}",
+        body=body.comment,
+        link_path=f"/stage/{stage.id}",
+    )
+    for member_id in project_member_ids(project):
+        if member_id == user.id:
+            continue
+        await notif.notify(
+            db,
+            user_id=member_id,
+            project_id=project_id,
+            notification_type="stage_review",
+            title=f"Доработка по этапу: {stage.name}",
+            body=body.comment or "Этап возвращён после проверки (портал).",
+            link_path=f"/stage/{stage.id}",
+            return_to="/(contractor)/(tabs)/home",
+        )
+    return acceptance_dict(row)
+
+
 class PortalSignIn(BaseModel):
     token: str
     provider: str = "in_app"

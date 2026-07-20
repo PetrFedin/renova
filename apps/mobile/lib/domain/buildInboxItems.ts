@@ -112,6 +112,39 @@ export async function buildInboxItems(opts: {
       });
     }
 
+    // W66 #15: после фиксации сметы — подписать договор, если gate не ok
+    if (project?.estimate_locked_at) {
+      try {
+        const gate = await api.getContractGate(userId, projectId);
+        if (gate && gate.ok === false) {
+          const titles = (gate.pending_titles || []).slice(0, 2).join(', ');
+          next.push({
+            id: 'contract-sign',
+            kind: 'document',
+            title: 'Подписать договор',
+            sub: titles || gate.message || 'Документы ждут подписи',
+            href: '/documents',
+            priority: 81,
+          });
+        }
+      } catch { /* noop */ }
+    }
+
+    // W66 #22: исправленные замечания ждут подтверждения заказчика
+    try {
+      const fixed = await api.listIssues(userId, projectId, 'fixed');
+      if (fixed.length > 0) {
+        next.push({
+          id: 'issues-fixed',
+          kind: 'quality',
+          title: 'Подтвердить исправления',
+          sub: `${fixed.length} · ${fixed[0]?.title || ''}`,
+          href: repairTabHref(role, 'control'),
+          priority: 79,
+        });
+      }
+    } catch { /* noop */ }
+
     try {
       const picks = await api.listMaterialPicks(userId, projectId);
       const pendingMat = picks.filter((p) => p.status === 'pending');

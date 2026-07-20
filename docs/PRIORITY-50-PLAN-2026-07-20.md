@@ -46,20 +46,20 @@
 
 | # | Что не так | Тип |
 |---|------------|-----|
-| 13 | Portal acceptance без return/remarks | gap |
-| 14 | Approvals hub без unified approve | gap |
-| 15 | Нет CTA «подписать договор» после lock | honesty |
-| 16 | `rejection_reason` графика не в UI подрядчика | honesty |
-| 17 | Customer может create/submit schedule (backend) | honesty |
-| 18 | Counters approved = ordered | honesty |
-| 19 | Setup checklist budget по proxy progress | honesty |
-| 20 | Audit trail раздвоен (activity vs HTTP) | gap |
-| 21 | Notify на все approve → contractor | gap |
-| 22 | Customer confirm для status=fixed | gap |
-| 23 | Kontur/e-sign live smoke | ops |
-| 24 | Offline write без честного UX | honesty |
-| 25 | Push deep-link regression smoke | honesty |
-| 26 | TTL/remind на stale propose | gap |
+| 13 | Portal acceptance return | **done W66** |
+| 14 | Approvals hub unified approve | **done W66** |
+| 15 | CTA «подписать договор» после lock | **done W66** |
+| 16 | `rejection_reason` в UI графика | **done W66** |
+| 17 | Schedule create/submit contractor-only | **done W66** |
+| 18 | ordered ≠ approved (purchases only) | **done W66** |
+| 19 | checklist budget без progress proxy | **done W66** |
+| 20 | Audit: hub approve пишет activity (+ notify) | **lite W66** |
+| 21 | Hub approve → notify contractor | **done W66** |
+| 22 | Inbox «Подтвердить исправления» (fixed) | **done W66** |
+| 23 | Kontur/e-sign live smoke | **ops** (нужен Kontur) |
+| 24 | Offline UX + approve в очереди | **done W66** |
+| 25 | Push deep-link smoke expanded | **done W66** |
+| 26 | Propose TTL 14д → proposal_stale | **done W66** |
 
 ---
 
@@ -125,6 +125,6 @@ Canvas: `renova-priority-50.canvas.tsx`
 |-------|--------|--------|
 | H0 | 1–8 | **ops** — нужны staging URL + YuKassa + TestFlight (не код) |
 | W65 | 9–12 | **закрыто** `develop` |
-| W66 | 13–26 | next |
+| W66 | 13–26 | **закрыто** `develop` (см. ниже; #23 ops) |
 | W67 | 27–38 | queued |
 | W68 | 39–50 | queued |

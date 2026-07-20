@@ -217,6 +217,12 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
               ? `Статус: ${schedule.status}${schedule.items?.length ? ` · ${schedule.items.length} этапов` : ''}`
               : 'План ещё не создан'}
           </Text>
+          {/* W66 #16: причина отклонения видна обеим ролям */}
+          {schedule?.status === 'rejected' && schedule.rejection_reason ? (
+            <Text style={[s.planSub, { color: '#b45309' }]}>
+              Причина: {schedule.rejection_reason}
+            </Text>
+          ) : null}
           {!readOnly && role === 'contractor' && !schedule ? (
             <Pressable
               style={s.planCta}
