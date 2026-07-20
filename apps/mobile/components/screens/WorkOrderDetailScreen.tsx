@@ -36,8 +36,12 @@ export function WorkOrderDetailScreen() {
       const updated = await api.transitionWorkOrder(user.id, activeProject.id, wo.id, next);
       setWo(updated);
       await syncProjectSideEffects({ user, project: activeProject, role });
-    } catch {
-      Alert.alert('Ошибка', 'Недопустимый переход статуса');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Смена статуса отправится при подключении');
+      } else {
+        Alert.alert('Ошибка', 'Недопустимый переход статуса');
+      }
     }
   }
 

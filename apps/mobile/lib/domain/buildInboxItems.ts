@@ -164,12 +164,14 @@ export async function buildInboxItems(opts: {
     try {
       const fixed = await api.listIssues(userId, projectId, 'fixed');
       if (fixed.length > 0) {
+        const first = fixed[0];
+        // W111: этап замечания → карточка; иначе приёмка/контроль
         next.push({
           id: 'issues-fixed',
           kind: 'quality',
           title: 'Подтвердить исправления',
-          sub: `${fixed.length} · ${fixed[0]?.title || ''}`,
-          href: repairTabHref(role, 'control'),
+          sub: `${fixed.length} · ${first?.title || ''}`,
+          href: first?.stage_id ? `/stage/${first.stage_id}` : '/control',
           priority: 79,
         });
       }
@@ -185,7 +187,9 @@ export async function buildInboxItems(opts: {
           kind: 'material',
           title: 'Материалы на согласование',
           sub: `${pendingMat.length} · ${pendingMat[0]?.name || ''}`,
-          href: repairTabHref(role, 'materials'),
+          href: pendingMat.length === 1 && pendingMat[0]
+            ? `/material/${pendingMat[0].id}`
+            : repairTabHref(role, 'materials'),
           priority: 77,
         });
       }
@@ -233,7 +237,8 @@ export async function buildInboxItems(opts: {
           kind: 'warranty',
           title: (w.overdue ?? 0) > 0 ? `Гарантия: ${w.overdue} просрочено` : 'Открытые гарантии',
           sub: `${w.open} обращений`,
-          href: '/documents',
+          // W111: QC/control (не только документы) — закрытие и список замечаний
+          href: '/quality-control',
           priority: 78,
         });
       }
@@ -378,7 +383,10 @@ export async function buildInboxItems(opts: {
         kind: 'work',
         title: 'Работы на приёмке',
         sub: `${reviewWo.length} · ${reviewWo[0]?.title || ''}`,
-        href: repairTabHref(role, 'control'),
+        // W111: один WO → карточка; иначе hub control
+        href: reviewWo.length === 1 && reviewWo[0]
+          ? `/work-order/${reviewWo[0].id}`
+          : repairTabHref(role, 'control'),
         priority: 84,
       });
     }
@@ -388,7 +396,9 @@ export async function buildInboxItems(opts: {
         kind: 'work',
         title: 'Работы ждут действия',
         sub: `${pendingWo.length} · ${pendingWo[0]?.title || ''}`,
-        href: calendarTabHref(role),
+        href: pendingWo.length === 1 && pendingWo[0]
+          ? `/work-order/${pendingWo[0].id}`
+          : calendarTabHref(role),
         priority: 83,
       });
     }

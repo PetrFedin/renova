@@ -62,7 +62,8 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
       return;
     }
     if (it.kind === 'approval') navigateApproval(it.approval, role, returnTo);
-    else pushOsNav(it.href, returnTo);
+    // W111: role → /control и short aliases через resolvePushLink SoT
+    else pushOsNav(it.href, returnTo, role);
   };
 
   return (

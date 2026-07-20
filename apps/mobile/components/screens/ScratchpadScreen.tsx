@@ -53,8 +53,13 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       // Сразу показываем строку — не ждём повторный GET (раньше cachedGet отдавал старый список).
       setLines((prev) => [...prev, line]);
       reload();
-    } catch {
-      Alert.alert('Черновик', 'Не удалось сохранить строку');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Строка черновика отправится при подключении');
+        setDraft('');
+      } else {
+        Alert.alert('Черновик', 'Не удалось сохранить строку');
+      }
     } finally {
       setBusy(false);
     }
@@ -65,7 +70,11 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
     try {
       await api.patchScratchpadLine(user.id, activeProject.id, line.id, { done: !line.done });
       reload();
-    } catch { /* offline */ }
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Статус строки в очереди');
+      }
+    }
   };
 
   const deleteLine = (line: ScratchpadLine) => {

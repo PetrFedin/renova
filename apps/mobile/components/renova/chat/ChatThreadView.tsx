@@ -373,8 +373,12 @@ export function ChatThreadView({
                         },
                       },
                     ]);
-                  } catch {
-                    Alert.alert('Ошибка', 'Не удалось создать счёт');
+                  } catch (e: unknown) {
+                    if (e instanceof Error && e.message === 'offline_queued') {
+                      Alert.alert('Офлайн', 'Счёт отправится при подключении');
+                    } else {
+                      Alert.alert('Ошибка', 'Не удалось создать счёт');
+                    }
                   }
                 };
                 Alert.alert('Счёт в бюджете', 'Выберите сумму. Заказчик увидит счёт в «Деньги → Оплаты».', [
