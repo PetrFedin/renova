@@ -9,8 +9,24 @@ import { sanitizeRiskImpact } from './sanitizeRiskImpact';
 import { resolveProjectProgress } from './resolveProjectProgress';
 import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute } from '@/constants/osSections';
 
-/** Опциональный статус активного work-schedule (W55 nextAction). */
-export type WorkScheduleHint = { status?: string | null };
+/**
+ * Подсказки для nextAction (W55 schedule + W76 очередь приёмки/ДО/подписи/гарантии).
+ * status — active work-schedule; остальные счётчики с home load.
+ */
+export type WorkScheduleHint = {
+  status?: string | null;
+  /** Открытые гарантийные обращения */
+  warrantyOpen?: number;
+  /** Просроченные по SLA */
+  warrantyOverdue?: number;
+  /** Change orders со статусом pending */
+  pendingChangeOrders?: number;
+  /** Документы status=draft (ждут подписи) */
+  pendingSignDocs?: number;
+};
+
+/** @deprecated alias — используйте WorkScheduleHint */
+export type NextActionHints = WorkScheduleHint;
 
 const ST_SHORT: Record<string, string> = {
   done: 'Завершено', review: 'Ждёт приёмки', active: 'В работе', planned: 'Не начато', rework: 'Доработка',
@@ -73,19 +89,32 @@ export function buildProjectOsSnapshot(
     budgetAlerts: spent >= planned * 0.9 && planned > 0 ? 1 : 0,
   });
   if (isComplete) {
-    health = unpaid > 0
-      ? {
-          score: 90,
-          level: 'attention',
-          label: 'Закрытие',
-          factors: [`${unpaid} счетов к оплате`],
-        }
-      : {
-          score: 100,
-          level: 'good',
-          label: 'Завершён',
-          factors: [],
-        };
+    const wOpen = Math.max(0, workSchedule?.warrantyOpen ?? 0);
+    const wOver = Math.max(0, workSchedule?.warrantyOverdue ?? 0);
+    if (unpaid > 0) {
+      health = {
+        score: 90,
+        level: 'attention',
+        label: 'Закрытие',
+        factors: [`${unpaid} счетов к оплате`],
+      };
+    } else if (wOpen > 0) {
+      health = {
+        score: wOver > 0 ? 70 : 85,
+        level: wOver > 0 ? 'risk' : 'attention',
+        label: 'Гарантия',
+        factors: wOver > 0
+          ? [`${wOver} гарантий просрочено`, `${wOpen} открыто`]
+          : [`${wOpen} открытых гарантий`],
+      };
+    } else {
+      health = {
+        score: 100,
+        level: 'good',
+        label: 'Завершён',
+        factors: [],
+      };
+    }
   }
 
   const attention = buildAttention(project, role);
@@ -113,13 +142,26 @@ export function buildProjectOsSnapshot(
   const dashTitle = dash.next_action_title || '';
   const dashSaysComplete = /заверш/i.test(dashTitle);
   const scheduleSubmitted = workSchedule?.status === 'submitted';
+  const warrantyOpen = Math.max(0, workSchedule?.warrantyOpen ?? 0);
+  const warrantyOverdue = Math.max(0, workSchedule?.warrantyOverdue ?? 0);
+  const pendingChangeOrders = Math.max(0, workSchedule?.pendingChangeOrders ?? 0);
+  const pendingSignDocs = Math.max(0, workSchedule?.pendingSignDocs ?? 0);
+  const waPending = Math.max(0, pendingAcceptanceCount ?? 0);
   const estimateLines = project.estimate_lines?.length ?? 0;
   const estimateNeedsLock = estimateLines > 0 && !project.estimate_locked_at;
 
+  const changeOrdersHref = (() => {
+    const route = objectTabRoute(role, 'estimate');
+    return {
+      pathname: route.pathname,
+      params: { ...(route.params || {}), estimateLayer: 'changes' },
+    };
+  })();
+
   let nextAction: ProjectOsSnapshot['nextAction'];
   if (isComplete) {
-    nextAction = unpaid > 0
-      ? (role === 'customer'
+    if (unpaid > 0) {
+      nextAction = role === 'customer'
         ? {
           title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,
           subtitle: pendingPaymentTotal > 0
@@ -137,14 +179,39 @@ export function buildProjectOsSnapshot(
           button: 'Счета',
           href: budgetTabRoute(role, 'payments'),
           kind: 'payment',
-        })
-      : {
-          title: 'Закрытие объекта',
-          subtitle: 'Проверьте акты, оплаты и гарантию в Документах',
-          button: 'Документы',
-          href: '/documents',
-          kind: 'review',
         };
+    } else if (warrantyOpen > 0) {
+      // W76: после сдачи — гарантия важнее «пустого» closeout
+      nextAction = {
+        title: warrantyOverdue > 0
+          ? `Гарантия: ${warrantyOverdue} просрочено`
+          : warrantyOpen === 1
+            ? 'Открыта гарантия'
+            : `Гарантия: ${warrantyOpen} открыто`,
+        subtitle: project.is_archived
+          ? 'Пост-сдача: закройте обращения или создайте новое'
+          : 'Закройте обращения перед архивом объекта',
+        button: 'Гарантия',
+        href: '/documents',
+        kind: 'issue',
+      };
+    } else if (pendingSignDocs > 0 && role === 'customer') {
+      nextAction = {
+        title: pendingSignDocs === 1 ? 'Подписать документ' : `Подписать ${pendingSignDocs} док.`,
+        subtitle: 'Черновики ждут электронной подписи',
+        button: 'Документы',
+        href: '/documents',
+        kind: 'review',
+      };
+    } else {
+      nextAction = {
+        title: 'Закрытие объекта',
+        subtitle: 'Проверьте акты, оплаты и гарантию в Документах',
+        button: 'Документы',
+        href: '/documents',
+        kind: 'review',
+      };
+    }
   } else if (unpaid > 0 && role === 'contractor') {
     nextAction = {
       title: unpaid === 1 ? 'Ждём оплату заказчика' : `Ждём оплату · ${unpaid} сч.`,
@@ -165,6 +232,31 @@ export function buildProjectOsSnapshot(
       href: budgetTabRoute(role, 'payments'),
       kind: 'payment',
     };
+  } else if (waPending > 0 && role === 'customer') {
+    // W76: WorkAcceptance.requested/in_review — даже если stage ещё не review
+    nextAction = {
+      title: reviewStage
+        ? `Принять этап: ${reviewStage.name}`
+        : waPending === 1
+          ? 'Принять работы'
+          : `Принять · ${waPending} очереди`,
+      subtitle: reviewStage ? 'Этап ждёт приёмки' : 'Есть заявки на приёмку',
+      button: 'Принять',
+      href: repairTabRoute(role, 'control'),
+      kind: 'accept',
+    };
+  } else if (waPending > 0 && role === 'contractor') {
+    nextAction = {
+      title: reviewStage
+        ? `Ждём приёмку: ${reviewStage.name}`
+        : waPending === 1
+          ? 'Ждём приёмку заказчика'
+          : `Ждём приёмку · ${waPending}`,
+      subtitle: 'Заказчик проверяет работы',
+      button: 'Статус',
+      href: repairTabRoute(role, 'control'),
+      kind: 'accept',
+    };
   } else if (reviewStage && role === 'customer') {
     nextAction = {
       title: `Принять этап: ${reviewStage.name}`,
@@ -180,6 +272,30 @@ export function buildProjectOsSnapshot(
       button: 'Статус',
       href: repairTabRoute(role, 'control'),
       kind: 'accept',
+    };
+  } else if (pendingChangeOrders > 0 && role === 'customer') {
+    nextAction = {
+      title: pendingChangeOrders === 1 ? 'Согласовать доп. работы' : `Согласовать ${pendingChangeOrders} ДО`,
+      subtitle: 'Изменение сметы ждёт решения',
+      button: 'Доп. работы',
+      href: changeOrdersHref,
+      kind: 'expense',
+    };
+  } else if (pendingChangeOrders > 0 && role === 'contractor') {
+    nextAction = {
+      title: 'Доп. работы у заказчика',
+      subtitle: pendingChangeOrders === 1 ? 'Ждём согласование' : `${pendingChangeOrders} на согласовании`,
+      button: 'Открыть',
+      href: changeOrdersHref,
+      kind: 'expense',
+    };
+  } else if (pendingSignDocs > 0 && role === 'customer') {
+    nextAction = {
+      title: pendingSignDocs === 1 ? 'Подписать документ' : `Подписать ${pendingSignDocs} док.`,
+      subtitle: 'Черновики в Документах',
+      button: 'Документы',
+      href: '/documents',
+      kind: 'review',
     };
   } else if (scheduleSubmitted && role === 'customer') {
     nextAction = {

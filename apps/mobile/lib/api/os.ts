@@ -153,7 +153,12 @@ export const osApi = {
     }
   },
   listWarrantyClaims: (userId: string, projectId: string) =>
-    req<{ items: { id: string; title: string; status: string; created_at?: string }[]; open: number }>(
+    req<{
+      items: { id: string; title: string; status: string; created_at?: string; overdue?: boolean }[];
+      open: number;
+      overdue?: number;
+      post_closeout_allowed?: boolean;
+    }>(
       `/api/v1/projects/${projectId}/warranty-claims`,
       {},
       userId,

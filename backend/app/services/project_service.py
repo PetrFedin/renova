@@ -233,6 +233,101 @@ def build_dashboard(project: Project) -> dict:
     }
 
 
+
+async def enrich_dashboard_actions(
+    db: AsyncSession,
+    project_id: str,
+    dash: dict,
+    *,
+    role: str | None = None,
+) -> dict:
+    """W76: очередь приёмки / ДО / гарантия / draft docs → next_action (как mobile nextAction)."""
+    from datetime import datetime as _dt
+    from sqlalchemy import func, select as sa_select
+    from app.models.entities import ChangeOrder, ChangeOrderStatus, ProjectIssue
+    from app.models.project_documents import DocumentStatus, ProjectDocument
+    from app.services import acceptance_service as acc_svc
+
+    pending_acc = await acc_svc.pending_count(db, project_id)
+    pending_co = int(
+        (
+            await db.execute(
+                sa_select(func.count())
+                .select_from(ChangeOrder)
+                .where(
+                    ChangeOrder.project_id == project_id,
+                    ChangeOrder.status == ChangeOrderStatus.pending,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    warranty_rows = list(
+        (
+            await db.execute(
+                sa_select(ProjectIssue).where(
+                    ProjectIssue.project_id == project_id,
+                    ProjectIssue.title.startswith("[Гарантия]"),
+                    ProjectIssue.status != "closed",
+                )
+            )
+        ).scalars().all()
+    )
+    now = _dt.utcnow()
+    warranty_open = len(warranty_rows)
+    warranty_overdue = sum(1 for w in warranty_rows if w.due_at and w.due_at < now)
+    pending_sign = int(
+        (
+            await db.execute(
+                sa_select(func.count())
+                .select_from(ProjectDocument)
+                .where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.status == DocumentStatus.draft.value,
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+
+    dash["pending_acceptances"] = pending_acc
+    dash["pending_change_orders"] = pending_co
+    dash["warranty_open"] = warranty_open
+    dash["warranty_overdue"] = warranty_overdue
+    dash["pending_sign_docs"] = pending_sign
+
+    # Согласовано с mobile nextAction: после сдачи — гарантия/подписи важнее orphan WA
+    is_customer = (role or "").lower() in ("customer", "owner", "")
+    title = dash.get("next_action_title") or ""
+    says_complete = "заверш" in title.lower()
+    if pending_acc and f"Приёмка в очереди: {pending_acc}" not in dash.get("alerts", []):
+        dash.setdefault("alerts", []).append(f"Приёмка в очереди: {pending_acc}")
+    if says_complete and warranty_open > 0:
+        dash["next_action_title"] = (
+            f"Гарантия: {warranty_overdue} просрочено"
+            if warranty_overdue
+            else (f"Гарантия: {warranty_open} открыто" if warranty_open > 1 else "Открыта гарантия")
+        )
+        dash["next_action_type"] = "warranty"
+    elif says_complete and pending_sign > 0 and is_customer:
+        dash["next_action_title"] = (
+            "Подписать документ" if pending_sign == 1 else f"Подписать {pending_sign} док."
+        )
+        dash["next_action_type"] = "sign_document"
+    elif pending_acc > 0:
+        dash["next_action_title"] = (
+            f"Приёмка: {pending_acc} в очереди" if is_customer else f"Ждём приёмку · {pending_acc}"
+        )
+        dash["next_action_type"] = "accept_stage"
+    elif pending_co > 0 and is_customer and dash.get("next_action_type") not in ("payment",):
+        dash["next_action_title"] = (
+            "Согласовать доп. работы" if pending_co == 1 else f"Согласовать {pending_co} ДО"
+        )
+        dash["next_action_type"] = "change_order"
+
+    return dash
+
+
 async def submit_stage_for_review(db: AsyncSession, stage_id: str) -> tuple[Stage | None, dict | None]:
     from app.services import stage_service as stage_svc
     return await stage_svc.set_contractor_ready(db, stage_id)

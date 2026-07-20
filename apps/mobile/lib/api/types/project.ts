@@ -82,4 +82,10 @@ export type Dashboard = {
   alerts: string[];
   planned_start_date?: string | null;
   planned_end_date?: string | null;
+  /** W76: очередь с бэкенда (согласовано с home nextAction) */
+  pending_acceptances?: number;
+  pending_change_orders?: number;
+  warranty_open?: number;
+  warranty_overdue?: number;
+  pending_sign_docs?: number;
 };

@@ -137,6 +137,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W73 | warranty post-closeout+SLA, Grand-Smeta CSV, escalate ACL | **закрыто** `develop` (без оплат) |
 | W74 | 1C archive+catalog, bank→expense, FNS mode, digest home, portal share | **закрыто** `develop` (без оплат) |
 | W75 | offline accept UI, CO→schedule, digest warranty, eSign doc status | **закрыто** `develop` (без оплат) |
+| W76 | home nextAction WA/CO/sign/warranty + dashboard enrich | **закрыто** `develop` (без оплат) |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

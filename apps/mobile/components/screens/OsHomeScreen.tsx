@@ -37,8 +37,12 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [pendingAcceptance, setPendingAcceptance] = useState(0);
   const [pendingPayments, setPendingPayments] = useState(0);
   const [pendingPaymentTotal, setPendingPaymentTotal] = useState(0);
-  /** W55: статус active work-schedule для nextAction (submitted → подтвердить) */
+  /** W55/W76: подсказки nextAction (график, гарантия, ДО, подписи) */
   const [workScheduleStatus, setWorkScheduleStatus] = useState<string | null>(null);
+  const [warrantyOpen, setWarrantyOpen] = useState(0);
+  const [warrantyOverdue, setWarrantyOverdue] = useState(0);
+  const [pendingChangeOrders, setPendingChangeOrders] = useState(0);
+  const [pendingSignDocs, setPendingSignDocs] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,6 +88,17 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         api.osBudget(user.id, activeProject.id).then(setOsBudget),
         api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)),
         api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => setWorkScheduleStatus(s?.status ?? null)),
+        // W76: гарантия / ДО / черновики подписи → nextAction
+        api.listWarrantyClaims(user.id, activeProject.id).then((r) => {
+          setWarrantyOpen(r.open ?? 0);
+          setWarrantyOverdue(r.overdue ?? 0);
+        }),
+        api.listChangeOrders(user.id, activeProject.id).then((orders) => {
+          setPendingChangeOrders(orders.filter((o) => o.status === 'pending').length);
+        }),
+        api.listProjectDocuments(user.id, activeProject.id).then((res) => {
+          setPendingSignDocs((res.items || []).filter((d) => d.status === 'draft').length);
+        }),
       ]);
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
@@ -98,6 +113,9 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
             () => setOsBudget(null),
             () => setPendingAcceptance(0),
             () => setWorkScheduleStatus(null),
+            () => { setWarrantyOpen(0); setWarrantyOverdue(0); },
+            () => setPendingChangeOrders(0),
+            () => setPendingSignDocs(0),
           ];
           fallbacks[i]?.();
         }
@@ -126,9 +144,13 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       pendingAcceptance,
       pendingPayments,
       pendingPaymentTotal,
-      { status: workScheduleStatus },
+      { status: workScheduleStatus, warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs },
     );
-  }, [activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget, pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus]);
+  }, [
+    activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
+    pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
+    warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
+  ]);
 
   useEffect(() => {
     if (!snap) {

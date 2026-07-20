@@ -275,6 +275,11 @@ async def dashboard(project_id: str, user: User = Depends(get_current_user), db:
     from app.models.entities import MarginSnapshot
     dash = svc.build_dashboard(p)
     try:
+        role = getattr(getattr(user, "role", None), "value", None) or str(getattr(user, "role", "") or "")
+        dash = await svc.enrich_dashboard_actions(db, project_id, dash, role=role)
+    except Exception:
+        pass
+    try:
         margin = p.budget_planned - p.budget_spent
         db.add(MarginSnapshot(project_id=project_id, margin_estimated=margin))
         await db.commit()

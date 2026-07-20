@@ -175,3 +175,81 @@ function project(partial: Partial<ProjectDetail> & { stages?: ProjectDetail['sta
 }
 
 console.log('buildProjectOsSnapshot.w55.test OK');
+
+// W76: WA pending without stage.status=review
+{
+  const snap = buildProjectOsSnapshot(
+    project({
+      stages: [{ id: 's1', name: 'Черновые', status: 'active' } as any],
+      estimate_locked_at: '2026-01-01',
+      estimate_lines: [{ id: 'e1' } as any],
+    }),
+    baseDash,
+    [],
+    [],
+    [],
+    [],
+    null,
+    'customer',
+    null,
+    2, // pendingAcceptanceCount
+    0,
+    0,
+    { status: 'confirmed' },
+  );
+  if (snap.nextAction.kind !== 'accept') throw new Error(`W76 WA pending → accept, got ${snap.nextAction.title}`);
+}
+
+// W76: pending change orders
+{
+  const snap = buildProjectOsSnapshot(
+    project({
+      stages: [{ id: 's1', name: 'Черновые', status: 'active' } as any],
+      estimate_locked_at: '2026-01-01',
+      estimate_lines: [{ id: 'e1' } as any],
+    }),
+    baseDash,
+    [],
+    [],
+    [],
+    [],
+    null,
+    'customer',
+    null,
+    0,
+    0,
+    0,
+    { status: 'confirmed', pendingChangeOrders: 1 },
+  );
+  if (!/доп/i.test(snap.nextAction.title)) throw new Error(`W76 CO → got ${snap.nextAction.title}`);
+  if (snap.nextAction.kind !== 'expense') throw new Error('CO kind=expense');
+}
+
+// W76: complete + warranty open
+{
+  const snap = buildProjectOsSnapshot(
+    project({
+      stages: [{ id: 's1', name: 'Done', status: 'done' } as any],
+      estimate_locked_at: '2026-01-01',
+      estimate_lines: [{ id: 'e1' } as any],
+      is_archived: true,
+    }),
+    { ...baseDash, progress_percent: 100, next_action_title: 'Проект завершён' },
+    [],
+    [],
+    [],
+    [],
+    null,
+    'customer',
+    null,
+    0,
+    0,
+    0,
+    { warrantyOpen: 1, warrantyOverdue: 1 },
+  );
+  if (!/гарант/i.test(snap.nextAction.title)) throw new Error(`W76 warranty → got ${snap.nextAction.title}`);
+  if (snap.nextAction.kind !== 'issue') throw new Error('warranty kind=issue');
+  if (snap.healthLevel === 'good') throw new Error('warranty must not be health=good');
+}
+
+console.log('buildProjectOsSnapshot.w76 cases OK');
