@@ -8,6 +8,8 @@ import { computePendingAcceptanceCount } from '@/lib/domain/acceptancePending';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, ProjectIssue, WorkAcceptance } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -30,6 +32,8 @@ export function ContractorControlView() {
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  // W89: после приёмки/QC в другом экране — обновить список без remount
+  useProjectDataReload(reload);
 
   if (!activeProject || !user) return <ProjectEmptyState role="contractor" />;
 
@@ -64,7 +68,11 @@ export function ContractorControlView() {
               title="Исправлено"
               compact
               variant="outline"
-              onPress={() => api.closeIssue(user!.id, activeProject!.id, iss.id).then(reload)}
+              onPress={async () => {
+                await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                await syncProjectSideEffects({ user, project: activeProject });
+                reload();
+              }}
             />
           ) : null}
           {(iss.title || '').startsWith('[Гарантия]') && iss.status !== 'closed' ? (

@@ -8,6 +8,8 @@ import { computePendingAcceptanceCount } from '@/lib/domain/acceptancePending';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, ProjectIssue, WorkAcceptance } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -30,6 +32,8 @@ export function CustomerControlView() {
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  // W89: после приёмки/QC в другом экране — обновить список без remount
+  useProjectDataReload(reload);
 
   if (!activeProject || !user) return <ProjectEmptyState role="customer" />;
 
@@ -65,7 +69,11 @@ export function CustomerControlView() {
           <Text style={s.title}>{iss.title}</Text>
           <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
           {!readOnly && iss.status !== 'closed' && (
-            <PrimaryButton title="Закрыть" compact variant="outline" onPress={() => api.closeIssue(user!.id, activeProject!.id, iss.id).then(reload)} />
+            <PrimaryButton title="Закрыть" compact variant="outline" onPress={async () => {
+              await api.closeIssue(user!.id, activeProject!.id, iss.id);
+              await syncProjectSideEffects({ user, project: activeProject });
+              reload();
+            }} />
           )}
         </Pressable>
       ))}
