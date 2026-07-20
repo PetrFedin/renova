@@ -72,8 +72,12 @@ export function AddEstimateLineForm({
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
       onSaved?.();
       Alert.alert('Добавлено', 'Строка добавлена в смету');
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось добавить строку');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Строка сметы отправится при подключении');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось добавить строку');
+      }
     } finally {
       setBusy(false);
     }

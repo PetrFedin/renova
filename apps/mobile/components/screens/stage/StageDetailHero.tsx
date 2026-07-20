@@ -92,7 +92,9 @@ export function StageDetailHero({
                 project: { id: projectId } as any,
               });
             } catch (e: unknown) {
-              if (e instanceof ApiError && e.status === 409) {
+              if (e instanceof Error && e.message === 'offline_queued') {
+                Alert.alert('Офлайн', 'Старт этапа отправится при подключении');
+              } else if (e instanceof ApiError && e.status === 409) {
                 Alert.alert('Блокировка', 'Сначала завершите зависимый этап');
               } else if (e instanceof ApiError && e.status === 403) {
                 const d = e.detail as { code?: string; message?: string; pending_titles?: string[] } | undefined;

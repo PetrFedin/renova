@@ -47,17 +47,33 @@ export function ContractorEstimateView() {
 
   async function patchLine(lineId: string, body: object) {
     if (!user) return;
-    await api.patchEstimateLine(user.id, activeProject!.id, lineId, body);
-    await loadProject(activeProject!.id);
-    await syncProjectSideEffects({ user, project: activeProject });
+    try {
+      await api.patchEstimateLine(user.id, activeProject!.id, lineId, body);
+      await loadProject(activeProject!.id);
+      await syncProjectSideEffects({ user, project: activeProject });
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Изменение строки отправится при подключении');
+        return;
+      }
+      throw e;
+    }
   }
 
   async function addChangeOrder() {
     if (!user) return;
-    await api.createChangeOrder(user.id, activeProject.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
-    await loadProject(activeProject.id);
-    await syncProjectSideEffects({ user, project: activeProject });
-    Alert.alert('Изменение сметы', 'Отправлен заказчику на согласование');
+    try {
+      await api.createChangeOrder(user.id, activeProject.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
+      await loadProject(activeProject.id);
+      await syncProjectSideEffects({ user, project: activeProject });
+      Alert.alert('Изменение сметы', 'Отправлен заказчику на согласование');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Допсоглашение отправится при подключении');
+        return;
+      }
+      throw e;
+    }
   }
 
   return (

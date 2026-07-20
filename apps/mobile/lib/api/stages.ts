@@ -46,8 +46,26 @@ export const stagesApi = {
       throw new Error('offline');
     }
   },
-  markStageReady: (userId: string, projectId: string, stageId: string) =>
-    req<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}/ready`, { method: 'POST' }, userId),
+  /** W107: ready → review — очередь офлайн (симметрия submit/start) */
+  markStageReady: async (userId: string, projectId: string, stageId: string) => {
+    try {
+      return await req<StageDetail>(
+        `/api/v1/projects/${projectId}/stages/${stageId}/ready`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/stages/${stageId}/ready`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   submitStage: async (userId: string, projectId: string, stageId: string) => {
     try {
       return await req<WorkAcceptance>(

@@ -2,10 +2,46 @@
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ChangeOrder, MaterialStats, User } from './types';
 export const estimateApi = {
-  patchEstimateLine: (userId: string, projectId: string, lineId: string, body: object) =>
-    req(`/api/v1/projects/${projectId}/estimate/lines/${lineId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
-  addEstimateLine: (userId: string, projectId: string, body: object) =>
-    req(`/api/v1/projects/${projectId}/estimate/lines`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  /** W107: правка строки сметы — очередь офлайн */
+  patchEstimateLine: async (userId: string, projectId: string, lineId: string, body: object) => {
+    try {
+      return await req(
+        `/api/v1/projects/${projectId}/estimate/lines/${lineId}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/estimate/lines/${lineId}`,
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
+  /** W107: новая строка сметы — очередь офлайн */
+  addEstimateLine: async (userId: string, projectId: string, body: object) => {
+    try {
+      return await req(
+        `/api/v1/projects/${projectId}/estimate/lines`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/estimate/lines`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   materialStats: (userId: string, projectId: string) => req<MaterialStats>(`/api/v1/projects/${projectId}/estimate/materials-stats`, {}, userId),
   getEstimateLockDiff: (userId: string, projectId: string) =>
     req<{
@@ -42,8 +78,26 @@ export const estimateApi = {
     }
   },
   listChangeOrders: (userId: string, projectId: string) => req<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, {}, userId),
-  createChangeOrder: (userId: string, projectId: string, body: object) =>
-    req(`/api/v1/projects/${projectId}/change-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  /** W107: допсоглашение — очередь офлайн */
+  createChangeOrder: async (userId: string, projectId: string, body: object) => {
+    try {
+      return await req(
+        `/api/v1/projects/${projectId}/change-orders`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/change-orders`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   approveChangeOrder: async (userId: string, projectId: string, orderId: string) => {
     try {
       return await req<{ ok: boolean; status: string; document_id?: string; amount?: number; title?: string }>(

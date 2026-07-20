@@ -111,7 +111,11 @@ export function HomeScreenBody({
       {/* 2. Очередь дел — единственный attention SoT (hero + inbox; без отдельной строки «Входящие») */}
       {/* W47/W56: banner для обеих ролей; у contractor — «ждут заказчика», не дубль hero accept */}
       {snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
-        <HomeAcceptanceBanner count={snap.quality.awaitingAcceptance} role={role} />
+        <HomeAcceptanceBanner
+          count={snap.quality.awaitingAcceptance}
+          role={role}
+          href={snap.activeWorks.find((w) => w.status === 'review')?.href}
+        />
       ) : null}
       {showAttention && phase !== 'complete' && (
         <HomeActionHero

@@ -2,11 +2,16 @@
 import { router } from 'expo-router';
 import { parseOsHref, budgetTabHref, type OsRole, type OsTabRoute } from '@/constants/osSections';
 import { withReturnTo } from '@/lib/osReturnTo';
+import { resolveOsDeepLink } from '@/lib/osDeepLink';
 
 export type OsNavHref = string | OsTabRoute;
+export { resolveOsDeepLink } from '@/lib/osDeepLink';
 
-export function toOsRoute(target: OsNavHref): OsTabRoute {
-  return typeof target === 'string' ? parseOsHref(target) : target;
+export function toOsRoute(target: OsNavHref, returnTo?: string): OsTabRoute {
+  if (typeof target !== 'string') return target;
+  const deep = resolveOsDeepLink(target, returnTo);
+  if (deep) return deep;
+  return parseOsHref(target);
 }
 
 /** OS-вкладки — navigate (не push), иначе зависает стек tabs */
@@ -21,11 +26,21 @@ function navigateOsRoute(route: OsTabRoute) {
 
 /** Push с returnTo — чтобы на целевом экране была полоска «Назад» */
 export function pushOsNav(target: OsNavHref, returnTo?: string) {
+  // Deep-link уже несёт returnTo в params — не дублируем через withReturnTo на «сырой» path
+  if (typeof target === 'string' && resolveOsDeepLink(target, returnTo)) {
+    navigateOsRoute(toOsRoute(target, returnTo));
+    return;
+  }
   const route = toOsRoute(target);
   navigateOsRoute(returnTo ? withReturnTo(route, returnTo) : route);
 }
 
 export function replaceOsNav(target: OsNavHref, returnTo?: string) {
+  if (typeof target === 'string' && resolveOsDeepLink(target, returnTo)) {
+    const href = toOsRoute(target, returnTo);
+    router.replace(href as any);
+    return;
+  }
   const route = toOsRoute(target);
   const href = returnTo ? withReturnTo(route, returnTo) : route;
   // Expo Router web: replace({ pathname }) для tabs часто no-op — строка pathname работает

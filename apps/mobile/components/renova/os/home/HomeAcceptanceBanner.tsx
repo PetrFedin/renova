@@ -1,11 +1,18 @@
-/** «N ждут приёмки» на главной — роль-зависимый CTA (W56) */
+/** «N ждут приёмки» на главной — роль-зависимый CTA (W56/W107) */
 import { Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
-import { pushOsNav } from '@/lib/pushOsNav';
+import { pushOsNav, type OsNavHref } from '@/lib/pushOsNav';
 
-export function HomeAcceptanceBanner({ count, role }: { count: number; role: OsRole }) {
+type Props = {
+  count: number;
+  role: OsRole;
+  /** W107: прямой /stage/{id} если известен этап в review */
+  href?: OsNavHref;
+};
+
+export function HomeAcceptanceBanner({ count, role, href }: Props) {
   const { returnTo } = useOsNavFromHere(role);
   if (count <= 0) return null;
 
@@ -19,8 +26,8 @@ export function HomeAcceptanceBanner({ count, role }: { count: number; role: OsR
     <Pressable
       style={s.box}
       onPress={() => {
-        // W57: одна поверхность с nextAction accept → repair?tab=control
-        pushOsNav(repairTabRoute(role, 'control'), returnTo);
+        // W107: этап → decide CTA; иначе hub control (inline accept)
+        pushOsNav(href || repairTabRoute(role, 'control'), returnTo);
       }}
       accessibilityRole="button"
       accessibilityLabel={head}

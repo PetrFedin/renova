@@ -1,7 +1,8 @@
 /** Навигация между вкладками OS с сохранением пути «назад» */
 import { router } from 'expo-router';
-import { parseOsHref, tabsRoute, type OsRole, type OsTabRoute } from '@/constants/osSections';
+import { tabsRoute, type OsRole, type OsTabRoute } from '@/constants/osSections';
 import { homeReturnTo, withReturnTo } from '@/lib/osReturnTo';
+import { resolveOsDeepLink, toOsRoute } from '@/lib/pushOsNav';
 
 export { homeReturnTo, withReturnTo, returnToLabel } from '@/lib/osReturnTo';
 
@@ -18,8 +19,13 @@ export function pushOsTabNav(
   router.navigate(tabsRoute(role, routeName, hubTab, params) as any);
 }
 
+/** W107: /stage/{id} и др. → dynamic segments через toOsRoute */
 export function pushOsHrefWithReturn(href: string | OsTabRoute, returnTo: string) {
-  const route = typeof href === 'string' ? parseOsHref(href) : href;
+  if (typeof href === 'string' && resolveOsDeepLink(href, returnTo)) {
+    router.push(toOsRoute(href, returnTo) as any);
+    return;
+  }
+  const route = toOsRoute(href);
   const full = withReturnTo(route, returnTo);
   if (full.pathname.includes('/(tabs)/')) router.navigate(full as any);
   else router.push(full as any);
