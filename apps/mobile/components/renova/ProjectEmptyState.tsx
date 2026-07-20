@@ -154,7 +154,7 @@ export function ProjectEmptyState({
   onSelectProject,
 }: Props) {
   const pathname = usePathname();
-  const { user, projects, loadProject, showPaywall, recoverSession, ensureActiveProject, projectResolving, readOnly } = useRenova();
+  const { user, projects, loadProject, showPaywall, recoverSession, ensureActiveProject, projectResolving, readOnly, refreshProjects } = useRenova();
   const canManageBuckets = user?.role === 'customer' && !readOnly;
   const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, loading: bucketLoading, reload: reloadBuckets } = useProjectBuckets(user?.id, canManageBuckets);
   const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
@@ -269,9 +269,35 @@ export function ProjectEmptyState({
           onPress={() => router.push({ pathname: '/wizard/type', params: { returnTo: pathname } } as any)}
         />
       )}
-      {!projects.length && (
+      {!projects.length && role === 'customer' ? (
+        <View style={{ gap: 8 }}>
+          <Text style={formMetaText.caption}>Или шаблон объекта (W69)</Text>
+          {([
+            ['apartment_2room', '2-комнатная'],
+            ['studio', 'Студия'],
+            ['house', 'Дом'],
+          ] as const).map(([id, label]) => (
+            <PrimaryButton
+              key={id}
+              title={`Шаблон: ${label}`}
+              variant="outline"
+              onPress={async () => {
+                if (!user) return;
+                try {
+                  const p = await api.createProjectFromTemplate(user.id, { template_id: id, name: `${label}` });
+                  await refreshProjects();
+                  await loadProject((p as { id: string }).id);
+                } catch {
+                  /* noop */
+                }
+              }}
+            />
+          ))}
+          <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(() => {})} />
+        </View>
+      ) : !projects.length ? (
         <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(() => {})} />
-      )}
+      ) : null}
       {!hideHomeButton && (
         <PrimaryButton
           title="На главную"

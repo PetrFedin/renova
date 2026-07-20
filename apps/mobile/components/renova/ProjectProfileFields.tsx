@@ -23,6 +23,7 @@ export type ProjectProfileValues = {
   name: string;
   address: string;
   renovation_type: string;
+  vat_rate?: number;
   property_type: 'apartment' | 'house';
   planned_start_date?: string;
   planned_end_date?: string;
@@ -55,6 +56,33 @@ function ChipRow({
   value: string;
   onSelect: (id: string) => void;
 }) {
+
+  const vatBlock = (
+    <View style={{ gap: 8, marginBottom: 12 }}>
+      <Text style={s.fieldLabel}>НДС в смете</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {([0, 5, 10, 20] as const).map((rate) => (
+          <Pressable
+            key={rate}
+            onPress={() => editable && onChange({ vat_rate: rate })}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: (values.vat_rate ?? 0) === rate ? RenovaTheme.colors.primary : RenovaTheme.colors.border,
+              backgroundColor: (values.vat_rate ?? 0) === rate ? RenovaTheme.colors.primary : RenovaTheme.colors.surface,
+            }}
+          >
+            <Text style={{ color: (values.vat_rate ?? 0) === rate ? '#fff' : RenovaTheme.colors.text, fontWeight: '700' }}>
+              {rate === 0 ? 'Без НДС' : `${rate}%`}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+
   return (
     <View style={s.chipRow}>
       {items.map((item) => {
@@ -176,6 +204,7 @@ export function ProjectProfileFields({
           hint="Тип комнаты (кухня, ванная) может уточнить расчёт на шаге «Комнаты»."
         >
           {renovationBlock}
+          {vatBlock}
         </ObjectProfileSection>
         {showSchedule ? (
           <ObjectProfileSection title="Сроки" hint="Формат YYYY-MM-DD. Влияет на план и календарь.">

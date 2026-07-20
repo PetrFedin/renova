@@ -76,7 +76,7 @@
 | 33 | Punch = QC issue (labels) | **done W67** |
 | 34 | Export honesty «не live-синк» | **done W67** |
 | 35 | Team QR Pro hint + CTA | **done W67** |
-| 36 | uvicorn websockets warnings | **ops** (deps staging) |
+| 36 | uvicorn websockets warnings | **lite** uvicorn[standard] в deps |
 | 37 | Локальный дрейф ci.yml | **ops** (не коммитим без scope) |
 | 38 | TS2786 JSX noise | **eng** (отдельный cleanup) |
 
@@ -87,27 +87,28 @@
 | # | Функция | Зачем |
 |---|---------|-------|
 | 39 | Diff сметы before lock | **done W68** |
-| 40 | Частичная оплата этапа % | **queued** (следующий инкремент) |
-| 41 | Синк календаря Google/Apple | **lite** — есть ICS export |
-| 42 | Шаблоны объектов | **queued** |
+| 40 | Частичная оплата этапа % | **done W69** |
+| 41 | Синк календаря Google/Apple | **lite** ICS + honesty |
+| 42 | Шаблоны объектов | **done W69** |
 | 43 | Роли бригады/прораб | **done W68** (owner gate + teamRole) |
 | 44 | Обязательные фото приёмки | **done W68** |
 | 45 | SLA hours_waiting в portal | **done W68** lite |
 | 46 | Авто PDF акт + notify | **done W68** (уже был act, усилили) |
 | 47 | Portal: смета read-only | **done W68** |
-| 48 | НДС/налог в смете | **queued** |
-| 49 | Маржа plan vs fact | **queued** |
-| 50 | Эскалация/спор | **queued** |
+| 48 | НДС/налог в смете | **done W69** |
+| 49 | Маржа plan vs fact | **done W69** |
+| 50 | Эскалация/спор | **done W69** |
 
 ---
 
 ## Волны
 
 1. **H0 (1–8)** — только ops  
-2. **W65 (9–16)** — control gaps  
-3. **W66 (17–26)** — honesty  
-4. **W67 (27–38)** — demo-clean  
-5. **W68 (39–50)** — product по спросу (сначала 39, 44, 46, 43)
+2. **W65 (9–12)** — control gaps  
+3. **W66 (13–26)** — honesty / симметрия  
+4. **W67 (27–38)** — demo-clean (#36–38 ops/eng)  
+5. **W68 (39, 43–47)** — product control  
+6. **W69 (40–42, 48–50)** — payment % / templates / VAT / margin / escalate  
 
 ## DoD пилота
 
@@ -127,4 +128,5 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W65 | 9–12 | **закрыто** `develop` |
 | W66 | 13–26 | **закрыто** `develop` (см. ниже; #23 ops) |
 | W67 | 27–38 | **закрыто** `develop` (#36–38 ops/eng частично) |
-| W68 | 39–50 | **частично** `develop` (39,43–47; 40–42/48–50 lite/ops) |
+| W68 | 39, 43–47 | **закрыто** `develop` |
+| W69 | 40–42, 48–50 (+41/36 lite) | **закрыто кодом** `develop` |

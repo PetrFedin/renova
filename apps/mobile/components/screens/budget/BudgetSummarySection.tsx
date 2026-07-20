@@ -60,6 +60,8 @@ export function BudgetSummarySection(props: Props) {
   const focus = parseBudgetFocus(focusParam);
 
   const showRepairControl = bwVisible('repair_control');
+  const margin = figures.planned - figures.spent;
+  const showMargin = role === 'contractor';
 
   const onRowPress = (row: ExpenseDetailRow) => {
     openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress });
@@ -67,6 +69,16 @@ export function BudgetSummarySection(props: Props) {
 
   return (
     <>
+      {showMargin ? (
+        <View style={s.limitCard}>
+          <Text style={s.limitTitle}>Маржа (план − факт)</Text>
+          <Text style={s.limitVal}>{formatRub(margin)}</Text>
+          <Text style={s.dataHint}>
+            План {formatRub(figures.planned)} · факт {formatRub(figures.spent)}
+            {figures.planned > 0 ? ` · ${Math.round((margin / figures.planned) * 100)}%` : ''}
+          </Text>
+        </View>
+      ) : null}
       {customerBudget ? (
         <View style={s.limitCard}>
           <Text style={s.limitTitle}>Лимит заказчика</Text>

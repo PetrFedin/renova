@@ -208,12 +208,18 @@ def build_dashboard(project: Project) -> dict:
     if pending_count:
         alerts.append(f"Ожидает подтверждения оплат: {pending_count}")
 
+    # W69 #49: маржа plan vs fact (для исполнителя)
+    margin = round(float(project.budget_planned or 0) - float(project.budget_spent or 0), 2)
+    margin_pct = round((margin / project.budget_planned * 100) if project.budget_planned else 0, 1)
     return {
         "project_id": project.id,
         "name": project.name,
         "progress_percent": round(progress, 1),
         "budget_planned": project.budget_planned,
         "budget_spent": project.budget_spent,
+        "margin": margin,
+        "margin_percent": margin_pct,
+        "vat_rate": float(getattr(project, "vat_rate", 0) or 0),
         "budget_variance_percent": round(
             ((project.budget_spent - project.budget_planned) / project.budget_planned * 100) if project.budget_planned else 0,
             1,
@@ -288,10 +294,21 @@ async def update_project(db: AsyncSession, project_id: str, **fields) -> Project
     p = await get_project(db, project_id)
     if not p:
         return None
-    allowed = {"name", "address", "renovation_type", "property_type", "planned_start_date", "planned_end_date"}
+    allowed = {"name", "address", "renovation_type", "property_type", "planned_start_date", "planned_end_date", "vat_rate"}
     for key, val in fields.items():
-        if key in allowed:
-            setattr(p, key, val)
+        if key not in allowed:
+            continue
+        if key == "vat_rate":
+            # W69 #48: только 0 / 5 / 10 / 20
+            try:
+                v = float(val)
+            except (TypeError, ValueError):
+                continue
+            if v not in (0, 5, 10, 20):
+                continue
+            setattr(p, key, v)
+            continue
+        setattr(p, key, val)
     await db.commit()
     await db.refresh(p)
     return p
@@ -410,3 +427,81 @@ async def empty_trash(db: AsyncSession, user: User) -> int:
     )
     await db.commit()
     return r.rowcount or 0
+
+
+# W69 #42: встроенные шаблоны объектов (комнаты)
+PROJECT_TEMPLATES: dict[str, dict] = {
+    "studio": {
+        "label": "Студия",
+        "renovation_type": "cosmetic",
+        "property_type": "apartment",
+        "rooms": [
+            {"name": "Студия", "room_type": "living", "length_m": 5.0, "width_m": 4.0, "height_m": 2.7, "outlets_count": 8, "switches_count": 2, "plumbing_points": 1},
+            {"name": "Санузел", "room_type": "bathroom", "length_m": 2.0, "width_m": 1.8, "height_m": 2.7, "outlets_count": 2, "switches_count": 1, "plumbing_points": 3},
+        ],
+    },
+    "apartment_2room": {
+        "label": "2-комнатная",
+        "renovation_type": "cosmetic",
+        "property_type": "apartment",
+        "rooms": [
+            {"name": "Гостиная", "room_type": "living", "length_m": 4.5, "width_m": 3.5, "height_m": 2.7, "outlets_count": 6, "switches_count": 2, "plumbing_points": 0},
+            {"name": "Спальня", "room_type": "bedroom", "length_m": 3.5, "width_m": 3.0, "height_m": 2.7, "outlets_count": 4, "switches_count": 1, "plumbing_points": 0},
+            {"name": "Кухня", "room_type": "kitchen", "length_m": 3.0, "width_m": 2.5, "height_m": 2.7, "outlets_count": 8, "switches_count": 2, "plumbing_points": 2},
+            {"name": "Санузел", "room_type": "bathroom", "length_m": 2.0, "width_m": 1.8, "height_m": 2.7, "outlets_count": 2, "switches_count": 1, "plumbing_points": 3},
+        ],
+    },
+    "apartment_3room": {
+        "label": "3-комнатная",
+        "renovation_type": "capital",
+        "property_type": "apartment",
+        "rooms": [
+            {"name": "Гостиная", "room_type": "living", "length_m": 5.0, "width_m": 4.0, "height_m": 2.7, "outlets_count": 8, "switches_count": 2, "plumbing_points": 0},
+            {"name": "Спальня 1", "room_type": "bedroom", "length_m": 3.5, "width_m": 3.0, "height_m": 2.7, "outlets_count": 4, "switches_count": 1, "plumbing_points": 0},
+            {"name": "Спальня 2", "room_type": "bedroom", "length_m": 3.2, "width_m": 2.8, "height_m": 2.7, "outlets_count": 4, "switches_count": 1, "plumbing_points": 0},
+            {"name": "Кухня", "room_type": "kitchen", "length_m": 3.2, "width_m": 2.8, "height_m": 2.7, "outlets_count": 8, "switches_count": 2, "plumbing_points": 2},
+            {"name": "Санузел", "room_type": "bathroom", "length_m": 2.2, "width_m": 2.0, "height_m": 2.7, "outlets_count": 2, "switches_count": 1, "plumbing_points": 3},
+        ],
+    },
+    "house": {
+        "label": "Дом",
+        "renovation_type": "capital",
+        "property_type": "house",
+        "rooms": [
+            {"name": "Гостиная", "room_type": "living", "floor_level": 1, "length_m": 6.0, "width_m": 5.0, "height_m": 2.8, "outlets_count": 10, "switches_count": 3, "plumbing_points": 0},
+            {"name": "Кухня", "room_type": "kitchen", "floor_level": 1, "length_m": 4.0, "width_m": 3.5, "height_m": 2.8, "outlets_count": 10, "switches_count": 2, "plumbing_points": 3},
+            {"name": "Спальня", "room_type": "bedroom", "floor_level": 2, "length_m": 4.0, "width_m": 3.5, "height_m": 2.7, "outlets_count": 6, "switches_count": 2, "plumbing_points": 0},
+            {"name": "Санузел", "room_type": "bathroom", "floor_level": 1, "length_m": 2.5, "width_m": 2.0, "height_m": 2.7, "outlets_count": 3, "switches_count": 1, "plumbing_points": 4},
+        ],
+    },
+}
+
+
+async def create_project_from_template(
+    db: AsyncSession,
+    *,
+    customer_id: str,
+    template_id: str,
+    name: str | None = None,
+) -> Project:
+    """W69 #42: объект из шаблона комнат + черновик сметы."""
+    tpl = PROJECT_TEMPLATES.get(template_id)
+    if not tpl:
+        raise ValueError("unknown_template")
+    return await create_project(
+        db,
+        customer_id=customer_id,
+        name=name or f"{tpl['label']} (шаблон)",
+        address=None,
+        renovation_type=tpl["renovation_type"],
+        rooms_data=tpl["rooms"],
+        property_type=tpl["property_type"],
+    )
+
+
+def list_project_templates() -> list[dict]:
+    return [
+        {"id": k, "label": v["label"], "renovation_type": v["renovation_type"], "property_type": v["property_type"], "rooms_count": len(v["rooms"])}
+        for k, v in PROJECT_TEMPLATES.items()
+    ]
+

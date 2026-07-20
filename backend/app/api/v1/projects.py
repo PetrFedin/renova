@@ -40,6 +40,7 @@ def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
         budget_planned=p.budget_planned,
         budget_spent=p.budget_spent,
         progress_percent=p.progress_percent,
+        vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
         stages_count=len(p.stages) if p.stages else 0,
         planned_start_date=p.planned_start_date.isoformat() if p.planned_start_date else None,
@@ -160,6 +161,39 @@ async def create_project(body: ProjectCreate, user: User = Depends(get_current_u
 
 
 
+
+
+
+
+class ProjectFromTemplateIn(BaseModel):
+    template_id: str
+    name: str | None = None
+
+
+@router.get("/templates")
+async def list_templates(_user: User = Depends(get_current_user)):
+    """W69 #42: каталог шаблонов объектов."""
+    return {"items": svc.list_project_templates()}
+
+
+@router.post("/from-template", response_model=ProjectDetail)
+async def create_from_template(
+    body: ProjectFromTemplateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W69 #42: создать объект из шаблона комнат + черновик сметы."""
+    if user.role != UserRole.customer:
+        raise HTTPException(403, "Создавать проект может только заказчик")
+    try:
+        p = await svc.create_project_from_template(
+            db, customer_id=user.id, template_id=body.template_id, name=body.name,
+        )
+    except ValueError as exc:
+        if str(exc) == "unknown_template":
+            raise HTTPException(404, detail={"code": "unknown_template", "message": "Неизвестный шаблон"}) from exc
+        raise
+    return await _detail(db, p, user)
 
 
 @router.post("/{project_id}/archive")

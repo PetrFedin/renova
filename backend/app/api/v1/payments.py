@@ -11,6 +11,33 @@ from app.services import payment_service as pay_svc
 router = APIRouter(prefix="/projects", tags=["payments"])
 
 
+@router.get("/{project_id}/stages/{stage_id}/payment-progress")
+async def stage_payment_progress(
+    project_id: str,
+    stage_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W69 #40: сколько уже выставлено/подтверждено по этапу."""
+    await require_project(db, project_id, user, write=False)
+    stage = await db.get(Stage, stage_id)
+    if not stage or stage.project_id != project_id:
+        raise HTTPException(404, "Этап не найден")
+    items = await pay_svc.list_payments(db, project_id)
+    stage_pays = [p for p in items if p.stage_id == stage_id]
+    confirmed = sum(p.amount for p in stage_pays if p.status.value == "confirmed")
+    pending = sum(p.amount for p in stage_pays if p.status.value == "pending")
+    target = float(stage.payment_amount or 0)
+    return {
+        "stage_id": stage_id,
+        "target": target,
+        "confirmed": round(confirmed, 2),
+        "pending": round(pending, 2),
+        "remaining": round(max(0.0, target - confirmed - pending), 2),
+        "percent_confirmed": round((confirmed / target * 100) if target else 0, 1),
+    }
+
+
 @router.get("/{project_id}/payments", response_model=list[PaymentOut])
 async def list_payments(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
@@ -72,6 +99,7 @@ async def create_payment(
     if user.role == UserRole.contractor and body.payment_type not in ("stage", "material"):
         raise HTTPException(403, "Исполнитель создаёт оплату этапа/материалов")
 
+    stage = None
     if body.payment_type == PaymentType.stage.value:
         if not body.stage_id:
             raise HTTPException(422, "Для оплаты этапа нужен stage_id")
@@ -83,15 +111,36 @@ async def create_payment(
         if not stage or stage.project_id != project_id:
             raise HTTPException(404, "Этап проекта не найден")
 
+    # W69 #40: частичная оплата этапа по %
+    amount = body.amount
+    notes = body.notes
+    if body.percent is not None:
+        if not stage:
+            raise HTTPException(422, "percent требует stage_id")
+        base = float(stage.payment_amount or 0)
+        if base <= 0:
+            raise HTTPException(422, detail={"code": "stage_payment_unset", "message": "У этапа не задана сумма оплаты"})
+        amount = round(base * float(body.percent) / 100.0, 2)
+        tag = f"Частичная оплата {body.percent:g}%"
+        notes = f"{tag}. {notes}" if notes else tag
+        if not body.title or body.title.strip() == "":
+            pass
+    if amount is None or amount <= 0:
+        raise HTTPException(422, "Укажите amount или percent")
+
+    title = body.title
+    if body.percent is not None and stage and (not title or title == "Оплата этапа"):
+        title = f"{stage.name}: {body.percent:g}%"
+
     payment = await pay_svc.create_payment(
         db,
         project_id,
         user.id,
-        body.title,
-        body.amount,
+        title,
+        amount,
         body.payment_type,
         body.stage_id,
-        body.notes,
+        notes,
     )
     # W56: ручной счёт → notify заказчику (честный «отправлен»)
     if project.customer_id and project.customer_id != user.id:

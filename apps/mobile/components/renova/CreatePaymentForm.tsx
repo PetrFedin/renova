@@ -27,20 +27,24 @@ export function CreatePaymentForm({
   const [stageId, setStageId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  /** W69 #40 */
+  const [percent, setPercent] = useState<number | null>(null);
 
   async function submit() {
     const n = parseFloat(amount.replace(',', '.'));
-    if (!title.trim()) { Alert.alert('Счёт', 'Укажите название'); return; }
-    if (!n || n <= 0) { Alert.alert('Счёт', 'Укажите сумму больше 0'); return; }
+    if (!title.trim() && !(paymentType === 'stage' && percent)) { Alert.alert('Счёт', 'Укажите название'); return; }
     if (paymentType === 'stage' && !stageId) {
       Alert.alert('Счёт', 'Выберите этап для счёта за этап');
       return;
     }
+    if (percent == null && (!n || n <= 0)) { Alert.alert('Счёт', 'Укажите сумму или % этапа'); return; }
     setBusy(true);
     try {
+      const stage = project.stages?.find((s) => s.id === stageId);
       await api.createPayment(userId, project.id, {
-        title: title.trim(),
-        amount: n,
+        title: title.trim() || (stage && percent ? `${stage.name}: ${percent}%` : 'Оплата этапа'),
+        amount: percent != null ? undefined : n,
+        percent: percent ?? undefined,
         payment_type: paymentType,
         stage_id: stageId,
         notes: notes.trim() || null,
@@ -66,9 +70,29 @@ export function CreatePaymentForm({
   return (
     <View style={s.box}>
       <Text style={s.head}>Новый счёт</Text>
-      <Text style={s.hint}>Только этап или материалы. Заказчик подтвердит оплату.</Text>
+      <Text style={s.hint}>Этап или материалы. Для этапа можно выставить долю 30/50/70/100% от суммы этапа.</Text>
       <TextInput style={s.inp} value={title} onChangeText={setTitle} placeholder="Название (например: Штукатурка)" editable={!busy} />
-      <TextInput style={s.inp} value={amount} onChangeText={setAmount} placeholder="Сумма, ₽" keyboardType="decimal-pad" editable={!busy} />
+      {paymentType === 'stage' ? (
+        <View style={s.typeRow}>
+          {[30, 50, 70, 100].map((p) => (
+            <PrimaryButton
+              key={p}
+              title={`${p}%`}
+              compact
+              variant={percent === p ? 'primary' : 'outline'}
+              onPress={() => { setPercent(p); setAmount(''); }}
+            />
+          ))}
+        </View>
+      ) : null}
+      <TextInput
+        style={s.inp}
+        value={amount}
+        onChangeText={(v) => { setAmount(v); setPercent(null); }}
+        placeholder={percent != null ? `= ${percent}% этапа` : 'Сумма, ₽'}
+        keyboardType="decimal-pad"
+        editable={!busy && percent == null}
+      />
       <View style={s.typeRow}>
         {PAY_TYPES.map((t) => (
           <PrimaryButton

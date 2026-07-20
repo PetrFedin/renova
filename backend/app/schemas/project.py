@@ -38,6 +38,7 @@ class RoomUpdate(BaseModel):
 class ProjectUpdate(BaseModel):
     """Редактируемый профиль проекта — без пересчёта комнат/сметы."""
     name: str | None = None
+    vat_rate: float | None = None  # W69 #48: 0 / 5 / 10 / 20
     address: str | None = None
     renovation_type: str | None = None
     property_type: str | None = None
@@ -116,7 +117,9 @@ class RoomOut(BaseModel):
 
 class PaymentCreate(BaseModel):
     title: str
-    amount: float = Field(gt=0)
+    amount: float | None = Field(default=None, gt=0)
+    """W68/W69 #40: доля этапа 1–100%; если задана — amount считается от stage.payment_amount."""
+    percent: float | None = Field(default=None, gt=0, le=100)
     payment_type: str
     stage_id: str | None = None
     notes: str | None = None
@@ -160,6 +163,7 @@ class ProjectOut(BaseModel):
     budget_planned: float
     budget_spent: float
     progress_percent: float
+    vat_rate: float = 0
     rooms_count: int
     stages_count: int
     planned_start_date: str | None = None

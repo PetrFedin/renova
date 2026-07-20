@@ -373,7 +373,7 @@ ${(res.body || '').slice(0, 220)}`,
       calendarIcs: {
         id: 'ical',
         label: 'Календарь работ',
-        desc: 'Даты этапов для календаря телефона',
+        desc: 'ICS-файл (импорт вручную; не live-синк Google/Apple)',
         format: 'ICS',
         run: () => api.exportIcal(userId, projectId),
       },

@@ -61,6 +61,13 @@ export function EstimateSummaryLayer({
       <View style={s.totalBox}>
         <Text style={s.totalLabel}>Итого по смете</Text>
         <Text style={s.total}>{formatRub(project.budget_planned)}</Text>
+        {(project.vat_rate ?? 0) > 0 ? (
+          <Text style={s.breakdown}>
+            НДС {project.vat_rate}% · сумма в смете с учётом ставки
+          </Text>
+        ) : (
+          <Text style={s.breakdown}>Без НДС (ставка 0%)</Text>
+        )}
         {lockedAt ? (
           <Text style={s.locked}>Согласована · зафиксирована {lockedAt.slice(0, 10)}</Text>
         ) : project.estimate_lock_proposed_at ? (

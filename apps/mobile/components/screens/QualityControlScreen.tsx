@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -54,9 +54,11 @@ function IssueCard({
   canClose,
   closeHint,
   closeLabel = 'Закрыть',
+  onEscalate,
 }: {
   item: ProjectIssue;
   onClose: (issue: ProjectIssue) => void;
+  onEscalate?: (issue: ProjectIssue) => void;
   acting: boolean;
   focused?: boolean;
   canClose: boolean;
@@ -83,6 +85,9 @@ function IssueCard({
         ) : null}
         {!isClosed && canClose ? (
           <PrimaryButton title={closeLabel} compact onPress={() => onClose(item)} loading={acting} disabled={acting} />
+        ) : null}
+        {!isClosed && onEscalate && !(item.title || '').startsWith('[Спор]') ? (
+          <PrimaryButton title="Спор" variant="outline" compact onPress={() => onEscalate(item)} disabled={acting} />
         ) : null}
         {!isClosed && !canClose && closeHint ? <Text style={styles.issueMeta}>{closeHint}</Text> : null}
       </View>
@@ -120,6 +125,18 @@ export function QualityControlScreen() {
   }, [items, focusIssueId]);
   const closedIssues = useMemo(() => items.filter((item) => item.status === 'closed'), [items]);
   const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
+
+  const escalateIssue = async (issue: ProjectIssue) => {
+    if (!user || !activeProject || readOnly) return;
+    try {
+      await api.escalateIssue(user.id, activeProject.id, issue.id);
+      await load();
+      Alert.alert('Спор', 'Замечание эскалировано — стороны уведомлены');
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Эскалация');
+      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось эскалировать');
+    }
+  };
 
   const closeIssue = async (issue: ProjectIssue) => {
     // W46/W62: гарантию закрывает только заказчик
@@ -199,7 +216,7 @@ export function QualityControlScreen() {
             key={item.id}
             focused={item.id === focusIssueId}
             item={item}
-            onClose={closeIssue}
+            onClose={closeIssue} onEscalate={escalateIssue}
             acting={actingId === item.id}
             canClose={
               !readOnly
@@ -226,7 +243,7 @@ export function QualityControlScreen() {
               key={item.id}
               focused={item.id === focusIssueId}
               item={item}
-              onClose={closeIssue}
+              onClose={closeIssue} onEscalate={escalateIssue}
               acting={false}
               canClose={false}
             />

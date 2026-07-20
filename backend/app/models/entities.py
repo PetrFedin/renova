@@ -88,6 +88,8 @@ class Project(Base):
     estimate_lock_proposed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     # W68 #39: снимок строк на момент propose — для diff перед lock
     estimate_propose_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # W69 #48: ставка НДС % (0 / 5 / 20), 0 = без НДС
+    vat_rate: Mapped[float] = mapped_column(Float, default=0)
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     estimate_lines: Mapped[list["EstimateLine"]] = relationship(back_populates="project", cascade="all, delete-orphan")

@@ -18,6 +18,8 @@ export const issuesApi = {
       await enqueueOffline(`/api/v1/projects/${projectId}/issues`, 'POST', JSON.stringify(body), userId);
     }
   },
+  escalateIssue: (userId: string, projectId: string, issueId: string) =>
+    req(`/api/v1/projects/${projectId}/issues/${issueId}/escalate`, { method: 'POST' }, userId),
   closeIssue: async (userId: string, projectId: string, issueId: string) => {
     try {
       return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues/${issueId}/close`, { method: 'POST' }, userId);

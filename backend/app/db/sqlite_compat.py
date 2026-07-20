@@ -470,6 +470,11 @@ def ensure_os_schema() -> None:
                 c.execute("ALTER TABLE projects ADD COLUMN estimate_propose_snapshot_json TEXT")
             except Exception:
                 pass
+        if "vat_rate" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN vat_rate REAL DEFAULT 0")
+            except Exception:
+                pass
 
     if "chat_thread_participants" not in tables:
         c.executescript("""

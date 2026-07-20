@@ -153,6 +153,56 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/(customer)/(tabs)/control")
     return iss.issue_dict(issue)
 
+
+
+@router.post("/projects/{project_id}/issues/{issue_id}/escalate")
+async def escalate_issue(
+    project_id: str,
+    issue_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W69 #50: эскалация спора — critical + префикс [Спор], notify обеим сторонам."""
+    from app.models.entities import ProjectIssue, UserRole
+    project = await require_project(db, project_id, user, write=True)
+    existing = await db.get(ProjectIssue, issue_id)
+    if not existing or existing.project_id != project_id:
+        raise HTTPException(404)
+    if existing.status == "closed":
+        raise HTTPException(409, detail={"code": "issue_closed", "message": "Закрытое замечание нельзя эскалировать"})
+    title = existing.title or "Замечание"
+    if not title.startswith("[Спор]"):
+        existing.title = f"[Спор] {title}"
+    existing.severity = "critical"
+    if existing.status in ("fixed", "review"):
+        existing.status = "open"
+    await db.commit()
+    await db.refresh(existing)
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="IssueEscalated",
+        title=existing.title,
+        body="Эскалация спора",
+        link_path="/quality-control",
+    )
+    from app.services import notification_service as notif_svc
+    for uid in {project.customer_id, project.contractor_id}:
+        if not uid or uid == user.id:
+            continue
+        await notif_svc.notify(
+            db,
+            user_id=uid,
+            project_id=project_id,
+            notification_type="issue",
+            title=f"Спор эскалирован: {existing.title}",
+            body="Требуется совместное решение — откройте Контроль качества",
+            link_path="/quality-control",
+        )
+    return iss.issue_dict(existing)
+
+
 @router.post("/projects/{project_id}/rooms/{room_id}/calc-materials")
 async def calc_room_materials(
     project_id: str,

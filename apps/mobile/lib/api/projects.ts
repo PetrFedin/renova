@@ -18,6 +18,12 @@ export const projectsApi = {
   emptyProjectTrash: (userId: string) =>
     req<{ deleted: number }>(`/api/v1/projects/trash/empty`, { method: 'DELETE' }, userId),
   getProject: (userId: string, id: string) => req<ProjectDetail>(`/api/v1/projects/${id}`, {}, userId),
+  listProjectTemplates: (userId: string) =>
+    req<{ items: { id: string; label: string; renovation_type: string; property_type: string; rooms_count: number }[] }>(
+      '/api/v1/projects/templates', {}, userId,
+    ),
+  createProjectFromTemplate: (userId: string, body: { template_id: string; name?: string }) =>
+    req(`/api/v1/projects/from-template`, { method: 'POST', body: JSON.stringify(body) }, userId),
   createProject: (userId: string, body: object) => req<ProjectDetail>('/api/v1/projects', { method: 'POST', body: JSON.stringify(body) }, userId),
   patchProject: (userId: string, projectId: string, body: object) =>
     req<ProjectDetail>(`/api/v1/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
