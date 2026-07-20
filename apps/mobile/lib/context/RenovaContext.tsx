@@ -13,7 +13,7 @@ function signalPreviewReady() {
   }
 }
 
-import { ApiError, api, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
+import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
 import {
   bootstrapPreviewDemo,
   inferDemoRole,
@@ -209,6 +209,10 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           osRole: user.role === 'contractor' ? 'contractor' : 'customer',
         }).catch(() => {});
         notifyProjectDataChanged();
+      } catch (e) {
+        // Не роняем UI при storm reload (аналитика / bus) — оставляем текущий activeProject
+        if (isRateLimitError(e)) return;
+        throw e;
       } finally {
         setProjectResolving(false);
       }

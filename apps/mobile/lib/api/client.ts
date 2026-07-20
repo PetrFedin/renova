@@ -26,6 +26,14 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     const j = JSON.parse(txt) as { detail?: unknown; code?: string; message?: string };
     detail = j.detail;
     if (typeof j.detail === 'string') {
+      // FastAPI часто шлёт detail="rate_limit" — не отдаём сырой код в UI
+      if (j.detail === 'rate_limit' || status === 429) {
+        return {
+          message: 'Слишком много запросов. Подождите несколько секунд и повторите.',
+          code: 'rate_limit',
+          detail,
+        };
+      }
       return { message: j.detail, code: j.detail, detail };
     }
     if (typeof j.message === 'string' && j.message) {
@@ -71,7 +79,21 @@ function canUseDurableCache(opts: RequestInit) {
 
 function canFallbackToCache(error: unknown) {
   if (!(error instanceof ApiError)) return true;
+  // 429 / rate_limit — безопасный fallback на последний успешный GET (аналитика/проект не падают)
+  if (error.status === 429 || error.code === 'rate_limit') return true;
   return error.status >= 500;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function retryAfterMs(res: Response): number {
+  const raw = res.headers.get('Retry-After');
+  if (!raw) return 1200;
+  const sec = Number(raw);
+  if (Number.isFinite(sec) && sec >= 0) return Math.min(8000, Math.max(400, sec * 1000));
+  return 1200;
 }
 
 async function saveDurableCache<T>(path: string, userId: string | undefined, value: T) {
@@ -157,37 +179,65 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
   if (userId) headers['X-User-Id'] = userId;
   // FormData must manage its own multipart boundary — drop forced JSON content-type
   if (isFormData) delete headers['Content-Type'];
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  const isGet = canUseDurableCache(opts);
+  let attempt = 0;
+  let lastError: unknown;
+
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...opts,
-      headers,
-      signal: opts.signal ?? controller.signal,
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      const parsed = parseApiErrorBody(txt, res.status);
-      throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+    // GET: один retry при 429 — снижает uncaught rate_limit при storm reload
+    while (attempt < 2) {
+      attempt += 1;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${API_BASE}${path}`, {
+          ...opts,
+          headers,
+          signal: opts.signal ?? controller.signal,
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          const parsed = parseApiErrorBody(txt, res.status);
+          const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+          if (isGet && isRateLimitError(err) && attempt < 2) {
+            lastError = err;
+            await sleep(retryAfterMs(res));
+            continue;
+          }
+          throw err;
+        }
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : undefined;
+        if (isGet && data !== undefined) await saveDurableCache(path, userId, data);
+        return data as T;
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new ApiError(0, 'Сервер не отвечает. Проверьте, что backend запущен (npm run backend:dev).');
+        }
+        if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
+          throw new ApiError(0, 'Сервер недоступен. Запустите backend на порту 8100: cd renova && backend/.venv/bin/uvicorn app.main:app --reload --port 8100');
+        }
+        // rate_limit retry already handled above; other errors exit
+        if (isGet && isRateLimitError(error) && attempt < 2) {
+          lastError = error;
+          await sleep(1200);
+          continue;
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : undefined;
-    if (canUseDurableCache(opts) && data !== undefined) await saveDurableCache(path, userId, data);
-    return data as T;
+    throw lastError instanceof Error
+      ? lastError
+      : new ApiError(429, 'Слишком много запросов. Подождите несколько секунд и повторите.', 'rate_limit');
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiError(0, 'Сервер не отвечает. Проверьте, что backend запущен (npm run backend:dev).');
-    }
-    if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
-      throw new ApiError(0, 'Сервер недоступен. Запустите backend на порту 8100: cd renova && backend/.venv/bin/uvicorn app.main:app --reload --port 8100');
-    }
-    if (canUseDurableCache(opts) && canFallbackToCache(error)) {
+    if (isGet && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) return fallback;
     }
     throw error;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

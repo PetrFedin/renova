@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { api, type MaterialPick, type OsExpense, type Purchase, type ReceiptItem } from '@/lib/api';
+import { api, isRateLimitError, type MaterialPick, type OsExpense, type Purchase, type ReceiptItem } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { ExpenseByCategory } from '@/components/renova/ExpenseByCategory';
@@ -73,6 +73,10 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
         label: p.at.slice(5, 10),
         margin: p.margin,
       })));
+    } catch (e) {
+      // rate_limit уже смягчён в loadProject/req; не роняем панель аналитики
+      if (isRateLimitError(e)) return;
+      throw e;
     } finally {
       setLoading(false);
     }
