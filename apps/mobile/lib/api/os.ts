@@ -97,12 +97,13 @@ export const osApi = {
       kpi_path?: string;
       ai_narrative?: boolean;
     }>(`/api/v1/projects/${projectId}/digest/weekly`, { method: 'POST' }, userId),
-  importBankStatement: (userId: string, projectId: string, csv_text: string) =>
+  importBankStatement: (userId: string, projectId: string, csv_text: string, opts?: { create_expenses?: boolean }) =>
     req<{
       ok: boolean;
       parsed_rows: number;
       matched: number;
       unmatched_rows: number;
+      expenses_created?: number;
       matches: {
         payment_id: string;
         payment_title: string;
@@ -112,7 +113,7 @@ export const osApi = {
       }[];
     }>(
       `/api/v1/projects/${projectId}/import/bank-statement`,
-      { method: 'POST', body: JSON.stringify({ csv_text }) },
+      { method: 'POST', body: JSON.stringify({ csv_text, create_expenses: Boolean(opts?.create_expenses) }) },
       userId,
     ),
   confirmBankStatementMatches: (userId: string, projectId: string, payment_ids: string[]) =>

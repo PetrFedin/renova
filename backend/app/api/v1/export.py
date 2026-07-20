@@ -12,6 +12,40 @@ from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
 
 router = APIRouter(prefix="/projects", tags=["export"])
 
+async def _archive_and_respond(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user: User,
+    title: str,
+    href: str,
+    body: str | bytes,
+    media_type: str,
+    filename: str,
+    notes: str | None = None,
+):
+    """W74: отдать файл и зафиксировать выгрузку в Document Center."""
+    from app.services.integrations.export_archive import register_export_in_documents
+    try:
+        await register_export_in_documents(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            title=title,
+            href=href,
+            notes=notes,
+        )
+    except Exception:
+        # выгрузка важнее архива — не ломаем download
+        pass
+    return Response(
+        body,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+
 
 @router.get("/{project_id}/estimate.pdf")
 async def export_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -195,10 +229,16 @@ async def export_1c_payments_csv(project_id: str, user: User = Depends(get_curre
 
     project = await require_project(db, project_id, user, write=False)
     body = await build_1c_payments_csv(db, project)
-    return Response(
-        body,
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="Выгрузка 1С (CSV)",
+        href=f"/api/v1/projects/{project_id}/export/1c-payments.csv",
+        body=body,
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename=renova-1c-{project_id[:8]}.csv"},
+        filename=f"renova-1c-{project_id[:8]}.csv",
+        notes="payments+change_orders",
     )
 
 
@@ -209,10 +249,16 @@ async def export_1c_commerceml(project_id: str, user: User = Depends(get_current
 
     project = await require_project(db, project_id, user, write=False)
     body = await build_1c_commerceml_xml(db, project)
-    return Response(
-        body.encode("utf-8") if isinstance(body, str) else body,
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="1С CommerceML",
+        href=f"/api/v1/projects/{project_id}/export/1c-commerceml.xml",
+        body=body,
         media_type="application/xml; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename=renova-cml-{project_id[:8]}.xml"},
+        filename=f"renova-cml-{project_id[:8]}.xml",
+        notes="CommerceML 2.04 subset + estimate catalog",
     )
 
 
@@ -223,10 +269,16 @@ async def export_1c_payments_xml(project_id: str, user: User = Depends(get_curre
 
     project = await require_project(db, project_id, user, write=False)
     body = await build_1c_payments_xml(db, project)
-    return Response(
-        body,
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="Выгрузка 1С (XML)",
+        href=f"/api/v1/projects/{project_id}/export/1c-payments.xml",
+        body=body,
         media_type="application/xml; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename=renova-1c-{project_id[:8]}.xml"},
+        filename=f"renova-1c-{project_id[:8]}.xml",
+        notes="RenovaExchange",
     )
 
 
@@ -237,10 +289,16 @@ async def export_bank_register_csv(project_id: str, user: User = Depends(get_cur
 
     project = await require_project(db, project_id, user, write=False)
     body = await build_bank_register_csv(db, project)
-    return Response(
-        body,
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="Реестр для банка",
+        href=f"/api/v1/projects/{project_id}/export/bank-register.csv",
+        body=body,
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename=renova-bank-{project_id[:8]}.csv"},
+        filename=f"renova-bank-{project_id[:8]}.csv",
+        notes="bank register",
     )
 
 
@@ -603,6 +661,7 @@ async def closeout_project(
 
 class BankStatementIn(BaseModel):
     csv_text: str = Field(min_length=1, max_length=2_000_000)
+    create_expenses: bool = False  # W74: несматченные строки → расходы
 
 
 @router.post("/{project_id}/import/bank-statement")
@@ -612,15 +671,37 @@ async def import_bank_statement(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """P4.1b: CSV выписки → матч к платежам (сумма ±1 ₽, дата ±3 дня)."""
-    from app.services.integrations.bank_import import match_bank_rows_to_payments, parse_bank_statement_csv
+    """P4.1b/W74: CSV выписки → матч к платежам; опционально расходы из unmatched."""
+    from app.services.integrations.bank_import import (
+        match_bank_rows_to_payments,
+        parse_bank_statement_csv,
+        create_expenses_from_unmatched,
+    )
+    from app.services import activity_service as act
 
-    project = await require_project(db, project_id, user, write=False)
+    write = bool(body.create_expenses)
+    project = await require_project(db, project_id, user, write=write)
     rows = parse_bank_statement_csv(body.csv_text)
     if not rows:
         raise HTTPException(400, "Не удалось разобрать CSV (нужны сумма и опционально дата)")
     result = await match_bank_rows_to_payments(db, project, rows)
-    return {"ok": True, "parsed_rows": len(rows), **result}
+    expenses_meta: dict = {"expenses_created": 0}
+    if body.create_expenses and result.get("unmatched_statement_rows"):
+        expenses_meta = await create_expenses_from_unmatched(
+            db,
+            project_id=project_id,
+            unmatched_rows=result["unmatched_statement_rows"],
+        )
+        await act.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="BankImportExpenses",
+            title=f"Расходы из выписки: {expenses_meta.get('expenses_created', 0)}",
+            link_path="/(customer)/(tabs)/budget",
+        )
+        await db.commit()
+    return {"ok": True, "parsed_rows": len(rows), **result, **expenses_meta}
 
 
 class BankConfirmIn(BaseModel):

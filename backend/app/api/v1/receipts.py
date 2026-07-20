@@ -96,7 +96,21 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
     await bud.refresh_budget_facts(db, project_id)
     await db.commit()
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="ExpenseAdded", title=exp.title, body=str(exp.amount), link_path="/(customer)/(tabs)/budget")
-    return {"id": rec.id, "amount": rec.amount, "verified": rec.fns_verified, "message": check["message"], "expense_category": cat, "room_id": rec.room_id, "stage_id": rec.stage_id, "payment_id": rec.payment_id}
+    from app.services.fns.receipt_verify import fns_receipt_health
+    health = fns_receipt_health()
+    verify_mode = "live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "off")
+    return {
+        "id": rec.id,
+        "amount": rec.amount,
+        "verified": rec.fns_verified,
+        "message": check["message"],
+        "expense_category": cat,
+        "room_id": rec.room_id,
+        "stage_id": rec.stage_id,
+        "payment_id": rec.payment_id,
+        "verify_mode": verify_mode,
+        "live_verify_ready": bool(health.get("live_verify_ready")),
+    }
 
 
 
@@ -224,10 +238,15 @@ async def reverify_receipt(
     parsed = parse_receipt_qr(rec.qr_raw)
     check = await verify_receipt(parsed)
     rec.fns_verified = bool(check.get("verified"))
+    from app.services.fns.receipt_verify import fns_receipt_health
+    health = fns_receipt_health()
+    verify_mode = "live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "off")
     await db.commit()
     return {
         "id": rec.id,
         "verified": rec.fns_verified,
         "message": check.get("message"),
         "mode": check.get("mode"),
+        "verify_mode": verify_mode,
+        "live_verify_ready": bool(health.get("live_verify_ready")),
     }

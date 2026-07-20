@@ -214,6 +214,32 @@ async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | N
     return exp
 
 
+
+async def expense_from_bank_row(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    amount: float,
+    title: str,
+    expense_date: datetime | None = None,
+    comment: str | None = None,
+) -> Expense:
+    """W74: строка банковской выписки без матча → расход (факт без эквайринга)."""
+    exp = Expense(
+        project_id=project_id,
+        title=(title or f"Выписка {amount:.0f} ₽")[:255],
+        category="other",
+        amount=abs(float(amount)),
+        status="confirmed",
+        payment_method="bank_transfer",
+        comment=(comment or "bank_statement_unmatched")[:500],
+        expense_date=expense_date or datetime.utcnow(),
+    )
+    db.add(exp)
+    await db.flush()
+    return exp
+
+
 async def expense_from_payment(db: AsyncSession, pay: Payment) -> Expense | None:
     if pay.status != PaymentStatus.confirmed:
         return None

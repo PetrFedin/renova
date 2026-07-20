@@ -1,6 +1,6 @@
 /** W72: branded client portal (magic link) — решения без обязательной оплаты */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Linking, Platform, AppState } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Linking, Platform, AppState, Share } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
@@ -117,6 +117,29 @@ export default function PortalScreen() {
         ) : (
           <Text style={s.todoLine}>Нет срочных действий</Text>
         )}
+        <Pressable
+          style={s.shareBtn}
+          onPress={async () => {
+            const docs = (snapshot.documents_total ?? snapshot.documents?.length ?? 0);
+            const msg = [
+              `Renova · ${snapshot.project.name}`,
+              snapshot.project.address || '',
+              `Прогресс ${progress}%`,
+              snapshot.contractor_company_name ? `Исполнитель: ${snapshot.contractor_company_name}` : '',
+              todoBits.length ? `Сейчас: ${todoBits.join(', ')}` : 'Срочных действий нет',
+              `Документов: ${docs}`,
+              'Статус из портала заказчика (без оплаты).',
+            ].filter(Boolean).join('\n');
+            try {
+              await Share.share({ message: msg, title: snapshot.project.name });
+            } catch {
+              await Clipboard.setStringAsync(msg);
+              Alert.alert('Скопировано', 'Статус объекта в буфере — можно отправить семье');
+            }
+          }}
+        >
+          <Text style={s.shareBtnT}>Поделиться статусом с семьёй</Text>
+        </Pressable>
         <Text style={s.ro}>
           {portalReadOnly
             ? 'Только просмотр'
@@ -419,6 +442,8 @@ const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   content: { padding: 20, paddingBottom: 40, gap: 12 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+  shareBtn: { marginTop: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: RenovaTheme.colors.primary },
+  shareBtnT: { color: '#fff', fontWeight: '700', textAlign: 'center', fontSize: 15 },
   hero: { ...card, gap: 6, marginBottom: 4, borderColor: RenovaTheme.colors.primary, borderWidth: 1 },
   brand: { fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: RenovaTheme.colors.primary },
   brandSub: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginTop: -2 },

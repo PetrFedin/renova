@@ -172,3 +172,42 @@ async def match_bank_rows_to_payments(
         "unmatched_statement_rows": unmatched_rows[:50],
         "unmatched_pending": unmatched_payments[:50],
     }
+
+
+
+async def create_expenses_from_unmatched(
+    db,
+    *,
+    project_id: str,
+    unmatched_rows: list[dict],
+    limit: int = 50,
+) -> dict:
+    """W74: несматченные строки выписки → Expense + refresh budget facts."""
+    from datetime import datetime
+    from app.services import budget_service as bud
+
+    created: list[str] = []
+    for row in unmatched_rows[:limit]:
+        amount = float(row.get("amount") or 0)
+        if amount == 0:
+            continue
+        exp_date = None
+        if row.get("date"):
+            try:
+                exp_date = datetime.strptime(row["date"], "%Y-%m-%d")
+            except ValueError:
+                exp_date = None
+        title = (row.get("description") or f"Банк {amount:.0f} ₽")[:255]
+        exp = await bud.expense_from_bank_row(
+            db,
+            project_id=project_id,
+            amount=amount,
+            title=title,
+            expense_date=exp_date,
+            comment="bank_statement_unmatched",
+        )
+        created.append(exp.id)
+    if created:
+        await bud.refresh_budget_facts(db, project_id)
+        await db.commit()
+    return {"expenses_created": len(created), "expense_ids": created[:20]}

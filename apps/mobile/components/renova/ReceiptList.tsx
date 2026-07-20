@@ -25,8 +25,12 @@ export function ReceiptList({
   const reverify = async (r: ReceiptItem) => {
     if (!userId || !projectId || r.source === 'manual') return;
     try {
-      const res = await api.reverifyReceipt(userId, projectId, r.id);
-      Alert.alert(res.verified ? 'ФНС: ок' : 'ФНС', res.message || (res.verified ? 'Подтверждён' : 'Не подтверждён'));
+      const res = await api.reverifyReceipt(userId, projectId, r.id) as { verified?: boolean; message?: string; verify_mode?: string };
+      Alert.alert(
+        res.verified ? 'ФНС: ок' : 'ФНС',
+        `${res.message || (res.verified ? 'Подтверждён' : 'Не подтверждён')}` +
+          (res.verify_mode ? ` · режим: ${res.verify_mode}` : ''),
+      );
       onUpdated?.();
     } catch (e: unknown) {
       Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось проверить');

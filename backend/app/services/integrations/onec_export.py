@@ -188,10 +188,17 @@ async def build_1c_payments_xml(db: AsyncSession, project: Project) -> str:
 
 
 async def build_1c_commerceml_xml(db: AsyncSession, project: Project) -> str:
-    """P4.1a++: подмножество CommerceML 2.04 (Документ/Оплата) для ручного импорта в 1С."""
+    """W74: CommerceML 2.04 subset — каталог из сметы + документы оплаты."""
+    from app.models.entities import EstimateLine
+
     payments = (
         await db.execute(
             select(Payment).where(Payment.project_id == project.id).order_by(Payment.created_at.asc())
+        )
+    ).scalars().all()
+    lines = (
+        await db.execute(
+            select(EstimateLine).where(EstimateLine.project_id == project.id).order_by(EstimateLine.name.asc())
         )
     ).scalars().all()
     formed = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -200,6 +207,26 @@ async def build_1c_commerceml_xml(db: AsyncSession, project: Project) -> str:
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<КоммерческаяИнформация ВерсияСхемы="2.04" ДатаФормирования="{formed}">',
     ]
+    # Каталог номенклатуры из сметы (ручной импорт в 1С)
+    if lines:
+        parts.append("  <Каталог>")
+        parts.append(f"    <Ид>{_xml_escape(project.id)}</Ид>")
+        parts.append(f"    <Наименование>{pname}</Наименование>")
+        parts.append("    <Товары>")
+        for el in lines[:500]:
+            lt = el.line_type.value if hasattr(el.line_type, "value") else str(el.line_type)
+            total = float(el.quantity_planned or 0) * float(el.unit_price or 0)
+            parts.append("      <Товар>")
+            parts.append(f"        <Ид>{_xml_escape(el.id)}</Ид>")
+            parts.append(f"        <Наименование>{_xml_escape(el.name or '')}</Наименование>")
+            parts.append(f"        <БазоваяЕдиница>{_xml_escape(el.unit or 'шт')}</БазоваяЕдиница>")
+            parts.append(f"        <Описание>{_xml_escape(lt)}</Описание>")
+            parts.append(f"        <ЦенаЗаЕдиницу>{float(el.unit_price or 0):.2f}</ЦенаЗаЕдиницу>")
+            parts.append(f"        <Количество>{float(el.quantity_planned or 0):.3f}</Количество>")
+            parts.append(f"        <Сумма>{total:.2f}</Сумма>")
+            parts.append("      </Товар>")
+        parts.append("    </Товары>")
+        parts.append("  </Каталог>")
     for i, p in enumerate(payments, start=1):
         st = p.status.value if hasattr(p.status, "value") else str(p.status)
         pt = p.payment_type.value if hasattr(p.payment_type, "value") else str(p.payment_type)

@@ -672,16 +672,48 @@ ${(res.body || '').slice(0, 220)}`,
       const pendingIds = (res.matches || [])
         .filter((m) => m.payment_status === 'pending')
         .map((m) => m.payment_id);
-      const summary = `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${res.unmatched_rows}`;
+      const unmatched = res.unmatched_rows || 0;
+      const summary = `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${unmatched}`;
+
+      const askExpenses = () => {
+        if (unmatched <= 0) return;
+        Alert.alert(
+          'Расходы из выписки',
+          `${unmatched} строк без счёта. Создать расходы в бюджете?`,
+          [
+            { text: 'Нет', style: 'cancel' },
+            {
+              text: 'Создать расходы',
+              onPress: () => {
+                setBusy('bank-expenses');
+                api.importBankStatement(userId, projectId, text, { create_expenses: true })
+                  .then((r2) => {
+                    Alert.alert(
+                      'Бюджет',
+                      `Создано расходов: ${r2.expenses_created ?? 0}. Сверка факта без эквайринга.`,
+                    );
+                  })
+                  .catch((e: unknown) => {
+                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать расходы');
+                  })
+                  .finally(() => setBusy(null));
+              },
+            },
+          ],
+        );
+      };
+
       if (!pendingIds.length) {
-        Alert.alert('Импорт выписки', summary);
+        Alert.alert('Импорт выписки', summary, [
+          { text: 'OK', onPress: askExpenses },
+        ]);
         return;
       }
       Alert.alert(
         'Импорт выписки',
         `${summary}\n\nПодтвердить ${pendingIds.length} pending-оплат(ы)? (gate: приёмка этапа)`,
         [
-          { text: 'Только матч', style: 'cancel' },
+          { text: 'Только матч', style: 'cancel', onPress: askExpenses },
           {
             text: 'Подтвердить',
             onPress: () => {
@@ -691,6 +723,7 @@ ${(res.body || '').slice(0, 220)}`,
                   Alert.alert(
                     'Выписка → оплаты',
                     `Подтверждено: ${r.confirmed_count} · заблокировано gate: ${r.blocked_count}`,
+                    [{ text: 'OK', onPress: askExpenses }],
                   );
                 })
                 .catch((e: unknown) => {
