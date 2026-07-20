@@ -101,7 +101,11 @@ export function OsDockBar({ role }: { role: OsRole }) {
             style={({ pressed }) => [s.tab, pressed && s.pressed]}
             onPress={() => go(id)}
             accessibilityRole="button"
-            accessibilityLabel={label}
+            accessibilityLabel={
+              id === 'chat' && chatUnread > 0
+                ? `${label}, ${chatUnread > 99 ? '99+' : chatUnread} непрочитанных`
+                : label
+            }
             accessibilityState={active ? { selected: true } : {}}
           >
             <View style={s.iconWrap}>

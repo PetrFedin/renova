@@ -14,6 +14,9 @@ import {
 import { TabIcon } from '@/components/renova/TabIcon';
 import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
+import { moreMenuA11yLabel } from '@/lib/domain/moreMenuA11y';
+
+export { moreMenuA11yLabel };
 
 type Props = { role: OsRole; iconOnly?: boolean };
 
@@ -29,7 +32,7 @@ function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' 
 export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const topInset = useTopInset();
   const menuRole: OsRole = role === 'contractor' ? 'contractor' : 'customer';
-  const { taskBadge } = useInboxTasks(menuRole);
+  const { taskBadge, chatUnread } = useInboxTasks(menuRole);
   const [open, setOpen] = useState(false);
   const pathname = usePathname() ?? '';
   const sections = OS_MENU_SECTIONS[menuRole];
@@ -42,7 +45,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
     );
   }
 
-  /** Badge на иконке = задачи во входящих (чат — в dock) */
+  /** Badge на «Ещё» = только задачи inbox. Чат — красный бейдж на dock. */
   const menuIconBadge = taskBadge;
 
   const go = (sec: (typeof sections)[0]) => {
@@ -56,12 +59,13 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
         style={[s.btn, iconOnly && s.btnIcon]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
-        accessibilityLabel={menuIconBadge > 0 ? `Ещё, ${menuIconBadge} входящих` : 'Ещё'}
+        accessibilityLabel={moreMenuA11yLabel(menuIconBadge, chatUnread)}
         hitSlop={8}
       >
-        <Ionicons name="ellipsis-horizontal-circle-outline" size={22} color={RenovaTheme.colors.text} />
+        {/* menu-outline — не путать с chatbubble (W77) */}
+        <Ionicons name="menu-outline" size={22} color={RenovaTheme.colors.text} />
         {menuIconBadge > 0 ? (
-          <View style={s.badge}>
+          <View style={[s.badge, s.badgeTasks]}>
             <Text style={s.badgeT}>{menuIconBadge > 99 ? '99+' : menuIconBadge}</Text>
           </View>
         ) : null}
@@ -98,7 +102,16 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                 >
                   <Ionicons name={link.icon} size={18} color={RenovaTheme.colors.textMuted} />
                   <Text style={s.itemT}>{link.label}</Text>
-                  {link.id === 'inbox' ? <MenuBadge count={taskBadge} tone="warning" /> : null}
+                  {link.id === 'inbox' ? (
+                    <>
+                      <MenuBadge count={taskBadge} tone="warning" />
+                      {chatUnread > 0 ? (
+                        <Text style={s.chatHint}>
+                          {chatUnread > 99 ? '99+' : chatUnread} в «Сообщениях»
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : null}
                 </Pressable>
               ))}
             </View>
@@ -131,11 +144,12 @@ const s = StyleSheet.create({
     minWidth: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: RenovaTheme.colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
   },
+  /** Янтарный = задачи; красный — только чат в dock */
+  badgeTasks: { backgroundColor: RenovaTheme.colors.warning },
   badgeT: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
   menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },
@@ -176,4 +190,10 @@ const s = StyleSheet.create({
   },
   miniBadgeWarn: { backgroundColor: RenovaTheme.colors.warning },
   miniBadgeT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
+  chatHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: RenovaTheme.colors.danger,
+    marginLeft: 2,
+  },
 });

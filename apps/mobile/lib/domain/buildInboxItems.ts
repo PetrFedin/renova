@@ -160,6 +160,56 @@ export async function buildInboxItems(opts: {
         });
       }
     } catch { /* noop */ }
+
+    // W77: ДО / гарантия / draft docs — те же очереди, что nextAction (W76)
+    const hasCoApproval = next.some((it) => it.kind === 'approval' && it.approval.type === 'change_order');
+    if (!hasCoApproval) {
+      try {
+        const orders = await api.listChangeOrders(userId, projectId);
+        const pendingCo = orders.filter((o) => o.status === 'pending');
+        if (pendingCo.length > 0) {
+          next.push({
+            id: 'change-orders',
+            kind: 'change_order',
+            title: pendingCo.length === 1 ? 'Согласовать доп. работы' : `Согласовать ${pendingCo.length} ДО`,
+            sub: pendingCo[0]?.title || 'Изменение сметы',
+            href: `${objectTabHref(role, 'estimate')}&estimateLayer=changes`,
+            priority: 83,
+          });
+        }
+      } catch { /* noop */ }
+    }
+
+    try {
+      const w = await api.listWarrantyClaims(userId, projectId);
+      if ((w.open ?? 0) > 0) {
+        next.push({
+          id: 'warranty-open',
+          kind: 'warranty',
+          title: (w.overdue ?? 0) > 0 ? `Гарантия: ${w.overdue} просрочено` : 'Открытые гарантии',
+          sub: `${w.open} обращений`,
+          href: '/documents',
+          priority: 78,
+        });
+      }
+    } catch { /* noop */ }
+
+    if (!next.some((it) => it.id === 'contract-sign')) {
+      try {
+        const docs = await api.listProjectDocuments(userId, projectId);
+        const drafts = (docs.items || []).filter((d) => d.status === 'draft');
+        if (drafts.length > 0) {
+          next.push({
+            id: 'docs-sign',
+            kind: 'document',
+            title: drafts.length === 1 ? 'Подписать документ' : `Подписать ${drafts.length} док.`,
+            sub: drafts[0]?.title || 'Черновики в Документах',
+            href: '/documents',
+            priority: 76,
+          });
+        }
+      } catch { /* noop */ }
+    }
   } else {
     // W65 #11: исполнитель видит pending invoices (контроль, не оплата)
     try {
@@ -189,18 +239,41 @@ export async function buildInboxItems(opts: {
       });
     }
 
-    // W55: исполнитель видит ожидание приёмки / графика, а не «Закупить» чужими глазами
+    // W77: очередь WA (requested/in_review), не только stage.status=review
+    let contractorPendingAcc = 0;
+    try {
+      const acc = await api.acceptancesPendingCount(userId, projectId);
+      contractorPendingAcc = acc.count;
+    } catch { /* noop */ }
     const review = stages.filter((s) => s.status === 'review');
-    if (review.length > 0) {
+    const awaitAcc = Math.max(contractorPendingAcc, review.length);
+    if (awaitAcc > 0) {
       next.push({
         id: 'await-acceptance',
         kind: 'acceptance',
         title: 'Ждём приёмку заказчика',
-        sub: `${review.length} · ${review[0]?.name || ''}`,
+        sub: review[0]?.name
+          ? `${awaitAcc} · ${review[0].name}`
+          : `${awaitAcc} в очереди`,
         href: repairTabHref(role, 'control'),
         priority: 88,
       });
     }
+
+    try {
+      const orders = await api.listChangeOrders(userId, projectId);
+      const pendingCo = orders.filter((o) => o.status === 'pending');
+      if (pendingCo.length > 0) {
+        next.push({
+          id: 'change-orders-wait',
+          kind: 'change_order',
+          title: 'Доп. работы у заказчика',
+          sub: pendingCo.length === 1 ? pendingCo[0]?.title || 'Ждём согласование' : `${pendingCo.length} на согласовании`,
+          href: `${objectTabHref(role, 'estimate')}&estimateLayer=changes`,
+          priority: 83,
+        });
+      }
+    } catch { /* noop */ }
 
     try {
       const sched = await api.getActiveWorkSchedule(userId, projectId);
