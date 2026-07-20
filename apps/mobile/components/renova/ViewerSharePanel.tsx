@@ -93,10 +93,12 @@ export function ViewerSharePanel({
           ))}
         </View>
       ) : (
-        <Text style={s.empty}>Нет гостей</Text>
-        <Text style={s.hint}>
-          Ссылка портала шарится через систему (WhatsApp / Telegram). Отдельного WA Business API в MVP нет.
-        </Text>
+        <>
+          <Text style={s.empty}>Нет гостей</Text>
+          <Text style={s.hint}>
+            Ссылка портала шарится через систему (WhatsApp / Telegram). Отдельного WA Business API в MVP нет.
+          </Text>
+        </>
       )}
 
       <View style={s.addBlock}>
