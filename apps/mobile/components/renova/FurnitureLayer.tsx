@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, FurnitureItem } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -9,8 +10,11 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 export function FurnitureLayer({ userId, projectId, planId, role }: { userId: string; projectId: string; planId?: string; role: string }) {
   const { user, activeProject } = useRenova();
   const [items, setItems] = useState<FurnitureItem[]>([]);
-  const load = () => api.listFurniture(userId, projectId).then(setItems).catch(() => {});
-  useEffect(() => { load(); }, [projectId]);
+  const load = useCallback(() => {
+    api.listFurniture(userId, projectId).then(setItems).catch(() => {});
+  }, [userId, projectId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
   const move = async (id: string, dx: number, dy: number, x?: number | null, y?: number | null) => {
     const nx = Math.min(95, Math.max(5, (x ?? 50) + dx));
     const ny = Math.min(95, Math.max(5, (y ?? 50) + dy));

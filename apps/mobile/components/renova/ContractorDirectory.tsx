@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 
 type C = {
   id: string;
@@ -45,16 +47,18 @@ export function ContractorDirectory({
   linkedOnly?: boolean;
   onLinked?: () => void;
 }) {
-  const { loadProject } = useRenova();
+  const { user, activeProject, loadProject } = useRenova();
   const [items, setItems] = useState<C[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     api
       .matchContractors(userId, 'capital', 'tiling')
       .then(setItems)
       .catch(() => api.listContractors(userId).then(setItems).catch(() => {}));
   }, [userId]);
+  useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   const link = async (contractorId: string) => {
     if (!projectId) return;
@@ -62,7 +66,13 @@ export function ContractorDirectory({
     try {
       await api.linkContractor(userId, projectId, contractorId);
       await loadProject(projectId).catch(() => {});
+      // W97: home/inbox/смета после подключения исполнителя
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
       onLinked?.();
+      reload();
     } catch (e: unknown) {
       Alert.alert('Не удалось подключить', apiErrorMessage(e, 'Проверьте подключение'));
     } finally {

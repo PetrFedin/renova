@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -11,6 +11,7 @@ import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { NotificationsList } from '@/components/renova/NotificationsList';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { api } from '@/lib/api';
@@ -31,9 +32,12 @@ function TeamSection() {
   const [phone, setPhone] = useState('');
   const [team, setTeam] = useState<any>(null);
 
-  useEffect(() => {
-    if (user) api.getTeam(user.id).then(setTeam).catch(() => setTeam(null));
+  const reloadTeam = useCallback(() => {
+    if (!user) return;
+    api.getTeam(user.id).then(setTeam).catch(() => setTeam(null));
   }, [user?.id]);
+  useEffect(() => { reloadTeam(); }, [reloadTeam]);
+  useProjectDataReload(reloadTeam);
 
   if (!user) return null;
 
@@ -97,13 +101,15 @@ export function ContractorProfileScreen() {
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
   const [payReq, setPayReq] = useState('');
   const [company, setCompany] = useState('');
-  useEffect(() => {
+  const reloadProfile = useCallback(() => {
     if (!user) return;
     api.getMyContractorProfile(user.id).then((p) => {
       setPayReq(p.payment_requisites || '');
       setCompany(p.company_name || '');
     }).catch(() => {});
   }, [user?.id]);
+  useEffect(() => { reloadProfile(); }, [reloadProfile]);
+  useProjectDataReload(reloadProfile);
   const roleLabel = roleDisplayLabel(user?.role);
 
   return (

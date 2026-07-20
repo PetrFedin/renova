@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { HomeLinkRow } from '@/components/renova/os/HomeLinkRow';
 import { exportExpensesCsvFile } from '@/lib/exportExpensesCsv';
 import type { OsRole } from '@/constants/osSections';
@@ -15,6 +17,7 @@ type Props = {
 
 export function HomeCompletionLinks({ role, userId, projectId }: Props) {
   const { pushScreen } = useOsNavFromHere(role);
+  const { user, activeProject } = useRenova();
   const [busy, setBusy] = useState(false);
 
   async function exportCsv() {
@@ -39,7 +42,13 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
           if (busy) return;
           setBusy(true);
           api.pushWeeklyDigest(userId, projectId)
-            .then((res) => {
+            .then(async (res) => {
+              // W97: уведомления/inbox после дайджеста
+              await syncProjectSideEffects({
+                user: user ?? ({ id: userId } as any),
+                project: activeProject ?? ({ id: projectId } as any),
+                role,
+              });
               Alert.alert(
                 'Дайджест',
                 `Отправлено: ${res.notified}. ${(res.body || '').slice(0, 160)}`,
