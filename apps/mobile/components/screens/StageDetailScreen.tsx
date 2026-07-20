@@ -1,5 +1,5 @@
 /** Экран этапа: приёмка above fold, вторичное — в accordion */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ScrollView, View, Text, Alert, TextInput, StyleSheet, Pressable, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
@@ -8,6 +8,7 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, StageDetail, WorkSnapshot } from '@/lib/api';
 import { compressUri } from '@/lib/compressImage';
@@ -94,7 +95,7 @@ export function StageDetailScreen() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const canWrite = useWriteAllowed();
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     if (!user || !activeProject || !id) return;
     const st = await api.getStage(user.id, activeProject.id, id);
     setStage(st);
@@ -103,7 +104,8 @@ export function StageDetailScreen() {
     api.getContractGate(user.id, activeProject.id).then(setContractGate).catch(() => setContractGate(null));
     api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch(() => setWorkSnap(null));
     getCustomChecks(id).then(setCustomChecks).catch(() => {});
-  };
+  }, [user?.id, activeProject?.id, id]);
+  useProjectDataReload(reload);
 
   useEffect(() => {
     reload().catch(() => {});

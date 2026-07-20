@@ -10,6 +10,7 @@ import { PurchaseList } from '@/components/renova/PurchaseList';
 import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, MaterialPick, Purchase, ReceiptItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
@@ -62,6 +63,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  useProjectDataReload(reload);
 
   const filteredPicks = useMemo(() => {
     return picks.filter((p) => {

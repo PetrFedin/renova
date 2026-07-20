@@ -151,6 +151,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W87 | estimate/budget/onboarding + runWithProjectSideEffects | **закрыто** `develop` |
 | W88 | projectDataBus↔inbox bridge + budget/profile/scratch/Pro | **закрыто** `develop` |
 | W89 | control/acceptance ↔ projectDataBus + optional checklist_progress | **закрыто** `develop` |
+| W90 | useProjectDataReload on QC/materials/schedule/stage/approvals | **закрыто** `develop` |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

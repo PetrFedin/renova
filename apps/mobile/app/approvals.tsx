@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Alert, ScrollView, View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, ApprovalItem } from '@/lib/api';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -21,10 +22,11 @@ export default function ApprovalsScreen() {
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const isCustomer = user?.role === 'customer';
 
-  const load = () => {
+  const load = useCallback(() => {
     if (user && activeProject) api.approvalHub(user.id, activeProject.id).then(r => setItems(r.items)).catch(() => {});
-  };
-  useEffect(() => { load(); }, [activeProject?.id]);
+  }, [user?.id, activeProject?.id]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
 
   const key = (it: ApprovalItem) => `${it.type}-${it.id}`;
   const reason = (it: ApprovalItem) => reasons[key(it)] || '';

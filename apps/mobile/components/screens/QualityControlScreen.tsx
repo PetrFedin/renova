@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import type { ProjectIssue } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 function statusLabel(status: string) {
@@ -116,6 +117,7 @@ export function QualityControlScreen() {
       setRefreshing(false);
     }
   }, [user, activeProject]);
+  useProjectDataReload(load);
 
   useEffect(() => { load(); }, [load]);
 

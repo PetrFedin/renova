@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type SelectionItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
@@ -51,6 +52,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  useProjectDataReload(reload);
 
   const filtered = useMemo(() => {
     if (filter === 'all') return items;

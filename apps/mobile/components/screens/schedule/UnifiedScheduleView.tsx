@@ -24,6 +24,7 @@ import { formatScheduleRange } from '@/lib/formatScheduleDate';
 import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats';
 import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -88,6 +89,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
       setPlanHint(s ? `План: ${s.status}` : null);
     }).catch(() => { setSchedule(null); setPlanHint(null); });
   }, [user?.id, activeProject?.id]);
+  useProjectDataReload(reload);
 
   useEffect(() => { reload(); }, [reload]);
 

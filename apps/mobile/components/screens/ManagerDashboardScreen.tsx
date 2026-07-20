@@ -8,6 +8,7 @@ import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { OsBudgetSummary, OsInsight, OsRisk } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 
 type LoadState = {
   budget: OsBudgetSummary | null;
@@ -61,6 +62,7 @@ export function ManagerDashboardScreen() {
       setRefreshing(false);
     }
   }, [user, activeProject]);
+  useProjectDataReload(load);
 
   useEffect(() => { load(); }, [load]);
 
