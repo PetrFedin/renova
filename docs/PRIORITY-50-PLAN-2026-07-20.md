@@ -77,7 +77,7 @@
 | 34 | Export honesty «не live-синк» | **done W67** |
 | 35 | Team QR Pro hint + CTA | **done W67** |
 | 36 | uvicorn websockets warnings | **lite** uvicorn[standard] в deps |
-| 37 | CI: test:priority + playwright scripts | **done W70** |
+| 37 | CI: test:priority + playwright scripts | **local** — нужен `workflow` scope для push ci.yml |
 | 38 | TS2786 JSX noise | **managed W70** (`typecheck:mobile` gate) |
 
 ---
@@ -131,7 +131,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W67 | 27–38 | **закрыто** `develop` (#36–38 ops/eng частично) |
 | W68 | 39, 43–47 | **закрыто** `develop` |
 | W69 | 40–42, 48–50 (+41/36 lite) | **закрыто кодом** `develop` |
-| W70 | 20, 37–38 (+ H0 blockers doc) | **закрыто** `develop` |
+| W70 | 20, 38 (+ H0 blockers doc; #37 local) | **закрыто** `develop` `76a2340` |
 
 
 ## H0 — блокеры вне кода (1–8, 23)
