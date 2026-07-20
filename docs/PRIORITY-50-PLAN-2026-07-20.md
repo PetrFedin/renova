@@ -67,18 +67,18 @@
 
 | # | Что не так | Тип |
 |---|------------|-----|
-| 27 | Demo login в investor demo | demo |
-| 28 | E-sign stubs → 501 без честного текста | demo |
-| 29 | OCR stub как «готово» | demo |
-| 30 | Дубли глаголов приёмки | UX |
-| 31 | Legacy work-acceptance vs repair/control | UX |
-| 32 | Chat invoice vs Budget payment | UX |
-| 33 | Punch list ↔ QC status | honesty |
-| 34 | 1C/bank export без smoke | demo |
-| 35 | Team QR без Pro на staging | demo |
-| 36 | uvicorn websockets warnings | ops |
-| 37 | Локальный дрейф ci.yml | ops |
-| 38 | TS2786 JSX noise | eng |
+| 27 | Demo login gated by EXPO_PUBLIC_DEMO | **done W67** |
+| 28 | E-sign 501 с message для UI | **done W67** |
+| 29 | OCR label «демо-классификация» | **done W67** |
+| 30 | Единый глагол «Принять этап» | **done W67** |
+| 31 | /work-acceptance → repair?tab=control | **done W67** |
+| 32 | Chat invoice → Бюджет/Оплаты | **done W67** |
+| 33 | Punch = QC issue (labels) | **done W67** |
+| 34 | Export honesty «не live-синк» | **done W67** |
+| 35 | Team QR Pro hint + CTA | **done W67** |
+| 36 | uvicorn websockets warnings | **ops** (deps staging) |
+| 37 | Локальный дрейф ci.yml | **ops** (не коммитим без scope) |
+| 38 | TS2786 JSX noise | **eng** (отдельный cleanup) |
 
 ---
 
@@ -126,5 +126,5 @@ Canvas: `renova-priority-50.canvas.tsx`
 | H0 | 1–8 | **ops** — нужны staging URL + YuKassa + TestFlight (не код) |
 | W65 | 9–12 | **закрыто** `develop` |
 | W66 | 13–26 | **закрыто** `develop` (см. ниже; #23 ops) |
-| W67 | 27–38 | queued |
+| W67 | 27–38 | **закрыто** `develop` (#36–38 ops/eng частично) |
 | W68 | 39–50 | queued |

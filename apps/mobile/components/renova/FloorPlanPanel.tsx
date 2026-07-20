@@ -15,6 +15,7 @@ import { RenovaTheme } from '@/constants/Theme';
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 const MAP_H = 180;
 
+/** W67 #33: punch = ProjectIssue в QC (единый статус). */
 function punchTone(severity: string, status: string) {
   if (status === 'closed') return RenovaTheme.colors.textMuted;
   if (severity === 'critical' || severity === 'high') return RenovaTheme.colors.dangerText;
@@ -110,10 +111,10 @@ export function FloorPlanPanel({
       setPunchMode(false);
       router.push('/quality-control' as never);
       Alert.alert(
-        'Замечание добавлено',
+        'Замечание в QC',
         photo_key
-          ? 'Фото на плане сохранено. Откройте «Контроль качества» для описания.'
-          : 'Откройте «Контроль качества» для описания замечания.',
+          ? 'Сохранено как issue в Контроле качества (с фото на плане).'
+          : 'Сохранено как issue в Контроле качества — дополните описание там.',
       );
     } catch (e) {
       if (isOfflineQueued(e)) {
@@ -171,7 +172,7 @@ export function FloorPlanPanel({
                   onPress={() => setPunchMode((v) => !v)}
                 >
                   <Text style={[s.punchToggleT, punchMode && s.punchToggleTOn]}>
-                    {punchMode ? '● Режим замечаний' : '○ Punch list'}
+                    {punchMode ? '● Замечания (QC)' : '○ Замечания на плане'}
                   </Text>
                 </Pressable>
                 <Text style={s.punchHint}>{openPunch.length} на плане</Text>

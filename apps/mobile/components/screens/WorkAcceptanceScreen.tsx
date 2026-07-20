@@ -123,9 +123,9 @@ function AcceptanceCard({
       )}
 
       <View style={styles.actions}>
-        <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${stage.id}?returnTo=${encodeURIComponent('/work-acceptance')}` as never)} />
+        <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${stage.id}?returnTo=${encodeURIComponent('/(customer)/(tabs)/repair?tab=control')}` as never)} />
         {canRequest ? <PrimaryButton title={acceptanceClosedForRework ? 'Повторно на приёмку' : 'Запросить приёмку'} compact onPress={() => onRequest(stage)} loading={actingId === stage.id} disabled={Boolean(actingId)} /> : null}
-        {canDecide ? <PrimaryButton title="Принять" compact onPress={() => onAccept(acceptance)} loading={actingId === acceptance.id} disabled={Boolean(actingId)} /> : null}
+        {canDecide ? <PrimaryButton title="Принять этап" compact onPress={() => onAccept(acceptance)} loading={actingId === acceptance.id} disabled={Boolean(actingId)} /> : null}
         {canDecide ? <PrimaryButton title="На доработку" variant="outline" compact onPress={() => onReturn(acceptance)} loading={actingId === acceptance.id} disabled={Boolean(actingId)} /> : null}
       </View>
     </View>

@@ -11,10 +11,13 @@ import { navigateAfterLogin } from '@/lib/osEntry';
 
 type Mode = 'demo' | 'sms';
 
+/** W67 #27: демо-вход только при EXPO_PUBLIC_DEMO=1 (иначе SMS по умолчанию). */
+const DEMO_LOGIN_ENABLED = (process.env.EXPO_PUBLIC_DEMO ?? '1') !== '0';
+
 export default function RoleScreen() {
   const { teamToken } = useLocalSearchParams<{ teamToken?: string }>();
   const { demoLogin, loginWithSms } = useRenova();
-  const [mode, setMode] = useState<Mode>('demo');
+  const [mode, setMode] = useState<Mode>(DEMO_LOGIN_ENABLED ? 'demo' : 'sms');
   const [role, setRole] = useState<UserRole>('customer');
   const [phone, setPhone] = useState('+79001234567');
   const [code, setCode] = useState('');
@@ -40,6 +43,7 @@ export default function RoleScreen() {
     setError(null);
     try {
       if (mode === 'demo') {
+        if (!DEMO_LOGIN_ENABLED) throw new Error('demo_login_disabled');
         await demoLogin(role);
       } else {
         if (!codeSent) {
@@ -66,12 +70,17 @@ export default function RoleScreen() {
       <Text style={styles.logo}>Renova</Text>
       <Text style={styles.sub}>Кто вы в этом проекте?</Text>
       <View style={styles.modeRow}>
-        {(['demo', 'sms'] as Mode[]).map((m) => (
+        {(DEMO_LOGIN_ENABLED ? (['demo', 'sms'] as Mode[]) : (['sms'] as Mode[])).map((m) => (
           <Pressable key={m} style={[styles.modeBtn, mode === m && styles.modeOn]} onPress={() => { setMode(m); setCodeSent(false); }}>
-            <Text style={[styles.modeT, mode === m && styles.modeTOn]}>{m === 'demo' ? 'Демо' : 'SMS'}</Text>
+            <Text style={[styles.modeT, mode === m && styles.modeTOn]}>{m === 'demo' ? 'Демо-стенд' : 'SMS'}</Text>
           </Pressable>
         ))}
       </View>
+      {mode === 'demo' ? (
+        <Text style={{ color: RenovaTheme.colors.textMuted, fontSize: 13, marginBottom: 8 }}>
+          Демо-вход создаёт учебные данные. Для пилота используйте SMS.
+        </Text>
+      ) : null}
       <View style={styles.roles}>
         {(['customer', 'contractor'] as UserRole[]).map((r) => (
           <Pressable key={r} style={[styles.roleBtn, role === r && styles.roleActive]} onPress={() => setRole(r)}>

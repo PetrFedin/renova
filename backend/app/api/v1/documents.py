@@ -293,7 +293,19 @@ async def sign_project_document(
     except ValueError as e:
         msg = str(e)
         if msg.startswith("provider_unavailable:"):
-            raise HTTPException(501, msg) from e
+            # W67 #28: честный текст вместо сырого кода для UI
+            provider = msg.split(":", 1)[-1]
+            raise HTTPException(
+                501,
+                detail={
+                    "code": "esign_provider_unavailable",
+                    "provider": provider,
+                    "message": (
+                        f"Электронная подпись «{provider}» не подключена на этом стенде. "
+                        "Используйте подпись в приложении или запросите настройку Kontur/Госключ."
+                    ),
+                },
+            ) from e
         if msg.startswith("unknown_esign_provider:"):
             raise HTTPException(400, msg) from e
         raise HTTPException(400, msg) from e

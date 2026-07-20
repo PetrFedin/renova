@@ -328,9 +328,34 @@ export function ChatThreadView({
                 <Text style={s.toolBtn}>✓?</Text>
               </Pressable>
               <Pressable disabled={!canWrite} onPress={() => {
-                Alert.alert('Счёт', 'Отправить запрос оплаты?', [
+                // W67 #32: счёт из чата = Payment в Бюджете
+                Alert.alert('Счёт в бюджете', 'Создать счёт 10 000 ₽? Заказчик увидит его в «Деньги → Оплаты».', [
                   { text: 'Отмена', style: 'cancel' },
-                  { text: '10 000 ₽', onPress: () => api.invoiceFromChat(user.id, projectId, threadId, { title: 'Оплата работ', amount: 10000, payment_type: 'stage' }).then(reload) },
+                  {
+                    text: 'Создать',
+                    onPress: async () => {
+                      try {
+                        await api.invoiceFromChat(user.id, projectId, threadId, {
+                          title: 'Оплата работ',
+                          amount: 10000,
+                          payment_type: 'stage',
+                        });
+                        await reload();
+                        Alert.alert('Счёт создан', 'Оплата учитывается в бюджете объекта.', [
+                          { text: 'OK' },
+                          {
+                            text: 'Открыть оплаты',
+                            onPress: () => {
+                              const r = budgetTabRoute('contractor', 'payments');
+                              router.push({ pathname: r.pathname, params: r.params } as never);
+                            },
+                          },
+                        ]);
+                      } catch {
+                        Alert.alert('Ошибка', 'Не удалось создать счёт');
+                      }
+                    },
+                  },
                 ]);
               }}><Text style={s.toolBtn}>💳</Text></Pressable>
             </>

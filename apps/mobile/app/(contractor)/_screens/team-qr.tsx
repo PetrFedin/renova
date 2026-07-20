@@ -34,7 +34,20 @@ export default function TeamQrScreen() {
       const l = await api.createTeamInviteLink(user.id, role);
       setLink(l.link);
     } catch (e: unknown) {
-      Alert.alert('Бригада', e instanceof Error ? e.message : 'Создайте бригаду в профиле');
+      const msg = e instanceof Error ? e.message : 'Создайте бригаду в профиле';
+      // W67 #35
+      Alert.alert(
+        'Бригада',
+        /402|pro|подписк/i.test(msg)
+          ? 'QR бригады доступен на Pro. Откройте «Подписка» или используйте staging с trial.'
+          : msg,
+        /402|pro|подписк/i.test(msg)
+          ? [
+              { text: 'OK', style: 'cancel' },
+              { text: 'Подписка', onPress: () => router.push('/(contractor)/subscription' as never) },
+            ]
+          : undefined,
+      );
     } finally {
       setBusy(false);
     }
@@ -49,7 +62,7 @@ export default function TeamQrScreen() {
       <BackHeader title="Бригада QR" returnTo={returnTo} />
       <ScrollView style={s.wrap} contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={s.h}>Роль по ссылке</Text>
-        <Text style={s.sub}>Сканирует новый исполнитель → входит в вашу бригаду с выбранной ролью (H1.5).</Text>
+        <Text style={s.sub}>Сканирует новый исполнитель → входит в вашу бригаду с выбранной ролью (H1.5). На staging без Pro invite может быть недоступен — см. подписку.</Text>
         <View style={s.roles}>
           {ROLES.map((r) => (
             <Pressable key={r.id} onPress={() => setRole(r.id)} style={[s.roleChip, role === r.id && s.roleOn]}>

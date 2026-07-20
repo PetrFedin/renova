@@ -31,8 +31,13 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     if (typeof j.message === 'string' && j.message) {
       return { message: j.message, code: j.code, detail };
     }
-    if (typeof j.detail === 'object' && j.detail && 'code' in (j.detail as object)) {
-      code = (j.detail as { code?: string }).code;
+    if (typeof j.detail === 'object' && j.detail) {
+      const d = j.detail as { code?: string; message?: string };
+      // W67 #28: FastAPI detail={message,code} → человекочитаемый текст
+      if (typeof d.message === 'string' && d.message) {
+        return { message: d.message, code: d.code || j.code, detail };
+      }
+      if (typeof d.code === 'string') code = d.code;
     } else if (typeof j.code === 'string') {
       code = j.code;
     }

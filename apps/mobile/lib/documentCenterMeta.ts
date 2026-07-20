@@ -31,7 +31,8 @@ export function ocrStatusLabel(ocr: OcrMeta | null | undefined): string | null {
     case 'processing':
       return 'OCR…';
     case 'done':
-      return `OCR ок${suggested}${conf}`;
+      // W67 #29: stub ≠ распознанный документ
+      return `OCR демо-классификация${suggested}${conf}`;
     case 'failed':
       return 'OCR ошибка';
     default:
