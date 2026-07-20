@@ -394,7 +394,7 @@ export function StageDetailScreen() {
         {workSnap ? (
           <StageDetailAccordion title="Прогресс" summary={`${workSnap.percent_complete}%`}>
             <Text style={styles.meta}>
-              Работ: {workSnap.works_done ?? workSnap.checklist_progress.done}/{workSnap.works_total ?? workSnap.checklist_progress.total}
+              Работ: {workSnap.works_done ?? workSnap.checklist_progress?.done ?? 0}/{workSnap.works_total ?? workSnap.checklist_progress?.total ?? 0}
               {' · '}материалы {workSnap.materials_count}
               {workSnap.overdue_days ? ` · +${workSnap.overdue_days} дн.` : ''}
             </Text>
