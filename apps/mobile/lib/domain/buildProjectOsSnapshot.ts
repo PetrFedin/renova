@@ -8,6 +8,7 @@ import { computeProjectHealth, forecastFinalCost, capOverrunRisk } from './proje
 import { sanitizeRiskImpact } from './sanitizeRiskImpact';
 import { resolveProjectProgress } from './resolveProjectProgress';
 import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute } from '@/constants/osSections';
+import { closeoutNextActionTitle } from './closeoutHome';
 
 /**
  * Подсказки для nextAction (W55 schedule + W76 очередь приёмки/ДО/подписи/гарантии).
@@ -26,6 +27,11 @@ export type WorkScheduleHint = {
   /** W78: offline outbox (pending+blocked+conflicts) */
   offlinePending?: number;
   offlineBlocked?: number;
+  /** W79: closeout-checklist */
+  closeoutReady?: boolean;
+  closeoutArchived?: boolean;
+  closeoutNext?: string | null;
+  closeoutAllStagesDone?: boolean;
 };
 
 /** @deprecated alias — используйте WorkScheduleHint */
@@ -209,13 +215,28 @@ export function buildProjectOsSnapshot(
         kind: 'review',
       };
     } else {
-      nextAction = {
-        title: 'Закрытие объекта',
-        subtitle: 'Проверьте акты, оплаты и гарантию в Документах',
-        button: 'Документы',
-        href: '/documents',
-        kind: 'review',
-      };
+      // W79: closeout-checklist SoT (готово / блокеры)
+      const co = closeoutNextActionTitle({
+        ready: workSchedule?.closeoutReady,
+        archived: workSchedule?.closeoutArchived ?? project.is_archived,
+        next_action: workSchedule?.closeoutNext || undefined,
+        all_stages_done: workSchedule?.closeoutAllStagesDone ?? true,
+      });
+      nextAction = co
+        ? {
+            title: co.title,
+            subtitle: co.subtitle,
+            button: co.ready ? 'Завершить' : 'Документы',
+            href: '/documents',
+            kind: 'review',
+          }
+        : {
+            title: 'Закрытие объекта',
+            subtitle: 'Проверьте акты, оплаты и гарантию в Документах',
+            button: 'Документы',
+            href: '/documents',
+            kind: 'review',
+          };
     }
   } else if (unpaid > 0 && role === 'contractor') {
     nextAction = {

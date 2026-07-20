@@ -6,6 +6,8 @@ import { useFocusEffect } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { flushOfflineOutbox, getOfflineOutboxStatus } from '@/lib/offline';
 import { getQueue } from '@/lib/offlineQueue';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { reloadInboxSync } from '@/lib/inboxSyncStore';
 
 /** Статус канонической offline-очереди (тот же storage, что layout flush). */
 export function OfflineSyncStatus({
@@ -23,6 +25,7 @@ export function OfflineSyncStatus({
   const [conflicts, setConflicts] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const { user } = useRenova();
 
   const refresh = useCallback(async () => {
     if (pathIncludes?.length) {
@@ -60,6 +63,10 @@ export function OfflineSyncStatus({
         setLastMessage('Все доступные изменения отправлены');
       }
       await refresh();
+      // W79: бейджи «Ещё» / inbox сразу без ручного pull
+      if (user?.id) {
+        await reloadInboxSync({ userId: user.id, userRole: user.role }).catch(() => {});
+      }
     } finally {
       setSyncing(false);
     }

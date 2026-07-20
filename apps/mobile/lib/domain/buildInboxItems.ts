@@ -2,6 +2,8 @@
 import { api, type ApprovalItem, type ProjectDetail, type Stage } from '@/lib/api';
 import { formatRub } from '@/constants/Theme';
 import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
+import { buildCloseoutInboxItem } from './closeoutHome';
+import { buildCloseoutInboxItem } from './closeoutHome';
 
 export type InboxItem =
   | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
@@ -343,6 +345,24 @@ export async function buildInboxItems(opts: {
     }
   } catch { /* noop */ }
 
+  // W79: closeout checklist — та же готовность, что DocumentsHub
+  try {
+    const allDone = stages.length > 0 && stages.every((s) => s.status === 'done');
+    if (allDone || (project as { is_archived?: boolean } | null)?.is_archived) {
+      const cl = await api.closeoutChecklist(userId, projectId);
+      const row = buildCloseoutInboxItem({
+        ready: cl.ready,
+        archived: cl.archived,
+        next_action: cl.next_action,
+        warranty_open: cl.warranty_open,
+        pending_payments: cl.pending_payments,
+        acceptance_acts_active: cl.acceptance_acts_active,
+        all_stages_done: cl.all_stages_done ?? allDone,
+      });
+      if (row) next.push(row);
+    }
+  } catch { /* noop */ }
+
   return next.sort((a, b) => b.priority - a.priority);
 }
 
@@ -358,7 +378,7 @@ export function filterInboxForHero(items: InboxItem[], heroKind: string): InboxI
     if (heroKind === 'expense' && (it.kind === 'estimate' || it.id === 'estimate-lock' || it.kind === 'change_order')) return false;
     if (heroKind === 'material' && it.kind === 'material') return false;
     if (heroKind === 'issue' && it.kind === 'warranty') return false;
-    if (heroKind === 'review' && it.kind === 'document') return false;
+    if (heroKind === 'review' && (it.kind === 'document' || it.kind === 'closeout')) return false;
     return true;
   });
 }

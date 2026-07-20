@@ -9,7 +9,7 @@ import {
   type OfflineFlushResult,
   type OfflineQueueStatus,
 } from '@/lib/offlineQueue';
-
+import { notifyOfflineFlush } from '@/lib/offline/flushBus';
 export type OfflineSyncResult = {
   total: number;
   synced: number;
@@ -40,6 +40,8 @@ export async function flushOfflineOutbox(apiBase: string = API_BASE): Promise<Of
     };
   } finally {
     running = false;
+    // W79: inbox/home перечитывают очередь (без прямого import inboxSyncStore)
+    notifyOfflineFlush();
   }
 }
 

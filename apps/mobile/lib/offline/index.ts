@@ -4,7 +4,7 @@
  */
 export * from './outbox';
 export * from './sync';
-
+export { subscribeOfflineFlush, notifyOfflineFlush } from './flushBus';
 /** Snapshots + NetInfo helper — не путать с очередью мутаций. */
 export {
   isOnline,

@@ -17,6 +17,7 @@ import {
 import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { subscribeOfflineFlush } from '@/lib/offline';
 
 export function useInboxWsListener(onPush: () => void) {
   useEffect(() => subscribeInboxWs(onPush), [onPush]);
@@ -112,6 +113,11 @@ export function useInboxTasks(role: OsRole) {
       reload().catch(() => {});
     });
   }, [user?.id, reload]);
+
+  // W79: после flush offline — пересобрать inbox (в т.ч. offline-строку)
+  useEffect(() => subscribeOfflineFlush(() => {
+    reload().catch(() => {});
+  }), [reload]);
 
   return { items, badge, taskBadge, chatUnread, reload };
 }

@@ -22,7 +22,7 @@ import { fallbackDashboard } from '@/lib/domain/fallbackDashboard';
 import { api, Dashboard, ReceiptItem, MaterialPick, Purchase, OsRisk, OsScheduleSummary, OsInsight, OsBudgetSummary } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyBadge';
-import { getOfflineOutboxStatus } from '@/lib/offline';
+import { getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
 import { mergeDigestInsight } from '@/lib/domain/digestHomeInsight';
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
@@ -47,6 +47,10 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [pendingSignDocs, setPendingSignDocs] = useState(0);
   const [offlinePending, setOfflinePending] = useState(0);
   const [offlineBlocked, setOfflineBlocked] = useState(0);
+  const [closeoutReady, setCloseoutReady] = useState(false);
+  const [closeoutArchived, setCloseoutArchived] = useState(false);
+  const [closeoutNext, setCloseoutNext] = useState<string | null>(null);
+  const [closeoutAllStagesDone, setCloseoutAllStagesDone] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -114,6 +118,12 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
           setOfflinePending(st.pending || 0);
           setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
         }),
+        api.closeoutChecklist(user.id, activeProject.id).then((cl) => {
+          setCloseoutReady(Boolean(cl.ready));
+          setCloseoutArchived(Boolean(cl.archived));
+          setCloseoutNext(cl.next_action || null);
+          setCloseoutAllStagesDone(Boolean(cl.all_stages_done));
+        }),
       ]);
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
@@ -132,6 +142,12 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
             () => setPendingChangeOrders(0),
             () => setPendingSignDocs(0),
             () => { setOfflinePending(0); setOfflineBlocked(0); },
+            () => {
+              setCloseoutReady(false);
+              setCloseoutArchived(false);
+              setCloseoutNext(null);
+              setCloseoutAllStagesDone(false);
+            },
           ];
           fallbacks[i]?.();
         }
@@ -144,6 +160,16 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   }
 
   useEffect(() => { load(); refreshProjects().catch(() => {}); }, [user?.id, activeProject?.id]);
+
+  // W79: после sync offline — обновить счётчики hero без полного reload проекта
+  useEffect(() => subscribeOfflineFlush(() => {
+    getOfflineOutboxStatus()
+      .then((st) => {
+        setOfflinePending(st.pending || 0);
+        setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
+      })
+      .catch(() => {});
+  }), []);
 
   const snap = useMemo(() => {
     if (!activeProject || !dash) return null;
@@ -160,13 +186,15 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       pendingAcceptance || dash.pending_acceptances || 0,
       pendingPayments,
       pendingPaymentTotal,
-      { status: workScheduleStatus, warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs, offlinePending, offlineBlocked },
+      { status: workScheduleStatus, warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs, offlinePending, offlineBlocked,
+        closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone },
     );
   }, [
     activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
     pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
     warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
     offlinePending, offlineBlocked,
+    closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone,
   ]);
 
   useEffect(() => {
