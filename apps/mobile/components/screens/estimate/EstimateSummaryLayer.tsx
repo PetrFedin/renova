@@ -140,7 +140,7 @@ export function EstimateSummaryLayer({
           title="→ Документы (договор)"
           variant="outline"
           compact
-          onPress={() => pushOsNav('/documents', pathname)}
+          onPress={() => pushOsNav('/documents', pathname, 'customer')}
         />
       ) : null}
 
@@ -149,13 +149,13 @@ export function EstimateSummaryLayer({
           title="→ Деньги"
           variant="outline"
           compact
-          onPress={() => pushOsNav(budgetTabRoute('customer', 'summary'), pathname)}
+          onPress={() => pushOsNav(budgetTabRoute('customer', 'summary'), pathname, 'customer')}
         />
         <PrimaryButton
           title="→ Материалы"
           variant="outline"
           compact
-          onPress={() => pushOsNav(repairTabRoute('customer', 'materials'), pathname)}
+          onPress={() => pushOsNav(repairTabRoute('customer', 'materials'), pathname, 'customer')}
         />
       </View>
     </View>

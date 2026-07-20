@@ -143,7 +143,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
               existingThreads: existing,
               onOpen: async (threadId) => {
                 await markPromoted(line, 'chat', threadId);
-                pushOsNav({ pathname: '/chat/[threadId]', params: { threadId } }, returnTo);
+                pushOsNav({ pathname: '/chat/[threadId]', params: { threadId } }, returnTo, role);
               },
             });
           } catch {
@@ -156,7 +156,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         onPress: async () => {
           await markPromoted(line, 'expense');
           await syncProjectSideEffects({ user, project: activeProject });
-          pushOsNav(budgetTabHref(role, 'expenses'), returnTo);
+          pushOsNav(budgetTabHref(role, 'expenses'), returnTo, role);
         },
       },
       { text: 'Отмена', style: 'cancel' },
@@ -258,7 +258,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
           await markPromoted(promoteLine, 'work_order', wo.id);
           await syncProjectSideEffects({ user, project: activeProject });
           const date = (wo.planned_start || new Date().toISOString()).slice(0, 10);
-          pushOsNav(calendarTabHref(role, { date }), returnTo);
+          pushOsNav(calendarTabHref(role, { date }), returnTo, role);
         }}
       />
 

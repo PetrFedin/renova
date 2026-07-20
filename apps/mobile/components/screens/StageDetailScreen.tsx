@@ -240,7 +240,7 @@ export function StageDetailScreen() {
         {isArchived && (
           <View style={styles.archiveBanner}>
             <Text style={styles.archiveText}>Этап завершён</Text>
-            <Pressable onPress={() => pushOsNav(repairTabRoute(role, 'works', 'archive'))}>
+            <Pressable onPress={() => pushOsNav(repairTabRoute(role, 'works', 'archive'), undefined, role)}>
               <Text style={styles.link}>→ Архив этапов</Text>
             </Pressable>
           </View>

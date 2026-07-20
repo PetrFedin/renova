@@ -20,6 +20,7 @@ import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldG
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
 import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttention';
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 type Folder = 'active' | 'archive';
 
@@ -191,11 +192,25 @@ export function ChatListView() {
     Alert.alert(t.title, t.project_name || undefined, [
       {
         text: t.is_pinned ? 'Открепить' : 'Закрепить',
-        onPress: () => api.patchChatState(user.id, t.project_id, t.id, { is_pinned: !t.is_pinned }).then(reload),
+        onPress: async () => {
+          try {
+            await api.patchChatState(user.id, t.project_id, t.id, { is_pinned: !t.is_pinned });
+            await reload();
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued(t.is_pinned ? 'Открепление чата' : 'Закрепление чата');
+          }
+        },
       },
       {
         text: folder === 'archive' ? 'Вернуть из архива' : 'В архив',
-        onPress: () => api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' }).then(reload),
+        onPress: async () => {
+          try {
+            await api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' });
+            await reload();
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued(folder === 'archive' ? 'Восстановление чата' : 'Архивация чата');
+          }
+        },
       },
       { text: 'Отмена', style: 'cancel' },
     ]);

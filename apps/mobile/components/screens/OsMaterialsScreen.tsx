@@ -127,7 +127,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
       return;
     }
     if (next.id === 'scan_receipt') {
-      pushOsNav('/scan-receipt', pathname);
+      pushOsNav('/scan-receipt', pathname, role);
       return;
     }
     setMaterialSubtab(next.subtab);
@@ -222,7 +222,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
         {subtab === 'receipts' && (
           <>
-            <PrimaryButton title="Сканировать QR чека" onPress={() => pushOsNav('/scan-receipt', pathname)} />
+            <PrimaryButton title="Сканировать QR чека" onPress={() => pushOsNav('/scan-receipt', pathname, role)} />
             <Text style={s.fabHint}>После скана сверка ниже. Факт бюджета — только по доставленным закупкам / верифицированным чекам.</Text>
             <MaterialReceiptReconcile rooms={activeProject.rooms || []} picks={picks} receipts={receipts} />
           </>

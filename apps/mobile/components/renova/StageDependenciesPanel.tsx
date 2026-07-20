@@ -1,7 +1,7 @@
 /** Зависимости этапов — блокировки, материалы, синхронизация workflow */
 import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router, useFocusEffect, usePathname } from 'expo-router';
+import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -10,6 +10,8 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import type { OsRole } from '@/constants/osSections';
 import { STAGE_DEPENDENCY_TYPE_LABEL } from '@/constants/labels';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 type Dep = {
   id: string;
@@ -73,6 +75,12 @@ export function StageDependenciesPanel({
                 await api.syncDependencies(userId, projectId);
                 await syncProjectSideEffects({ user: { id: userId } as any, project: { id: projectId } as any });
                 await reload();
+              } catch (e) {
+                if (isOfflineQueued(e)) {
+                  notifyOfflineQueued('Синхронизация зависимостей');
+                  return;
+                }
+                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось синхронизировать');
               } finally {
                 setBusy(false);
               }
@@ -85,7 +93,7 @@ export function StageDependenciesPanel({
         <Pressable
           key={d.id}
           style={s.row}
-          onPress={() => router.push({ pathname: '/stage/[id]', params: { id: d.stage_id, returnTo: pathname } } as any)}
+          onPress={() => pushOsNav({ pathname: '/stage/[id]', params: { id: d.stage_id, returnTo: pathname } }, pathname, role)}
         >
           <View style={{ flex: 1 }}>
             <Text style={s.title} numberOfLines={1}>{d.stage_name || 'Этап'}</Text>

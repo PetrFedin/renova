@@ -38,7 +38,7 @@ export function RoomPassport({ snap, role }: { snap: RoomSnapshot; role?: OsRole
 
       <View style={s.grid}>
         {budgetRoute ? (
-          <Pressable style={[s.cell, overrun && s.cellWarn]} onPress={() => pushOsNav(budgetRoute, pathname)}>
+          <Pressable style={[s.cell, overrun && s.cellWarn]} onPress={() => pushOsNav(budgetRoute, pathname, role)}>
             <Text style={s.cellL}>Бюджет →</Text>
             <Text style={s.cellV}>{formatRub(snap.budget.planned)}</Text>
             <Text style={s.cellS}>{overrun ? `+${formatRub(snap.budget.overrun)}` : formatRub(snap.budget.spent)}</Text>

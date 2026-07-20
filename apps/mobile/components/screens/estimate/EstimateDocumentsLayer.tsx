@@ -10,6 +10,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { documentsHref } from '@/lib/documentsNav';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 type DocRow = {
   id: string;
@@ -32,6 +33,7 @@ export function EstimateDocumentsLayer({
   pathname: string;
 }) {
   const { user, activeProject, loadProject } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [busy, setBusy] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [csvText, setCsvText] = useState('name,line_type,unit,quantity_planned,unit_price,room_name\nШтукатурка стен,work,м2,40,450,Гостиная\n');
@@ -174,7 +176,7 @@ export function EstimateDocumentsLayer({
       <PrimaryButton
         title="→ Все документы проекта"
         variant="outline"
-        onPress={() => pushOsNav(documentsHref(pathname), pathname)}
+        onPress={() => pushOsNav(documentsHref(pathname), pathname, role)}
       />
 
       <Modal visible={importOpen} animationType="slide" transparent onRequestClose={() => setImportOpen(false)}>

@@ -285,7 +285,15 @@ export function ChatThreadView({
         <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch(() => Alert.alert('Ошибка', 'Не удалось экспортировать документ'))}>
           <Text style={s.topLink}>Документ</Text>
         </Pressable>
-        <Pressable onPress={() => api.patchChatState(user.id, projectId, threadId, { is_pinned: !chat.is_pinned }).then(reload)}>
+        <Pressable onPress={async () => {
+          try {
+            await api.patchChatState(user.id, projectId, threadId, { is_pinned: !chat.is_pinned });
+            await reload();
+          } catch (e) {
+            if (isOfflineQueued(e)) { notifyOfflineQueued(chat.is_pinned ? 'Открепление чата' : 'Закрепление чата'); return; }
+            Alert.alert('Ошибка', 'Не удалось изменить закрепление');
+          }
+        }}>
           <Text style={s.topLink}>{chat.is_pinned ? 'Открепить чат' : 'Закрепить чат'}</Text>
         </Pressable>
       </View>
@@ -300,8 +308,22 @@ export function ChatThreadView({
             highlight={highlightId === m.id}
             query={chatQuery.trim() || undefined}
             returnTo={returnTo || `/chat/${threadId}`}
-            onReact={(emoji) => api.reactChatMessage(user.id, projectId, threadId, m.id, emoji).then(reload)}
-            onPin={() => api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned).then(reload)}
+            onReact={async (emoji) => {
+              try {
+                await api.reactChatMessage(user.id, projectId, threadId, m.id, emoji);
+                await reload();
+              } catch (e) {
+                if (isOfflineQueued(e)) { notifyOfflineQueued('Реакция'); return; }
+              }
+            }}
+            onPin={async () => {
+              try {
+                await api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned);
+                await reload();
+              } catch (e) {
+                if (isOfflineQueued(e)) { notifyOfflineQueued('Закрепление сообщения'); return; }
+              }
+            }}
             onReply={() => setReplyTo(m)}
             onTask={() => setTaskMsg(m)}
             onConfirm={m.message_type === 'confirm' ? async () => {

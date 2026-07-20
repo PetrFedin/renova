@@ -17,14 +17,84 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  patchChatState: (userId: string, projectId: string, threadId: string, body: { is_pinned?: boolean; is_archived?: boolean }) =>
-    req(`/api/v1/projects/${projectId}/chats/${threadId}/state`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
+  patchChatState: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    body: { is_pinned?: boolean; is_archived?: boolean },
+  ) => {
+    try {
+      return await req(
+        `/api/v1/projects/${projectId}/chats/${threadId}/state`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/state`,
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   inviteToChat: (userId: string, projectId: string, threadId: string, body: { phone?: string; profile_code?: string }) =>
     req(`/api/v1/projects/${projectId}/chats/${threadId}/invite`, { method: 'POST', body: JSON.stringify(body) }, userId),
-  reactChatMessage: (userId: string, projectId: string, threadId: string, messageId: string, emoji: string) =>
-    req<{ reactions: Record<string, string[]> }>(`/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }, userId),
-  pinChatMessage: (userId: string, projectId: string, threadId: string, messageId: string, pin = true) =>
-    req<ChatMessage>(`/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/pin?pin=${pin}`, { method: 'POST' }, userId),
+  /** W115: реакции в чате — очередь офлайн */
+  reactChatMessage: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    messageId: string,
+    emoji: string,
+  ) => {
+    try {
+      return await req<{ reactions: Record<string, string[]> }>(
+        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
+        { method: 'POST', body: JSON.stringify({ emoji }) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
+        method: 'POST',
+        body: JSON.stringify({ emoji }),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
+  /** W115: закрепление сообщения — очередь офлайн */
+  pinChatMessage: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    messageId: string,
+    pin = true,
+  ) => {
+    try {
+      return await req<ChatMessage>(
+        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/pin?pin=${pin}`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/pin?pin=${pin}`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   /** W114: задача из чата → работы/календарь — очередь офлайн */
   taskFromChatMessage: async (
     userId: string,
