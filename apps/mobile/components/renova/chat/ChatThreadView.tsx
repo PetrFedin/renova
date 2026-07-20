@@ -88,7 +88,14 @@ function MessageBubble({
       )}
       {m.confirmed && <Text style={s.ok}>✓ Подтверждено</Text>}
       {m.work_order_id && (
-        <Pressable onPress={() => router.push({ pathname: `/work-order/${m.work_order_id}`, params: returnTo ? { returnTo } : {} } as any)}>
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: '/work-order/[id]',
+              params: { id: m.work_order_id!, ...(returnTo ? { returnTo } : {}) },
+            } as any)
+          }
+        >
           <Text style={s.link}>Открыть задачу →</Text>
         </Pressable>
       )}
@@ -166,16 +173,21 @@ export function ChatThreadView({
     setChat(await api.getChat(user.id, projectId, threadId));
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
 
-  const markThreadRead = useCallback(async () => {
+  const markThreadRead = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
-    const markKey = `${threadId}:${projectIdProp ?? chatProjectId ?? ''}`;
-    if (markedReadRef.current === markKey) return;
-    const projectId = projectIdProp ?? chatProjectId ?? (await resolveProjectId());
+    const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
-    markedReadRef.current = markKey;
+    const markKey = `${threadId}:${projectId}`;
+    // Не блокируем повтор после неуспеха: ref только после успешного sync.
+    if (markedReadRef.current === markKey) return;
     const inbox = await api.chatInbox(user.id).catch(() => [] as import('@/lib/api').ChatThread[]);
     const knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
-    await syncAfterRead(projectId, threadId, knownUnread);
+    try {
+      await syncAfterRead(projectId, threadId, knownUnread);
+      markedReadRef.current = markKey;
+    } catch {
+      /* badge подтянется следующим reload; не фиксируем ref */
+    }
   }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
 
   useFocusEffect(
@@ -183,8 +195,9 @@ export function ChatThreadView({
       markedReadRef.current = null;
       let cancelled = false;
       (async () => {
-        await markThreadRead();
-        if (!cancelled) await loadMessages().catch(() => {});
+        // Сначала грузим тред (GET chat на бэке помечает read), затем sync badge в store.
+        await loadMessages().catch(() => {});
+        if (!cancelled) await markThreadRead().catch(() => {});
       })();
       return () => { cancelled = true; };
     }, [threadId, projectIdProp, markThreadRead, loadMessages]),
@@ -210,7 +223,10 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
+    // Новое сообщение в открытом треде — снова прочитать и сбросить badge.
+    markedReadRef.current = null;
     reload();
+    markThreadRead().catch(() => {});
   });
 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);

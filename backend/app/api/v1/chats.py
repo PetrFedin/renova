@@ -98,10 +98,11 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
     t = await chat_svc.get_thread(db, thread_id)
     if not t or t.project_id != project_id:
         raise HTTPException(404)
+    # Открытие треда = прочтение: иначе badge остаётся, если POST /read не дошёл с клиента.
+    await chat_svc.mark_thread_read(db, thread_id, user.id)
     st = await chat_svc._get_or_create_read(db, thread_id, user.id)
-    unread = await chat_svc.count_unread_in_thread(db, thread_id, user.id)
     return {
-        **chat_svc.thread_dict(t, unread=unread, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
+        **chat_svc.thread_dict(t, unread=0, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
         "messages": await _msgs_with_read(db, thread_id, t.messages),
         "participants": await chat_svc.list_participants(db, thread_id),
     }
