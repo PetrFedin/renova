@@ -53,6 +53,7 @@ function IssueCard({
   focused,
   canClose,
   closeHint,
+  closeLabel = 'Закрыть',
 }: {
   item: ProjectIssue;
   onClose: (issue: ProjectIssue) => void;
@@ -60,6 +61,7 @@ function IssueCard({
   focused?: boolean;
   canClose: boolean;
   closeHint?: string;
+  closeLabel?: string;
 }) {
   const isClosed = item.status === 'closed';
   const tone = severityTone(item.severity);
@@ -80,7 +82,7 @@ function IssueCard({
           <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${item.stage_id}?returnTo=${encodeURIComponent('/quality-control')}` as never)} />
         ) : null}
         {!isClosed && canClose ? (
-          <PrimaryButton title="Закрыть" compact onPress={() => onClose(item)} loading={acting} disabled={acting} />
+          <PrimaryButton title={closeLabel} compact onPress={() => onClose(item)} loading={acting} disabled={acting} />
         ) : null}
         {!isClosed && !canClose && closeHint ? <Text style={styles.issueMeta}>{closeHint}</Text> : null}
       </View>
@@ -199,8 +201,19 @@ export function QualityControlScreen() {
             item={item}
             onClose={closeIssue}
             acting={actingId === item.id}
-            canClose={!readOnly && (!(item.title || '').startsWith('[Гарантия]') || Boolean(isCustomer))}
-            closeHint={(item.title || '').startsWith('[Гарантия]') && !isCustomer ? 'Гарантию закрывает заказчик' : undefined}
+            canClose={
+              !readOnly
+              && item.status !== 'fixed'
+              && (!(item.title || '').startsWith('[Гарантия]') || Boolean(isCustomer))
+            }
+            closeHint={
+              (item.title || '').startsWith('[Гарантия]') && !isCustomer
+                ? 'Гарантию закрывает заказчик'
+                : item.status === 'fixed' && !isCustomer
+                  ? 'Ждёт подтверждения заказчика'
+                  : undefined
+            }
+            closeLabel={!isCustomer && !(item.title || '').startsWith('[Гарантия]') ? 'Исправлено' : 'Закрыть'}
           />
         )) : <Text style={styles.emptyText}>Открытых замечаний нет. Редкий случай, когда тишина — хороший KPI.</Text>}
       </View>

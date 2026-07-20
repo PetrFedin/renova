@@ -215,16 +215,50 @@ ${(res.body || '').slice(0, 220)}`,
       warrantyClaim: {
         id: 'warranty',
         label: 'Гарантийное обращение',
-        desc: 'Тикет + черновик → документы / QC исполнителя',
+        desc: isContractor
+          ? 'Тикет → QC исполнителя'
+          : 'Создать / закрыть открытые (нужно для closeout)',
         format: 'Заявка',
         run: async () => {
-          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] }));
+          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
+          const openItems = (open.items || []).filter((i) => i.status !== 'closed');
+          // W64: заказчик закрывает гарантию здесь — иначе closeout тупик
+          if (!isContractor && openItems.length > 0) {
+            const first = openItems[0];
+            Alert.alert(
+              'Открытые гарантии',
+              `Открыто: ${openItems.length}. «${first.title || 'Обращение'}» — закрыть?`,
+              [
+                { text: 'Отмена', style: 'cancel' },
+                {
+                  text: 'Закрыть это',
+                  onPress: async () => {
+                    try {
+                      await api.closeWarrantyClaim(userId, projectId, first.id);
+                      Alert.alert('Гарантия', 'Обращение закрыто. Можно завершать объект, если остальные гейты готовы.');
+                    } catch (e: unknown) {
+                      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
+                    }
+                  },
+                },
+                {
+                  text: 'Создать ещё',
+                  onPress: async () => {
+                    const res = await api.createWarrantyClaim(userId, projectId, {
+                      title: 'Гарантийное обращение',
+                      description: 'Создано из Document Center',
+                    });
+                    Alert.alert('Гарантия', `Создано. Документ: ${res.document_id.slice(0, 8)}…`);
+                  },
+                },
+              ],
+            );
+            return;
+          }
           const res = await api.createWarrantyClaim(userId, projectId, {
             title: 'Гарантийное обращение',
             description: 'Создано из Document Center',
           });
-          const isContractor = user?.role === 'contractor';
-          // W55: заказчик не уходит в QC / очередь приёмки — тикет живёт в Document Center
           const nextPath = isContractor
             ? (res.qc_path || `/quality-control?issueId=${res.issue_id}`)
             : '/documents';
@@ -270,7 +304,25 @@ ${(res.body || '').slice(0, 220)}`,
             return;
           }
           if (!snap.ready) {
-            Alert.alert('Ещё не готово', body);
+            const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [{ text: 'OK' }];
+            if ((snap.warranty_open || 0) > 0) {
+              buttons.push({
+                text: 'К гарантии',
+                onPress: () => {
+                  void rows.warrantyClaim.run?.();
+                },
+              });
+            }
+            if ((snap.pending_payments || 0) > 0) {
+              buttons.push({
+                text: 'К оплатам',
+                onPress: () => {
+                  const { router } = require('expo-router');
+                  router.push('/(customer)/(tabs)/budget?tab=payments' as never);
+                },
+              });
+            }
+            Alert.alert('Ещё не готово', body, buttons);
             return;
           }
           Alert.alert('Завершить объект?', body, [

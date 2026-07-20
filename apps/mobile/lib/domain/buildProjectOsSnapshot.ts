@@ -130,7 +130,7 @@ export function buildProjectOsSnapshot(
         }
       : {
           title: 'Закрытие объекта',
-          subtitle: 'Чеклист closeout и гарантия',
+          subtitle: 'Проверьте акты, оплаты и гарантию в Документах',
           button: 'Документы',
           href: '/documents',
           kind: 'review',
@@ -178,9 +178,13 @@ export function buildProjectOsSnapshot(
       kind: 'work',
     };
   } else if (estimateNeedsLock && role === 'customer') {
+    const proposed = !!project.estimate_lock_proposed_at;
+    const solo = !project.contractor_id;
     nextAction = {
-      title: 'Согласовать смету',
-      subtitle: `${estimateLines} поз. · зафиксировать перед договором`,
+      title: proposed || solo ? 'Согласовать смету' : 'Смета ещё у исполнителя',
+      subtitle: proposed || solo
+        ? `${estimateLines} поз. · зафиксировать перед договором`
+        : 'Ждём отправку сметы на согласование',
       button: 'Смета',
       href: objectTabRoute(role, 'estimate'),
       kind: 'expense',

@@ -143,7 +143,11 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
     if (existing.title or "").startswith("[Гарантия]"):
         if user.role != UserRole.customer or user.id != project.customer_id:
             raise HTTPException(403, "warranty_close_customer_only")
-    issue = await iss.update_issue_status(db, issue_id, "closed")
+    # W64: исполнитель отмечает исправление; финал closed — у заказчика
+    next_status = "closed"
+    if user.role == UserRole.contractor and not (existing.title or "").startswith("[Гарантия]"):
+        next_status = "fixed"
+    issue = await iss.update_issue_status(db, issue_id, next_status)
     if not issue:
         raise HTTPException(404)
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/(customer)/(tabs)/control")

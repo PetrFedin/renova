@@ -81,7 +81,11 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
           roomsCount={roomsCount}
           stagesCount={stagesCount}
           pendingChanges={pendingOrders.length}
-          canLock={canWrite && (activeProject.estimate_lines?.length || 0) > 0}
+          canLock={
+            canWrite
+            && (activeProject.estimate_lines?.length || 0) > 0
+            && Boolean(activeProject.estimate_lock_proposed_at || !activeProject.contractor_id)
+          }
           locking={locking}
           onLockEstimate={async () => {
             if (!user || !activeProject) return;

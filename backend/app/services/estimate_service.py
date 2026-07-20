@@ -111,6 +111,12 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
     # Только customer_id может финализировать
     if locked_by != proj.customer_id:
         return proj, {"code": "customer_lock_required", "message": "Фиксацию подтверждает заказчик"}
+    # W64: при назначенном исполнителе сначала propose-lock, иначе unilateral
+    if proj.contractor_id and not proj.estimate_lock_proposed_at:
+        return proj, {
+            "code": "proposal_required",
+            "message": "Сначала исполнитель должен отправить смету на согласование",
+        }
     proj.estimate_locked_at = datetime.utcnow()
     proj.estimate_lock_proposed_at = None
     proj.estimate_lock_proposed_by = None

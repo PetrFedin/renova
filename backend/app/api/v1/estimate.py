@@ -100,6 +100,8 @@ async def lock_project_estimate(project_id: str, user: User = Depends(get_curren
         raise HTTPException(409, detail=result)
     if result.get("code") == "customer_lock_required":
         raise HTTPException(403, detail=result)
+    if result.get("code") == "proposal_required":
+        raise HTTPException(409, detail=result)
     return {
         "ok": True,
         "estimate_locked_at": proj.estimate_locked_at.isoformat() if proj.estimate_locked_at else None,

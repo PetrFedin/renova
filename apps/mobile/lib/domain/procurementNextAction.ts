@@ -25,12 +25,9 @@ export function pickIdsInActivePurchases(purchases: PurchaseLike[]): Set<string>
 
 /** Позиции, из которых можно создать закупку */
 export function readyPickIds(picks: PickLike[], purchases: PurchaseLike[]): string[] {
+  // W64: только approved — draft/pending требуют согласования заказчика (backend 409)
   const inPurchase = pickIdsInActivePurchases(purchases);
-  const approved = picks.filter((p) => p.status === 'approved' && !inPurchase.has(p.id)).map((p) => p.id);
-  if (approved.length) return approved;
-  return picks
-    .filter((p) => (p.status === 'draft' || p.status === 'pending') && !inPurchase.has(p.id))
-    .map((p) => p.id);
+  return picks.filter((p) => p.status === 'approved' && !inPurchase.has(p.id)).map((p) => p.id);
 }
 
 export function procurementNextAction(

@@ -59,9 +59,17 @@ export function ContractorControlView() {
         >
           <Text style={s.title}>{iss.title}</Text>
           <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
-          {!readOnly && iss.status !== 'closed' && (
-            <PrimaryButton title="Закрыть" compact variant="outline" onPress={() => api.closeIssue(user!.id, activeProject!.id, iss.id).then(reload)} />
-          )}
+          {!readOnly && iss.status !== 'closed' && iss.status !== 'fixed' && !(iss.title || '').startsWith('[Гарантия]') ? (
+            <PrimaryButton
+              title="Исправлено"
+              compact
+              variant="outline"
+              onPress={() => api.closeIssue(user!.id, activeProject!.id, iss.id).then(reload)}
+            />
+          ) : null}
+          {(iss.title || '').startsWith('[Гарантия]') && iss.status !== 'closed' ? (
+            <Text style={s.meta}>Гарантию закрывает заказчик в Документах</Text>
+          ) : null}
         </Pressable>
       ))}
 

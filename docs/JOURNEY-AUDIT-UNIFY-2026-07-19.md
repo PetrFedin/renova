@@ -56,6 +56,10 @@ Canvas: `renova-journey-audit.canvas.tsx` (Cursor canvases).
 | P5 | Closeout доступен исполнителю | **закрыто W61** |
 | P6 | Warranty close исполнителем снимает closeout-блокер | **закрыто W62** |
 | P7 | Issue close до project bind (cross-project) | **закрыто W63** |
+| P8 | Lock без propose при contractor | **закрыто W64** |
+| P9 | readyPickIds draft→purchase CTA | **закрыто W64** |
+| P10 | Customer warranty close тупик | **закрыто W64** |
+| P11 | Contractor close issue = финал | **закрыто W64** (→ fixed) |
 | O1 | H0 staging HTTPS + live pay + TestFlight | **блокер пилота (ops)** |
 
 ---
@@ -81,7 +85,12 @@ npx tsx lib/domain/buildHomeKpiDetail.test.ts
 | W60 | `93920c3` | schedule scope + closeout docs gate |
 | W61 | `0211060` | closeout customer-only |
 | W62 | `fc34d7c` | warranty close customer-only |
-| W63 | *(этот коммит)* | issue close project bind before mutate |
+| W63 | `52a3935` | issue close project bind before mutate |
+| W64 | *(этот коммит)* | mutual propose gate, picks, warranty UX, issue fixed |
 
 **Остаётся блокером пилота:** O1 H0 ops (HTTPS staging + live YuKassa + TestFlight).
 
+## Повторный аудит 2026-07-20
+
+Три агента (customer / contractor / data) после W55–W63. Backend SoT в целом ~8.4/10.
+P0 mobile/control закрыты в **W64**. Открыто: H0 ops; P1 reject proposal / portal reject UI / contractor invoice inbox.
