@@ -210,8 +210,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         }).catch(() => {});
         notifyProjectDataChanged();
       } catch (e) {
-        // Не роняем UI при storm reload (аналитика / bus) — оставляем текущий activeProject
+        // Duck-typed rate_limit (HMR) — не роняем UI, оставляем текущий activeProject
         if (isRateLimitError(e)) return;
+        if (e instanceof Error && /rate_limit/i.test(e.message)) return;
         throw e;
       } finally {
         setProjectResolving(false);

@@ -15,7 +15,15 @@ export class ApiError extends Error {
   }
 }
 
+/** Duck-typing: `instanceof ApiError` ломается при HMR/дублях бандла */
 export function isRateLimitError(e: unknown): boolean {
+  if (e == null || typeof e !== 'object') return false;
+  const err = e as { code?: unknown; status?: unknown; message?: unknown };
+  if (err.code === 'rate_limit' || err.status === 429) return true;
+  if (typeof err.message === 'string') {
+    const m = err.message.toLowerCase();
+    if (m === 'rate_limit' || m.includes('слишком много запросов')) return true;
+  }
   return e instanceof ApiError && (e.code === 'rate_limit' || e.status === 429);
 }
 

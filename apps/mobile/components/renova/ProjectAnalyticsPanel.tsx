@@ -29,7 +29,7 @@ function budgetAnalyticsReturnTo(role: 'customer' | 'contractor') {
 }
 
 export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
-  const { user, activeProject, loadProject, readOnly } = useRenova();
+  const { user, activeProject, readOnly } = useRenova();
   const canWrite = useWriteAllowed();
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [expenses, setExpenses] = useState<OsExpense[]>([]);
@@ -48,11 +48,11 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     });
   }, [receipts, expenses, picks, user?.role]);
 
+  /** Не вызываем loadProject — дублировал getProject и ловил rate_limit storm */
   const reload = useCallback(async () => {
     if (!user || !activeProject) return;
     setLoading(true);
     try {
-      await loadProject(activeProject.id);
       const [rc, ex, pk, pur, sm, ob, kh] = await Promise.all([
         api.listReceipts(user.id, activeProject.id).catch(() => [] as ReceiptItem[]),
         api.osExpenses(user.id, activeProject.id).catch(() => [] as OsExpense[]),
@@ -74,13 +74,12 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
         margin: p.margin,
       })));
     } catch (e) {
-      // rate_limit уже смягчён в loadProject/req; не роняем панель аналитики
       if (isRateLimitError(e)) return;
-      throw e;
+      if (__DEV__) console.warn('[ProjectAnalyticsPanel]', e);
     } finally {
       setLoading(false);
     }
-  }, [user?.id, activeProject?.id, loadProject]);
+  }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
   useProjectDataReload(reload);
