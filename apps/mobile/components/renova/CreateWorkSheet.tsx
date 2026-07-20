@@ -171,6 +171,9 @@ export function CreateWorkSheet({
     } catch (e) {
       if (isRateLimitError(e)) {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+      } else if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Работа отправится при подключении');
+        onClose();
       } else {
         Alert.alert('Ошибка', 'Не удалось создать работу');
       }

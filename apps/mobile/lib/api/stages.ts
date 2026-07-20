@@ -150,8 +150,30 @@ export const stagesApi = {
       throw new Error('offline_queued');
     }
   },
-  createStage: (userId: string, projectId: string, body: { name: string; planned_start?: string; planned_end?: string; room_ids?: string[]; work_type?: string }) =>
-    req<Stage>(`/api/v1/projects/${projectId}/stages`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  createStage: async (
+    userId: string,
+    projectId: string,
+    body: { name: string; planned_start?: string; planned_end?: string; room_ids?: string[]; work_type?: string },
+  ) => {
+    // W112: новый этап с объекта — очередь офлайн
+    try {
+      return await req<Stage>(
+        `/api/v1/projects/${projectId}/stages`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/stages`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   workSnapshot: (userId: string, projectId: string, stageId: string) => req<WorkSnapshot>(`/api/v1/projects/${projectId}/stages/${stageId}/snapshot`, {}, userId),
   workCompletionCheck: (userId: string, projectId: string, stageId: string) => req<{ ok: boolean; checks: WorkCompletionCheck[]; failed: WorkCompletionCheck[] }>(`/api/v1/projects/${projectId}/stages/${stageId}/completion-check`, {}, userId),
   stageWorkflow: (userId: string, projectId: string, stageId: string) => req<{ work_type: string; steps: string[]; checklist: StageChecklistItem[]; checklist_progress: number }>(`/api/v1/projects/${projectId}/stages/${stageId}/workflow`, {}, userId),

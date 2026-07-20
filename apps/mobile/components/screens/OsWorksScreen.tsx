@@ -237,9 +237,18 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           project={activeProject}
           onClose={() => setShowCreate(false)}
           onCreate={async (body) => {
-            await api.createStage(user.id, activeProject.id, body);
-            await syncProjectSideEffects({ user, project: activeProject });
-            await loadProject(activeProject.id);
+            try {
+              await api.createStage(user.id, activeProject.id, body);
+              await syncProjectSideEffects({ user, project: activeProject });
+              await loadProject(activeProject.id);
+            } catch (e: unknown) {
+              if (e instanceof Error && e.message === 'offline_queued') {
+                // этап в очереди — bus всё равно обновит inbox после flush
+                await syncProjectSideEffects({ user, project: activeProject });
+                return;
+              }
+              throw e;
+            }
           }}
         />
       )}

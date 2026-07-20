@@ -114,6 +114,11 @@ export function ExpenseDetailSheet({
       onChanged?.();
       onClose();
     } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Изменения траты отправятся при подключении');
+        onClose();
+        return;
+      }
       const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось сохранить изменения';
       Alert.alert('Ошибка', msg);
     } finally {
@@ -143,8 +148,13 @@ export function ExpenseDetailSheet({
             onChanged?.();
             onClose();
           } catch (e: unknown) {
-            const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось удалить';
-            Alert.alert('Ошибка', msg);
+            if (e instanceof Error && e.message === 'offline_queued') {
+              Alert.alert('Офлайн', 'Удаление отправится при подключении');
+              onClose();
+            } else {
+              const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось удалить';
+              Alert.alert('Ошибка', msg);
+            }
           } finally {
             setBusy(false);
           }

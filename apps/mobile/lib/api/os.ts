@@ -1,5 +1,5 @@
 /** API: os */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ActivityItem, OsBudgetSummary, OsExpense, OsInsight, OsReport, OsRisk, User } from './types';
 import type { MaterialPick, Payment, ReceiptItem } from './types';
 
@@ -22,10 +22,46 @@ export const osApi = {
     return req<BudgetHubResponse>(`/api/v1/projects/${projectId}/budget-summary?threshold_pct=${t}`, {}, userId);
   },
   osExpenses: (userId: string, projectId: string, status?: string) => req<OsExpense[]>(`/api/v1/projects/${projectId}/os/expenses${status ? `?status=${status}` : ''}`, {}, userId),
-  deleteOsExpense: (userId: string, projectId: string, expenseId: string) =>
-    req<void>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'DELETE' }, userId),
-  patchOsExpense: (userId: string, projectId: string, expenseId: string, body: { amount?: number; title?: string; category?: string; room_id?: string | null; stage_id?: string | null }) =>
-    req<import('./types').OsExpense>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
+  /** W112: правка траты — очередь офлайн */
+  deleteOsExpense: async (userId: string, projectId: string, expenseId: string) => {
+    try {
+      return await req<void>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'DELETE' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`,
+        method: 'DELETE',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
+  patchOsExpense: async (
+    userId: string,
+    projectId: string,
+    expenseId: string,
+    body: { amount?: number; title?: string; category?: string; room_id?: string | null; stage_id?: string | null },
+  ) => {
+    try {
+      return await req<import('./types').OsExpense>(
+        `/api/v1/projects/${projectId}/os/expenses/${expenseId}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`,
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   reportDaily: (userId: string, projectId: string) => req<OsReport>(`/api/v1/projects/${projectId}/reports/daily`, {}, userId),
   reportWeekly: (userId: string, projectId: string) => req<OsReport>(`/api/v1/projects/${projectId}/reports/weekly`, {}, userId),
   reportFinal: (userId: string, projectId: string) => req<OsReport>(`/api/v1/projects/${projectId}/reports/final`, {}, userId),

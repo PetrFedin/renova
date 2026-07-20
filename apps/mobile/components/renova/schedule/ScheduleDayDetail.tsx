@@ -85,8 +85,12 @@ export function ScheduleDayDetail({
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
       Alert.alert('Срок обновлён', `Новый дедлайн: ${nextEnd}`);
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось продлить срок');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Продление срока отправится при подключении');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось продлить срок');
+      }
     }
   };
 
@@ -96,8 +100,12 @@ export function ScheduleDayDetail({
       await api.transitionWorkOrder(userId, projectId, wo.id, next);
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось обновить статус');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Смена статуса отправится при подключении');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось обновить статус');
+      }
     }
   };
 
