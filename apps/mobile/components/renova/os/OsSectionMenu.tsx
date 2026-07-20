@@ -15,7 +15,7 @@ import { TabIcon } from '@/components/renova/TabIcon';
 import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
 import { moreMenuA11yLabel } from '@/lib/domain/moreMenuA11y';
-import { resolveHeaderMoreBadge } from '@/lib/domain/headerChatBadges';
+import { resolveHeaderMoreBadge, resolveInboxMenuBadges } from '@/lib/domain/headerChatBadges';
 
 export { moreMenuA11yLabel };
 
@@ -47,10 +47,11 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
   }
 
   /**
-   * W80: непрочитанный чат на «Ещё» = то же число, что на dock «Сообщения»
-   * (один store). Задачи — только если чата нет (янтарный), и всегда в пункте «Входящие».
+   * Непрочитанный чат: один SoT (inboxSyncStore) → «Ещё», «Входящие» и dock «Сообщения».
+   * Задачи — янтарный бейдж рядом, без подмены числа сообщений.
    */
   const headerBadge = resolveHeaderMoreBadge(taskBadge, chatUnread);
+  const inboxBadges = resolveInboxMenuBadges(taskBadge, chatUnread);
 
   const go = (sec: (typeof sections)[0]) => {
     setOpen(false);
@@ -106,14 +107,11 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                   <Ionicons name={link.icon} size={18} color={RenovaTheme.colors.textMuted} />
                   <Text style={s.itemT}>{link.label}</Text>
                   {link.id === 'inbox' ? (
-                    <>
-                      <MenuBadge count={taskBadge} tone="warning" />
-                      {chatUnread > 0 ? (
-                        <Text style={s.chatHint}>
-                          {chatUnread > 99 ? '99+' : chatUnread} в «Сообщениях»
-                        </Text>
-                      ) : null}
-                    </>
+                    <View style={s.inboxBadges}>
+                      {/* Красный = то же число, что на кнопке «Сообщения» внизу */}
+                      <MenuBadge count={inboxBadges.chat} tone="danger" />
+                      <MenuBadge count={inboxBadges.tasks} tone="warning" />
+                    </View>
                   ) : null}
                 </Pressable>
               ))}
@@ -194,6 +192,7 @@ const s = StyleSheet.create({
   },
   miniBadgeWarn: { backgroundColor: RenovaTheme.colors.warning },
   miniBadgeT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
+  inboxBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto' },
   chatHint: {
     fontSize: 11,
     fontWeight: '600',

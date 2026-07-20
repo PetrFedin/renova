@@ -157,18 +157,32 @@ function mergeReloadOpts(opts: {
   };
 }
 
-/** После markChatRead — обновить chat badge и строку «Входящие» */
+/** После markChatRead / partial reload — синхронизировать строку чата и inboxBadge с chatCount */
 function refreshInboxChatRow(nextChat: number) {
-  if (!inboxItems.length && nextChat <= 0) return;
-  if (nextChat <= 0) {
+  const n = Math.max(0, nextChat || 0);
+  if (n <= 0) {
     inboxItems = inboxItems.filter((i) => i.kind !== 'chat');
   } else if (inboxItems.some((i) => i.kind === 'chat')) {
     inboxItems = inboxItems.map((i) =>
-      i.kind === 'chat' ? { ...i, sub: `${nextChat} непрочитанных` } : i,
+      i.kind === 'chat' ? { ...i, sub: `${n} непрочитанных` } : i,
     );
+  } else {
+    // Upsert: иначе dock уже показывает N, а «Входящие» без строки чата / со старым sub.
+    const role = cachedFullSync?.osRole ?? 'customer';
+    inboxItems = [
+      {
+        id: 'chat',
+        kind: 'chat',
+        title: 'Непрочитанные сообщения',
+        sub: `${n} непрочитанных`,
+        href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
+        priority: 90,
+      },
+      ...inboxItems,
+    ];
   }
   const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
-  inboxBadge = taskRows + nextChat;
+  inboxBadge = taskRows + n;
 }
 
 /** Прочитать тред: optimistic local + API + полный resync */
@@ -286,7 +300,8 @@ export async function reloadInboxSync(
         }
       }
     } else {
-      inboxBadge = chatCount;
+      // Нет projectId в этом вызове — не затираем задачи: только выравниваем чат с chatCount.
+      refreshInboxChatRow(chatCount);
     }
 
     notifyIfChanged(prev);

@@ -13,14 +13,17 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { flushOfflineOutbox } from '@/lib/offline';
 import type { OsRole } from '@/constants/osSections';
 
-function badgeLabel(badge: number, chatUnread: number): string {
-  if (chatUnread > 0 && badge === chatUnread) {
-    return chatUnread === 1 ? 'непрочитанное' : 'непрочитанных';
+function inboxSubtitle(badge: number, chatUnread: number): string {
+  const chat = Math.max(0, chatUnread || 0);
+  const tasks = Math.max(0, badge - chat);
+  if (chat > 0 && tasks > 0) {
+    return `${chat} непрочитанных · ${tasks} ${tasks === 1 ? 'задача' : tasks < 5 ? 'задачи' : 'задач'}`;
   }
-  if (chatUnread > 0) {
-    return badge === 1 ? 'дело требует внимания' : 'дел требуют внимания';
+  if (chat > 0) {
+    return chat === 1 ? '1 непрочитанное' : `${chat} непрочитанных`;
   }
-  return badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач';
+  if (badge <= 0) return 'Все задачи проекта';
+  return `${badge} ${badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач'}`;
 }
 
 function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
@@ -66,7 +69,7 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
     <>
       <BackHeader
         title="Входящие"
-        subtitle={readOnly ? 'Только просмотр — действия недоступны' : badge > 0 ? `${badge} ${badgeLabel(badge, chatUnread)}` : 'Все задачи проекта'}
+        subtitle={readOnly ? 'Только просмотр — действия недоступны' : inboxSubtitle(badge, chatUnread)}
         returnTo={returnTo}
       />
       <ReadOnlyBanner />

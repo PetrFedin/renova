@@ -1,7 +1,8 @@
 /**
- * W80: единый бейдж «Ещё» ↔ «Сообщения».
- * Непрочитанный чат — один SoT (inboxSyncStore.chatCount); задачи на иконке «Ещё» только если чата нет.
+ * Единый SoT непрочитанных сообщений: inboxSyncStore.chatCount.
+ * Dock «Сообщения», бейдж «Ещё» и пункт «Входящие» показывают одно и то же число.
  */
+
 export type HeaderMoreBadge = {
   count: number;
   /** danger = чат (как dock); warning = задачи inbox */
@@ -20,7 +21,21 @@ export function resolveHeaderMoreBadge(taskBadge: number, chatUnread: number): H
   return null;
 }
 
-/** Число на dock «Сообщения» — только чат (тот же chatUnread). */
+/** Число непрочитанных на dock «Сообщения» и красном бейдже «Входящие»/«Ещё». */
 export function dockChatBadgeCount(chatUnread: number): number {
   return Math.max(0, chatUnread || 0);
+}
+
+/**
+ * Бейджи строки «Входящие» в панели «Ещё»:
+ * red = то же, что dock «Сообщения»; amber = задачи без чата.
+ */
+export function resolveInboxMenuBadges(taskBadge: number, chatUnread: number): {
+  chat: number;
+  tasks: number;
+} {
+  return {
+    chat: dockChatBadgeCount(chatUnread),
+    tasks: Math.max(0, taskBadge || 0),
+  };
 }
