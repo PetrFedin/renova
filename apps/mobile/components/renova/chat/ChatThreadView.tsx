@@ -166,7 +166,8 @@ export function ChatThreadView({
     if (!user || !threadId) return;
     const projectId = await resolveProjectId();
     if (!projectId) return;
-    setChatProjectId(projectId);
+    // Не трогаем state, если id тот же — иначе лишний ререндер и цикл focus-эффекта.
+    setChatProjectId((prev) => (prev === projectId ? prev : projectId));
     if (activeProject?.id !== projectId) {
       await loadProject(projectId).catch(() => {});
     }
@@ -178,7 +179,6 @@ export function ChatThreadView({
     const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
     const markKey = `${threadId}:${projectId}`;
-    // Не блокируем повтор после неуспеха: ref только после успешного sync.
     if (markedReadRef.current === markKey) return;
     const inbox = await api.chatInbox(user.id).catch(() => [] as import('@/lib/api').ChatThread[]);
     const knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
@@ -190,17 +190,23 @@ export function ChatThreadView({
     }
   }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
 
+  // Стабильные refs: useFocusEffect НЕ должен зависеть от identity load/mark —
+  // иначе setChatProjectId → новый callback → повторный focus → Maximum update depth.
+  const loadMessagesRef = useRef(loadMessages);
+  const markThreadReadRef = useRef(markThreadRead);
+  loadMessagesRef.current = loadMessages;
+  markThreadReadRef.current = markThreadRead;
+
   useFocusEffect(
     useCallback(() => {
       markedReadRef.current = null;
       let cancelled = false;
       (async () => {
-        // Сначала грузим тред (GET chat на бэке помечает read), затем sync badge в store.
-        await loadMessages().catch(() => {});
-        if (!cancelled) await markThreadRead().catch(() => {});
+        await loadMessagesRef.current().catch(() => {});
+        if (!cancelled) await markThreadReadRef.current().catch(() => {});
       })();
       return () => { cancelled = true; };
-    }, [threadId, projectIdProp, markThreadRead, loadMessages]),
+    }, [threadId, projectIdProp]),
   );
 
   useEffect(() => {
