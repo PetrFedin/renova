@@ -157,6 +157,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W93 | layout/context flushOfflineOutbox + enqueue→flushBus | **закрыто** `develop` |
 | W94 | writeQueue/lifecycle/payment/scan/docs → buses | **закрыто** `develop` |
 | W95 | estimate CO + stage pay + floor plan + notify → bus | **закрыто** `develop` |
+| W96 | waste/leads/design/viewers/picks/room/plan/notif → bus | **закрыто** `develop` |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Linking, StyleSheet, Alert } from 'react-native';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
 import { pickDocumentForUpload } from '@/lib/documentUploadPick';
 import { designPackageStatusLabel } from '@/constants/labels';
@@ -25,8 +26,11 @@ export function DesignPackageList({
   const { user, activeProject } = useRenova();
   const [items, setItems] = useState<DP[]>([]);
   const [uploading, setUploading] = useState(false);
-  const load = () => api.listDesignPackages(userId, projectId).then(setItems).catch(() => {});
-  useEffect(() => { load(); }, [projectId]);
+  const load = useCallback(() => {
+    api.listDesignPackages(userId, projectId).then(setItems).catch(() => {});
+  }, [userId, projectId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
   const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
   const uploadPdf = async () => {

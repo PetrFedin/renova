@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 import { LeadChat } from '@/components/renova/LeadChat';
@@ -7,6 +7,7 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { router } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 
 type L = { id: string; title: string; address?: string; area_sqm?: number; renovation_type: string; budget_hint?: number; pre_estimate?: number; status: string };
 
@@ -14,8 +15,11 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
   const { user, activeProject, loadProject, refreshProjects } = useRenova();
   const [items, setItems] = useState<L[]>([]);
   const [quote, setQuote] = useState<Record<string, string>>({});
-  const load = () => api.listJobLeads(userId).then(setItems).catch(() => {});
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => {
+    api.listJobLeads(userId).then(setItems).catch(() => {});
+  }, [userId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
   return (
     <View style={s.box}>
       {role === 'contractor' && (

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, AppNotification } from '@/lib/api';
 
 import { resolvePushLink } from '@/lib/pushLinks';
@@ -11,7 +12,11 @@ import { resolvePushLink } from '@/lib/pushLinks';
 export function NotificationsList({ userId, defaultReturn }: { userId: string; defaultReturn?: string }) {
   const { user, activeProject } = useRenova();
   const [items, setItems] = useState<AppNotification[]>([]);
-  useEffect(() => { api.listNotifications(userId).then(setItems).catch(() => {}); }, [userId]);
+  const reload = useCallback(() => {
+    api.listNotifications(userId).then(setItems).catch(() => {});
+  }, [userId]);
+  useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
   if (!items.length) return <Text style={s.empty}>Нет уведомлений</Text>;
   return (
     <View style={s.wrap}>
@@ -22,7 +27,7 @@ export function NotificationsList({ userId, defaultReturn }: { userId: string; d
           const back = (n as any).return_to || defaultReturn || '/(customer)/(tabs)/profile';
           const target = resolvePushLink(n.link_path, back);
           if (target) router.push({ pathname: target.pathname, params: target.params } as any);
-          setItems(await api.listNotifications(userId));
+          reload();
         }}>
           <Text style={s.title}>{n.title}</Text><Text style={s.body}>{n.body}</Text>
         </Pressable>

@@ -1,11 +1,12 @@
 /** Заказчик: гостевой доступ (только просмотр) */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
 import { shareRenovaLink } from '@/lib/messengerShare';
 
@@ -30,10 +31,11 @@ export function ViewerSharePanel({
   const [profileCode, setProfileCode] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = () => api.listViewers(userId, projectId).then(setItems).catch(() => setItems([]));
-  useEffect(() => {
-    load();
+  const load = useCallback(() => {
+    api.listViewers(userId, projectId).then(setItems).catch(() => setItems([]));
   }, [userId, projectId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
 
   const addGuest = async () => {
     const trimmedPhone = normalizePhoneInput(phone);

@@ -1,5 +1,5 @@
 /** Подбор материалов с привязкой к комнате */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, Linking, StyleSheet, TextInput } from 'react-native';
 import { api, MaterialPick, Room, Stage } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -11,6 +11,7 @@ import { useNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 
 export function MaterialPickList({
   userId,
@@ -37,7 +38,9 @@ export function MaterialPickList({
   const [price, setPrice] = useState('');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const load = () => api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(() => {});
+  const load = useCallback(() => {
+    api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(() => {});
+  }, [userId, projectId, wt]);
   const syncAfter = async () => {
     await syncProjectSideEffects({
       user: user ?? ({ id: userId } as any),
@@ -45,7 +48,9 @@ export function MaterialPickList({
       role,
     });
   };
-  useEffect(() => { if (!picksOverride) load(); }, [wt, picksOverride]);
+  useEffect(() => { if (!picksOverride) load(); }, [load, picksOverride]);
+  const onBusReload = useCallback(() => { if (!picksOverride) load(); }, [picksOverride, load]);
+  useProjectDataReload(onBusReload);
   useEffect(() => { if (picksOverride) setItems(picksOverride); }, [picksOverride]);
   const visible = picksOverride ?? items;
   const roomName = (id?: string | null) => rooms.find((r) => r.id === id)?.name;

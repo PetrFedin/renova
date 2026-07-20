@@ -1,5 +1,5 @@
 /** Комната — Digital Twin: паспорт сверху, детали по запросу */
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { useLocalSearchParams, router, usePathname } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
@@ -18,6 +18,7 @@ import { roomSpentUnified } from '@/lib/domain/expenseAnalytics';
 import { calcRoomMetrics } from '@/lib/roomMetrics';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase } from '@/lib/api';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
@@ -45,7 +46,7 @@ export function RoomDetailScreen() {
   const role = isContractor ? 'contractor' : 'customer';
   const preview = useMemo(() => calcRoomMetrics(+len || 0, +wid || 0, +hei || 2.7, room?.openings_sq_m ?? 2), [len, wid, hei, room?.openings_sq_m]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!user || !activeProject || !id) return;
     const rs = await api.listRooms(user.id, activeProject.id);
     const r = rs.find(x => x.id === id) || null;
@@ -60,10 +61,11 @@ export function RoomDetailScreen() {
       setLen(String(r.length_m)); setWid(String(r.width_m)); setHei(String(r.height_m));
       setOutlets(String(r.outlets_count)); setPlumbing(String(r.plumbing_points)); setSwitches(String(r.switches_count));
     }
-  };
+  }, [user?.id, activeProject?.id, id]);
   useEffect(() => { if (room) snapshotRoom(room).catch(()=>{}); }, [room?.id, room?.outlets_count]);
   useEffect(() => { if (overrun === '1' && user && activeProject && id) api.budgetRoomLines(user.id, activeProject.id, id).then(setOverrunLines).catch(() => {}); }, [overrun, id, user?.id, activeProject?.id]);
-  useEffect(() => { load().catch(()=>{}); }, [user?.id, activeProject?.id, id]);
+  useEffect(() => { load().catch(()=>{}); }, [load]);
+  useProjectDataReload(load);
 
   const lines = (activeProject?.estimate_lines || []).filter(l => (l.room_id && l.room_id === room?.id) || l.room_name === room?.name);
 

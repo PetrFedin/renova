@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { api, WasteOrder } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 
@@ -10,8 +11,11 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
   const { user, activeProject } = useRenova();
   const syncAfter = () => syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
   const [items, setItems] = useState<WasteOrder[]>([]);
-  const load = () => api.listWasteOrders(userId, projectId).then(setItems).catch(() => {});
-  useEffect(() => { load(); }, [projectId]);
+  const load = useCallback(() => {
+    api.listWasteOrders(userId, projectId).then(setItems).catch(() => {});
+  }, [userId, projectId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
   return (
     <View style={s.box}>
       <Text style={s.head}>Вывоз мусора</Text>
