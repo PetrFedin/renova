@@ -152,7 +152,7 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
     issue = await iss.update_issue_status(db, issue_id, next_status)
     if not issue:
         raise HTTPException(404)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/(customer)/(tabs)/control")
+    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/(customer)/(tabs)/repair?tab=control")
     return iss.issue_dict(issue)
 
 

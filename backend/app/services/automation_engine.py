@@ -46,7 +46,7 @@ async def process_event(
                     title="Нужна приёмка",
                     body=stage.name,
                     link_path=f"/stage/{stage.id}",
-                    return_to="/(customer)/(tabs)/control",
+                    return_to="/(customer)/(tabs)/repair?tab=control",
                 )
 
     # Приёмка пройдена → оплата разрешена
@@ -101,8 +101,8 @@ async def process_event(
                 notification_type="material",
                 title="Материалы доставлены",
                 body=body or "Можно продолжать работы",
-                link_path="/(contractor)/(tabs)/materials",
-                return_to="/(contractor)/(tabs)/materials",
+                link_path="/(contractor)/(tabs)/repair?tab=materials",
+                return_to="/(contractor)/(tabs)/repair?tab=materials",
             )
 
     # Расчёт материалов → напоминание о закупке
@@ -116,7 +116,7 @@ async def process_event(
                 notification_type="material",
                 title="Список материалов готов",
                 body=body or "Добавьте позиции в закупки",
-                link_path="/(customer)/(tabs)/materials",
+                link_path="/(customer)/(tabs)/repair?tab=materials",
                 return_to=f"/room/{room_id}",
             )
 
@@ -131,8 +131,8 @@ async def process_event(
                 notification_type="issue",
                 title="Критичное замечание",
                 body="Требуется реакция на объекте",
-                link_path="/(contractor)/(tabs)/control",
-                return_to="/(contractor)/(tabs)/control",
+                link_path="/(contractor)/(tabs)/repair?tab=control",
+                return_to="/(contractor)/(tabs)/repair?tab=control",
             )
 
     # Расход → проверка перерасхода бюджета
@@ -197,8 +197,8 @@ async def scan_project_reminders(db: AsyncSession, project: Project) -> list[str
                 notification_type="material",
                 title=f"Закупите материалы ({len(need)})",
                 body=f"Для «{active[0].name}» нужны материалы",
-                link_path="/(customer)/(tabs)/materials",
-                return_to="/(customer)/(tabs)/materials",
+                link_path="/(customer)/(tabs)/repair?tab=materials",
+                return_to="/(customer)/(tabs)/repair?tab=materials",
             )
 
     return actions

@@ -98,7 +98,7 @@ async def compute_project_insights(db: AsyncSession, project: Project, *, role: 
             title=f"Закупите материалы: {len(need)} поз.",
             body=f"Для «{active_stages[0].name}» могут понадобиться материалы в ближайшие дни.",
             action="К закупке",
-            href="/(customer)/(tabs)/materials" if role != "contractor" else "/(contractor)/(tabs)/materials",
+            href="/(customer)/(tabs)/repair?tab=materials" if role != "contractor" else "/(contractor)/(tabs)/repair?tab=materials",
             priority=60,
         ))
 

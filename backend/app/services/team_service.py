@@ -37,7 +37,7 @@ async def invite_phone(db: AsyncSession, team_id: str, phone: str, role: str = "
     await db.commit()
     try:
         from app.services import notification_service as ns
-        await ns.notify(db, user_id=u.id, project_id=None, notification_type="chat_message", title="Приглашение в бригаду", body="Вас добавили в бригаду Renova", link_path="/(contractor)/(tabs)/profile", return_to="/(contractor)/(tabs)/objects")
+        await ns.notify(db, user_id=u.id, project_id=None, notification_type="chat_message", title="Приглашение в бригаду", body="Вас добавили в бригаду Renova", link_path="/(contractor)/(tabs)/profile", return_to="/(contractor)/(tabs)/")
     except Exception:
         pass
     return {"ok": True, "user_id": u.id}

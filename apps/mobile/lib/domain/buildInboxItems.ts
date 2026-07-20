@@ -77,12 +77,16 @@ export async function buildInboxItems(opts: {
     } catch { /* noop */ }
 
     if (pendingAcceptance > 0) {
+      // W108: как nextAction accept — сразу /stage/{id}, иначе hub control
+      const reviewStage = stages.find((s) => s.status === 'review');
       next.push({
         id: 'acceptance',
         kind: 'acceptance',
         title: 'Приёмка этапов',
-        sub: `${pendingAcceptance} ожидает`,
-        href: repairTabHref(role, 'control'),
+        sub: reviewStage
+          ? `${pendingAcceptance} · ${reviewStage.name}`
+          : `${pendingAcceptance} ожидает`,
+        href: reviewStage ? `/stage/${reviewStage.id}` : repairTabHref(role, 'control'),
         priority: 88,
       });
     }
@@ -260,7 +264,10 @@ export async function buildInboxItems(opts: {
         kind: 'stage',
         title: 'Доработка этапов',
         sub: `${rework.length} · ${rework[0]?.name || ''}`,
-        href: repairTabHref(role, 'works', 'rework'),
+        // W108: один этап → карточка; несколько → фильтр works
+        href: rework.length === 1 && rework[0]
+          ? `/stage/${rework[0].id}`
+          : repairTabHref(role, 'works', 'rework'),
         priority: 87,
       });
     }
@@ -281,7 +288,8 @@ export async function buildInboxItems(opts: {
         sub: review[0]?.name
           ? `${awaitAcc} · ${review[0].name}`
           : `${awaitAcc} в очереди`,
-        href: repairTabHref(role, 'control'),
+        // W108: статус этапа, не общий hub
+        href: review[0] ? `/stage/${review[0].id}` : repairTabHref(role, 'control'),
         priority: 88,
       });
     }
@@ -338,7 +346,9 @@ export async function buildInboxItems(opts: {
       kind: 'stage',
       title: 'Просроченные этапы',
       sub: `${overdue.length} · ${overdue[0]?.name || ''}`,
-      href: repairTabHref(role, 'works', 'overdue'),
+      href: overdue.length === 1 && overdue[0]
+        ? `/stage/${overdue[0].id}`
+        : repairTabHref(role, 'works', 'overdue'),
       priority: 92,
     });
   }

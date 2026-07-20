@@ -89,7 +89,7 @@ async def build_room_snapshot(db: AsyncSession, project, room: Room) -> dict:
     elif active:
         na = {"title": f"В работе: {active.name}", "button": "Открыть", "kind": "work", "href": f"/stage/{active.id}"}
     elif need_buy:
-        na = {"title": f"Закупить материалы ({len(need_buy)})", "button": "Материалы", "kind": "material", "href": "/(customer)/(tabs)/materials"}
+        na = {"title": f"Закупить материалы ({len(need_buy)})", "button": "Материалы", "kind": "material", "href": "/(customer)/(tabs)/repair?tab=materials"}
     elif not stages:
         na = {"title": "Рассчитать материалы", "button": "Калькулятор", "kind": "calc", "href": f"/room/{room.id}"}
 

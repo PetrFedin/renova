@@ -3,14 +3,26 @@ import { router } from 'expo-router';
 import { parseOsHref, budgetTabHref, type OsRole, type OsTabRoute } from '@/constants/osSections';
 import { withReturnTo } from '@/lib/osReturnTo';
 import { resolveOsDeepLink } from '@/lib/osDeepLink';
+import { TAB_ALIASES, logLegacyRouteDeprecation } from '@/lib/legacyRoutes';
 
 export type OsNavHref = string | OsTabRoute;
 export { resolveOsDeepLink } from '@/lib/osDeepLink';
 
+/**
+ * W108: строковый href → Expo route.
+ * Порядок: deep-link (/stage/id) → TAB_ALIASES (legacy materials/control) → parseOsHref.
+ */
 export function toOsRoute(target: OsNavHref, returnTo?: string): OsTabRoute {
   if (typeof target !== 'string') return target;
   const deep = resolveOsDeepLink(target, returnTo);
   if (deep) return deep;
+  const pathOnly = target.split('?')[0];
+  const aliased = TAB_ALIASES[pathOnly];
+  if (aliased) {
+    logLegacyRouteDeprecation(pathOnly, aliased);
+    // alias уже с ?tab=; query из исходного href не склеиваем (конфликт tab)
+    return parseOsHref(aliased);
+  }
   return parseOsHref(target);
 }
 

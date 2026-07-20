@@ -16,7 +16,7 @@ export const documentsApi = {
   listEsignProviders: (userId: string) =>
     req<{ providers: EsignProvider[] }>('/api/v1/esign/providers', {}, userId),
 
-  createProjectDocument: (
+  createProjectDocument: async (
     userId: string,
     projectId: string,
     body: {
@@ -29,11 +29,28 @@ export const documentsApi = {
       storage_key?: string | null;
       mime_type?: string | null;
     },
-  ) =>
-    req(`/api/v1/projects/${projectId}/documents`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }, userId),
+  ) => {
+    // W108: метаданные документа в офлайн-очередь (файлы — отдельно, OFFLINE_UPLOAD_BLOCKED)
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (body.storage_key || body.href?.startsWith('data:')) {
+        throw new Error(OFFLINE_UPLOAD_BLOCKED);
+      }
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/documents`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
   signProjectDocument: async (
     userId: string,
@@ -93,11 +110,24 @@ export const documentsApi = {
       body: JSON.stringify({ enabled, retention_until: retentionUntil ?? null }),
     }, userId),
 
-  archiveProjectDocument: (userId: string, projectId: string, documentId: string) =>
-    req(`/api/v1/projects/${projectId}/documents/${documentId}/archive`, {
-      method: 'POST',
-      body: '{}',
-    }, userId),
+  archiveProjectDocument: async (userId: string, projectId: string, documentId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents/${documentId}/archive`, {
+        method: 'POST',
+        body: '{}',
+      }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/documents/${documentId}/archive`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
   uploadProjectDocument: async (
     userId: string,

@@ -74,7 +74,7 @@ async def _notify_purchase_status(
             notification_type="materials",
             title=title,
             body=body or "Откройте материалы и проверьте, как это влияет на ближайшие этапы.",
-            link_path="/(customer)/(tabs)/materials",
+            link_path="/(customer)/(tabs)/repair?tab=materials",
             return_to="/(customer)/(tabs)/home",
         )
 
@@ -113,7 +113,7 @@ async def create_purchase(
         kind="MaterialOrdered",
         title=f"Закупка создана: {len(body.material_pick_ids)} поз.",
         body=p.supplier_name,
-        link_path="/(customer)/(tabs)/materials",
+        link_path="/(customer)/(tabs)/repair?tab=materials",
     )
     return pur.purchase_dict(p)
 
@@ -145,7 +145,7 @@ async def update_purchase_status(
         kind=kind,
         title=title,
         body=event_body or p.supplier_name,
-        link_path="/(customer)/(tabs)/materials",
+        link_path="/(customer)/(tabs)/repair?tab=materials",
     )
     await _notify_purchase_status(
         db,
@@ -173,6 +173,6 @@ async def generate_needs(
             user_id=user.id,
             kind="MaterialCalculated",
             title=f"Материалы из сметы: {len(created)}",
-            link_path="/(customer)/(tabs)/materials",
+            link_path="/(customer)/(tabs)/repair?tab=materials",
         )
     return {"count": len(created), "created": [{"id": p.id, "name": p.name} for p in created]}
