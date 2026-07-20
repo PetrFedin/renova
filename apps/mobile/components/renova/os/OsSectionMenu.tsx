@@ -28,10 +28,11 @@ function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' 
 
 export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const topInset = useTopInset();
-  const { taskBadge } = useInboxTasks(role);
+  const menuRole: OsRole = role === 'contractor' ? 'contractor' : 'customer';
+  const { taskBadge } = useInboxTasks(menuRole);
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-  const sections = OS_MENU_SECTIONS[role];
+  const pathname = usePathname() ?? '';
+  const sections = OS_MENU_SECTIONS[menuRole];
   const utilLinks = OS_MORE_UTIL_LINKS;
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
 
@@ -46,7 +47,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
 
   const go = (sec: (typeof sections)[0]) => {
     setOpen(false);
-    router.replace(tabsRoute(role, sec.routeName, sec.hubTab) as any);
+    router.replace(tabsRoute(menuRole, sec.routeName, sec.hubTab) as any);
   };
 
   return (
