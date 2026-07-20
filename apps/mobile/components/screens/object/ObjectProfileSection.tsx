@@ -1,5 +1,6 @@
 /** Секция формы профиля объекта — единый ритм заголовков и карточек */
-import { View, Text, StyleSheet, type ReactNode, type ViewStyle } from 'react-native';
+import type { ReactNode } from 'react';
+import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
 

@@ -11,7 +11,7 @@ import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStri
 import { BUDGET_SEGMENT_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, Purchase, ReceiptItem, Room, Stage } from '@/lib/api';
-import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
+import { buildUnifiedBudgetExpenses, rowToExpenseTarget } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import { formatForecastOverLabel } from '@/lib/domain/formatBudgetHint';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';

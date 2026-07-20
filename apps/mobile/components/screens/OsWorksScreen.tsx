@@ -123,6 +123,15 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     setQuery('');
   };
 
+  const toggleSel = (stageId: string) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(stageId)) next.delete(stageId);
+      else next.add(stageId);
+      return next;
+    });
+  };
+
   const bulkReady = async () => {
     if (!user || !activeProject) return;
     for (const id of sel) await submitStage(id);

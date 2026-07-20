@@ -6,10 +6,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
-import { api, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
+import { api, ApiError, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { pollDocumentSignature } from '@/lib/esignPoll';
 import { exportGdprJsonFile } from '@/lib/exportGdprJson';
+import { apiErrorMessage } from '@/lib/formatPhone';
 import {
   documentCenterSubtitle,
   isCanonicalDocument,
@@ -80,6 +81,7 @@ export function DocumentsHub({
   projectName?: string;
 }) {
   const { user } = useRenova();
+  const isContractor = user?.role === 'contractor';
   const [busy, setBusy] = useState<string | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [bankCsvText, setBankCsvText] = useState('');

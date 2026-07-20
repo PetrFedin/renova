@@ -13,7 +13,7 @@ import { ScheduleIconToolbar } from '@/components/renova/schedule/ScheduleIconTo
 import { ScheduleFilterChips } from '@/components/renova/schedule/ScheduleFilterChips';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useNavFromHere } from '@/lib/navigation';
-import { api, CalendarData, CalendarEvent, WorkOrder, Purchase } from '@/lib/api';
+import { api, CalendarData, CalendarEvent, WorkOrder, Purchase, type WorkSchedule } from '@/lib/api';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { buildDayMarks } from '@/lib/domain/scheduleMarks';
 import { calendarEventInRange, calendarEventOnDate, formatCalendarEventDates, filterCalendarEventsForRole, isStageCalendarEvent, isWorkCalendarEvent, sortDayCalendarEvents } from '@/lib/domain/calendarEvents';

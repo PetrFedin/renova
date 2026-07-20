@@ -6,6 +6,8 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomDiffTimeline } from '@/components/renova/RoomDiffTimeline';
 import { RoomDiagramInteractive } from '@/components/renova/RoomDiagramInteractive';
+import { RoomBudgetThreshold } from '@/components/renova/RoomBudgetThreshold';
+import { RoomPassport } from '@/components/renova/os/RoomPassport';
 import { RoomTypePicker, FloorLevelPicker } from '@/components/renova/RoomTypePicker';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { snapshotRoom, getRoomDiff } from '@/lib/roomDiff';

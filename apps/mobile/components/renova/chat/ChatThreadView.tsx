@@ -36,6 +36,7 @@ function MessageBubble({
   onReply,
   onTask,
   onConfirm,
+  onPay,
 }: {
   m: ChatMessage;
   mine: boolean;

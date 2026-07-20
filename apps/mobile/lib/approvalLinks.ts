@@ -1,6 +1,6 @@
 /** Единые deep links для согласований → источник (комната / материал / смета / план) */
 import type { ApprovalItem } from '@/lib/api';
-import { objectTabRoute, repairTabHref, type OsRole } from '@/constants/osSections';
+import { objectTabHref, objectTabRoute, repairTabHref, type OsRole } from '@/constants/osSections';
 
 export type ApprovalLink = { pathname: string; params?: Record<string, string> };
 
