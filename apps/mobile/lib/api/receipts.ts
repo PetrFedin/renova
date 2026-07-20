@@ -24,10 +24,45 @@ export const receiptsApi = {
       throw new Error('offline_queued');
     }
   },
-  patchReceipt: (userId: string, projectId: string, receiptId: string, body: { expense_category?: string; room_id?: string | null; stage_id?: string | null; amount?: number; description?: string | null }) =>
-    req(`/api/v1/projects/${projectId}/receipts/${receiptId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
-  deleteReceipt: (userId: string, projectId: string, receiptId: string) =>
-    req<void>(`/api/v1/projects/${projectId}/receipts/${receiptId}`, { method: 'DELETE' }, userId),
+  patchReceipt: async (
+    userId: string,
+    projectId: string,
+    receiptId: string,
+    body: { expense_category?: string; room_id?: string | null; stage_id?: string | null; amount?: number; description?: string | null },
+  ) => {
+    try {
+      return await req(
+        `/api/v1/projects/${projectId}/receipts/${receiptId}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/receipts/${receiptId}`,
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
+  deleteReceipt: async (userId: string, projectId: string, receiptId: string) => {
+    try {
+      return await req<void>(`/api/v1/projects/${projectId}/receipts/${receiptId}`, { method: 'DELETE' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/receipts/${receiptId}`,
+        method: 'DELETE',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   listReceipts: (userId: string, projectId: string) => req<ReceiptItem[]>(`/api/v1/projects/${projectId}/receipts`, {}, userId),
   exportExpensesCsv: async (userId: string, projectId: string) => {
     const { exportExpensesCsvFile } = await import('@/lib/exportExpensesCsv');

@@ -89,7 +89,7 @@ export function CustomerProfileScreen() {
       </ProfileSection>
 
       <ProfileSection title="Ещё">
-        <ProfileExtraLinks items={extraItems} returnTo="/(customer)/(tabs)/profile" />
+        <ProfileExtraLinks items={extraItems} returnTo="/(customer)/(tabs)/profile" role="customer" />
       </ProfileSection>
     </ScrollView>
   );

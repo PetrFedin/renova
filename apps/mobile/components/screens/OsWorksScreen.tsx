@@ -243,9 +243,8 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
               await loadProject(activeProject.id);
             } catch (e: unknown) {
               if (e instanceof Error && e.message === 'offline_queued') {
-                // этап в очереди — bus всё равно обновит inbox после flush
                 await syncProjectSideEffects({ user, project: activeProject });
-                return;
+                throw e; // W113: sheet показывает алерт и закрывается
               }
               throw e;
             }

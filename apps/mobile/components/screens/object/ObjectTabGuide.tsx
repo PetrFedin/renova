@@ -95,7 +95,7 @@ export function ObjectTabGuide({
       {tab === 'plan' && role && !compact ? (
         <View style={s.linksRow}>
           {PLAN_LINKS(role).map((link) => (
-            <Pressable key={link.label} style={s.linkBtn} onPress={() => pushOsNav(link.href, pathname)}>
+            <Pressable key={link.label} style={s.linkBtn} onPress={() => pushOsNav(link.href, pathname, role)}>
               <Text style={s.linkT}>{link.label}</Text>
             </Pressable>
           ))}

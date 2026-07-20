@@ -254,7 +254,7 @@ export function ContractorProfileScreen() {
       </ProfileSection>
 
       <ProfileSection title="Ещё">
-        <ProfileExtraLinks items={EXTRA_ITEMS} returnTo="/(contractor)/(tabs)/profile" />
+        <ProfileExtraLinks items={EXTRA_ITEMS} returnTo="/(contractor)/(tabs)/profile" role="contractor" />
       </ProfileSection>
     </ScrollView>
   );

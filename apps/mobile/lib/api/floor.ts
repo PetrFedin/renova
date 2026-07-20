@@ -30,8 +30,40 @@ export const floorApi = {
     }
   },
   listWasteOrders: (userId: string, projectId: string) => req<WasteOrder[]>(`/api/v1/projects/${projectId}/waste-orders`, {}, userId),
-  createWasteOrder: (userId: string, projectId: string, body: object) => req<WasteOrder>(`/api/v1/projects/${projectId}/waste-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),
-  requestWasteOrder: (userId: string, projectId: string, id: string) => req(`/api/v1/projects/${projectId}/waste-orders/${id}/request`, { method: 'POST' }, userId),
+  createWasteOrder: async (userId: string, projectId: string, body: object) => {
+    try {
+      return await req<WasteOrder>(
+        `/api/v1/projects/${projectId}/waste-orders`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/waste-orders`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
+  requestWasteOrder: async (userId: string, projectId: string, id: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/request`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/waste-orders/${id}/request`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   approveWasteOrder: async (userId: string, projectId: string, id: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/approve`, { method: 'POST' }, userId);
@@ -42,5 +74,19 @@ export const floorApi = {
       throw new Error('offline_queued');
     }
   },
-  completeWasteOrder: (userId: string, projectId: string, id: string) => req(`/api/v1/projects/${projectId}/waste-orders/${id}/complete`, { method: 'POST' }, userId),
+  completeWasteOrder: async (userId: string, projectId: string, id: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/complete`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/waste-orders/${id}/complete`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 };

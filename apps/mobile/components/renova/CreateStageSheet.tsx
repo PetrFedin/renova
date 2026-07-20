@@ -1,6 +1,6 @@
 /** Создание нового этапа ремонта — исполнитель */
 import { useState } from 'react';
-import { Modal, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
+import { Modal, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
@@ -38,6 +38,18 @@ export function CreateStageSheet({
       setEnd('');
       setRoomId(null);
       onClose();
+    } catch (e: unknown) {
+      // W113: offline из createStage
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Этап отправится при подключении');
+        setName('');
+        setStart('');
+        setEnd('');
+        setRoomId(null);
+        onClose();
+      } else {
+        Alert.alert('Ошибка', 'Не удалось создать этап');
+      }
     } finally {
       setBusy(false);
     }

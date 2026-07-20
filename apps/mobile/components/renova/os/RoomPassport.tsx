@@ -65,10 +65,14 @@ export function RoomPassport({ snap, role }: { snap: RoomSnapshot; role?: OsRole
         <Cell label="Смета" value={String(snap.estimate_lines)} sub="строк" />
       </View>
 
-      {snap.stages?.length ? <RoomStageTimeline stages={snap.stages} /> : null}
+      {snap.stages?.length ? <RoomStageTimeline stages={snap.stages} role={role} /> : null}
 
       {na?.href ? (
-        <PrimaryButton title={na.button || 'Открыть'} compact onPress={() => pushOsNav(na.href, pathname)} />
+        <PrimaryButton
+          title={na.button || 'Открыть'}
+          compact
+          onPress={() => pushOsNav(na.href, pathname, role || 'customer')}
+        />
       ) : null}
     </View>
   );
