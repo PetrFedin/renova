@@ -56,12 +56,21 @@ export const estimateApi = {
       delta_total: number;
       has_changes: boolean;
     }>(`/api/v1/projects/${projectId}/estimate/lock-diff`, {}, userId),
-  lockEstimate: (userId: string, projectId: string) =>
-    req<{ ok: boolean; estimate_locked_at?: string; contract?: { document_id?: string; pending_titles?: string[] } }>(
-      `/api/v1/projects/${projectId}/estimate/lock`,
-      { method: 'POST' },
-      userId,
-    ),
+  lockEstimate: async (userId: string, projectId: string) => {
+    // W110: фиксация сметы — очередь офлайн (симметрия propose)
+    try {
+      return await req<{ ok: boolean; estimate_locked_at?: string; contract?: { document_id?: string; pending_titles?: string[] } }>(
+        `/api/v1/projects/${projectId}/estimate/lock`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/estimate/lock`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   /** W57: исполнитель предлагает фиксацию (без lock) */
   proposeEstimateLock: async (userId: string, projectId: string) => {
     try {

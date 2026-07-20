@@ -5,7 +5,6 @@ import type { ApprovalItem } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { pushOsNav, replaceOsNav, type OsNavHref } from '@/lib/pushOsNav';
 import { pushOsTabNav } from '@/lib/osTabNav';
-import { resolvePushLink } from '@/lib/pushLinks';
 
 /** Детальный экран этапа с опциональным returnTo */
 export function pushStageDetail(id: string, returnTo?: string) {
@@ -42,7 +41,8 @@ export function useOsNavFromHere(role: OsRole) {
   const pathname = usePathname();
   return {
     returnTo: pathname,
-    pushNav: (target: OsNavHref) => pushOsNav(target, pathname),
+    // W110: role → /control и short aliases резолвятся правильно
+    pushNav: (target: OsNavHref) => pushOsNav(target, pathname, role),
     pushTab: (routeName: string, hubTab?: string, extra?: Record<string, string>) =>
       pushOsTabNav(role, routeName, hubTab, extra, pathname),
     pushScreen: (path: string, params?: Record<string, string>) =>
@@ -78,14 +78,9 @@ export function useNavFromHere() {
 export function goBack(returnTo?: string | string[], role?: string | null) {
   const rt = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   if (rt && rt.length > 1) {
-    // W109: /control, legacy tabs, /stage/{id} — единый резолв
     const osRole: OsRole = role === 'contractor' ? 'contractor' : 'customer';
-    const target = resolvePushLink(rt, undefined, osRole);
-    if (target?.pathname) {
-      router.replace(target as any);
-      return;
-    }
-    replaceOsNav(rt);
+    // W110: тот же SoT, что pushOsNav
+    replaceOsNav(rt, undefined, osRole);
     return;
   }
   if (router.canGoBack()) router.back();

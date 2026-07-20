@@ -1,29 +1,23 @@
 /** Единый push/replace для OS-маршрутов — строка или { pathname, params } */
 import { router } from 'expo-router';
-import { parseOsHref, budgetTabHref, type OsRole, type OsTabRoute } from '@/constants/osSections';
+import { budgetTabHref, type OsRole, type OsTabRoute } from '@/constants/osSections';
 import { withReturnTo } from '@/lib/osReturnTo';
-import { resolveOsDeepLink } from '@/lib/osDeepLink';
-import { TAB_ALIASES, logLegacyRouteDeprecation } from '@/lib/legacyRoutes';
+import { resolvePushLink } from '@/lib/pushLinks';
 
 export type OsNavHref = string | OsTabRoute;
 export { resolveOsDeepLink } from '@/lib/osDeepLink';
 
 /**
- * W108: строковый href → Expo route.
- * Порядок: deep-link (/stage/id) → TAB_ALIASES (legacy materials/control) → parseOsHref.
+ * W110: строковый href → Expo route через resolvePushLink
+ * (deep-link /stage, TAB_ALIASES, /control, finance-center — один SoT с пушами).
  */
-export function toOsRoute(target: OsNavHref, returnTo?: string): OsTabRoute {
+export function toOsRoute(target: OsNavHref, returnTo?: string, role: OsRole = 'customer'): OsTabRoute {
   if (typeof target !== 'string') return target;
-  const deep = resolveOsDeepLink(target, returnTo);
-  if (deep) return deep;
-  const pathOnly = target.split('?')[0];
-  const aliased = TAB_ALIASES[pathOnly];
-  if (aliased) {
-    logLegacyRouteDeprecation(pathOnly, aliased);
-    // alias уже с ?tab=; query из исходного href не склеиваем (конфликт tab)
-    return parseOsHref(aliased);
+  const resolved = resolvePushLink(target, returnTo, role);
+  if (resolved) {
+    return { pathname: resolved.pathname, params: resolved.params };
   }
-  return parseOsHref(target);
+  return { pathname: target };
 }
 
 /** OS-вкладки — navigate (не push), иначе зависает стек tabs */
@@ -36,26 +30,33 @@ function navigateOsRoute(route: OsTabRoute) {
   else router.push(route as any);
 }
 
-/** Push с returnTo — чтобы на целевом экране была полоска «Назад» */
-export function pushOsNav(target: OsNavHref, returnTo?: string) {
-  // Deep-link уже несёт returnTo в params — не дублируем через withReturnTo на «сырой» path
-  if (typeof target === 'string' && resolveOsDeepLink(target, returnTo)) {
-    navigateOsRoute(toOsRoute(target, returnTo));
+/** Push с returnTo; role нужен для /control и short aliases */
+export function pushOsNav(target: OsNavHref, returnTo?: string, role: OsRole = 'customer') {
+  if (typeof target === 'string') {
+    // resolvePushLink уже кладёт returnTo в params
+    navigateOsRoute(toOsRoute(target, returnTo, role));
     return;
   }
-  const route = toOsRoute(target);
+  const route = target;
   navigateOsRoute(returnTo ? withReturnTo(route, returnTo) : route);
 }
 
-export function replaceOsNav(target: OsNavHref, returnTo?: string) {
-  if (typeof target === 'string' && resolveOsDeepLink(target, returnTo)) {
-    const href = toOsRoute(target, returnTo);
+export function replaceOsNav(target: OsNavHref, returnTo?: string, role: OsRole = 'customer') {
+  if (typeof target === 'string') {
+    const href = toOsRoute(target, returnTo, role);
+    if (isOsTabPath(href.pathname)) {
+      const params = href.params;
+      if (params && Object.keys(params).length > 0) {
+        router.replace({ pathname: href.pathname, params } as any);
+      } else {
+        router.replace(href.pathname as any);
+      }
+      return;
+    }
     router.replace(href as any);
     return;
   }
-  const route = toOsRoute(target);
-  const href = returnTo ? withReturnTo(route, returnTo) : route;
-  // Expo Router web: replace({ pathname }) для tabs часто no-op — строка pathname работает
+  const href = returnTo ? withReturnTo(target, returnTo) : target;
   if (isOsTabPath(href.pathname)) {
     const params = href.params;
     if (params && Object.keys(params).length > 0) {

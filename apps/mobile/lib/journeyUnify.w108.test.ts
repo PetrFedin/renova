@@ -13,7 +13,7 @@ const docs = readFileSync(join(mobile, 'lib/api/documents.ts'), 'utf8');
 const stageSvc = readFileSync(join(root, 'backend/app/services/stage_service.py'), 'utf8');
 const purchases = readFileSync(join(root, 'backend/app/api/v1/purchases.py'), 'utf8');
 
-console.assert(pushNav.includes('TAB_ALIASES'), 'pushOsNav applies aliases');
+console.assert(pushNav.includes('resolvePushLink'), 'pushOsNav uses resolvePushLink SoT');
 console.assert(TAB_ALIASES['/(customer)/(tabs)/materials']?.includes('repair?tab=materials'), 'materials alias');
 const mat = parseOsHref(TAB_ALIASES['/(customer)/(tabs)/materials']!);
 console.assert(mat.pathname.includes('repair') && mat.params?.tab === 'materials', 'alias → repair materials');

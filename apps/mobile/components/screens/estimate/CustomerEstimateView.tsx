@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, usePathname } from 'expo-router';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, Alert } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -121,6 +121,12 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
               await api.lockEstimate(user.id, activeProject.id);
               await loadProject(activeProject.id);
               await syncProjectSideEffects({ user, project: activeProject });
+            } catch (e: unknown) {
+              if (e instanceof Error && e.message === 'offline_queued') {
+                Alert.alert('Офлайн', 'Фиксация сметы отправится при подключении');
+              } else {
+                throw e;
+              }
             } finally {
               setLocking(false);
             }

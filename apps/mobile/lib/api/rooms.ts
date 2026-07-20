@@ -28,8 +28,21 @@ export const roomsApi = {
       throw new Error('offline_queued');
     }
   },
-  createRoom: (userId: string, projectId: string, body: object) =>
-    req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  createRoom: async (userId: string, projectId: string, body: object) => {
+    try {
+      return await req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/rooms`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   roomSnapshot: (userId: string, projectId: string, roomId: string) => req<RoomSnapshot>(`/api/v1/projects/${projectId}/rooms/${roomId}/snapshot`, {}, userId),
   roomChangeLog: (userId: string, projectId: string, roomId: string, field?: string, since?: string) => {
     const q = new URLSearchParams();

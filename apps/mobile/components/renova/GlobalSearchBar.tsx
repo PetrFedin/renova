@@ -8,17 +8,23 @@ import { getCachedSearch } from '@/lib/offlineSearchCache';
 import { searchChats } from '@/lib/chatSearchCache';
 import { api, ProjectDetail } from '@/lib/api';
 import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
-function openSearchHit(h: { href: string; type?: string; msgId?: string }, returnTo?: string) {
+function openSearchHit(
+  h: { href: string; type?: string; msgId?: string },
+  returnTo?: string,
+  role: OsRole = 'customer',
+) {
+  // W110: чат — dynamic segment + highlight; остальное через pushOsNav SoT
   if (h.type === 'chat' || h.href.startsWith('/chat/')) {
+    const threadId = h.href.replace('/chat/', '').split('?')[0].split('/')[0];
     router.push({
-      pathname: h.href,
-      params: { highlightId: h.msgId, ...(returnTo ? { returnTo } : {}) },
+      pathname: '/chat/[threadId]',
+      params: { threadId, ...(h.msgId ? { highlightId: h.msgId } : {}), ...(returnTo ? { returnTo } : {}) },
     } as any);
     return;
   }
-  if (returnTo) pushOsNav(h.href, returnTo);
-  else router.push(h.href as any);
+  pushOsNav(h.href, returnTo, role);
 }
 
 export function GlobalSearchBar({
@@ -27,6 +33,7 @@ export function GlobalSearchBar({
   userId,
   suggestions = [],
   returnTo,
+  role = 'customer',
 }: {
   project: ProjectDetail;
   chatTitles?: Record<string, string>;
@@ -34,6 +41,7 @@ export function GlobalSearchBar({
   suggestions?: string[];
   /** Текущий экран — для полоски «Назад» на результатах поиска */
   returnTo?: string;
+  role?: OsRole;
 }) {
   const [q, setQ] = useState('');
   const [hist, setHist] = useState<string[]>([]);
@@ -73,7 +81,7 @@ export function GlobalSearchBar({
         </View>
       )}
       {all.map((h: any) => (
-        <Pressable key={h.id || h.href} style={s.hit} onPress={() => openSearchHit(h, returnTo)}>
+        <Pressable key={h.id || h.href} style={s.hit} onPress={() => openSearchHit(h, returnTo, role)}>
           <Text style={s.title}>{h.title}</Text><Text style={s.sub}>{h.sub}</Text>
         </Pressable>
       ))}

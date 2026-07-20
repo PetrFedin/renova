@@ -16,7 +16,7 @@ const osApi = readFileSync(join(root, 'backend/app/api/v1/os.py'), 'utf8');
 
 console.assert(selections.includes('offline_queued') && selections.includes('proposeSelection'), 'selections offline');
 console.assert(schedule.includes('updateWorkScheduleItemStatus') && schedule.includes('offline_queued'), 'schedule item offline');
-console.assert(nav.includes('resolvePushLink') && nav.includes('replaceOsNav'), 'goBack resolve');
+console.assert(nav.includes('replaceOsNav') && nav.includes('osRole'), 'goBack resolve via replaceOsNav');
 console.assert(inbox.includes('selections-pending') && inbox.includes("repairTabHref(role, 'selections')"), 'inbox selections');
 console.assert(insights.includes('repair?tab=works'), 'backend works canon');
 console.assert(osApi.includes('link_path="/control"'), 'issues → /control');
