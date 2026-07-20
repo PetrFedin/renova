@@ -52,7 +52,11 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const { date: dateParam } = useLocalSearchParams<{ date?: string }>();
   const { height } = useWindowDimensions();
   const calendarMaxH = Math.round(height * 0.59);
-  const { user, activeProject, readOnly } = useRenova();
+  const { user, activeProject, teamRole, readOnly } = useRenova();
+  // W72: график правят owner/foreman бригады (заказчик — отдельно через agree)
+  const canManageSchedulePlan =
+    !readOnly &&
+    (user?.role === 'customer' || !teamRole || teamRole === 'owner' || teamRole === 'foreman');
   const [cal, setCal] = useState<CalendarData | null>(null);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -231,6 +235,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
               onPress={async () => {
                 setPlanBusy(true);
                 try {
+                  if (!canManageSchedulePlan) {
+                    Alert.alert('График', 'Создать план может владелец или прораб бригады');
+                    return;
+                  }
                   const created = await api.createWorkSchedule(user.id, activeProject.id, { title: 'План-график работ' });
                   setSchedule(created);
                   setPlanHint(`План создан · ${created.status}`);
@@ -252,6 +260,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
               onPress={async () => {
                 setPlanBusy(true);
                 try {
+                  if (!canManageSchedulePlan) {
+                    Alert.alert('График', 'На согласование отправляет владелец или прораб');
+                    return;
+                  }
                   const next = await api.submitWorkSchedule(user.id, activeProject.id, schedule.id);
                   setSchedule(next);
                   Alert.alert('Отправлено', 'Заказчик получит запрос на согласование графика');

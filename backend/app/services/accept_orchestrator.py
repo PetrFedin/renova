@@ -91,6 +91,62 @@ async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
     return next_stage
 
 
+async def mark_acceptance_pin_on_plan(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    stage: Stage,
+    acceptance_room_id: str | None = None,
+) -> None:
+    """W72 #8: после приёмки — метка комнаты на плане «✓ этап» (plan + room_ids этапа)."""
+    from sqlalchemy import select
+    from app.models.entities import FloorPlan, FloorPlanPin
+    from app.services.stage_service import parse_room_ids
+
+    room_ids = list(parse_room_ids(stage))
+    if acceptance_room_id and acceptance_room_id not in room_ids:
+        room_ids.insert(0, acceptance_room_id)
+    if not room_ids:
+        return
+
+    plan = (
+        await db.execute(
+            select(FloorPlan)
+            .where(FloorPlan.project_id == project_id)
+            .order_by(FloorPlan.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not plan:
+        return
+
+    label = f"✓ {stage.name}"[:64]
+    updated = False
+    for room_id in room_ids:
+        r = await db.execute(
+            select(FloorPlanPin).where(
+                FloorPlanPin.floor_plan_id == plan.id,
+                FloorPlanPin.room_id == room_id,
+            )
+        )
+        pin = r.scalar_one_or_none()
+        if pin:
+            pin.label = label
+            updated = True
+    if not updated:
+        # нет пина — создаём на первой комнате этапа
+        db.add(
+            FloorPlanPin(
+                floor_plan_id=plan.id,
+                room_id=room_ids[0],
+                x_pct=50.0,
+                y_pct=50.0,
+                label=label,
+            )
+        )
+    await db.flush()
+
+
 async def finalize_work_acceptance(
     db: AsyncSession,
     *,
@@ -162,7 +218,16 @@ async def finalize_work_acceptance(
         accepted_by=accepted_by,
     )
     await db.flush()
+    # W72: pin на плане в том же commit, что и приёмка
+    await mark_acceptance_pin_on_plan(
+        db,
+        project_id=project.id,
+        stage=stage,
+        acceptance_room_id=getattr(row, "room_id", None),
+    )
     return AcceptResult(acceptance=row, stage=stage, payment=payment, next_stage=next_stage)
+
+
 
 
 async def emit_acceptance_side_effects(

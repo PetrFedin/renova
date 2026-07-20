@@ -23,13 +23,16 @@ def is_project_customer(user: User, project: Project) -> bool:
 
 
 
-def can_manage_schedule(user: User, project: Project) -> bool:
-    """W66 #17: график создаёт/отправляет исполнитель; без подрядчика — заказчик."""
+async def can_manage_schedule(db: AsyncSession, user: User, project: Project) -> bool:
+    """W66/W72: график — contractor owner/foreman; без подрядчика — заказчик; viewer/member — нет."""
     if user.id == project.contractor_id:
         return True
     if not project.contractor_id and user.id == project.customer_id:
         return True
-    return False
+    from app.services.team_service import team_role_for_project
+
+    role = await team_role_for_project(db, user, project)
+    return role in ("owner", "foreman")
 
 
 async def load_items(db: AsyncSession, schedule_id: str) -> list[ProjectWorkScheduleItem]:
@@ -191,10 +194,12 @@ async def get_schedule(db: AsyncSession, project_id: str, schedule_id: str) -> P
 
 
 async def create_schedule(db: AsyncSession, project: Project, user: User, body: WorkScheduleCreateIn) -> ProjectWorkSchedule:
-    if not is_project_member(user, project):
+    from app.services.team_service import can_access_project
+
+    if not await can_access_project(db, user, project, write=True):
         raise HTTPException(status_code=403, detail="only_project_members_can_create_schedule")
-    if not can_manage_schedule(user, project):
-        raise HTTPException(status_code=403, detail="only_contractor_can_create_schedule")
+    if not await can_manage_schedule(db, user, project):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_create_schedule")
     schedule = ProjectWorkSchedule(
         project_id=project.id,
         title=body.title,
@@ -258,11 +263,13 @@ async def sync_stages_from_schedule_items(db: AsyncSession, schedule: ProjectWor
 
 
 async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User) -> ProjectWorkSchedule:
+    from app.services.team_service import can_access_project
+
     project_gate = await db.get(Project, schedule.project_id)
-    if not project_gate or not is_project_member(user, project_gate):
+    if not project_gate or not await can_access_project(db, user, project_gate, write=True):
         raise HTTPException(status_code=403, detail="project_forbidden")
-    if not can_manage_schedule(user, project_gate):
-        raise HTTPException(status_code=403, detail="only_contractor_can_submit_schedule")
+    if not await can_manage_schedule(db, user, project_gate):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_submit_schedule")
     items = await load_items(db, schedule.id)
     if not items:
         raise HTTPException(status_code=409, detail="schedule_items_required")

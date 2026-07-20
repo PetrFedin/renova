@@ -102,6 +102,7 @@ export const miscApi = {
       pending_draft_documents?: { id: string; title: string; status?: string }[];
       /** Trust: реквизиты исполнителя — без demo-карт */
       contractor_recipient_name?: string | null;
+      contractor_company_name?: string | null;
       contractor_payment_requisites?: string | null;
       payments_mode?: 'live' | 'requisites' | 'demo' | 'off';
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),

@@ -127,20 +127,52 @@ export const osApi = {
       { method: 'POST', body: JSON.stringify({ payment_ids }) },
       userId,
     ),
-  createWarrantyClaim: (userId: string, projectId: string, body: { title?: string; description?: string }) =>
-    req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string }>(
-      `/api/v1/projects/${projectId}/warranty-claims`,
-      { method: 'POST', body: JSON.stringify(body) },
-      userId,
-    ),
+  createWarrantyClaim: async (
+    userId: string,
+    projectId: string,
+    body: { title?: string; description?: string },
+  ) => {
+    try {
+      return await req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string }>(
+        `/api/v1/projects/${projectId}/warranty-claims`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      const { ApiError } = await import('./client');
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/warranty-claims`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   listWarrantyClaims: (userId: string, projectId: string) =>
     req<{ items: { id: string; title: string; status: string; created_at?: string }[]; open: number }>(
       `/api/v1/projects/${projectId}/warranty-claims`,
       {},
       userId,
     ),
-  closeWarrantyClaim: (userId: string, projectId: string, issueId: string) =>
-    req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId),
+  closeWarrantyClaim: async (userId: string, projectId: string, issueId: string) => {
+    try {
+      return await req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId);
+    } catch (e) {
+      const { ApiError } = await import('./client');
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`,
+        method: 'POST',
+        body: '',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   closeoutChecklist: (userId: string, projectId: string) =>
     req<{
       ready: boolean;

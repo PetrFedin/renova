@@ -1,4 +1,4 @@
-/** P2.1 Web client portal — read-only по magic link ?token= */
+/** W72: branded client portal (magic link) — решения без обязательной оплаты */
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Linking, Platform, AppState } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -103,9 +103,9 @@ export default function PortalScreen() {
         <Text style={s.brandSub}>Портал заказчика</Text>
         <Text style={s.title}>{snapshot.project.name}</Text>
         {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
-        {(snapshot as any).contractor_recipient_name || (snapshot as any).contractor_company_name ? (
+        {snapshot.contractor_company_name || snapshot.contractor_recipient_name ? (
           <Text style={s.muted}>
-            Исполнитель · {(snapshot as any).contractor_company_name || (snapshot as any).contractor_recipient_name}
+            Исполнитель · {snapshot.contractor_company_name || snapshot.contractor_recipient_name}
           </Text>
         ) : null}
         <Text style={s.progressLine}>Прогресс · {progress}%</Text>
@@ -117,14 +117,22 @@ export default function PortalScreen() {
         ) : (
           <Text style={s.todoLine}>Нет срочных действий</Text>
         )}
-        <Text style={s.ro}>{portalReadOnly ? 'Только просмотр' : 'Приёмка · оплата · подпись'} · {session.project_name}</Text>
+        <Text style={s.ro}>
+          {portalReadOnly
+            ? 'Только просмотр'
+            : ['Приёмка', canSignPortal ? 'Подпись' : null, canPayPortal ? 'Оплата' : null]
+                .filter(Boolean)
+                .join(' · ') || 'Решения по объекту'}
+          {' · '}
+          {session.project_name}
+        </Text>
       </View>
 
-      {(snapshot as any).pending_work_schedule ? (
+      {snapshot.pending_work_schedule ? (
         <View style={s.card}>
           <Text style={s.cardHead}>План-график</Text>
-          <Text style={s.line}>{(snapshot as any).pending_work_schedule.title || 'График работ'} · на согласовании</Text>
-          {(snapshot as any).can_confirm_schedule && canAcceptPortal ? (
+          <Text style={s.line}>{snapshot.pending_work_schedule.title || 'График работ'} · на согласовании</Text>
+          {snapshot.can_confirm_schedule && canAcceptPortal ? (
             <View style={s.payActions}>
               <Pressable
                 style={s.acceptBtn}
@@ -133,7 +141,7 @@ export default function PortalScreen() {
                     await api.portalConfirmSchedule(
                       session.user_id,
                       session.project_id,
-                      (snapshot as any).pending_work_schedule.id,
+                      snapshot.pending_work_schedule.id,
                       portalToken,
                     );
                     await refreshPortalSnapshot(session.user_id, session.project_id);
@@ -152,7 +160,7 @@ export default function PortalScreen() {
                     await api.portalRejectSchedule(
                       session.user_id,
                       session.project_id,
-                      (snapshot as any).pending_work_schedule.id,
+                      snapshot.pending_work_schedule.id,
                       portalToken,
                       'Нужна правка сроков',
                     );
@@ -177,7 +185,7 @@ export default function PortalScreen() {
           <Text style={s.cardHead}>Приёмка этапов</Text>
           {snapshot.pending_acceptances!.map((acc) => (
             <View key={acc.id} style={s.acceptRow}>
-              <Text style={s.line}>{acc.stage_name || 'Этап'} · ждёт решения{(acc as any).hours_waiting != null ? ` · ${(acc as any).hours_waiting} ч` : ''}</Text>
+              <Text style={s.line}>{acc.stage_name || 'Этап'} · ждёт решения{acc.hours_waiting != null ? ` · ${acc.hours_waiting} ч` : ''}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 <Pressable
                   style={s.acceptBtn}
@@ -222,20 +230,20 @@ export default function PortalScreen() {
         </View>
       ) : null}
 
-      {(snapshot as any).estimate_summary ? (
+      {snapshot.estimate_summary ? (
         <View style={s.card}>
           <Text style={s.cardHead}>Смета (только просмотр)</Text>
           <Text style={s.line}>
-            {(snapshot as any).estimate_summary.lines_count} поз. · {(snapshot as any).estimate_summary.total?.toLocaleString?.('ru-RU') || (snapshot as any).estimate_summary.total} ₽
+            {snapshot.estimate_summary.lines_count} поз. · {snapshot.estimate_summary.total?.toLocaleString?.('ru-RU') || snapshot.estimate_summary.total} ₽
           </Text>
           <Text style={s.muted}>
-            {(snapshot as any).estimate_summary.locked_at
-              ? `Зафиксирована ${(snapshot as any).estimate_summary.locked_at.slice(0, 10)}`
-              : (snapshot as any).estimate_summary.proposed_at
+            {snapshot.estimate_summary.locked_at
+              ? `Зафиксирована ${snapshot.estimate_summary.locked_at.slice(0, 10)}`
+              : snapshot.estimate_summary.proposed_at
                 ? 'На согласовании'
                 : 'Черновик'}
           </Text>
-          {((snapshot as any).estimate_summary.lines || []).slice(0, 5).map((ln: any, i: number) => (
+          {(snapshot.estimate_summary?.lines || []).slice(0, 5).map((ln, i) => (
             <Text key={i} style={s.muted}>{ln.name} · {ln.total} ₽</Text>
           ))}
         </View>
@@ -251,11 +259,11 @@ export default function PortalScreen() {
       <View style={s.card}>
         <Text style={s.cardHead}>Ожидают оплаты ({snapshot.pending_payments.length})</Text>
         <Text style={s.muted}>
-          {(snapshot as any).payments_mode === 'live'
+          {snapshot.payments_mode === 'live'
             ? 'Оплата картой: ЮKassa live'
-            : (snapshot as any).payments_mode === 'requisites'
+            : snapshot.payments_mode === 'requisites'
               ? 'Оплата: перевод по реквизитам (карта недоступна)'
-              : (snapshot as any).payments_mode === 'off'
+              : snapshot.payments_mode === 'off'
                 ? 'Оплата картой недоступна на этом сервере. Используйте реквизиты или полное приложение.'
                 : 'Оплата: demo / укажите реквизиты исполнителя'}
         </Text>
@@ -277,7 +285,7 @@ export default function PortalScreen() {
                 <Text style={s.line}>{pay.title} · {formatRub(pay.amount)}</Text>
                 {canPayPortal ? (
                 <View style={s.payActions}>
-                  {((snapshot as any).payments_mode === 'live' || (snapshot as any).payments_mode === 'demo') ? (
+                  {(snapshot.payments_mode === 'live' || snapshot.payments_mode === 'demo') ? (
                   <Pressable
                     style={s.payBtn}
                     onPress={async () => {
@@ -301,7 +309,7 @@ export default function PortalScreen() {
                     }}
                   >
                     <Text style={s.payBtnT}>
-                      {(snapshot as any).payments_mode === 'live' ? 'Оплатить картой' : 'Карта (demo)'}
+                      {snapshot.payments_mode === 'live' ? 'Оплатить картой' : 'Карта (demo)'}
                     </Text>
                   </Pressable>
                   ) : null}

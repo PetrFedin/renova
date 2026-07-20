@@ -126,6 +126,24 @@ export function QualityControlScreen() {
   const closedIssues = useMemo(() => items.filter((item) => item.status === 'closed'), [items]);
   const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
 
+  const createWarranty = async () => {
+    if (!user || !activeProject || readOnly || !isCustomer) return;
+    setActingId('warranty-new');
+    try {
+      await api.createWarrantyClaim(user.id, activeProject.id, {
+        title: 'Гарантийное обращение',
+        description: 'Создано из Контроля качества',
+      });
+      await load();
+      Alert.alert('Гарантия', 'Тикет создан — исполнитель уведомлён');
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Гарантийный тикет');
+      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать');
+    } finally {
+      setActingId(null);
+    }
+  };
+
   const escalateIssue = async (issue: ProjectIssue) => {
     if (!user || !activeProject || readOnly) return;
     try {
