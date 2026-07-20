@@ -13,6 +13,7 @@ import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ScratchpadLine } from '@/lib/api';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { budgetTabHref, calendarTabHref, type OsRole } from '@/constants/osSections';
@@ -37,6 +38,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
   }, [user?.id, activeProject?.id]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   const active = useMemo(() => lines.filter((l) => !l.done && !l.promoted_kind), [lines]);
   const done = useMemo(() => lines.filter((l) => l.done || l.promoted_kind), [lines]);

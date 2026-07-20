@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WorkOrderDetailPanel } from '@/components/renova/WorkOrderDetailPanel';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, WorkOrder } from '@/lib/api';
 import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
@@ -26,6 +27,7 @@ export function WorkOrderDetailScreen() {
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   async function transition(next: WorkOrderStatus) {
     if (!user || !activeProject || !wo) return;

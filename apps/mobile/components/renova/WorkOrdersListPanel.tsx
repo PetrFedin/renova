@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { api, type WorkOrder, type Room } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { WorkOrderCard } from '@/components/renova/WorkOrderCard';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { useNavFromHere } from '@/lib/navigation';
@@ -37,6 +38,7 @@ export function WorkOrdersListPanel({
   }, [userId, projectId]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  useProjectDataReload(reload);
 
   const filtered = useMemo(() => {
     const sorted = [...items].sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''));

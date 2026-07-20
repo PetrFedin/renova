@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { api, type MaterialPick, type OsExpense, type Purchase, type ReceiptItem } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { ExpenseByCategory } from '@/components/renova/ExpenseByCategory';
 import { ExpenseByFloor } from '@/components/renova/ExpenseByFloor';
@@ -78,6 +79,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   }, [user?.id, activeProject?.id, loadProject]);
 
   useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useProjectDataReload(reload);
 
   if (!user || !activeProject) {
     const role = user?.role === 'contractor' ? 'contractor' : 'customer';

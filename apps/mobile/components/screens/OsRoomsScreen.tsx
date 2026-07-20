@@ -1,11 +1,12 @@
 /** Комнаты объекта — список по этажам (вкладка «Объект → Комнаты») */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { useNavFromHere } from '@/lib/navigation';
 import { FloorSectionHeader, groupRoomsByFloor } from '@/components/renova/RoomFloorGroups';
@@ -46,14 +47,25 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
   const [query, setQuery] = useState('');
   const [roomFilter, setRoomFilter] = useState('active');
 
-  useEffect(() => {
+  const reloadRooms = useCallback(async () => {
     if (!user || !activeProject) return;
-    api
-      .listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' })
-      .then((list) => setRooms(filterRoomsByArchive(list, roomFilter === 'archive')))
-      .catch(() => {});
-    api.listRoomChangeRequests(user.id, activeProject.id).then(setRequests).catch(() => {});
+    try {
+      const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
+      setRooms(filterRoomsByArchive(list, roomFilter === 'archive'));
+    } catch {
+      /* noop */
+    }
+    try {
+      setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
+    } catch {
+      /* noop */
+    }
   }, [user?.id, activeProject?.id, roomFilter]);
+
+  useEffect(() => {
+    void reloadRooms();
+  }, [reloadRooms]);
+  useProjectDataReload(reloadRooms);
 
   const filtered = rooms
     .filter((r) => !query || r.name.toLowerCase().includes(query.toLowerCase()))
@@ -137,25 +149,16 @@ function ContractorRoomsBody() {
   const [roomFilter, setRoomFilter] = useState('active');
   const [query, setQuery] = useState('');
 
-  const reloadRequests = async () => {
+  const reloadRequests = useCallback(async () => {
     if (!user || !activeProject) return;
     try {
       setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
     } catch (e) {
       if (isRateLimitError(e)) return;
     }
-  };
+  }, [user?.id, activeProject?.id]);
 
-  useEffect(() => {
-    if (!user || !activeProject) return;
-    api
-      .listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' })
-      .then((list) => setRooms(filterRoomsByArchive(list, roomFilter === 'archive')))
-      .catch(() => {});
-    void reloadRequests();
-  }, [user?.id, activeProject?.id, roomFilter]);
-
-  const reloadRooms = async () => {
+  const reloadRooms = useCallback(async () => {
     if (!user || !activeProject) return;
     try {
       const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
@@ -165,7 +168,17 @@ function ContractorRoomsBody() {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
       }
     }
-  };
+  }, [user?.id, activeProject?.id, roomFilter]);
+
+  const refreshRoomsSurface = useCallback(() => {
+    void reloadRooms();
+    void reloadRequests();
+  }, [reloadRooms, reloadRequests]);
+
+  useEffect(() => {
+    refreshRoomsSurface();
+  }, [refreshRoomsSurface]);
+  useProjectDataReload(refreshRoomsSurface);
 
   const activeRooms = (activeProject.rooms || []).filter((r) => !r.is_archived);
 

@@ -7,6 +7,7 @@ import { ExpenseDetailSheet, type ExpenseDetailTarget } from '@/components/renov
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { api, type MaterialPick, type OsExpense, type ProjectDetail, type Purchase, type ReceiptItem } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
@@ -55,6 +56,7 @@ export function StageExpensePanel({
   }, [userId, projectId]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   const rooms = project?.rooms || [];
   const stages = project?.stages || [];

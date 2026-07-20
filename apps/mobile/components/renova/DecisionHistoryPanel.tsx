@@ -4,6 +4,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import {
   buildDecisionHistory,
   DECISION_FILTER_CHIPS,
@@ -46,6 +47,7 @@ export function DecisionHistoryPanel({
   useEffect(() => {
     reload();
   }, [reload]);
+  useProjectDataReload(reload);
 
   const visible = useMemo(() => {
     const filtered = filterDecisionHistory(raw, filter);

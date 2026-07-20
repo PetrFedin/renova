@@ -10,6 +10,7 @@ import { CreateChatSheet } from '@/components/renova/chat/CreateChatSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { indexChats } from '@/lib/chatSearchCache';
 import { api, ChatThread } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { useChatUnread, useChatInboxThreads, useInboxWsListener } from '@/lib/useChatUnread';
 import { markChatReadAndSync } from '@/lib/inboxSyncStore';
@@ -133,6 +134,10 @@ export function ChatListView() {
   }, [threads]);
 
   useFocusEffect(useCallback(() => { if (prefsLoaded) reload().catch(() => {}); }, [reload, prefsLoaded]));
+  const onBusReload = useCallback(() => {
+    if (prefsLoaded) void reload();
+  }, [prefsLoaded, reload]);
+  useProjectDataReload(onBusReload);
   useInboxWsListener(useCallback(() => {
     reload().catch(() => {});
     reloadUnread().catch(() => {});

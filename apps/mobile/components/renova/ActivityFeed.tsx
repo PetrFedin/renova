@@ -4,6 +4,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { api, ActivityItem } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { GlobalFilterBar } from '@/components/renova/GlobalFilterBar';
 import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
 import { resolvePushLink } from '@/lib/pushLinks';
@@ -43,6 +44,7 @@ export function ActivityFeed({
 
   useEffect(() => { reload(); }, [reload]);
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  useProjectDataReload(reload);
 
   const openItem = (it: ActivityItem) => {
     if (!it.link_path) return;

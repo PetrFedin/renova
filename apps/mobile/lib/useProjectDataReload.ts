@@ -6,12 +6,12 @@ import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
  * Когда другая поверхность сделала golden-path мутацию (syncProjectSideEffects),
  * экран с локальным state (приёмка, контроль) перечитывает данные.
  */
-export function useProjectDataReload(reload: () => void): void {
+export function useProjectDataReload(reload: () => void | Promise<void>): void {
   useEffect(
     () =>
       subscribeProjectDataChanged(() => {
         try {
-          reload();
+          void reload();
         } catch {
           /* noop */
         }

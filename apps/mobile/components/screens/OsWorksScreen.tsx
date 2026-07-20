@@ -5,6 +5,7 @@ import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { SearchFilter } from '@/components/renova/SearchFilter';
@@ -82,7 +83,21 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     setBlockedMap(Object.fromEntries(entries));
   }, [user?.id, activeProject?.id, activeProject?.stages?.length]);
 
-  useFocusEffect(useCallback(() => { reloadBlocked(); if (isContractor && user && activeProject) api.reworkSlaCheck(user.id, activeProject.id).catch(() => {}); }, [reloadBlocked, isContractor, user?.id, activeProject?.id]));
+  const refreshWorks = useCallback(() => {
+    if (activeProject) void loadProject(activeProject.id);
+    void reloadBlocked();
+    if (isContractor && user && activeProject) {
+      api.reworkSlaCheck(user.id, activeProject.id).catch(() => {});
+    }
+  }, [activeProject, loadProject, reloadBlocked, isContractor, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshWorks();
+    }, [refreshWorks]),
+  );
+  // W91: соседний таб/мутация → этапы и blockedMap без remount
+  useProjectDataReload(refreshWorks);
 
   const stages = useMemo(() => {
     if (!activeProject) return [];
