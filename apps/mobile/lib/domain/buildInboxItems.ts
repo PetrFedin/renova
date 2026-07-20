@@ -3,7 +3,6 @@ import { api, type ApprovalItem, type ProjectDetail, type Stage } from '@/lib/ap
 import { formatRub } from '@/constants/Theme';
 import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 import { buildCloseoutInboxItem } from './closeoutHome';
-import { buildCloseoutInboxItem } from './closeoutHome';
 
 export type InboxItem =
   | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
