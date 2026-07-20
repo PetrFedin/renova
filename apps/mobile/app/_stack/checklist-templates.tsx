@@ -6,6 +6,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 
 type Tpl = { id: string; name: string; items: string[] };
@@ -23,6 +24,7 @@ export default function ChecklistTemplatesScreen() {
   }, [user?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  useProjectDataReload(reload);
 
   async function save() {
     if (!user || !name.trim()) {

@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PaywallModal } from '@/components/renova/PaywallModal';
 import { router } from 'expo-router';
-import { flush } from "@/lib/offlineQueue";
+import { flushOfflineOutbox } from '@/lib/offline';
 import { reloadInboxSync } from "@/lib/inboxSyncStore";
 import { notifyProjectDataChanged, syncProjectSideEffects } from "@/lib/projectDataBus";
 
@@ -369,7 +369,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         /* сбой окружения — не сбрасываем storage */
       } finally {
         try {
-          await flush(process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100');
+          await flushOfflineOutbox();  // W93: session boot → канон flush + buses
         } catch {}
         setLoading(false);
         signalPreviewReady();

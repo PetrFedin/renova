@@ -150,6 +150,16 @@ export async function getQueueStatus(): Promise<OfflineQueueStatus> {
   };
 }
 
+async function emitQueueChanged(): Promise<void> {
+  // W93: баннер/статус очереди без focus (dynamic import — без цикла offline↔queue)
+  try {
+    const { notifyOfflineFlush } = await import('@/lib/offline/flushBus');
+    notifyOfflineFlush();
+  } catch {
+    /* test env */
+  }
+}
+
 export async function enqueue(job: Omit<OfflineJob, 'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError'>) {
   const q = await getQueue();
   q.push({
@@ -161,12 +171,14 @@ export async function enqueue(job: Omit<OfflineJob, 'ts' | 'id' | 'attempts' | '
     conflict: false,
   });
   await AsyncStorage.setItem(KEY, JSON.stringify(q));
+  await emitQueueChanged();
   return q.length;
 }
 
 export async function removeJob(id: string) {
   const q = (await getQueue()).filter((j) => j.id !== id);
   await AsyncStorage.setItem(KEY, JSON.stringify(q));
+  await emitQueueChanged();
   return q.length;
 }
 

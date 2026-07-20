@@ -6,6 +6,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 
@@ -32,6 +33,7 @@ export default function SubscriptionScreen() {
   useEffect(() => {
     void reload();
   }, [reload]);
+  useProjectDataReload(reload);
 
   const startTrial = async () => {
     if (!user) return;

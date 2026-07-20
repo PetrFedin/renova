@@ -154,6 +154,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W90 | useProjectDataReload on QC/materials/schedule/stage/approvals | **закрыто** `develop` |
 | W91 | useProjectDataReload works/rooms/chat/analytics/scratch/feed | **закрыто** `develop` |
 | W92 | offline flush→projectDataBus + purchase/material/chat/reports | **закрыто** `develop` |
+| W93 | layout/context flushOfflineOutbox + enqueue→flushBus | **закрыто** `develop` |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

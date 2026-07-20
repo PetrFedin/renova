@@ -9,7 +9,7 @@ import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-c
 import { StatusBar } from 'expo-status-bar';
 import { RenovaProvider, useRenova } from '@/lib/context/RenovaContext';
 import { NavTracker } from '@/components/renova/NavTracker';
-import { flush } from '@/lib/offlineQueue';
+import { flushOfflineOutbox } from '@/lib/offline';
 import { initLang } from '@/lib/i18n';
 import { resolvePushLink } from '@/lib/pushLinks';
 
@@ -35,7 +35,8 @@ export default function RootLayout() {
       if (target) router.push(target as any);
     });
     const apiBase = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const onOnline = () => flush(apiBase).then((r) => {
+        // W93: online → канон flushOfflineOutbox (offlineFlush + projectDataBus)
+    const onOnline = () => flushOfflineOutbox(apiBase).then((r) => {
       if (r.conflicts > 0 && typeof window !== 'undefined') {
         import('expo-notifications').then((N) => N.scheduleNotificationAsync({
           content: { title: 'Конфликт синхронизации', body: `${r.conflicts} изменений требуют решения`, data: { link_path: '/conflicts', return_to: '/' } },
