@@ -138,12 +138,55 @@ async def approve_item(project_id: str, item_id: str, body: ApproveIn, user: Use
         title = f"Согласовано: {p.name}"
         link = "/(contractor)/(tabs)/repair?tab=materials"
     elif body.type == "change_order":
-        c = await db.get(ChangeOrder, item_id)
-        if not c or c.project_id != project_id:
+        # W71: тот же канон, что POST .../change-orders/{id}/approve — бюджет + черновик на подпись
+        from app.services import change_order_service as co_svc
+
+        c, draft_meta = await co_svc.approve_with_sign_draft(
+            db, project_id=project_id, order_id=item_id, created_by=user.id
+        )
+        if not c:
             raise HTTPException(404)
-        c.status = ChangeOrderStatus.approved
         title = f"Согласовано ДО: {c.title}"
-        link = "/(contractor)/(tabs)/object?tab=estimate"
+        link = "/(contractor)/(tabs)/budget"
+        draft_id = (draft_meta or {}).get("id")
+        await act.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="DocumentDraftForSign",
+            title=f"Подпишите доп. работы: {c.title}",
+            body=f"Документ {draft_id} · {c.amount:.0f} ₽",
+            link_path="/documents",
+        )
+        if proj and proj.customer_id:
+            await ns.notify(
+                db,
+                user_id=proj.customer_id,
+                project_id=project_id,
+                notification_type="document",
+                title=f"Подпишите доп. работы: {c.title}",
+                body=f"Черновик в Документах · {c.amount:.0f} ₽",
+                link_path="/documents",
+            )
+        if proj and proj.contractor_id:
+            await ns.notify(
+                db,
+                user_id=proj.contractor_id,
+                project_id=project_id,
+                notification_type="change_order",
+                title=title,
+                body=f"{c.amount:.0f} ₽ · план бюджета обновлён",
+                link_path=link,
+            )
+        await act.log_event(db, project_id=project_id, user_id=user.id, kind="approval", title=title)
+        return {
+            "ok": True,
+            "type": body.type,
+            "id": item_id,
+            "document_id": draft_id,
+            "amount": c.amount,
+            "budget_updated": True,
+        }
     elif body.type == "room_change":
         r = await db.get(RoomChangeRequest, item_id)
         if not r or r.project_id != project_id:

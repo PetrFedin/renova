@@ -47,6 +47,15 @@ export type OsBudgetSummary = {
   risk: string;
   remaining: number;
   segments: Record<string, { planned: number; actual: number }>;
+  /** W71: доп. работы — связь с планом бюджета */
+  change_orders?: {
+    id: string;
+    title: string;
+    amount: number;
+    status: string;
+    description?: string;
+  }[];
+  change_orders_approved_sum?: number;
 };
 
 export type OsExpense = {

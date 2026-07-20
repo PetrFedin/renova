@@ -132,6 +132,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W68 | 39, 43–47 | **закрыто** `develop` |
 | W69 | 40–42, 48–50 (+41/36 lite) | **закрыто кодом** `develop` |
 | W70 | 20, 38 (+ H0 blockers doc; #37 local) | **закрыто** `develop` `76a2340` |
+| W71 | CO↔budget↔docs, CSV import, hub Сроки | **закрыто** `develop` (без оплат) |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

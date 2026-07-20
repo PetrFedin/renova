@@ -73,6 +73,13 @@ export const estimateApi = {
     const { downloadApiPath } = await import('@/lib/downloadFile');
     await downloadApiPath(userId, `/api/v1/projects/${projectId}/estimate.csv`, 'estimate.csv');
   },
+  /** W71: импорт строк сметы из CSV (Excel → CSV) */
+  importEstimateCsv: (userId: string, projectId: string, csv_text: string) =>
+    req<{ ok: boolean; created: number; skipped: number; errors?: string[] }>(
+      `/api/v1/projects/${projectId}/estimate/import-csv`,
+      { method: 'POST', body: JSON.stringify({ csv_text }) },
+      userId,
+    ),
   /** W65: заказчик отклоняет propose */
   rejectEstimateLock: (userId: string, projectId: string, reason?: string) =>
     req<{ ok: boolean }>(

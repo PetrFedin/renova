@@ -281,3 +281,83 @@ async def clear_estimate_proposal(
 
 
 
+
+
+async def import_estimate_csv(db: AsyncSession, project_id: str, csv_text: str) -> dict:
+    """W71: импорт строк сметы из CSV (name,line_type,unit,qty,price[,room]).
+
+    Формат как у export_estimate_csv — совместим с Excel «Сохранить как CSV».
+    """
+    import csv
+    import io
+
+    text = (csv_text or "").strip().lstrip("\ufeff")
+    if not text:
+        raise ValueError("empty_csv")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise ValueError("csv_no_header")
+
+    # normalize headers
+    def norm(h: str) -> str:
+        return (h or "").strip().lower().replace(" ", "_")
+
+    field_map = {norm(h): h for h in reader.fieldnames}
+
+    def cell(row: dict, *keys: str) -> str:
+        for k in keys:
+            src = field_map.get(k) or field_map.get(k.replace("_", ""))
+            if src and row.get(src) not in (None, ""):
+                return str(row.get(src)).strip()
+        # fallback: try exact keys
+        for k in keys:
+            if row.get(k) not in (None, ""):
+                return str(row.get(k)).strip()
+        return ""
+
+    created = 0
+    skipped = 0
+    errors: list[str] = []
+    for i, row in enumerate(reader, start=2):
+        name = cell(row, "name", "название", "наименование", "title")
+        if not name:
+            skipped += 1
+            continue
+        lt_raw = cell(row, "line_type", "type", "тип") or "work"
+        lt = "material" if lt_raw.lower() in ("material", "материал", "mat") else "work"
+        unit = cell(row, "unit", "ед", "единица") or "pcs"
+        try:
+            qty = float(cell(row, "quantity_planned", "qty", "количество", "кол-во", "quantity") or "1")
+            price = float(cell(row, "unit_price", "price", "цена", "price_unit") or "0")
+        except ValueError:
+            errors.append(f"строка {i}: число qty/price")
+            skipped += 1
+            continue
+        if qty <= 0:
+            skipped += 1
+            continue
+        room = cell(row, "room_name", "room", "комната") or None
+        line = EstimateLine(
+            project_id=project_id,
+            line_type=LineType(lt),
+            name=name[:200],
+            unit=unit[:32],
+            quantity_planned=qty,
+            unit_price=max(0.0, price),
+            room_name=room[:100] if room else None,
+        )
+        db.add(line)
+        created += 1
+
+    if created:
+        await db.flush()
+        await sync_after_import(db, project_id)
+    await db.commit()
+    return {"created": created, "skipped": skipped, "errors": errors[:10]}
+
+
+async def sync_after_import(db: AsyncSession, project_id: str) -> None:
+    from app.services.budget_service import sync_project_budget_planned
+
+    await sync_project_budget_planned(db, project_id)

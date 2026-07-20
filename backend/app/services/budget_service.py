@@ -465,6 +465,33 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
         seg_fact = sum(bl.actual_amount for bl in lines if bl.category == cat)
         if seg_plan or seg_fact:
             segments[cat] = {"planned": round(seg_plan, 2), "actual": round(seg_fact, 2)}
+    # W71: ДО в сводке бюджета — связь смета ↔ change orders ↔ plan
+    from app.models.entities import ChangeOrder, ChangeOrderStatus
+
+    cos = list(
+        (
+            await db.execute(
+                select(ChangeOrder)
+                .where(ChangeOrder.project_id == project_id)
+                .order_by(ChangeOrder.created_at.desc())
+            )
+        ).scalars().all()
+    )
+    change_orders = [
+        {
+            "id": c.id,
+            "title": c.title,
+            "amount": round(float(c.amount or 0), 2),
+            "status": c.status.value if hasattr(c.status, "value") else str(c.status),
+            "description": (c.description or "")[:160],
+        }
+        for c in cos[:20]
+    ]
+    co_approved_sum = round(
+        sum(float(c.amount or 0) for c in cos if c.status == ChangeOrderStatus.approved),
+        2,
+    )
+
     return {
         "budget_planned": round(total_plan, 2),
         "budget_spent": round(actual, 2),
@@ -476,6 +503,8 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
         "risk": "high" if over_risk > total_plan * 0.05 else ("medium" if over_risk > 0 else "ok"),
         "segments": segments,
         "remaining": round(max(0, total_plan - actual), 2),
+        "change_orders": change_orders,
+        "change_orders_approved_sum": co_approved_sum,
     }
 
 

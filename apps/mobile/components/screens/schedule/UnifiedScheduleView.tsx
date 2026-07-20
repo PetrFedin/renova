@@ -1,4 +1,5 @@
-/** Единый календарь: компактный календарь + план работ */
+/** W71: канонический hub сроков (календарь + work-schedule + confirm/reject).
+ * Единый календарь: компактный календарь + план работ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';

@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.models.entities import Project
 from app.services import project_service as proj_svc
-from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff
+from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
 
@@ -54,6 +54,29 @@ async def create_line(project_id: str, body: LineCreate, user: User = Depends(ge
     await _require_estimate_editable(db, project_id)
     line = await add_line(db, project_id, body.model_dump())
     return {"ok": True, "id": line.id}
+
+
+class EstimateCsvImport(BaseModel):
+    csv_text: str = Field(min_length=1, max_length=500_000)
+
+
+@router.post("/import-csv")
+async def import_csv_lines(
+    project_id: str,
+    body: EstimateCsvImport,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W71: импорт сметы из CSV (Excel → CSV). Только исполнитель, смета не locked."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, "Импорт сметы — только исполнитель")
+    await require_project(db, project_id, user, write=True)
+    await _require_estimate_editable(db, project_id)
+    try:
+        result = await import_estimate_csv(db, project_id, body.csv_text)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return {"ok": True, **result}
 
 
 @router.get("/materials-stats")

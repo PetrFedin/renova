@@ -1,6 +1,6 @@
 /** Слой «Документы» — PDF / Excel / CSV сметы + переход в полный раздел документов */
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -30,6 +30,9 @@ export function EstimateDocumentsLayer({
   pathname: string;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [csvText, setCsvText] = useState('name,line_type,unit,quantity_planned,unit_price,room_name\nШтукатурка стен,work,м2,40,450,Гостиная\n');
+
   const pdfPath = `/api/v1/projects/${projectId}/estimate.pdf`;
 
   const rows: DocRow[] = [
@@ -58,6 +61,23 @@ export function EstimateDocumentsLayer({
       run: () => api.exportEstimateXlsx(userId, projectId),
     },
   ];
+
+  async function submitImport() {
+    setBusy('import-csv');
+    try {
+      const res = await api.importEstimateCsv(userId, projectId, csvText);
+      setImportOpen(false);
+      Alert.alert(
+        'Импорт сметы',
+        `Добавлено: ${res.created}. Пропущено: ${res.skipped}.` +
+          (res.errors?.length ? `\nОшибки: ${res.errors.join('; ')}` : ''),
+      );
+    } catch {
+      Alert.alert('Импорт', 'Не удалось импортировать CSV. Проверьте формат и что смета не зафиксирована.');
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function withBusy(id: string, fn: () => Promise<void>) {
     setBusy(id);
@@ -105,7 +125,7 @@ export function EstimateDocumentsLayer({
   return (
     <View style={s.wrap}>
       <Text style={s.intro}>
-        Экспорт текущей версии сметы. Полное досье, архив и GDPR — в разделе «Документы».
+        Экспорт и импорт сметы (CSV из Excel). Полное досье, 1С, банк, гарантия — в «Документы».
       </Text>
 
       {rows.map((row) => {
@@ -135,10 +155,46 @@ export function EstimateDocumentsLayer({
       })}
 
       <PrimaryButton
+        title="Импорт CSV в смету"
+        variant="outline"
+        onPress={() => setImportOpen(true)}
+        disabled={!!busy}
+      />
+
+      <PrimaryButton
         title="→ Все документы проекта"
         variant="outline"
         onPress={() => pushOsNav(documentsHref(pathname), pathname)}
       />
+
+      <Modal visible={importOpen} animationType="slide" transparent onRequestClose={() => setImportOpen(false)}>
+        <View style={s.modalBackdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.label}>Импорт сметы (CSV)</Text>
+            <Text style={s.desc}>
+              Колонки: name, line_type (work|material), unit, quantity_planned, unit_price, room_name
+            </Text>
+            <ScrollView style={{ maxHeight: 220, marginTop: 8 }}>
+              <TextInput
+                style={s.csvInput}
+                multiline
+                value={csvText}
+                onChangeText={setCsvText}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              <Pressable onPress={() => setImportOpen(false)} style={s.modalBtnGhost}>
+                <Text style={s.desc}>Отмена</Text>
+              </Pressable>
+              <Pressable onPress={submitImport} style={s.modalBtn} disabled={busy === 'import-csv'}>
+                <Text style={s.modalBtnText}>{busy === 'import-csv' ? '…' : 'Импортировать'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

@@ -68,29 +68,19 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
     project = await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
         raise HTTPException(403)
-    co = await co_svc.approve(db, order_id)
+    co, draft_meta = await co_svc.approve_with_sign_draft(
+        db, project_id=project_id, order_id=order_id, created_by=user.id
+    )
     if not co:
         raise HTTPException(404)
-    from app.models.project_documents import DocumentStatus, DocumentType
-    from app.services import project_document_service as docs_svc
-
-    draft = await docs_svc.create_document(
-        db,
-        project_id=project_id,
-        created_by=user.id,
-        title=f"Доп. работы: {co.title}",
-        document_type=DocumentType.contract.value,
-        notes=f"CO:{co.id}; сумма {co.amount:.0f} ₽; черновик для подписи",
-    )
-    draft.status = DocumentStatus.draft.value
-    await db.flush()
+    draft_id = (draft_meta or {}).get("id")
     await act.log_event(
         db,
         project_id=project_id,
         user_id=user.id,
         kind="DocumentDraftForSign",
         title=f"Подпишите доп. работы: {co.title}",
-        body=f"Документ {draft.id} · {co.amount:.0f} ₽",
+        body=f"Документ {draft_id} · {co.amount:.0f} ₽",
         link_path="/documents",
     )
     await act.log_event(
@@ -126,8 +116,7 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
             link_path="/documents",
             return_to="/(customer)/(tabs)/",
         )
-    await db.commit()
-    return {"ok": True, "status": co.status.value, "document_id": draft.id, "amount": co.amount, "title": co.title}
+    return {"ok": True, "status": co.status.value, "document_id": draft_id, "amount": co.amount, "title": co.title}
 
 
 @router.post("/{order_id}/reject")

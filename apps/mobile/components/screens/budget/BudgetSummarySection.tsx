@@ -97,7 +97,34 @@ export function BudgetSummarySection(props: Props) {
         </View>
       )}
 
+      {(summary?.change_orders?.length ?? 0) > 0 ? (
+        <View style={s.limitCard}>
+          <Text style={s.limitTitle}>Доп. работы (ДО)</Text>
+          <Text style={s.limitVal}>
+            {formatRub(summary?.change_orders_approved_sum ?? 0)}
+          </Text>
+          <Text style={s.dataHint}>
+            В плане бюджета · согласованные ДО. Черновик на подпись — в Документах.
+          </Text>
+          {(summary?.change_orders ?? []).slice(0, 4).map((co) => (
+            <Pressable
+              key={co.id}
+              onPress={() => router.push({ pathname: '/documents', params: { focus: 'co' } } as never)}
+              style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border }}
+            >
+              <Text style={{ fontWeight: '700', color: RenovaTheme.colors.text }}>
+                {co.title} · {formatRub(co.amount)}
+              </Text>
+              <Text style={s.dataHint}>
+                {co.status === 'approved' ? 'Согласовано' : co.status === 'pending' ? 'На согласовании' : co.status}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {bwVisible('summary_kpi') && (
+
         <>
           <OsWidgetGrid items={summaryWidgets} title="Сводка" returnTo={pathname} />
           <BudgetFactStatus
