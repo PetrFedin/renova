@@ -3,6 +3,8 @@ import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutCh
 import { usePathname, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
 import { pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
@@ -38,6 +40,7 @@ export function FloorPlanPanel({
   roomsCount?: number;
   onOpenRooms?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   const pathname = usePathname();
   const [plans, setPlans] = useState<FloorPlan[]>([]);
   const [floor, setFloor] = useState(1);
@@ -106,6 +109,10 @@ export function FloorPlanPanel({
         x_pct,
         y_pct,
         ...(photo_key ? { photo_key } : {}),
+      });
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
       });
       await load();
       setPunchMode(false);

@@ -133,6 +133,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
   const advancePurchase = async (id: string, status: string) => {
     await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
+    await syncProjectSideEffects({ user, project: activeProject });
     reload();
   };
 

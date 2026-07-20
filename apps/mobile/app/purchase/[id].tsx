@@ -5,6 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -58,7 +59,7 @@ export default function PurchaseDetailScreen() {
         {canWrite && next && user && activeProject && (
           <PrimaryButton
             title={next === 'ordered' ? 'Отметить заказ' : next === 'paid' ? 'Оплачено' : 'Доставлено'}
-            onPress={async () => { await api.updatePurchaseStatus(user.id, activeProject.id, purchase.id, next); reload(); }}
+            onPress={async () => { await api.updatePurchaseStatus(user.id, activeProject.id, purchase.id, next); await syncProjectSideEffects({ user, project: activeProject }); reload(); }}
           />
         )}
         {(purchase.ordered_at || purchase.delivered_at) && (

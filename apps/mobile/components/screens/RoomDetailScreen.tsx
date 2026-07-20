@@ -17,6 +17,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { roomSpentUnified } from '@/lib/domain/expenseAnalytics';
 import { calcRoomMetrics } from '@/lib/roomMetrics';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase } from '@/lib/api';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
@@ -70,6 +71,7 @@ export function RoomDetailScreen() {
     if (!user || !activeProject || !room || !isContractor) return;
     try {
       await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: !room.is_archived });
+      await syncProjectSideEffects({ user, project: activeProject });
       await loadProject(activeProject.id);
       await load();
     } catch (e: unknown) {
@@ -82,6 +84,7 @@ export function RoomDetailScreen() {
     if (!user || !activeProject || !room) return;
     try {
       await api.updateRoom(user.id, activeProject.id, room.id, body);
+      await syncProjectSideEffects({ user, project: activeProject });
       await loadProject(activeProject.id);
       await load();
     } catch (e: any) {

@@ -5,6 +5,8 @@ import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, type WorkOrder } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import {
   formatScheduleRange,
 } from '@/lib/formatScheduleDate';
@@ -38,6 +40,7 @@ export function WorkOrderDetailPanel({
   projectId,
   onUpdated,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const [notes, setNotes] = useState(wo.notes || '');
   const [saving, setSaving] = useState(false);
   const status = (wo.status in WORK_STATUS_LABEL ? wo.status : 'draft') as WorkOrderStatus;
@@ -46,6 +49,7 @@ export function WorkOrderDetailPanel({
     setSaving(true);
     try {
       await api.patchWorkOrder(userId, projectId, wo.id, { notes: notes.trim() || null });
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onUpdated();
       Alert.alert('Сохранено', 'Описание работы обновлено');
     } catch {

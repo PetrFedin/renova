@@ -116,6 +116,11 @@ export function MaterialPickDetailSheet({
               variant="outline"
               onPress={async () => {
                 await api.updatePurchaseStatus(userId, projectId, deliveredPurchase.id, cancelStatus);
+                await syncProjectSideEffects({
+                  user: user ?? ({ id: userId } as any),
+                  project: activeProject ?? ({ id: projectId } as any),
+                  role,
+                });
                 onChanged?.();
                 onClose();
               }}

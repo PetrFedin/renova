@@ -6,6 +6,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
 import { QrCodeImage } from '@/components/renova/QrCodeImage';
@@ -20,7 +21,7 @@ type RoleId = (typeof ROLES)[number]['id'];
 
 export default function TeamQrScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
-  const { user } = useRenova();
+  const { activeProject, user } = useRenova();
   const [perm, req] = useCameraPermissions();
   const [role, setRole] = useState<RoleId>('member');
   const [link, setLink] = useState('');
@@ -113,6 +114,7 @@ export default function TeamQrScreen() {
               if (!m || !user) return;
               setScan(false);
               await api.joinTeam(user.id, m[1]);
+              await syncProjectSideEffects({ user, project: activeProject });
               Alert.alert('Готово', 'Вы в бригаде');
               router.back();
             }}

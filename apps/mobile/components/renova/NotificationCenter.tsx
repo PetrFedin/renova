@@ -3,6 +3,8 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, AppNotification } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { resolveNotificationLink, resolvePushLink, changeOrderEstimateRoute } from '@/lib/pushLinks';
 import type { OsRole } from '@/constants/osSections';
 import { SnoozeUntilPicker } from '@/components/renova/SnoozeUntilPicker';
@@ -19,24 +21,25 @@ export function NotificationCenter({
   /** Без заголовка — когда секция уже озаглавлена в профиле */
   hideHeader?: boolean;
 }) {
+  const { user, activeProject } = useRenova();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [onlyUnread, setOnlyUnread] = useState(false);
   useEffect(() => { api.listNotifications(userId).then(setItems).catch(() => {}); }, [userId]);
   const list = items.filter(n => !onlyUnread || !n.read).slice(0, compact ? 3 : 15);
   const unread = items.filter(n => !n.read).length;
-  const snooze = async (e: any, id: string, h: number) => { e.stopPropagation?.(); await api.snoozeNotification(userId, id, h); setItems(await api.listNotifications(userId)); };
+  const snooze = async (e: any, id: string, h: number) => { e.stopPropagation?.(); await api.snoozeNotification(userId, id, h); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); setItems(await api.listNotifications(userId)); };
   return (
     <View>
       {!hideHeader ? (
         <View style={s.row}>
           <Text style={s.head}>Уведомления {unread ? `(${unread})` : ''}</Text>
-          <Pressable onPress={async () => { await api.markAllNotifications(userId); setItems(await api.listNotifications(userId)); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
+          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); setItems(await api.listNotifications(userId)); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
           <Pressable onPress={() => setOnlyUnread(u => !u)}><Text style={s.filter}>{onlyUnread ? 'Все' : 'Непрочит.'}</Text></Pressable>
         </View>
       ) : (
         <View style={s.row}>
           <Text style={s.subHead}>Лента {unread ? `· ${unread} непрочит.` : ''}</Text>
-          <Pressable onPress={async () => { await api.markAllNotifications(userId); setItems(await api.listNotifications(userId)); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
+          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); setItems(await api.listNotifications(userId)); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
           <Pressable onPress={() => setOnlyUnread(u => !u)}><Text style={s.filter}>{onlyUnread ? 'Все' : 'Непрочит.'}</Text></Pressable>
         </View>
       )}
@@ -44,6 +47,7 @@ export function NotificationCenter({
       {list.map(n => (
         <Pressable key={n.id} style={[s.item, !n.read && s.unread]} onPress={async () => {
           await api.readNotification(userId, n.id);
+          await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
           const back = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
           if (n.notification_type === 'change_order') {
             const target = changeOrderEstimateRoute(role, back);

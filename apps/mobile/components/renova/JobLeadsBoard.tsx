@@ -6,11 +6,12 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { router } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 type L = { id: string; title: string; address?: string; area_sqm?: number; renovation_type: string; budget_hint?: number; pre_estimate?: number; status: string };
 
 export function JobLeadsBoard({ userId, role }: { userId: string; role: string }) {
-  const { loadProject, refreshProjects } = useRenova();
+  const { user, activeProject, loadProject, refreshProjects } = useRenova();
   const [items, setItems] = useState<L[]>([]);
   const [quote, setQuote] = useState<Record<string, string>>({});
   const load = () => api.listJobLeads(userId).then(setItems).catch(() => {});
@@ -30,17 +31,17 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
           <Text style={s.sub}>{l.address} · {l.area_sqm} м² · {formatRub(l.budget_hint || 0)}</Text>
           {l.pre_estimate && <Text style={s.q}>Оценка: {formatRub(l.pre_estimate)}</Text>}
           <LeadChat userId={userId} leadId={l.id} />
-          {role==='customer'&&l.status==='open'&&<PrimaryButton title="Авто-исполнитель" variant="outline" onPress={async()=>{await api.autoAssignLead(userId,l.id);load();}} />}
+          {role==='customer'&&l.status==='open'&&<PrimaryButton title="Авто-исполнитель" variant="outline" onPress={async()=>{await api.autoAssignLead(userId,l.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); load();}} />}
           {l.status==='quoted' && <PrimaryButton title="→ Проект" variant="outline" onPress={async()=>{ if(role==='contractor'){router.push({pathname:`/contractor-wizard/${l.id}`,params:{returnTo:'/job-leads'}} as any);return;} const r=await api.convertJobLead(userId,l.id); await refreshProjects(); if(r?.project_id) { await loadProject(r.project_id); router.replace(role === 'contractor' ? '/(contractor)/(tabs)/' : '/(customer)/(tabs)/'); } load(); }} />}
           {role === 'contractor' && l.status === 'open' && (
             <View style={s.qrow}>
               <TextInput style={s.inp} placeholder="₽" keyboardType="numeric" value={quote[l.id] || ''} onChangeText={v => setQuote({ ...quote, [l.id]: v })} />
-              <PrimaryButton title="КП" onPress={async () => { await api.quoteJobLead(userId, l.id, parseFloat(quote[l.id] || '0')); load(); }} />
+              <PrimaryButton title="КП" onPress={async () => { await api.quoteJobLead(userId, l.id, parseFloat(quote[l.id] || '0')); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); load(); }} />
             </View>
           )}
         </View>
       ))}
-      {role === 'customer' && <PrimaryButton title="+ Заявка" variant="outline" onPress={async () => { await api.createJobLead(userId, { title: 'Ремонт квартиры', area_sqm: 55, renovation_type: 'capital', budget_hint: 800000 }); load(); }} />}
+      {role === 'customer' && <PrimaryButton title="+ Заявка" variant="outline" onPress={async () => { await api.createJobLead(userId, { title: 'Ремонт квартиры', area_sqm: 55, renovation_type: 'capital', budget_hint: 800000 }); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); load(); }} />}
     </View>
   );
 }
