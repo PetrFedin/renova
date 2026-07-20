@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { readIcalFile } from '@/lib/mediaUpload';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 type Action = {
   id: string;
@@ -84,7 +85,12 @@ export function ScheduleIconToolbar({
       });
       Alert.alert('Календарь', `Обновлено этапов: ${(r as { updated_stages?: number }).updated_stages ?? '—'}`);
       onImported?.();
-    } catch {
+    } catch (e) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Импорт календаря');
+        onImported?.();
+        return;
+      }
       Alert.alert('Календарь', 'Не удалось импортировать');
     } finally {
       setBusy(false);

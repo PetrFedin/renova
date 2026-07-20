@@ -1,11 +1,12 @@
 /** Верх экрана этапа: статус, главное действие, краткий прогресс */
 import { View, Text, StyleSheet, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { api, type StageDetail, type WorkSnapshot, ApiError } from '@/lib/api';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   stage: StageDetail;
@@ -34,8 +35,11 @@ export function StageDetailHero({
   onProjectReload,
   onSubmitStage,
 }: Props) {
-  const router = useRouter();
+  const role: OsRole = isContractor ? 'contractor' : 'customer';
+  const stageReturn = `/stage/${stage.id}`;
   const statusLabel = STAGE_STATUS_LABEL[stage.status] || stage.status;
+
+  const openDocs = () => pushOsNav('/documents', stageReturn, role);
 
   return (
     <View style={s.box}>
@@ -73,7 +77,7 @@ export function StageDetailHero({
             title="К документам"
             variant="outline"
             compact
-            onPress={() => router.push({ pathname: '/documents', params: { returnTo: `/stage/${stage.id}` } } as never)}
+            onPress={openDocs}
           />
         </View>
       ) : null}
@@ -105,7 +109,7 @@ export function StageDetailHero({
                     [d.message || 'Подпишите договор перед началом работ', titles ? `Документы: ${titles}` : ''].filter(Boolean).join('\n'),
                     [
                       { text: 'Отмена', style: 'cancel' },
-                      { text: 'К документам', onPress: () => router.push({ pathname: '/documents', params: { returnTo: `/stage/${stage.id}` } } as never) },
+                      { text: 'К документам', onPress: openDocs },
                     ],
                   );
                 } else {

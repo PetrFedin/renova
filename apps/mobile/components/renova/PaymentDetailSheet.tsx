@@ -5,7 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
 import { InfoBanner } from '@/components/ui/InfoBanner';
@@ -138,7 +138,7 @@ export function PaymentDetailSheet({
 
   const openReceipt = () => {
     setReceiptAttached(true);
-    pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname);
+    pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname, role);
     Alert.alert('Чек', 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить».');
   };
 
@@ -214,8 +214,7 @@ export function PaymentDetailSheet({
       pushStageDetail(stage.id, pathname);
       return;
     }
-    const acceptanceHref = role === 'contractor' ? '/(contractor)/(tabs)/repair?tab=control' : '/(customer)/(tabs)/repair?tab=control';
-    router.push({ pathname: acceptanceHref, params: { returnTo: pathname } } as never);
+    pushOsNav(repairTabRoute(role, 'control'), pathname, role);
   };
 
   const payWithCard = async () => {

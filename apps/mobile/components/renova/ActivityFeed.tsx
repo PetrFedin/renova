@@ -1,13 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { api, ActivityItem } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { GlobalFilterBar } from '@/components/renova/GlobalFilterBar';
-import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
-import { resolvePushLink } from '@/lib/pushLinks';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
 
@@ -52,13 +50,8 @@ export function ActivityFeed({
 
   const openItem = (it: ActivityItem) => {
     if (!it.link_path) return;
-    const target = resolvePushLink(it.link_path, back, role);
-    if (!target) return;
-    if (target.params && Object.keys(target.params).length) {
-      router.push({ pathname: target.pathname, params: target.params } as any);
-    } else {
-      router.push(target.pathname as any);
-    }
+    // W116: единый SoT — pushOsNav / resolvePushLink (не сырой router)
+    pushOsNav(it.link_path, back, role);
   };
 
   return (
@@ -74,7 +67,7 @@ export function ActivityFeed({
         </Pressable>
       ))}
       {compact && (
-        <Pressable onPress={() => router.push({ pathname: '/activity', params: { returnTo: back } } as any)}>
+        <Pressable onPress={() => pushOsNav('/activity', back, role)}>
           <Text style={s.more}>Весь архив →</Text>
         </Pressable>
       )}

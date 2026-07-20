@@ -167,8 +167,8 @@ export function ContractorEstimateView() {
 
         <Text style={styles.meta}>{DOCUMENTS_MENU_HINT}</Text>
         <View style={styles.links}>
-          <PrimaryButton title="→ Бюджет" variant="outline" onPress={() => pushOsNav(budgetTabRoute('contractor', 'summary'), pathname)} />
-          <PrimaryButton title="→ Материалы" variant="outline" onPress={() => pushOsNav(repairTabRoute('contractor', 'materials'), pathname)} />
+          <PrimaryButton title="→ Бюджет" variant="outline" onPress={() => pushOsNav(budgetTabRoute('contractor', 'summary'), pathname, 'contractor')} />
+          <PrimaryButton title="→ Материалы" variant="outline" onPress={() => pushOsNav(repairTabRoute('contractor', 'materials'), pathname, 'contractor')} />
         </View>
 
         <Text style={styles.section}>Изменение сметы (доп. работа)</Text>

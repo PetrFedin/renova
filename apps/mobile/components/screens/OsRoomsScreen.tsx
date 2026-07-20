@@ -90,14 +90,14 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
             title="→ Подключить исполнителя"
             variant="outline"
            
-            onPress={() => pushOsNav(objectTabHref('customer', 'profile'), nav.from)}
+            onPress={() => pushOsNav(objectTabHref('customer', 'profile'), nav.from, 'customer')}
           />
         ) : (
           <PrimaryButton
             title="→ Ход работ и этапы"
             variant="outline"
            
-            onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from)}
+            onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from, 'customer')}
           />
         )}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
@@ -310,7 +310,7 @@ function RoomRequestCard({ room, onSubmit, requestOnly }: { room: Room; onSubmit
     <View style={styles.card}>
       <Text style={styles.name}>{room.name} ›</Text>
       <Text style={styles.meta}>{roomTypeLabel(room.room_type)}{(room.floor_level ?? 1) > 1 ? ` · ${room.floor_level} эт.` : ''} · {room.floor_sq_m} м² · розетки {room.outlets_count}</Text>
-      <Pressable onPress={() => pushOsNav(budgetTabRoute('customer', 'expenses', { roomId: room.id }), pathname)}>
+      <Pressable onPress={() => pushOsNav(budgetTabRoute('customer', 'expenses', { roomId: room.id }), pathname, 'customer')}>
         <Text style={styles.link}>→ Расходы по комнате</Text>
       </Pressable>
       {canWrite && requestOnly && (
@@ -351,7 +351,7 @@ function RoomForm({ room, onSave, onOpen, canWrite, archived, onArchive }: {
       <DimRow label="Выключатели" hint={ROOM_FORM_HINTS.switches} value={switches} set={setSwitches} />
       <DimRow label="Сантехника" hint={ROOM_FORM_HINTS.plumbing} value={plumbing} set={setPlumbing} />
       <PrimaryButton title="Карточка комнаты" variant="outline" onPress={onOpen} />
-      <Pressable onPress={() => pushOsNav(budgetTabRoute('contractor', 'expenses', { roomId: room.id }), pathname)}>
+      <Pressable onPress={() => pushOsNav(budgetTabRoute('contractor', 'expenses', { roomId: room.id }), pathname, 'contractor')}>
         <Text style={styles.link}>→ Расходы по комнате</Text>
       </Pressable>
       <PrimaryButton disabled={!canWrite} title="Сохранить и пересчитать смету" onPress={() => onSave(room, { length_m: +length, width_m: +width, outlets_count: +outlets, switches_count: +switches, plumbing_points: +plumbing })} />

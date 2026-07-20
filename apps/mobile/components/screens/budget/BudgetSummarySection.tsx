@@ -20,6 +20,7 @@ import { parseBudgetFocus, parseBudgetPeriod } from '@/constants/budgetPeriod';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 import type { OsRole } from '@/constants/osSections';
 import { budgetTabRoute } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 type Props = {
   userId: string;
   projectId: string;
@@ -109,7 +110,7 @@ export function BudgetSummarySection(props: Props) {
           {(summary?.change_orders ?? []).slice(0, 4).map((co) => (
             <Pressable
               key={co.id}
-              onPress={() => router.push({ pathname: '/documents', params: { focus: 'co' } } as never)}
+              onPress={() => pushOsNav({ pathname: '/documents', params: { focus: 'co' } }, pathname, role)}
               style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border }}
             >
               <Text style={{ fontWeight: '700', color: RenovaTheme.colors.text }}>
@@ -171,6 +172,7 @@ export function BudgetSummarySection(props: Props) {
             rooms={rooms}
             picks={picks}
             returnTo={pathname}
+            role={role}
           />
           <RepairControlSummary
             budgetPlanned={customerBudget ?? summary?.budget_planned ?? figures.planned}

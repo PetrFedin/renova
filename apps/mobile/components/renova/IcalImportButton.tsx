@@ -7,6 +7,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { readIcalFile } from '@/lib/mediaUpload';
 import { t } from '@/lib/i18n';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 export function IcalImportButton({
   userId,
@@ -37,7 +38,12 @@ export function IcalImportButton({
       });
       Alert.alert('Календарь', `Обновлено этапов: ${(r as { updated_stages?: number }).updated_stages ?? '—'}`);
       onImported?.();
-    } catch {
+    } catch (e) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Импорт календаря');
+        onImported?.();
+        return;
+      }
       Alert.alert('Календарь', 'Не удалось импортировать календарь');
     } finally {
       setBusy(false);

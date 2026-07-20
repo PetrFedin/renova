@@ -13,6 +13,9 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { apiErrorMessage } from '@/lib/formatPhone';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
+import { repairTabHref } from '@/constants/osSections';
 
 type AcceptanceState = {
   acceptances: WorkAcceptance[];
@@ -87,6 +90,7 @@ function AcceptanceCard({
   onReturn: (acceptance: WorkAcceptance) => void;
 }) {
   const isCustomer = role === 'customer';
+  const osRole: OsRole = isCustomer ? 'customer' : 'contractor';
   const acceptanceClosedForRework = acceptance?.status === 'returned' || acceptance?.status === 'rejected';
   const canRequest = !readOnly && !isCustomer && ['active', 'review'].includes(stage.status) && (!acceptance || acceptanceClosedForRework);
   const canDecide = !readOnly && isCustomer && acceptance && ['requested', 'in_review'].includes(acceptance.status);
@@ -125,7 +129,18 @@ function AcceptanceCard({
       )}
 
       <View style={styles.actions}>
-        <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${stage.id}?returnTo=${encodeURIComponent('/(customer)/(tabs)/repair?tab=control')}` as never)} />
+        <PrimaryButton
+          title="Этап"
+          variant="outline"
+          compact
+          onPress={() =>
+            pushOsNav(
+              { pathname: '/stage/[id]', params: { id: stage.id } },
+              repairTabHref(osRole, 'control'),
+              osRole,
+            )
+          }
+        />
         {canRequest ? <PrimaryButton title={acceptanceClosedForRework ? 'Повторно на приёмку' : 'Запросить приёмку'} compact onPress={() => onRequest(stage)} loading={actingId === stage.id} disabled={Boolean(actingId)} /> : null}
         {canDecide ? <PrimaryButton title="Принять этап" compact onPress={() => onAccept(acceptance)} loading={actingId === acceptance.id} disabled={Boolean(actingId)} /> : null}
         {canDecide ? <PrimaryButton title="На доработку" variant="outline" compact onPress={() => onReturn(acceptance)} loading={actingId === acceptance.id} disabled={Boolean(actingId)} /> : null}

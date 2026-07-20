@@ -1,6 +1,5 @@
 /** Слой «Изменения» — доп. работы и согласование заказчиком */
 import { View, Text, StyleSheet, Alert } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
@@ -10,6 +9,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { budgetTabRoute } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 type Props = {
   userId: string;
@@ -32,19 +32,17 @@ export function EstimateChangesLayer({
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   const notifyBudgetDelta = (order: ChangeOrder, documentId?: string) => {
-    const budget = budgetTabRoute(role, 'summary');
     const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [
       { text: 'OK', style: 'cancel' },
       {
         text: 'Открыть бюджет',
-        onPress: () => router.push({ pathname: budget.pathname, params: budget.params } as never),
+        onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
       },
     ];
     if (documentId) {
       buttons.push({
         text: 'Подписать',
-        onPress: () =>
-          router.push({ pathname: '/documents', params: { returnTo: '/(customer)/(tabs)/object' } } as never),
+        onPress: () => pushOsNav('/documents', '/(customer)/(tabs)/object', role),
       });
     }
     Alert.alert(
