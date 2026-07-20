@@ -5,6 +5,7 @@ import { usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { useNavFromHere } from '@/lib/navigation';
 import { FloorSectionHeader, groupRoomsByFloor } from '@/components/renova/RoomFloorGroups';
@@ -206,6 +207,7 @@ function ContractorRoomsBody() {
               <PrimaryButton disabled={!canWrite} title="Согласовать" onPress={async () => {
                 try {
                   await api.approveRoomChange(user.id, activeProject.id, r.id);
+                  await syncProjectSideEffects({ user, project: activeProject });
                   await reloadRequests();
                   await loadProject(activeProject.id);
                   await reloadRooms();

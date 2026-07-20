@@ -4,6 +4,8 @@ import { router, usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, type MaterialPick, type Room, type Stage } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { OsRole } from '@/constants/osSections';
 import { MATERIAL_PICK_STATUS_LABEL } from '@/constants/labels';
 import { pushRoomDetail, pushStageDetail } from '@/lib/navigation';
@@ -34,6 +36,7 @@ export function MaterialPickDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   if (!pick) return null;
 
   const pathname = usePathname();
@@ -91,6 +94,11 @@ export function MaterialPickDetailSheet({
           {!readOnly && isCustomer && pick.status === 'pending' && (
             <PrimaryButton title="Согласовать" onPress={async () => {
               await api.approveMaterialPick(userId, projectId, pick.id);
+              await syncProjectSideEffects({
+                user: user ?? ({ id: userId } as any),
+                project: activeProject ?? ({ id: projectId } as any),
+                role,
+              });
               onChanged?.();
               onClose();
             }} />

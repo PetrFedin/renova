@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { ScrollView, StyleSheet } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, ChangeOrder, MaterialStats } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -108,6 +109,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
             try {
               await api.lockEstimate(user.id, activeProject.id);
               await loadProject(activeProject.id);
+              await syncProjectSideEffects({ user, project: activeProject });
             } finally {
               setLocking(false);
             }
@@ -118,6 +120,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
             try {
               await api.rejectEstimateLock(user.id, activeProject.id, 'Нужна правка сметы');
               await loadProject(activeProject.id);
+              await syncProjectSideEffects({ user, project: activeProject });
             } finally {
               setClearingProposal(false);
             }

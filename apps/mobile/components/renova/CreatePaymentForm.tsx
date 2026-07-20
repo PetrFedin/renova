@@ -5,6 +5,8 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StagePickerChips } from '@/components/renova/StagePickerChips';
 import { api, type ProjectDetail } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 /** Backend: contractor может создавать только stage/material (payments.py). */
 const PAY_TYPES = [
@@ -21,6 +23,7 @@ export function CreatePaymentForm({
   project: ProjectDetail;
   onSaved?: () => void;
 }) {
+  const { user } = useRenova();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [paymentType, setPaymentType] = useState<(typeof PAY_TYPES)[number]['id']>('stage');
@@ -52,6 +55,7 @@ export function CreatePaymentForm({
       setTitle('');
       setAmount('');
       setNotes('');
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
       onSaved?.();
       Alert.alert('Счёт создан', 'Заказчику отправлено уведомление об оплате');
     } catch (e: unknown) {

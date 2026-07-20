@@ -342,6 +342,7 @@ export function ChatThreadView({
                           payment_type: 'stage',
                         });
                         await reload();
+                        await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
                         Alert.alert('Счёт создан', 'Оплата учитывается в бюджете объекта.', [
                           { text: 'OK' },
                           {

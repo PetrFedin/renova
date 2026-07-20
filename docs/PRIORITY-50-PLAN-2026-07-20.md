@@ -144,6 +144,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W80 | chatUnread sync: Ещё ↔ Сообщения | **закрыто** `develop` |
 | W81 | project switch + schedule↔home/inbox | **закрыто** `develop` (без оплат) |
 | W82 | golden-path mutations → syncProjectSideEffects (inbox/home) | **закрыто** `develop` (без оплат) |
+| W83 | estimate lock + payments + approvals → syncProjectSideEffects | **закрыто** `develop` (без live YuKassa) |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

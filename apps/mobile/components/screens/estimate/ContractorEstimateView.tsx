@@ -4,6 +4,7 @@ import { ScrollView, Text, View, StyleSheet, TextInput, Alert } from 'react-nati
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { AddEstimateLineForm } from '@/components/renova/AddEstimateLineForm';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -98,6 +99,7 @@ export function ContractorEstimateView() {
                 try {
                   await api.proposeEstimateLock(user.id, activeProject.id);
                   await loadProject(activeProject.id);
+                  await syncProjectSideEffects({ user, project: activeProject });
                   Alert.alert('Отправлено', 'Заказчик получит уведомление — фиксацию сметы подтверждает он.');
                 } catch (e: unknown) {
                   Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отправки сметы');
@@ -115,6 +117,7 @@ export function ContractorEstimateView() {
                   try {
                     await api.withdrawEstimateLock(user.id, activeProject.id);
                     await loadProject(activeProject.id);
+                    await syncProjectSideEffects({ user, project: activeProject });
                     Alert.alert('Отозвано', 'Можно править смету и отправить снова.');
                   } catch (e: unknown) {
                     Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');

@@ -11,6 +11,8 @@ import { formMetaText } from '@/constants/formTypography';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, ApiError, type Payment, type Stage } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { OsRole } from '@/constants/osSections';
 import { pushStageDetail } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -50,6 +52,7 @@ export function PaymentDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   const pathname = usePathname();
   const [step, setStep] = useState<PayStep>('info');
   const [transferAck, setTransferAck] = useState(false);
@@ -227,6 +230,11 @@ export function PaymentDetailSheet({
     try {
       const pay = await api.checkoutYookassa(userId, projectId, payment.id);
       if (pay.demo) {
+        await syncProjectSideEffects({
+          user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
+          project: activeProject ?? ({ id: projectId } as any),
+          role,
+        });
         onChanged?.();
         onClose();
         Alert.alert('Оплата (demo)', pay.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.');
@@ -274,6 +282,11 @@ export function PaymentDetailSheet({
     try {
       await api.confirmPayment(userId, projectId, payment.id);
       await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(() => {});
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+        role,
+      });
       onChanged?.();
       onClose();
       Alert.alert('Оплата подтверждена', 'Исполнитель увидит статус в бюджете и во «Входящих».');

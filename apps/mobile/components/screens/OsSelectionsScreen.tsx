@@ -6,6 +6,7 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api, type SelectionItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
@@ -165,6 +166,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
             <View style={s.actions}>
               <PrimaryButton title="Согласовать" compact onPress={async () => {
                 await api.approveSelection(user.id, activeProject.id, item.id);
+                await syncProjectSideEffects({ user, project: activeProject });
                 reload();
                 Alert.alert(
                   'Согласовано',
