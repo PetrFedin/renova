@@ -9,6 +9,11 @@ export function offlineJobLabel(j: OfflineJob): string {
   if (p.includes('/rooms/') && j.method === 'PATCH') return 'Изменение комнаты';
   if (p.includes('/receipts/manual')) return 'Расход без чека';
   if (p.includes('/receipts')) return 'Чек';
+  if (p.includes('/work-acceptances') && p.includes('/return')) return 'Возврат приёмки';
+  if (p.includes('/work-acceptances') && p.includes('/accept')) return 'Решение по приёмке';
+  if (p.includes('/work-acceptances')) return 'Запрос приёмки';
+  if (p.includes('/warranty-claims')) return 'Гарантийное обращение';
+  if (p.includes('/escalate')) return 'Эскалация спора';
   if (p.includes('/submit')) return 'Сдача этапа';
   if (p.includes('/reject')) return 'Отклонение этапа';
   if (p.includes('/accept')) return 'Приёмка этапа';

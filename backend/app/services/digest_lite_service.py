@@ -42,6 +42,14 @@ def build_rule_based_digest(project_name: str, weekly: dict[str, Any]) -> str:
         lines.append(f"Открытых замечаний: {issues}{crit}.")
     else:
         lines.append("Открытых замечаний нет.")
+    w_open = weekly.get("warranty_open") or 0
+    w_over = weekly.get("warranty_overdue") or 0
+    if w_open:
+        over = f", просрочено {w_over}" if w_over else ""
+        lines.append(f"Гарантийных обращений: {w_open}{over}.")
+    pend_acc = weekly.get("pending_acceptances") or 0
+    if pend_acc:
+        lines.append(f"Ждут приёмки: {pend_acc}.")
     if highlights:
         lines.append("События: " + "; ".join(highlights) + ".")
     lines.append("Подробности — KPI PDF и раздел «Отчёты».")
@@ -85,5 +93,8 @@ async def compose_weekly_digest(
             "stages_done": (weekly or {}).get("stages_done"),
             "stages_total": (weekly or {}).get("stages_total"),
             "open_issues_count": (weekly or {}).get("open_issues_count"),
+            "warranty_open": (weekly or {}).get("warranty_open"),
+            "warranty_overdue": (weekly or {}).get("warranty_overdue"),
+            "pending_acceptances": (weekly or {}).get("pending_acceptances"),
         },
     }

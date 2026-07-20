@@ -270,7 +270,15 @@ async def portal_snapshot(
         "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
         "can_confirm_schedule": user.id == p.customer_id and user.role == UserRole.customer and not read_only,
         "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
-        "pending_draft_documents": [d for d in canonical if d.get("status") == "draft"],
+        # W75: черновик на подпись — без уже подписанных (webhook → signed_at)
+        "pending_draft_documents": [
+            d for d in canonical
+            if d.get("status") == "draft"
+            and not any(
+                (s.get("status") == "signed" and s.get("signed_at"))
+                for s in ((d.get("meta") or {}).get("signatures") or [])
+            )
+        ],
     }
 
 class PortalAcceptIn(BaseModel):

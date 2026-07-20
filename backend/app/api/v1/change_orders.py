@@ -116,7 +116,7 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
             link_path="/documents",
             return_to="/(customer)/(tabs)/",
         )
-    return {"ok": True, "status": co.status.value, "document_id": draft_id, "amount": co.amount, "title": co.title}
+    return {"ok": True, "status": co.status.value, "document_id": draft_id, "amount": co.amount, "title": co.title, "schedule_synced": bool((draft_meta or {}).get("schedule_synced"))}
 
 
 @router.post("/{order_id}/reject")

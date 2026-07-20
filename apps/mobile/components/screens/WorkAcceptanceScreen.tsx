@@ -271,9 +271,22 @@ export function WorkAcceptanceScreen() {
         <Pressable onPress={() => router.back()} hitSlop={12}><Text style={styles.back}>‹ Назад</Text></Pressable>
         <Text style={styles.title}>Приёмка работ</Text>
         <Text style={styles.subtitle}>Запрос, проверка, принятие этапов и возврат на доработку.</Text>
+        {awaiting.length > 0 ? (
+          <View style={[styles.badge, { borderColor: RenovaTheme.colors.warning, alignSelf: 'flex-start', marginTop: 8 }]}>
+            <Text style={[styles.badgeText, { color: RenovaTheme.colors.warning }]}>
+              Ждут решения: {awaiting.length}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
-      {!readOnly ? <OfflineSyncStatus compact /> : null}
+      {!readOnly ? (
+        <OfflineSyncStatus
+          compact
+          pathIncludes={['/work-acceptances']}
+          label="Приёмка"
+        />
+      ) : null}
 
       {readOnly ? (
         <View style={styles.noteCard}><Text style={styles.noteText}>Режим просмотра: решения по приёмке недоступны.</Text></View>

@@ -108,6 +108,26 @@ async def _side_effects_after_external_sign(
         )
 
 
+
+async def _signature_webhook_payload(db, sig, *, provider: str, duplicate: bool) -> dict:
+    from app.models.project_documents import ProjectDocument
+    doc = await db.get(ProjectDocument, sig.document_id) if sig else None
+    st = None
+    if doc is not None:
+        st = doc.status.value if hasattr(doc.status, "value") else str(doc.status)
+    return {
+        "ok": True,
+        "duplicate": duplicate,
+        "signature_id": sig.id,
+        "status": sig.status,
+        "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
+        "provider": provider,
+        "external_id": sig.provider_external_id,
+        "document_id": sig.document_id,
+        "document_status": st,
+    }
+
+
 @router.get("/health")
 async def esign_health(_user: User = Depends(get_current_user)):
     """P3-W11: staging probe — kontur mode + webhook URLs для DevOps."""
@@ -173,15 +193,9 @@ async def kontur_webhook(
     if status == "signed" and not already_signed:
         await _side_effects_after_external_sign(db, sig=sig, provider="kontur")
     await db.commit()
-    return {
-        "ok": True,
-        "duplicate": already_signed and status == "signed",
-        "signature_id": sig.id,
-        "status": sig.status,
-        "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
-        "provider": "kontur",
-        "external_id": sig.provider_external_id,
-    }
+    return await _signature_webhook_payload(
+        db, sig, provider="kontur", duplicate=already_signed and status == "signed"
+    )
 
 
 @router.post("/webhooks/goskey")
@@ -215,15 +229,9 @@ async def goskey_webhook(
     if status == "signed" and not already:
         await _side_effects_after_external_sign(db, sig=sig, provider="goskey")
     await db.commit()
-    return {
-        "ok": True,
-        "duplicate": already and status == "signed",
-        "signature_id": sig.id,
-        "status": sig.status,
-        "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
-        "provider": "goskey",
-        "external_id": sig.provider_external_id,
-    }
+    return await _signature_webhook_payload(
+        db, sig, provider="goskey", duplicate=already and status == "signed"
+    )
 
 @router.post("/dev/kontur/simulate")
 async def dev_kontur_simulate(

@@ -58,9 +58,36 @@ async def approve_with_sign_draft(
         notes=f"CO:{co.id}; сумма {co.amount:.0f} ₽; черновик для подписи",
     )
     draft.status = DocumentStatus.draft.value
+    await db.flush()
+    # W75: после ДО — синхронизировать активный план-график с этапами/суммами
+    schedule_synced = False
+    try:
+        from sqlalchemy import select
+        from app.models.work_schedule import ProjectWorkSchedule, WorkScheduleStatus
+        from app.services.project_work_schedule_service import sync_items_from_stages
+
+        schedule = (
+            await db.execute(
+                select(ProjectWorkSchedule)
+                .where(ProjectWorkSchedule.project_id == project_id)
+                .where(ProjectWorkSchedule.status != WorkScheduleStatus.archived)
+                .order_by(ProjectWorkSchedule.created_at.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if schedule:
+            await sync_items_from_stages(db, schedule)
+            schedule_synced = True
+    except Exception:
+        schedule_synced = False
     await db.commit()
     await db.refresh(draft)
-    return co, {"id": draft.id, "title": draft.title, "status": draft.status}
+    return co, {
+        "id": draft.id,
+        "title": draft.title,
+        "status": draft.status,
+        "schedule_synced": schedule_synced,
+    }
 
 
 async def reject(db: AsyncSession, order_id: str) -> ChangeOrder | None:

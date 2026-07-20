@@ -186,6 +186,7 @@ async def approve_item(project_id: str, item_id: str, body: ApproveIn, user: Use
             "document_id": draft_id,
             "amount": c.amount,
             "budget_updated": True,
+            "schedule_synced": bool((draft_meta or {}).get("schedule_synced")),
         }
     elif body.type == "room_change":
         r = await db.get(RoomChangeRequest, item_id)
