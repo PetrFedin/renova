@@ -57,3 +57,17 @@ export async function syncProjectSideEffects(opts: SyncOpts): Promise<void> {
   }
   notifyProjectDataChanged();
 }
+
+/**
+ * W87: выполнить мутацию и сразу синхронизировать inbox/home.
+ * Канон для новых callers — оборачивать action, а не дублировать sync вручную.
+ */
+export async function runWithProjectSideEffects<T>(
+  opts: SyncOpts,
+  action: () => Promise<T>,
+): Promise<T> {
+  const result = await action();
+  await syncProjectSideEffects(opts);
+  return result;
+}
+

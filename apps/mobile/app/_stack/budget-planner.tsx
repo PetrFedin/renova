@@ -6,6 +6,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { BudgetPlannerPanel } from '@/components/renova/BudgetPlannerPanel';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { calcRoomMetrics } from '@/lib/calc-engine';
 import { api } from '@/lib/api';
@@ -47,6 +48,7 @@ export default function BudgetPlannerScreen() {
             setApplying(true);
             try {
               await api.patchProject(user.id, activeProject.id, { budget_planned: Math.round(estimate.grand_total) });
+              await syncProjectSideEffects({ user, project: activeProject });
               await loadProject(activeProject.id);
               Alert.alert('Готово', 'План проекта обновлён. Смету по работам согласуйте с подрядчиком.');
             } catch {

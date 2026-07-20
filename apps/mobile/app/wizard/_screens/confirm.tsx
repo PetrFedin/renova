@@ -12,6 +12,7 @@ import { CustomerBudgetField } from '@/components/renova/CustomerBudgetField';
 import { PostCreateSheet } from '@/components/renova/os/home/PostCreateSheet';
 import { ContractorInviteSheet } from '@/components/renova/os/home/ContractorInviteSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
 import { buildMarketEstimateInsights } from '@/lib/wizard/buildMarketEstimateInsights';
@@ -115,6 +116,7 @@ export default function WizardConfirm() {
       setCreatedProjectId(result.id);
       if (applyMarketPlan && marketEstimate && user) {
         await api.patchProject(user.id, result.id, { budget_planned: Math.round(marketEstimate.grand_total) });
+        await syncProjectSideEffects({ user, project: { id: result.id } as any });
         await loadProject(result.id);
       }
       setCreatedName(wizard.name.trim());

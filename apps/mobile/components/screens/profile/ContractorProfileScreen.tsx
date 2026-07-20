@@ -10,6 +10,7 @@ import { AdminHubLink } from '@/components/renova/AdminHubLink';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { NotificationsList } from '@/components/renova/NotificationsList';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useNavFromHere } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { api } from '@/lib/api';
@@ -25,7 +26,7 @@ const EXTRA_ITEMS = [
 ];
 
 function TeamSection() {
-  const { user } = useRenova();
+  const { user, activeProject } = useRenova();
   const nav = useNavFromHere();
   const [phone, setPhone] = useState('');
   const [team, setTeam] = useState<any>(null);
@@ -61,6 +62,7 @@ function TeamSection() {
             onPress={async () => {
               try {
                 await api.inviteTeamMember(user.id, phone);
+                await syncProjectSideEffects({ user, project: activeProject });
                 setTeam(await api.getTeam(user.id));
                 setPhone('');
               } catch {
@@ -76,6 +78,7 @@ function TeamSection() {
           onPress={async () => {
             try {
               await api.createTeam(user.id, 'Моя бригада');
+              await syncProjectSideEffects({ user, project: activeProject });
               setTeam(await api.getTeam(user.id));
             } catch {
               setTeam(null);

@@ -49,12 +49,14 @@ export function ContractorEstimateView() {
     if (!user) return;
     await api.patchEstimateLine(user.id, activeProject!.id, lineId, body);
     await loadProject(activeProject!.id);
+    await syncProjectSideEffects({ user, project: activeProject });
   }
 
   async function addChangeOrder() {
     if (!user) return;
     await api.createChangeOrder(user.id, activeProject.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
     await loadProject(activeProject.id);
+    await syncProjectSideEffects({ user, project: activeProject });
     Alert.alert('Изменение сметы', 'Отправлен заказчику на согласование');
   }
 

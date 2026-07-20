@@ -8,6 +8,7 @@ import { RoomTypePicker, FloorLevelPicker } from '@/components/renova/RoomTypePi
 import { ROOM_PRESETS, resolveRenovationType, type WizardRoomDraft } from '@/constants/roomTypes';
 import { calcRoomMetrics, generateTemplateLines, calcEstimateSummary } from '@/lib/calc-engine';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { BackHeader } from '@/components/renova/BackHeader';
 
@@ -44,7 +45,10 @@ export default function ContractorLeadWizard() {
     try {
       const r = await api.convertJobLead(user.id, leadId, { property_type: propertyType, rooms });
       await refreshProjects();
-      if (r?.project_id) await loadProject(r.project_id);
+      if (r?.project_id) {
+        await loadProject(r.project_id);
+        await syncProjectSideEffects({ user, project: { id: r.project_id } as any });
+      }
       router.replace('/(contractor)/(tabs)/');
     } catch {
       Alert.alert('Ошибка', 'Не удалось создать проект');

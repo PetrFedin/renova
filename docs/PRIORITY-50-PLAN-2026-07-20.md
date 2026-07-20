@@ -148,6 +148,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W84 | approvals hub + stage/work/expense → syncProjectSideEffects | **закрыто** `develop` |
 | W85 | portal + calendar/material/receipt/chat → syncProjectSideEffects | **закрыто** `develop` |
 | W86 | purchases + floor issues + leads/team/SLA/notify → sync | **закрыто** `develop` |
+| W87 | estimate/budget/onboarding + runWithProjectSideEffects | **закрыто** `develop` |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

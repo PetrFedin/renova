@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet, Platform } from 'react-native';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 export function SnoozeUntilPicker({ userId, notificationId, onDone }: { userId: string; notificationId: string; onDone: () => void }) {
+  const { user, activeProject } = useRenova();
   const [dt, setDt] = useState('');
   const pick = (days: number) => {
     const d = new Date(); d.setDate(d.getDate() + days); d.setHours(9,0,0,0);
@@ -12,6 +15,7 @@ export function SnoozeUntilPicker({ userId, notificationId, onDone }: { userId: 
     const iso = dt.length >= 16 ? `${dt.replace('T','T')}:00`.slice(0,19) : '';
     if (!iso) return;
     await api.snoozeNotificationUntil(userId, notificationId, iso);
+    await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
     onDone();
   };
   return (

@@ -4,6 +4,8 @@ import { View, Text, TextInput, StyleSheet, Alert, Pressable, ScrollView } from 
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api, type ProjectDetail } from '@/lib/api';
 import { EXPENSE_CATEGORIES } from '@/constants/expenseCategories';
 import { WORK_TYPES_FALLBACK, type WorkTypeOption } from '@/constants/workCatalog';
@@ -21,6 +23,7 @@ export function AddEstimateLineForm({
   onSaved?: () => void;
   collapsed?: boolean;
 }) {
+  const { user } = useRenova();
   const [open, setOpen] = useState(!collapsed);
   const [lineType, setLineType] = useState<'work' | 'material'>('work');
   const [name, setName] = useState('');
@@ -66,6 +69,7 @@ export function AddEstimateLineForm({
       setPrice('');
       setNotes('');
       setRoomId(null);
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
       onSaved?.();
       Alert.alert('Добавлено', 'Строка добавлена в смету');
     } catch {

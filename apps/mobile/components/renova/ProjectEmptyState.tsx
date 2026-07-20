@@ -7,6 +7,7 @@ import { formMetaText } from '@/constants/formTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StatusPill, type StatusTone } from '@/components/ui/StatusPill';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api, type ProjectSummary } from '@/lib/api';
 import { formatProjectPhaseLabel } from '@/lib/domain/formatProjectPhaseLabel';
 import { partitionPortfolioProjects } from '@/lib/domain/portfolioProjects';
@@ -287,6 +288,7 @@ export function ProjectEmptyState({
                   const p = await api.createProjectFromTemplate(user.id, { template_id: id, name: `${label}` });
                   await refreshProjects();
                   await loadProject((p as { id: string }).id);
+                  await syncProjectSideEffects({ user, project: p as any });
                 } catch {
                   /* noop */
                 }
