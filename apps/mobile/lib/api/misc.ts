@@ -83,7 +83,19 @@ export const miscApi = {
       { method: 'POST', body: JSON.stringify({ token, reason: reason || null }) },
       userId,
     ),
-  portalSnapshot: (userId: string, projectId: string) =>
+  portalLockEstimate: (projectId: string, token: string) =>
+    req<{ ok: boolean; estimate_locked_at?: string | null }>(
+      `/api/v1/portal/projects/${projectId}/estimate/lock`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalRejectEstimate: (projectId: string, token: string, reason?: string) =>
+    req<{ ok: boolean }>(
+      `/api/v1/portal/projects/${projectId}/estimate/reject`,
+      { method: 'POST', body: JSON.stringify({ token, reason: reason || null }) },
+      undefined,
+    ),
+    portalSnapshot: (userId: string, projectId: string) =>
     req<{
       project: { id: string; name: string; address?: string | null; progress_percent?: number };
       read_only: boolean;

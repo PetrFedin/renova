@@ -260,7 +260,7 @@ export default function PortalScreen() {
 
       {snapshot.estimate_summary ? (
         <View style={s.card}>
-          <Text style={s.cardHead}>Смета (только просмотр)</Text>
+          <Text style={s.cardHead}>Смета</Text>
           <Text style={s.line}>
             {snapshot.estimate_summary.lines_count} поз. · {snapshot.estimate_summary.total?.toLocaleString?.('ru-RU') || snapshot.estimate_summary.total} ₽
           </Text>
@@ -268,12 +268,45 @@ export default function PortalScreen() {
             {snapshot.estimate_summary.locked_at
               ? `Зафиксирована ${snapshot.estimate_summary.locked_at.slice(0, 10)}`
               : snapshot.estimate_summary.proposed_at
-                ? 'На согласовании'
-                : 'Черновик'}
+                ? 'На согласовании — можно зафиксировать'
+                : 'Черновик (ждём отправку от исполнителя)'}
           </Text>
           {(snapshot.estimate_summary?.lines || []).slice(0, 5).map((ln, i) => (
             <Text key={i} style={s.muted}>{ln.name} · {ln.total} ₽</Text>
           ))}
+          {/* W105: lock/reject по magic link (тот же scope, что приёмка) */}
+          {canAcceptPortal && snapshot.estimate_summary.proposed_at && !snapshot.estimate_summary.locked_at ? (
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <Pressable
+                style={s.acceptBtn}
+                onPress={async () => {
+                  try {
+                    await api.portalLockEstimate(session.project_id, portalToken);
+                    setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                    Alert.alert('Готово', 'Смета зафиксирована');
+                  } catch {
+                    Alert.alert('Ошибка', 'Не удалось зафиксировать смету');
+                  }
+                }}
+              >
+                <Text style={s.acceptBtnT}>Зафиксировать смету</Text>
+              </Pressable>
+              <Pressable
+                style={[s.acceptBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: RenovaTheme.colors.border }]}
+                onPress={async () => {
+                  try {
+                    await api.portalRejectEstimate(session.project_id, portalToken, 'Нужна правка сметы');
+                    setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                    Alert.alert('Отклонено', 'Исполнитель получит уведомление');
+                  } catch {
+                    Alert.alert('Ошибка', 'Не удалось отклонить');
+                  }
+                }}
+              >
+                <Text style={[s.acceptBtnT, { color: RenovaTheme.colors.text }]}>Отклонить</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       ) : null}
 

@@ -8,6 +8,8 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { GlobalFilterBar } from '@/components/renova/GlobalFilterBar';
 import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
 import { resolvePushLink } from '@/lib/pushLinks';
+import { useRenova } from '@/lib/context/RenovaContext';
+import type { OsRole } from '@/constants/osSections';
 
 const KINDS = [{ k: '', l: 'Все' }, { k: 'material', l: 'Материалы' }, { k: 'approval', l: 'Согласования' }, { k: 'room_change', l: 'Комнаты' }];
 
@@ -28,6 +30,8 @@ export function ActivityFeed({
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [kind, setKind] = useState('');
   const [wt, setWt] = useState<string | undefined>();
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const back = returnTo || '/';
 
   const reload = useCallback(() => {
@@ -48,7 +52,7 @@ export function ActivityFeed({
 
   const openItem = (it: ActivityItem) => {
     if (!it.link_path) return;
-    const target = resolvePushLink(it.link_path, back);
+    const target = resolvePushLink(it.link_path, back, role);
     if (!target) return;
     if (target.params && Object.keys(target.params).length) {
       router.push({ pathname: target.pathname, params: target.params } as any);

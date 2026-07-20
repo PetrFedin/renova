@@ -47,6 +47,23 @@ export function resolvePushLink(
     return { pathname: '/inbox', params: { returnTo: rt } };
   }
 
+  // W101: /profile → таб профиля роли (нет корневого app/profile)
+  if (canonicalPath === '/profile') {
+    const tab = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
+    return { pathname: tab, params: { returnTo: rt } };
+  }
+
+  // W101: /design → объект/план (design packages)
+  if (canonicalPath === '/design') {
+    const target = objectTabRoute(role, 'plan');
+    return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
+  }
+
+  // W101: QC для заказчика → приёмка/документы, не contractor surface
+  if (canonicalPath === '/quality-control' && role === 'customer') {
+    return { pathname: '/(customer)/(tabs)/repair', params: { tab: 'control', returnTo: rt } };
+  }
+
   if (canonicalPath.startsWith('/stage/')) {
     const id = canonicalPath.replace('/stage/', '').split('/')[0];
     return { pathname: '/stage/[id]', params: { id, returnTo: rt } };
@@ -71,7 +88,7 @@ export function resolvePushLink(
     const id = canonicalPath.replace('/purchase/', '').split('/')[0];
     return { pathname: '/purchase/[id]', params: { id, returnTo: rt } };
   }
-  const stackPaths = ['/approvals', '/activity', '/documents', '/inbox', '/conflicts', '/scan-receipt', '/job-leads', '/design', '/checklist-templates', '/work-order', '/scratchpad'];
+  const stackPaths = ['/approvals', '/activity', '/documents', '/inbox', '/conflicts', '/scan-receipt', '/job-leads', '/checklist-templates', '/work-order', '/scratchpad'];
   if (stackPaths.includes(canonicalPath)) {
     return { pathname: canonicalPath, params: { returnTo: rt } };
   }
@@ -114,6 +131,8 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'budget_alert':
       return budgetTabRoute(role, 'summary');
     case 'schedule_review':
+    case 'schedule_confirmed':
+    case 'schedule_rejected':
       return {
         pathname: role === 'contractor' ? '/(contractor)/(tabs)/calendar' : '/(customer)/(tabs)/calendar',
         params: {},
@@ -121,12 +140,28 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'document':
       return { pathname: '/documents', params: {} };
     case 'issue':
-      return { pathname: '/quality-control', params: {} };
+      return role === 'customer'
+        ? { pathname: '/(customer)/(tabs)/repair', params: { tab: 'control' } }
+        : { pathname: '/quality-control', params: {} };
     case 'approval':
       return { pathname: '/approvals', params: {} };
     case 'deadline':
     case 'waste_reminder':
       return tabsRoute(role, 'calendar');
+    case 'room_updated':
+    case 'room_created':
+      return objectTabRoute(role, 'rooms');
+    case 'reaction':
+      return tabsRoute(role, 'chat');
+    case 'stage_start':
+      return repairTabRoute(role, 'works');
+    case 'budget':
+      return budgetTabRoute(role, 'summary');
+    case 'material':
+      return repairTabRoute(role, 'materials');
+    case 'estimate_lock':
+    case 'estimate':
+      return objectTabRoute(role, 'estimate');
     default:
       return { pathname: '/inbox', params: {} };
   }

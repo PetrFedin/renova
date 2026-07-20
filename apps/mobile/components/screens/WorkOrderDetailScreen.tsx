@@ -13,6 +13,7 @@ import { api, WorkOrder } from '@/lib/api';
 import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { budgetTabRoute } from '@/constants/osSections';
 
 export function WorkOrderDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
@@ -86,6 +87,15 @@ export function WorkOrderDetailScreen() {
               <PrimaryButton key={a.next} title={a.label} variant={a.next === 'cancelled' ? 'outline' : undefined} onPress={() => {
                 if (a.next === 'negotiating' && wo.chat_thread_id) {
                   router.push({ pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id, returnTo: `/work-order/${wo.id}` } } as any);
+                  return;
+                }
+                // W104: оплата — в канон Бюджет/Оплаты (Payment), не только flip статуса WO
+                if (a.next === 'paid') {
+                  const r = budgetTabRoute(role, 'payments');
+                  router.push({
+                    pathname: r.pathname,
+                    params: { ...(r.params || {}), returnTo: `/work-order/${wo.id}` },
+                  } as any);
                   return;
                 }
                 transition(a.next);

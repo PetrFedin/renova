@@ -69,11 +69,16 @@ export function CustomerControlView() {
           <Text style={s.title}>{iss.title}</Text>
           <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
           {!readOnly && iss.status !== 'closed' && (
-            <PrimaryButton title="Закрыть" compact variant="outline" onPress={async () => {
-              await api.closeIssue(user!.id, activeProject!.id, iss.id);
-              await syncProjectSideEffects({ user, project: activeProject });
-              reload();
-            }} />
+            <PrimaryButton
+              title={iss.status === 'fixed' ? 'Подтвердить исправление' : 'Закрыть'}
+              compact
+              variant="outline"
+              onPress={async () => {
+                await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                await syncProjectSideEffects({ user, project: activeProject });
+                reload();
+              }}
+            />
           )}
         </Pressable>
       ))}

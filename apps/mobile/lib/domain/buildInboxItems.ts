@@ -102,14 +102,39 @@ export async function buildInboxItems(opts: {
       }
     } catch { /* noop */ }
 
-    if (project && (project.estimate_lines?.length ?? 0) > 0 && !project.estimate_locked_at) {
+    // W102: «Согласовать смету» только когда исполнитель отправил proposal (или solo без contractor).
+    if (
+      project
+      && (project.estimate_lines?.length ?? 0) > 0
+      && !project.estimate_locked_at
+      && (project.estimate_lock_proposed_at || !project.contractor_id)
+      && role === 'customer'
+    ) {
       next.push({
         id: 'estimate-lock',
         kind: 'estimate',
-        title: 'Согласовать смету',
-        sub: `${project.estimate_lines!.length} поз.`,
+        title: 'Зафиксировать смету',
+        sub: project.estimate_lock_proposed_at
+          ? `${project.estimate_lines!.length} поз. · на согласовании`
+          : `${project.estimate_lines!.length} поз.`,
         href: objectTabHref(role, 'estimate'),
         priority: 82,
+      });
+    } else if (
+      project
+      && (project.estimate_lines?.length ?? 0) > 0
+      && !project.estimate_locked_at
+      && !project.estimate_lock_proposed_at
+      && project.contractor_id
+      && role === 'customer'
+    ) {
+      next.push({
+        id: 'estimate-wait',
+        kind: 'estimate',
+        title: 'Смета у исполнителя',
+        sub: 'Ждём отправку на согласование',
+        href: objectTabHref(role, 'estimate'),
+        priority: 50,
       });
     }
 

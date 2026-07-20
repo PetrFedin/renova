@@ -13,6 +13,8 @@ import {
   type DecisionHistoryItem,
 } from '@/lib/domain/buildDecisionHistory';
 import { resolvePushLink } from '@/lib/pushLinks';
+import { useRenova } from '@/lib/context/RenovaContext';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   userId: string;
@@ -54,9 +56,12 @@ export function DecisionHistoryPanel({
     return compact ? filtered.slice(0, limit) : filtered.slice(0, limit);
   }, [raw, filter, compact, limit]);
 
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+
   const openItem = (item: DecisionHistoryItem) => {
     if (!item.linkPath) return;
-    const target = resolvePushLink(item.linkPath, back);
+    const target = resolvePushLink(item.linkPath, back, role);
     if (!target) return;
     router.push({ pathname: target.pathname, params: target.params } as any);
   };

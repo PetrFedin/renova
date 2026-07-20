@@ -40,7 +40,8 @@ const unknownNotify = resolveNotificationLink('unknown_xyz');
 console.assert(unknownNotify?.pathname === '/inbox', 'notify unknown → inbox');
 // W66 #25: smoke deep-links for contract / QC / schedule notify
 console.assert(resolvePushLink('/documents', '/home', 'customer')?.pathname === '/documents', 'documents');
-console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.pathname === '/quality-control', 'qc');
+console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.pathname === '/(customer)/(tabs)/repair', 'qc customer → repair');
+console.assert(resolvePushLink('/quality-control', '/home', 'contractor')?.pathname === '/quality-control', 'qc contractor');
 console.assert(resolveNotificationLink('schedule_review', 'customer')?.pathname.includes('calendar'), 'schedule_review customer');
 console.assert(resolveNotificationLink('document', 'contractor')?.pathname === '/documents', 'document notify');
 console.log('pushLinks: OK');
@@ -54,3 +55,13 @@ console.assert(resolveLegacyTabHref('/(customer)/(tabs)/control').pathname === '
 console.assert(resolveLegacyTabHref('/(customer)/(tabs)/control').params?.tab === 'control', 'legacy control tab customer');
 console.assert(resolveLegacyTabHref('/(contractor)/(tabs)/control').pathname === '/(contractor)/(tabs)/repair', 'legacy control contractor');
 console.assert(resolveLegacyTabHref('/(contractor)/(tabs)/control').params?.tab === 'control', 'legacy control tab');
+
+console.assert(resolvePushLink('/profile', '/home', 'customer')?.pathname.includes('profile'), 'profile customer');
+console.assert(resolvePushLink('/profile', '/home', 'contractor')?.pathname.includes('(contractor)'), 'profile contractor');
+console.assert(resolvePushLink('/design', '/home', 'customer')?.pathname.includes('object'), 'design → object plan');
+console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.params?.tab === 'control', 'qc customer → control');
+console.assert(resolveNotificationLink('room_updated', 'customer')?.pathname.includes('object'), 'room notify');
+console.assert(resolveNotificationLink('schedule_confirmed', 'customer')?.pathname.includes('calendar'), 'schedule_confirmed');
+console.assert(resolveNotificationLink('estimate_lock', 'customer')?.pathname.includes('object'), 'estimate_lock notify');
+
+console.log('pushLinks.test OK');

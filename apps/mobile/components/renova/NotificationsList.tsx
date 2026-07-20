@@ -7,7 +7,8 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, AppNotification } from '@/lib/api';
 
-import { resolvePushLink } from '@/lib/pushLinks';
+import { resolvePushLink, resolveNotificationLink } from '@/lib/pushLinks';
+import type { OsRole } from '@/constants/osSections';
 
 export function NotificationsList({ userId, defaultReturn }: { userId: string; defaultReturn?: string }) {
   const { user, activeProject } = useRenova();
@@ -24,9 +25,12 @@ export function NotificationsList({ userId, defaultReturn }: { userId: string; d
         <Pressable key={n.id} style={[s.row, !n.read && s.unread]} onPress={async () => {
           await api.readNotification(userId, n.id);
           await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
-          const back = (n as any).return_to || defaultReturn || '/(customer)/(tabs)/profile';
-          const target = resolvePushLink(n.link_path, back);
+          const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+          const back = (n as any).return_to || defaultReturn || (role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile');
+          const target = resolvePushLink(n.link_path, back, role)
+            || resolveNotificationLink(n.notification_type, role);
           if (target) router.push({ pathname: target.pathname, params: target.params } as any);
+          else router.push({ pathname: '/inbox', params: { returnTo: back } } as any);
           reload();
         }}>
           <Text style={s.title}>{n.title}</Text><Text style={s.body}>{n.body}</Text>

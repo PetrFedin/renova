@@ -69,8 +69,9 @@ function TeamSection() {
                 await syncProjectSideEffects({ user, project: activeProject });
                 setTeam(await api.getTeam(user.id));
                 setPhone('');
-              } catch {
-                /* API error */
+                Alert.alert('Готово', 'Приглашение отправлено');
+              } catch (e: unknown) {
+                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось пригласить');
               }
             }}
           />
@@ -84,8 +85,10 @@ function TeamSection() {
               await api.createTeam(user.id, 'Моя бригада');
               await syncProjectSideEffects({ user, project: activeProject });
               setTeam(await api.getTeam(user.id));
-            } catch {
+              Alert.alert('Готово', 'Бригада создана');
+            } catch (e: unknown) {
               setTeam(null);
+              Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать бригаду');
             }
           }}
         />

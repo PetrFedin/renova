@@ -31,7 +31,8 @@ export default function RootLayout() {
     const sub = Notifications.addNotificationResponseReceivedListener((r) => {
       const link = r.notification.request.content.data?.link_path as string | undefined;
       const returnTo = r.notification.request.content.data?.return_to as string | undefined;
-      const target = resolvePushLink(link, returnTo);
+      const pushRole = (r.notification.request.content.data?.role as string | undefined) === 'contractor' ? 'contractor' : 'customer';
+      const target = resolvePushLink(link, returnTo, pushRole as any);
       if (target) router.push(target as any);
     });
     const apiBase = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';

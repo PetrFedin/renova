@@ -8,6 +8,7 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, StageDetail, WorkSnapshot } from '@/lib/api';
@@ -186,6 +187,7 @@ export function StageDetailScreen() {
       setComment('');
       setReplyTo(null);
       await reload();
+      await syncProjectSideEffects({ user, project: activeProject });
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Комментарий');
       else throw e;
@@ -210,6 +212,7 @@ export function StageDetailScreen() {
         await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${pick.assets[0].base64}`, label);
       }
       await reload();
+      await syncProjectSideEffects({ user, project: activeProject });
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'offline_queued') {
         Alert.alert('Офлайн', 'Фото отправится при подключении');

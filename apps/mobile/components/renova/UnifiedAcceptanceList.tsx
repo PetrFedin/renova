@@ -77,7 +77,7 @@ function AcceptanceRow({
         </Text>
       </Pressable>
       <PrimaryButton
-        title={isContractor ? 'Открыть этап' : 'Проверить'}
+        title={isContractor ? 'Открыть этап' : 'Принять этап'}
         compact
         onPress={onOpen}
       />

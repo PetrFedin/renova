@@ -580,3 +580,71 @@ async def portal_reject_schedule(
         raise HTTPException(404, "schedule_not_found")
     return await wss.reject_schedule(db, project=project, schedule=schedule, user=user, reason=body.reason)
 
+
+
+class PortalEstimateIn(BaseModel):
+    token: str
+    reason: str | None = None
+
+
+@router.post("/portal/projects/{project_id}/estimate/lock")
+async def portal_lock_estimate(
+    project_id: str,
+    body: PortalEstimateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """W105: зафиксировать смету по magic link (scope accept_stage, заказчик)."""
+    claims = _portal_claims(body.token, project_id)
+    _require_portal_scope(claims, "accept_stage")
+    user = await db.get(User, claims["user_id"])
+    if not user:
+        raise HTTPException(401, "invalid_token_user")
+    project = await require_project(db, project_id, user, write=True)
+    if user.id != project.customer_id:
+        raise HTTPException(403, "estimate_lock_customer_only")
+    from app.services.estimate_service import lock_estimate
+    proj, result = await lock_estimate(db, project_id, locked_by=user.id)
+    if not proj:
+        raise HTTPException(404, detail=result or {"code": "not_found"})
+    code = result.get("code") if isinstance(result, dict) else None
+    if code in ("already_locked", "empty_estimate", "proposal_required", "proposal_stale"):
+        raise HTTPException(409, detail=result)
+    if code == "customer_lock_required":
+        raise HTTPException(403, detail=result)
+    return {
+        "ok": True,
+        "estimate_locked_at": proj.estimate_locked_at.isoformat() if proj.estimate_locked_at else None,
+        "result": result,
+    }
+
+
+@router.post("/portal/projects/{project_id}/estimate/reject")
+async def portal_reject_estimate(
+    project_id: str,
+    body: PortalEstimateIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """W105: отклонить proposal сметы по magic link."""
+    claims = _portal_claims(body.token, project_id)
+    _require_portal_scope(claims, "accept_stage")
+    user = await db.get(User, claims["user_id"])
+    if not user:
+        raise HTTPException(401, "invalid_token_user")
+    project = await require_project(db, project_id, user, write=True)
+    if user.id != project.customer_id:
+        raise HTTPException(403, "estimate_reject_customer_only")
+    from app.services.estimate_service import clear_estimate_proposal
+    proj, result = await clear_estimate_proposal(
+        db,
+        project_id,
+        cleared_by=user.id,
+        reason=body.reason or "Нужна правка сметы",
+        mode="reject",
+    )
+    if not proj:
+        raise HTTPException(404, "project_not_found")
+    if result.get("code") in ("already_locked", "no_proposal"):
+        raise HTTPException(409, detail=result)
+    if result.get("code") == "customer_reject_required":
+        raise HTTPException(403, detail=result)
+    return {"ok": True, "code": "cleared", "reason": body.reason or "Нужна правка сметы"}

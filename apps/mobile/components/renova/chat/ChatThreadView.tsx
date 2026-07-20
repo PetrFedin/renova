@@ -353,33 +353,40 @@ export function ChatThreadView({
                 <Text style={s.toolBtn}>✓?</Text>
               </Pressable>
               <Pressable disabled={!canWrite} onPress={() => {
-                // W67 #32: счёт из чата = Payment в Бюджете
-                Alert.alert('Счёт в бюджете', 'Создать счёт 10 000 ₽? Заказчик увидит его в «Деньги → Оплаты».', [
+                // W104: сумма на выбор → Payment в Бюджете (не hardcoded 10k)
+                const createInvoice = async (amount: number) => {
+                  try {
+                    await api.invoiceFromChat(user.id, projectId, threadId, {
+                      title: 'Оплата работ',
+                      amount,
+                      payment_type: 'stage',
+                    });
+                    await reload();
+                    await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                    Alert.alert('Счёт создан', `${amount.toLocaleString('ru-RU')} ₽ в «Деньги → Оплаты».`, [
+                      { text: 'OK' },
+                      {
+                        text: 'Открыть оплаты',
+                        onPress: () => {
+                          const r = budgetTabRoute('contractor', 'payments');
+                          router.push({ pathname: r.pathname, params: r.params } as never);
+                        },
+                      },
+                    ]);
+                  } catch {
+                    Alert.alert('Ошибка', 'Не удалось создать счёт');
+                  }
+                };
+                Alert.alert('Счёт в бюджете', 'Выберите сумму. Заказчик увидит счёт в «Деньги → Оплаты».', [
                   { text: 'Отмена', style: 'cancel' },
+                  { text: '5 000 ₽', onPress: () => { createInvoice(5000).catch(() => {}); } },
+                  { text: '10 000 ₽', onPress: () => { createInvoice(10000).catch(() => {}); } },
+                  { text: '25 000 ₽', onPress: () => { createInvoice(25000).catch(() => {}); } },
                   {
-                    text: 'Создать',
-                    onPress: async () => {
-                      try {
-                        await api.invoiceFromChat(user.id, projectId, threadId, {
-                          title: 'Оплата работ',
-                          amount: 10000,
-                          payment_type: 'stage',
-                        });
-                        await reload();
-                        await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                        Alert.alert('Счёт создан', 'Оплата учитывается в бюджете объекта.', [
-                          { text: 'OK' },
-                          {
-                            text: 'Открыть оплаты',
-                            onPress: () => {
-                              const r = budgetTabRoute('contractor', 'payments');
-                              router.push({ pathname: r.pathname, params: r.params } as never);
-                            },
-                          },
-                        ]);
-                      } catch {
-                        Alert.alert('Ошибка', 'Не удалось создать счёт');
-                      }
+                    text: 'Открыть оплаты',
+                    onPress: () => {
+                      const r = budgetTabRoute('contractor', 'payments');
+                      router.push({ pathname: r.pathname, params: r.params } as never);
                     },
                   },
                 ]);
