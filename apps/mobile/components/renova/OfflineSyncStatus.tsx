@@ -1,10 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 
 import { RenovaTheme, card } from '@/constants/Theme';
-import { flushOfflineOutbox, getOfflineOutboxStatus } from '@/lib/offline';
+import { flushOfflineOutbox, getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
 import { getQueue } from '@/lib/offlineQueue';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { reloadInboxSync } from '@/lib/inboxSyncStore';
@@ -50,6 +50,7 @@ export function OfflineSyncStatus({
   useFocusEffect(useCallback(() => {
     refresh().catch(() => {});
   }, [refresh]));
+  useEffect(() => subscribeOfflineFlush(() => { void refresh(); }), [refresh]);
 
   const runSync = async () => {
     setSyncing(true);

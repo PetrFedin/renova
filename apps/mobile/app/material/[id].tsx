@@ -6,6 +6,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, MaterialPick, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { repairTabHref } from '@/constants/osSections';
@@ -41,6 +42,7 @@ export default function MaterialDetailScreen() {
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   if (loading) {
     return (

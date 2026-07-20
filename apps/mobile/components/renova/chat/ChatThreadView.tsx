@@ -16,6 +16,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatReadSync } from '@/lib/useChatUnread';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
@@ -200,7 +201,8 @@ export function ChatThreadView({
     }
   }, [highlightId, chat?.messages.length]);
 
-  const reload = () => loadMessages().catch(() => {});
+  const reload = useCallback(() => loadMessages().catch(() => {}), [loadMessages]);
+  useProjectDataReload(reload);
 
   const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
     if (payload.type === 'typing') {

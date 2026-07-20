@@ -5,6 +5,7 @@ import { useFocusEffect, useLocalSearchParams, router } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { homeTypography } from '@/constants/homeTypography';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { HomeLinkRow } from '@/components/renova/os/HomeLinkRow';
@@ -48,6 +49,7 @@ export default function ReportsScreen() {
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useProjectDataReload(reload);
 
   const onPdfError = () => Alert.alert('Ошибка', 'Не удалось сформировать PDF. Проверьте сервер.');
 

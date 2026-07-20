@@ -6,6 +6,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -35,6 +36,7 @@ export default function PurchaseDetailScreen() {
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   if (!purchase) return <View style={s.center}><Text>Загрузка…</Text></View>;
 

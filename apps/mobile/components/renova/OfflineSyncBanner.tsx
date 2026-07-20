@@ -1,11 +1,12 @@
 /** Баннер очереди офлайн-изменений — только для исполнителя (заказчику в demo не показываем) */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import { RenovaTheme } from '@/constants/Theme';
-import { queueStats, flush } from '@/lib/offlineQueue';
+import { queueStats } from '@/lib/offlineQueue';
+import { flushOfflineOutbox, subscribeOfflineFlush } from '@/lib/offline';
 import { useNavFromHere } from '@/lib/navigation';
 import { useRenova } from '@/lib/context/RenovaContext';
 
@@ -24,6 +25,8 @@ export function OfflineSyncBanner() {
   }, []);
 
   useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  // W92: после flush (layout / статус / конфликты) — счётчик без remount
+  useEffect(() => subscribeOfflineFlush(() => { void reload(); }), [reload]);
 
   if (user?.role === 'customer') return null;
   if (!pending) return null;
@@ -43,8 +46,7 @@ export function OfflineSyncBanner() {
             e.stopPropagation?.();
             setBusy(true);
             try {
-              const apiBase = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-              const r = await flush(apiBase);
+              const r = await flushOfflineOutbox();
               await reload();
               if (r.conflicts > 0) router.push({ pathname: '/conflicts', params: { returnTo: nav.from } } as any);
             } finally { setBusy(false); }

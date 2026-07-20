@@ -1,5 +1,5 @@
 /** Offline conflicts 409 — разрешение очереди */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
@@ -7,7 +7,8 @@ import { OfflineDiffViewer } from '@/components/renova/OfflineDiffViewer';
 import { FieldMergePicker } from '@/components/renova/FieldMergePicker';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { dedupeQueue } from '@/lib/smartMerge';
-import { flush, getQueue, removeJob, type OfflineJob } from '@/lib/offlineQueue';
+import { getQueue, removeJob, type OfflineJob } from '@/lib/offlineQueue';
+import { flushOfflineOutbox, subscribeOfflineFlush } from '@/lib/offline';
 import { RenovaTheme } from '@/constants/Theme';
 import { offlineJobLabel, offlineJobPreview } from '@/lib/offlineJobLabel';
 
@@ -20,6 +21,7 @@ export default function ConflictsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useEffect(() => subscribeOfflineFlush(() => { void reload(); }), [reload]);
 
   return (
     <>
@@ -59,8 +61,7 @@ export default function ConflictsScreen() {
             }} />
             <View style={{ height: 8 }} />
             <PrimaryButton title="Синхронизировать сейчас" onPress={async () => {
-              const apiBase = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-              await flush(apiBase);
+              await flushOfflineOutbox();
               await reload();
             }} />
           </>

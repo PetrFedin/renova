@@ -9,6 +9,7 @@ import { OsSelectionsScreen } from '@/components/screens/OsSelectionsScreen';
 import { OsControlScreen } from '@/components/screens/OsControlScreen';
 import { useHubTab } from '@/lib/useHubTab';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { api } from '@/lib/api';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
@@ -49,6 +50,7 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reloadBadge(); }, [reloadBadge]));
+  useProjectDataReload(reloadBadge);
 
   const controlBadge = pendingAcceptance > 0 ? pendingAcceptance : undefined;
 

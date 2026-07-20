@@ -5,6 +5,7 @@ import { router, useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import type { OsRole } from '@/constants/osSections';
 import { STAGE_DEPENDENCY_TYPE_LABEL } from '@/constants/labels';
@@ -50,6 +51,7 @@ export function StageDependenciesPanel({
   }, [userId, projectId]);
 
   useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useProjectDataReload(reload);
 
   const blocked = items.filter((d) => d.status === 'blocked' || d.status === 'pending');
   if (!items.length && !canWrite) return null;
