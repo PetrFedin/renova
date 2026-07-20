@@ -6,6 +6,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
 import { changeOrderStatusLabel } from '@/constants/labels';
 import { api, type ChangeOrder } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { budgetTabRoute } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -75,6 +76,7 @@ export function EstimateChangesLayer({
                 await onProjectReload();
                 onOrdersChanged(await api.listChangeOrders(userId, projectId));
                 notifyBudgetDelta(o, res?.document_id);
+                await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
               } catch (e) {
                 if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение доп. работ');
               }
@@ -82,7 +84,9 @@ export function EstimateChangesLayer({
             onReject={async () => {
               try {
                 await api.rejectChangeOrder(userId, projectId, o.id);
+                await onProjectReload();
                 onOrdersChanged(await api.listChangeOrders(userId, projectId));
+                await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
               } catch (e) {
                 if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение доп. работ');
               }

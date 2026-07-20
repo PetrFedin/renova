@@ -8,6 +8,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { ProjectIssue } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 function statusLabel(status: string) {
@@ -130,11 +131,12 @@ export function QualityControlScreen() {
     if (!user || !activeProject || readOnly || !isCustomer) return;
     setActingId('warranty-new');
     try {
-      await api.createWarrantyClaim(user.id, activeProject.id, {
+      const wRes = await api.createWarrantyClaim(user.id, activeProject.id, {
         title: 'Гарантийное обращение',
         description: 'Создано из Контроля качества',
       });
       await load();
+      await syncProjectSideEffects({ user, project: activeProject });
       Alert.alert(
         'Гарантия',
         `Тикет создан${wRes.post_closeout ? ' (после сдачи)' : ''}. SLA ${wRes.sla_days || 14} дн. — исполнитель уведомлён`,
@@ -152,6 +154,7 @@ export function QualityControlScreen() {
     try {
       await api.escalateIssue(user.id, activeProject.id, issue.id);
       await load();
+      await syncProjectSideEffects({ user, project: activeProject });
       Alert.alert('Спор', 'Замечание эскалировано — стороны уведомлены');
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Эскалация');
@@ -171,6 +174,7 @@ export function QualityControlScreen() {
         await api.closeIssue(user.id, activeProject.id, issue.id);
       }
       await load();
+      await syncProjectSideEffects({ user, project: activeProject });
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');
     } finally {

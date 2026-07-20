@@ -15,6 +15,7 @@ import { api, ChatDetail, ChatMessage } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatReadSync } from '@/lib/useChatUnread';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
@@ -279,7 +280,7 @@ export function ChatThreadView({
             onPin={() => api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned).then(reload)}
             onReply={() => setReplyTo(m)}
             onTask={() => setTaskMsg(m)}
-            onConfirm={m.message_type === 'confirm' ? () => api.confirmChatMessage(user.id, projectId, threadId, m.id).then(reload) : undefined}
+            onConfirm={m.message_type === 'confirm' ? () => api.confirmChatMessage(user.id, projectId, threadId, m.id).then(async () => { await reload(); await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) }); }) : undefined}
             onPay={m.message_type === 'payment' ? openPaymentFlow : undefined}
           />
         ))}

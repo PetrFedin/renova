@@ -23,8 +23,7 @@ import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { formatScheduleRange } from '@/lib/formatScheduleDate';
 import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats';
 import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
-import { reloadInboxSync } from '@/lib/inboxSyncStore';
-import { notifyProjectDataChanged } from '@/lib/projectDataBus';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -56,17 +55,9 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const calendarMaxH = Math.round(height * 0.59);
   const { user, activeProject, teamRole, readOnly } = useRenova();
 
-  /** W81: после submit/confirm/reject графика — inbox + home nextAction */
+  /** W81/W82: после submit/confirm/reject графика — inbox + home nextAction */
   const syncScheduleSideEffects = useCallback(async () => {
-    if (!user || !activeProject) return;
-    await reloadInboxSync({
-      userId: user.id,
-      userRole: user.role,
-      projectId: activeProject.id,
-      project: activeProject,
-      osRole: role === 'contractor' ? 'contractor' : 'customer',
-    }).catch(() => {});
-    notifyProjectDataChanged();
+    await syncProjectSideEffects({ user, project: activeProject, role });
   }, [user, activeProject, role]);
 
   // W72: график правят owner/foreman бригады (заказчик — отдельно через agree)

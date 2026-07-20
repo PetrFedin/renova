@@ -9,6 +9,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { Stage, WorkAcceptance } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { apiErrorMessage } from '@/lib/formatPhone';
 
@@ -133,7 +134,8 @@ function AcceptanceCard({
 }
 
 export function WorkAcceptanceScreen() {
-  const { user, activeProject, role, readOnly } = useRenova();
+  const { user, activeProject, readOnly } = useRenova();
+  const role = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [state, setState] = useState<AcceptanceState>({ acceptances: [], stages: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -179,6 +181,7 @@ export function WorkAcceptanceScreen() {
         comment: 'Этап готов к проверке',
       });
       await load();
+      await syncProjectSideEffects({ user, project: activeProject, role });
     } catch (e) {
       handleActionError(e, 'Запрос приёмки');
     } finally {
@@ -195,6 +198,7 @@ export function WorkAcceptanceScreen() {
         comment: 'Работы приняты',
       });
       await load();
+      await syncProjectSideEffects({ user, project: activeProject, role });
       Alert.alert(
         'Этап принят',
         'Можно оплатить работы по этапу.',
@@ -233,6 +237,7 @@ export function WorkAcceptanceScreen() {
               create_issue: true,
             });
             await load();
+            await syncProjectSideEffects({ user, project: activeProject, role });
           } catch (e) {
             handleActionError(e, 'Возврат на доработку');
           } finally {

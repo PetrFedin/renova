@@ -19,6 +19,7 @@ import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documen
 import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/lib/offlineUi';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 type DocRow = {
   id: string;
@@ -238,6 +239,7 @@ ${(res.body || '').slice(0, 220)}`,
                   onPress: async () => {
                     try {
                       await api.closeWarrantyClaim(userId, projectId, first.id);
+                      void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
                       Alert.alert('Гарантия', 'Обращение закрыто. Можно завершать объект, если остальные гейты готовы.');
                     } catch (e: unknown) {
                       Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
@@ -251,6 +253,7 @@ ${(res.body || '').slice(0, 220)}`,
                       title: 'Гарантийное обращение',
                       description: 'Создано из Document Center',
                     });
+                    void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
                     Alert.alert('Гарантия', `Создано${res.post_closeout ? ' (после сдачи)' : ''}. SLA ${res.sla_days || 14} дн. Документ: ${res.document_id.slice(0, 8)}…`);
                   },
                 },
@@ -265,6 +268,7 @@ ${(res.body || '').slice(0, 220)}`,
           const nextPath = isContractor
             ? (res.qc_path || `/quality-control?issueId=${res.issue_id}`)
             : '/documents';
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           Alert.alert(
             'Гарантия',
             `Создано${res.post_closeout ? ' (после сдачи)' : ''}. Открытых: ${(open.open || 0) + 1}. SLA ${res.sla_days || 14} дн. Документ: ${res.document_id.slice(0, 8)}…`,
@@ -354,6 +358,7 @@ ${(res.body || '').slice(0, 220)}`,
               onPress: async () => {
                 try {
                   const res = await api.closeoutProject(userId, projectId);
+                  void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
                   Alert.alert('Готово', res.next_action || 'Объект завершён');
                 } catch (e: unknown) {
                   Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось завершить');
@@ -543,6 +548,7 @@ ${(res.body || '').slice(0, 220)}`,
         onPress: () => withBusy(`sign-${doc.id}`, async () => {
           await api.signProjectDocument(userId, projectId, doc.id, { provider: 'in_app' });
           await reloadIndex();
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           Alert.alert('Подписано', 'Подпись in_app сохранена.');
         }),
       },
@@ -559,6 +565,7 @@ ${(res.body || '').slice(0, 220)}`,
           }
           const status = await pollDocumentSignature(userId, projectId, doc.id, { provider: 'kontur' });
           await reloadIndex();
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           if (status === 'signed') {
             Alert.alert('Контур', 'Документ подписан.');
           } else if (status === 'failed') {
