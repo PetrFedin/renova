@@ -13,6 +13,7 @@ import {
 import { WORK_STATUS_LABEL, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
 import { calendarTabRoute, repairTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 type Props = {
   wo: WorkOrder;
@@ -52,7 +53,12 @@ export function WorkOrderDetailPanel({
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onUpdated();
       Alert.alert('Сохранено', 'Описание работы обновлено');
-    } catch {
+    } catch (e) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Описание работы');
+        onUpdated();
+        return;
+      }
       Alert.alert('Ошибка', 'Не удалось сохранить описание');
     } finally {
       setSaving(false);
@@ -69,11 +75,12 @@ export function WorkOrderDetailPanel({
       return;
     }
     if (id === 'materials') {
-      pushOsNav(repairTabHref(role, 'materials'), `/work-order/${wo.id}`);
+      pushOsNav(repairTabHref(role, 'materials'), `/work-order/${wo.id}`, role);
       return;
     }
     if (id === 'approvals') {
-      pushOsNav('/approvals', `/work-order/${wo.id}`);
+      // W114: /approvals через resolvePushLink + role
+      pushOsNav('/approvals', `/work-order/${wo.id}`, role);
     }
   }
 
@@ -139,7 +146,7 @@ export function WorkOrderDetailPanel({
         );
       })}
 
-      <PrimaryButton title="Календарь" variant="outline" onPress={() => pushOsNav(calendarTabRoute(role), `/work-order/${wo.id}`)} />
+      <PrimaryButton title="Календарь" variant="outline" onPress={() => pushOsNav(calendarTabRoute(role), `/work-order/${wo.id}`, role)} />
     </View>
   );
 }

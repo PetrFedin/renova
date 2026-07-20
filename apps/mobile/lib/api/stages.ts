@@ -200,8 +200,30 @@ export const stagesApi = {
       throw new Error('offline_queued');
     }
   },
-  patchStageDepends: (userId: string, projectId: string, stageId: string, dependsOn: string | null) => req(`/api/v1/projects/${projectId}/stages/${stageId}/depends`, { method: 'PATCH', body: JSON.stringify({ depends_on_stage_id: dependsOn }) }, userId),
-  patchStageWorkType: (userId: string, projectId: string, stageId: string, work_type: string | null) => req(`/api/v1/projects/${projectId}/stages/${stageId}/work-type`, { method: 'PATCH', body: JSON.stringify({ work_type }) }, userId),
+  /** W114: зависимость этапа — очередь офлайн (график → блокировки) */
+  patchStageDepends: async (userId: string, projectId: string, stageId: string, dependsOn: string | null) => {
+    const body = { depends_on_stage_id: dependsOn };
+    try {
+      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/depends`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/depends`, method: 'PATCH', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
+  /** W114: тип работ этапа — очередь офлайн */
+  patchStageWorkType: async (userId: string, projectId: string, stageId: string, work_type: string | null) => {
+    const body = { work_type };
+    try {
+      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/work-type`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/work-type`, method: 'PATCH', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
   reactionCounts: (userId: string, projectId: string, stageId: string) => req<Record<string, Record<string, number>>>(`/api/v1/projects/${projectId}/stages/${stageId}/reaction-counts`, {}, userId),
   reactComment: (userId: string, projectId: string, stageId: string, commentId: string, reaction: string) => req(`/api/v1/projects/${projectId}/stages/${stageId}/comments/${commentId}/react`, { method: 'POST', body: JSON.stringify({ reaction }) }, userId),
   getCommentReactions: (userId: string, projectId: string, stageId: string, commentId: string) => req<{ reactions: { user_id: string; reaction: string }[] }>(`/api/v1/projects/${projectId}/stages/${stageId}/comments/${commentId}/react`, {}, userId),

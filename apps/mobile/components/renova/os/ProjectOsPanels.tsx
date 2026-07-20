@@ -89,6 +89,7 @@ export function OsKpiStrip({ snap, rolePrefix, role, gridTitle }: { snap: Projec
       <OsWidgetGrid
         items={items}
         title={gridTitle === null ? undefined : (gridTitle ?? 'Сводка')}
+        role={role}
         onWidgetPress={(it) => setDetailWidgetId(it.id)}
       />
       <HomeKpiDetailSheet

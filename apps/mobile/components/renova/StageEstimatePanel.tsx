@@ -4,18 +4,23 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { EstimateLine, Room } from '@/lib/api';
 import { filterLinesForStage, sumEstimateLines } from '@/lib/stageEstimate';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
-import { roomTypeLabel } from '@/constants/roomTypes';
+import type { OsRole } from '@/constants/osSections';
 
 export function StageEstimatePanel({
   lines,
   rooms,
   roomIds,
   estimateHref,
+  role = 'customer',
+  returnTo,
 }: {
   lines: EstimateLine[];
   rooms: Room[];
   roomIds?: string[] | null;
   estimateHref: string;
+  /** W114: канон deep-link в смету объекта */
+  role?: OsRole;
+  returnTo?: string;
 }) {
   const scoped = filterLinesForStage(lines, roomIds);
   const total = sumEstimateLines(scoped);
@@ -38,7 +43,9 @@ export function StageEstimatePanel({
         <Text key={l.id} style={s.line}>· {l.name} — {formatRub(l.quantity_planned * l.unit_price)}</Text>
       ))}
       {(scoped.length || lines.length) > 5 && <Text style={s.more}>…ещё {(scoped.length || lines.length) - 5} строк</Text>}
-      <Pressable onPress={() => pushOsNav(estimateHref)}><Text style={s.link}>Открыть смету →</Text></Pressable>
+      <Pressable onPress={() => pushOsNav(estimateHref, returnTo, role)}>
+        <Text style={s.link}>Открыть смету →</Text>
+      </Pressable>
     </View>
   );
 }

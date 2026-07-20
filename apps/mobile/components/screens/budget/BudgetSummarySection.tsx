@@ -126,7 +126,7 @@ export function BudgetSummarySection(props: Props) {
       {bwVisible('summary_kpi') && (
 
         <>
-          <OsWidgetGrid items={summaryWidgets} title="Сводка" returnTo={pathname} />
+          <OsWidgetGrid items={summaryWidgets} title="Сводка" returnTo={pathname} role={role} />
           <BudgetFactStatus
             serverFact={summary?.budget_spent ?? figures.spent}
             listTotal={unifiedRows.reduce((a, r) => a + r.amount, 0)}
@@ -195,6 +195,7 @@ export function BudgetSummarySection(props: Props) {
           <Text style={s.section}>По статьям</Text>
           <OsWidgetGrid
             returnTo={pathname}
+            role={role}
             items={Object.entries(summary.segments).map(([k, v]) => ({
               id: k,
               label: BUDGET_SEGMENT_LABEL[k] || k,

@@ -304,7 +304,19 @@ export function ChatThreadView({
             onPin={() => api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned).then(reload)}
             onReply={() => setReplyTo(m)}
             onTask={() => setTaskMsg(m)}
-            onConfirm={m.message_type === 'confirm' ? () => api.confirmChatMessage(user.id, projectId, threadId, m.id).then(async () => { await reload(); await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) }); }) : undefined}
+            onConfirm={m.message_type === 'confirm' ? async () => {
+              try {
+                await api.confirmChatMessage(user.id, projectId, threadId, m.id);
+                await reload();
+                await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+              } catch (e) {
+                if (isOfflineQueued(e)) {
+                  notifyOfflineQueued('Подтверждение');
+                  return;
+                }
+                throw e;
+              }
+            } : undefined}
             onPay={m.message_type === 'payment' ? openPaymentFlow : undefined}
           />
         ))}
@@ -458,11 +470,20 @@ export function ChatThreadView({
         onClose={() => setTaskMsg(null)}
         onSubmit={async (body) => {
           if (!taskMsg) return;
-          await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
-          setTaskMsg(null);
-          await reload();
-          // W98: календарь / работы / inbox после задачи из чата
-          await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          try {
+            await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
+            setTaskMsg(null);
+            await reload();
+            // W98: календарь / работы / inbox после задачи из чата
+            await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          } catch (e) {
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued('Задача из чата');
+              setTaskMsg(null);
+              return;
+            }
+            throw e;
+          }
         }}
       />
     </View>

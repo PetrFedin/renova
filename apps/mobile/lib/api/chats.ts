@@ -25,8 +25,32 @@ export const chatsApi = {
     req<{ reactions: Record<string, string[]> }>(`/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }, userId),
   pinChatMessage: (userId: string, projectId: string, threadId: string, messageId: string, pin = true) =>
     req<ChatMessage>(`/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/pin?pin=${pin}`, { method: 'POST' }, userId),
-  taskFromChatMessage: (userId: string, projectId: string, threadId: string, messageId: string, body: { title: string; assignee_id?: string; due_at?: string; work_type?: string }) =>
-    req<ChatMessage>(`/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  /** W114: задача из чата → работы/календарь — очередь офлайн */
+  taskFromChatMessage: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    messageId: string,
+    body: { title: string; assignee_id?: string; due_at?: string; work_type?: string },
+  ) => {
+    try {
+      return await req<ChatMessage>(
+        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   /** W110: счёт из чата — очередь офлайн (связь chat → payment) */
   invoiceFromChat: async (
     userId: string,
@@ -52,7 +76,17 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  markChatRead: (userId: string, projectId: string, threadId: string) => req(`/api/v1/projects/${projectId}/chats/${threadId}/read`, { method: 'POST' }, userId),
+  /** W114: прочтение чата — очередь офлайн (inbox badge) */
+  markChatRead: async (userId: string, projectId: string, threadId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/chats/${threadId}/read`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/chats/${threadId}/read`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   exportChatPdf: async (userId: string, projectId: string, threadId: string) => {
     const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
     const r = await fetch(`${base}/api/v1/projects/${projectId}/chats/${threadId}.pdf`, { headers: { 'X-User-Id': userId } });
@@ -71,8 +105,26 @@ export const chatsApi = {
     req<ChatDetail>(`/api/v1/projects/${projectId}/chats/${threadId}`, {}, userId),
   unreadChats: (userId: string, projectId: string) => req<{ count: number }>(`/api/v1/projects/${projectId}/chats/unread-count`, {}, userId),
   searchChatMessages: (userId: string, projectId: string, q: string) => req<{ thread_id: string; text: string }[]>(`/api/v1/projects/${projectId}/chats/search?q=${encodeURIComponent(q)}`, {}, userId),
-  confirmChatMessage: (userId: string, projectId: string, threadId: string, messageId: string) =>
-    req(`/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/confirm`, { method: 'POST' }, userId),
+  /** W114: подтверждение из чата — очередь офлайн */
+  confirmChatMessage: async (userId: string, projectId: string, threadId: string, messageId: string) => {
+    try {
+      return await req(
+        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/confirm`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/confirm`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   sendChatMessage: async (userId: string, projectId: string, threadId: string, text: string, message_type = 'text', image_data?: string, reply_to_id?: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/chats/${threadId}/messages`, { method: 'POST', body: JSON.stringify({ text, message_type, image_data, reply_to_id }) }, userId);

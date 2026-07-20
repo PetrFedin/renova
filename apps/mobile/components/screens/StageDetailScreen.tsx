@@ -337,6 +337,8 @@ export function StageDetailScreen() {
             rooms={activeProject.rooms || []}
             roomIds={stage.room_ids}
             estimateHref={objectTabHref(role, 'estimate')}
+            role={role}
+            returnTo={`/stage/${stage.id}`}
           />
         </StageDetailAccordion>
 

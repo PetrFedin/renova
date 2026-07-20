@@ -5,7 +5,7 @@ import { pushOsHrefWithReturn } from '@/lib/osTabNav';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';
-import type { OsTabRoute } from '@/constants/osSections';
+import type { OsRole, OsTabRoute } from '@/constants/osSections';
 
 export type OsWidget = {
   id: string;
@@ -27,10 +27,13 @@ function chunk<T>(arr: T[], size: number): T[][] {
 function WidgetCell({
   it,
   returnTo,
+  role,
   onWidgetPress,
 }: {
   it: OsWidget;
   returnTo?: string;
+  /** W114: role → resolvePushLink / TAB_ALIASES */
+  role?: OsRole;
   onWidgetPress?: (it: OsWidget) => void;
 }) {
   const body = (
@@ -45,7 +48,9 @@ function WidgetCell({
   const onPress = onWidgetPress
     ? () => onWidgetPress(it)
     : it.href
-      ? () => (returnTo ? pushOsHrefWithReturn(it.href!, returnTo) : pushOsNav(it.href!))
+      ? () => (returnTo
+        ? pushOsHrefWithReturn(it.href!, returnTo, role)
+        : pushOsNav(it.href!, undefined, role))
       : undefined;
 
   if (onPress) {
@@ -64,12 +69,15 @@ export function OsWidgetGrid({
   title,
   columns = 2,
   returnTo,
+  role,
   onWidgetPress,
 }: {
   items: OsWidget[];
   title?: string;
   columns?: number;
   returnTo?: string;
+  /** W114: канон deep-link для href плиток */
+  role?: OsRole;
   /** Главная: sheet детализации вместо прямого перехода */
   onWidgetPress?: (it: OsWidget) => void;
 }) {
@@ -81,7 +89,7 @@ export function OsWidgetGrid({
       {rows.map((row, ri) => (
         <View key={ri} style={s.gridRow}>
           {row.map((it) => (
-            <WidgetCell key={it.id} it={it} returnTo={returnTo} onWidgetPress={onWidgetPress} />
+            <WidgetCell key={it.id} it={it} returnTo={returnTo} role={role} onWidgetPress={onWidgetPress} />
           ))}
           {row.length < columns && <View style={[s.cell, s.cellGhost]} />}
         </View>
