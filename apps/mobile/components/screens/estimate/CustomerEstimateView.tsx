@@ -36,12 +36,19 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const [category, setCategory] = useState<string | null>(null);
   const [clearingProposal, setClearingProposal] = useState(false);
   const [locking, setLocking] = useState(false);
+  const [lockDiff, setLockDiff] = useState<Awaited<ReturnType<typeof api.getEstimateLockDiff>> | null>(null);
 
   useEffect(() => {
     if (!user || !activeProject) return;
     api.materialStats(user.id, activeProject.id).then(setStats).catch(() => {});
     api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(() => {});
-  }, [user, activeProject?.id]);
+    // W68 #39
+    if (activeProject.estimate_lock_proposed_at && !activeProject.estimate_locked_at) {
+      api.getEstimateLockDiff(user.id, activeProject.id).then(setLockDiff).catch(() => setLockDiff(null));
+    } else {
+      setLockDiff(null);
+    }
+  }, [user, activeProject?.id, activeProject?.estimate_lock_proposed_at, activeProject?.estimate_locked_at]);
 
   useEffect(() => {
     if (typeof estimateLayerParam === 'string' && estimateLayerParam) {
@@ -82,6 +89,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
           roomsCount={roomsCount}
           stagesCount={stagesCount}
           pendingChanges={pendingOrders.length}
+          lockDiff={lockDiff}
           canLock={
             canWrite
             && (activeProject.estimate_lines?.length || 0) > 0

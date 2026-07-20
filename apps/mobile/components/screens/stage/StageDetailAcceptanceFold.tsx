@@ -120,7 +120,7 @@ export function StageDetailAcceptanceFold({
         }}
       />
 
-      {acceptBlocked ? <Text style={s.meta}>Отметьте все пункты для приёмки</Text> : null}
+      {acceptBlocked ? <Text style={s.meta}>Нужны фото результата и отмеченный чеклист (если есть пункты)</Text> : null}
       {!acceptBlocked && checklist.length === 0 ? (
         <Text style={s.meta}>Чеклист пуст — при приёмке будет запрос подтверждения</Text>
       ) : null}

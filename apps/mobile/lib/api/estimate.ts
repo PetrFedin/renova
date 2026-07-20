@@ -7,6 +7,19 @@ export const estimateApi = {
   addEstimateLine: (userId: string, projectId: string, body: object) =>
     req(`/api/v1/projects/${projectId}/estimate/lines`, { method: 'POST', body: JSON.stringify(body) }, userId),
   materialStats: (userId: string, projectId: string) => req<MaterialStats>(`/api/v1/projects/${projectId}/estimate/materials-stats`, {}, userId),
+  getEstimateLockDiff: (userId: string, projectId: string) =>
+    req<{
+      proposed_at?: string | null;
+      locked_at?: string | null;
+      has_baseline: boolean;
+      added: { id: string; name: string; total?: number }[];
+      removed: { id: string; name: string; total?: number }[];
+      changed: { id: string; name?: string; fields: Record<string, { from: unknown; to: unknown }> }[];
+      baseline_total: number;
+      current_total: number;
+      delta_total: number;
+      has_changes: boolean;
+    }>(`/api/v1/projects/${projectId}/estimate/lock-diff`, {}, userId),
   lockEstimate: (userId: string, projectId: string) =>
     req<{ ok: boolean; estimate_locked_at?: string; contract?: { document_id?: string; pending_titles?: string[] } }>(
       `/api/v1/projects/${projectId}/estimate/lock`,

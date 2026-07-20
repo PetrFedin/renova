@@ -177,7 +177,7 @@ export default function PortalScreen() {
           <Text style={s.cardHead}>Приёмка этапов</Text>
           {snapshot.pending_acceptances!.map((acc) => (
             <View key={acc.id} style={s.acceptRow}>
-              <Text style={s.line}>{acc.stage_name || 'Этап'} · ждёт решения</Text>
+              <Text style={s.line}>{acc.stage_name || 'Этап'} · ждёт решения{(acc as any).hours_waiting != null ? ` · ${(acc as any).hours_waiting} ч` : ''}</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 <Pressable
                   style={s.acceptBtn}
@@ -218,6 +218,25 @@ export default function PortalScreen() {
                 </Pressable>
               </View>
             </View>
+          ))}
+        </View>
+      ) : null}
+
+      {(snapshot as any).estimate_summary ? (
+        <View style={s.card}>
+          <Text style={s.cardHead}>Смета (только просмотр)</Text>
+          <Text style={s.line}>
+            {(snapshot as any).estimate_summary.lines_count} поз. · {(snapshot as any).estimate_summary.total?.toLocaleString?.('ru-RU') || (snapshot as any).estimate_summary.total} ₽
+          </Text>
+          <Text style={s.muted}>
+            {(snapshot as any).estimate_summary.locked_at
+              ? `Зафиксирована ${(snapshot as any).estimate_summary.locked_at.slice(0, 10)}`
+              : (snapshot as any).estimate_summary.proposed_at
+                ? 'На согласовании'
+                : 'Черновик'}
+          </Text>
+          {((snapshot as any).estimate_summary.lines || []).slice(0, 5).map((ln: any, i: number) => (
+            <Text key={i} style={s.muted}>{ln.name} · {ln.total} ₽</Text>
           ))}
         </View>
       ) : null}

@@ -119,6 +119,8 @@ type Ctx = {
   showPaywall: () => void;
   hidePaywall: () => void;
   readOnly: boolean;
+  teamRole: string | null;
+  isContractorOwner: boolean;
 };
 
 const defaultWizard: WizardDraft = {
@@ -143,6 +145,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const [wizard, setWizardState] = useState<WizardDraft>(defaultWizard);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
+  /** W68 #43: роль в бригаде owner|foreman|member|viewer */
+  const [teamRole, setTeamRole] = useState<string | null>(null);
 
   const setWizard = useCallback((p: Partial<WizardDraft>) => {
     setWizardState((w) => ({ ...w, ...p }));
@@ -230,7 +234,12 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     try {
       const team = await api.getTeam(u.id);
       const me = team?.members?.find((m: { user_id: string; role?: string }) => m.user_id === u.id);
-      if (u.role === 'contractor') setReadOnly(me?.role === 'viewer');
+      if (u.role === 'contractor') {
+        setTeamRole(me?.role || 'owner');
+        setReadOnly(me?.role === 'viewer');
+      } else {
+        setTeamRole(null);
+      }
     } catch {
       setReadOnly(false);
     }
@@ -559,8 +568,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       showPaywall: () => setPaywallVisible(true),
       hidePaywall: () => setPaywallVisible(false),
       readOnly,
+      teamRole,
+      isContractorOwner: Boolean(
+        user?.role === 'contractor'
+        && (!teamRole || teamRole === 'owner')
+        && activeProject
+        && activeProject.contractor_id === user.id
+      ),
     }),
-    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, readOnly],
+    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, readOnly, teamRole],
   );
 
   return (

@@ -111,6 +111,15 @@ async def finalize_work_acceptance(
         if (create_issue or with_remarks)
         else AcceptanceStatus.accepted.value
     )
+    # W68 #44: без фото результата приёмка блокируется (явный select — без lazy load в async)
+    from sqlalchemy import select as _select
+    from app.models.entities import StagePhoto
+    photos = list(
+        (await db.execute(_select(StagePhoto).where(StagePhoto.stage_id == stage.id))).scalars().all()
+    )
+    if not photos:
+        raise ValueError("photos_required")
+
     row.status = status
     row.accepted_by = accepted_by
     row.accepted_at = now
@@ -214,6 +223,19 @@ async def emit_acceptance_side_effects(
             body=stage.name,
             link_path="/(customer)/(tabs)/budget?tab=payments",
             return_to="/(customer)/(tabs)/home",
+        )
+
+    # W68 #46: авто-акт уже создан ensure_acceptance_act_document — пушим в Документы
+    for member_id in project_member_ids(project):
+        await notif.notify(
+            db,
+            user_id=member_id,
+            project_id=project.id,
+            notification_type="document",
+            title=f"Акт приёмки готов: {stage.name}",
+            body="PDF сформирован автоматически после приёмки",
+            link_path="/documents",
+            return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home",
         )
 
     if next_stage:

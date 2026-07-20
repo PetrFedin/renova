@@ -273,7 +273,20 @@ async def _ensure_demo_acceptance_queue(db: AsyncSession, project_id: str, contr
         if active.status != StageStatus.review:
             active.status = StageStatus.review
             active.percent_complete = max(active.percent_complete or 0, 90)
-            await db.commit()
+        from app.models.entities import StagePhoto
+        has_photo = (
+            await db.execute(select(StagePhoto).where(StagePhoto.stage_id == active.id).limit(1))
+        ).scalar_one_or_none()
+        if not has_photo:
+            db.add(
+                StagePhoto(
+                    stage_id=active.id,
+                    user_id=contractor_id,
+                    caption="после — демо",
+                    image_url="https://placehold.co/600x400/png?text=demo-after",
+                )
+            )
+        await db.commit()
         return
 
     db.add(
@@ -290,6 +303,20 @@ async def _ensure_demo_acceptance_queue(db: AsyncSession, project_id: str, contr
     active.status = StageStatus.review
     active.contractor_ready = True
     active.percent_complete = max(active.percent_complete or 0, 90)
+    # W68 #44: демо-фото результата — иначе приёмка блокируется
+    from app.models.entities import StagePhoto
+    has_photo = (
+        await db.execute(select(StagePhoto).where(StagePhoto.stage_id == active.id).limit(1))
+    ).scalar_one_or_none()
+    if not has_photo:
+        db.add(
+            StagePhoto(
+                stage_id=active.id,
+                user_id=contractor_id,
+                caption="после — демо",
+                image_url="https://placehold.co/600x400/png?text=demo-after",
+            )
+        )
     await db.commit()
 
 

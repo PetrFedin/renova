@@ -26,7 +26,7 @@ import {
 export function ContractorEstimateView() {
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
-  const { user, activeProject, loadProject } = useRenova();
+  const { user, activeProject, loadProject, isContractorOwner, teamRole } = useRenova();
   const [coTitle, setCoTitle] = useState('Доп. розетки');
   const [coAmount, setCoAmount] = useState('8500');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
@@ -93,7 +93,7 @@ export function ContractorEstimateView() {
             <PrimaryButton
               title={activeProject.estimate_lock_proposed_at ? 'Смета у заказчика на согласовании' : 'Отправить смету на согласование'}
               variant="outline"
-              disabled={!!activeProject.estimate_lock_proposed_at}
+              disabled={!!activeProject.estimate_lock_proposed_at || !isContractorOwner}
               onPress={async () => {
                 try {
                   await api.proposeEstimateLock(user.id, activeProject.id);
@@ -104,6 +104,9 @@ export function ContractorEstimateView() {
                 }
               }}
             />
+            {!isContractorOwner && teamRole && teamRole !== 'owner' ? (
+              <Text style={{ color: '#64748B', marginTop: 8 }}>Отправку сметы делает главный исполнитель (не {teamRole}).</Text>
+            ) : null}
             {activeProject.estimate_lock_proposed_at ? (
               <PrimaryButton
                 title="Отозвать предложение"

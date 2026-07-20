@@ -221,17 +221,28 @@ async def accept_work(
     require_pending_decision(row)
     stage = await require_stage(db, project_id, row.stage_id)
 
-    result = await finalize_work_acceptance(
-        db,
-        project=project,
-        stage=stage,
-        row=row,
-        accepted_by=user.id,
-        comment=body.comment,
-        quality_score=body.quality_score,
-        create_issue=body.create_issue,
-        checklist=body.checklist,
-    )
+    try:
+        result = await finalize_work_acceptance(
+            db,
+            project=project,
+            stage=stage,
+            row=row,
+            accepted_by=user.id,
+            comment=body.comment,
+            quality_score=body.quality_score,
+            create_issue=body.create_issue,
+            checklist=body.checklist,
+        )
+    except ValueError as exc:
+        if str(exc) == "photos_required":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "photos_required",
+                    "message": "Добавьте хотя бы одно фото результата этапа перед приёмкой",
+                },
+            ) from exc
+        raise
     await db.commit()
     await db.refresh(result.acceptance)
 

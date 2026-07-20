@@ -66,15 +66,38 @@ async def project_access_mode(db: AsyncSession, user: User, project: Project) ->
         owners = await team_owner_ids(db, user.id)
         if project.contractor_id in owners:
             mem = await my_membership(db, user.id)
+            # viewer — read-only; foreman/member — write на объекте (не финансы/lock)
             ro = mem is not None and mem.role == "viewer"
             return "contractor", ro
         if project.contractor_id is None:
             mem = await my_membership(db, user.id)
+            # viewer — read-only; foreman/member — write на объекте (не финансы/lock)
             ro = mem is not None and mem.role == "viewer"
             return "contractor", ro
     if await is_project_guest(db, user.id, project.id):
         return "guest", True
     return "none", True
+
+
+
+async def is_contractor_owner(db: AsyncSession, user: User, project: Project) -> bool:
+    """W68 #43: владелец бригады / назначенный contractor_id — не member/foreman."""
+    if project.contractor_id == user.id:
+        return True
+    return False
+
+
+async def team_role_for_project(db: AsyncSession, user: User, project: Project) -> str | None:
+    """Роль в бригаде исполнителя проекта: owner|foreman|member|viewer|None."""
+    if project.contractor_id == user.id:
+        return "owner"
+    if user.role.value != "contractor":
+        return None
+    owners = await team_owner_ids(db, user.id)
+    if project.contractor_id not in owners and project.contractor_id is not None:
+        return None
+    mem = await my_membership(db, user.id)
+    return mem.role if mem else None
 
 
 async def can_access_project(db: AsyncSession, user: User, project: Project, write: bool = False) -> bool:

@@ -177,15 +177,43 @@ async def portal_snapshot(
         )
     ).scalars().all()
     pending_acceptances = []
+    from datetime import datetime as _dt
     for row in pending_acc_rows[:5]:
         stage = await db.get(Stage, row.stage_id)
+        hours_waiting = None
+        if row.requested_at:
+            hours_waiting = round((_dt.utcnow() - row.requested_at).total_seconds() / 3600, 1)
         pending_acceptances.append({
             "id": row.id,
             "stage_id": row.stage_id,
             "stage_name": stage.name if stage else None,
             "status": row.status,
             "requested_at": row.requested_at.isoformat() if row.requested_at else None,
+            "hours_waiting": hours_waiting,  # W68 #45 SLA
         })
+
+    # W68 #47: смета read-only в portal
+    from app.models.entities import EstimateLine
+    est_lines = list(
+        (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
+    )
+    est_total = round(sum(float(l.quantity_planned or 0) * float(l.unit_price or 0) for l in est_lines), 2)
+    estimate_summary = {
+        "lines_count": len(est_lines),
+        "total": est_total,
+        "locked_at": p.estimate_locked_at.isoformat() if p.estimate_locked_at else None,
+        "proposed_at": p.estimate_lock_proposed_at.isoformat() if p.estimate_lock_proposed_at else None,
+        "lines": [
+            {
+                "name": l.name,
+                "unit": l.unit,
+                "qty": l.quantity_planned,
+                "price": l.unit_price,
+                "total": round(float(l.quantity_planned or 0) * float(l.unit_price or 0), 2),
+            }
+            for l in est_lines[:30]
+        ],
+    }
 
     recipient_name = None
     payment_requisites = None
@@ -238,6 +266,7 @@ async def portal_snapshot(
         "selections": selections,
         "selections_total": len(sel_rows),
         "pending_acceptances": pending_acceptances,
+        "estimate_summary": estimate_summary,
         "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
         "can_confirm_schedule": user.id == p.customer_id and user.role == UserRole.customer and not read_only,
         "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
@@ -289,14 +318,25 @@ async def portal_accept_work(
     require_pending_decision(row)
     stage = await require_stage(db, project_id, row.stage_id)
 
-    result = await finalize_work_acceptance(
-        db,
-        project=project,
-        stage=stage,
-        row=row,
-        accepted_by=user.id,
-        comment=body.comment,
-    )
+    try:
+        result = await finalize_work_acceptance(
+            db,
+            project=project,
+            stage=stage,
+            row=row,
+            accepted_by=user.id,
+            comment=body.comment,
+        )
+    except ValueError as exc:
+        if str(exc) == "photos_required":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "photos_required",
+                    "message": "Добавьте хотя бы одно фото результата этапа перед приёмкой",
+                },
+            ) from exc
+        raise
     await db.commit()
     await db.refresh(result.acceptance)
 

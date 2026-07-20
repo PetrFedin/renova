@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.models.entities import Project
 from app.services import project_service as proj_svc
-from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal
+from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
 
@@ -62,12 +62,31 @@ async def materials_stats(project_id: str, user: User = Depends(get_current_user
     return material_stats(p.estimate_lines)
 
 
+@router.get("/lock-diff")
+async def estimate_lock_diff(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W68 #39: изменения сметы с момента propose (для заказчика перед lock)."""
+    await require_project(db, project_id, user, write=False)
+    diff = await get_estimate_lock_diff(db, project_id)
+    if not diff:
+        raise HTTPException(404, "Проект не найден")
+    return diff
+
+
 @router.post("/propose-lock")
 async def propose_project_estimate_lock(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """W57: исполнитель отправляет смету на согласование (без estimate_locked_at)."""
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Предложить фиксацию может только исполнитель")
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
+    # W68 #43: только назначенный исполнитель (owner), не member/foreman бригады
+    if project.contractor_id and project.contractor_id != user.id:
+        raise HTTPException(
+            403,
+            detail={
+                "code": "contractor_owner_required",
+                "message": "Отправить смету на фиксацию может только главный исполнитель объекта",
+            },
+        )
     proj, result = await propose_estimate_lock(db, project_id, proposed_by=user.id)
     if not proj:
         code = result.get("code")

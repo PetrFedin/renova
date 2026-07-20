@@ -86,6 +86,8 @@ class Project(Base):
     # W57: исполнитель предлагает фиксацию; заказчик подтверждает → estimate_locked_at
     estimate_lock_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     estimate_lock_proposed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # W68 #39: снимок строк на момент propose — для diff перед lock
+    estimate_propose_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     estimate_lines: Mapped[list["EstimateLine"]] = relationship(back_populates="project", cascade="all, delete-orphan")

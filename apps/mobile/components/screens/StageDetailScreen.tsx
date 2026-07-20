@@ -122,7 +122,9 @@ export function StageDetailScreen() {
       : wfChecks.length
         ? wfChecks.every((c) => c.done)
         : CHECKLIST.every((c) => checks[c]);
-  const acceptBlocked = CHECKLIST.length > 0 && !checklistComplete;
+  // W68 #44: без фото результата кнопка неактивна
+  const hasResultPhoto = (stage?.photos?.length ?? 0) > 0;
+  const acceptBlocked = (CHECKLIST.length > 0 && !checklistComplete) || !hasResultPhoto;
   const exportChecks = wfChecks.length
     ? wfChecks.filter((c) => c.done).map((c) => c.text)
     : CHECKLIST.filter((c) => checks[c]);

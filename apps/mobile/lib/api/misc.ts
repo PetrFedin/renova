@@ -95,7 +95,8 @@ export const miscApi = {
       documents_total: number;
       selections: { id: string; title: string; category: string; status: string; price: number; allowance?: number | null }[];
       selections_total: number;
-      pending_acceptances?: { id: string; stage_id: string; stage_name?: string | null; status: string }[];
+      pending_acceptances?: { id: string; stage_id: string; stage_name?: string | null; status: string; hours_waiting?: number | null }[];
+      estimate_summary?: { lines_count: number; total: number; locked_at?: string | null; proposed_at?: string | null; lines: { name: string; unit: string; qty: number; price: number; total: number }[] };
       can_accept_stage?: boolean;
       can_sign_documents?: boolean;
       pending_draft_documents?: { id: string; title: string; status?: string }[];

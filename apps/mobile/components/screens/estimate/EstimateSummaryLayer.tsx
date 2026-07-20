@@ -20,6 +20,22 @@ type Props = {
   canLock?: boolean;
   locking?: boolean;
   onLockEstimate?: () => Promise<void>;
+  canRejectProposal?: boolean;
+  canWithdrawProposal?: boolean;
+  clearingProposal?: boolean;
+  onRejectProposal?: () => Promise<void>;
+  onWithdrawProposal?: () => Promise<void>;
+  /** W68 #39 */
+  lockDiff?: {
+    has_baseline: boolean;
+    has_changes: boolean;
+    added: { name: string }[];
+    removed: { name: string }[];
+    changed: { name?: string }[];
+    baseline_total: number;
+    current_total: number;
+    delta_total: number;
+  } | null;
 };
 
 export function EstimateSummaryLayer({
@@ -37,6 +53,7 @@ export function EstimateSummaryLayer({
   clearingProposal,
   onRejectProposal,
   onWithdrawProposal,
+  lockDiff,
 }: Props) {
   const lockedAt = project.estimate_locked_at;
   return (
@@ -55,6 +72,13 @@ export function EstimateSummaryLayer({
           Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} (
           {totals.materialsCount})
         </Text>
+        {lockDiff?.has_baseline ? (
+          <Text style={s.breakdown}>
+            {lockDiff.has_changes
+              ? `Изменения с отправки: +${lockDiff.added.length} / −${lockDiff.removed.length} / Δ ${lockDiff.changed.length} · Δ ${formatRub(lockDiff.delta_total)}`
+              : 'С момента отправки сметы изменений нет'}
+          </Text>
+        ) : null}
       </View>
 
       <View style={s.metaRow}>

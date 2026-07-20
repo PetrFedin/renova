@@ -4,6 +4,53 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import EstimateLine, LineType, Project
 
 
+
+def serialize_estimate_lines(lines) -> list[dict]:
+    """W68 #39: компактный снимок строк сметы."""
+    out = []
+    for ln in lines:
+        out.append({
+            "id": ln.id,
+            "name": ln.name,
+            "line_type": ln.line_type.value if hasattr(ln.line_type, "value") else str(ln.line_type),
+            "unit": ln.unit,
+            "quantity_planned": float(ln.quantity_planned or 0),
+            "unit_price": float(ln.unit_price or 0),
+            "total": round(float(ln.quantity_planned or 0) * float(ln.unit_price or 0), 2),
+        })
+    return out
+
+
+def diff_estimate_snapshots(baseline: list[dict], current: list[dict]) -> dict:
+    """Сравнение propose-снимка с текущими строками."""
+    base_map = {x["id"]: x for x in baseline}
+    cur_map = {x["id"]: x for x in current}
+    added = [cur_map[i] for i in cur_map if i not in base_map]
+    removed = [base_map[i] for i in base_map if i not in cur_map]
+    changed = []
+    for i in cur_map:
+        if i not in base_map:
+            continue
+        b, c = base_map[i], cur_map[i]
+        fields = {}
+        for k in ("name", "quantity_planned", "unit_price", "unit"):
+            if b.get(k) != c.get(k):
+                fields[k] = {"from": b.get(k), "to": c.get(k)}
+        if fields:
+            changed.append({"id": i, "name": c.get("name"), "fields": fields})
+    base_total = round(sum(float(x.get("total") or 0) for x in baseline), 2)
+    cur_total = round(sum(float(x.get("total") or 0) for x in current), 2)
+    return {
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "baseline_total": base_total,
+        "current_total": cur_total,
+        "delta_total": round(cur_total - base_total, 2),
+        "has_changes": bool(added or removed or changed),
+    }
+
+
 async def recalc_budget(db: AsyncSession, project_id: str) -> float:
     """W45: делегирует в sync_project_budget_planned (estimate + approved CO)."""
     from app.services.budget_service import sync_project_budget_planned
@@ -61,6 +108,30 @@ def material_stats(lines: list[EstimateLine]) -> dict:
     return {"planned": round(planned, 2), "actual": round(actual, 2), "overrun_percent": round(overrun, 1)}
 
 
+
+async def get_estimate_lock_diff(db: AsyncSession, project_id: str) -> dict | None:
+    """W68 #39: diff снимка propose vs текущие строки."""
+    import json as _json
+    proj = await db.get(Project, project_id)
+    if not proj:
+        return None
+    result = await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))
+    current = serialize_estimate_lines(list(result.scalars().all()))
+    baseline: list[dict] = []
+    if proj.estimate_propose_snapshot_json:
+        try:
+            baseline = _json.loads(proj.estimate_propose_snapshot_json)
+        except Exception:
+            baseline = []
+    diff = diff_estimate_snapshots(baseline, current)
+    return {
+        "proposed_at": proj.estimate_lock_proposed_at.isoformat() if proj.estimate_lock_proposed_at else None,
+        "locked_at": proj.estimate_locked_at.isoformat() if proj.estimate_locked_at else None,
+        "has_baseline": bool(baseline),
+        **diff,
+    }
+
+
 async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_by: str) -> tuple[Project | None, dict]:
     """W57: исполнитель предлагает фиксацию — без estimate_locked_at."""
     from datetime import datetime, timedelta
@@ -80,6 +151,8 @@ async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_b
     # Повторный propose всегда обновляет TTL и шлёт напоминание
     proj.estimate_lock_proposed_at = datetime.utcnow()
     proj.estimate_lock_proposed_by = proposed_by
+    import json as _json
+    proj.estimate_propose_snapshot_json = _json.dumps(serialize_estimate_lines(lines), ensure_ascii=False)
     if proj.customer_id and proposed_by != proj.customer_id:
         await notif_svc.notify(
             db,
@@ -132,6 +205,8 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
     proj.estimate_locked_at = datetime.utcnow()
     proj.estimate_lock_proposed_at = None
     proj.estimate_lock_proposed_by = None
+    proj.estimate_propose_snapshot_json = None
+    proj.estimate_propose_snapshot_json = None
     await recalc_budget(db, project_id)
     draft = await docs_svc.ensure_contract_draft(db, project_id=project_id, created_by=locked_by)
     titles = ", ".join(draft.get("pending_titles") or [])
@@ -181,6 +256,7 @@ async def clear_estimate_proposal(
 
     proj.estimate_lock_proposed_at = None
     proj.estimate_lock_proposed_by = None
+    proj.estimate_propose_snapshot_json = None
     body = (reason or "").strip() or (
         "Заказчик отклонил фиксацию сметы — нужна правка."
         if mode == "reject"
