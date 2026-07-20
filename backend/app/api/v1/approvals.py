@@ -38,38 +38,78 @@ class RejectIn(BaseModel):
 
 @router.post("/{project_id}/approvals/{item_id}/reject")
 async def reject_item(project_id: str, item_id: str, body: RejectIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W70 #20: reject пишет activity + notify подрядчику (симметрия с approve)."""
     await require_project(db, project_id, user, write=True)
-    if user.role != UserRole.customer: raise HTTPException(403)
+    if user.role != UserRole.customer:
+        raise HTTPException(403)
     from app.services import activity_service as act
+    from app.services import notification_service as ns
+    from app.models.entities import Project
+
+    proj = await db.get(Project, project_id)
+    title = ""
+    link = "/(contractor)/(tabs)/repair?tab=materials"
+
     if body.type == "material":
         p = await db.get(MaterialPick, item_id)
-        if not p or p.project_id != project_id: raise HTTPException(404)
-        p.status = MaterialPickStatus.draft; p.notes = (p.notes or "") + f"\nОтклонено: {body.reason}"
-        await db.commit()
-        await act.log_event(db, project_id=project_id, user_id=user.id, kind="approval", title=f"Отклонено: {p.name}", body=body.reason)
+        if not p or p.project_id != project_id:
+            raise HTTPException(404)
+        p.status = MaterialPickStatus.draft
+        p.notes = (p.notes or "") + f"\nОтклонено: {body.reason}"
+        title = f"Отклонено: {p.name}"
+        link = "/(contractor)/(tabs)/repair?tab=materials"
     elif body.type == "change_order":
         c = await db.get(ChangeOrder, item_id)
-        if not c or c.project_id != project_id: raise HTTPException(404)
+        if not c or c.project_id != project_id:
+            raise HTTPException(404)
         c.status = ChangeOrderStatus.rejected
-        await db.commit()
+        title = f"Отклонено ДО: {c.title}"
+        link = "/(contractor)/(tabs)/object?tab=estimate"
     elif body.type == "room_change":
         r = await db.get(RoomChangeRequest, item_id)
-        if not r or r.project_id != project_id: raise HTTPException(404)
+        if not r or r.project_id != project_id:
+            raise HTTPException(404)
         r.status = RoomChangeStatus.rejected
-        await db.commit()
+        title = "Отклонено изменение комнаты"
+        link = "/(contractor)/(tabs)/object?tab=rooms"
     elif body.type == "design":
         d = await db.get(DesignPackage, item_id)
-        if not d or d.project_id != project_id: raise HTTPException(404)
+        if not d or d.project_id != project_id:
+            raise HTTPException(404)
         d.status = "rejected"
-        await db.commit()
+        title = f"Отклонён дизайн: {d.title}"
+        link = "/(contractor)/(tabs)/object"
     elif body.type == "waste":
         w = await db.get(WasteOrder, item_id)
-        if not w or w.project_id != project_id: raise HTTPException(404)
-        w.status = WasteOrderStatus.cancelled; w.notes = (w.notes or "") + f"\nОтклонено: {body.reason}"
-        await db.commit()
+        if not w or w.project_id != project_id:
+            raise HTTPException(404)
+        w.status = WasteOrderStatus.cancelled
+        w.notes = (w.notes or "") + f"\nОтклонено: {body.reason}"
+        title = f"Отклонён вывоз {w.volume_m3} м³"
+        link = "/(contractor)/(tabs)/repair"
     else:
-        raise HTTPException(400)
-    return {"ok": True}
+        raise HTTPException(400, "unknown_approval_type")
+
+    await db.commit()
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="approval",
+        title=title,
+        body=body.reason or None,
+    )
+    if proj and proj.contractor_id:
+        await ns.notify(
+            db,
+            user_id=proj.contractor_id,
+            project_id=project_id,
+            notification_type="approval",
+            title=title,
+            body=body.reason or "Заказчик отклонил из очереди Approvals",
+            link_path=link,
+        )
+    return {"ok": True, "type": body.type, "id": item_id}
 
 
 class ApproveIn(BaseModel):

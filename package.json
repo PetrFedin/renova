@@ -52,7 +52,9 @@
     "h0:check": "bash scripts/h0-check.sh",
     "h0:check:strict": "bash scripts/h0-check.sh --strict",
     "h0:check:live": "bash scripts/h0-check.sh --live",
-    "demo:investor": "bash scripts/demo-investor-15.sh"
+    "demo:investor": "bash scripts/demo-investor-15.sh",
+    "typecheck:mobile": "bash scripts/typecheck-mobile.sh",
+    "typecheck:mobile:raw": "cd apps/mobile && npx tsc --noEmit -p ."
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

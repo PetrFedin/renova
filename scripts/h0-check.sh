@@ -170,7 +170,22 @@ echo ""
 echo "=== SUMMARY: FAIL=$FAIL WARN=$WARN ==="
 if [[ "$FAIL" -gt 0 ]]; then
   echo "H0 NOT READY — fix FAIL items before investor demo"
+  echo ""
+  echo "=== Нужно от вас (секреты / infra, не код) ==="
+  echo "1) Реальный HTTPS API → заменить api-staging.example.com в apps/mobile/eas.json"
+  echo "2) YOOKASSA_SHOP_ID + YOOKASSA_SECRET на staging (payments_mode=live)"
+  echo "3) ENVIRONMENT=staging, DEMO pay off (demo_allowed=false)"
+  echo "4) PUBLIC_BASE_URL=https://… (portal magic-link)"
+  echo "5) Postgres+Alembic smoke: bash scripts/staging-postgres-smoke.sh"
+  echo "6) 2–3 paid Pro аккаунта для демо assign/paywall"
+  echo "7) npm run h0:check:live против staging URL"
+  echo "См. docs/H0-STAGING-RUNBOOK-2026-07-19.md"
   exit 1
 fi
 echo "H0 local checks passed (resolve WARN before TestFlight / live pay)"
+if [[ "$WARN" -gt 0 ]]; then
+  echo ""
+  echo "Пилот (пункты 1–8) всё ещё ждёт: HTTPS API в eas.json, YuKassa live, PUBLIC_BASE_URL, Postgres smoke, Pro accounts, h0:check:live"
+  echo "Подробно: docs/H0-STAGING-RUNBOOK-2026-07-19.md · docs/PRIORITY-50-PLAN-2026-07-20.md § H0"
+fi
 exit 0

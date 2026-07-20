@@ -53,7 +53,7 @@
 | 17 | Schedule create/submit contractor-only | **done W66** |
 | 18 | ordered ≠ approved (purchases only) | **done W66** |
 | 19 | checklist budget без progress proxy | **done W66** |
-| 20 | Audit: hub approve пишет activity (+ notify) | **lite W66** |
+| 20 | Audit: hub approve/reject пишет activity (+ notify) | **done W70** |
 | 21 | Hub approve → notify contractor | **done W66** |
 | 22 | Inbox «Подтвердить исправления» (fixed) | **done W66** |
 | 23 | Kontur/e-sign live smoke | **ops** (нужен Kontur) |
@@ -77,8 +77,8 @@
 | 34 | Export honesty «не live-синк» | **done W67** |
 | 35 | Team QR Pro hint + CTA | **done W67** |
 | 36 | uvicorn websockets warnings | **lite** uvicorn[standard] в deps |
-| 37 | Локальный дрейф ci.yml | **ops** (не коммитим без scope) |
-| 38 | TS2786 JSX noise | **eng** (отдельный cleanup) |
+| 37 | CI: test:priority + playwright scripts | **done W70** |
+| 38 | TS2786 JSX noise | **managed W70** (`typecheck:mobile` gate) |
 
 ---
 
@@ -109,6 +109,7 @@
 4. **W67 (27–38)** — demo-clean (#36–38 ops/eng)  
 5. **W68 (39, 43–47)** — product control  
 6. **W69 (40–42, 48–50)** — payment % / templates / VAT / margin / escalate  
+7. **W70 (20, 37–38)** — CI + typecheck gate + reject audit; H0 ждёт секреты  
 
 ## DoD пилота
 
@@ -130,3 +131,20 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W67 | 27–38 | **закрыто** `develop` (#36–38 ops/eng частично) |
 | W68 | 39, 43–47 | **закрыто** `develop` |
 | W69 | 40–42, 48–50 (+41/36 lite) | **закрыто кодом** `develop` |
+| W70 | 20, 37–38 (+ H0 blockers doc) | **закрыто** `develop` |
+
+
+## H0 — блокеры вне кода (1–8, 23)
+
+Код и гарды готовы (`npm run h0:check`). Чтобы закрыть пилот, нужны значения:
+
+| # | Что дать | Куда |
+|---|----------|------|
+| 1/4 | HTTPS staging API URL | `apps/mobile/eas.json` preview/testflight/staging |
+| 2/3 | YuKassa shop+secret, demo off | staging secrets / `env.staging` |
+| 5 | PUBLIC_BASE_URL https | staging env |
+| 6 | Postgres URL + alembic | `scripts/staging-postgres-smoke.sh` |
+| 7 | 2–3 paid Pro | admin / YuKassa webhooks |
+| 8 | live check | `npm run h0:check:live` |
+| 23 | Kontur credentials | e-sign live smoke |
+
