@@ -9,6 +9,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RepairProcessTimeline } from '@/components/renova/RepairProcessTimeline';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ProjectDetail } from '@/lib/api';
 import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 import { RenovaTheme } from '@/constants/Theme';
@@ -35,7 +36,7 @@ export default function ActivityScreen() {
     setSelectedProjectId((prev) => prev ?? defaultProjectId);
   }, [defaultProjectId]);
 
-  useEffect(() => {
+  const reloadActivityProject = useCallback(() => {
     if (!user || !selectedProjectId) {
       setViewProject(null);
       return;
@@ -44,12 +45,16 @@ export default function ActivityScreen() {
       setViewProject(activeProject);
       return;
     }
-    let cancelled = false;
     api.getProject(user.id, selectedProjectId)
-      .then((p) => { if (!cancelled) setViewProject(p); })
-      .catch(() => { if (!cancelled) setViewProject(null); });
-    return () => { cancelled = true; };
+      .then((p) => setViewProject(p))
+      .catch(() => setViewProject(null));
   }, [user?.id, selectedProjectId, activeProject]);
+
+  useEffect(() => {
+    reloadActivityProject();
+  }, [reloadActivityProject]);
+  // W98: после golden-path — архив/timeline объект актуален
+  useProjectDataReload(reloadActivityProject);
 
   const selectedName = useMemo(
     () => projects.find((p) => p.id === selectedProjectId)?.name ?? viewProject?.name,

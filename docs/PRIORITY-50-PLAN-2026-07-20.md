@@ -159,6 +159,7 @@ Canvas: `renova-priority-50.canvas.tsx`
 | W95 | estimate CO + stage pay + floor plan + notify → bus | **закрыто** `develop` |
 | W96 | waste/leads/design/viewers/picks/room/plan/notif → bus | **закрыто** `develop` |
 | W97 | link contractor/team/furniture/audit/digest → bus | **закрыто** `develop` |
+| W98 | chat-task/week-strip/plan-tab/activity/admin → bus | **закрыто** `develop` |
 
 
 ## H0 — блокеры вне кода (1–8, 23)

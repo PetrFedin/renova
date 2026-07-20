@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
 
@@ -30,7 +31,7 @@ export default function AdminDashboardScreen() {
   const [h0, setH0] = useState<any>(null);
   const [chart, setChart] = useState<any[]>([]);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     if (!user) return;
     api.getAdminStats(user.id).then(setS).catch(() => {});
     api.getReleaseHealth(user.id).then(setHealth).catch(() => {});
@@ -42,6 +43,8 @@ export default function AdminDashboardScreen() {
       api.getRevenueChart(user.id).then(setRev).catch(() => {});
     }
   }, [user?.id]);
+  useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   if (Platform.OS !== 'web') {
     return (

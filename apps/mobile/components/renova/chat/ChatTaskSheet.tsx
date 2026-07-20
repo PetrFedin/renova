@@ -1,9 +1,10 @@
 /** Форма задачи из чата — название, ответственный, срок */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Modal, View, Text, TextInput, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 
 const DUE_PRESETS = [
   { label: 'Завтра', days: 1 },
@@ -32,10 +33,12 @@ export function ChatTaskSheet({
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (visible) setTitle(defaultTitle); }, [visible, defaultTitle]);
-  useEffect(() => {
+  const reloadMembers = useCallback(() => {
     if (!visible) return;
     api.getTeam(userId).then((t) => setMembers(t?.members || [])).catch(() => setMembers([]));
   }, [visible, userId]);
+  useEffect(() => { reloadMembers(); }, [reloadMembers]);
+  useProjectDataReload(reloadMembers);
 
   async function save() {
     if (!title.trim()) return;

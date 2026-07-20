@@ -428,6 +428,8 @@ export function ChatThreadView({
           await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
           setTaskMsg(null);
           await reload();
+          // W98: календарь / работы / inbox после задачи из чата
+          await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
         }}
       />
     </View>
