@@ -4,6 +4,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { PaywallModal } from '@/components/renova/PaywallModal';
 import { router } from 'expo-router';
 import { flush } from "@/lib/offlineQueue";
+import { reloadInboxSync } from "@/lib/inboxSyncStore";
+import { notifyProjectDataChanged } from "@/lib/projectDataBus";
 
 function signalPreviewReady() {
   if (typeof window !== "undefined" && window.parent !== window) {
@@ -198,6 +200,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(KEYS.projectId, id);
         await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
         await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
+        // W81: inbox/задачи и home hints для нового объекта
+        await reloadInboxSync({
+          userId: user.id,
+          userRole: user.role,
+          projectId: id,
+          project: p,
+          osRole: user.role === 'contractor' ? 'contractor' : 'customer',
+        }).catch(() => {});
+        notifyProjectDataChanged();
       } finally {
         setProjectResolving(false);
       }

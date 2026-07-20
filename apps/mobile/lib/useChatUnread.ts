@@ -119,6 +119,11 @@ export function useInboxTasks(role: OsRole) {
     reload().catch(() => {});
   }), [reload]);
 
+  // W81: смена объекта → inbox/задачи текущего projectId (не ждать blur/focus)
+  useEffect(() => {
+    reload().catch(() => {});
+  }, [reload]);
+
   return { items, badge, taskBadge, chatUnread, reload };
 }
 

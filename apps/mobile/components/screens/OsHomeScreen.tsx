@@ -24,6 +24,7 @@ import type { OsRole } from '@/constants/osSections';
 import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyBadge';
 import { getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
 import { mergeDigestInsight } from '@/lib/domain/digestHomeInsight';
+import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
   const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading } = useRenova();
@@ -170,6 +171,11 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       })
       .catch(() => {});
   }), []);
+
+  // W81: график/объект изменились → обновить nextAction (submitted → confirmed)
+  useEffect(() => subscribeProjectDataChanged(() => {
+    load().catch(() => {});
+  }), [user?.id, activeProject?.id]);
 
   const snap = useMemo(() => {
     if (!activeProject || !dash) return null;

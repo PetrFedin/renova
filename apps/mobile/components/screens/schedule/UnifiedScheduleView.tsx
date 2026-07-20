@@ -23,6 +23,8 @@ import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { formatScheduleRange } from '@/lib/formatScheduleDate';
 import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats';
 import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
+import { reloadInboxSync } from '@/lib/inboxSyncStore';
+import { notifyProjectDataChanged } from '@/lib/projectDataBus';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -53,6 +55,20 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const { height } = useWindowDimensions();
   const calendarMaxH = Math.round(height * 0.59);
   const { user, activeProject, teamRole, readOnly } = useRenova();
+
+  /** W81: после submit/confirm/reject графика — inbox + home nextAction */
+  const syncScheduleSideEffects = useCallback(async () => {
+    if (!user || !activeProject) return;
+    await reloadInboxSync({
+      userId: user.id,
+      userRole: user.role,
+      projectId: activeProject.id,
+      project: activeProject,
+      osRole: role === 'contractor' ? 'contractor' : 'customer',
+    }).catch(() => {});
+    notifyProjectDataChanged();
+  }, [user, activeProject, role]);
+
   // W72: график правят owner/foreman бригады (заказчик — отдельно через agree)
   const canManageSchedulePlan =
     !readOnly &&
@@ -268,6 +284,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                   setSchedule(next);
                   Alert.alert('Отправлено', 'Заказчик получит запрос на согласование графика');
                   reload();
+                  await syncScheduleSideEffects();
                 } catch (e: unknown) {
                   Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
                 } finally {
@@ -290,6 +307,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                     setSchedule(next);
                     Alert.alert('Согласовано', 'Даты этапов обновлены по графику');
                     reload();
+                    await syncScheduleSideEffects();
                   } catch (e: unknown) {
                     Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось согласовать');
                   } finally {
@@ -312,6 +330,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                         const next = await api.rejectWorkSchedule(user.id, activeProject.id, schedule.id, reason || undefined);
                         setSchedule(next);
                         reload();
+                        await syncScheduleSideEffects();
                       } catch (e: unknown) {
                         Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
                       } finally {
@@ -329,6 +348,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                           const next = await api.rejectWorkSchedule(user.id, activeProject.id, schedule.id, 'Нужна правка сроков');
                           setSchedule(next);
                           reload();
+                          await syncScheduleSideEffects();
                         } catch (e: unknown) {
                           Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
                         } finally {
