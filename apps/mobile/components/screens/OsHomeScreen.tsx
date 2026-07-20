@@ -62,17 +62,13 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         setDash(fallbackDashboard(activeProject));
       }
 
-      if (role === 'customer') {
-        try {
-          const items = await api.listPayments(user.id, activeProject.id);
-          const pending = items.filter((p) => p.status === 'pending');
-          setPendingPayments(pending.length);
-          setPendingPaymentTotal(pending.reduce((sum, p) => sum + p.amount, 0));
-        } catch {
-          setPendingPayments(0);
-          setPendingPaymentTotal(0);
-        }
-      } else {
+      // W65: pending payments для обеих ролей (заказчик платит, исполнитель ждёт)
+      try {
+        const items = await api.listPayments(user.id, activeProject.id);
+        const pending = items.filter((p) => p.status === 'pending');
+        setPendingPayments(pending.length);
+        setPendingPaymentTotal(pending.reduce((sum, p) => sum + p.amount, 0));
+      } catch {
         setPendingPayments(0);
         setPendingPaymentTotal(0);
       }

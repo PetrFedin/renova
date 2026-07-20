@@ -35,10 +35,10 @@
 | 6 | Postgres+Alembic staging не доказан | SQLite в prod-профиле | ops | STAGING-POSTGRES-SMOKE |
 | 7 | Нет 2–3 paid Pro для демо | Assign/paywall не показать | ops | paid Pro accounts |
 | 8 | `h0:check:live` не прогнан | Нет DoD инвестора | ops | ready_for_investor |
-| 9 | Нет reject/withdraw estimate propose | Смета висит после propose | gap | API+UI |
-| 10 | Portal schedule reject только API | Гость не отклонит график | gap | portal.tsx |
-| 11 | Contractor inbox без pending invoices | Нет контроля «ждём оплату» | honesty | inbox+home |
-| 12 | Closeout без deep-link на все блокеры | Тупик «ещё не готово» | UX | CTA на блокеры |
+| 9 | ~~Reject/withdraw estimate propose~~ | **W65** | gap | **закрыто** |
+| 10 | ~~Portal schedule reject UI~~ | **W65** | gap | **закрыто** |
+| 11 | ~~Contractor pending invoices~~ | **W65** | honesty | **закрыто** |
+| 12 | ~~Closeout deep-links~~ | **W65** | UX | **закрыто** |
 
 ---
 
@@ -117,3 +117,14 @@
 - [ ] Нет кнопок в 501/503 без честного текста  
 
 Canvas: `renova-priority-50.canvas.tsx`
+
+
+## Прогресс волн
+
+| Волна | Пункты | Статус |
+|-------|--------|--------|
+| H0 | 1–8 | **ops** — нужны staging URL + YuKassa + TestFlight (не код) |
+| W65 | 9–12 | **закрыто** `develop` |
+| W66 | 13–26 | next |
+| W67 | 27–38 | queued |
+| W68 | 39–50 | queued |

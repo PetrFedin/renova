@@ -304,12 +304,14 @@ ${(res.body || '').slice(0, 220)}`,
             return;
           }
           if (!snap.ready) {
+            // W65 #12: deep-link на каждый блокер closeout
             const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [{ text: 'OK' }];
-            if ((snap.warranty_open || 0) > 0) {
+            if (!snap.all_stages_done) {
               buttons.push({
-                text: 'К гарантии',
+                text: 'К приёмке',
                 onPress: () => {
-                  void rows.warrantyClaim.run?.();
+                  const { router } = require('expo-router');
+                  router.push('/(customer)/(tabs)/repair?tab=control' as never);
                 },
               });
             }
@@ -319,6 +321,23 @@ ${(res.body || '').slice(0, 220)}`,
                 onPress: () => {
                   const { router } = require('expo-router');
                   router.push('/(customer)/(tabs)/budget?tab=payments' as never);
+                },
+              });
+            }
+            if ((snap.acceptance_acts_active || 0) === 0 && snap.all_stages_done) {
+              buttons.push({
+                text: 'К документам',
+                onPress: () => {
+                  const { router } = require('expo-router');
+                  router.push('/documents' as never);
+                },
+              });
+            }
+            if ((snap.warranty_open || 0) > 0) {
+              buttons.push({
+                text: 'К гарантии',
+                onPress: () => {
+                  void rows.warrantyClaim.run?.();
                 },
               });
             }

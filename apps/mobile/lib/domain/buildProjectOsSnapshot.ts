@@ -119,7 +119,8 @@ export function buildProjectOsSnapshot(
   let nextAction: ProjectOsSnapshot['nextAction'];
   if (isComplete) {
     nextAction = unpaid > 0
-      ? {
+      ? (role === 'customer'
+        ? {
           title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,
           subtitle: pendingPaymentTotal > 0
             ? `${formatRub(pendingPaymentTotal)} к оплате`
@@ -128,6 +129,15 @@ export function buildProjectOsSnapshot(
           href: budgetTabRoute(role, 'payments'),
           kind: 'payment',
         }
+        : {
+          title: unpaid === 1 ? 'Ждём оплату 1 счёта' : `Ждём оплату ${unpaid} счетов`,
+          subtitle: pendingPaymentTotal > 0
+            ? `${formatRub(pendingPaymentTotal)} у заказчика`
+            : 'Счёт выставлен',
+          button: 'Счета',
+          href: budgetTabRoute(role, 'payments'),
+          kind: 'payment',
+        })
       : {
           title: 'Закрытие объекта',
           subtitle: 'Проверьте акты, оплаты и гарантию в Документах',
@@ -135,6 +145,16 @@ export function buildProjectOsSnapshot(
           href: '/documents',
           kind: 'review',
         };
+  } else if (unpaid > 0 && role === 'contractor') {
+    nextAction = {
+      title: unpaid === 1 ? 'Ждём оплату заказчика' : `Ждём оплату · ${unpaid} сч.`,
+      subtitle: pendingPaymentTotal > 0
+        ? `${formatRub(pendingPaymentTotal)} выставлено`
+        : 'Счёт у заказчика',
+      button: 'Счета',
+      href: budgetTabRoute(role, 'payments'),
+      kind: 'payment',
+    };
   } else if (unpaid > 0 && role === 'customer') {
     nextAction = {
       title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,

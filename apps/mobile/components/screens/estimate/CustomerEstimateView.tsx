@@ -34,6 +34,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const [layer, setLayer] = useState<EstimateLayer>('summary');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
+  const [clearingProposal, setClearingProposal] = useState(false);
   const [locking, setLocking] = useState(false);
 
   useEffect(() => {
@@ -87,6 +88,12 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
             && Boolean(activeProject.estimate_lock_proposed_at || !activeProject.contractor_id)
           }
           locking={locking}
+          canRejectProposal={
+            canWrite
+            && Boolean(activeProject.estimate_lock_proposed_at)
+            && Boolean(activeProject.contractor_id)
+          }
+          clearingProposal={clearingProposal}
           onLockEstimate={async () => {
             if (!user || !activeProject) return;
             setLocking(true);
@@ -95,6 +102,16 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
               await loadProject(activeProject.id);
             } finally {
               setLocking(false);
+            }
+          }}
+          onRejectProposal={async () => {
+            if (!user || !activeProject) return;
+            setClearingProposal(true);
+            try {
+              await api.rejectEstimateLock(user.id, activeProject.id, 'Нужна правка сметы');
+              await loadProject(activeProject.id);
+            } finally {
+              setClearingProposal(false);
             }
           }}
         />

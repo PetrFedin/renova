@@ -128,6 +128,22 @@ export async function buildInboxItems(opts: {
       }
     } catch { /* noop */ }
   } else {
+    // W65 #11: исполнитель видит pending invoices (контроль, не оплата)
+    try {
+      const payments = await api.listPayments(userId, projectId);
+      const pending = payments.filter((p) => p.status === 'pending');
+      for (const p of pending) {
+        next.push({
+          id: `pay-wait-${p.id}`,
+          kind: 'payment',
+          title: 'Ждём оплату заказчика',
+          sub: `${p.title || 'Счёт'} · ${formatRub(p.amount)}`,
+          href: budgetTabHref(role, 'payments'),
+          priority: 84,
+        });
+      }
+    } catch { /* noop */ }
+
     const rework = reworkStages(stages);
     if (rework.length > 0) {
       next.push({

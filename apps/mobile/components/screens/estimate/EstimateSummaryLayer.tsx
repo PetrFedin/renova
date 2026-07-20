@@ -32,6 +32,11 @@ export function EstimateSummaryLayer({
   canLock,
   locking,
   onLockEstimate,
+  canRejectProposal,
+  canWithdrawProposal,
+  clearingProposal,
+  onRejectProposal,
+  onWithdrawProposal,
 }: Props) {
   const lockedAt = project.estimate_locked_at;
   return (
@@ -67,10 +72,34 @@ export function EstimateSummaryLayer({
       {!lockedAt && canLock && onLockEstimate ? (
         <PrimaryButton
           title={locking ? 'Фиксация…' : 'Согласовать и зафиксировать смету'}
-          disabled={!!locking}
+          disabled={!!locking || !!clearingProposal}
           onPress={() => {
             void onLockEstimate().catch((e: unknown) => {
               Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка фиксации сметы');
+            });
+          }}
+        />
+      ) : null}
+      {!lockedAt && canRejectProposal && onRejectProposal ? (
+        <PrimaryButton
+          title={clearingProposal ? 'Отклонение…' : 'Отклонить — нужна правка'}
+          variant="outline"
+          disabled={!!clearingProposal || !!locking}
+          onPress={() => {
+            void onRejectProposal().catch((e: unknown) => {
+              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отклонения');
+            });
+          }}
+        />
+      ) : null}
+      {!lockedAt && canWithdrawProposal && onWithdrawProposal ? (
+        <PrimaryButton
+          title={clearingProposal ? 'Отзыв…' : 'Отозвать предложение'}
+          variant="outline"
+          disabled={!!clearingProposal}
+          onPress={() => {
+            void onWithdrawProposal().catch((e: unknown) => {
+              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');
             });
           }}
         />

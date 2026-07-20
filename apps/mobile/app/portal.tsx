@@ -145,6 +145,26 @@ export default function PortalScreen() {
               >
                 <Text style={s.acceptBtnT}>Согласовать график</Text>
               </Pressable>
+              <Pressable
+                style={s.payBtnOutline}
+                onPress={async () => {
+                  try {
+                    await api.portalRejectSchedule(
+                      session.user_id,
+                      session.project_id,
+                      (snapshot as any).pending_work_schedule.id,
+                      portalToken,
+                      'Нужна правка сроков',
+                    );
+                    await refreshPortalSnapshot(session.user_id, session.project_id);
+                    Alert.alert('График', 'План отклонён — исполнитель получит задачу на правку');
+                  } catch (e) {
+                    Alert.alert('График', apiErrorMessage(e, 'Не удалось отклонить'));
+                  }
+                }}
+              >
+                <Text style={s.payBtnOutlineT}>Отклонить</Text>
+              </Pressable>
             </View>
           ) : (
             <Text style={s.muted}>Ожидает подтверждения заказчиком в приложении Renova</Text>

@@ -69,6 +69,13 @@ export const miscApi = {
       { method: 'POST', body: JSON.stringify({ token }) },
       userId,
     ),
+  /** W65: отклонение графика с portal token */
+  portalRejectSchedule: (userId: string, projectId: string, scheduleId: string, token: string, reason?: string) =>
+    req(
+      `/api/v1/portal/projects/${projectId}/work-schedules/${scheduleId}/reject`,
+      { method: 'POST', body: JSON.stringify({ token, reason: reason || null }) },
+      userId,
+    ),
   portalSnapshot: (userId: string, projectId: string) =>
     req<{
       project: { id: string; name: string; address?: string | null; progress_percent?: number };

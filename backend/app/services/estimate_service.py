@@ -139,3 +139,57 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
     return proj, {"code": "locked", "contract": draft}
 
 
+async def clear_estimate_proposal(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    cleared_by: str,
+    reason: str | None = None,
+    mode: str = "reject",
+) -> tuple[Project | None, dict]:
+    """W65: снять propose — reject (заказчик) или withdraw (исполнитель)."""
+    from app.services import notification_service as notif_svc
+
+    proj = await db.get(Project, project_id)
+    if not proj:
+        return None, {"code": "not_found"}
+    if proj.estimate_locked_at:
+        return proj, {"code": "already_locked", "locked_at": proj.estimate_locked_at.isoformat()}
+    if not proj.estimate_lock_proposed_at:
+        return proj, {"code": "no_proposal"}
+
+    if mode == "reject":
+        if cleared_by != proj.customer_id:
+            return proj, {"code": "customer_reject_required", "message": "Отклонить предложение может заказчик"}
+    elif mode == "withdraw":
+        if cleared_by != proj.contractor_id:
+            return proj, {"code": "contractor_withdraw_required", "message": "Отозвать предложение может исполнитель"}
+    else:
+        return proj, {"code": "invalid_mode"}
+
+    proj.estimate_lock_proposed_at = None
+    proj.estimate_lock_proposed_by = None
+    body = (reason or "").strip() or (
+        "Заказчик отклонил фиксацию сметы — нужна правка."
+        if mode == "reject"
+        else "Исполнитель отозвал предложение фиксации."
+    )
+    notify_uid = proj.contractor_id if mode == "reject" else proj.customer_id
+    if notify_uid and notify_uid != cleared_by:
+        await notif_svc.notify(
+            db,
+            user_id=notify_uid,
+            project_id=project_id,
+            notification_type="approval",
+            title="Смета: предложение снято" if mode == "withdraw" else "Смета: нужна правка",
+            body=body,
+            link_path="/(contractor)/(tabs)/object?tab=estimate" if mode == "reject" else "/(customer)/(tabs)/object?tab=estimate",
+            return_to="/(contractor)/(tabs)/home" if mode == "reject" else "/(customer)/(tabs)/home",
+        )
+    await db.commit()
+    await db.refresh(proj)
+    return proj, {"code": "cleared", "mode": mode}
+
+
+
+

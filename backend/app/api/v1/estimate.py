@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.models.entities import Project
 from app.services import project_service as proj_svc
-from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock
+from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
 
@@ -109,3 +109,53 @@ async def lock_project_estimate(project_id: str, user: User = Depends(get_curren
     }
 
 
+class EstimateProposalClearIn(BaseModel):
+    reason: str | None = None
+
+
+@router.post("/reject-lock")
+async def reject_project_estimate_lock(
+    project_id: str,
+    body: EstimateProposalClearIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W65: заказчик отклоняет propose-lock."""
+    if user.role != UserRole.customer:
+        raise HTTPException(403, detail={"code": "customer_reject_required"})
+    await require_project(db, project_id, user, write=True)
+    proj, result = await clear_estimate_proposal(
+        db, project_id, cleared_by=user.id, reason=(body.reason if body else None), mode="reject",
+    )
+    if not proj:
+        raise HTTPException(404, "Проект не найден")
+    if result.get("code") == "already_locked":
+        raise HTTPException(409, detail=result)
+    if result.get("code") == "no_proposal":
+        raise HTTPException(409, detail=result)
+    if result.get("code") == "customer_reject_required":
+        raise HTTPException(403, detail=result)
+    return {"ok": True, "code": "cleared", "mode": "reject"}
+
+
+@router.post("/withdraw-lock")
+async def withdraw_project_estimate_lock(
+    project_id: str,
+    body: EstimateProposalClearIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W65: исполнитель отзывает propose-lock."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, detail={"code": "contractor_withdraw_required"})
+    await require_project(db, project_id, user, write=True)
+    proj, result = await clear_estimate_proposal(
+        db, project_id, cleared_by=user.id, reason=(body.reason if body else None), mode="withdraw",
+    )
+    if not proj:
+        raise HTTPException(404, "Проект не найден")
+    if result.get("code") in ("already_locked", "no_proposal"):
+        raise HTTPException(409, detail=result)
+    if result.get("code") == "contractor_withdraw_required":
+        raise HTTPException(403, detail=result)
+    return {"ok": True, "code": "cleared", "mode": "withdraw"}

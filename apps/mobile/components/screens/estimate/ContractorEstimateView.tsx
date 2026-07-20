@@ -89,20 +89,37 @@ export function ContractorEstimateView() {
         <EstimateEditorByRoom lines={filtered} canWrite={canWrite} onPatch={patchLine} />
 
         {user && canWrite && !activeProject.estimate_locked_at && allLines.length > 0 && (
-          <PrimaryButton
-            title={activeProject.estimate_lock_proposed_at ? 'Смета у заказчика на согласовании' : 'Отправить смету на согласование'}
-            variant="outline"
-            disabled={!!activeProject.estimate_lock_proposed_at}
-            onPress={async () => {
-              try {
-                await api.proposeEstimateLock(user.id, activeProject.id);
-                await loadProject(activeProject.id);
-                Alert.alert('Отправлено', 'Заказчик получит уведомление — фиксацию сметы подтверждает он.');
-              } catch (e: unknown) {
-                Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отправки сметы');
-              }
-            }}
-          />
+          <>
+            <PrimaryButton
+              title={activeProject.estimate_lock_proposed_at ? 'Смета у заказчика на согласовании' : 'Отправить смету на согласование'}
+              variant="outline"
+              disabled={!!activeProject.estimate_lock_proposed_at}
+              onPress={async () => {
+                try {
+                  await api.proposeEstimateLock(user.id, activeProject.id);
+                  await loadProject(activeProject.id);
+                  Alert.alert('Отправлено', 'Заказчик получит уведомление — фиксацию сметы подтверждает он.');
+                } catch (e: unknown) {
+                  Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отправки сметы');
+                }
+              }}
+            />
+            {activeProject.estimate_lock_proposed_at ? (
+              <PrimaryButton
+                title="Отозвать предложение"
+                variant="outline"
+                onPress={async () => {
+                  try {
+                    await api.withdrawEstimateLock(user.id, activeProject.id);
+                    await loadProject(activeProject.id);
+                    Alert.alert('Отозвано', 'Можно править смету и отправить снова.');
+                  } catch (e: unknown) {
+                    Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');
+                  }
+                }}
+              />
+            ) : null}
+          </>
         )}
 
         {user && canWrite && (

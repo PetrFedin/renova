@@ -60,4 +60,19 @@ export const estimateApi = {
     const { downloadApiPath } = await import('@/lib/downloadFile');
     await downloadApiPath(userId, `/api/v1/projects/${projectId}/estimate.csv`, 'estimate.csv');
   },
+  /** W65: заказчик отклоняет propose */
+  rejectEstimateLock: (userId: string, projectId: string, reason?: string) =>
+    req<{ ok: boolean }>(
+      `/api/v1/projects/${projectId}/estimate/reject-lock`,
+      { method: 'POST', body: JSON.stringify({ reason: reason || null }) },
+      userId,
+    ),
+  /** W65: исполнитель отзывает propose */
+  withdrawEstimateLock: (userId: string, projectId: string, reason?: string) =>
+    req<{ ok: boolean }>(
+      `/api/v1/projects/${projectId}/estimate/withdraw-lock`,
+      { method: 'POST', body: JSON.stringify({ reason: reason || null }) },
+      userId,
+    ),
 };
+
