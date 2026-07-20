@@ -5,6 +5,7 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { api, type StageDetail, type WorkSnapshot, ApiError } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 type Props = {
   stage: StageDetail;
@@ -86,6 +87,10 @@ export function StageDetailHero({
               await api.startStage(userId, projectId, stage.id);
               await onReload();
               await onProjectReload();
+              await syncProjectSideEffects({
+                user: { id: userId } as any,
+                project: { id: projectId } as any,
+              });
             } catch (e: unknown) {
               if (e instanceof ApiError && e.status === 409) {
                 Alert.alert('Блокировка', 'Сначала завершите зависимый этап');

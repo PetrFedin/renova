@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView, View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api, ApprovalItem } from '@/lib/api';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -35,6 +36,7 @@ export default function ApprovalsScreen() {
     try {
       // W66 #14: единый hub-approve (+ offline queue)
       await api.approveApproval(userId, pid, it.id, it.type);
+      await syncProjectSideEffects({ user, project: activeProject });
       load();
       if (it.type === 'change_order') {
         const budget = budgetTabRoute('customer', 'summary');
@@ -85,6 +87,7 @@ export default function ApprovalsScreen() {
                     if (!user || !activeProject || readOnly) return;
                     try {
                       await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
+                      await syncProjectSideEffects({ user, project: activeProject });
                       load();
                     } catch (e) {
                       if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение');

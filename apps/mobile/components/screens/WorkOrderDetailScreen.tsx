@@ -6,6 +6,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WorkOrderDetailPanel } from '@/components/renova/WorkOrderDetailPanel';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, WorkOrder } from '@/lib/api';
 import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
@@ -31,6 +32,7 @@ export function WorkOrderDetailScreen() {
     try {
       const updated = await api.transitionWorkOrder(user.id, activeProject.id, wo.id, next);
       setWo(updated);
+      await syncProjectSideEffects({ user, project: activeProject, role });
     } catch {
       Alert.alert('Ошибка', 'Недопустимый переход статуса');
     }

@@ -6,6 +6,8 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
 import { api, type OsExpense, type ProjectDetail, type ReceiptItem, type Room, type Stage } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
 
@@ -34,6 +36,7 @@ export function ExpenseDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   const pathname = usePathname();
   const [amountText, setAmountText] = useState('');
   const [description, setDescription] = useState('');
@@ -104,6 +107,10 @@ export function ExpenseDetailSheet({
           stage_id: stageId,
         });
       }
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? project ?? ({ id: projectId } as any),
+      });
       onChanged?.();
       onClose();
     } catch (e: unknown) {
@@ -129,6 +136,10 @@ export function ExpenseDetailSheet({
             } else {
               await api.deleteOsExpense(userId, projectId, target.item.id);
             }
+            await syncProjectSideEffects({
+              user: user ?? ({ id: userId } as any),
+              project: activeProject ?? project ?? ({ id: projectId } as any),
+            });
             onChanged?.();
             onClose();
           } catch (e: unknown) {

@@ -5,7 +5,7 @@ import { PaywallModal } from '@/components/renova/PaywallModal';
 import { router } from 'expo-router';
 import { flush } from "@/lib/offlineQueue";
 import { reloadInboxSync } from "@/lib/inboxSyncStore";
-import { notifyProjectDataChanged } from "@/lib/projectDataBus";
+import { notifyProjectDataChanged, syncProjectSideEffects } from "@/lib/projectDataBus";
 
 function signalPreviewReady() {
   if (typeof window !== "undefined" && window.parent !== window) {
@@ -514,6 +514,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       if (!user || !activeProject) return;
       await api.submitStage(user.id, activeProject.id, stageId);
       await loadProject(activeProject.id);
+      // W84: inbox/home nextAction (приёмка / оплата этапа)
+      await syncProjectSideEffects({ user, project: activeProject });
     },
     [user, activeProject, loadProject],
   );
@@ -522,6 +524,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     if (!user || !activeProject) return;
     await api.rejectStage(user.id, activeProject.id, stageId, reason);
     await loadProject(activeProject.id);
+    await syncProjectSideEffects({ user, project: activeProject });
   }, [user, activeProject, loadProject]);
 
   const acceptStage = useCallback(
@@ -529,6 +532,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       if (!user || !activeProject) return;
       try { await api.acceptStage(user.id, activeProject.id, stageId); } catch (e: any) { if (e?.message === 'offline_queued') { /* queued */ } else throw e; }
       await loadProject(activeProject.id);
+      await syncProjectSideEffects({ user, project: activeProject });
     },
     [user, activeProject, loadProject],
   );

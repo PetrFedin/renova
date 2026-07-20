@@ -10,6 +10,8 @@ import { WorkFormSection } from '@/components/renova/work/WorkFormSection';
 import type { MarketEstimate } from '@/constants/regions';
 import { calcRoomMetrics } from '@/lib/calc-engine';
 import { api, Room, isRateLimitError } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 type Props = {
   visible: boolean;
@@ -51,6 +53,7 @@ export function CreateWorkSheet({
   onCreated,
   onCreatedWork,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const isCustomer = variant === 'customer';
   const [types, setTypes] = useState(WORK_TYPES_FALLBACK);
   const [workType, setWorkType] = useState('electrical');
@@ -154,6 +157,10 @@ export function CreateWorkSheet({
         budget_planned: budget ? +budget : 0,
         notes: notes || null,
         publish,
+      });
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
       });
       await onCreatedWork?.(wo);
       onCreated();

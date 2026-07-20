@@ -7,6 +7,8 @@ import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
 import { api } from '@/lib/api';
 import type { ProjectDetail } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 export function ManualExpenseForm({
   userId, project, readOnly, onSaved, initialRoomId, initialStageId, collapsed,
@@ -20,6 +22,7 @@ export function ManualExpenseForm({
   /** На экране скана — форма свёрнута, чтобы не дублировать pickers */
   collapsed?: boolean;
 }) {
+  const { user } = useRenova();
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<ExpenseCategoryId>('materials');
@@ -35,6 +38,7 @@ export function ManualExpenseForm({
     try {
       await api.addManualReceipt(userId, project.id, n, description.trim(), category, roomId, stageId);
       setAmount(''); setDescription('');
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
       onSaved?.();
       Alert.alert('Сохранено', `${n.toLocaleString('ru-RU')} ₽ добавлено в расходы`);
     } catch {

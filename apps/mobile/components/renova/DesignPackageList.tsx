@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Linking, StyleSheet, Alert } from 'react-native';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
 import { pickDocumentForUpload } from '@/lib/documentUploadPick';
 import { designPackageStatusLabel } from '@/constants/labels';
@@ -20,6 +22,7 @@ export function DesignPackageList({
   role: string;
   embedded?: boolean;
 }) {
+  const { user, activeProject } = useRenova();
   const [items, setItems] = useState<DP[]>([]);
   const [uploading, setUploading] = useState(false);
   const load = () => api.listDesignPackages(userId, projectId).then(setItems).catch(() => {});
@@ -35,6 +38,7 @@ export function DesignPackageList({
       const blob = await response.blob();
       const key = await uploadMediaBlob(userId, blob, picked.type || 'application/pdf');
       await api.createDesignPackage(userId, projectId, { title: picked.name || 'Дизайн-проект', file_key: key });
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) });
       load();
     } catch {
       Alert.alert('Загрузка', 'Не удалось загрузить документ');
@@ -67,10 +71,10 @@ export function DesignPackageList({
               <PrimaryButton title="Открыть" variant="outline" compact onPress={() => Linking.openURL(`${BASE}${d.file_url}`)} />
             )}
             {role === 'customer' && d.status === 'pending' && (
-              <PrimaryButton title="Согласовать" compact onPress={async () => { await api.approveDesignPackage(userId, projectId, d.id); load(); }} />
+              <PrimaryButton title="Согласовать" compact onPress={async () => { await api.approveDesignPackage(userId, projectId, d.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); load(); }} />
             )}
             {role === 'contractor' && (d.status === 'draft' || d.status === 'published') && (
-              <PrimaryButton title="На соглас." variant="outline" compact onPress={async () => { await api.submitDesignPackage(userId, projectId, d.id); load(); }} />
+              <PrimaryButton title="На соглас." variant="outline" compact onPress={async () => { await api.submitDesignPackage(userId, projectId, d.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); load(); }} />
             )}
           </View>
         </View>

@@ -12,6 +12,8 @@ type StagePhoto = StageDetail['photos'][number];
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { api } from '@/lib/api';
 import { addCustomCheck } from '@/lib/customChecklist';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 type WfCheck = { id: string; text: string; done: boolean };
 
@@ -56,7 +58,13 @@ export function StageDetailAcceptanceFold({
   onExportAcceptance,
   onReload,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const [newCheck, setNewCheck] = useState('');
+  const syncAfter = () =>
+    syncProjectSideEffects({
+      user: user ?? ({ id: userId } as any),
+      project: activeProject ?? ({ id: projectId } as any),
+    });
 
   return (
     <View style={s.wrap}>
@@ -91,6 +99,7 @@ export function StageDetailAcceptanceFold({
                 try {
                   await api.toggleStageChecklist(userId, projectId, stage.id, wf.id, !wf.done);
                   await onReload();
+                  await syncAfter();
                 } catch (e) {
                   if (isOfflineQueued(e)) notifyOfflineQueued('Чеклист этапа');
                 }
@@ -117,6 +126,7 @@ export function StageDetailAcceptanceFold({
           await addCustomCheck(stageId, newCheck);
           setNewCheck('');
           await onReload();
+          await syncAfter();
         }}
       />
 
