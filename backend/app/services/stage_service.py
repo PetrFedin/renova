@@ -153,7 +153,7 @@ async def start_stage(db: AsyncSession, stage_id: str) -> tuple[Stage | None, di
             db, user_id=proj.contractor_id, project_id=proj.id,
             notification_type="stage_start", title=f"Начат этап: {stage.name}",
             body="Приступайте к работам", link_path=f"/stage/{stage.id}",
-            return_to="/(contractor)/(tabs)/works",
+            return_to="/(contractor)/(tabs)/repair?tab=works",
         )
     await db.commit()
     await db.refresh(stage)

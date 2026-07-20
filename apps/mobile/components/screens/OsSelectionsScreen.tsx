@@ -84,8 +84,13 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
       setAllowance('');
       setShowAdd(false);
       reload();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось добавить позицию');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Позиция подбора отправится при подключении');
+        setShowAdd(false);
+      } else {
+        Alert.alert('Ошибка', 'Не удалось добавить позицию');
+      }
     } finally {
       setBusy(false);
     }
@@ -153,34 +158,53 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
           {canWrite && item.status === 'draft' && (
             <PrimaryButton title="На согласование" compact onPress={async () => {
-              await api.proposeSelection(user.id, activeProject.id, item.id);
-              reload();
+              try {
+                await api.proposeSelection(user.id, activeProject.id, item.id);
+                await syncProjectSideEffects({ user, project: activeProject });
+                reload();
+              } catch (e: unknown) {
+                if (e instanceof Error && e.message === 'offline_queued') {
+                  Alert.alert('Офлайн', 'Отправка на согласование в очереди');
+                } else throw e;
+              }
             }} />
           )}
           {canWrite && item.status === 'rejected' && (
             <PrimaryButton title="Отправить снова" variant="outline" compact onPress={async () => {
-              await api.proposeSelection(user.id, activeProject.id, item.id);
-              reload();
+              try {
+                await api.proposeSelection(user.id, activeProject.id, item.id);
+                reload();
+              } catch (e: unknown) {
+                if (e instanceof Error && e.message === 'offline_queued') {
+                  Alert.alert('Офлайн', 'Повторная отправка в очереди');
+                } else throw e;
+              }
             }} />
           )}
 
           {isCustomer && !readOnly && item.status === 'proposed' && (
             <View style={s.actions}>
               <PrimaryButton title="Согласовать" compact onPress={async () => {
-                await api.approveSelection(user.id, activeProject.id, item.id);
-                await syncProjectSideEffects({ user, project: activeProject });
-                reload();
-                Alert.alert(
-                  'Согласовано',
-                  'Позиция в «Ремонт → Материалы → Потребности». Создайте закупку.',
-                  [
-                    { text: 'OK', style: 'cancel' },
-                    {
-                      text: 'К закупкам',
-                      onPress: () => pushOsNav(repairTabRoute(role, 'materials'), pathname),
-                    },
-                  ],
-                );
+                try {
+                  await api.approveSelection(user.id, activeProject.id, item.id);
+                  await syncProjectSideEffects({ user, project: activeProject });
+                  reload();
+                  Alert.alert(
+                    'Согласовано',
+                    'Позиция в «Ремонт → Материалы → Потребности». Создайте закупку.',
+                    [
+                      { text: 'OK', style: 'cancel' },
+                      {
+                        text: 'К закупкам',
+                        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), pathname),
+                      },
+                    ],
+                  );
+                } catch (e: unknown) {
+                  if (e instanceof Error && e.message === 'offline_queued') {
+                    Alert.alert('Офлайн', 'Согласование отправится при подключении');
+                  } else throw e;
+                }
               }} />
               <PrimaryButton title="Отклонить" variant="outline" compact onPress={() => {
                 Alert.alert('Отклонить', 'Укажите причину (опционально)', [
@@ -189,8 +213,14 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                     text: 'Отклонить',
                     style: 'destructive',
                     onPress: async () => {
-                      await api.rejectSelection(user.id, activeProject.id, item.id);
-                      reload();
+                      try {
+                        await api.rejectSelection(user.id, activeProject.id, item.id);
+                        reload();
+                      } catch (e: unknown) {
+                        if (e instanceof Error && e.message === 'offline_queued') {
+                          Alert.alert('Офлайн', 'Отклонение в очереди');
+                        } else throw e;
+                      }
                     },
                   },
                 ]);

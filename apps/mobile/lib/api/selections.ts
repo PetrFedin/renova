@@ -1,5 +1,5 @@
-/** P2.2: selections tracker API */
-import { req } from './client';
+/** P2.2: selections tracker API — W109 offline queue for field propose/approve */
+import { req, ApiError } from './client';
 
 export type SelectionItem = {
   id: string;
@@ -19,6 +19,23 @@ export type SelectionItem = {
   created_at: string | null;
   over_allowance?: boolean;
 };
+
+async function withOffline<T>(
+  run: () => Promise<T>,
+  enqueuePath: string,
+  method: 'POST' | 'PATCH',
+  body: string,
+  userId: string,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+    const { enqueue } = await import('@/lib/offlineQueue');
+    await enqueue({ path: enqueuePath, method, body, userId });
+    throw new Error('offline_queued');
+  }
+}
 
 export const selectionsApi = {
   listSelections: (userId: string, projectId: string, params?: { room_id?: string; category?: string; status?: string }) => {
@@ -42,14 +59,37 @@ export const selectionsApi = {
     shop_name?: string | null;
     notes?: string | null;
   }) =>
-    req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: JSON.stringify(body) }, userId),
+    withOffline(
+      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: JSON.stringify(body) }, userId),
+      `/api/v1/projects/${projectId}/selections`,
+      'POST',
+      JSON.stringify(body),
+      userId,
+    ),
   proposeSelection: (userId: string, projectId: string, id: string) =>
-    req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/propose`, { method: 'POST', body: '{}' }, userId),
+    withOffline(
+      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/propose`, { method: 'POST', body: '{}' }, userId),
+      `/api/v1/projects/${projectId}/selections/${id}/propose`,
+      'POST',
+      '{}',
+      userId,
+    ),
   approveSelection: (userId: string, projectId: string, id: string) =>
-    req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/approve`, { method: 'POST', body: '{}' }, userId),
-  rejectSelection: (userId: string, projectId: string, id: string, reason?: string) =>
-    req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: reason || null }),
-    }, userId),
+    withOffline(
+      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/approve`, { method: 'POST', body: '{}' }, userId),
+      `/api/v1/projects/${projectId}/selections/${id}/approve`,
+      'POST',
+      '{}',
+      userId,
+    ),
+  rejectSelection: (userId: string, projectId: string, id: string, reason?: string) => {
+    const body = JSON.stringify({ reason: reason || null });
+    return withOffline(
+      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/reject`, { method: 'POST', body }, userId),
+      `/api/v1/projects/${projectId}/selections/${id}/reject`,
+      'POST',
+      body,
+      userId,
+    );
+  },
 };

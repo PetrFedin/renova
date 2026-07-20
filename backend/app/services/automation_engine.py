@@ -166,7 +166,7 @@ async def process_event(
                 title="Просрочка работы",
                 body=stage.name,
                 link_path=f"/stage/{stage.id}",
-                return_to="/(contractor)/(tabs)/works",
+                return_to="/(contractor)/(tabs)/repair?tab=works",
             )
             actions.append("overdue_notified")
 

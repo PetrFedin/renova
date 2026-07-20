@@ -109,7 +109,7 @@ async def create_issue(
         kind="IssueCreated",
         title=issue.title,
         body=issue.severity,
-        link_path="/quality-control",
+        link_path="/control",
     )
     from app.services import notification_service as notif_svc
     from app.services import project_service as proj_svc
@@ -129,7 +129,7 @@ async def create_issue(
                 notification_type="issue",
                 title=f"Новое замечание: {issue.title}",
                 body=issue.description or issue.severity,
-                link_path="/quality-control",
+                link_path="/control",
             )
     return iss.issue_dict(issue)
 
@@ -152,7 +152,7 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
     issue = await iss.update_issue_status(db, issue_id, next_status)
     if not issue:
         raise HTTPException(404)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/(customer)/(tabs)/repair?tab=control")
+    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/control")
     return iss.issue_dict(issue)
 
 
@@ -189,7 +189,7 @@ async def escalate_issue(
         kind="IssueEscalated",
         title=existing.title,
         body="Эскалация спора",
-        link_path="/quality-control",
+        link_path="/control",
     )
     from app.services import notification_service as notif_svc
     for uid in {project.customer_id, project.contractor_id}:
@@ -202,7 +202,7 @@ async def escalate_issue(
             notification_type="issue",
             title=f"Спор эскалирован: {existing.title}",
             body="Требуется совместное решение — откройте Контроль качества",
-            link_path="/quality-control",
+            link_path="/control",
         )
     return iss.issue_dict(existing)
 

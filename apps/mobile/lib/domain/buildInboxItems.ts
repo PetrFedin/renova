@@ -191,6 +191,21 @@ export async function buildInboxItems(opts: {
       }
     } catch { /* noop */ }
 
+    // W109: подбор чистовых — та же поверхность repair?tab=selections
+    try {
+      const sel = await api.selectionsPendingCount(userId, projectId);
+      if ((sel.count ?? 0) > 0) {
+        next.push({
+          id: 'selections-pending',
+          kind: 'selection',
+          title: 'Подбор на согласование',
+          sub: `${sel.count} поз.`,
+          href: repairTabHref(role, 'selections'),
+          priority: 76,
+        });
+      }
+    } catch { /* noop */ }
+
     // W77: ДО / гарантия / draft docs — те же очереди, что nextAction (W76)
     const hasCoApproval = next.some((it) => it.kind === 'approval' && it.approval.type === 'change_order');
     if (!hasCoApproval) {
@@ -410,7 +425,7 @@ export function filterInboxForHero(items: InboxItem[], heroKind: string): InboxI
     if (heroKind === 'work' && it.kind === 'stage' && /просроч/i.test(it.title)) return false;
     if (heroKind === 'work' && it.kind === 'offline') return false;
     if (heroKind === 'expense' && (it.kind === 'estimate' || it.id === 'estimate-lock' || it.kind === 'change_order')) return false;
-    if (heroKind === 'material' && it.kind === 'material') return false;
+    if (heroKind === 'material' && (it.kind === 'material' || it.kind === 'selection')) return false;
     if (heroKind === 'issue' && it.kind === 'warranty') return false;
     if (heroKind === 'review' && (it.kind === 'document' || it.kind === 'closeout')) return false;
     return true;

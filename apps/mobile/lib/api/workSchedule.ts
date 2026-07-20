@@ -140,16 +140,30 @@ export const workScheduleApi = {
     }
   },
 
-  updateWorkScheduleItemStatus: (
+  updateWorkScheduleItemStatus: async (
     userId: string,
     projectId: string,
     scheduleId: string,
     itemId: string,
     body: { status: WorkScheduleItemStatus; blocking_reason?: string; progress_percent?: number },
-  ) =>
-    req<WorkScheduleItem>(
-      `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
-      { method: 'POST', body: JSON.stringify(body) },
-      userId,
-    ),
+  ) => {
+    // W109: статус дня графика — очередь офлайн (поле)
+    try {
+      return await req<WorkScheduleItem>(
+        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 };

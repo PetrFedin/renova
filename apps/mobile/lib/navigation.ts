@@ -3,8 +3,9 @@ import { homeRoute } from '@/lib/homeRoute';
 import { resolveApprovalHref, type ApprovalLink } from '@/lib/approvalLinks';
 import type { ApprovalItem } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
-import { pushOsNav, type OsNavHref } from '@/lib/pushOsNav';
+import { pushOsNav, replaceOsNav, type OsNavHref } from '@/lib/pushOsNav';
 import { pushOsTabNav } from '@/lib/osTabNav';
+import { resolvePushLink } from '@/lib/pushLinks';
 
 /** Детальный экран этапа с опциональным returnTo */
 export function pushStageDetail(id: string, returnTo?: string) {
@@ -77,7 +78,14 @@ export function useNavFromHere() {
 export function goBack(returnTo?: string | string[], role?: string | null) {
   const rt = Array.isArray(returnTo) ? returnTo[0] : returnTo;
   if (rt && rt.length > 1) {
-    router.replace(rt as any);
+    // W109: /control, legacy tabs, /stage/{id} — единый резолв
+    const osRole: OsRole = role === 'contractor' ? 'contractor' : 'customer';
+    const target = resolvePushLink(rt, undefined, osRole);
+    if (target?.pathname) {
+      router.replace(target as any);
+      return;
+    }
+    replaceOsNav(rt);
     return;
   }
   if (router.canGoBack()) router.back();

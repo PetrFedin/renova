@@ -87,7 +87,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
             "cause": f"Плановое окончание {project.planned_end_date.isoformat()}",
             "impact": f"+{d} дн.",
             "action": "Проверить график",
-            "href": "/(customer)/(tabs)/works",
+            "href": "/(customer)/(tabs)/repair?tab=works",
         })
 
 

@@ -69,7 +69,7 @@ async def compute_project_insights(db: AsyncSession, project: Project, *, role: 
             body=f"Прогноз окончания +{sched['forecast_delay_days']} дн. к плану.",
             probability=min(90, 40 + sched["forecast_delay_days"] * 5),
             action="График работ",
-            href="/(customer)/(tabs)/works" if role != "contractor" else "/(contractor)/(tabs)/works",
+            href="/(customer)/(tabs)/repair?tab=works" if role != "contractor" else "/(contractor)/(tabs)/repair?tab=works",
             priority=65,
         ))
 
