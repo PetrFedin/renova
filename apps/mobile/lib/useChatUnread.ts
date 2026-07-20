@@ -18,6 +18,7 @@ import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItem
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { subscribeOfflineFlush } from '@/lib/offline';
+import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
 
 export function useInboxWsListener(onPush: () => void) {
   useEffect(() => subscribeInboxWs(onPush), [onPush]);
@@ -116,6 +117,11 @@ export function useInboxTasks(role: OsRole) {
 
   // W79: после flush offline — пересобрать inbox (в т.ч. offline-строку)
   useEffect(() => subscribeOfflineFlush(() => {
+    reload().catch(() => {});
+  }), [reload]);
+
+  // W88: projectDataBus (мутации golden path) → badges «Входящие»/«Ещё» без focus
+  useEffect(() => subscribeProjectDataChanged(() => {
     reload().catch(() => {});
   }), [reload]);
 

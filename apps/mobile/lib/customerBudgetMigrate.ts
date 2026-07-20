@@ -1,6 +1,7 @@
 /** Миграция лимита: локальный кэш ↔ API */
 import { api } from '@/lib/api';
 import { getCustomerBudget, setCustomerBudget } from '@/lib/customerBudgetPrefs';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { normalizeCustomerBudget } from '@/lib/customerBudgetSync';
 
 /** После загрузки проекта — синхронизация лимита между устройствами */
@@ -20,6 +21,7 @@ export async function syncCustomerBudgetOnLoad(
   if (local) {
     try {
       await api.patchProject(userId, projectId, { customer_budget: local });
+      await syncProjectSideEffects({ user: { id: userId } as any, project: { id: projectId } as any });
       return local;
     } catch {
       return local;

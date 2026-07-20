@@ -12,6 +12,7 @@ import { ScratchpadLineRow } from '@/components/renova/scratchpad/ScratchpadLine
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api, type ScratchpadLine } from '@/lib/api';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { budgetTabHref, calendarTabHref, type OsRole } from '@/constants/osSections';
@@ -143,6 +144,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         text: '→ Расход',
         onPress: async () => {
           await markPromoted(line, 'expense');
+          await syncProjectSideEffects({ user, project: activeProject });
           pushOsNav(budgetTabHref(role, 'expenses'), returnTo);
         },
       },
@@ -243,6 +245,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         onCreatedWork={async (wo) => {
           if (!promoteLine) return;
           await markPromoted(promoteLine, 'work_order', wo.id);
+          await syncProjectSideEffects({ user, project: activeProject });
           const date = (wo.planned_start || new Date().toISOString()).slice(0, 10);
           pushOsNav(calendarTabHref(role, { date }), returnTo);
         }}

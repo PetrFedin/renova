@@ -5,6 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 
@@ -19,7 +20,7 @@ const BENEFITS = [
 
 export default function SubscriptionScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
-  const { user } = useRenova();
+  const { user, activeProject } = useRenova();
   const [sub, setSub] = useState<Sub | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,6 +38,7 @@ export default function SubscriptionScreen() {
     setBusy(true);
     try {
       await api.startProTrial(user.id);
+      await syncProjectSideEffects({ user, project: activeProject });
       await reload();
       Alert.alert('Пробный Pro', '14 дней открыты. Оформите оплату до конца trial — иначе вернётесь на бесплатный лимит.');
     } catch (e: unknown) {
@@ -51,6 +53,8 @@ export default function SubscriptionScreen() {
     setBusy(true);
     try {
       const pay: any = await api.checkoutPro(user.id);
+      await syncProjectSideEffects({ user, project: activeProject });
+      await reload();
       if (pay.confirmation_url && !pay.demo) {
         await WebBrowser.openBrowserAsync(pay.confirmation_url);
       } else {

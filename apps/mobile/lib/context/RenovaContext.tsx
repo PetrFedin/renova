@@ -507,6 +507,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     }
     setActiveProject(p);
     await refreshProjects();
+    // W88: профиль/бюджет объекта → home insights + inbox
+    await syncProjectSideEffects({ user, project: p });
   }, [user, activeProject, refreshProjects]);
 
   const submitStage = useCallback(

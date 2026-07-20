@@ -40,6 +40,10 @@ export function useCustomerBudget({ projectId, userId, serverBudget }: Options) 
           const synced = normalizeCustomerBudget(p.customer_budget) ?? rounded;
           await setCustomerBudget(projectId, synced);
           setLocal(synced);
+          await syncProjectSideEffects({
+            user: { id: userId } as any,
+            project: { id: projectId, customer_budget: synced } as any,
+          });
           return synced;
         } catch {
           await setCustomerBudget(projectId, rounded);
