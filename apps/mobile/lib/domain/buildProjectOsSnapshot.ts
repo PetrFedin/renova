@@ -268,7 +268,7 @@ export function buildProjectOsSnapshot(
       kind: 'work',
     };
   } else if (waPending > 0 && role === 'customer') {
-    // W76: WorkAcceptance.requested/in_review — даже если stage ещё не review
+    // W106: при известном этапе — сразу /stage/[id] (decide CTA); иначе hub control (inline accept)
     nextAction = {
       title: reviewStage
         ? `Принять этап: ${reviewStage.name}`
@@ -276,8 +276,8 @@ export function buildProjectOsSnapshot(
           ? 'Принять работы'
           : `Принять · ${waPending} очереди`,
       subtitle: reviewStage ? 'Этап ждёт приёмки' : 'Есть заявки на приёмку',
-      button: 'Принять',
-      href: repairTabRoute(role, 'control'),
+      button: 'Принять этап',
+      href: reviewStage ? `/stage/${reviewStage.id}` : repairTabRoute(role, 'control'),
       kind: 'accept',
     };
   } else if (waPending > 0 && role === 'contractor') {
@@ -289,15 +289,15 @@ export function buildProjectOsSnapshot(
           : `Ждём приёмку · ${waPending}`,
       subtitle: 'Заказчик проверяет работы',
       button: 'Статус',
-      href: repairTabRoute(role, 'control'),
+      href: reviewStage ? `/stage/${reviewStage.id}` : repairTabRoute(role, 'control'),
       kind: 'accept',
     };
   } else if (reviewStage && role === 'customer') {
     nextAction = {
       title: `Принять этап: ${reviewStage.name}`,
       subtitle: 'Этап ждёт приёмки',
-      button: 'Принять',
-      href: repairTabRoute(role, 'control'),
+      button: 'Принять этап',
+      href: `/stage/${reviewStage.id}`,
       kind: 'accept',
     };
   } else if (reviewStage && role === 'contractor') {
@@ -305,7 +305,7 @@ export function buildProjectOsSnapshot(
       title: `Ждём приёмку: ${reviewStage.name}`,
       subtitle: 'Заказчик проверяет этап',
       button: 'Статус',
-      href: repairTabRoute(role, 'control'),
+      href: `/stage/${reviewStage.id}`,
       kind: 'accept',
     };
   } else if (pendingChangeOrders > 0 && role === 'customer') {

@@ -16,6 +16,7 @@
 | **W103** stage bus | ✅ photo/comment/deps → `syncProjectSideEffects` |
 | **W104** contractor stubs | ✅ chat invoice amounts · team errors · WO→payments |
 | **W105** portal estimate + IA | ✅ portal lock/reject · «Согласования» в Ещё |
+| **W106** field offline + hero accept | ✅ start/propose/schedule/purchases queue · nextAction → `/stage/[id]` |
 
 ## Ещё открыто (не код-only)
 
@@ -23,7 +24,7 @@
 |---|---------|-----|
 | H0.1–8 | Staging HTTPS, YuKassa live, Postgres, Pro accounts | **ops** |
 | H0.23 | Kontur live smoke | **ops** |
-| Offline | startStage / propose / schedule / procurement queue | **P1 field** |
+| Offline | deeper docs/issues/schedule item status | **P2 field** |
 | Portal | нет чата / CO write (by design lite) | **P2** |
 
 ## Дубли входов (aliases OK)

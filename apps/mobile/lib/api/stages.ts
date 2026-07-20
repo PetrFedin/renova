@@ -117,7 +117,21 @@ export const stagesApi = {
       throw new Error('offline_queued');
     }
   },
-  startStage: (userId: string, projectId: string, stageId: string) => req<Stage>(`/api/v1/projects/${projectId}/stages/${stageId}/start`, { method: 'POST' }, userId),
+  startStage: async (userId: string, projectId: string, stageId: string) => {
+    try {
+      return await req<Stage>(`/api/v1/projects/${projectId}/stages/${stageId}/start`, { method: 'POST' }, userId);
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/stages/${stageId}/start`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   createStage: (userId: string, projectId: string, body: { name: string; planned_start?: string; planned_end?: string; room_ids?: string[]; work_type?: string }) =>
     req<Stage>(`/api/v1/projects/${projectId}/stages`, { method: 'POST', body: JSON.stringify(body) }, userId),
   workSnapshot: (userId: string, projectId: string, stageId: string) => req<WorkSnapshot>(`/api/v1/projects/${projectId}/stages/${stageId}/snapshot`, {}, userId),

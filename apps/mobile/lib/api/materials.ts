@@ -17,10 +17,54 @@ export const materialsApi = {
   },
   syncMaterialPrice: (userId: string, projectId: string, pickId: string) => req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks/${pickId}/sync-price`, { method: 'POST' }, userId),
   listPurchases: (userId: string, projectId: string) => req<Purchase[]>(`/api/v1/projects/${projectId}/purchases`, {}, userId),
-  createPurchase: (userId: string, projectId: string, material_pick_ids: string[], supplier_name?: string) =>
-    req<Purchase>(`/api/v1/projects/${projectId}/purchases`, { method: 'POST', body: JSON.stringify({ material_pick_ids, supplier_name }) }, userId),
-  updatePurchaseStatus: (userId: string, projectId: string, purchaseId: string, status: string) =>
-    req<Purchase>(`/api/v1/projects/${projectId}/purchases/${purchaseId}/status`, { method: 'POST', body: JSON.stringify({ status }) }, userId),
-  generateMaterialNeeds: (userId: string, projectId: string) =>
-    req<{ count: number; created: { id: string; name: string }[] }>(`/api/v1/projects/${projectId}/material-needs/from-estimate`, { method: 'POST' }, userId),
+  createPurchase: async (userId: string, projectId: string, material_pick_ids: string[], supplier_name?: string) => {
+    const body = JSON.stringify({ material_pick_ids, supplier_name });
+    try {
+      return await req<Purchase>(`/api/v1/projects/${projectId}/purchases`, { method: 'POST', body }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/purchases`, method: 'POST', body, userId });
+      throw new Error('offline_queued');
+    }
+  },
+  updatePurchaseStatus: async (userId: string, projectId: string, purchaseId: string, status: string) => {
+    const body = JSON.stringify({ status });
+    try {
+      return await req<Purchase>(
+        `/api/v1/projects/${projectId}/purchases/${purchaseId}/status`,
+        { method: 'POST', body },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/purchases/${purchaseId}/status`,
+        method: 'POST',
+        body,
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
+  generateMaterialNeeds: async (userId: string, projectId: string) => {
+    try {
+      return await req<{ count: number; created: { id: string; name: string }[] }>(
+        `/api/v1/projects/${projectId}/material-needs/from-estimate`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/material-needs/from-estimate`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 };

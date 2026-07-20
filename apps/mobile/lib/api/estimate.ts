@@ -27,12 +27,20 @@ export const estimateApi = {
       userId,
     ),
   /** W57: исполнитель предлагает фиксацию (без lock) */
-  proposeEstimateLock: (userId: string, projectId: string) =>
-    req<{ ok: boolean; code?: string; estimate_lock_proposed_at?: string }>(
-      `/api/v1/projects/${projectId}/estimate/propose-lock`,
-      { method: 'POST' },
-      userId,
-    ),
+  proposeEstimateLock: async (userId: string, projectId: string) => {
+    try {
+      return await req<{ ok: boolean; code?: string; estimate_lock_proposed_at?: string }>(
+        `/api/v1/projects/${projectId}/estimate/propose-lock`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/estimate/propose-lock`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   listChangeOrders: (userId: string, projectId: string) => req<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, {}, userId),
   createChangeOrder: (userId: string, projectId: string, body: object) =>
     req(`/api/v1/projects/${projectId}/change-orders`, { method: 'POST', body: JSON.stringify(body) }, userId),
@@ -81,18 +89,36 @@ export const estimateApi = {
       userId,
     ),
   /** W65: заказчик отклоняет propose */
-  rejectEstimateLock: (userId: string, projectId: string, reason?: string) =>
-    req<{ ok: boolean }>(
-      `/api/v1/projects/${projectId}/estimate/reject-lock`,
-      { method: 'POST', body: JSON.stringify({ reason: reason || null }) },
-      userId,
-    ),
+  rejectEstimateLock: async (userId: string, projectId: string, reason?: string) => {
+    const body = JSON.stringify({ reason: reason || null });
+    try {
+      return await req<{ ok: boolean }>(
+        `/api/v1/projects/${projectId}/estimate/reject-lock`,
+        { method: 'POST', body },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/estimate/reject-lock`, method: 'POST', body, userId });
+      throw new Error('offline_queued');
+    }
+  },
   /** W65: исполнитель отзывает propose */
-  withdrawEstimateLock: (userId: string, projectId: string, reason?: string) =>
-    req<{ ok: boolean }>(
-      `/api/v1/projects/${projectId}/estimate/withdraw-lock`,
-      { method: 'POST', body: JSON.stringify({ reason: reason || null }) },
-      userId,
-    ),
+  withdrawEstimateLock: async (userId: string, projectId: string, reason?: string) => {
+    const body = JSON.stringify({ reason: reason || null });
+    try {
+      return await req<{ ok: boolean }>(
+        `/api/v1/projects/${projectId}/estimate/withdraw-lock`,
+        { method: 'POST', body },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/estimate/withdraw-lock`, method: 'POST', body, userId });
+      throw new Error('offline_queued');
+    }
+  },
 };
 
