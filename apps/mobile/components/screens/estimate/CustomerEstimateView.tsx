@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { ScrollView, StyleSheet } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, ChangeOrder, MaterialStats } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -39,17 +40,27 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const [locking, setLocking] = useState(false);
   const [lockDiff, setLockDiff] = useState<Awaited<ReturnType<typeof api.getEstimateLockDiff>> | null>(null);
 
-  useEffect(() => {
+  /** W95: CO от исполнителя / lock — обновить без remount вкладки сметы */
+  const reloadEstimateSurface = useCallback(() => {
     if (!user || !activeProject) return;
     api.materialStats(user.id, activeProject.id).then(setStats).catch(() => {});
     api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(() => {});
-    // W68 #39
     if (activeProject.estimate_lock_proposed_at && !activeProject.estimate_locked_at) {
       api.getEstimateLockDiff(user.id, activeProject.id).then(setLockDiff).catch(() => setLockDiff(null));
     } else {
       setLockDiff(null);
     }
-  }, [user, activeProject?.id, activeProject?.estimate_lock_proposed_at, activeProject?.estimate_locked_at]);
+  }, [
+    user?.id,
+    activeProject?.id,
+    activeProject?.estimate_lock_proposed_at,
+    activeProject?.estimate_locked_at,
+  ]);
+
+  useEffect(() => {
+    reloadEstimateSurface();
+  }, [reloadEstimateSurface]);
+  useProjectDataReload(reloadEstimateSurface);
 
   useEffect(() => {
     if (typeof estimateLayerParam === 'string' && estimateLayerParam) {

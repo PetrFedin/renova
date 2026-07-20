@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, AppNotification } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { resolveNotificationLink, resolvePushLink, changeOrderEstimateRoute } from '@/lib/pushLinks';
 import type { OsRole } from '@/constants/osSections';
 import { SnoozeUntilPicker } from '@/components/renova/SnoozeUntilPicker';
@@ -24,22 +25,27 @@ export function NotificationCenter({
   const { user, activeProject } = useRenova();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [onlyUnread, setOnlyUnread] = useState(false);
-  useEffect(() => { api.listNotifications(userId).then(setItems).catch(() => {}); }, [userId]);
+  const reload = useCallback(() => {
+    api.listNotifications(userId).then(setItems).catch(() => {});
+  }, [userId]);
+  useEffect(() => { reload(); }, [reload]);
+  // W95: CO/оплата/приёмка → список уведомлений без remount профиля
+  useProjectDataReload(reload);
   const list = items.filter(n => !onlyUnread || !n.read).slice(0, compact ? 3 : 15);
   const unread = items.filter(n => !n.read).length;
-  const snooze = async (e: any, id: string, h: number) => { e.stopPropagation?.(); await api.snoozeNotification(userId, id, h); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); setItems(await api.listNotifications(userId)); };
+  const snooze = async (e: any, id: string, h: number) => { e.stopPropagation?.(); await api.snoozeNotification(userId, id, h); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); reload(); };
   return (
     <View>
       {!hideHeader ? (
         <View style={s.row}>
           <Text style={s.head}>Уведомления {unread ? `(${unread})` : ''}</Text>
-          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); setItems(await api.listNotifications(userId)); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
+          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); reload(); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
           <Pressable onPress={() => setOnlyUnread(u => !u)}><Text style={s.filter}>{onlyUnread ? 'Все' : 'Непрочит.'}</Text></Pressable>
         </View>
       ) : (
         <View style={s.row}>
           <Text style={s.subHead}>Лента {unread ? `· ${unread} непрочит.` : ''}</Text>
-          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); setItems(await api.listNotifications(userId)); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
+          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); reload(); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
           <Pressable onPress={() => setOnlyUnread(u => !u)}><Text style={s.filter}>{onlyUnread ? 'Все' : 'Непрочит.'}</Text></Pressable>
         </View>
       )}
@@ -52,14 +58,14 @@ export function NotificationCenter({
           if (n.notification_type === 'change_order') {
             const target = changeOrderEstimateRoute(role, back);
             router.push({ pathname: target.pathname, params: target.params } as any);
-            setItems(await api.listNotifications(userId));
+            reload();
             return;
           }
           if (n.link_path) {
             const target = resolvePushLink(n.link_path, back, role);
             if (target) {
               router.push({ pathname: target.pathname, params: target.params } as any);
-              setItems(await api.listNotifications(userId));
+              reload();
               return;
             }
           }
@@ -67,7 +73,7 @@ export function NotificationCenter({
           if (fallback) {
             router.push({ pathname: fallback.pathname, params: fallback.params } as any);
           }
-          setItems(await api.listNotifications(userId));
+          reload();
         }}>
           <Text style={s.title}>{n.title}</Text>
           <Text style={s.body}>{n.body}</Text>
@@ -76,7 +82,7 @@ export function NotificationCenter({
             <Pressable onPress={(e) => snooze(e, n.id, 24)}><Text style={s.snooze}>24ч</Text></Pressable>
             <Pressable onPress={(e) => snooze(e, n.id, 72)}><Text style={s.snooze}>3д</Text></Pressable>
           </View>
-          <SnoozeUntilPicker userId={userId} notificationId={n.id} onDone={async () => setItems(await api.listNotifications(userId))} />
+          <SnoozeUntilPicker userId={userId} notificationId={n.id} onDone={async () => reload()} />
         </Pressable>
       ))}
     </View>

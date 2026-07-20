@@ -589,6 +589,7 @@ ${(res.body || '').slice(0, 220)}`,
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {
           await api.runDocumentOcr(userId, projectId, doc.id, true);
           await reloadIndex();
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           Alert.alert('OCR', 'Классификация обновлена.');
         }),
       },

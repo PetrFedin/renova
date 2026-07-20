@@ -1,10 +1,11 @@
 /** Оплата этапа — после приёмки, без scroll до счёта */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
 import { api, type Payment, type Stage } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import type { OsRole } from '@/constants/osSections';
 
 type Props = {
@@ -33,9 +34,15 @@ export function StageDetailPaymentBlock({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [selected, setSelected] = useState<Payment | null>(null);
 
-  useEffect(() => {
+  const reloadPayments = useCallback(() => {
     api.listPayments(userId, projectId).then(setPayments).catch(() => setPayments([]));
-  }, [userId, projectId, stageId, stageStatus]);
+  }, [userId, projectId]);
+
+  useEffect(() => {
+    reloadPayments();
+  }, [reloadPayments, stageId, stageStatus]);
+  // W95: после YuKassa/confirm на другом экране — блок оплаты этапа без remount
+  useProjectDataReload(reloadPayments);
 
   const pending = payments.find((p) => p.stage_id === stageId && p.status === 'pending');
   const isCustomer = role === 'customer';
@@ -79,7 +86,7 @@ export function StageDetailPaymentBlock({
         onClose={() => setSelected(null)}
         onChanged={() => {
           onChanged?.();
-          api.listPayments(userId, projectId).then(setPayments).catch(() => {});
+          reloadPayments();
         }}
       />
     </>

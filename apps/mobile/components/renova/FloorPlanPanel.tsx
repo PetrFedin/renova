@@ -1,10 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent, ActivityIndicator, Platform } from 'react-native';
 import { usePathname, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
 import { pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
@@ -50,8 +51,11 @@ export function FloorPlanPanel({
   const [mapW, setMapW] = useState(0);
   const [addingPunch, setAddingPunch] = useState(false);
   const planRef = useRef<FloorPlan | null>(null);
-  const load = () => api.listFloorPlans(userId, projectId).then(setPlans).catch(() => {});
-  useEffect(() => { load(); }, [projectId]);
+  const load = useCallback(() => {
+    api.listFloorPlans(userId, projectId).then(setPlans).catch(() => {});
+  }, [userId, projectId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
   const levels = [...new Set(plans.map((p) => (p as { floor_level?: number }).floor_level || 1))].sort();
   const plan = plans.find((p) => ((p as { floor_level?: number }).floor_level || 1) === floor) || plans[0];
   planRef.current = plan || null;
@@ -146,6 +150,10 @@ export function FloorPlanPanel({
       const blob = await (await fetch(asset.uri)).blob();
       const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
       await api.createFloorPlan(userId, projectId, { name: `Этаж ${floor}`, image_key: key, floor_level: floor });
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
       load();
     } catch {
       Alert.alert('Загрузка', 'Не удалось загрузить план');
