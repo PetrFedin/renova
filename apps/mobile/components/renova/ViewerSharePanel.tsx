@@ -4,6 +4,8 @@ import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
 import { shareRenovaLink } from '@/lib/messengerShare';
 
@@ -18,6 +20,11 @@ export function ViewerSharePanel({
   projectId: string;
   embedded?: boolean;
 }) {
+  const { user, activeProject } = useRenova();
+  const syncAfter = () => syncProjectSideEffects({
+    user: user ?? ({ id: userId } as any),
+    project: activeProject ?? ({ id: projectId } as any),
+  });
   const [items, setItems] = useState<V[]>([]);
   const [phone, setPhone] = useState('');
   const [profileCode, setProfileCode] = useState('');
@@ -43,6 +50,7 @@ export function ViewerSharePanel({
       });
       setPhone('');
       setProfileCode('');
+      await syncAfter();
       load();
     } catch (e: unknown) {
       Alert.alert('Не удалось добавить', apiErrorMessage(e, 'Пользователь должен быть в Renova'));
@@ -81,6 +89,7 @@ export function ViewerSharePanel({
                 onPress={async () => {
                   try {
                     await api.removeViewer(userId, projectId, v.user_id);
+                    await syncAfter();
                     load();
                   } catch (e: unknown) {
                     Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось удалить'));

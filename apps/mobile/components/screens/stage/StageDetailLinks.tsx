@@ -6,6 +6,7 @@ import { RenovaTheme } from '@/constants/Theme';
 import { StageRoomPicker } from '@/components/renova/StageRoomPicker';
 import type { ProjectDetail, StageDetail, User } from '@/lib/api';
 import { api } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import {
   budgetTabRoute,
   calendarTabRoute,
@@ -80,6 +81,7 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
           disabled={!canWrite || user.role === 'customer'}
           onChange={async (room_ids) => {
             await api.patchStageRooms(user.id, project.id, stage.id, room_ids);
+            await syncProjectSideEffects({ user, project });
             onRoomsChanged();
           }}
         />

@@ -4,6 +4,8 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import type { ReceiptItem } from '@/lib/api';
 import { expenseCategoryLabel, EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 
 export function ReceiptList({
   receipts, rooms, stages, userId, projectId, editable, onUpdated, onReceiptPress, totalLabel = 'Чеки',
@@ -18,9 +20,16 @@ export function ReceiptList({
   onReceiptPress?: (receipt: ReceiptItem) => void;
   totalLabel?: string;
 }) {
+  const { user, activeProject } = useRenova();
   if (receipts.length === 0) return null;
   const sum = receipts.reduce((a, r) => a + r.amount, 0);
   const verified = receipts.filter((r) => r.verified).length;
+
+  const syncAfter = () =>
+    syncProjectSideEffects({
+      user: user ?? (userId ? ({ id: userId } as any) : null),
+      project: activeProject ?? (projectId ? ({ id: projectId } as any) : null),
+    });
 
   const reverify = async (r: ReceiptItem) => {
     if (!userId || !projectId || r.source === 'manual') return;
@@ -31,18 +40,18 @@ export function ReceiptList({
         `${res.message || (res.verified ? 'Подтверждён' : 'Не подтверждён')}` +
           (res.verify_mode ? ` · режим: ${res.verify_mode}` : ''),
       );
+      await syncAfter();
       onUpdated?.();
     } catch (e: unknown) {
       Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось проверить');
     }
   };
 
-
-
   async function patch(r: ReceiptItem, patch: { expense_category?: ExpenseCategoryId; room_id?: string | null; stage_id?: string | null }) {
     if (!userId || !projectId) return;
     try {
       await api.patchReceipt(userId, projectId, r.id, patch);
+      await syncAfter();
       onUpdated?.();
     } catch {
       Alert.alert('Ошибка', 'Не удалось обновить чек');

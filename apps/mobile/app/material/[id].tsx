@@ -5,6 +5,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api, MaterialPick, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { repairTabHref } from '@/constants/osSections';
@@ -92,14 +93,15 @@ export default function MaterialDetailScreen() {
         {pick.status === 'purchased' && deliveredPurchase && cancelStatus && role === 'contractor' && user && activeProject && (
           <PrimaryButton title={purchaseAdvanceLabel(cancelStatus)} variant="outline" onPress={async () => {
             await api.updatePurchaseStatus(user.id, activeProject.id, deliveredPurchase.id, cancelStatus);
+            await syncProjectSideEffects({ user, project: activeProject });
             reload();
           }} />
         )}
         {role === 'customer' && pick.status === 'pending' && user && activeProject && (
-          <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(user.id, activeProject.id, pick.id); reload(); }} />
+          <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); }} />
         )}
         {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
-          <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); reload(); }} />
+          <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); }} />
         )}
         <PrimaryButton title="Все материалы" variant="outline" onPress={() => router.replace(repairTabHref(role, 'materials') as any)} />
       </ScrollView>

@@ -1,6 +1,7 @@
 /** Создание чата: одно уникальное название на объект — дубликаты открываются, не создаются */
 import { Alert } from 'react-native';
 import { api, type ChatThread } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { findExistingChat } from '@/lib/chatPreview';
 
 export type ChatParticipantInvite = {
@@ -40,6 +41,10 @@ export async function createProjectChat({
   }
 
   const t = await api.createChat(userId, projectId, trimmed, topic);
+  await syncProjectSideEffects({
+    user: { id: userId } as any,
+    project: { id: projectId } as any,
+  });
 
   for (const inv of invites) {
     if (!inv.phone && !inv.profile_code) continue;

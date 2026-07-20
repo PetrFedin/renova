@@ -8,6 +8,8 @@ import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/doma
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { dayTaskCount, formatCalendarEventDates, isPeriodCalendarEvent, isWorkCalendarEvent } from '@/lib/domain/calendarEvents';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { CalendarEvent, WorkOrder } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 
@@ -69,6 +71,7 @@ export function ScheduleDayDetail({
   workOrders = [],
   onChanged,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const label = new Date(date + 'T12:00:00').toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' });
   const tasks = dayTaskCount(events);
   const woById = new Map(workOrders.map((w) => [w.id, w]));
@@ -79,6 +82,7 @@ export function ScheduleDayDetail({
     const nextEnd = addDays(base, days);
     try {
       await api.patchWorkOrder(userId, projectId, wo.id, { planned_end: nextEnd, notes: note });
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
       Alert.alert('Срок обновлён', `Новый дедлайн: ${nextEnd}`);
     } catch {
@@ -90,6 +94,7 @@ export function ScheduleDayDetail({
     if (!userId || !projectId || readOnly) return;
     try {
       await api.transitionWorkOrder(userId, projectId, wo.id, next);
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
     } catch {
       Alert.alert('Ошибка', 'Не удалось обновить статус');

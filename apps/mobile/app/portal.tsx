@@ -8,6 +8,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { api, ApiError } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
@@ -19,11 +20,17 @@ export default function PortalScreen() {
   const [portalToken, setPortalToken] = useState('');
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof api.portalSnapshot>> | null>(null);
 
+  /** W85: snapshot + inbox/home side-effects (если заказчик открыл портал и приложение) */
   const refreshPortalSnapshot = async (userId: string, projectId: string) => {
     try {
       const snap = await api.portalSnapshot(userId, projectId);
       setSnapshot(snap);
     } catch { /* best-effort */ }
+    await syncProjectSideEffects({
+      user: { id: userId, role: 'customer' } as any,
+      project: { id: projectId } as any,
+      role: 'customer',
+    });
   };
 
   useEffect(() => {
@@ -215,8 +222,7 @@ export default function PortalScreen() {
                   onPress={async () => {
                     try {
                       await api.portalAcceptStage(session.project_id, acc.id, portalToken);
-                      const snap = await api.portalSnapshot(session.user_id, session.project_id);
-                      setSnapshot(snap);
+                      await refreshPortalSnapshot(session.user_id, session.project_id);
                       const payN = snap.pending_payments?.length ?? 0;
                       Alert.alert(
                         'Этап принят',
@@ -237,8 +243,7 @@ export default function PortalScreen() {
                   onPress={async () => {
                     try {
                       await api.portalReturnStage(session.project_id, acc.id, portalToken, 'Нужна доработка');
-                      const snap = await api.portalSnapshot(session.user_id, session.project_id);
-                      setSnapshot(snap);
+                      await refreshPortalSnapshot(session.user_id, session.project_id);
                       Alert.alert('Возвращено', `«${acc.stage_name || 'работы'}» отправлены на доработку`);
                     } catch {
                       Alert.alert('Ошибка', 'Не удалось вернуть этап');
@@ -315,8 +320,7 @@ export default function PortalScreen() {
                       try {
                         const checkout = await api.checkoutYookassa(session.user_id, session.project_id, pay.id, { portal_token: portalToken });
                         if (checkout.demo) {
-                          const snap = await api.portalSnapshot(session.user_id, session.project_id);
-                          setSnapshot(snap);
+                          await refreshPortalSnapshot(session.user_id, session.project_id);
                           Alert.alert('Оплата (demo)', checkout.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.');
                           return;
                         }
@@ -391,8 +395,7 @@ export default function PortalScreen() {
                     onPress={async () => {
                       try {
                         const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 'in_app');
-                        const snap = await api.portalSnapshot(session.user_id, session.project_id);
-                        setSnapshot(snap);
+                        await refreshPortalSnapshot(session.user_id, session.project_id);
                         Alert.alert('Подписано', res.status === 'signed' ? d.title : 'Запрос на подпись создан');
                       } catch (e) {
                         Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось подписать документ'));
@@ -414,8 +417,7 @@ export default function PortalScreen() {
                         } else {
                           Alert.alert('Контур', 'Запрос создан. Статус обновится позже.');
                         }
-                        const snap = await api.portalSnapshot(session.user_id, session.project_id);
-                        setSnapshot(snap);
+                        await refreshPortalSnapshot(session.user_id, session.project_id);
                       } catch (e) {
                         const msg = apiErrorMessage(e, 'Не удалось открыть подпись');
                         Alert.alert('Контур', (e instanceof ApiError && e.status === 501) ? 'Контур недоступен. Используйте подпись в приложении.' : msg);

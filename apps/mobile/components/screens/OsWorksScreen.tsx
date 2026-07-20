@@ -4,6 +4,7 @@ import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { SearchFilter } from '@/components/renova/SearchFilter';
@@ -222,6 +223,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           onClose={() => setShowCreate(false)}
           onCreate={async (body) => {
             await api.createStage(user.id, activeProject.id, body);
+            await syncProjectSideEffects({ user, project: activeProject });
             await loadProject(activeProject.id);
           }}
         />
