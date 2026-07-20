@@ -10,7 +10,7 @@ export default function CustomerTabs() {
         <Tabs.Screen name="index" options={{ title: 'Главная' }} />
         <Tabs.Screen name="object" options={{ title: 'Объект' }} />
         <Tabs.Screen name="repair" options={{ title: 'Ремонт' }} />
-        <Tabs.Screen name="budget" options={{ title: 'Бюджет' }} />
+        <Tabs.Screen name="budget" options={{ title: 'Деньги' }} />
         <Tabs.Screen name="chat" options={{ href: null }} />
         <Tabs.Screen name="profile" options={{ href: null }} />
         <Tabs.Screen name="calendar" options={{ href: null }} />

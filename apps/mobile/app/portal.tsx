@@ -94,6 +94,10 @@ export default function PortalScreen() {
   const canPayPortal = !portalReadOnly && Boolean(session.scopes?.includes('pay'));
   const canAcceptPortal = !portalReadOnly && Boolean(session.scopes?.includes('accept_stage'));
   const canSignPortal = !portalReadOnly && Boolean(session.scopes?.includes('sign_document'));
+  // W105: snapshot can_* согласовать со scopes токена (не показывать CTA без права)
+  const canConfirmSchedule = Boolean(snapshot.can_confirm_schedule) && canAcceptPortal;
+  const canAcceptStageSnap = Boolean(snapshot.can_accept_stage) && canAcceptPortal;
+  const canSignDocsSnap = Boolean(snapshot.can_sign_documents) && canSignPortal;
 
 
   const progress = sched.progress_percent ?? snapshot.project.progress_percent ?? 0;
@@ -162,7 +166,7 @@ export default function PortalScreen() {
         <View style={s.card}>
           <Text style={s.cardHead}>План-график</Text>
           <Text style={s.line}>{snapshot.pending_work_schedule.title || 'График работ'} · на согласовании</Text>
-          {snapshot.can_confirm_schedule && canAcceptPortal ? (
+          {canConfirmSchedule ? (
             <View style={s.payActions}>
               <Pressable
                 style={s.acceptBtn}
@@ -210,7 +214,7 @@ export default function PortalScreen() {
         </View>
       ) : null}
 
-{(snapshot.pending_acceptances?.length ?? 0) > 0 && canAcceptPortal ? (
+{(snapshot.pending_acceptances?.length ?? 0) > 0 && canAcceptStageSnap ? (
         <View style={s.card}>
           <Text style={s.cardHead}>Приёмка этапов</Text>
           {snapshot.pending_acceptances!.map((acc) => (

@@ -55,6 +55,8 @@ export function CustomerControlView() {
         stages={activeProject.stages}
         acceptances={acceptances}
         returnTo={pathname}
+        role="customer"
+        onChanged={reload}
       />
 
       <Text style={s.section}>Замечания</Text>
