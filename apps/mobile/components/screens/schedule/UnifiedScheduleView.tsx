@@ -25,6 +25,11 @@ import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats
 import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import {
+  alertScheduleConfirmed,
+  alertScheduleRejected,
+  alertScheduleSubmitted,
+} from '@/lib/scheduleCloseoutNav';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -275,9 +280,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                   }
                   const next = await api.submitWorkSchedule(user.id, activeProject.id, schedule.id);
                   setSchedule(next);
-                  Alert.alert('Отправлено', 'Заказчик получит запрос на согласование графика');
                   reload();
                   await syncScheduleSideEffects();
+                  // W132: график → inbox заказчика
+                  alertScheduleSubmitted(role);
                 } catch (e: unknown) {
                   Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
                 } finally {
@@ -298,9 +304,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                   try {
                     const next = await api.confirmWorkSchedule(user.id, activeProject.id, schedule.id);
                     setSchedule(next);
-                    Alert.alert('Согласовано', 'Даты этапов обновлены по графику');
                     reload();
                     await syncScheduleSideEffects();
+                    // W132: согласован → этапы / календарь
+                    alertScheduleConfirmed(role);
                   } catch (e: unknown) {
                     Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось согласовать');
                   } finally {
@@ -324,6 +331,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                         setSchedule(next);
                         reload();
                         await syncScheduleSideEffects();
+                        alertScheduleRejected(role);
                       } catch (e: unknown) {
                         Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
                       } finally {
@@ -342,6 +350,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                           setSchedule(next);
                           reload();
                           await syncScheduleSideEffects();
+                          alertScheduleRejected(role);
                         } catch (e: unknown) {
                           Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
                         } finally {

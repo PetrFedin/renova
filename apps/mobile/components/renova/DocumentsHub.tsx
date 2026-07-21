@@ -28,6 +28,7 @@ import { BankStatementImportSheet } from '@/components/renova/BankStatementImpor
 import { alertIcalExported } from '@/lib/calendarIcsNav';
 import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
 import { openQcIssue } from '@/lib/qcNav';
+import { alertCloseoutDone, alertDocumentSigned } from '@/lib/scheduleCloseoutNav';
 
 type DocRow = {
   id: string;
@@ -372,7 +373,8 @@ ${(res.body || '').slice(0, 220)}`,
                 try {
                   const res = await api.closeoutProject(userId, projectId);
                   void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                  Alert.alert('Готово', res.next_action || 'Объект завершён');
+                  // W132: closeout → главная / документы
+                  alertCloseoutDone('customer', res.next_action);
                 } catch (e: unknown) {
                   Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось завершить');
                 }
@@ -567,7 +569,9 @@ ${(res.body || '').slice(0, 220)}`,
           await api.signProjectDocument(userId, projectId, doc.id, { provider: 'in_app' });
           await reloadIndex();
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-          Alert.alert('Подписано', 'Подпись in_app сохранена.');
+          // W132: подпись → документы / график
+          const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+          alertDocumentSigned(role, 'in_app');
         }),
       },
       ...(konturAvailable ? [{
@@ -585,7 +589,8 @@ ${(res.body || '').slice(0, 220)}`,
           await reloadIndex();
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           if (status === 'signed') {
-            Alert.alert('Контур', 'Документ подписан.');
+            const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+            alertDocumentSigned(role, 'kontur');
           } else if (status === 'failed') {
             Alert.alert('Контур', 'Подпись не завершена. Проверьте статус позже.');
           } else {
