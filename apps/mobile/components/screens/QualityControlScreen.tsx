@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { ProjectIssue } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { objectTabRoute, type OsRole } from '@/constants/osSections';
+import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
+
+function mediaUrl(path?: string | null) {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  return `${API_BASE}${path}`;
+}
 
 function statusLabel(status: string) {
   switch (status) {
@@ -44,26 +59,77 @@ function dueLabel(value?: string | null) {
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
 }
 
-function IssueCard({ item, onClose, acting }: { item: ProjectIssue; onClose: (issue: ProjectIssue) => void; acting: boolean }) {
+function IssueCard({
+  item,
+  onClose,
+  acting,
+  focused,
+  canClose,
+  closeHint,
+  closeLabel = 'Закрыть',
+  onEscalate,
+  role = 'customer',
+}: {
+  item: ProjectIssue;
+  onClose: (issue: ProjectIssue) => void;
+  onEscalate?: (issue: ProjectIssue) => void;
+  acting: boolean;
+  focused?: boolean;
+  canClose: boolean;
+  closeHint?: string;
+  closeLabel?: string;
+  role?: OsRole;
+}) {
   const isClosed = item.status === 'closed';
   const tone = severityTone(item.severity);
   return (
-    <View style={[styles.issueCard, isClosed && styles.closedCard]}>
+    <View style={[styles.issueCard, isClosed && styles.closedCard, focused && styles.focusedCard]}>
       <View style={styles.issueHeader}>
         <View style={styles.issueMain}>
           <Text style={styles.issueTitle}>{item.title}</Text>
-          <Text style={styles.issueMeta}>{statusLabel(item.status)} · {severityLabel(item.severity)}{dueLabel(item.due_at) ? ` · до ${dueLabel(item.due_at)}` : ''}</Text>
+          <Text style={styles.issueMeta}>{statusLabel(item.status)} · {severityLabel(item.severity)}{item.floor_plan_id ? ' · на плане' : ''}{dueLabel(item.due_at) ? ` · до ${dueLabel(item.due_at)}` : ''}</Text>
         </View>
         <View style={[styles.badge, { borderColor: tone }]}> 
           <Text style={[styles.badgeText, { color: tone }]}>{severityLabel(item.severity)}</Text>
         </View>
       </View>
       {item.description ? <Text style={styles.issueText}>{item.description}</Text> : null}
+      {mediaUrl(item.photo_url) ? (
+        <Image source={{ uri: mediaUrl(item.photo_url)! }} style={styles.issuePhoto} resizeMode="cover" />
+      ) : null}
       <View style={styles.issueFooter}>
         {item.stage_id ? (
-          <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${item.stage_id}?returnTo=${encodeURIComponent('/quality-control')}` as never)} />
+          <PrimaryButton
+            title="Этап"
+            variant="outline"
+            compact
+            onPress={() =>
+              pushOsNav(
+                { pathname: '/stage/[id]', params: { id: item.stage_id! } },
+                '/quality-control',
+                role,
+              )
+            }
+          />
         ) : null}
-        {!isClosed ? <PrimaryButton title="Закрыть" compact onPress={() => onClose(item)} loading={acting} disabled={acting} /> : null}
+        {item.floor_plan_id ? (
+          <PrimaryButton
+            title="План"
+            variant="outline"
+            compact
+            onPress={() =>
+              // W121: обратно на план объекта (Fieldwire loop)
+              pushOsNav(objectTabRoute(role, 'plan'), '/quality-control', role)
+            }
+          />
+        ) : null}
+        {!isClosed && canClose ? (
+          <PrimaryButton title={closeLabel} compact onPress={() => onClose(item)} loading={acting} disabled={acting} />
+        ) : null}
+        {!isClosed && onEscalate && !(item.title || '').startsWith('[Спор]') ? (
+          <PrimaryButton title="Спор" variant="outline" compact onPress={() => onEscalate(item)} disabled={acting} />
+        ) : null}
+        {!isClosed && !canClose && closeHint ? <Text style={styles.issueMeta}>{closeHint}</Text> : null}
       </View>
     </View>
   );
@@ -71,6 +137,9 @@ function IssueCard({ item, onClose, acting }: { item: ProjectIssue; onClose: (is
 
 export function QualityControlScreen() {
   const { user, activeProject, readOnly } = useRenova();
+  const isCustomer = user?.role === 'customer';
+  const params = useLocalSearchParams<{ issueId?: string }>();
+  const focusIssueId = Array.isArray(params.issueId) ? params.issueId[0] : params.issueId;
   const [items, setItems] = useState<ProjectIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -86,19 +155,68 @@ export function QualityControlScreen() {
       setRefreshing(false);
     }
   }, [user, activeProject]);
+  useProjectDataReload(load);
 
   useEffect(() => { load(); }, [load]);
 
-  const openIssues = useMemo(() => items.filter((item) => item.status !== 'closed'), [items]);
+  const openIssues = useMemo(() => {
+    const open = items.filter((item) => item.status !== 'closed');
+    if (!focusIssueId) return open;
+    return [...open].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId));
+  }, [items, focusIssueId]);
   const closedIssues = useMemo(() => items.filter((item) => item.status === 'closed'), [items]);
   const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
 
-  const closeIssue = async (issue: ProjectIssue) => {
+  const createWarranty = async () => {
+    if (!user || !activeProject || readOnly || !isCustomer) return;
+    setActingId('warranty-new');
+    try {
+      const wRes = await api.createWarrantyClaim(user.id, activeProject.id, {
+        title: 'Гарантийное обращение',
+        description: 'Создано из Контроля качества',
+      });
+      await load();
+      await syncProjectSideEffects({ user, project: activeProject });
+      alertWarrantyCreated(isCustomer ? 'customer' : 'contractor', wRes);
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Гарантийный тикет');
+      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать');
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const escalateIssue = async (issue: ProjectIssue) => {
     if (!user || !activeProject || readOnly) return;
+    try {
+      await api.escalateIssue(user.id, activeProject.id, issue.id);
+      await load();
+      await syncProjectSideEffects({ user, project: activeProject });
+      Alert.alert('Спор', 'Замечание эскалировано — стороны уведомлены');
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Эскалация');
+      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось эскалировать');
+    }
+  };
+
+  const closeIssue = async (issue: ProjectIssue) => {
+    // W46/W62: гарантию закрывает только заказчик
+    if (!user || !activeProject || readOnly) return;
+    if ((issue.title || '').startsWith('[Гарантия]') && user.role !== 'customer') return;
     setActingId(issue.id);
     try {
-      await api.closeIssue(user.id, activeProject.id, issue.id);
-      await load();
+      if ((issue.title || '').startsWith('[Гарантия]')) {
+        await api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
+        await load();
+        await syncProjectSideEffects({ user, project: activeProject });
+        alertWarrantyClosed(user.role === 'contractor' ? 'contractor' : 'customer');
+      } else {
+        await api.closeIssue(user.id, activeProject.id, issue.id);
+        await load();
+        await syncProjectSideEffects({ user, project: activeProject });
+      }
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');
     } finally {
       setActingId(null);
     }
@@ -132,6 +250,7 @@ export function QualityControlScreen() {
         <Pressable onPress={() => router.back()} hitSlop={12}><Text style={styles.back}>‹ Назад</Text></Pressable>
         <Text style={styles.title}>Контроль качества</Text>
         <Text style={styles.subtitle}>Замечания, дефекты и контроль устранения по проекту.</Text>
+        <OfflineSyncStatus compact />
       </View>
 
       {readOnly ? (
@@ -158,7 +277,27 @@ export function QualityControlScreen() {
       <View style={styles.cardBlock}>
         <Text style={styles.sectionTitle}>Требуют внимания</Text>
         {openIssues.length ? openIssues.map((item) => (
-          <IssueCard key={item.id} item={item} onClose={closeIssue} acting={actingId === item.id} />
+          <IssueCard
+            key={item.id}
+            focused={item.id === focusIssueId}
+            item={item}
+            onClose={closeIssue} onEscalate={escalateIssue}
+            acting={actingId === item.id}
+            canClose={
+              !readOnly
+              && item.status !== 'fixed'
+              && (!(item.title || '').startsWith('[Гарантия]') || Boolean(isCustomer))
+            }
+            closeHint={
+              (item.title || '').startsWith('[Гарантия]') && !isCustomer
+                ? 'Гарантию закрывает заказчик'
+                : item.status === 'fixed' && !isCustomer
+                  ? 'Ждёт подтверждения заказчика'
+                  : undefined
+            }
+            closeLabel={!isCustomer && !(item.title || '').startsWith('[Гарантия]') ? 'Исправлено' : 'Закрыть'}
+            role={isCustomer ? 'customer' : 'contractor'}
+          />
         )) : <Text style={styles.emptyText}>Открытых замечаний нет. Редкий случай, когда тишина — хороший KPI.</Text>}
       </View>
 
@@ -166,7 +305,15 @@ export function QualityControlScreen() {
         <View style={styles.cardBlock}>
           <Text style={styles.sectionTitle}>Закрытые</Text>
           {closedIssues.slice(0, 5).map((item) => (
-            <IssueCard key={item.id} item={item} onClose={closeIssue} acting={false} />
+            <IssueCard
+              key={item.id}
+              focused={item.id === focusIssueId}
+              item={item}
+              onClose={closeIssue} onEscalate={escalateIssue}
+              acting={false}
+              canClose={false}
+              role={isCustomer ? 'customer' : 'contractor'}
+            />
           ))}
         </View>
       ) : null}
@@ -191,7 +338,13 @@ const styles = StyleSheet.create({
   cardBlock: { ...card, gap: RenovaTheme.spacing.sm },
   sectionTitle: { fontSize: RenovaTheme.fontSize.h3, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.bold },
   issueCard: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: RenovaTheme.radius.lg, padding: RenovaTheme.spacing.md, backgroundColor: RenovaTheme.colors.surface, gap: RenovaTheme.spacing.sm },
+  focusedCard: {
+    borderColor: RenovaTheme.colors.primary,
+    borderWidth: 2,
+    backgroundColor: '#EFF6FF',
+  },
   closedCard: { opacity: 0.7 },
+  issuePhoto: { width: '100%', height: 160, borderRadius: RenovaTheme.radius.md, backgroundColor: RenovaTheme.colors.surfaceMuted },
   issueHeader: { flexDirection: 'row', gap: RenovaTheme.spacing.sm, justifyContent: 'space-between', alignItems: 'flex-start' },
   issueMain: { flex: 1, minWidth: 0 },
   issueTitle: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.extrabold },

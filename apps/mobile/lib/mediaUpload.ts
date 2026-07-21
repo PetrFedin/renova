@@ -1,4 +1,7 @@
 /** Загрузка файлов через presigned URL (S3 / local storage) */
+import { Platform } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { api } from '@/lib/api';
 
 /** PUT blob на presigned URL, возвращает storage key для API */
@@ -31,4 +34,18 @@ export async function readTextFileWeb(accept = '.ics,text/calendar'): Promise<st
   const file = await pickFileWeb(accept);
   if (!file) return null;
   return file.text();
+}
+
+/** P2.4: импорт .ics — web picker или native document picker */
+export async function readIcalFile(): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return readTextFileWeb('.ics,text/calendar');
+  }
+  const picked = await DocumentPicker.getDocumentAsync({
+    type: ['text/calendar', 'application/ics', '*/*'],
+    copyToCacheDirectory: true,
+    multiple: false,
+  });
+  if (picked.canceled || !picked.assets?.[0]?.uri) return null;
+  return FileSystem.readAsStringAsync(picked.assets[0].uri);
 }

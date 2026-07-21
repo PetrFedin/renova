@@ -1,15 +1,19 @@
 /** Исполнитель: заявка → комнаты → проект с сметой */
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { replaceOsNav } from '@/lib/pushOsNav';
+import { tabsRoute } from '@/constants/osSections';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomTypePicker, FloorLevelPicker } from '@/components/renova/RoomTypePicker';
 import { ROOM_PRESETS, resolveRenovationType, type WizardRoomDraft } from '@/constants/roomTypes';
 import { calcRoomMetrics, generateTemplateLines, calcEstimateSummary } from '@/lib/calc-engine';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { BackHeader } from '@/components/renova/BackHeader';
+import { reportCatch } from '@/lib/reportError';
 
 export default function ContractorLeadWizard() {
   const { leadId, returnTo } = useLocalSearchParams<{ leadId: string; returnTo?: string }>();
@@ -23,7 +27,7 @@ export default function ContractorLeadWizard() {
 
   useEffect(() => {
     if (!user || !leadId) return;
-    api.listJobLeads(user.id).then((items) => setLead(items.find((x) => x.id === leadId) || null)).catch(() => {});
+    api.listJobLeads(user.id).then((items) => setLead(items.find((x) => x.id === leadId) || null)).catch(reportCatch('app.contractorwizard.leadId.1'));
   }, [user?.id, leadId]);
 
   const total = useMemo(() => {
@@ -44,8 +48,11 @@ export default function ContractorLeadWizard() {
     try {
       const r = await api.convertJobLead(user.id, leadId, { property_type: propertyType, rooms });
       await refreshProjects();
-      if (r?.project_id) await loadProject(r.project_id);
-      router.replace('/(contractor)/(tabs)/');
+      if (r?.project_id) {
+        await loadProject(r.project_id);
+        await syncProjectSideEffects({ user, project: { id: r.project_id } as any });
+      }
+      replaceOsNav(tabsRoute('contractor', 'index'), undefined, 'contractor');
     } catch {
       Alert.alert('Ошибка', 'Не удалось создать проект');
     } finally {

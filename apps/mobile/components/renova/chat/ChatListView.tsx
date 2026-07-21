@@ -10,6 +10,7 @@ import { CreateChatSheet } from '@/components/renova/chat/CreateChatSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { indexChats } from '@/lib/chatSearchCache';
 import { api, ChatThread } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { useChatUnread, useChatInboxThreads, useInboxWsListener } from '@/lib/useChatUnread';
 import { markChatReadAndSync } from '@/lib/inboxSyncStore';
@@ -19,6 +20,8 @@ import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldG
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
 import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttention';
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { reportCatch } from '@/lib/reportError';
 
 type Folder = 'active' | 'archive';
 
@@ -132,12 +135,16 @@ export function ChatListView() {
     if (threads.length) indexChats(threads);
   }, [threads]);
 
-  useFocusEffect(useCallback(() => { if (prefsLoaded) reload().catch(() => {}); }, [reload, prefsLoaded]));
+  useFocusEffect(useCallback(() => { if (prefsLoaded) reload().catch(reportCatch('components.renova.chat.ChatListView.1')); }, [reload, prefsLoaded]));
+  const onBusReload = useCallback(() => {
+    if (prefsLoaded) void reload();
+  }, [prefsLoaded, reload]);
+  useProjectDataReload(onBusReload);
   useInboxWsListener(useCallback(() => {
-    reload().catch(() => {});
-    reloadUnread().catch(() => {});
+    reload().catch(reportCatch('components.renova.chat.ChatListView.2'));
+    reloadUnread().catch(reportCatch('components.renova.chat.ChatListView.3'));
   }, [reload, reloadUnread]));
-  useChatFallbackPoll(!!user && !inboxWsConnected, 12_000, () => { reload().catch(() => {}); });
+  useChatFallbackPoll(!!user && !inboxWsConnected, 12_000, () => { reload().catch(reportCatch('components.renova.chat.ChatListView.4')); });
 
   const displayThreads = useMemo(
     () => filterChatThreads(threads, projectFilter),
@@ -169,10 +176,10 @@ export function ChatListView() {
     }
     const unread = t.unread_count || 0;
     if (unread > 0 && user) {
-      await markChatReadAndSync(user.id, t.project_id, t.id, user.role, unread).catch(() => {});
+      await markChatReadAndSync(user.id, t.project_id, t.id, user.role, unread).catch(reportCatch('components.renova.chat.ChatListView.5'));
     }
     if (activeProject?.id !== t.project_id) {
-      await loadProject(t.project_id).catch(() => {});
+      await loadProject(t.project_id).catch(reportCatch('components.renova.chat.ChatListView.6'));
     }
     nav.chat(t.id, t.project_id);
   };
@@ -186,11 +193,25 @@ export function ChatListView() {
     Alert.alert(t.title, t.project_name || undefined, [
       {
         text: t.is_pinned ? 'Открепить' : 'Закрепить',
-        onPress: () => api.patchChatState(user.id, t.project_id, t.id, { is_pinned: !t.is_pinned }).then(reload),
+        onPress: async () => {
+          try {
+            await api.patchChatState(user.id, t.project_id, t.id, { is_pinned: !t.is_pinned });
+            await reload();
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued(t.is_pinned ? 'Открепление чата' : 'Закрепление чата');
+          }
+        },
       },
       {
         text: folder === 'archive' ? 'Вернуть из архива' : 'В архив',
-        onPress: () => api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' }).then(reload),
+        onPress: async () => {
+          try {
+            await api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' });
+            await reload();
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued(folder === 'archive' ? 'Восстановление чата' : 'Архивация чата');
+          }
+        },
       },
       { text: 'Отмена', style: 'cancel' },
     ]);
@@ -222,7 +243,7 @@ export function ChatListView() {
         </View>
       ) : null}
       {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 ? (
-        <Pressable onPress={() => reload().catch(() => {})}>
+        <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.7'))}>
           <Text style={s.unreadWarn}>Не удалось обновить — нажмите, чтобы повторить</Text>
         </Pressable>
       ) : null}
@@ -267,7 +288,7 @@ export function ChatListView() {
           projectLocked={createProject.locked}
           selectableProjectIds={createProject.selectableIds}
           existingThreads={threads}
-          onCreated={() => reload().catch(() => {})}
+          onCreated={() => reload().catch(reportCatch('components.renova.chat.ChatListView.8'))}
           onOpenChat={(id, projectId) => nav.chat(id, projectId)}
         />
       ) : null}

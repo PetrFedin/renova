@@ -1,5 +1,6 @@
 /** Секция профиля: заголовок + описание + карточка с содержимым */
-import { View, Text, StyleSheet, type ReactNode, type ViewStyle } from 'react-native';
+import type { ReactNode } from 'react';
+import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
 

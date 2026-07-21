@@ -14,6 +14,7 @@ import {
 import { getDockBar, setDockBar, toggleDockItem } from '@/lib/dockBarPrefs';
 import { TabIcon } from '@/components/renova/TabIcon';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 function DockPreview({ selected }: { selected: DockItemId[] }) {
   return (
@@ -65,7 +66,7 @@ export function DockBarSettings({ role, embedded }: { role: OsRole; embedded?: b
   const [selected, setSelected] = useState<DockItemId[]>([]);
   const [expanded, setExpanded] = useState(!embedded);
 
-  useEffect(() => { getDockBar(role).then(setSelected).catch(() => {}); }, [role]);
+  useEffect(() => { getDockBar(role).then(setSelected).catch(reportCatch('components.renova.os.DockBarSettings.1')); }, [role]);
 
   const optionalOn = DOCK_OPTIONAL.filter((id) => selected.includes(id));
 

@@ -26,5 +26,15 @@ assert(
   'accept hero hides acceptance row',
 );
 
+// W77: warranty/change_order kinds count as tasks (not chat)
+assert(
+  inboxTaskBadge([
+    { id: 'warranty-open', kind: 'warranty', title: 'Г', href: '/d', priority: 78 },
+    { id: 'change-orders', kind: 'change_order', title: 'ДО', href: '/e', priority: 83 },
+    { id: 'chat', kind: 'chat', title: 'Чат', href: '/c', priority: 90 },
+  ]) === 2,
+  'W77 task badge excludes chat, includes warranty+CO',
+);
+
 if (!ok) process.exit(1);
 console.log('buildInboxItems.test OK');

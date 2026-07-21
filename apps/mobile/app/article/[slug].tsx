@@ -4,13 +4,14 @@ import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, ArticleDetail } from '@/lib/api';
+import { reportCatch } from '@/lib/reportError';
 
 export default function ArticleScreen() {
   const { slug, returnTo } = useLocalSearchParams<{ slug: string; returnTo?: string }>();
   const [article, setArticle] = useState<ArticleDetail | null>(null);
 
   useEffect(() => {
-    if (slug) api.getArticle(slug).then(setArticle).catch(() => {});
+    if (slug) api.getArticle(slug).then(setArticle).catch(reportCatch('app.article.slug.1'));
   }, [slug]);
 
   if (!article) return <View style={styles.center}><Text>Загрузка…</Text></View>;

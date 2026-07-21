@@ -1,9 +1,9 @@
 /** История решений — смета, сроки, согласования (поверх activity API) */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import {
   buildDecisionHistory,
   DECISION_FILTER_CHIPS,
@@ -11,7 +11,10 @@ import {
   type DecisionCategory,
   type DecisionHistoryItem,
 } from '@/lib/domain/buildDecisionHistory';
-import { resolvePushLink } from '@/lib/pushLinks';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { useRenova } from '@/lib/context/RenovaContext';
+import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 type Props = {
   userId: string;
@@ -40,23 +43,26 @@ export function DecisionHistoryPanel({
     api
       .activityFeed(userId, projectId)
       .then((items) => setRaw(buildDecisionHistory(items, { stageId, limit: 100 })))
-      .catch(() => setRaw([]));
+      .catch((e) => { reportError('components.renova.DecisionHistoryPanel.Raw', e); setRaw([]); });
   }, [userId, projectId, stageId]);
 
   useEffect(() => {
     reload();
   }, [reload]);
+  useProjectDataReload(reload);
 
   const visible = useMemo(() => {
     const filtered = filterDecisionHistory(raw, filter);
     return compact ? filtered.slice(0, limit) : filtered.slice(0, limit);
   }, [raw, filter, compact, limit]);
 
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+
   const openItem = (item: DecisionHistoryItem) => {
     if (!item.linkPath) return;
-    const target = resolvePushLink(item.linkPath, back);
-    if (!target) return;
-    router.push({ pathname: target.pathname, params: target.params } as any);
+    // W118: единый SoT
+    pushOsNav(item.linkPath, back, role);
   };
 
   return (

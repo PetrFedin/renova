@@ -1,11 +1,11 @@
 /** Связанные разделы на экране этапа */
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { StageRoomPicker } from '@/components/renova/StageRoomPicker';
 import type { ProjectDetail, StageDetail, User } from '@/lib/api';
 import { api } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import {
   budgetTabRoute,
   calendarTabRoute,
@@ -17,6 +17,7 @@ import {
 import { pushOsNav } from '@/lib/pushOsNav';
 import { findStageChatThread } from '@/lib/domain/findStageChatThread';
 import { createProjectChat } from '@/lib/createProjectChat';
+import { reportCatch } from '@/lib/reportError';
 
 type Props = {
   role: OsRole;
@@ -41,10 +42,12 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
       const chats = await api.listChats(user.id, project.id);
       const thread = findStageChatThread(chats, stage, project.rooms || []);
       if (thread) {
-        router.push({
-          pathname: '/chat/[threadId]',
-          params: { threadId: thread.id, returnTo: stageReturn },
-        } as any);
+        // W118: чат этапа → pushOsNav SoT
+        pushOsNav(
+          { pathname: '/chat/[threadId]', params: { threadId: thread.id } },
+          stageReturn,
+          role,
+        );
         return;
       }
       await createProjectChat({
@@ -54,10 +57,11 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
         topic: chatTopic,
         existingThreads: chats,
         onOpen: (threadId) => {
-          router.push({
-            pathname: '/chat/[threadId]',
-            params: { threadId, returnTo: stageReturn },
-          } as any);
+          pushOsNav(
+            { pathname: '/chat/[threadId]', params: { threadId } },
+            stageReturn,
+            role,
+          );
         },
       });
     } catch {
@@ -80,6 +84,7 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
           disabled={!canWrite || user.role === 'customer'}
           onChange={async (room_ids) => {
             await api.patchStageRooms(user.id, project.id, stage.id, room_ids);
+            await syncProjectSideEffects({ user, project });
             onRoomsChanged();
           }}
         />
@@ -101,7 +106,7 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
       <Pressable onPress={() => pushOsNav(tabsRoute(role, 'budget'), stageReturn)}>
         <Text style={s.link}>→ Бюджет</Text>
       </Pressable>
-      <Pressable onPress={() => { openStageChat().catch(() => {}); }} disabled={openingChat}>
+      <Pressable onPress={() => { openStageChat().catch(reportCatch('components.screens.stage.StageDetailLinks.1')); }} disabled={openingChat}>
         <Text style={[s.link, openingChat && s.linkBusy]}>
           {openingChat ? '→ Связь…' : '→ Связь'}
         </Text>

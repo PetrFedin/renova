@@ -13,7 +13,7 @@ import { UnifiedExpenseList } from '@/components/renova/UnifiedExpenseList';
 import { ScheduleFilterChips } from '@/components/renova/schedule/ScheduleFilterChips';
 import { ExpenseByRoom } from '@/components/renova/ExpenseByRoom';
 import { ExpenseByStage } from '@/components/renova/ExpenseByStage';
-import type { MaterialPick, OsExpense, ProjectDetail, ReceiptItem } from '@/lib/api';
+import type { MaterialPick, OsExpense, ProjectDetail, Purchase, ReceiptItem } from '@/lib/api';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import {
@@ -36,6 +36,7 @@ type Props = {
   receipts: ReceiptItem[];
   expenses: OsExpense[];
   picks: MaterialPick[];
+  purchases?: Purchase[];
   role: OsRole;
   canWrite: boolean;
   readOnly: boolean;
@@ -58,12 +59,12 @@ const VIEW_ITEMS: { key: ExpenseView; label: string }[] = [
 ];
 
 export function BudgetExpensesSection({
-  userId, project, receipts, expenses, picks, role, canWrite, readOnly, initialRoomId, initialStageId, periodParam, serverFact, listTotal, expenseView = 'list', onReload, onExpensePress,
+  userId, project, receipts, expenses, picks, purchases = [], role, canWrite, readOnly, initialRoomId, initialStageId, periodParam, serverFact, listTotal, expenseView = 'list', onReload, onExpensePress,
 }: Props) {
   const pathname = usePathname();
   const [filter, setFilter] = useState<ExpenseListFilter>('all');
   const period = parseBudgetPeriod(periodParam);
-  const rows = buildUnifiedBudgetExpenses(receipts, expenses, project.rooms || [], project.stages || [], picks);
+  const rows = buildUnifiedBudgetExpenses(receipts, expenses, project.rooms || [], project.stages || [], picks, purchases);
   const unifiedTotal = listTotal ?? rows.reduce((a, r) => a + r.amount, 0);
   const periodRows = useMemo(() => filterRowsByPeriod(rows, period), [rows, period]);
   const counts = useMemo(() => expenseFilterCounts(periodRows), [periodRows]);
@@ -101,6 +102,7 @@ export function BudgetExpensesSection({
             receipts={receipts}
             expenses={expenses}
             picks={picks}
+            purchases={purchases}
             stages={project.stages || []}
             returnTo={budgetTabHref(role, 'expenses', { view: 'rooms' })}
           />
@@ -115,6 +117,7 @@ export function BudgetExpensesSection({
             receipts={receipts}
             expenses={expenses}
             picks={picks}
+            purchases={purchases}
             rooms={project.rooms || []}
             returnTo={budgetTabHref(role, 'expenses', { view: 'stages' })}
           />
@@ -161,7 +164,7 @@ export function BudgetExpensesSection({
       )}
       <UnifiedExpenseList
         rows={filtered}
-        onPress={(row) => openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress })}
+        onPress={(row) => openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress, role })}
       />
       {!filtered.length && (
         <Text style={s.empty}>

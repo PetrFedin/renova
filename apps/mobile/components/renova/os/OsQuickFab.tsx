@@ -1,10 +1,12 @@
 /** Единая точка «+» — расход (scan/manual) · работа · чат */
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput, Alert } from 'react-native';
+import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportError } from '@/lib/reportError';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { createProjectChat } from '@/lib/createProjectChat';
@@ -62,7 +64,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
       icon: 'document-text-outline',
       run: () => {
         setOpen(false);
-        router.push({ pathname: '/scratchpad', params: { role, returnTo: pathname } } as any);
+        pushOsNav({ pathname: '/scratchpad', params: { role } }, pathname, role);
       },
     }] : [
       {
@@ -73,9 +75,9 @@ export function OsQuickFab({ role }: { role: OsRole }) {
         run: () => {
           setOpen(false);
           if (expenseContext.stageId) {
-            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname);
+            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname, role);
           } else {
-            pushOsNav(repairTabRoute(role, 'control'), pathname);
+            pushOsNav(repairTabRoute(role, 'control'), pathname, role);
           }
         },
       },
@@ -87,7 +89,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
         run: () => {
           setOpen(false);
           if (expenseContext.stageId) {
-            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname);
+            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname, role);
           } else {
             nav.scanReceipt(expenseContext.roomId, expenseContext.stageId);
           }
@@ -100,7 +102,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
         icon: 'create-outline',
         run: () => {
           setOpen(false);
-          pushOsNav(objectTabHref(role, 'rooms'), pathname);
+          pushOsNav(objectTabHref(role, 'rooms'), pathname, role);
         },
       },
     ]),
@@ -156,7 +158,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
               pushOsNav(budgetTabHref(role, 'expenses', {
                 roomId: expenseContext.roomId,
                 stageId: expenseContext.stageId,
-              }), pathname);
+              }), pathname, role);
             }}>
               <Ionicons name="create-outline" size={22} color={RenovaTheme.colors.primary} />
               <View style={{ flex: 1 }}>
@@ -183,16 +185,23 @@ export function OsQuickFab({ role }: { role: OsRole }) {
             <Pressable style={s.row} onPress={async () => {
               setChatOpen(false);
               try {
-                const existing = await api.chatInbox(user.id).catch(() => []);
+                let existing: Awaited<ReturnType<typeof api.chatInbox>>;
+                try {
+                  existing = await api.chatInbox(user.id);
+                } catch (e) {
+                  reportError('quickFab.chatInbox', e);
+                  Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть.');
+                  return;
+                }
                 await createProjectChat({
                   userId: user.id,
                   projectId: activeProject.id,
                   title: chatTitle.trim() || 'Чат',
                   existingThreads: existing,
-                  onOpen: (id) => pushOsNav({ pathname: '/chat/[threadId]', params: { threadId: id } }, pathname),
+                  onOpen: (id) => pushOsNav({ pathname: '/chat/[threadId]', params: { threadId: id } }, pathname, role),
                 });
               } catch {
-                pushOsNav(`${prefix}/chat`, pathname);
+                pushOsNav(`${prefix}/chat`, pathname, role);
               }
             }}>
               <Ionicons name="add-circle-outline" size={22} color={RenovaTheme.colors.primary} />
@@ -201,7 +210,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
                 <Text style={s.sub}>Открыть новый диалог по проекту</Text>
               </View>
             </Pressable>
-            <Pressable style={s.row} onPress={() => { setChatOpen(false); pushOsNav(`${prefix}/chat`, pathname); }}>
+            <Pressable style={s.row} onPress={() => { setChatOpen(false); pushOsNav(`${prefix}/chat`, pathname, role); }}>
               <Ionicons name="chatbubbles-outline" size={22} color={RenovaTheme.colors.primary} />
               <View style={{ flex: 1 }}>
                 <Text style={s.label}>Все чаты</Text>
@@ -224,6 +233,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
           onClose={() => setShowWork(false)}
           onCreated={async () => {
             await loadProject(activeProject.id);
+            await syncProjectSideEffects({ user, project: activeProject, role });
             setShowWork(false);
           }}
         />

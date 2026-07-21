@@ -1,8 +1,10 @@
 /** Подключение исполнителя к объекту */
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Share } from 'react-native';
 import { ContractorDirectory } from '@/components/renova/ContractorDirectory';
 import { RenovaTheme } from '@/constants/Theme';
 import { StatusPill } from '@/components/ui/StatusPill';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { messengerShareMessage } from '@/lib/messengerGap';
 
 type Props = {
   userId: string;
@@ -35,10 +37,28 @@ export function ContractorInvitePanel({
           <Text style={s.statusText}>Исполнитель ведёт этот объект</Text>
         </View>
       ) : (
-        <View style={s.codeRow}>
-          <Text style={s.codeLabel}>Код объекта</Text>
-          <Text style={s.codeValue}>{projectLinkCode(projectId)}</Text>
-        </View>
+        <>
+          <View style={s.codeRow}>
+            <Text style={s.codeLabel}>Код объекта</Text>
+            <Text style={s.codeValue}>{projectLinkCode(projectId)}</Text>
+          </View>
+          <PrimaryButton
+            title="Поделиться кодом (WhatsApp / Telegram)"
+            variant="outline"
+            compact
+            onPress={() => {
+              const code = projectLinkCode(projectId);
+              const message = messengerShareMessage(
+                `Код объекта Renova: ${code}`,
+                'приглашение исполнителя',
+              );
+              void Share.share({ message, title: 'Renova' });
+            }}
+          />
+          <Text style={s.gapHint}>
+            Нет native WhatsApp API — только системное «Поделиться». Чат объекта — внутри Renova.
+          </Text>
+        </>
       )}
 
       <ContractorDirectory
@@ -71,4 +91,5 @@ const s = StyleSheet.create({
   },
   codeLabel: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   codeValue: { fontSize: 15, fontWeight: '800', color: RenovaTheme.colors.text, letterSpacing: 1 },
+  gapHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 15 },
 });

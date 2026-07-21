@@ -1,10 +1,12 @@
 /** Комнаты объекта — список по этажам (вкладка «Объект → Комнаты») */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { useNavFromHere } from '@/lib/navigation';
 import { FloorSectionHeader, groupRoomsByFloor } from '@/components/renova/RoomFloorGroups';
@@ -14,12 +16,18 @@ import { SearchFilter } from '@/components/renova/SearchFilter';
 import { CreateRoomSheet } from '@/components/renova/CreateRoomSheet';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { api, Room, RoomChangeRequest, isRateLimitError } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomChangeStatusLabel } from '@/constants/labels';
 import { ROOM_FORM_HINTS } from '@/constants/roomFormHints';
 import { InfoBanner } from '@/components/ui/InfoBanner';
-import { budgetTabRoute, objectTabHref, repairTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, customerProfileTabHref, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import {
+  alertRoomChangeRequested,
+  alertRoomArchived,
+} from '@/lib/siteOpsNav';
+import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
 import type { OsRole } from '@/constants/osSections';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
@@ -44,14 +52,25 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
   const [query, setQuery] = useState('');
   const [roomFilter, setRoomFilter] = useState('active');
 
-  useEffect(() => {
+  const reloadRooms = useCallback(async () => {
     if (!user || !activeProject) return;
-    api
-      .listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' })
-      .then((list) => setRooms(filterRoomsByArchive(list, roomFilter === 'archive')))
-      .catch(() => {});
-    api.listRoomChangeRequests(user.id, activeProject.id).then(setRequests).catch(() => {});
+    try {
+      const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
+      setRooms(filterRoomsByArchive(list, roomFilter === 'archive'));
+    } catch {
+      /* noop */
+    }
+    try {
+      setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
+    } catch {
+      /* noop */
+    }
   }, [user?.id, activeProject?.id, roomFilter]);
+
+  useEffect(() => {
+    void reloadRooms();
+  }, [reloadRooms]);
+  useProjectDataReload(reloadRooms);
 
   const filtered = rooms
     .filter((r) => !query || r.name.toLowerCase().includes(query.toLowerCase()))
@@ -63,7 +82,7 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
     <>
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
-        <ObjectTabGuide tab="rooms" onNextTab={onNextTab} compact />
+        <ObjectTabGuide tab="rooms" onNextTab={onNextTab} />
         {!activeProject.contractor_id && (
           <InfoBanner
             tone="info"
@@ -75,15 +94,17 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
           <PrimaryButton
             title="→ Подключить исполнителя"
             variant="outline"
-            compact
-            onPress={() => pushOsNav(objectTabHref('customer', 'profile'), nav.from)}
+            onPress={() =>
+              // SoT: форма в профиле аккаунта (блок «Исполнитель»), не Объект → Профиль
+              pushOsNav(customerProfileTabHref('customer', 'contractor'), nav.from, 'customer')
+            }
           />
         ) : (
           <PrimaryButton
             title="→ Ход работ и этапы"
             variant="outline"
-            compact
-            onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from)}
+           
+            onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from, 'customer')}
           />
         )}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
@@ -107,8 +128,11 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
                   try {
                     await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
                     setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
+                    // W136: запрос → inbox / approvals
+                    alertRoomChangeRequested('customer');
                   } catch (e) {
-                    if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+                    if (isOfflineQueued(e)) notifyOfflineQueued('Запрос на изменение');
+                    else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
                   }
                 }} />
               </Pressable>
@@ -134,25 +158,16 @@ function ContractorRoomsBody() {
   const [roomFilter, setRoomFilter] = useState('active');
   const [query, setQuery] = useState('');
 
-  const reloadRequests = async () => {
+  const reloadRequests = useCallback(async () => {
     if (!user || !activeProject) return;
     try {
       setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
     } catch (e) {
       if (isRateLimitError(e)) return;
     }
-  };
+  }, [user?.id, activeProject?.id]);
 
-  useEffect(() => {
-    if (!user || !activeProject) return;
-    api
-      .listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' })
-      .then((list) => setRooms(filterRoomsByArchive(list, roomFilter === 'archive')))
-      .catch(() => {});
-    void reloadRequests();
-  }, [user?.id, activeProject?.id, roomFilter]);
-
-  const reloadRooms = async () => {
+  const reloadRooms = useCallback(async () => {
     if (!user || !activeProject) return;
     try {
       const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
@@ -162,7 +177,17 @@ function ContractorRoomsBody() {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
       }
     }
-  };
+  }, [user?.id, activeProject?.id, roomFilter]);
+
+  const refreshRoomsSurface = useCallback(() => {
+    void reloadRooms();
+    void reloadRequests();
+  }, [reloadRooms, reloadRequests]);
+
+  useEffect(() => {
+    refreshRoomsSurface();
+  }, [refreshRoomsSurface]);
+  useProjectDataReload(refreshRoomsSurface);
 
   const activeRooms = (activeProject.rooms || []).filter((r) => !r.is_archived);
 
@@ -186,9 +211,9 @@ function ContractorRoomsBody() {
             try {
               await api.patchStageRooms(user.id, activeProject.id, stageId, roomIds);
               await loadProject(activeProject.id);
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : '';
-              Alert.alert('Ошибка', msg === 'offline_queued' ? 'Изменение в очереди синхронизации' : 'Не удалось обновить привязку');
+            } catch (e) {
+              if (isOfflineQueued(e)) notifyOfflineQueued('Привязка комнат');
+              else Alert.alert('Ошибка', 'Не удалось обновить привязку');
             }
           }}
         />
@@ -201,22 +226,29 @@ function ContractorRoomsBody() {
             <Text style={styles.reqTitle}>Запрос заказчика</Text>
             <Text>{r.message}</Text>
             <View style={styles.row}>
-              <PrimaryButton disabled={!canWrite} title="Одобрить" onPress={async () => {
+              <PrimaryButton disabled={!canWrite} title="Согласовать" onPress={async () => {
                 try {
                   await api.approveRoomChange(user.id, activeProject.id, r.id);
+                  await syncProjectSideEffects({ user, project: activeProject });
                   await reloadRequests();
                   await loadProject(activeProject.id);
                   await reloadRooms();
+                  // W136: room_change approve → plan
+                  alertApprovalApproved('contractor', 'room_change');
                 } catch (e) {
-                  if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
+                  else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
                 }
               }} />
               <PrimaryButton disabled={!canWrite} title="Отклонить" variant="outline" onPress={async () => {
                 try {
                   await api.rejectRoomChange(user.id, activeProject.id, r.id);
                   await reloadRequests();
+                  // W136: reject → inbox
+                  alertApprovalRejected('contractor', 'room_change');
                 } catch (e) {
-                  if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение запроса');
+                  else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
                 }
               }} />
             </View>
@@ -242,17 +274,13 @@ function ContractorRoomsBody() {
                     await loadProject(activeProject.id);
                     await reloadRooms();
                     if (archived && roomFilter === 'active') {
-                      Alert.alert('В архиве', `«${room.name}» скрыта из активных. Смотрите вкладку «Архив».`);
+                      alertRoomArchived('contractor', room.name);
                     }
                   } catch (e: unknown) {
-                    const msg = e instanceof Error ? e.message : '';
-                    Alert.alert(
+                    if (isOfflineQueued(e)) notifyOfflineQueued(archived ? 'Архивирование' : 'Восстановление');
+                    else Alert.alert(
                       'Ошибка',
-                      msg === 'offline_queued'
-                        ? 'Команда в очереди синхронизации'
-                        : archived
-                          ? 'Не удалось отправить комнату в архив'
-                          : 'Не удалось восстановить комнату',
+                      archived ? 'Не удалось отправить комнату в архив' : 'Не удалось восстановить комнату',
                     );
                   }
                 }}
@@ -295,7 +323,7 @@ function RoomRequestCard({ room, onSubmit, requestOnly }: { room: Room; onSubmit
     <View style={styles.card}>
       <Text style={styles.name}>{room.name} ›</Text>
       <Text style={styles.meta}>{roomTypeLabel(room.room_type)}{(room.floor_level ?? 1) > 1 ? ` · ${room.floor_level} эт.` : ''} · {room.floor_sq_m} м² · розетки {room.outlets_count}</Text>
-      <Pressable onPress={() => pushOsNav(budgetTabRoute('customer', 'expenses', { roomId: room.id }), pathname)}>
+      <Pressable onPress={() => pushOsNav(budgetTabRoute('customer', 'expenses', { roomId: room.id }), pathname, 'customer')}>
         <Text style={styles.link}>→ Расходы по комнате</Text>
       </Pressable>
       {canWrite && requestOnly && (
@@ -336,7 +364,7 @@ function RoomForm({ room, onSave, onOpen, canWrite, archived, onArchive }: {
       <DimRow label="Выключатели" hint={ROOM_FORM_HINTS.switches} value={switches} set={setSwitches} />
       <DimRow label="Сантехника" hint={ROOM_FORM_HINTS.plumbing} value={plumbing} set={setPlumbing} />
       <PrimaryButton title="Карточка комнаты" variant="outline" onPress={onOpen} />
-      <Pressable onPress={() => pushOsNav(budgetTabRoute('contractor', 'expenses', { roomId: room.id }), pathname)}>
+      <Pressable onPress={() => pushOsNav(budgetTabRoute('contractor', 'expenses', { roomId: room.id }), pathname, 'contractor')}>
         <Text style={styles.link}>→ Расходы по комнате</Text>
       </Pressable>
       <PrimaryButton disabled={!canWrite} title="Сохранить и пересчитать смету" onPress={() => onSave(room, { length_m: +length, width_m: +width, outlets_count: +outlets, switches_count: +switches, plumbing_points: +plumbing })} />

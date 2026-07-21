@@ -1,10 +1,12 @@
 /** Расходы по этапам: единый факт vs план из сметы */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { stagePlanFromEstimate } from '@/lib/stageEstimate';
 import { stageSpentUnified } from '@/lib/domain/expenseAnalytics';
-import type { Stage, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Room } from '@/lib/api';
+import type { Stage, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Purchase, Room } from '@/lib/api';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 export function ExpenseByStage({
   stages,
@@ -12,21 +14,27 @@ export function ExpenseByStage({
   receipts,
   expenses,
   picks = [],
+  purchases = [],
   rooms = [],
   returnTo,
+  role: roleProp,
 }: {
   stages: Stage[];
   lines: EstimateLine[];
   receipts: ReceiptItem[];
   expenses?: OsExpense[];
   picks?: MaterialPick[];
+  purchases?: Purchase[];
   rooms?: Room[];
   returnTo?: string;
+  role?: OsRole;
 }) {
+  const { user } = useRenova();
+  const role: OsRole = roleProp ?? (user?.role === 'contractor' ? 'contractor' : 'customer');
   const ex = expenses || [];
   const rows = stages.map((st) => ({
     st,
-    spent: stageSpentUnified(receipts, ex, picks, rooms, stages, st.id),
+    spent: stageSpentUnified(receipts, ex, picks, rooms, stages, st.id, purchases),
     plan: stagePlanFromEstimate(st, lines),
   })).filter((x) => x.plan > 0 || x.spent > 0);
 
@@ -51,7 +59,9 @@ export function ExpenseByStage({
           <Pressable
             key={st.id}
             style={s.row}
-            onPress={() => router.push({ pathname: `/stage/${st.id}`, params: returnTo ? { returnTo } : {} } as any)}
+            onPress={() =>
+              pushOsNav({ pathname: '/stage/[id]', params: { id: st.id } }, returnTo, role)
+            }
           >
             <Text style={s.name}>{st.name}</Text>
             <Text style={[s.val, over && s.over]}>{formatRub(spent)}{plan ? ` / ${formatRub(plan)}` : ''}</Text>

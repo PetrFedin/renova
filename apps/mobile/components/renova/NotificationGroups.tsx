@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { AppNotification } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
 
-const LBL: Record<string, string> = { stage_review:'Этапы', payment_pending:'Оплаты', room_updated:'Комнаты', chat_message:'Чаты' };
+const LBL: Record<string, string> = { stage_review:'Этапы', payment_pending:'Оплаты', payment_confirmed:'Оплаты', room_updated:'Комнаты', chat_message:'Чаты' };
 
 export function NotificationGroups({ items, onRead }: { items: AppNotification[]; onRead: (id: string, n: AppNotification) => void }) {
   const groups = useMemo(() => {

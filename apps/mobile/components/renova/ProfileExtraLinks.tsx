@@ -12,9 +12,11 @@ export type ProfileExtraItem = {
 export function ProfileExtraLinks({
   items,
   returnTo,
+  role = 'customer',
 }: {
   items: ProfileExtraItem[];
   returnTo?: string;
+  role?: import('@/constants/osSections').OsRole;
 }) {
   return (
     <View style={s.wrap}>
@@ -22,7 +24,7 @@ export function ProfileExtraLinks({
         <Pressable
           key={item.href}
           style={[s.row, card]}
-          onPress={() => pushOsNav(item.href, returnTo)}
+          onPress={() => pushOsNav(item.href, returnTo, role)}
         >
           <View style={s.meta}>
             <Text style={s.label}>{item.label}</Text>

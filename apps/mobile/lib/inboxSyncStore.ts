@@ -1,8 +1,11 @@
 /** Единый store: chat threads, unread, inbox задачи — один reload и одно WS */
 import { api, type ChatThread, type ProjectDetail, type UserRole } from '@/lib/api';
 import { buildInboxItems, type InboxItem } from '@/lib/domain/buildInboxItems';
+import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
+import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
+import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -155,18 +158,32 @@ function mergeReloadOpts(opts: {
   };
 }
 
-/** После markChatRead — обновить chat badge и строку «Входящие» */
+/** После markChatRead / partial reload — синхронизировать строку чата и inboxBadge с chatCount */
 function refreshInboxChatRow(nextChat: number) {
-  if (!inboxItems.length && nextChat <= 0) return;
-  if (nextChat <= 0) {
+  const n = Math.max(0, nextChat || 0);
+  if (n <= 0) {
     inboxItems = inboxItems.filter((i) => i.kind !== 'chat');
   } else if (inboxItems.some((i) => i.kind === 'chat')) {
     inboxItems = inboxItems.map((i) =>
-      i.kind === 'chat' ? { ...i, sub: `${nextChat} непрочитанных` } : i,
+      i.kind === 'chat' ? { ...i, sub: `${n} непрочитанных` } : i,
     );
+  } else {
+    // Upsert: иначе dock уже показывает N, а «Входящие» без строки чата / со старым sub.
+    const role = cachedFullSync?.osRole ?? 'customer';
+    inboxItems = [
+      {
+        id: 'chat',
+        kind: 'chat',
+        title: 'Непрочитанные сообщения',
+        sub: `${n} непрочитанных`,
+        href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
+        priority: 90,
+      },
+      ...inboxItems,
+    ];
   }
   const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
-  inboxBadge = taskRows + nextChat;
+  inboxBadge = taskRows + n;
 }
 
 /** Прочитать тред: optimistic local + API + полный resync */
@@ -271,6 +288,11 @@ export async function reloadInboxSync(
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
+        // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
+        try {
+          const off = await getOfflineOutboxStatus();
+          inboxItems = mergeOfflineInboxItem(inboxItems, off);
+        } catch { /* noop */ }
         const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
         inboxBadge = taskRows + chatCount;
       } catch {
@@ -279,7 +301,8 @@ export async function reloadInboxSync(
         }
       }
     } else {
-      inboxBadge = chatCount;
+      // Нет projectId в этом вызове — не затираем задачи: только выравниваем чат с chatCount.
+      refreshInboxChatRow(chatCount);
     }
 
     notifyIfChanged(prev);
@@ -325,58 +348,62 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
   const connect = () => {
     if (!alive || !userId) return;
     const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
-    try {
-      const ws = new WebSocket(`${base}/ws/inbox/${userId}`);
-      ws.onopen = () => {
-        attempt = 0;
-        if (alive) {
-          const prev = inboxWsConnected;
-          inboxWsConnected = true;
-          if (!prev) notify();
-        }
-        pingTimer = setInterval(() => {
+    void (async () => {
+      try {
+        const qs = await buildWsAuthQuery();
+        if (!alive) return;
+        const ws = new WebSocket(`${base}/ws/inbox/${userId}${qs}`);
+        ws.onopen = () => {
+          attempt = 0;
+          if (alive) {
+            const prev = inboxWsConnected;
+            inboxWsConnected = true;
+            if (!prev) notify();
+          }
+          pingTimer = setInterval(() => {
+            try {
+              if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+            } catch {
+              /* noop */
+            }
+          }, 25_000);
+        };
+        ws.onmessage = (e) => {
+          if (e.data === 'ping' || e.data === 'pong') return;
           try {
-            if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+            JSON.parse(e.data) as InboxWsPayload;
           } catch {
             /* noop */
           }
-        }, 25_000);
-      };
-      ws.onmessage = (e) => {
-        if (e.data === 'ping' || e.data === 'pong') return;
-        try {
-          JSON.parse(e.data) as InboxWsPayload;
-        } catch {
-          /* noop */
-        }
-        onReload();
-        emitInboxWs();
-      };
-      ws.onerror = () => {
-        ws.close();
-      };
-      ws.onclose = () => {
-        if (pingTimer) clearInterval(pingTimer);
-        pingTimer = null;
+          onReload();
+          emitInboxWs();
+        };
+        ws.onerror = () => {
+          ws.close();
+        };
+        ws.onclose = () => {
+          if (pingTimer) clearInterval(pingTimer);
+          pingTimer = null;
+          if (alive) {
+            const prev = inboxWsConnected;
+            inboxWsConnected = false;
+            if (prev) notify();
+          }
+          if (!alive) return;
+          attempt += 1;
+          const delay = Math.min(30_000, 2000 * 2 ** Math.min(attempt - 1, 4));
+          timer = setTimeout(connect, delay);
+        };
+      } catch {
         if (alive) {
           const prev = inboxWsConnected;
           inboxWsConnected = false;
           if (prev) notify();
         }
-        if (!alive) return;
         attempt += 1;
-        const delay = Math.min(30_000, 2000 * 2 ** Math.min(attempt - 1, 4));
-        timer = setTimeout(connect, delay);
-      };
-    } catch {
-      if (alive) {
-        const prev = inboxWsConnected;
-        inboxWsConnected = false;
-        if (prev) notify();
+        timer = setTimeout(connect, 4000);
       }
-      attempt += 1;
-      timer = setTimeout(connect, 4000);
-    }
+    })();
   };
 
   connect();

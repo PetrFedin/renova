@@ -1,10 +1,11 @@
 /** Этап ↔ комнаты ↔ траты — одна сводка для заказчика на «Бюджет → Сводка» */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { buildStageExpenseLinks, type StageExpenseLink } from '@/lib/domain/buildStageExpenseLinks';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 import type { MaterialPick, Room, Stage } from '@/lib/api';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   rows: ExpenseDetailRow[];
@@ -13,9 +14,19 @@ type Props = {
   picks?: MaterialPick[];
   returnTo?: string;
   limit?: number;
+  /** W116: deep-link /stage через SoT */
+  role?: OsRole;
 };
 
-export function StageExpenseLinksPanel({ rows, stages, rooms, picks = [], returnTo, limit = 6 }: Props) {
+export function StageExpenseLinksPanel({
+  rows,
+  stages,
+  rooms,
+  picks = [],
+  returnTo,
+  limit = 6,
+  role = 'customer',
+}: Props) {
   const links = buildStageExpenseLinks(rows, stages, rooms, picks).slice(0, limit);
   if (!links.length) return null;
 
@@ -24,13 +35,21 @@ export function StageExpenseLinksPanel({ rows, stages, rooms, picks = [], return
       <Text style={s.head}>Этапы · комнаты · траты</Text>
       <Text style={s.hint}>Связь работ, помещений и учтённых расходов. Нажмите этап — детали.</Text>
       {links.map((link) => (
-        <StageRow key={link.stageId} link={link} returnTo={returnTo} />
+        <StageRow key={link.stageId} link={link} returnTo={returnTo} role={role} />
       ))}
     </View>
   );
 }
 
-function StageRow({ link, returnTo }: { link: StageExpenseLink; returnTo?: string }) {
+function StageRow({
+  link,
+  returnTo,
+  role,
+}: {
+  link: StageExpenseLink;
+  returnTo?: string;
+  role: OsRole;
+}) {
   const roomsLabel = link.roomNames.length ? link.roomNames.slice(0, 3).join(', ') : 'комната не указана';
   const meta = [
     link.expenseCount ? `${link.expenseCount} трат` : null,
@@ -40,7 +59,13 @@ function StageRow({ link, returnTo }: { link: StageExpenseLink; returnTo?: strin
   return (
     <Pressable
       style={s.row}
-      onPress={() => router.push({ pathname: `/stage/${link.stageId}`, params: returnTo ? { returnTo } : {} } as any)}
+      onPress={() =>
+        pushOsNav(
+          { pathname: '/stage/[id]', params: { id: link.stageId, ...(returnTo ? { returnTo } : {}) } },
+          returnTo,
+          role,
+        )
+      }
     >
       <View style={s.main}>
         <Text style={s.name}>{link.stageName}</Text>

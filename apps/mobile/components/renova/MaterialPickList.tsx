@@ -1,5 +1,5 @@
 /** Подбор материалов с привязкой к комнате */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, Linking, StyleSheet, TextInput } from 'react-native';
 import { api, MaterialPick, Room, Stage } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -9,6 +9,14 @@ import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
 import { useNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportCatch } from '@/lib/reportError';
+import {
+  alertMaterialPickApproved,
+  alertMaterialPickSubmitted,
+} from '@/lib/procurementNav';
 
 export function MaterialPickList({
   userId,
@@ -28,14 +36,26 @@ export function MaterialPickList({
   readOnly?: boolean;
 }) {
   const nav = useNavFromHere();
+  const { user, activeProject } = useRenova();
   const [items, setItems] = useState<MaterialPick[]>([]);
   const [wt, setWt] = useState<string | undefined>();
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const load = () => api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(() => {});
-  useEffect(() => { if (!picksOverride) load(); }, [wt, picksOverride]);
+  const load = useCallback(() => {
+    api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(reportCatch('components.renova.MaterialPickList.1'));
+  }, [userId, projectId, wt]);
+  const syncAfter = async () => {
+    await syncProjectSideEffects({
+      user: user ?? ({ id: userId } as any),
+      project: activeProject ?? ({ id: projectId } as any),
+      role,
+    });
+  };
+  useEffect(() => { if (!picksOverride) load(); }, [load, picksOverride]);
+  const onBusReload = useCallback(() => { if (!picksOverride) load(); }, [picksOverride, load]);
+  useProjectDataReload(onBusReload);
   useEffect(() => { if (picksOverride) setItems(picksOverride); }, [picksOverride]);
   const visible = picksOverride ?? items;
   const roomName = (id?: string | null) => rooms.find((r) => r.id === id)?.name;
@@ -56,10 +76,20 @@ export function MaterialPickList({
             </Pressable>
           )}
           {!readOnly && role === 'customer' && p.status === 'pending' && (
-            <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(userId, projectId, p.id); load(); }} />
+            <PrimaryButton title="Согласовать" onPress={async () => {
+              await api.approveMaterialPick(userId, projectId, p.id);
+              await syncAfter();
+              load();
+              alertMaterialPickApproved(role);
+            }} />
           )}
           {!readOnly && role === 'contractor' && p.status === 'draft' && (
-            <PrimaryButton title="На согласование" variant="outline" onPress={async () => { await api.submitMaterialPick(userId, projectId, p.id); load(); }} />
+            <PrimaryButton title="На согласование" variant="outline" onPress={async () => {
+              await api.submitMaterialPick(userId, projectId, p.id);
+              await syncAfter();
+              load();
+              alertMaterialPickSubmitted(role);
+            }} />
           )}
         </Pressable>
       ))}
@@ -70,7 +100,7 @@ export function MaterialPickList({
           {rooms.length > 0 && <RoomPickerChips rooms={rooms} value={roomId} onChange={setRoomId} optional={false} />}
           <PrimaryButton title="Сохранить" onPress={async () => {
             await api.createMaterialPick(userId, projectId, { name: name || 'Материал', price: Number(price) || 0, qty: 1, unit: 'шт', work_type: wt, room_id: roomId });
-            setName(''); setPrice(''); setRoomId(null); setShowForm(false); load();
+            setName(''); setPrice(''); setRoomId(null); setShowForm(false); await syncAfter(); load();
           }} />
         </View>
       )}

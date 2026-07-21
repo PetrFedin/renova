@@ -6,6 +6,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORK_TYPES_FALLBACK, WORK_CATEGORY_LABEL, groupWorkTypes } from '@/constants/workCatalog';
 import { REGIONS_FALLBACK, fallbackMarketEstimate, type MarketEstimate, type MarketConsumable } from '@/constants/regions';
 import { api } from '@/lib/api';
+import { reportCatch } from '@/lib/reportError';
 
 type Props = {
   workTypes: string[];
@@ -42,7 +43,7 @@ export function BudgetPlannerPanel({
   const [loading, setLoading] = useState(false);
   const [localMaterials, setLocalMaterials] = useState<MarketConsumable[]>(materials || []);
 
-  useEffect(() => { api.listMarketRegions().then(setRegions).catch(() => {}); api.listWorkTypes().then(setTypes).catch(() => {}); }, []);
+  useEffect(() => { api.listMarketRegions().then(setRegions).catch(reportCatch('components.renova.BudgetPlannerPanel.1')); api.listWorkTypes().then(setTypes).catch(reportCatch('components.renova.BudgetPlannerPanel.2')); }, []);
   useEffect(() => { if (materials) setLocalMaterials(materials); }, [materials]);
 
   const payload = useMemo(() => ({

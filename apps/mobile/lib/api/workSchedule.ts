@@ -1,4 +1,4 @@
-import { req } from './client';
+import { req, ApiError } from './client';
 
 export type WorkScheduleStatus = 'draft' | 'submitted' | 'confirmed' | 'rejected' | 'archived';
 export type WorkScheduleItemStatus =
@@ -63,36 +63,107 @@ export const workScheduleApi = {
   getActiveWorkSchedule: (userId: string, projectId: string) =>
     req<WorkSchedule | null>(`/api/v1/projects/${projectId}/work-schedules/active`, {}, userId),
 
-  createWorkSchedule: (userId: string, projectId: string, body: Partial<WorkSchedule> = {}) =>
-    req<WorkSchedule>(
-      `/api/v1/projects/${projectId}/work-schedules`,
-      { method: 'POST', body: JSON.stringify(body) },
-      userId,
-    ),
+  createWorkSchedule: async (userId: string, projectId: string, body: Partial<WorkSchedule> = {}) => {
+    const payload = JSON.stringify(body);
+    try {
+      return await req<WorkSchedule>(
+        `/api/v1/projects/${projectId}/work-schedules`,
+        { method: 'POST', body: payload },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/work-schedules`, method: 'POST', body: payload, userId });
+      throw new Error('offline_queued');
+    }
+  },
 
-  submitWorkSchedule: (userId: string, projectId: string, scheduleId: string) =>
-    req<WorkSchedule>(`/api/v1/projects/${projectId}/work-schedules/${scheduleId}/submit`, { method: 'POST' }, userId),
+  submitWorkSchedule: async (userId: string, projectId: string, scheduleId: string) => {
+    try {
+      return await req<WorkSchedule>(
+        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/submit`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/submit`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
-  confirmWorkSchedule: (userId: string, projectId: string, scheduleId: string) =>
-    req<WorkSchedule>(`/api/v1/projects/${projectId}/work-schedules/${scheduleId}/confirm`, { method: 'POST' }, userId),
+  confirmWorkSchedule: async (userId: string, projectId: string, scheduleId: string) => {
+    try {
+      return await req<WorkSchedule>(
+        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/confirm`,
+        { method: 'POST' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/confirm`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
-  rejectWorkSchedule: (userId: string, projectId: string, scheduleId: string, reason?: string) =>
-    req<WorkSchedule>(
-      `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/reject`,
-      { method: 'POST', body: JSON.stringify({ reason }) },
-      userId,
-    ),
+  rejectWorkSchedule: async (userId: string, projectId: string, scheduleId: string, reason?: string) => {
+    const payload = JSON.stringify({ reason });
+    try {
+      return await req<WorkSchedule>(
+        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/reject`,
+        { method: 'POST', body: payload },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/reject`,
+        method: 'POST',
+        body: payload,
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
-  updateWorkScheduleItemStatus: (
+  updateWorkScheduleItemStatus: async (
     userId: string,
     projectId: string,
     scheduleId: string,
     itemId: string,
     body: { status: WorkScheduleItemStatus; blocking_reason?: string; progress_percent?: number },
-  ) =>
-    req<WorkScheduleItem>(
-      `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
-      { method: 'POST', body: JSON.stringify(body) },
-      userId,
-    ),
+  ) => {
+    // W109: статус дня графика — очередь офлайн (поле)
+    try {
+      return await req<WorkScheduleItem>(
+        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
+        { method: 'POST', body: JSON.stringify(body) },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 };

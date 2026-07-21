@@ -1,5 +1,5 @@
 /** Агрегация расходов для таблиц и группировок */
-import type { OsExpense, ReceiptItem, Room, Stage, MaterialPick } from '@/lib/api';
+import type { OsExpense, ReceiptItem, Room, Stage, MaterialPick, Purchase } from '@/lib/api';
 import { expenseCategoryLabel, EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 
 export type ExpenseGroupMode = 'all' | 'day' | 'category' | 'room' | 'stage' | 'kind';
@@ -50,6 +50,7 @@ export function buildExpenseDetailRows(
   picks: MaterialPick[],
   rooms: Room[],
   stages: Stage[],
+  purchases: Purchase[] = [],
 ): ExpenseDetailRow[] {
   const rows: ExpenseDetailRow[] = [];
   const receiptIds = new Set(receipts.map((r) => r.id));
@@ -95,6 +96,15 @@ export function buildExpenseDetailRows(
   const coveredPickIds = new Set(
     expenses.map((e) => e.material_pick_id).filter(Boolean) as string[],
   );
+  const expensePurchaseIds = new Set(
+    expenses.map((e) => e.purchase_id).filter(Boolean) as string[],
+  );
+  for (const purchase of purchases) {
+    if (!expensePurchaseIds.has(purchase.id)) continue;
+    for (const item of purchase.items || []) {
+      if (item.material_pick_id) coveredPickIds.add(item.material_pick_id);
+    }
+  }
   const receiptKeys = new Set(
     receipts.map((r) => `${r.room_id || ''}|${r.stage_id || ''}|${Math.round(r.amount)}`),
   );
@@ -147,8 +157,9 @@ export function roomSpentUnified(
   rooms: Room[],
   stages: Stage[],
   roomId: string,
+  purchases: Purchase[] = [],
 ): number {
-  const rows = buildExpenseDetailRows(receipts, expenses, picks, rooms, stages);
+  const rows = buildExpenseDetailRows(receipts, expenses, picks, rooms, stages, purchases);
   return sumExpenseRowsForRoom(rows, roomId);
 }
 
@@ -159,8 +170,9 @@ export function stageSpentUnified(
   rooms: Room[],
   stages: Stage[],
   stageId: string,
+  purchases: Purchase[] = [],
 ): number {
-  const rows = buildExpenseDetailRows(receipts, expenses, picks, rooms, stages);
+  const rows = buildExpenseDetailRows(receipts, expenses, picks, rooms, stages, purchases);
   return sumExpenseRowsForStage(rows, stageId);
 }
 

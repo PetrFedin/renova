@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { api } from '@/lib/api';
+import { reportCatch } from '@/lib/reportError';
 
 export function WorkTypeFilter({ value, onChange }: { value?: string; onChange: (v?: string) => void }) {
   const [types, setTypes] = useState<{ code: string; name: string }[]>([]);
-  useEffect(() => { api.listWorkTypes().then(setTypes).catch(() => {}); }, []);
+  useEffect(() => { api.listWorkTypes().then(setTypes).catch(reportCatch('components.renova.WorkTypeFilter.1')); }, []);
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.row}>
       <Pressable style={[s.ch, !value && s.on]} onPress={() => onChange(undefined)}><Text style={s.t}>Все</Text></Pressable>

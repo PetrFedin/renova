@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { View, TextInput, Text, Pressable, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { searchProject } from '@/lib/globalSearch';
 import { pushSearch, getSearchHistory } from '@/lib/searchHistory';
@@ -8,17 +7,29 @@ import { getCachedSearch } from '@/lib/offlineSearchCache';
 import { searchChats } from '@/lib/chatSearchCache';
 import { api, ProjectDetail } from '@/lib/api';
 import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
-function openSearchHit(h: { href: string; type?: string; msgId?: string }, returnTo?: string) {
+function openSearchHit(
+  h: { href: string; type?: string; msgId?: string },
+  returnTo?: string,
+  role: OsRole = 'customer',
+) {
+  // W110: чат — dynamic segment + highlight; остальное через pushOsNav SoT
   if (h.type === 'chat' || h.href.startsWith('/chat/')) {
-    router.push({
-      pathname: h.href,
-      params: { highlightId: h.msgId, ...(returnTo ? { returnTo } : {}) },
-    } as any);
+    const threadId = h.href.replace('/chat/', '').split('?')[0].split('/')[0];
+    // W119: поиск → чат через SoT
+    pushOsNav(
+      {
+        pathname: '/chat/[threadId]',
+        params: { threadId, ...(h.msgId ? { highlightId: h.msgId } : {}) },
+      },
+      returnTo,
+      role,
+    );
     return;
   }
-  if (returnTo) pushOsNav(h.href, returnTo);
-  else router.push(h.href as any);
+  pushOsNav(h.href, returnTo, role);
 }
 
 export function GlobalSearchBar({
@@ -27,6 +38,7 @@ export function GlobalSearchBar({
   userId,
   suggestions = [],
   returnTo,
+  role = 'customer',
 }: {
   project: ProjectDetail;
   chatTitles?: Record<string, string>;
@@ -34,6 +46,7 @@ export function GlobalSearchBar({
   suggestions?: string[];
   /** Текущий экран — для полоски «Назад» на результатах поиска */
   returnTo?: string;
+  role?: OsRole;
 }) {
   const [q, setQ] = useState('');
   const [hist, setHist] = useState<string[]>([]);
@@ -43,7 +56,7 @@ export function GlobalSearchBar({
   useEffect(() => {
     if (!q.trim()) { setChatHits([]); return; }
     searchChats(q).then(setChatHits);
-    if (userId) api.searchChatMessages(userId, project.id, q).then(ms => setChatHits(h => [...h, ...ms.map(m => ({ id: m.thread_id, title: 'Чат', text: m.text, href: `/chat/${m.thread_id}`, msgId: m.id }))])).catch(() => {});
+    if (userId) api.searchChatMessages(userId, project.id, q).then(ms => setChatHits(h => [...h, ...ms.map(m => ({ id: m.thread_id, title: 'Чат', text: m.text, href: `/chat/${m.thread_id}`, msgId: m.id }))])).catch(reportCatch('components.renova.GlobalSearchBar.1'));
   }, [q, userId, project.id]);
   const hits = [...searchProject(project, q, chatTitles), ...chatHits.map(c => ({ id: c.id, type: 'chat' as const, title: c.title, sub: c.text, href: `/chat/${c.id}`, msgId: c.msgId }))];
   const onSearch = (s: string) => { setQ(s); pushSearch(s).then(() => getSearchHistory().then(setHist)); };
@@ -73,7 +86,7 @@ export function GlobalSearchBar({
         </View>
       )}
       {all.map((h: any) => (
-        <Pressable key={h.id || h.href} style={s.hit} onPress={() => openSearchHit(h, returnTo)}>
+        <Pressable key={h.id || h.href} style={s.hit} onPress={() => openSearchHit(h, returnTo, role)}>
           <Text style={s.title}>{h.title}</Text><Text style={s.sub}>{h.sub}</Text>
         </Pressable>
       ))}

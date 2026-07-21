@@ -38,7 +38,7 @@ export function ProjectSitesPanel({
       <View style={s.headRow}>
         <Text style={s.title}>Площадки · циклы</Text>
       </View>
-      <OsWidgetGrid items={widgets} returnTo={returnTo} />
+      <OsWidgetGrid items={widgets} returnTo={returnTo} role={role} />
       {!compact && sites.map((site) => (
         <View key={site.id} style={s.site}>
           <View style={s.siteHead}>

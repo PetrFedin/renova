@@ -17,6 +17,9 @@ import {
 import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { subscribeOfflineFlush } from '@/lib/offline';
+import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
+import { reportCatch } from '@/lib/reportError';
 
 export function useInboxWsListener(onPush: () => void) {
   useEffect(() => subscribeInboxWs(onPush), [onPush]);
@@ -49,14 +52,14 @@ export function useChatUnread(userId?: string, userRole?: UserRole) {
 
   useFocusEffect(
     useCallback(() => {
-      reload().catch(() => {});
+      reload().catch(reportCatch('chatUnread.reload'));
     }, [reload]),
   );
 
   useEffect(() => {
     if (!userId) return undefined;
     return ensureInboxWebSocket(userId, () => {
-      reload().catch(() => {});
+      reload().catch(reportCatch('chatUnread.reload'));
     });
   }, [userId, reload]);
 
@@ -96,22 +99,37 @@ export function useInboxTasks(role: OsRole) {
 
   useFocusEffect(
     useCallback(() => {
-      reload().catch(() => {});
+      reload().catch(reportCatch('chatUnread.reload'));
     }, [reload]),
   );
 
   useInboxWsListener(
     useCallback(() => {
-      reload().catch(() => {});
+      reload().catch(reportCatch('chatUnread.reload'));
     }, [reload]),
   );
 
   useEffect(() => {
     if (!user?.id) return undefined;
     return ensureInboxWebSocket(user.id, () => {
-      reload().catch(() => {});
+      reload().catch(reportCatch('chatUnread.reload'));
     });
   }, [user?.id, reload]);
+
+  // W79: после flush offline — пересобрать inbox (в т.ч. offline-строку)
+  useEffect(() => subscribeOfflineFlush(() => {
+    reload().catch(reportCatch('chatUnread.reload'));
+  }), [reload]);
+
+  // W88: projectDataBus (мутации golden path) → badges «Входящие»/«Ещё» без focus
+  useEffect(() => subscribeProjectDataChanged(() => {
+    reload().catch(reportCatch('chatUnread.reload'));
+  }), [reload]);
+
+  // W81: смена объекта → inbox/задачи текущего projectId (не ждать blur/focus)
+  useEffect(() => {
+    reload().catch(reportCatch('chatUnread.reload'));
+  }, [reload]);
 
   return { items, badge, taskBadge, chatUnread, reload };
 }

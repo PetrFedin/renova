@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { PortalSharePanel } from '@/components/renova/PortalSharePanel';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
 import { BudgetWidgetSettings } from '@/components/renova/os/BudgetWidgetSettings';
 import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
@@ -10,6 +11,8 @@ import { AdminHubLink } from '@/components/renova/AdminHubLink';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { NotificationsList } from '@/components/renova/NotificationsList';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { api } from '@/lib/api';
@@ -17,22 +20,28 @@ import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
+import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
+import * as WebBrowser from 'expo-web-browser';
+import { reportCatch, reportError } from '@/lib/reportError';
 
+/** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
   { label: 'Помощь', href: '/guide' },
-  { label: 'Архив', href: '/activity' },
   { label: 'Заявки', href: '/job-leads' },
 ];
 
 function TeamSection() {
-  const { user } = useRenova();
+  const { user, activeProject } = useRenova();
   const nav = useNavFromHere();
   const [phone, setPhone] = useState('');
   const [team, setTeam] = useState<any>(null);
 
-  useEffect(() => {
-    if (user) api.getTeam(user.id).then(setTeam).catch(() => setTeam(null));
+  const reloadTeam = useCallback(() => {
+    if (!user) return;
+    api.getTeam(user.id).then(setTeam).catch((e) => { reportError('components.screens.profile.ContractorPro.Team', e); setTeam(null); });
   }, [user?.id]);
+  useEffect(() => { reloadTeam(); }, [reloadTeam]);
+  useProjectDataReload(reloadTeam);
 
   if (!user) return null;
 
@@ -61,10 +70,12 @@ function TeamSection() {
             onPress={async () => {
               try {
                 await api.inviteTeamMember(user.id, phone);
+                await syncProjectSideEffects({ user, project: activeProject });
                 setTeam(await api.getTeam(user.id));
                 setPhone('');
-              } catch {
-                /* API error */
+                alertTeamInviteSent('contractor');
+              } catch (e: unknown) {
+                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось пригласить');
               }
             }}
           />
@@ -76,9 +87,12 @@ function TeamSection() {
           onPress={async () => {
             try {
               await api.createTeam(user.id, 'Моя бригада');
+              await syncProjectSideEffects({ user, project: activeProject });
               setTeam(await api.getTeam(user.id));
-            } catch {
+              alertTeamCreated('contractor');
+            } catch (e: unknown) {
               setTeam(null);
+              Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать бригаду');
             }
           }}
         />
@@ -89,9 +103,20 @@ function TeamSection() {
 
 export function ContractorProfileScreen() {
   const nav = useNavFromHere();
-  const { user, refreshMe } = useRenova();
+  const { user, refreshMe, activeProject } = useRenova();
   const [inn, setInn] = useState(user?.inn || '');
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
+  const [payReq, setPayReq] = useState('');
+  const [company, setCompany] = useState('');
+  const reloadProfile = useCallback(() => {
+    if (!user) return;
+    api.getMyContractorProfile(user.id).then((p) => {
+      setPayReq(p.payment_requisites || '');
+      setCompany(p.company_name || '');
+    }).catch(reportCatch('components.screens.profile.ContractorProfileScre.1'));
+  }, [user?.id]);
+  useEffect(() => { reloadProfile(); }, [reloadProfile]);
+  useProjectDataReload(reloadProfile);
   const roleLabel = roleDisplayLabel(user?.role);
 
   return (
@@ -109,6 +134,39 @@ export function ContractorProfileScreen() {
         <Text style={ps.userMeta}>Сейчас: {roleLabel}</Text>
       </ProfileSection>
 
+      <ProfileSection title="Реквизиты для оплаты">
+        <Text style={ps.userMeta}>Заказчик увидит эти данные при переводе (СБП / карта / счёт). Без демо-карт.</Text>
+        <TextInput
+          style={ps.input}
+          placeholder="Название ИП / ООО"
+          value={company}
+          onChangeText={setCompany}
+        />
+        <TextInput
+          style={[ps.input, { minHeight: 88, textAlignVertical: 'top' }]}
+          placeholder={"СБП · +7…\nБанк · карта/счёт"}
+          value={payReq}
+          onChangeText={setPayReq}
+          multiline
+        />
+        <PrimaryButton
+          title="Сохранить реквизиты"
+          variant="outline"
+          onPress={async () => {
+            if (!user) return;
+            try {
+              await api.upsertContractorProfile(user.id, {
+                company_name: company || null,
+                payment_requisites: payReq || null,
+              });
+              alertRequisitesSaved('contractor');
+            } catch {
+              Alert.alert('Ошибка', 'Не удалось сохранить реквизиты');
+            }
+          }}
+        />
+      </ProfileSection>
+
       <ProfileSection title="Персонализация">
         <HomeWidgetSettings role="contractor" embedded />
         <BudgetWidgetSettings role="contractor" embedded />
@@ -121,14 +179,20 @@ export function ContractorProfileScreen() {
         </ProfileSection>
       ) : null}
 
+      {user && activeProject ? (
+        <ProfileSection title="Портал заказчика">
+          <PortalSharePanel userId={user.id} projectId={activeProject.id} role="contractor" embedded />
+        </ProfileSection>
+      ) : null}
+
       <ProfileSection title="Бригада">
         <TeamSection />
       </ProfileSection>
 
       <ProfileSection title="Работа">
         <View style={ps.actionGap}>
-          <PrimaryButton title="Согласования" variant="outline" onPress={() => pushOsNav('/approvals', nav.from)} />
-          <PrimaryButton title="Документы объекта" variant="outline" onPress={() => pushOsNav('/documents', nav.from)} />
+          <PrimaryButton title="Согласования" variant="outline" onPress={() => pushOsNav('/approvals', nav.from, 'contractor')} />
+          <PrimaryButton title="Документы объекта" variant="outline" onPress={() => pushOsNav('/documents', nav.from, 'contractor')} />
           <PrimaryButton title="Подписка Про" onPress={() => nav.href('/(contractor)/subscription')} />
           {Platform.OS === 'web' ? (
             <PrimaryButton
@@ -170,18 +234,68 @@ export function ContractorProfileScreen() {
             }}
           />
           <PrimaryButton
-            title="Подключить «Мой налог»"
+            title="Авторизовать «Мой налог» (OAuth)"
             variant="outline"
             onPress={async () => {
               if (!user) return;
               try {
-                const r = await api.linkMoyNalog(user.id);
-                setMsg(r.message);
-              } catch {
-                Alert.alert('Ошибка');
+                const start = await api.moyNalogOAuthStart(user.id);
+                setMsg(start.message);
+                if (start.auth_url) {
+                  await WebBrowser.openBrowserAsync(start.auth_url);
+                  Alert.alert(
+                    'Мой налог',
+                    'После входа в ЛК НПД вернитесь в приложение. Если code не пришёл автоматически — статус останется authorization_started.',
+                  );
+                } else if (start.state) {
+                  // Dev: demo complete без CLIENT_ID
+                  const done = await api.moyNalogOAuthCallback(user.id, {
+                    state: start.state,
+                    demo_complete: true,
+                  });
+                  setMsg(done.message);
+                }
+                await refreshMe();
+              } catch (e: any) {
+                Alert.alert('Мой налог', e?.message || 'OAuth недоступен');
               }
             }}
           />
+          <PrimaryButton
+            title="Включить флаг (без OAuth)"
+            variant="outline"
+            onPress={async () => {
+              if (!user) return;
+              try {
+                const r = await api.linkMoyNalog(user.id) as { message?: string; mode?: string; linked?: boolean; status?: string };
+                setMsg(r.message || `Статус: ${r.status || 'updated'}`);
+                await refreshMe();
+              } catch (e: any) {
+                Alert.alert('Мой налог', e?.message || 'Интеграция недоступна (нужен OAuth или MOY_NALOG_ENABLED)');
+              }
+            }}
+          />
+          {user?.moy_nalog_linked || (user?.moy_nalog_status && user.moy_nalog_status !== 'not_connected') ? (
+            <Text style={ps.msg}>
+              «Мой налог»: {user?.moy_nalog_status || 'linked'} — без OAuth ФНС это не live-подключение.
+            </Text>
+          ) : null}
+          {user?.moy_nalog_linked ? (
+            <PrimaryButton
+              title="Отключить «Мой налог»"
+              variant="outline"
+              onPress={async () => {
+                if (!user) return;
+                try {
+                  const r = await api.unlinkMoyNalog(user.id);
+                  setMsg(r.message || 'Связь снята');
+                  await refreshMe();
+                } catch (e: any) {
+                  Alert.alert('Мой налог', e?.message || 'Не удалось отключить');
+                }
+              }}
+            />
+          ) : null}
           <PrimaryButton
             title="Экспорт данных"
             variant="outline"
@@ -199,8 +313,26 @@ export function ContractorProfileScreen() {
         {msg ? <Text style={ps.msg}>{msg}</Text> : null}
       </ProfileSection>
 
+            <ProfileSection title="Безопасность">
+        <View style={ps.actionGap}>
+          <PrimaryButton
+            title="Выйти на всех устройствах"
+            variant="outline"
+            onPress={async () => {
+              if (!user?.id) return;
+              try {
+                const r = await api.revokeAllSessions(user.id);
+                Alert.alert('Готово', `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.`);
+              } catch (e) {
+                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось');
+              }
+            }}
+          />
+        </View>
+      </ProfileSection>
+
       <ProfileSection title="Ещё">
-        <ProfileExtraLinks items={EXTRA_ITEMS} returnTo="/(contractor)/(tabs)/profile" />
+        <ProfileExtraLinks items={EXTRA_ITEMS} returnTo="/(contractor)/(tabs)/profile" role="contractor" />
       </ProfileSection>
     </ScrollView>
   );

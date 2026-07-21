@@ -4,6 +4,10 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import type { ReceiptItem } from '@/lib/api';
 import { expenseCategoryLabel, EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertReceiptReverified } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 export function ReceiptList({
   receipts, rooms, stages, userId, projectId, editable, onUpdated, onReceiptPress, totalLabel = 'Чеки',
@@ -18,14 +22,36 @@ export function ReceiptList({
   onReceiptPress?: (receipt: ReceiptItem) => void;
   totalLabel?: string;
 }) {
+  const { user, activeProject } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   if (receipts.length === 0) return null;
   const sum = receipts.reduce((a, r) => a + r.amount, 0);
   const verified = receipts.filter((r) => r.verified).length;
+
+  const syncAfter = () =>
+    syncProjectSideEffects({
+      user: user ?? (userId ? ({ id: userId } as any) : null),
+      project: activeProject ?? (projectId ? ({ id: projectId } as any) : null),
+    });
+
+  const reverify = async (r: ReceiptItem) => {
+    if (!userId || !projectId || r.source === 'manual') return;
+    try {
+      const res = await api.reverifyReceipt(userId, projectId, r.id) as { verified?: boolean; message?: string; verify_mode?: string };
+      await syncAfter();
+      onUpdated?.();
+      // W129: ФНС → расходы SoT
+      alertReceiptReverified(role, res);
+    } catch (e: unknown) {
+      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось проверить');
+    }
+  };
 
   async function patch(r: ReceiptItem, patch: { expense_category?: ExpenseCategoryId; room_id?: string | null; stage_id?: string | null }) {
     if (!userId || !projectId) return;
     try {
       await api.patchReceipt(userId, projectId, r.id, patch);
+      await syncAfter();
       onUpdated?.();
     } catch {
       Alert.alert('Ошибка', 'Не удалось обновить чек');
@@ -80,7 +106,13 @@ export function ReceiptList({
               </View>
             )}
           </View>
-          <Text style={[s.badge, r.verified ? s.ok : s.pending]}>{r.verified ? '✓ ФНС' : 'Не проверен'}</Text>
+          {r.verified || r.source === 'manual' ? (
+            <Text style={[s.badge, r.verified ? s.ok : s.pending]}>{r.verified ? '✓ ФНС' : 'Не проверен'}</Text>
+          ) : (
+            <Pressable onPress={() => reverify(r)} hitSlop={8}>
+              <Text style={[s.badge, s.pending]}>Проверить ФНС</Text>
+            </Pressable>
+          )}
         </Pressable>
       ))}
     </View>

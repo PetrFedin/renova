@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -11,16 +11,22 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
+import { reportError, reportCatch } from '@/lib/reportError';
 import { api, ChatDetail, ChatMessage } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatReadSync } from '@/lib/useChatUnread';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
-import { budgetTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { usePathname } from 'expo-router';
+import { alertChatInviteSent } from '@/lib/fieldCommsNav';
+import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
+import { router } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -30,17 +36,20 @@ function MessageBubble({
   highlight,
   query,
   returnTo,
+  osRole,
   onReact,
   onPin,
   onReply,
   onTask,
   onConfirm,
+  onPay,
 }: {
   m: ChatMessage;
   mine: boolean;
   highlight?: boolean;
   query?: string;
   returnTo?: string;
+  osRole: OsRole;
   onReact: (emoji: string) => void;
   onPin: () => void;
   onReply: () => void;
@@ -84,7 +93,16 @@ function MessageBubble({
       )}
       {m.confirmed && <Text style={s.ok}>✓ Подтверждено</Text>}
       {m.work_order_id && (
-        <Pressable onPress={() => router.push({ pathname: `/work-order/${m.work_order_id}`, params: returnTo ? { returnTo } : {} } as any)}>
+        <Pressable
+          onPress={() =>
+            // W119: WO из чата → pushOsNav SoT
+            pushOsNav(
+              { pathname: '/work-order/[id]', params: { id: m.work_order_id! } },
+              returnTo,
+              osRole,
+            )
+          }
+        >
           <Text style={s.link}>Открыть задачу →</Text>
         </Pressable>
       )}
@@ -147,43 +165,65 @@ export function ChatThreadView({
         /* чат на другом объекте */
       }
     }
-    const inbox = await api.chatInbox(user.id).catch(() => []);
-    return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
+    try {
+      const inbox = await api.chatInbox(user.id);
+      return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
+    } catch (e) {
+      reportError('chat.resolveProjectId.inbox', e, { threadId });
+      return activeProject?.id ?? null;
+    }
   }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
 
   const loadMessages = useCallback(async () => {
     if (!user || !threadId) return;
     const projectId = await resolveProjectId();
     if (!projectId) return;
-    setChatProjectId(projectId);
+    // Не трогаем state, если id тот же — иначе лишний ререндер и цикл focus-эффекта.
+    setChatProjectId((prev) => (prev === projectId ? prev : projectId));
     if (activeProject?.id !== projectId) {
-      await loadProject(projectId).catch(() => {});
+      await loadProject(projectId).catch((e) => reportError('chat.loadProject', e, { projectId }));
     }
     setChat(await api.getChat(user.id, projectId, threadId));
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
 
-  const markThreadRead = useCallback(async () => {
+  const markThreadRead = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
-    const markKey = `${threadId}:${projectIdProp ?? chatProjectId ?? ''}`;
-    if (markedReadRef.current === markKey) return;
-    const projectId = projectIdProp ?? chatProjectId ?? (await resolveProjectId());
+    const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
-    markedReadRef.current = markKey;
-    const inbox = await api.chatInbox(user.id).catch(() => [] as import('@/lib/api').ChatThread[]);
-    const knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
-    await syncAfterRead(projectId, threadId, knownUnread);
+    const markKey = `${threadId}:${projectId}`;
+    if (markedReadRef.current === markKey) return;
+    let knownUnread = 0;
+    try {
+      const inbox = await api.chatInbox(user.id);
+      knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
+    } catch (e) {
+      reportError('chat.markRead.inbox', e, { threadId });
+    }
+    try {
+      await syncAfterRead(projectId, threadId, knownUnread);
+      markedReadRef.current = markKey;
+    } catch {
+      /* badge подтянется следующим reload; не фиксируем ref */
+    }
   }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
+
+  // Стабильные refs: useFocusEffect НЕ должен зависеть от identity load/mark —
+  // иначе setChatProjectId → новый callback → повторный focus → Maximum update depth.
+  const loadMessagesRef = useRef(loadMessages);
+  const markThreadReadRef = useRef(markThreadRead);
+  loadMessagesRef.current = loadMessages;
+  markThreadReadRef.current = markThreadRead;
 
   useFocusEffect(
     useCallback(() => {
       markedReadRef.current = null;
       let cancelled = false;
       (async () => {
-        await markThreadRead();
-        if (!cancelled) await loadMessages().catch(() => {});
+        await loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
+        if (!cancelled) await markThreadReadRef.current().catch(reportCatch('chat.markRead'));
       })();
       return () => { cancelled = true; };
-    }, [threadId, projectIdProp, markThreadRead, loadMessages]),
+    }, [threadId, projectIdProp]),
   );
 
   useEffect(() => {
@@ -197,7 +237,8 @@ export function ChatThreadView({
     }
   }, [highlightId, chat?.messages.length]);
 
-  const reload = () => loadMessages().catch(() => {});
+  const reload = useCallback(() => loadMessages().catch(reportCatch('chat.reload')), [loadMessages]);
+  useProjectDataReload(reload);
 
   const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
     if (payload.type === 'typing') {
@@ -205,15 +246,26 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
+    // Новое сообщение в открытом треде — снова прочитать и сбросить badge.
+    markedReadRef.current = null;
     reload();
+    markThreadRead().catch(reportCatch('chat.markRead.focus'));
   });
 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
 
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
-  const openPaymentFlow = () => {
-    pushOsNav(budgetTabRoute(role, 'payments'), returnTo || pathname);
+  const openPaymentFlow = (paymentId?: string | null) => {
+    // Канон: финансы только через Budget → PaymentDetailSheet, не через chat confirm
+    pushOsNav(
+      budgetTabRoute(role, 'payments', {
+        openPayment: '1',
+        ...(paymentId ? { paymentId } : {}),
+      }),
+      returnTo || pathname,
+      role,
+    );
   };
 
   if (!chat || !user) {
@@ -239,8 +291,8 @@ export function ChatThreadView({
     const prefix = replyTo?.text ? `↩ ${replyTo.text.slice(0, 40)}…\n` : '';
     try {
       await api.sendChatMessage(user.id, projectId, threadId, prefix + body, type, image, replyTo?.id);
-    } catch (e: any) {
-      if (e?.message === 'offline_queued') { Alert.alert('Офлайн', 'Отправится при подключении'); return; }
+    } catch (e) {
+      if (isOfflineQueued(e)) { notifyOfflineQueued('Сообщение'); return; }
       throw e;
     } finally {
       setReplyTo(null);
@@ -252,13 +304,21 @@ export function ChatThreadView({
     <View style={s.root}>
       <BackHeader title={chat.title} returnTo={returnTo} />
       <View style={s.topActions}>
-        <Text style={[s.wsDot, wsConnected ? s.wsOn : s.wsOff]}>{wsConnected ? '● онлайн' : '○ обновление'}</Text>
+        <Text style={[s.wsDot, wsConnected ? s.wsOn : s.wsOff]}>{wsConnected ? '● онлайн' : '○ опрос 15 с'}</Text>
         <Pressable onPress={() => setInviteOpen(true)}><Text style={s.topLink}>+ Участник</Text></Pressable>
         <Pressable onPress={() => setSettingsOpen(true)}><Text style={s.topLink}>Настройки</Text></Pressable>
         <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch(() => Alert.alert('Ошибка', 'Не удалось экспортировать документ'))}>
           <Text style={s.topLink}>Документ</Text>
         </Pressable>
-        <Pressable onPress={() => api.patchChatState(user.id, projectId, threadId, { is_pinned: !chat.is_pinned }).then(reload)}>
+        <Pressable onPress={async () => {
+          try {
+            await api.patchChatState(user.id, projectId, threadId, { is_pinned: !chat.is_pinned });
+            await reload();
+          } catch (e) {
+            if (isOfflineQueued(e)) { notifyOfflineQueued(chat.is_pinned ? 'Открепление чата' : 'Закрепление чата'); return; }
+            Alert.alert('Ошибка', 'Не удалось изменить закрепление');
+          }
+        }}>
           <Text style={s.topLink}>{chat.is_pinned ? 'Открепить чат' : 'Закрепить чат'}</Text>
         </Pressable>
       </View>
@@ -273,12 +333,42 @@ export function ChatThreadView({
             highlight={highlightId === m.id}
             query={chatQuery.trim() || undefined}
             returnTo={returnTo || `/chat/${threadId}`}
-            onReact={(emoji) => api.reactChatMessage(user.id, projectId, threadId, m.id, emoji).then(reload)}
-            onPin={() => api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned).then(reload)}
+            osRole={role}
+            onReact={async (emoji) => {
+              try {
+                await api.reactChatMessage(user.id, projectId, threadId, m.id, emoji);
+                await reload();
+              } catch (e) {
+                if (isOfflineQueued(e)) { notifyOfflineQueued('Реакция'); return; }
+              }
+            }}
+            onPin={async () => {
+              try {
+                await api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned);
+                await reload();
+              } catch (e) {
+                if (isOfflineQueued(e)) { notifyOfflineQueued('Закрепление сообщения'); return; }
+              }
+            }}
             onReply={() => setReplyTo(m)}
             onTask={() => setTaskMsg(m)}
-            onConfirm={m.message_type === 'confirm' ? () => api.confirmChatMessage(user.id, projectId, threadId, m.id).then(reload) : undefined}
-            onPay={m.message_type === 'payment' ? openPaymentFlow : undefined}
+            onConfirm={m.message_type === 'confirm' ? async () => {
+              try {
+                await api.confirmChatMessage(user.id, projectId, threadId, m.id);
+                await reload();
+                await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+              } catch (e) {
+                if (isOfflineQueued(e)) {
+                  notifyOfflineQueued('Подтверждение');
+                  return;
+                }
+                throw e;
+              }
+            } : undefined}
+            onPay={m.message_type === 'payment' ? () => {
+              const meta = (m as { meta?: { payment_id?: string }; payment_id?: string });
+              openPaymentFlow(meta.meta?.payment_id || meta.payment_id);
+            } : undefined}
           />
         ))}
       </ScrollView>
@@ -291,7 +381,7 @@ export function ChatThreadView({
       )}
 
       <View style={s.composer}>
-        {!wsConnected && <Text style={s.wsHint}>Обновление каждые 15 с · WS переподключается…</Text>}
+        {!wsConnected && <Text style={s.wsHint}>Нет live-соединения — обновление каждые 15 с (не «онлайн»)</Text>}
         {typing && <Text style={s.typing}>печатает…</Text>}
         <TextInput
           style={s.input}
@@ -326,9 +416,37 @@ export function ChatThreadView({
                 <Text style={s.toolBtn}>✓?</Text>
               </Pressable>
               <Pressable disabled={!canWrite} onPress={() => {
-                Alert.alert('Счёт', 'Отправить запрос оплаты?', [
+                // W104: сумма на выбор → Payment в Бюджете (не hardcoded 10k)
+                const createInvoice = async (amount: number) => {
+                  try {
+                    await api.invoiceFromChat(user.id, projectId, threadId, {
+                      title: 'Оплата работ',
+                      amount,
+                      payment_type: 'stage',
+                    });
+                    await reload();
+                    await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                    // W131: счёт из чата — роль-aware оплаты
+                    alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
+                  } catch (e: unknown) {
+                    if (e instanceof Error && e.message === 'offline_queued') {
+                      Alert.alert('Офлайн', 'Счёт отправится при подключении');
+                    } else {
+                      Alert.alert('Ошибка', 'Не удалось создать счёт');
+                    }
+                  }
+                };
+                const openPaymentForm = () => {
+                  const osRole = role === 'contractor' ? 'contractor' : 'customer';
+                  pushOsNav(budgetTabRoute(osRole, 'payments', { openPayment: '1' }), returnTo || pathname, osRole);
+                };
+                Alert.alert('Счёт в бюджете', 'Быстрая сумма или полная форма (сумма / этап / тип). Заказчик увидит счёт в «Деньги → Оплаты».', [
                   { text: 'Отмена', style: 'cancel' },
-                  { text: '10 000 ₽', onPress: () => api.invoiceFromChat(user.id, projectId, threadId, { title: 'Оплата работ', amount: 10000, payment_type: 'stage' }).then(reload) },
+                  { text: '5 000 ₽', onPress: () => { createInvoice(5000).catch(reportCatch('chat.invoice')); } },
+                  { text: '10 000 ₽', onPress: () => { createInvoice(10000).catch(reportCatch('chat.invoice')); } },
+                  { text: '25 000 ₽', onPress: () => { createInvoice(25000).catch(reportCatch('chat.invoice')); } },
+                  { text: 'Другая сумма…', onPress: openPaymentForm },
+                  { text: 'Открыть оплаты', onPress: openPaymentForm },
                 ]);
               }}><Text style={s.toolBtn}>💳</Text></Pressable>
             </>
@@ -380,7 +498,7 @@ export function ChatThreadView({
               setInvitePhone('');
               setInviteCode('');
               await reload();
-              Alert.alert('Готово', 'Приглашение отправлено');
+              alertChatInviteSent((user.role === 'contractor' ? 'contractor' : 'customer'));
             }} />
             <PrimaryButton title="Закрыть" variant="outline" onPress={() => setInviteOpen(false)} />
           </View>
@@ -394,9 +512,21 @@ export function ChatThreadView({
         onClose={() => setTaskMsg(null)}
         onSubmit={async (body) => {
           if (!taskMsg) return;
-          await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
-          setTaskMsg(null);
-          await reload();
+          try {
+            await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
+            setTaskMsg(null);
+            await reload();
+            // W98/W131: календарь / работы / inbox после задачи из чата
+            await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+            alertChatTaskCreated(role === 'contractor' ? 'contractor' : 'customer');
+          } catch (e) {
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued('Задача из чата');
+              setTaskMsg(null);
+              return;
+            }
+            throw e;
+          }
         }}
       />
     </View>

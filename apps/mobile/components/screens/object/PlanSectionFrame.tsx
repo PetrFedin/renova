@@ -1,5 +1,6 @@
 /** Заголовок секции вкладки «План» */
-import { View, Text, StyleSheet, type ReactNode } from 'react-native';
+import type { ReactNode } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
 type Props = {

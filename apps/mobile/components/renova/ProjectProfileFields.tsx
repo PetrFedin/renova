@@ -23,6 +23,7 @@ export type ProjectProfileValues = {
   name: string;
   address: string;
   renovation_type: string;
+  vat_rate?: number;
   property_type: 'apartment' | 'house';
   planned_start_date?: string;
   planned_end_date?: string;
@@ -85,6 +86,34 @@ export function ProjectProfileFields({
   const editable = canEditProjectProfile(ctx);
   const showBudget = isProfile && canEditCustomerBudget(ctx) && budgetValue != null && onBudgetChange;
 
+  // W69 #48 / W70 fix: НДС в профиле объекта (не внутри ChipRow)
+  const vatBlock = (
+    <View style={{ gap: 8, marginBottom: 12 }}>
+      <Text style={s.fieldLabel}>НДС в смете</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {([0, 5, 10, 20] as const).map((rate) => (
+          <Pressable
+            key={rate}
+            onPress={() => editable && onChange({ vat_rate: rate })}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: (values.vat_rate ?? 0) === rate ? RenovaTheme.colors.primary : RenovaTheme.colors.border,
+              backgroundColor: (values.vat_rate ?? 0) === rate ? RenovaTheme.colors.primary : RenovaTheme.colors.surface,
+            }}
+          >
+            <Text style={{ color: (values.vat_rate ?? 0) === rate ? '#fff' : RenovaTheme.colors.text, fontWeight: '700' }}>
+              {rate === 0 ? 'Без НДС' : `${rate}%`}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+
+
   const objectBlock = (
     <>
       <FieldLabel>Название</FieldLabel>
@@ -92,7 +121,7 @@ export function ProjectProfileFields({
         style={s.input}
         placeholder="Например: Демо-дом, дачный посёлок"
         value={values.name}
-        onChangeText={(name) => onChange({ name })}
+        onChangeText={(name: string) => onChange({ name })}
         editable={editable}
       />
       <FieldLabel>Адрес</FieldLabel>
@@ -100,7 +129,7 @@ export function ProjectProfileFields({
         style={s.input}
         placeholder="Улица, дом"
         value={values.address}
-        onChangeText={(address) => onChange({ address })}
+        onChangeText={(address: string) => onChange({ address })}
         editable={editable}
       />
       <FieldLabel>Тип жилья</FieldLabel>
@@ -135,7 +164,7 @@ export function ProjectProfileFields({
             style={s.dateInput}
             placeholder="2026-06-01"
             value={values.planned_start_date || ''}
-            onChangeText={(v) => onChange({ planned_start_date: normalizeIsoDateInput(v) })}
+            onChangeText={(v: string) => onChange({ planned_start_date: normalizeIsoDateInput(v) })}
             editable={editable}
           />
           <Text style={s.dateHint}>Старт</Text>
@@ -145,7 +174,7 @@ export function ProjectProfileFields({
             style={s.dateInput}
             placeholder="2026-09-01"
             value={values.planned_end_date || ''}
-            onChangeText={(v) => onChange({ planned_end_date: normalizeIsoDateInput(v) })}
+            onChangeText={(v: string) => onChange({ planned_end_date: normalizeIsoDateInput(v) })}
             editable={editable}
           />
           <Text style={s.dateHint}>Финиш</Text>
@@ -176,6 +205,7 @@ export function ProjectProfileFields({
           hint="Тип комнаты (кухня, ванная) может уточнить расчёт на шаге «Комнаты»."
         >
           {renovationBlock}
+          {vatBlock}
         </ObjectProfileSection>
         {showSchedule ? (
           <ObjectProfileSection title="Сроки" hint="Формат YYYY-MM-DD. Влияет на план и календарь.">

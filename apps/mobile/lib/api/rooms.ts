@@ -1,5 +1,5 @@
 /** API: rooms */
-import { req, cachedGet, API_BASE, OFFLINE_ROOMS } from './client';
+import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
 export const roomsApi = {
   listRooms: async (userId: string, projectId: string, opts?: { archived?: boolean }) => {
@@ -21,14 +21,28 @@ export const roomsApi = {
   updateRoom: async (userId: string, projectId: string, roomId: string, body: object) => {
     try {
       return await req<Room>(`/api/v1/projects/${projectId}/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/rooms/${roomId}`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
     }
   },
-  createRoom: (userId: string, projectId: string, body: object) =>
-    req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  createRoom: async (userId: string, projectId: string, body: object) => {
+    try {
+      return await req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/rooms`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   roomSnapshot: (userId: string, projectId: string, roomId: string) => req<RoomSnapshot>(`/api/v1/projects/${projectId}/rooms/${roomId}/snapshot`, {}, userId),
   roomChangeLog: (userId: string, projectId: string, roomId: string, field?: string, since?: string) => {
     const q = new URLSearchParams();
@@ -39,19 +53,43 @@ export const roomsApi = {
   },
   calcRoomMaterials: (userId: string, projectId: string, roomId: string) => req<{ room_id: string; items: { name: string; unit: string; qty: number; category: string; note?: string }[] }>(`/api/v1/projects/${projectId}/rooms/${roomId}/calc-materials`, { method: 'POST' }, userId),
   exportRoomPdf: async (userId: string, projectId: string, roomId: string) => {
-    const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/rooms/${roomId}/export.pdf`, { headers: { 'X-User-Id': userId } });
-    if (!r.ok) throw new Error('export failed');
-    const blob = await r.blob();
-    if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = `room-${roomId.slice(0,8)}.pdf`; a.click(); URL.revokeObjectURL(u); }
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/rooms/${roomId}/export.pdf`, `room-${roomId.slice(0, 8)}.pdf`);
   },
-  exportRoomAuditPdf: async (userId: string, projectId: string, roomId: string) => { const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100'; const r = await fetch(`${base}/api/v1/projects/${projectId}/rooms/${roomId}/audit.pdf`, { headers: { 'X-User-Id': userId } }); if (!r.ok) throw new Error('audit pdf'); const blob = await r.blob(); if (typeof window !== 'undefined') { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = `audit-${roomId.slice(0,8)}.pdf`; a.click(); URL.revokeObjectURL(u); } },
+  exportRoomAuditPdf: async (userId: string, projectId: string, roomId: string) => {
+    const { downloadApiPath } = await import('@/lib/downloadFile');
+    await downloadApiPath(userId, `/api/v1/projects/${projectId}/rooms/${roomId}/audit.pdf`, `audit-${roomId.slice(0, 8)}.pdf`);
+  },
   listRoomChangeRequests: (userId: string, projectId: string) =>
     req<RoomChangeRequest[]>(`/api/v1/projects/${projectId}/room-change-requests`, {}, userId),
-  createRoomChangeRequest: (userId: string, projectId: string, body: object) =>
-    req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: JSON.stringify(body) }, userId),
-  approveRoomChange: (userId: string, projectId: string, reqId: string) =>
-    req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId),
-  rejectRoomChange: (userId: string, projectId: string, reqId: string) =>
-    req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, { method: 'POST' }, userId),
+  createRoomChangeRequest: async (userId: string, projectId: string, body: object) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
+  approveRoomChange: async (userId: string, projectId: string, reqId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
+  rejectRoomChange: async (userId: string, projectId: string, reqId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
 };

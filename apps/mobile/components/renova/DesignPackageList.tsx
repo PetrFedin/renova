@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
-import { View, Text, Linking, StyleSheet, Platform, Alert } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, Linking, StyleSheet, Alert } from 'react-native';
 import { api } from '@/lib/api';
-import { uploadMediaBlob, pickFileWeb } from '@/lib/mediaUpload';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { uploadMediaBlob } from '@/lib/mediaUpload';
+import { pickDocumentForUpload } from '@/lib/documentUploadPick';
 import { designPackageStatusLabel } from '@/constants/labels';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportCatch } from '@/lib/reportError';
 
 type DP = { id: string; title: string; version: number; file_url?: string | null; status: string };
 
@@ -19,28 +24,26 @@ export function DesignPackageList({
   role: string;
   embedded?: boolean;
 }) {
+  const { user, activeProject } = useRenova();
   const [items, setItems] = useState<DP[]>([]);
   const [uploading, setUploading] = useState(false);
-  const load = () => api.listDesignPackages(userId, projectId).then(setItems).catch(() => {});
-  useEffect(() => { load(); }, [projectId]);
+  const load = useCallback(() => {
+    api.listDesignPackages(userId, projectId).then(setItems).catch(reportCatch('components.renova.DesignPackageList.1'));
+  }, [userId, projectId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
   const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
   const uploadPdf = async () => {
     setUploading(true);
     try {
-      let blob: Blob | null = null;
-      let contentType = 'application/pdf';
-      if (Platform.OS === 'web') {
-        const file = await pickFileWeb('.pdf,application/pdf');
-        if (!file) return;
-        blob = file;
-        contentType = file.type || contentType;
-      } else {
-        Alert.alert('Документ', 'Загрузка PDF доступна в веб-версии. На телефоне — попросите подрядчика загрузить с компьютера.');
-        return;
-      }
-      const key = await uploadMediaBlob(userId, blob, contentType);
-      await api.createDesignPackage(userId, projectId, { title: 'Дизайн-проект', file_key: key });
+      const picked = await pickDocumentForUpload();
+      if (!picked) return;
+      const response = await fetch(picked.uri);
+      const blob = await response.blob();
+      const key = await uploadMediaBlob(userId, blob, picked.type || 'application/pdf');
+      await api.createDesignPackage(userId, projectId, { title: picked.name || 'Дизайн-проект', file_key: key });
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) });
       load();
     } catch {
       Alert.alert('Загрузка', 'Не удалось загрузить документ');
@@ -73,10 +76,10 @@ export function DesignPackageList({
               <PrimaryButton title="Открыть" variant="outline" compact onPress={() => Linking.openURL(`${BASE}${d.file_url}`)} />
             )}
             {role === 'customer' && d.status === 'pending' && (
-              <PrimaryButton title="Согласовать" compact onPress={async () => { await api.approveDesignPackage(userId, projectId, d.id); load(); }} />
+              <PrimaryButton title="Согласовать" compact onPress={async () => { await api.approveDesignPackage(userId, projectId, d.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); load(); }} />
             )}
             {role === 'contractor' && (d.status === 'draft' || d.status === 'published') && (
-              <PrimaryButton title="На соглас." variant="outline" compact onPress={async () => { await api.submitDesignPackage(userId, projectId, d.id); load(); }} />
+              <PrimaryButton title="На соглас." variant="outline" compact onPress={async () => { await api.submitDesignPackage(userId, projectId, d.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); load(); }} />
             )}
           </View>
         </View>

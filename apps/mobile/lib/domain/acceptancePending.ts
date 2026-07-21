@@ -24,14 +24,19 @@ export function buildUnifiedAcceptanceItems(
 ): UnifiedAcceptanceItem[] {
   const pending = acceptances.filter((a) => PENDING_ACC.has(a.status));
   const covered = new Set(pending.map((a) => a.stage_id));
-  const items: UnifiedAcceptanceItem[] = pending.map((a) => ({
-    kind: 'acceptance',
-    id: `acc-${a.id}`,
-    stageId: a.stage_id,
-    acceptanceId: a.id,
-    title: a.stage_name || 'Этап',
-    sub: `Чеклист ${a.checklist_progress.done}/${a.checklist_progress.total}`,
-  }));
+  const items: UnifiedAcceptanceItem[] = pending.map((a) => {
+    // API иногда отдаёт pending без checklist_progress — не падаем на .done
+    const done = a.checklist_progress?.done ?? 0;
+    const total = a.checklist_progress?.total ?? 0;
+    return {
+      kind: 'acceptance' as const,
+      id: `acc-${a.id}`,
+      stageId: a.stage_id,
+      acceptanceId: a.id,
+      title: a.stage_name || 'Этап',
+      sub: total > 0 ? `Чеклист ${done}/${total}` : 'Ждёт приёмки',
+    };
+  });
   for (const st of stages || []) {
     if (st.status === 'review' && !covered.has(st.id)) {
       items.push({

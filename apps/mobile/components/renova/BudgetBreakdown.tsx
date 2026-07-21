@@ -3,13 +3,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import { api, BudgetBreakdown as BB } from '@/lib/api';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { getDetailLevel } from '@/lib/detailLevel';
+import { reportCatch } from '@/lib/reportError';
 
 export function BudgetBreakdown({ userId, projectId }: { userId: string; projectId: string }) {
   const [d, setD] = useState<BB | null>(null);
   const [fc, setFc] = useState<{ forecast_total: number; forecast_over: number; risk: string } | null>(null);
   const [alerts, setAlerts] = useState<{ category: string; over_pct: number }[]>([]);
   const [lvl, setLvl] = useState('standard');
-  useEffect(() => { getDetailLevel().then(setLvl); api.budgetBreakdown(userId, projectId).then(setD).catch(() => {}); api.budgetForecast(userId, projectId).then(setFc).catch(() => {}); api.budgetCategoryAlerts(userId, projectId).then(setAlerts).catch(() => {}).catch(() => {}); }, [projectId]);
+  useEffect(() => { getDetailLevel().then(setLvl); api.budgetBreakdown(userId, projectId).then(setD).catch(reportCatch('components.renova.BudgetBreakdown.1')); api.budgetForecast(userId, projectId).then(setFc).catch(reportCatch('components.renova.BudgetBreakdown.2')); api.budgetCategoryAlerts(userId, projectId).then(setAlerts).catch(reportCatch('components.renova.BudgetBreakdown.3')).catch(reportCatch('components.renova.BudgetBreakdown.4')); }, [projectId]);
   if (!d) return null;
   const rows = lvl === 'brief'
     ? [{ l: 'План', v: d.budget_planned }, { l: 'Факт', v: d.budget_spent }]

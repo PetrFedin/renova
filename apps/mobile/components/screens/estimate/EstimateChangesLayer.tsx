@@ -5,6 +5,12 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
 import { changeOrderStatusLabel } from '@/constants/labels';
 import { api, type ChangeOrder } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { budgetTabRoute } from '@/constants/osSections';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { alertChangeOrderApproved } from '@/lib/procurementNav';
 
 type Props = {
   userId: string;
@@ -23,6 +29,12 @@ export function EstimateChangesLayer({
   onOrdersChanged,
   onProjectReload,
 }: Props) {
+  const { user } = useRenova();
+  const role = user?.role === 'contractor' ? 'contractor' : 'customer';
+
+  const notifyBudgetDelta = (order: ChangeOrder, documentId?: string) => {
+    alertChangeOrderApproved(role, formatRub(order.amount), documentId);
+  };
   const pending = orders.filter((o) => o.status === 'pending');
   const decided = orders.filter((o) => o.status !== 'pending');
 
@@ -39,13 +51,25 @@ export function EstimateChangesLayer({
             order={o}
             canWrite={canWrite}
             onApprove={async () => {
-              await api.approveChangeOrder(userId, projectId, o.id);
-              await onProjectReload();
-              onOrdersChanged(await api.listChangeOrders(userId, projectId));
+              try {
+                const res = await api.approveChangeOrder(userId, projectId, o.id);
+                await onProjectReload();
+                onOrdersChanged(await api.listChangeOrders(userId, projectId));
+                notifyBudgetDelta(o, res?.document_id);
+                await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
+              } catch (e) {
+                if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение доп. работ');
+              }
             }}
             onReject={async () => {
-              await api.rejectChangeOrder(userId, projectId, o.id);
-              onOrdersChanged(await api.listChangeOrders(userId, projectId));
+              try {
+                await api.rejectChangeOrder(userId, projectId, o.id);
+                await onProjectReload();
+                onOrdersChanged(await api.listChangeOrders(userId, projectId));
+                await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
+              } catch (e) {
+                if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение доп. работ');
+              }
             }}
           />
         ))}
@@ -59,6 +83,14 @@ export function EstimateChangesLayer({
                 {o.title} · {formatRub(o.amount)}
               </Text>
               <Text style={s.meta}>Статус: {changeOrderStatusLabel(o.status)}</Text>
+              {o.status === 'approved' ? (
+                <PrimaryButton
+                  title="В бюджет"
+                  variant="outline"
+                  compact
+                  onPress={() => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role)}
+                />
+              ) : null}
             </View>
           ))}
         </ObjectSection>
@@ -86,7 +118,7 @@ function ChangeOrderRow({
       <Text style={s.meta}>Статус: {changeOrderStatusLabel(order.status)}</Text>
       {canWrite && (
         <View style={s.actions}>
-          <PrimaryButton title="Одобрить" onPress={onApprove} />
+          <PrimaryButton title="Согласовать" onPress={onApprove} />
           <View style={{ height: 8 }} />
           <PrimaryButton title="Отклонить" variant="outline" onPress={onReject} />
         </View>

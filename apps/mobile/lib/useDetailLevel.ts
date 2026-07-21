@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getDetailLevel, subscribeDetailLevel, type DetailLevel } from '@/lib/detailLevel';
+import { reportCatch } from '@/lib/reportError';
 
 export function useDetailLevel(): DetailLevel {
   const [level, setLevel] = useState<DetailLevel>('standard');
 
   const reload = useCallback(() => {
-    getDetailLevel().then(setLevel).catch(() => {});
+    getDetailLevel().then(setLevel).catch(reportCatch('detailLevel.load'));
   }, []);
 
   useEffect(() => {

@@ -31,10 +31,10 @@ export function buildSetupChecklist(
   const estimateLines = project.estimate_lines?.length ?? 0;
   const stages = project.stages?.length ?? 0;
   const profileDone = getProjectProfileGaps(project).length === 0;
+  // W66 #19: прогресс графика ≠ бюджет под контролем
   const budgetTracked =
     (project.customer_budget ?? 0) > 0
-    || (project.budget_planned ?? 0) > 0
-    || snap.schedule?.progressPercent != null;
+    || (project.budget_planned ?? 0) > 0;
 
   return [
     {
@@ -60,8 +60,9 @@ export function buildSetupChecklist(
     },
     {
       id: 'estimate',
-      label: 'Смета',
-      done: estimateLines > 0,
+      // W55: «готово» только после фиксации — иначе setup можно закрыть на черновике
+      label: 'Смета согласована',
+      done: !!project.estimate_locked_at && estimateLines > 0,
       href: objectTabHref(role, 'estimate'),
       priority: 4,
     },

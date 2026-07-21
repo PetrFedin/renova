@@ -2,11 +2,12 @@
 import { Platform, Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { authHeaders } from '@/lib/api/client';
 
 export async function exportExpensesCsvFile(userId: string, projectId: string, filename = 'renova-expenses.csv') {
   const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
   const r = await fetch(`${base}/api/v1/projects/${projectId}/analytics/expenses.csv`, {
-    headers: { 'X-User-Id': userId },
+    headers: authHeaders(userId),
   });
   if (!r.ok) throw new Error('csv');
 

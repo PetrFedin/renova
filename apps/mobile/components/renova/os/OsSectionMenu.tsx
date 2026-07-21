@@ -1,20 +1,24 @@
-/** Панель разделов OS — badge сообщений = dock, badge задач = «Входящие» */
+/** Панель «Ещё» в шапке — без дубля dock (столпы + чат уже внизу) */
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname, useLocalSearchParams } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
-import { OS_MENU_SECTIONS, resolveSectionId, tabsRoute, type OsRole } from '@/constants/osSections';
+import {
+  OS_MENU_SECTIONS,
+  OS_MORE_UTIL_LINKS,
+  MAX_HEADER_MORE_ITEMS,
+  tabsRoute,
+  type OsRole,
+} from '@/constants/osSections';
+import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
+import { moreMenuA11yLabel } from '@/lib/domain/moreMenuA11y';
+import { resolveHeaderMoreBadge, resolveInboxMenuBadges } from '@/lib/domain/headerChatBadges';
 
-/** Без дубля «Сообщений» — «Входящие» отдельной строкой */
-const UTIL_LINKS: { id: string; label: string; href: string; icon: 'time-outline' | 'document-text-outline' | 'mail-unread-outline' }[] = [
-  { id: 'inbox', label: 'Входящие', href: '/inbox', icon: 'mail-unread-outline' },
-  { id: 'activity', label: 'Архив ремонта', href: '/activity', icon: 'time-outline' },
-  { id: 'documents', label: 'Документы', href: '/documents', icon: 'document-text-outline' },
-];
+export { moreMenuA11yLabel };
 
 type Props = { role: OsRole; iconOnly?: boolean };
 
@@ -29,27 +33,30 @@ function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' 
 
 export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const topInset = useTopInset();
-  const { taskBadge, chatUnread } = useInboxTasks(role);
+  const menuRole: OsRole = role === 'contractor' ? 'contractor' : 'customer';
+  const { taskBadge, chatUnread } = useInboxTasks(menuRole);
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-  const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
-  const sections = OS_MENU_SECTIONS[role];
-  const currentId = resolveSectionId(pathname);
+  const pathname = usePathname() ?? '';
+  const sections = OS_MENU_SECTIONS[menuRole];
+  const utilLinks = OS_MORE_UTIL_LINKS;
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
 
-  /** На иконке меню — только непрочитанные сообщения (как dock «Сообщения») */
-  const menuIconBadge = chatUnread;
+  if (__DEV__ && sections.length + utilLinks.length > MAX_HEADER_MORE_ITEMS) {
+    console.warn(
+      `[IA] Header «Ещё» exceeds ${MAX_HEADER_MORE_ITEMS}: ${sections.length + utilLinks.length}`,
+    );
+  }
 
-  const isActive = (sec: (typeof sections)[0]) => {
-    if (sec.id === 'chat') return seg === 'chat';
-    if (sec.id === 'calendar') return seg === 'calendar';
-    if (sec.id === 'repair') return seg === 'repair';
-    return sec.id === currentId;
-  };
+  /**
+   * Непрочитанный чат: один SoT (inboxSyncStore) → «Ещё», «Входящие» и dock «Сообщения».
+   * Задачи — янтарный бейдж рядом, без подмены числа сообщений.
+   */
+  const headerBadge = resolveHeaderMoreBadge(taskBadge, chatUnread);
+  const inboxBadges = resolveInboxMenuBadges(taskBadge, chatUnread);
 
   const go = (sec: (typeof sections)[0]) => {
     setOpen(false);
-    router.replace(tabsRoute(role, sec.routeName, sec.hubTab) as any);
+    replaceOsNav(tabsRoute(menuRole, sec.routeName, sec.hubTab), undefined, menuRole);
   };
 
   return (
@@ -58,20 +65,14 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
         style={[s.btn, iconOnly && s.btnIcon]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
-        accessibilityLabel={
-          menuIconBadge > 0
-            ? `Разделы проекта, ${menuIconBadge} непрочитанных сообщений`
-            : 'Разделы проекта'
-        }
+        accessibilityLabel={moreMenuA11yLabel(taskBadge, chatUnread)}
         hitSlop={8}
       >
-        <Ionicons
-          name="grid-outline"
-          size={22}
-          color={RenovaTheme.colors.text}
-        />
-        {menuIconBadge > 0 ? (
-          <View style={s.badge}><Text style={s.badgeT}>{menuIconBadge > 99 ? '99+' : menuIconBadge}</Text></View>
+        <Ionicons name="menu-outline" size={22} color={RenovaTheme.colors.text} />
+        {headerBadge ? (
+          <View style={[s.badge, headerBadge.tone === 'warning' ? s.badgeTasks : s.badgeChat]}>
+            <Text style={s.badgeT}>{headerBadge.count > 99 ? '99+' : headerBadge.count}</Text>
+          </View>
         ) : null}
       </Pressable>
 
@@ -79,31 +80,41 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
           <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
             <View style={s.menu}>
-              <Text style={s.menuHead}>Разделы</Text>
+              <Text style={s.menuHead}>Ещё</Text>
               {sections.map((sec) => {
-                const active = isActive(sec);
+                const active = seg === sec.routeName;
                 return (
                   <Pressable key={sec.id} style={[s.item, active && s.itemOn]} onPress={() => go(sec)}>
-                    <TabIcon name={sec.icon} color={active ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted} size={18} />
+                    <TabIcon
+                      name={sec.icon}
+                      color={active ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted}
+                      size={18}
+                    />
                     <Text style={[s.itemT, active && s.itemTOn]}>{sec.label}</Text>
-                    {sec.id === 'chat' ? <MenuBadge count={chatUnread} tone="danger" /> : null}
                     {active ? <Text style={s.check}>✓</Text> : null}
                   </Pressable>
                 );
               })}
               <View style={s.divider} />
-              {UTIL_LINKS.map((link) => (
+              {utilLinks.map((link) => (
                 <Pressable
                   key={link.id}
                   style={s.item}
                   onPress={() => {
                     setOpen(false);
-                    router.push({ pathname: link.href, params: { returnTo: pathname } } as any);
+                    // W118: util links (inbox/docs/…) через SoT
+                    pushOsNav(link.href, pathname, role);
                   }}
                 >
                   <Ionicons name={link.icon} size={18} color={RenovaTheme.colors.textMuted} />
                   <Text style={s.itemT}>{link.label}</Text>
-                  {link.id === 'inbox' ? <MenuBadge count={taskBadge} tone="warning" /> : null}
+                  {link.id === 'inbox' ? (
+                    <View style={s.inboxBadges}>
+                      {/* Красный = то же число, что на кнопке «Сообщения» внизу */}
+                      <MenuBadge count={inboxBadges.chat} tone="danger" />
+                      <MenuBadge count={inboxBadges.tasks} tone="warning" />
+                    </View>
+                  ) : null}
                 </Pressable>
               ))}
             </View>
@@ -130,9 +141,19 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.surface,
   },
   badge: {
-    position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8,
-    backgroundColor: RenovaTheme.colors.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
   },
+  /** Янтарный = задачи; красный = непрочитанный чат (как dock «Сообщения») */
+  badgeTasks: { backgroundColor: RenovaTheme.colors.warning },
+  badgeChat: { backgroundColor: RenovaTheme.colors.danger },
   badgeT: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
   menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },
@@ -162,7 +183,22 @@ const s = StyleSheet.create({
   itemTOn: { color: RenovaTheme.colors.accent },
   check: { fontSize: 14, color: RenovaTheme.colors.accent, fontWeight: '700' },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
-  miniBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: RenovaTheme.colors.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  miniBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: RenovaTheme.colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
   miniBadgeWarn: { backgroundColor: RenovaTheme.colors.warning },
   miniBadgeT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
+  inboxBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto' },
+  chatHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: RenovaTheme.colors.danger,
+    marginLeft: 2,
+  },
 });

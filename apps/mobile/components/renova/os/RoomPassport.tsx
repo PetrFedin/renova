@@ -38,7 +38,7 @@ export function RoomPassport({ snap, role }: { snap: RoomSnapshot; role?: OsRole
 
       <View style={s.grid}>
         {budgetRoute ? (
-          <Pressable style={[s.cell, overrun && s.cellWarn]} onPress={() => pushOsNav(budgetRoute, pathname)}>
+          <Pressable style={[s.cell, overrun && s.cellWarn]} onPress={() => pushOsNav(budgetRoute, pathname, role)}>
             <Text style={s.cellL}>Бюджет →</Text>
             <Text style={s.cellV}>{formatRub(snap.budget.planned)}</Text>
             <Text style={s.cellS}>{overrun ? `+${formatRub(snap.budget.overrun)}` : formatRub(snap.budget.spent)}</Text>
@@ -65,10 +65,14 @@ export function RoomPassport({ snap, role }: { snap: RoomSnapshot; role?: OsRole
         <Cell label="Смета" value={String(snap.estimate_lines)} sub="строк" />
       </View>
 
-      {snap.stages?.length ? <RoomStageTimeline stages={snap.stages} /> : null}
+      {snap.stages?.length ? <RoomStageTimeline stages={snap.stages} role={role} /> : null}
 
       {na?.href ? (
-        <PrimaryButton title={na.button || 'Открыть'} compact onPress={() => pushOsNav(na.href, pathname)} />
+        <PrimaryButton
+          title={na.button || 'Открыть'}
+          compact
+          onPress={() => pushOsNav(na.href, pathname, role || 'customer')}
+        />
       ) : null}
     </View>
   );

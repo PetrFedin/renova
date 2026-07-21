@@ -1,4 +1,5 @@
-import { Redirect } from 'expo-router';
+import { Redirect, type Href } from 'expo-router';
+import type { OsTabRoute } from '@/constants/osSections';
 import { ActivityIndicator, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,9 +8,10 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { osEntryRoute, projectPickRoute } from '@/lib/osEntry';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 
+
 export default function Index() {
   const { loading, user } = useRenova();
-  const [href, setHref] = useState<string | null>(null);
+  const [href, setHref] = useState<string | OsTabRoute | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -36,5 +38,5 @@ export default function Index() {
 
   if (!user) return <Redirect href="/onboarding/role" />;
 
-  return <Redirect href={href as any} />;
+  return <Redirect href={href as Href} />;
 }

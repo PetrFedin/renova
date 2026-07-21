@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { DecisionHistoryPanel } from '@/components/renova/DecisionHistoryPanel';
@@ -9,9 +10,11 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RepairProcessTimeline } from '@/components/renova/RepairProcessTimeline';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ProjectDetail } from '@/lib/api';
 import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export default function ActivityScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -35,7 +38,7 @@ export default function ActivityScreen() {
     setSelectedProjectId((prev) => prev ?? defaultProjectId);
   }, [defaultProjectId]);
 
-  useEffect(() => {
+  const reloadActivityProject = useCallback(() => {
     if (!user || !selectedProjectId) {
       setViewProject(null);
       return;
@@ -44,12 +47,16 @@ export default function ActivityScreen() {
       setViewProject(activeProject);
       return;
     }
-    let cancelled = false;
     api.getProject(user.id, selectedProjectId)
-      .then((p) => { if (!cancelled) setViewProject(p); })
-      .catch(() => { if (!cancelled) setViewProject(null); });
-    return () => { cancelled = true; };
+      .then((p) => setViewProject(p))
+      .catch((e) => { reportError('app.activity.ViewProject', e); setViewProject(null); });
   }, [user?.id, selectedProjectId, activeProject]);
+
+  useEffect(() => {
+    reloadActivityProject();
+  }, [reloadActivityProject]);
+  // W98: после golden-path — архив/timeline объект актуален
+  useProjectDataReload(reloadActivityProject);
 
   const selectedName = useMemo(
     () => projects.find((p) => p.id === selectedProjectId)?.name ?? viewProject?.name,
@@ -59,9 +66,9 @@ export default function ActivityScreen() {
   const openDocuments = useCallback(async () => {
     if (!selectedProjectId) return;
     if (activeProject?.id !== selectedProjectId) {
-      await loadProject(selectedProjectId).catch(() => {});
+      await loadProject(selectedProjectId).catch(reportCatch('app.activity.1'));
     }
-    router.push({ pathname: '/documents', params: { returnTo: '/activity' } } as any);
+    pushOsNav('/documents', '/activity');
   }, [selectedProjectId, activeProject?.id, loadProject]);
 
   if (!user) return null;
@@ -94,7 +101,7 @@ export default function ActivityScreen() {
             title="Все документы (PDF)"
             variant="outline"
             disabled={!selectedProjectId}
-            onPress={() => { openDocuments().catch(() => {}); }}
+            onPress={() => { openDocuments().catch(reportCatch('app.activity.2')); }}
           />
         </View>
 

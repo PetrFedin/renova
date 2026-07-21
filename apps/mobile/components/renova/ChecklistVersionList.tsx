@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
+import { reportCatch } from '@/lib/reportError';
 
 export function ChecklistVersionList({ userId, projectId, tplId }: { userId: string; projectId?: string; tplId: string }) {
   const [vers, setVers] = useState<{ version: number; name: string; at: string }[]>([]);
   useEffect(() => {
-    (projectId ? api.checklistTemplateVersions(userId, projectId, tplId) : api.userChecklistVersions(userId, tplId)).then(setVers).catch(() => {});
+    (projectId ? api.checklistTemplateVersions(userId, projectId, tplId) : api.userChecklistVersions(userId, tplId)).then(setVers).catch(reportCatch('components.renova.ChecklistVersionList.1'));
   }, [tplId]);
   if (!vers.length) return null;
   return (

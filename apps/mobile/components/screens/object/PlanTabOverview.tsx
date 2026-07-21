@@ -1,5 +1,5 @@
 /** Обзор вкладки «План» — как связаны разделы и текущий статус */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import {
@@ -12,6 +12,8 @@ import { useNavFromHere } from '@/lib/navigation';
 import { formatScheduleRange } from '@/lib/formatScheduleDate';
 import type { ProjectDetail } from '@/lib/api';
 import { api } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportCatch } from '@/lib/reportError';
 
 type Props = {
   role: OsRole;
@@ -25,16 +27,18 @@ export function PlanTabOverview({ role, project, userId }: Props) {
   const [designCount, setDesignCount] = useState(0);
   const [designPending, setDesignPending] = useState(0);
 
-  useEffect(() => {
-    api.listFloorPlans(userId, project.id).then((plans) => setFloorCount(plans.length)).catch(() => {});
+  const reload = useCallback(() => {
+    api.listFloorPlans(userId, project.id).then((plans) => setFloorCount(plans.length)).catch(reportCatch('components.screens.object.PlanTabOverview.1'));
     api
       .listDesignPackages(userId, project.id)
       .then((items) => {
         setDesignCount(items.length);
         setDesignPending(items.filter((d) => d.status === 'pending').length);
       })
-      .catch(() => {});
+      .catch(reportCatch('components.screens.object.PlanTabOverview.2'));
   }, [userId, project.id]);
+  useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   const stagesCount = project.stages?.length || 0;
   const roomsCount = project.rooms?.length || project.rooms_count || 0;
