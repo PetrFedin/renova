@@ -4,6 +4,8 @@ import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { SearchFilter } from '@/components/renova/SearchFilter';
@@ -15,6 +17,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORKS_FILTER_LABEL } from '@/constants/labels';
 import {
   CUSTOMER_WORKS_FILTERS,
+  countStagesForCustomerFilters,
   filterStagesForCustomer,
   type CustomerWorksFilter,
 } from '@/lib/domain/customerWorksFilters';
@@ -27,6 +30,7 @@ import { WorkOrdersListPanel } from '@/components/renova/WorkOrdersListPanel';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 const FILTERS = [
   { key: 'all', label: WORKS_FILTER_LABEL.all },
@@ -74,14 +78,33 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           const b = await api.stageBlocked(user.id, activeProject.id, s.id);
           return [s.id, b] as const;
         } catch {
-          return [s.id, { blocked: false }] as const;
+          // Fail-closed: без ответа API этап нельзя считать разблокированным
+          return [s.id, {
+            blocked: true,
+            depends_on: 'Не удалось проверить зависимости',
+            status_label: 'check_failed',
+          }] as const;
         }
       }),
     );
     setBlockedMap(Object.fromEntries(entries));
   }, [user?.id, activeProject?.id, activeProject?.stages?.length]);
 
-  useFocusEffect(useCallback(() => { reloadBlocked(); if (isContractor && user && activeProject) api.reworkSlaCheck(user.id, activeProject.id).catch(() => {}); }, [reloadBlocked, isContractor, user?.id, activeProject?.id]));
+  const refreshWorks = useCallback(() => {
+    if (activeProject) void loadProject(activeProject.id);
+    void reloadBlocked();
+    if (isContractor && user && activeProject) {
+      api.reworkSlaCheck(user.id, activeProject.id).catch(reportCatch('works.reworkSla'));
+    }
+  }, [activeProject, loadProject, reloadBlocked, isContractor, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshWorks();
+    }, [refreshWorks]),
+  );
+  // W91: соседний таб/мутация → этапы и blockedMap без remount
+  useProjectDataReload(refreshWorks);
 
   const stages = useMemo(() => {
     if (!activeProject) return [];
@@ -109,8 +132,19 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     return filteredBase.filter((s) => !query || s.name.toLowerCase().includes(query.toLowerCase()));
   }, [activeProject, filter, query, blockedMap, isCustomer]);
 
+  const customerFilterCounts = useMemo(() => {
+    if (!isCustomer || !activeProject) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    return countStagesForCustomerFilters(activeProject.stages || [], blockedMap, today);
+  }, [isCustomer, activeProject, blockedMap]);
+
   const activeFilters = isCustomer
-    ? CUSTOMER_WORKS_FILTERS
+    ? CUSTOMER_WORKS_FILTERS.map((f) => ({
+        ...f,
+        label: customerFilterCounts
+          ? `${f.label} (${customerFilterCounts[f.key]})`
+          : f.label,
+      }))
     : showAdvancedFilters
       ? FILTERS
       : FILTERS.slice(0, 4);
@@ -121,6 +155,15 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
   const resetFilters = () => {
     setFilter(isCustomer ? 'now' : 'all');
     setQuery('');
+  };
+
+  const toggleSel = (stageId: string) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(stageId)) next.delete(stageId);
+      else next.add(stageId);
+      return next;
+    });
   };
 
   const bulkReady = async () => {
@@ -149,10 +192,11 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         {isContractor && !showAdvancedFilters && (
           <PrimaryButton title="Ещё фильтры" variant="ghost" compact onPress={() => setShowAdvancedFilters(true)} />
         )}
-        {user && (
+        {/* Заказчик: зависимости/WO не зависят от чипов — прячем, иначе вкладки «одинаковые» */}
+        {user && (!isCustomer || filter === 'all') && (
           <StageDependenciesPanel userId={user.id} projectId={activeProject.id} role={role} />
         )}
-        {user && (
+        {user && (!isCustomer || filter === 'all') && (
           <WorkOrdersListPanel
             userId={user.id}
             projectId={activeProject.id}
@@ -212,8 +256,17 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           project={activeProject}
           onClose={() => setShowCreate(false)}
           onCreate={async (body) => {
-            await api.createStage(user.id, activeProject.id, body);
-            await loadProject(activeProject.id);
+            try {
+              await api.createStage(user.id, activeProject.id, body);
+              await syncProjectSideEffects({ user, project: activeProject });
+              await loadProject(activeProject.id);
+            } catch (e: unknown) {
+              if (e instanceof Error && e.message === 'offline_queued') {
+                await syncProjectSideEffects({ user, project: activeProject });
+                throw e; // W113: sheet показывает алерт и закрывается
+              }
+              throw e;
+            }
           }}
         />
       )}

@@ -1,5 +1,5 @@
 /** Экран этапа: приёмка above fold, вторичное — в accordion */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ScrollView, View, Text, Alert, TextInput, StyleSheet, Pressable, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
@@ -8,8 +8,11 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, StageDetail, WorkSnapshot } from '@/lib/api';
+import { isRateLimitError } from '@/lib/api/client';
 import { compressUri } from '@/lib/compressImage';
 import { checklistForStage } from '@/lib/checklistTemplates';
 import { StageExpensePanel } from '@/components/renova/StageExpensePanel';
@@ -26,8 +29,10 @@ import { StageDetailAccordion } from '@/components/screens/stage/StageDetailAcco
 import { DecisionHistoryPanel } from '@/components/renova/DecisionHistoryPanel';
 import { repairTabRoute, objectTabHref } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertStageAccepted } from '@/lib/acceptanceNav';
 import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
+import { reportError, reportCatch } from '@/lib/reportError';
 
 const TEMPLATES = ['@заказчик готово к приёмке', 'Работы выполнены по смете', 'Нужен доступ на объект', 'Задержка из-за материалов', 'Готово к приёмке'];
 
@@ -90,24 +95,50 @@ export function StageDetailScreen() {
   const [customChecks, setCustomChecks] = useState<string[]>([]);
   const [wfChecks, setWfChecks] = useState<{ id: string; text: string; done: boolean }[]>([]);
   const [workSnap, setWorkSnap] = useState<WorkSnapshot | null>(null);
+  const [contractGate, setContractGate] = useState<{ ok: boolean; message?: string; pending_titles?: string[] } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectQualityScore, setRejectQualityScore] = useState<number | null>(null);
   const canWrite = useWriteAllowed();
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     if (!user || !activeProject || !id) return;
-    const st = await api.getStage(user.id, activeProject.id, id);
-    setStage(st);
-    api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch(() => setWfChecks([]));
-    api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch(() => {});
-    api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch(() => setWorkSnap(null));
-    getCustomChecks(id).then(setCustomChecks).catch(() => {});
-  };
+    try {
+      const st = await api.getStage(user.id, activeProject.id, id);
+      setStage(st);
+    } catch (e) {
+      // 429 / сеть: оставляем предыдущий stage, не роняем экран (Uncaught)
+      reportError(isRateLimitError(e) ? 'stage.reload.rate_limit' : 'stage.reload.getStage', e, { stageId: id });
+      return;
+    }
+    // Вторичные GET — с catch; при rate_limit не затираем UI fail-closed без нужды
+    api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch((e) => {
+      reportError('components.screens.StageDetailScreen.WfChecks', e);
+      if (!isRateLimitError(e)) setWfChecks([]);
+    });
+    api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch((e) => {
+      reportError('stage.blocked', e, { stageId: id });
+      // Fail-closed только при реальной ошибке доступа/сервера — не при 429
+      if (!isRateLimitError(e)) {
+        setBlocked({ blocked: true, depends_on: 'load_error' });
+      }
+    });
+    api.getContractGate(user.id, activeProject.id).then(setContractGate).catch((e) => {
+      reportError('components.screens.StageDetailScreen.ContractGate', e);
+      if (!isRateLimitError(e)) setContractGate(null);
+    });
+    api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch((e) => {
+      reportError('components.screens.StageDetailScreen.WorkSnap', e);
+      if (!isRateLimitError(e)) setWorkSnap(null);
+    });
+    getCustomChecks(id).then(setCustomChecks).catch(reportCatch('stage.customChecks'));
+  }, [user?.id, activeProject?.id, id]);
+  useProjectDataReload(reload);
 
   useEffect(() => {
-    reload().catch(() => {});
+    reload().catch((e) => reportError('stage.reload', e, { stageId: id }));
     if (id) getCustomChecks(id).then(setCustomChecks);
     if (user && activeProject && id) {
-      api.reactionCounts(user.id, activeProject.id, id).then(setReactCounts).catch(() => {});
+      api.reactionCounts(user.id, activeProject.id, id).then(setReactCounts).catch(reportCatch('stage.reactions'));
     }
   }, [user?.id, activeProject?.id, id]);
 
@@ -120,7 +151,9 @@ export function StageDetailScreen() {
       : wfChecks.length
         ? wfChecks.every((c) => c.done)
         : CHECKLIST.every((c) => checks[c]);
-  const acceptBlocked = CHECKLIST.length > 0 && !checklistComplete;
+  // W68 #44: без фото результата кнопка неактивна
+  const hasResultPhoto = (stage?.photos?.length ?? 0) > 0;
+  const acceptBlocked = (CHECKLIST.length > 0 && !checklistComplete) || !hasResultPhoto;
   const exportChecks = wfChecks.length
     ? wfChecks.filter((c) => c.done).map((c) => c.text)
     : CHECKLIST.filter((c) => checks[c]);
@@ -134,18 +167,25 @@ export function StageDetailScreen() {
     }
   };
 
-  const runAcceptStage = async () => {
+  const runAcceptStage = async (qualityScore: number | null = null) => {
     try {
-      await acceptStage(stage!.id);
+      await acceptStage(stage!.id, {
+        qualityScore,
+        checklist: CHECKLIST.filter((c) => {
+          const wf = wfChecks.find((x) => x.text === c);
+          return wf ? wf.done : !!checks[c];
+        }),
+      });
       await reload();
       await loadProject(activeProject!.id);
+      alertStageAccepted(role);
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Приёмка');
       else throw e;
     }
   };
 
-  const onAcceptPress = () => {
+  const onAcceptPress = (qualityScore: number | null) => {
     if (!canWrite || acceptBlocked) return;
     if (CHECKLIST.length === 0) {
       Alert.alert(
@@ -153,12 +193,12 @@ export function StageDetailScreen() {
         'Список проверок пуст. Принять этап без отметки пунктов?',
         [
           { text: 'Отмена', style: 'cancel' },
-          { text: 'Принять', onPress: () => { runAcceptStage().catch(() => {}); } },
+          { text: 'Принять', onPress: () => { runAcceptStage(qualityScore).catch(reportCatch('stage.accept')); } },
         ],
       );
       return;
     }
-    runAcceptStage().catch(() => {});
+    runAcceptStage(qualityScore).catch(reportCatch('stage.accept'));
   };
 
   if (!activeProject || !stage || !user) {
@@ -180,6 +220,7 @@ export function StageDetailScreen() {
       setComment('');
       setReplyTo(null);
       await reload();
+      await syncProjectSideEffects({ user, project: activeProject });
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Комментарий');
       else throw e;
@@ -204,6 +245,7 @@ export function StageDetailScreen() {
         await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${pick.assets[0].base64}`, label);
       }
       await reload();
+      await syncProjectSideEffects({ user, project: activeProject });
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'offline_queued') {
         Alert.alert('Офлайн', 'Фото отправится при подключении');
@@ -231,7 +273,7 @@ export function StageDetailScreen() {
         {isArchived && (
           <View style={styles.archiveBanner}>
             <Text style={styles.archiveText}>Этап завершён</Text>
-            <Pressable onPress={() => pushOsNav(repairTabRoute(role, 'works', 'archive'))}>
+            <Pressable onPress={() => pushOsNav(repairTabRoute(role, 'works', 'archive'), undefined, role)}>
               <Text style={styles.link}>→ Архив этапов</Text>
             </Pressable>
           </View>
@@ -243,6 +285,7 @@ export function StageDetailScreen() {
           isContractor={isContractor}
           canWrite={canWrite}
           blocked={blocked}
+          contractGate={contractGate}
           userId={user.id}
           projectId={activeProject.id}
           onReload={reload}
@@ -267,8 +310,11 @@ export function StageDetailScreen() {
             swipeOpen={swipeOpen}
             setSwipeOpen={setSwipeOpen}
             onAcceptPress={onAcceptPress}
-            onRejectPress={() => setRejectOpen(true)}
-            onExportAcceptance={() => { onExportAcceptance().catch(() => {}); }}
+            onRejectPress={(qualityScore) => {
+              setRejectQualityScore(qualityScore);
+              setRejectOpen(true);
+            }}
+            onExportAcceptance={() => { onExportAcceptance().catch(reportCatch('stage.exportAcceptance')); }}
             onReload={reload}
           />
         ) : null}
@@ -283,8 +329,8 @@ export function StageDetailScreen() {
           readOnly={readOnly}
           stages={activeProject.stages || []}
           onChanged={() => {
-            reload().catch(() => {});
-            loadProject(activeProject.id).catch(() => {});
+            reload().catch((e) => reportError('stage.reload', e, { stageId: id }));
+            loadProject(activeProject.id).catch(reportCatch('stage.loadProject'));
           }}
         />
 
@@ -327,6 +373,8 @@ export function StageDetailScreen() {
             rooms={activeProject.rooms || []}
             roomIds={stage.room_ids}
             estimateHref={objectTabHref(role, 'estimate')}
+            role={role}
+            returnTo={`/stage/${stage.id}`}
           />
         </StageDetailAccordion>
 
@@ -389,7 +437,7 @@ export function StageDetailScreen() {
         {workSnap ? (
           <StageDetailAccordion title="Прогресс" summary={`${workSnap.percent_complete}%`}>
             <Text style={styles.meta}>
-              Работ: {workSnap.works_done ?? workSnap.checklist_progress.done}/{workSnap.works_total ?? workSnap.checklist_progress.total}
+              Работ: {workSnap.works_done ?? workSnap.checklist_progress?.done ?? 0}/{workSnap.works_total ?? workSnap.checklist_progress?.total ?? 0}
               {' · '}материалы {workSnap.materials_count}
               {workSnap.overdue_days ? ` · +${workSnap.overdue_days} дн.` : ''}
             </Text>
@@ -409,7 +457,7 @@ export function StageDetailScreen() {
         onConfirm={async (reason) => {
           setRejectOpen(false);
           try {
-            await rejectStage(stage.id, reason);
+            await rejectStage(stage.id, reason, { qualityScore: rejectQualityScore });
             await reload();
           } catch (e: unknown) {
             if (e instanceof Error && e.message === 'offline_queued') {
