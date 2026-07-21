@@ -22,6 +22,7 @@ import {
 import { estimateTotals, type EstimateLineTypeFilter } from '@/lib/domain/estimateFilters';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { showEstimateCategoryFilters } from '@/lib/detailLevelPolicy';
+import { alertEstimateLocked, alertEstimateLockRejected } from '@/lib/estimatePayNav';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
@@ -121,6 +122,8 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
               await api.lockEstimate(user.id, activeProject.id);
               await loadProject(activeProject.id);
               await syncProjectSideEffects({ user, project: activeProject });
+              // W131: lock → договор / график
+              alertEstimateLocked('customer');
             } catch (e: unknown) {
               if (e instanceof Error && e.message === 'offline_queued') {
                 Alert.alert('Офлайн', 'Фиксация сметы отправится при подключении');
@@ -138,6 +141,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
               await api.rejectEstimateLock(user.id, activeProject.id, 'Нужна правка сметы');
               await loadProject(activeProject.id);
               await syncProjectSideEffects({ user, project: activeProject });
+              alertEstimateLockRejected('customer');
             } finally {
               setClearingProposal(false);
             }

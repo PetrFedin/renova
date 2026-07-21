@@ -23,6 +23,7 @@ import { paymentReceiptKey } from '@/constants/sessionKeys';
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL, PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
 import { buildPaymentHistory, formatPaymentEventDate } from '@/lib/domain/paymentHistory';
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
+import { alertPaymentConfirmed } from '@/lib/estimatePayNav';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
@@ -288,7 +289,8 @@ export function PaymentDetailSheet({
       });
       onChanged?.();
       onClose();
-      Alert.alert('Оплата подтверждена', 'Исполнитель увидит статус в бюджете и во «Входящих».');
+      // W131: оплата → бюджет / inbox
+      alertPaymentConfirmed(role);
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 409) {
         Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [

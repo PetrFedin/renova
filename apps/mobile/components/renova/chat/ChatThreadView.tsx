@@ -23,6 +23,7 @@ import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { router } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
@@ -402,15 +403,8 @@ export function ChatThreadView({
                     });
                     await reload();
                     await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                    Alert.alert('Счёт создан', `${amount.toLocaleString('ru-RU')} ₽ в «Деньги → Оплаты».`, [
-                      { text: 'OK' },
-                      {
-                        text: 'Открыть оплаты',
-                        onPress: () => {
-                          pushOsNav(budgetTabRoute('contractor', 'payments'), returnTo || pathname, 'contractor');
-                        },
-                      },
-                    ]);
+                    // W131: счёт из чата — роль-aware оплаты
+                    alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
                   } catch (e: unknown) {
                     if (e instanceof Error && e.message === 'offline_queued') {
                       Alert.alert('Офлайн', 'Счёт отправится при подключении');
@@ -427,7 +421,8 @@ export function ChatThreadView({
                   {
                     text: 'Открыть оплаты',
                     onPress: () => {
-                      pushOsNav(budgetTabRoute('contractor', 'payments'), returnTo || pathname, 'contractor');
+                      const osRole = role === 'contractor' ? 'contractor' : 'customer';
+                      pushOsNav(budgetTabRoute(osRole, 'payments'), returnTo || pathname, osRole);
                     },
                   },
                 ]);
@@ -499,8 +494,9 @@ export function ChatThreadView({
             await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
             setTaskMsg(null);
             await reload();
-            // W98: календарь / работы / inbox после задачи из чата
+            // W98/W131: календарь / работы / inbox после задачи из чата
             await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+            alertChatTaskCreated(role === 'contractor' ? 'contractor' : 'customer');
           } catch (e) {
             if (isOfflineQueued(e)) {
               notifyOfflineQueued('Задача из чата');
