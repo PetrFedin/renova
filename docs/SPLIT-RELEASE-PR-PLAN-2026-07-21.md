@@ -1,12 +1,14 @@
-# Split release: develop → main
+# Split release: develop → main — COMPLETE
 
-| # | Slice | Status |
-|---|-------|--------|
-| 1 | security-acl | DONE `v0.3.1` PR #5 |
-| 2 | acceptance-schedule | DONE `v0.3.2` PR #7 |
-| 3 | payments | DONE `v0.3.3` PR #9 |
-| 4 | offline | DONE `v0.3.4` PR #11 |
-| 5 | documents-fns | DONE `v0.3.5` PR #13 |
-| 6 | ia-portal | NEXT (full remaining mobile) |
+| # | Slice | Tag | PR |
+|---|-------|-----|-----|
+| 1 | security-acl | `v0.3.1-security-acl` | #5 |
+| 2 | acceptance-schedule | `v0.3.2-acceptance-schedule` | #7 |
+| 3 | payments | `v0.3.3-payments` | #9 |
+| 4 | offline | `v0.3.4-offline` | #11 |
+| 5 | documents-fns | `v0.3.5-documents-fns` | #13 |
+| 6 | ia-portal | `v0.3.6-ia-portal` | #15 |
 
-Mega-PR #3 — close after slice-6.
+Mega-PR #3 closed as superseded.
+
+Remaining ops: staging credentials probe on host.
