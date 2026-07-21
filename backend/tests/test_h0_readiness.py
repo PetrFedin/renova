@@ -20,6 +20,10 @@ async def test_build_h0_readiness_dev_shape(monkeypatch):
     assert "checks" in snap and len(snap["checks"]) >= 5
     assert snap["environment"] == "development"
     assert snap["ready_for_investor_demo"] is False  # not staging
+    ids = {c["id"] for c in snap["checks"]}
+    assert "auth_bearer" in ids
+    auth = next(c for c in snap["checks"] if c["id"] == "auth_bearer")
+    assert auth["ok"] is True  # development override
 
 
 @pytest.fixture(autouse=True)
@@ -43,9 +47,16 @@ async def test_h0_readiness_endpoint():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         cont = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
-        r = await client.get("/api/v1/admin/h0-readiness", headers={"X-User-Id": cont["id"]})
+        # Prefer Bearer (staging forbids X-User-Id)
+        tok = (cont.get("access_token") or "").strip()
+        assert tok, "demo must return access_token"
+        r = await client.get(
+            "/api/v1/admin/h0-readiness",
+            headers={"Authorization": f"Bearer {tok}"},
+        )
         assert r.status_code == 200, r.text
         body = r.json()
         assert "score" in body
         assert "blockers" in body
         assert "checks" in body
+        assert any(c["id"] == "auth_bearer" for c in body["checks"])

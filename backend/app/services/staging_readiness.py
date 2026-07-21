@@ -91,15 +91,21 @@ def build_h0_readiness() -> dict[str, Any]:
         kontur in ("sandbox", "live", "off"),
         "Без ключей — in_app подпись (честно)",
     )
+    add(
+        "auth_bearer",
+        "Identity только JWT Bearer (без X-User-Id)",
+        not bool(settings.allow_header_user_id),
+        "AUTH_ALLOW_HEADER_USER_ID запрещён на staging/production",
+    )
 
     # Блокеры пилота = обязательные H0
-    blocker_ids = {"public_url", "public_https", "yookassa_keys", "yookassa_live", "yookassa_no_demo"}
+    blocker_ids = {"public_url", "public_https", "yookassa_keys", "yookassa_live", "yookassa_no_demo", "auth_bearer"}
     if env == "development":
         # В development localhost OK — не красим красным весь чеклист
         for c in checks:
-            if c["id"] in ("public_url", "public_https", "yookassa_no_demo"):
+            if c["id"] in ("public_url", "public_https", "yookassa_no_demo", "auth_bearer"):
                 c["ok"] = True
-                c["how"] = "development: localhost/demo допустимы; для пилота переключите staging"
+                c["how"] = "development: localhost/demo/X-User-Id допустимы; для пилота переключите staging"
 
     blockers = [c for c in checks if c["id"] in blocker_ids and not c["ok"]]
     ready = len(blockers) == 0 and env in ("staging", "production")
