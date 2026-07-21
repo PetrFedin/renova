@@ -3,7 +3,7 @@
 **Дата:** 2026-07-21  
 **База:** `main` @ `09b16cb2` (Merge #23, app/API 0.3.7)  
 **Integration branch (local, не в main):** `agent/integration-qa-2026-07` @ `7a8b4a43`  
-**Сеть GitHub:** на момент прогона `fetch`/`gh` часто timeout — remote CI статусы перепроверять вручную.
+**GitHub Actions:** перепроверены 2026-07-21 — все пять PR required checks **green** (см. §5).
 
 ## 1. Commit SHAs (исходные PR-ветки)
 
@@ -13,7 +13,7 @@
 | #25 | OCR capability + My Nalog guards | `agent/capability-truth-guards` | `ff8c4335` |
 | #26 | warranty fail-closed | `agent/warranty-fail-closed` | `5f39bf2d` |
 | #27 | payment evidence | `agent/portal-payment-evidence` | `21e292ba` (+ chain fix) |
-| #28 | release hardening | `agent/release-ops-hardening` | `939f5128` |
+| #28 | release hardening | `agent/release-ops-hardening` | `7db79e14` |
 
 Все base branch: **`main`**.
 
@@ -67,7 +67,7 @@
 | migrations from current schema (stamp w4 → head) | PASS | w5+w6 upgrade |
 | migrations re-run | PASS | noop |
 | migrations rollback w6→w5→w4 + re-upgrade | PASS | supported |
-| Full GitHub Actions on each PR | PENDING | сеть к api.github.com нестабильна; **не утверждать green** |
+| Full GitHub Actions on each PR | PASS | #24–#27 e2e+playwright green; #28 Quality+E2E+Playwright green on `7db79e14` |
 | `npm run verify:ci` полный | PARTIAL | secret/env/mobile units OK; typecheck informational historically FAIL (147>117) |
 
 ## 6. Smoke scenarios
@@ -109,14 +109,15 @@
 ### Found
 1. **CRITICAL — dual alembic heads** если merge #26+#27 без rechain (`w5` и `w6` оба от `w4`).
 2. **Merge conflicts** (ожидаемые): DocumentsHub/package.json/env docs между #24–#28.
-3. **CI #28 first run:** secret-scan self-match (уже исправлено `939f5128`).
-4. **Pre-existing:** full SQLite `alembic upgrade` from empty fails on old chat FK migration; typecheck baseline exceeded.
+3. **CI #28 first run:** secret-scan self-match (исправлено `939f5128`).
+4. **CI #28 second fail:** YAML `#` comment truncating ruby one-liner (исправлено `7db79e14`).
+5. **Pre-existing:** full SQLite `alembic upgrade` from empty fails on old chat FK migration; typecheck baseline exceeded.
 
 ### Fixed (в исходных / integration)
 1. Integration: `w6payev01.down_revision = w5warranty01`.
 2. #27 source: PRE-MERGE note + `test_payment_migration_chain.py` + docs section.
 3. Conflict resolutions: union tests/scripts/docs (не удаляли функциональность).
-4. #28: secret-scan PEM self-match fix (ранее).
+4. #28: secret-scan PEM self-match (`939f5128`) + YAML syntax step (`7db79e14`).
 
 ### Remaining risks
 | Risk | Severity | Mitigation |
@@ -165,7 +166,7 @@ YooKassa, S3, Kontur, Moy nalog OAuth secrets, Twilio, Apple/Google signing, `EX
 | #25 | **Да** | CI green |
 | #26 | **Да** | CI green |
 | #27 | **Да, с blocker-note** | Ready for review OK; **merge только после #26 + rechain** |
-| #28 | **Да** | CI green на tip `939f5128+`; merge последним |
+| #28 | **Да** | CI green на tip `7db79e14`; merge последним |
 
 **Авто-merge не выполнять.**
 
