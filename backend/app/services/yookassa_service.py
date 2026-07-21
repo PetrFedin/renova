@@ -162,6 +162,7 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
             payment_id,
             project_id=project_id,
             allow_without_acceptance=False,
+            allow_without_settlement=True,  # payment.succeeded — machine settlement
         )
         if not confirmed:
             return {"ok": True, "handled": True, "blocked": "acceptance_required"}

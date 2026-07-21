@@ -63,9 +63,9 @@ async def confirm_payment(
             return None
 
     if not allow_without_settlement:
+        # YuKassa id at checkout ≠ paid; only webhook uses allow_without_settlement
         receipt_id = await receipt_id_for_payment(db, payment.id)
-        has_yk = bool(getattr(payment, "yookassa_payment_id", None))
-        if not (receipt_id or has_yk or transfer_ack):
+        if not (receipt_id or transfer_ack):
             return None
 
     payment.status = PaymentStatus.confirmed

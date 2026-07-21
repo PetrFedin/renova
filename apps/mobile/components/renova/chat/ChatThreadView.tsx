@@ -246,7 +246,7 @@ export function ChatThreadView({
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   const openPaymentFlow = () => {
-    pushOsNav(budgetTabRoute(role, 'payments'), returnTo || pathname, role);
+    pushOsNav(budgetTabRoute(role, 'payments', { openPayment: '1' }), returnTo || pathname, role);
   };
 
   if (!chat || !user) {
@@ -423,7 +423,7 @@ export function ChatThreadView({
                     text: 'Открыть оплаты',
                     onPress: () => {
                       const osRole = role === 'contractor' ? 'contractor' : 'customer';
-                      pushOsNav(budgetTabRoute(osRole, 'payments'), returnTo || pathname, osRole);
+                      pushOsNav(budgetTabRoute(osRole, 'payments', { openPayment: '1' }), returnTo || pathname, osRole);
                     },
                   },
                 ]);

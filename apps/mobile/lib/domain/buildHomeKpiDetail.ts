@@ -58,7 +58,7 @@ function budgetDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean): 
       ],
       bars: planned > 0 ? [{ label: `Освоено ${pct}% плана`, percent: Math.min(pct, 100), tone: pct > 90 ? 'warn' : 'good' }] : undefined,
       actionLabel: 'Оплатить →',
-      actionHref: budgetTabRoute(role, 'payments'),
+      actionHref: budgetTabRoute(role, 'payments', { openPayment: '1' }),
     };
   }
 
@@ -92,7 +92,7 @@ function scheduleDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean,
       ],
       bars: [{ label: 'Этапы выполнены', percent: 100, tone: 'good' }],
       actionLabel: 'Оплатить →',
-      actionHref: budgetTabRoute(role, 'payments'),
+      actionHref: budgetTabRoute(role, 'payments', { openPayment: '1' }),
     };
   }
 

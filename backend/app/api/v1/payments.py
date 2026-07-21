@@ -192,8 +192,7 @@ async def confirm_payment(
     if not payment:
         # Distinguish settlement vs acceptance for honest UX
         receipt_id = await pay_svc.receipt_id_for_payment(db, payment_id)
-        has_yk = bool(getattr(existing, "yookassa_payment_id", None))
-        if not (receipt_id or has_yk or ack) and existing.status.value == "pending":
+        if not (receipt_id or ack) and existing.status.value == "pending":
             # Accepted stage (or non-stage) but no settlement proof
             settlement_blocked = True
             if existing.payment_type == PaymentType.stage and existing.stage_id:

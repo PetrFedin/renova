@@ -121,6 +121,7 @@ export function changeOrderEstimateRoute(role: OsRole, returnTo?: string): PushT
 export function resolveNotificationLink(notificationType: string, role: OsRole = 'customer'): PushTarget | null {
   switch (notificationType) {
     case 'payment_pending':
+      return budgetTabRoute(role, 'payments', { openPayment: '1' });
     case 'payment_confirmed':
       return budgetTabRoute(role, 'payments');
     case 'stage_review':

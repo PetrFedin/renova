@@ -63,7 +63,7 @@ async def test_payment_confirm_notifies_contractor():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, cust, cont, h_cust, h_cont = await _demo_project(client)
         stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
-        active = next(s for s in stages if s["status"] == "active")
+        active = next((s for s in stages if s["status"] in ("active", "review")), None); assert active, [s.get("status") for s in stages]
         await client.post(
             f"/api/v1/projects/{pid}/work-acceptances",
             headers=h_cont,
@@ -81,6 +81,7 @@ async def test_payment_confirm_notifies_contractor():
         confirm = await client.post(
             f"/api/v1/projects/{pid}/payments/{pending['id']}/confirm",
             headers=h_cust,
+            json={"transfer_ack": True},
         )
         assert confirm.status_code == 200
         notes = await client.get("/api/v1/notifications", headers=h_cont)

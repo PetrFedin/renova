@@ -109,3 +109,29 @@ async def test_confirm_requires_settlement_proof(monkeypatch):
     )
     assert ok is not None
     assert ok.status == PaymentStatus.confirmed
+
+
+@pytest.mark.asyncio
+async def test_yookassa_id_alone_is_not_settlement_proof(monkeypatch):
+    """Checkout attach must not unlock manual confirm without webhook/ack/receipt."""
+    async def _noop_expense(_db, _payment):
+        return None
+
+    monkeypatch.setattr("app.services.budget_service.expense_from_payment", _noop_expense)
+    payment = Payment(
+        id="payment-4",
+        project_id="project-a",
+        payment_type=PaymentType.advance,
+        title="Аванс",
+        amount=500,
+        status=PaymentStatus.pending,
+        created_by="user-1",
+        yookassa_payment_id="yk-checkout-started",
+    )
+    session = FakeSession(payment=payment)
+    blocked = await payment_service.confirm_payment(session, payment.id, project_id="project-a")
+    assert blocked is None
+    via_webhook = await payment_service.confirm_payment(
+        session, payment.id, project_id="project-a", allow_without_settlement=True
+    )
+    assert via_webhook is not None
