@@ -1,7 +1,7 @@
 /** Единая точка «+» — расход (scan/manual) · работа · чат */
 import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -63,7 +63,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
       icon: 'document-text-outline',
       run: () => {
         setOpen(false);
-        router.push({ pathname: '/scratchpad', params: { role, returnTo: pathname } } as any);
+        pushOsNav({ pathname: '/scratchpad', params: { role } }, pathname, role);
       },
     }] : [
       {

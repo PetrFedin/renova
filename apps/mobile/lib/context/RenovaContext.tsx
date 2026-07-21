@@ -189,7 +189,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         let p = await api.getProject(user.id, id);
         if (user.role === 'contractor' && !p) throw new Error('not found');
         if (user.role === 'contractor') {
-          try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { router } = await import('expo-router'); router.push('/(contractor)/subscription'); throw e; } }
+          try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { pushOsNav } = await import('@/lib/pushOsNav'); pushOsNav('/(contractor)/subscription', undefined, 'contractor'); throw e; } }
         }
         const syncedLimit = await syncCustomerBudgetOnLoad(user.id, id, p.customer_budget);
         if (syncedLimit !== normalizeCustomerBudget(p.customer_budget)) {

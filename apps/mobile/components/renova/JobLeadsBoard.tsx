@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { LeadChat } from '@/components/renova/LeadChat';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
-import { router } from 'expo-router';
+import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -36,7 +36,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
           {l.pre_estimate && <Text style={s.q}>Оценка: {formatRub(l.pre_estimate)}</Text>}
           <LeadChat userId={userId} leadId={l.id} />
           {role==='customer'&&l.status==='open'&&<PrimaryButton title="Авто-исполнитель" variant="outline" onPress={async()=>{await api.autoAssignLead(userId,l.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); load();}} />}
-          {l.status==='quoted' && <PrimaryButton title="→ Проект" variant="outline" onPress={async()=>{ if(role==='contractor'){router.push({pathname:`/contractor-wizard/${l.id}`,params:{returnTo:'/job-leads'}} as any);return;} const r=await api.convertJobLead(userId,l.id); await refreshProjects(); if(r?.project_id) { await loadProject(r.project_id); router.replace(role === 'contractor' ? '/(contractor)/(tabs)/' : '/(customer)/(tabs)/'); } load(); }} />}
+          {l.status==='quoted' && <PrimaryButton title="→ Проект" variant="outline" onPress={async()=>{ const osRole = role==='contractor' ? 'contractor' : 'customer'; if(role==='contractor'){pushOsNav({pathname:`/contractor-wizard/${l.id}`},'/job-leads',osRole);return;} const r=await api.convertJobLead(userId,l.id); await refreshProjects(); if(r?.project_id) { await loadProject(r.project_id); replaceOsNav(role === 'contractor' ? '/(contractor)/(tabs)/' : '/(customer)/(tabs)/', undefined, osRole); } load(); }} />}
           {role === 'contractor' && l.status === 'open' && (
             <View style={s.qrow}>
               <TextInput style={s.inp} placeholder="₽" keyboardType="numeric" value={quote[l.id] || ''} onChangeText={v => setQuote({ ...quote, [l.id]: v })} />

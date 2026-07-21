@@ -1,7 +1,6 @@
 import { budgetTabRoute } from '@/constants/osSections';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
 
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -225,9 +224,12 @@ export function WorkAcceptanceScreen() {
           {
             text: 'Оплатить',
             onPress: () => {
-              router.push({
-                ...budgetTabRoute(role === 'contractor' ? 'contractor' : 'customer', 'payments'),
-              } as never);
+              // W119: после приёмки → оплаты SoT
+              pushOsNav(
+                budgetTabRoute(role === 'contractor' ? 'contractor' : 'customer', 'payments'),
+                undefined,
+                role === 'contractor' ? 'contractor' : 'customer',
+              );
             },
           },
         ],

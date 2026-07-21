@@ -6,34 +6,29 @@ import type { OsRole } from '@/constants/osSections';
 import { pushOsNav, replaceOsNav, type OsNavHref } from '@/lib/pushOsNav';
 import { pushOsTabNav } from '@/lib/osTabNav';
 
-/** Детальный экран этапа с опциональным returnTo */
-export function pushStageDetail(id: string, returnTo?: string) {
-  router.push({
-    pathname: '/stage/[id]',
-    params: { id, ...(returnTo ? { returnTo } : {}) },
-  } as any);
+/**
+ * W119: helpers поверх pushOsNav SoT —
+ * stage/room/approval и useNavFromHere больше не зовут сырой router.push.
+ */
+export function pushStageDetail(id: string, returnTo?: string, role: OsRole = 'customer') {
+  pushOsNav({ pathname: '/stage/[id]', params: { id } }, returnTo, role);
 }
 
-/** Карточка комнаты с опциональным returnTo */
-export function pushRoomDetail(id: string, returnTo?: string) {
-  router.push({
-    pathname: '/room/[id]',
-    params: { id, ...(returnTo ? { returnTo } : {}) },
-  } as any);
+export function pushRoomDetail(id: string, returnTo?: string, role: OsRole = 'customer') {
+  pushOsNav({ pathname: '/room/[id]', params: { id } }, returnTo, role);
 }
 
-export function pushApprovalLink(link: ApprovalLink, returnTo?: string) {
-  if (returnTo) {
-    router.push({ pathname: link.pathname, params: { ...link.params, returnTo } } as any);
-    return;
-  }
-  if (link.params) router.push({ pathname: link.pathname, params: link.params } as any);
-  else router.push(link.pathname as any);
+export function pushApprovalLink(link: ApprovalLink, returnTo?: string, role: OsRole = 'customer') {
+  pushOsNav(
+    { pathname: link.pathname, params: link.params },
+    returnTo,
+    role,
+  );
 }
 
 export function navigateApproval(item: ApprovalItem, role: OsRole, _stackReturnTo?: string) {
   const link = resolveApprovalHref(item, role, '/approvals');
-  if (link) pushApprovalLink(link, link.params?.returnTo);
+  if (link) pushApprovalLink(link, link.params?.returnTo, role);
 }
 
 /** Текущий путь + навигация с returnTo для вкладок и hub-экранов */
@@ -46,28 +41,47 @@ export function useOsNavFromHere(role: OsRole) {
     pushTab: (routeName: string, hubTab?: string, extra?: Record<string, string>) =>
       pushOsTabNav(role, routeName, hubTab, extra, pathname),
     pushScreen: (path: string, params?: Record<string, string>) =>
-      router.push({ pathname: path as any, params: { ...params, returnTo: pathname } }),
+      pushOsNav({ pathname: path, params }, pathname, role),
   };
 }
 
 /** Текущий путь для returnTo при переходах в детальные экраны */
-export function useNavFromHere() {
+export function useNavFromHere(role: OsRole = 'customer') {
   const from = usePathname();
   return {
     from,
-    stage: (id: string) => pushStageDetail(id, from),
-    room: (id: string) => pushRoomDetail(id, from),
-    material: (id: string) => router.push({ pathname: '/material/[id]', params: { id, returnTo: from } }),
-    purchase: (id: string) => router.push({ pathname: '/purchase/[id]', params: { id, returnTo: from } }),
-    workOrder: (id: string) => router.push({ pathname: '/work-order/[id]', params: { id, returnTo: from } }),
+    stage: (id: string) => pushStageDetail(id, from, role),
+    room: (id: string) => pushRoomDetail(id, from, role),
+    material: (id: string) =>
+      pushOsNav({ pathname: '/material/[id]', params: { id } }, from, role),
+    purchase: (id: string) =>
+      pushOsNav({ pathname: '/purchase/[id]', params: { id } }, from, role),
+    workOrder: (id: string) =>
+      pushOsNav({ pathname: '/work-order/[id]', params: { id } }, from, role),
     chat: (threadId: string, projectId?: string) =>
-      router.push({
-        pathname: '/chat/[threadId]',
-        params: { threadId, ...(projectId ? { projectId } : {}), returnTo: from },
-      }),
-    article: (slug: string) => router.push({ pathname: '/article/[slug]', params: { slug, returnTo: from } }),
-    scanReceipt: (roomId?: string, stageId?: string) => router.push({ pathname: '/scan-receipt', params: { returnTo: from, ...(roomId ? { roomId } : {}), ...(stageId ? { stageId } : {}) } }),
-    href: (path: string) => router.push({ pathname: path as any, params: { returnTo: from } }),
+      pushOsNav(
+        {
+          pathname: '/chat/[threadId]',
+          params: { threadId, ...(projectId ? { projectId } : {}) },
+        },
+        from,
+        role,
+      ),
+    article: (slug: string) =>
+      pushOsNav({ pathname: '/article/[slug]', params: { slug } }, from, role),
+    scanReceipt: (roomId?: string, stageId?: string) =>
+      pushOsNav(
+        {
+          pathname: '/scan-receipt',
+          params: {
+            ...(roomId ? { roomId } : {}),
+            ...(stageId ? { stageId } : {}),
+          },
+        },
+        from,
+        role,
+      ),
+    href: (path: string) => pushOsNav(path, from, role),
     tab: (segment: string) => {
       const prefix = from.split('/(tabs)')[0];
       router.navigate({ pathname: `${prefix}/(tabs)/${segment}` as any, params: { returnTo: from } } as any);

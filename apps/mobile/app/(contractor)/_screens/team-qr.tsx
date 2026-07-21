@@ -2,6 +2,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert, Share, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -45,7 +46,7 @@ export default function TeamQrScreen() {
         /402|pro|подписк/i.test(msg)
           ? [
               { text: 'OK', style: 'cancel' },
-              { text: 'Подписка', onPress: () => router.push('/(contractor)/subscription' as never) },
+              { text: 'Подписка', onPress: () => pushOsNav('/(contractor)/subscription', undefined, 'contractor') },
             ]
           : undefined,
       );

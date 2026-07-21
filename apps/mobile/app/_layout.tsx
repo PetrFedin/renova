@@ -1,4 +1,4 @@
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
@@ -11,7 +11,7 @@ import { RenovaProvider, useRenova } from '@/lib/context/RenovaContext';
 import { NavTracker } from '@/components/renova/NavTracker';
 import { flushOfflineOutbox } from '@/lib/offline';
 import { initLang } from '@/lib/i18n';
-import { resolvePushLink } from '@/lib/pushLinks';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,8 +32,8 @@ export default function RootLayout() {
       const link = r.notification.request.content.data?.link_path as string | undefined;
       const returnTo = r.notification.request.content.data?.return_to as string | undefined;
       const pushRole = (r.notification.request.content.data?.role as string | undefined) === 'contractor' ? 'contractor' : 'customer';
-      const target = resolvePushLink(link, returnTo, pushRole as any);
-      if (target) router.push(target as any);
+      // W119: push notification → pushOsNav SoT (aliases/role/returnTo)
+      if (link) pushOsNav(link, returnTo, pushRole as any);
     });
     const apiBase = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
         // W93: online → канон flushOfflineOutbox (offlineFlush + projectDataBus)

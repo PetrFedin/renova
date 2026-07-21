@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { View, TextInput, Text, Pressable, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { searchProject } from '@/lib/globalSearch';
 import { pushSearch, getSearchHistory } from '@/lib/searchHistory';
@@ -18,10 +17,15 @@ function openSearchHit(
   // W110: чат — dynamic segment + highlight; остальное через pushOsNav SoT
   if (h.type === 'chat' || h.href.startsWith('/chat/')) {
     const threadId = h.href.replace('/chat/', '').split('?')[0].split('/')[0];
-    router.push({
-      pathname: '/chat/[threadId]',
-      params: { threadId, ...(h.msgId ? { highlightId: h.msgId } : {}), ...(returnTo ? { returnTo } : {}) },
-    } as any);
+    // W119: поиск → чат через SoT
+    pushOsNav(
+      {
+        pathname: '/chat/[threadId]',
+        params: { threadId, ...(h.msgId ? { highlightId: h.msgId } : {}) },
+      },
+      returnTo,
+      role,
+    );
     return;
   }
   pushOsNav(h.href, returnTo, role);

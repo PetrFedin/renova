@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -21,9 +21,9 @@ import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatReadSync } from '@/lib/useChatUnread';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
-import { budgetTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { usePathname } from 'expo-router';
+import { router } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -33,6 +33,7 @@ function MessageBubble({
   highlight,
   query,
   returnTo,
+  osRole,
   onReact,
   onPin,
   onReply,
@@ -45,6 +46,7 @@ function MessageBubble({
   highlight?: boolean;
   query?: string;
   returnTo?: string;
+  osRole: OsRole;
   onReact: (emoji: string) => void;
   onPin: () => void;
   onReply: () => void;
@@ -90,10 +92,12 @@ function MessageBubble({
       {m.work_order_id && (
         <Pressable
           onPress={() =>
-            router.push({
-              pathname: '/work-order/[id]',
-              params: { id: m.work_order_id!, ...(returnTo ? { returnTo } : {}) },
-            } as any)
+            // W119: WO из чата → pushOsNav SoT
+            pushOsNav(
+              { pathname: '/work-order/[id]', params: { id: m.work_order_id! } },
+              returnTo,
+              osRole,
+            )
           }
         >
           <Text style={s.link}>Открыть задачу →</Text>
@@ -240,7 +244,7 @@ export function ChatThreadView({
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   const openPaymentFlow = () => {
-    pushOsNav(budgetTabRoute(role, 'payments'), returnTo || pathname);
+    pushOsNav(budgetTabRoute(role, 'payments'), returnTo || pathname, role);
   };
 
   if (!chat || !user) {
@@ -308,6 +312,7 @@ export function ChatThreadView({
             highlight={highlightId === m.id}
             query={chatQuery.trim() || undefined}
             returnTo={returnTo || `/chat/${threadId}`}
+            osRole={role}
             onReact={async (emoji) => {
               try {
                 await api.reactChatMessage(user.id, projectId, threadId, m.id, emoji);
@@ -402,8 +407,7 @@ export function ChatThreadView({
                       {
                         text: 'Открыть оплаты',
                         onPress: () => {
-                          const r = budgetTabRoute('contractor', 'payments');
-                          router.push({ pathname: r.pathname, params: r.params } as never);
+                          pushOsNav(budgetTabRoute('contractor', 'payments'), returnTo || pathname, 'contractor');
                         },
                       },
                     ]);
@@ -423,8 +427,7 @@ export function ChatThreadView({
                   {
                     text: 'Открыть оплаты',
                     onPress: () => {
-                      const r = budgetTabRoute('contractor', 'payments');
-                      router.push({ pathname: r.pathname, params: r.params } as never);
+                      pushOsNav(budgetTabRoute('contractor', 'payments'), returnTo || pathname, 'contractor');
                     },
                   },
                 ]);
