@@ -35,7 +35,7 @@ export async function buildInboxItems(opts: {
       id: 'chat',
       kind: 'chat',
       title: 'Непрочитанные сообщения',
-      sub: `${chatUnread} непрочитанных`,
+      sub: `${chatUnread} непрочитанных во всех чатах`,
       href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
       priority: 90,
     });
