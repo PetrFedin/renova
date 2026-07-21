@@ -10,11 +10,12 @@ import {
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
   reloadInboxSync,
-  markChatReadAndSync,
+  markThreadRead,
   subscribeInboxSync,
   subscribeInboxWs,
 } from '@/lib/inboxSyncStore';
 import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
+import type { MarkThreadReadSource } from '@/lib/domain/markThreadReadPolicy';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { subscribeOfflineFlush } from '@/lib/offline';
@@ -68,9 +69,24 @@ export function useChatUnread(userId?: string, userRole?: UserRole) {
 
 export function useChatReadSync(userId?: string, userRole?: UserRole) {
   return useCallback(
-    async (projectId: string, threadId: string, knownUnread = 0) => {
+    async (
+      projectId: string,
+      threadId: string,
+      _knownUnread = 0,
+      readThroughMessageId?: string | null,
+      throughCreatedAt?: string | null,
+      source: MarkThreadReadSource = 'thread_visible',
+    ) => {
       if (!userId || !projectId || !threadId) return;
-      await markChatReadAndSync(userId, projectId, threadId, userRole, knownUnread);
+      await markThreadRead({
+        userId,
+        projectId,
+        threadId,
+        throughMessageId: readThroughMessageId,
+        throughCreatedAt,
+        userRole,
+        source,
+      });
     },
     [userId, userRole],
   );

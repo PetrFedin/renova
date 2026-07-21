@@ -12,8 +12,7 @@ import { indexChats } from '@/lib/chatSearchCache';
 import { api, ChatThread } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
-import { useChatUnread, useChatInboxThreads, useInboxWsListener } from '@/lib/useChatUnread';
-import { markChatReadAndSync } from '@/lib/inboxSyncStore';
+import { useChatUnread, useChatInboxThreads } from '@/lib/useChatUnread';
 import { useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
 import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
@@ -112,14 +111,15 @@ export function ChatListView() {
     if (!user) return;
     setLoadError(false);
     try {
+      // Один reloadInboxSync покрывает и threads, и unread — не дублировать reloadStore+reloadUnread
       if (projects.length > 0) {
         await reloadStore();
       } else if (activeProject) {
         const list = await api.listChats(user.id, activeProject.id, folder === 'archive');
         setLocalThreads(sortChatThreads(list));
         indexChats(list);
+        await reloadUnread();
       }
-      await reloadUnread();
     } catch {
       setLoadError(true);
     }
@@ -140,10 +140,8 @@ export function ChatListView() {
     if (prefsLoaded) void reload();
   }, [prefsLoaded, reload]);
   useProjectDataReload(onBusReload);
-  useInboxWsListener(useCallback(() => {
-    reload().catch(reportCatch('components.renova.chat.ChatListView.2'));
-    reloadUnread().catch(reportCatch('components.renova.chat.ChatListView.3'));
-  }, [reload, reloadUnread]));
+  // WS → ensureInboxWebSocket внутри useChatUnread → один reloadInboxSync + notify подписчиков.
+  // Не дублируем через useInboxWsListener(reload).
   useChatFallbackPoll(!!user && !inboxWsConnected, 12_000, () => { reload().catch(reportCatch('components.renova.chat.ChatListView.4')); });
 
   const displayThreads = useMemo(
@@ -174,10 +172,7 @@ export function ChatListView() {
       Alert.alert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
       return;
     }
-    const unread = t.unread_count || 0;
-    if (unread > 0 && user) {
-      await markChatReadAndSync(user.id, t.project_id, t.id, user.role, unread).catch(reportCatch('components.renova.chat.ChatListView.5'));
-    }
+    // Mark-read только в ChatThreadView после видимости — здесь только навигация.
     if (activeProject?.id !== t.project_id) {
       await loadProject(t.project_id).catch(reportCatch('components.renova.chat.ChatListView.6'));
     }

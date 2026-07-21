@@ -6,6 +6,12 @@ import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
+import {
+  decideMarkReadAction,
+  recordMarkReadDiag,
+  type ConfirmedReadCursor,
+  type MarkThreadReadSource,
+} from '@/lib/domain/markThreadReadPolicy';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -26,6 +32,30 @@ let wsCleanup: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let reloadInflight: Promise<void> | null = null;
 let lastReloadKey = '';
+
+/** In-flight mark-read: один запрос на threadId */
+const markInflight = new Map<string, Promise<MarkThreadReadResult>>();
+/** Последний подтверждённый сервером cursor */
+const confirmedRead = new Map<string, ConfirmedReadCursor>();
+
+export type MarkThreadReadArgs = {
+  userId: string;
+  projectId: string;
+  threadId: string;
+  throughMessageId?: string | null;
+  throughCreatedAt?: string | null;
+  userRole?: UserRole;
+  source: MarkThreadReadSource;
+  /** Повтор после ошибки сети — обойти skip_same */
+  force?: boolean;
+};
+
+export type MarkThreadReadResult = {
+  status: 'sent' | 'deduplicated' | 'skipped_same' | 'skipped_stale' | 'error';
+  threadId: string;
+  throughMessageId: string | null;
+  source: MarkThreadReadSource;
+};
 
 export function subscribeInboxSync(listener: Listener): () => void {
   listeners.add(listener);
@@ -186,14 +216,8 @@ function refreshInboxChatRow(nextChat: number) {
   inboxBadge = taskRows + n;
 }
 
-/** Прочитать тред: optimistic local + API + полный resync */
-export async function markChatReadAndSync(
-  userId: string,
-  projectId: string,
-  threadId: string,
-  userRole?: UserRole,
-  knownUnread = 0,
-): Promise<void> {
+/** Точечное обновление unread треда без полного inbox rebuild */
+function patchThreadReadLocal(threadId: string, threadUnread = 0) {
   const prev = {
     chatCount,
     chatFailed,
@@ -201,29 +225,178 @@ export async function markChatReadAndSync(
     inboxItems,
     inboxWsConnected,
   };
-
-  applyLocalThreadUnread(threadId, 0);
+  applyLocalThreadUnread(threadId, threadUnread);
   refreshInboxChatRow(chatCount);
   notifyIfChanged(prev);
+}
 
-  try {
-    await api.markChatRead(userId, projectId, threadId);
-    chatFailed = false;
-  } catch {
-    /* resync подтянет актуальное */
+/**
+ * Единый mark-read: dedupe in-flight, ignore stale/same cursor,
+ * точечный patch store; полный reload только при ошибке API.
+ */
+export async function markThreadRead(args: MarkThreadReadArgs): Promise<MarkThreadReadResult> {
+  const {
+    userId,
+    projectId,
+    threadId,
+    throughMessageId = null,
+    throughCreatedAt = null,
+    userRole,
+    source,
+    force = false,
+  } = args;
+
+  const base = {
+    threadId,
+    throughMessageId,
+    source,
+  };
+
+  const evalDecision = (hasInflight: boolean) =>
+    decideMarkReadAction({
+      force,
+      throughMessageId,
+      throughCreatedAt,
+      confirmed: confirmedRead.get(threadId) ?? null,
+      hasInflight,
+    });
+
+  // Уже есть in-flight → ждём и не стартуем второй API
+  const existing = markInflight.get(threadId);
+  if (existing) {
+    recordMarkReadDiag({ ...base, outcome: 'deduplicated' });
+    await existing;
+    const after = evalDecision(false);
+    if (after.action === 'skip_same') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_same' });
+      return { status: 'skipped_same', ...base };
+    }
+    if (after.action === 'skip_stale') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_stale' });
+      return { status: 'skipped_stale', ...base };
+    }
+    if (after.action === 'await_inflight') {
+      return { status: 'deduplicated', ...base };
+    }
+    // более новый cursor — fall through к новому send
+  } else {
+    const early = evalDecision(false);
+    if (early.action === 'skip_same') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_same' });
+      return { status: 'skipped_same', ...base };
+    }
+    if (early.action === 'skip_stale') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_stale' });
+      return { status: 'skipped_stale', ...base };
+    }
   }
 
-  await reloadInboxSync(
-    {
-      userId,
-      userRole,
-      projectId,
-      project: cachedFullSync?.project,
-      osRole: cachedFullSync?.osRole,
-    },
-    true,
-  );
-  emitInboxWs();
+  // Атомарный claim слота до любого await I/O
+  let resolveClaim!: (r: MarkThreadReadResult) => void;
+  const claim = new Promise<MarkThreadReadResult>((res) => {
+    resolveClaim = res;
+  });
+  // Если проиграли гонку — другой уже поставил promise
+  if (markInflight.has(threadId)) {
+    recordMarkReadDiag({ ...base, outcome: 'deduplicated' });
+    await markInflight.get(threadId);
+    const afterRace = evalDecision(false);
+    if (afterRace.action === 'send') {
+      // редкий случай: нужно отправить новый cursor — рекурсия с тем же args
+      return markThreadRead(args);
+    }
+    const status = afterRace.action === 'skip_stale'
+      ? 'skipped_stale' as const
+      : afterRace.action === 'skip_same'
+        ? 'skipped_same' as const
+        : 'deduplicated' as const;
+    recordMarkReadDiag({ ...base, outcome: status === 'deduplicated' ? 'deduplicated' : status });
+    return { status, ...base };
+  }
+  markInflight.set(threadId, claim);
+
+  try {
+    patchThreadReadLocal(threadId, 0);
+    recordMarkReadDiag({ ...base, outcome: 'patched' });
+
+    try {
+      const res = await api.markChatRead(userId, projectId, threadId, throughMessageId);
+      chatFailed = false;
+      const serverUnread = typeof res?.thread_unread_count === 'number' ? res.thread_unread_count : 0;
+      const confirmedId = res?.read_through_message_id ?? throughMessageId;
+      confirmedRead.set(threadId, {
+        messageId: confirmedId ?? null,
+        createdAt: throughCreatedAt,
+      });
+      if (typeof res?.total_unread_count === 'number') {
+        const prev = {
+          chatCount,
+          chatFailed,
+          inboxBadge,
+          inboxItems,
+          inboxWsConnected,
+        };
+        applyLocalThreadUnread(threadId, serverUnread);
+        chatCount = res.total_unread_count;
+        refreshInboxChatRow(chatCount);
+        notifyIfChanged(prev);
+      } else {
+        patchThreadReadLocal(threadId, serverUnread);
+      }
+      const ok: MarkThreadReadResult = { status: 'sent', ...base };
+      recordMarkReadDiag({ ...base, outcome: 'sent' });
+      resolveClaim(ok);
+      return ok;
+    } catch {
+      recordMarkReadDiag({ ...base, outcome: 'error' });
+      await reloadInboxSync(
+        {
+          userId,
+          userRole,
+          projectId,
+          project: cachedFullSync?.project,
+          osRole: cachedFullSync?.osRole,
+        },
+        true,
+      );
+      const err: MarkThreadReadResult = { status: 'error', ...base };
+      resolveClaim(err);
+      return err;
+    }
+  } finally {
+    if (markInflight.get(threadId) === claim) {
+      markInflight.delete(threadId);
+    }
+  }
+}
+
+/** @deprecated используйте markThreadRead */
+export async function markChatReadAndSync(
+  userId: string,
+  projectId: string,
+  threadId: string,
+  userRole?: UserRole,
+  _knownUnread = 0,
+  readThroughMessageId?: string | null,
+): Promise<void> {
+  await markThreadRead({
+    userId,
+    projectId,
+    threadId,
+    throughMessageId: readThroughMessageId,
+    userRole,
+    source: 'manual',
+  });
+}
+
+/** Сброс confirmed cursors (смена пользователя) */
+export function clearMarkReadCursors(): void {
+  confirmedRead.clear();
+  markInflight.clear();
+}
+
+export function getConfirmedReadCursor(threadId: string): ConfirmedReadCursor | null {
+  return confirmedRead.get(threadId) ?? null;
 }
 
 export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: UserRole): Promise<void> {
@@ -262,6 +435,7 @@ export async function reloadInboxSync(
       inboxItems = [];
       inboxBadge = 0;
       cachedFullSync = null;
+      clearMarkReadCursors();
       notifyIfChanged(prev);
       return;
     }
