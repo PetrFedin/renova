@@ -13,7 +13,6 @@ import { api, ChatThread } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { useChatUnread, useChatInboxThreads, useInboxWsListener } from '@/lib/useChatUnread';
-import { markChatReadAndSync } from '@/lib/inboxSyncStore';
 import { useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
 import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
@@ -174,10 +173,7 @@ export function ChatListView() {
       Alert.alert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
       return;
     }
-    const unread = t.unread_count || 0;
-    if (unread > 0 && user) {
-      await markChatReadAndSync(user.id, t.project_id, t.id, user.role, unread).catch(reportCatch('components.renova.chat.ChatListView.5'));
-    }
+    // Mark-read только в ChatThreadView после видимости — здесь только навигация.
     if (activeProject?.id !== t.project_id) {
       await loadProject(t.project_id).catch(reportCatch('components.renova.chat.ChatListView.6'));
     }
