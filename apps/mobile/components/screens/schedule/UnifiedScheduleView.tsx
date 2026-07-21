@@ -29,6 +29,15 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import {
+  useAsyncResource,
+  asyncShowError,
+  asyncShowStale,
+  asyncShowEmpty,
+  asyncIsLoading,
+  asyncIsRefreshing,
+} from '@/lib/async';
+import { InlineError, StaleDataBanner, LoadingSkeleton } from '@/components/async';
+import {
   alertScheduleConfirmed,
   alertScheduleRejected,
   alertScheduleSubmitted,
@@ -85,21 +94,53 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const [cursor, setCursor] = useState(() => new Date());
   const [planBusy, setPlanBusy] = useState(false);
   const [planHint, setPlanHint] = useState<string | null>(null);
-  const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
+  const [calError, setCalError] = useState(false);
+
+  const projectId = activeProject?.id;
+  const {
+    resource: scheduleRes,
+    data: schedule,
+    reload: reloadSchedule,
+    setData: setSchedule,
+  } = useAsyncResource<WorkSchedule | null>({
+    contextKey: `work-schedule:${projectId || ''}`,
+    enabled: Boolean(user?.id && projectId),
+    scope: 'schedule.activePlan',
+    fetcher: async () => {
+      if (!user || !activeProject) return null;
+      return api.getActiveWorkSchedule(user.id, activeProject.id);
+    },
+    isEmpty: (s) => s == null,
+  });
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api.getCalendar(user.id, activeProject.id).then(setCal).catch((e) => { reportError('components.screens.schedule.UnifiedSched.Cal', e); setCal(null); });
-    api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch((e) => { reportError('components.screens.schedule.UnifiedSched.WorkOrders', e); setWorkOrders([]); });
-    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch((e) => { reportError('components.screens.schedule.UnifiedSched.Purchases', e); setPurchases([]); });
-    api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => {
-      setSchedule(s);
-      setPlanHint(s ? `План: ${s.status}` : null);
-    }).catch(() => { setSchedule(null); setPlanHint(null); });
-  }, [user?.id, activeProject?.id]);
+    setCalError(false);
+    api.getCalendar(user.id, activeProject.id).then((c) => {
+      setCal(c);
+      setCalError(false);
+    }).catch((e) => {
+      reportError('components.screens.schedule.UnifiedSched.Cal', e);
+      // не затираем предыдущий cal — иначе «пустой календарь» вместо ошибки
+      setCalError(true);
+    });
+    api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch((e) => {
+      reportError('components.screens.schedule.UnifiedSched.WorkOrders', e);
+      // сохраняем предыдущий список
+    });
+    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch((e) => {
+      reportError('components.screens.schedule.UnifiedSched.Purchases', e);
+    });
+    void reloadSchedule({ soft: true });
+  }, [user?.id, activeProject?.id, reloadSchedule]);
   useProjectDataReload(reload);
 
   useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    if (schedule) setPlanHint(`План: ${schedule.status}`);
+    else if (asyncShowEmpty(scheduleRes)) setPlanHint(null);
+  }, [schedule, scheduleRes]);
 
   useEffect(() => {
     const raw = typeof dateParam === 'string' ? dateParam : Array.isArray(dateParam) ? dateParam[0] : null;
@@ -190,12 +231,29 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
     return <ProjectEmptyState role={role} />;
   }
   if (!cal) {
+    if (calError) {
+      return (
+        <View style={s.center}>
+          <InlineError
+            error={null}
+            title="Не удалось загрузить календарь"
+            onRetry={reload}
+          />
+        </View>
+      );
+    }
     return <View style={s.center}><Text>Загрузка календаря…</Text></View>;
   }
 
   return (
     <View style={s.root}>
       <ReadOnlyBanner />
+      {calError ? (
+        <StaleDataBanner
+          error={null}
+          onRetry={reload}
+        />
+      ) : null}
       <View style={[s.calendarPane, { maxHeight: calendarMaxH }]}>
         {dayDetailOpen && selectedDate ? (
           <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 8 }}>
@@ -234,18 +292,38 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
         <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
         <View style={s.agreeBox}>
           <Text style={s.agreeTitle}>План-график</Text>
-          <Text style={s.planSub}>
-            {schedule
-              ? `Статус: ${schedule.status}${schedule.items?.length ? ` · ${schedule.items.length} этапов` : ''}`
-              : 'План ещё не создан'}
-          </Text>
+          {asyncShowStale(scheduleRes) ? (
+            <StaleDataBanner
+              error={scheduleRes.error}
+              offline={scheduleRes.status === 'offline'}
+              onRetry={() => void reloadSchedule({ soft: true })}
+              busy={asyncIsRefreshing(scheduleRes)}
+            />
+          ) : null}
+          {asyncIsLoading(scheduleRes) ? <LoadingSkeleton rows={1} height={40} /> : null}
+          {asyncShowError(scheduleRes) ? (
+            <InlineError
+              error={scheduleRes.error}
+              title="Не удалось загрузить план-график"
+              onRetry={() => void reloadSchedule({ soft: false })}
+              busy={asyncIsRefreshing(scheduleRes)}
+            />
+          ) : (
+            <Text style={s.planSub}>
+              {schedule
+                ? `Статус: ${schedule.status}${schedule.items?.length ? ` · ${schedule.items.length} этапов` : ''}`
+                : asyncShowEmpty(scheduleRes) || scheduleRes.status === 'success'
+                  ? 'План ещё не создан'
+                  : planHint || '…'}
+            </Text>
+          )}
           {/* W66 #16: причина отклонения видна обеим ролям */}
-          {schedule?.status === 'rejected' && schedule.rejection_reason ? (
+          {!asyncShowError(scheduleRes) && schedule?.status === 'rejected' && schedule.rejection_reason ? (
             <Text style={[s.planSub, { color: '#b45309' }]}>
               Причина: {schedule.rejection_reason}
             </Text>
           ) : null}
-          {!readOnly && role === 'contractor' && !schedule ? (
+          {!asyncShowError(scheduleRes) && !readOnly && role === 'contractor' && !schedule ? (
             <Pressable
               style={s.planCta}
               disabled={planBusy}

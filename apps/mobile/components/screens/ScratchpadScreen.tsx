@@ -16,6 +16,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ScratchpadLine } from '@/lib/api';
 import { createProjectChat } from '@/lib/createProjectChat';
+import { threadsFromChatInbox } from '@/lib/domain/chatUnreadSnapshot';
 import { budgetTabHref, calendarTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 
@@ -142,7 +143,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
           if (!user || !activeProject) return;
           try {
             // Fail-closed: без inbox не создаём чат «вслепую» (дубли/потеря контекста)
-            const existing = await api.chatInbox(user.id);
+            const existing = threadsFromChatInbox(await api.chatInbox(user.id));
             const title = line.text.slice(0, 60);
             await createProjectChat({
               userId: user.id,
