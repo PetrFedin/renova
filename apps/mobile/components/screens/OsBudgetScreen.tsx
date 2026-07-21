@@ -1,6 +1,7 @@
 /** Единый «Бюджет» — оркестратор вкладок (данные в useOsBudgetScreen) */
-import { useState } from 'react';
-import { ScrollView } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ScrollView, View, Text } from 'react-native';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -28,13 +29,24 @@ import { normalizeBudgetTab } from '@/constants/budgetTabs';
 export type { BudgetTab } from '@/constants/budgetTabs';
 
 export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: BudgetTab }) {
-  const { roomId: roomParam, stageId: stageParam, period: periodParam, focus: focusParam, view: viewParam, tab: tabParam } = useLocalSearchParams<{
+  const {
+    roomId: roomParam,
+    stageId: stageParam,
+    period: periodParam,
+    focus: focusParam,
+    view: viewParam,
+    tab: tabParam,
+    openPayment: openPaymentParam,
+    paymentId: paymentIdParam,
+  } = useLocalSearchParams<{
     roomId?: string;
     stageId?: string;
     period?: string;
     focus?: string;
     view?: ExpenseView;
     tab?: string;
+    openPayment?: string;
+    paymentId?: string;
   }>();
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
@@ -44,8 +56,8 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
   const [paymentDetail, setPaymentDetail] = useState<Payment | null>(null);
 
   const {
-    user, activeProject, summary, expenses, payments, receipts, picks, budgetAlerts,
-    payFilter, setPayFilter, pending, filteredPayments, reload,
+    user, activeProject, summary, expenses, payments, receipts, purchases, picks, budgetAlerts,
+    payFilter, setPayFilter, pending, filteredPayments, reload, loadState,
   } = useOsBudgetScreen();
 
   const { customerBudget } = useCustomerBudget({
@@ -56,6 +68,20 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
 
   if (!activeProject || !user) {
     return <ProjectEmptyState role={role} />;
+  }
+
+  if (loadState === 'error') {
+    return (
+      <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center' }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text }}>
+          Не удалось загрузить бюджет
+        </Text>
+        <Text style={{ fontSize: 13, color: RenovaTheme.colors.textMuted }}>
+          Данные не загружены — это не «0 ₽ расходов». Проверьте сеть и повторите.
+        </Text>
+        <PrimaryButton title="Повторить" onPress={() => { void reload(); }} />
+      </View>
+    );
   }
 
   const resolvedTab = normalizeBudgetTab(tabParam ?? tab).tab;
@@ -72,11 +98,25 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     activeProject.rooms || [],
     activeProject.stages || [],
     picks,
+    purchases,
   );
   const listTotal = unifiedExpenseTotal(unifiedRows);
   const serverFact = summary?.budget_spent ?? figures.spent;
   const riskColor = summary?.risk === 'high' ? RenovaTheme.colors.danger : summary?.risk === 'medium' ? RenovaTheme.colors.warning : RenovaTheme.colors.success;
   const period = (periodParam as string) || 'month';
+
+  useEffect(() => {
+    if (paymentDetail) return;
+    const wantOpen = openPaymentParam === '1' || openPaymentParam === 'true' || Boolean(paymentIdParam);
+    if (!wantOpen) return;
+    if (resolvedTab !== 'payments' && resolvedTab !== 'summary') return;
+    const pendingList = payments.filter((x) => x.status === 'pending');
+    const target =
+      (paymentIdParam && payments.find((x) => x.id === paymentIdParam))
+      || pendingList[0]
+      || null;
+    if (target) setPaymentDetail(target);
+  }, [openPaymentParam, paymentIdParam, payments, resolvedTab, paymentDetail]);
 
   const summaryWidgets: OsWidget[] = [
     {
@@ -132,6 +172,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             budgetAlerts={budgetAlerts}
             expenses={expenses}
             pendingPayments={pending}
+            purchases={purchases}
             stages={activeProject.stages || []}
             rooms={activeProject.rooms || []}
             picks={picks}
@@ -154,6 +195,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             receipts={receipts}
             expenses={expenses}
             picks={picks}
+            purchases={purchases}
             role={role}
             canWrite={canWrite}
             readOnly={!!readOnly}

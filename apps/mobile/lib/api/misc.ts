@@ -1,5 +1,5 @@
 /** API: misc */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ApprovalItem, ArticleDetail, ArticleSummary, ProjectDetail } from './types';
 export const miscApi = {
   listArticles: (category?: string) => req<ArticleSummary[]>(`/api/v1/articles${category ? `?category=${category}` : ''}`),
@@ -10,7 +10,151 @@ export const miscApi = {
   linkContractor: (userId: string, projectId: string, contractorId: string) =>
     req<ProjectDetail>(`/api/v1/projects/${projectId}/contractor`, { method: 'POST', body: JSON.stringify({ contractor_id: contractorId }) }, userId),
   removeViewer: (userId: string, projectId: string, viewerUserId: string) => req(`/api/v1/projects/${projectId}/viewers/${viewerUserId}`, { method: 'DELETE' }, userId),
+  createViewerPortalLink: (
+    userId: string,
+    projectId: string,
+    viewerUserId: string,
+    opts?: { allow_accept_stage?: boolean; allow_pay?: boolean },
+  ) =>
+    req<{ token: string; url: string; expires_hours: number }>(
+      `/api/v1/projects/${projectId}/viewers/${viewerUserId}/portal-link`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          allow_accept_stage: Boolean(opts?.allow_accept_stage),
+          allow_pay: Boolean(opts?.allow_pay),
+        }),
+      },
+      userId,
+    ),
+  /** Magic-link для самого заказчика (приёмка / оплата по явным scopes) */
+  createCustomerPortalLink: (
+    userId: string,
+    projectId: string,
+    opts?: { allow_accept_stage?: boolean; allow_pay?: boolean },
+  ) =>
+    req<{ token: string; url: string; expires_hours: number }>(
+      `/api/v1/projects/${projectId}/portal-link`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          allow_accept_stage: opts?.allow_accept_stage !== false,
+          allow_pay: opts?.allow_pay !== false,
+        }),
+      },
+      userId,
+    ),
+  exchangePortalToken: (token: string) =>
+    req<{ user_id: string; project_id: string; project_name: string; read_only: boolean; access_mode: string; role: string; scopes?: string[]; access_token?: string; token_type?: string }>(
+      '/api/v1/auth/portal/session',
+      { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalSignDocument: (projectId: string, documentId: string, token: string, provider = 'in_app') =>
+    req<{ ok: boolean; signature_id: string; status: string; signing_url?: string | null }>(
+      `/api/v1/portal/projects/${projectId}/documents/${documentId}/sign`,
+      { method: 'POST', body: JSON.stringify({ token, provider }) },
+      undefined,
+    ),
+  portalAcceptStage: (projectId: string, acceptanceId: string, token: string, comment?: string) =>
+    req<{ id: string; stage_id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/work-acceptances/${acceptanceId}/accept`,
+      { method: 'POST', body: JSON.stringify({ token, comment }) },
+      undefined,
+    ),
+  /** W66 #13: возврат этапа на доработку через portal */
+  portalReturnStage: (projectId: string, acceptanceId: string, token: string, comment?: string) =>
+    req<{ id: string; stage_id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/work-acceptances/${acceptanceId}/return`,
+      { method: 'POST', body: JSON.stringify({ token, comment }) },
+      undefined,
+    ),
+  /** W57: подтверждение графика с portal token */
+  portalConfirmSchedule: (userId: string, projectId: string, scheduleId: string, token: string) =>
+    req(
+      `/api/v1/portal/projects/${projectId}/work-schedules/${scheduleId}/confirm`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      userId,
+    ),
+  /** W65: отклонение графика с portal token */
+  portalRejectSchedule: (userId: string, projectId: string, scheduleId: string, token: string, reason?: string) =>
+    req(
+      `/api/v1/portal/projects/${projectId}/work-schedules/${scheduleId}/reject`,
+      { method: 'POST', body: JSON.stringify({ token, reason: reason || null }) },
+      userId,
+    ),
+  portalLockEstimate: (projectId: string, token: string) =>
+    req<{ ok: boolean; estimate_locked_at?: string | null }>(
+      `/api/v1/portal/projects/${projectId}/estimate/lock`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalRejectEstimate: (projectId: string, token: string, reason?: string) =>
+    req<{ ok: boolean }>(
+      `/api/v1/portal/projects/${projectId}/estimate/reject`,
+      { method: 'POST', body: JSON.stringify({ token, reason: reason || null }) },
+      undefined,
+    ),
+    portalApproveChangeOrder: (projectId: string, orderId: string, token: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/change-orders/${orderId}/approve`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalRejectChangeOrder: (projectId: string, orderId: string, token: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/change-orders/${orderId}/reject`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalSnapshot: (userId: string, projectId: string) =>
+    req<{
+      project: { id: string; name: string; address?: string | null; progress_percent?: number };
+      read_only: boolean;
+      schedule: Record<string, unknown>;
+      pending_work_schedule?: { id: string; title?: string; status: string } | null;
+      can_confirm_schedule?: boolean;
+      pending_payments: { id: string; title: string; amount: number; status: string }[];
+      documents: { id: string; title: string; kind?: string; status?: string }[];
+      documents_total: number;
+      selections: { id: string; title: string; category: string; status: string; price: number; allowance?: number | null }[];
+      selections_total: number;
+      pending_acceptances?: { id: string; stage_id: string; stage_name?: string | null; status: string; hours_waiting?: number | null }[];
+      estimate_summary?: { lines_count: number; total: number; locked_at?: string | null; proposed_at?: string | null; lines: { name: string; unit: string; qty: number; price: number; total: number }[] };
+      can_accept_stage?: boolean;
+      can_sign_documents?: boolean;
+      pending_draft_documents?: { id: string; title: string; status?: string }[];
+      pending_change_orders?: { id: string; title: string; amount: number; description?: string | null; status: string }[];
+      can_decide_change_orders?: boolean;
+      /** Trust: реквизиты исполнителя — без demo-карт */
+      contractor_recipient_name?: string | null;
+      contractor_company_name?: string | null;
+      contractor_payment_requisites?: string | null;
+      payments_mode?: 'live' | 'requisites' | 'demo' | 'off';
+    }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
-  rejectApproval: (userId: string, projectId: string, itemId: string, type: string, reason: string) => req(`/api/v1/projects/${projectId}/approvals/${itemId}/reject`, { method: 'POST', body: JSON.stringify({ type, reason }) }, userId),
+  /** W66 #14: единый approve через hub (офлайн-очередь) */
+  approveApproval: async (userId: string, projectId: string, itemId: string, type: string) => {
+    const body = { type };
+    try {
+      return await req(`/api/v1/projects/${projectId}/approvals/${itemId}/approve`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/approvals/${itemId}/approve`, method: 'POST', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
+  rejectApproval: async (userId: string, projectId: string, itemId: string, type: string, reason: string) => {
+    const body = { type, reason };
+    try {
+      return await req(`/api/v1/projects/${projectId}/approvals/${itemId}/reject`, { method: 'POST', body: JSON.stringify(body) }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/approvals/${itemId}/reject`, method: 'POST', body: JSON.stringify(body), userId });
+      throw new Error('offline_queued');
+    }
+  },
   enqueueOfflineCreate: async (path: string, method: string, body: object, userId: string) => { const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path, method, body: JSON.stringify(body), userId }); },
 };

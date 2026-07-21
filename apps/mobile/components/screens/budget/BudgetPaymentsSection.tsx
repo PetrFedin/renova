@@ -1,8 +1,10 @@
 /** Вкладка «Бюджет → Оплаты» — create, фильтры, история */
+import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { CreatePaymentForm } from '@/components/renova/CreatePaymentForm';
+import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 import type { Payment, ProjectDetail } from '@/lib/api';
 import type { PaymentFilter } from '@/lib/hooks/useOsBudgetScreen';
@@ -25,6 +27,8 @@ type Props = {
 export function BudgetPaymentsSection({
   role, userId, project, readOnly, canWrite, payFilter, setPayFilter, filteredPayments, onPaymentPress, onSaved,
 }: Props) {
+  const [bankOpen, setBankOpen] = useState(false);
+
   return (
     <>
       {role === 'contractor' && canWrite && !readOnly && (
@@ -33,13 +37,26 @@ export function BudgetPaymentsSection({
       <Text style={s.dataHint}>
         Счета подрядчикам — это оплата работ, не закупка материалов. Расходы на чеки и материалы — вкладка «Расходы».
       </Text>
+      {/* W123: выписка → confirm рядом с оплатами (Smetter/Gectaro) */}
+      {canWrite && !readOnly ? (
+        <PrimaryButton
+          title="Импорт выписки банка"
+          variant="outline"
+          onPress={() => setBankOpen(true)}
+        />
+      ) : null}
       <Text style={s.section}>Счета и история</Text>
       <View style={s.filterRow}>
-        {(['all', 'pending', 'confirmed'] as PaymentFilter[]).map((f) => (
+        {(['all', 'pending', 'paid_unverified', 'confirmed'] as PaymentFilter[]).map((f) => (
           <PrimaryButton
             key={f}
             compact
-            title={f === 'all' ? 'Все' : f === 'pending' ? 'Ожидают' : 'Оплачено'}
+            title={
+              f === 'all' ? 'Все'
+              : f === 'pending' ? 'Ожидают'
+              : f === 'paid_unverified' ? 'Без чека'
+              : 'Оплачено'
+            }
             variant={payFilter === f ? 'primary' : 'outline'}
             onPress={() => setPayFilter(f)}
           />
@@ -47,7 +64,13 @@ export function BudgetPaymentsSection({
       </View>
       {!filteredPayments.length && (
         <Text style={s.empty}>
-          {payFilter === 'pending' ? 'Нет ожидающих оплат' : payFilter === 'confirmed' ? 'История оплат пуста' : 'Счетов пока нет'}
+          {payFilter === 'pending'
+            ? 'Нет ожидающих оплат'
+            : payFilter === 'paid_unverified'
+              ? 'Нет оплат без чека'
+              : payFilter === 'confirmed'
+                ? 'История оплат пуста'
+                : 'Счетов пока нет'}
         </Text>
       )}
       {filteredPayments.map((p) => (
@@ -59,11 +82,26 @@ export function BudgetPaymentsSection({
               {p.confirmed_at ? ` · ${new Date(p.confirmed_at).toLocaleDateString('ru-RU')}` : ''}
             </Text>
           </View>
-          <Text style={[s.status, p.status === 'pending' && { color: RenovaTheme.colors.warning }]}>
+          <Text style={[
+            s.status,
+            p.status === 'pending' && { color: RenovaTheme.colors.warning },
+            p.status === 'paid_unverified' && { color: RenovaTheme.colors.warning },
+          ]}>
             {PAYMENT_STATUS_LABEL[p.status] || p.status}
           </Text>
         </Pressable>
       ))}
+      <BankStatementImportSheet
+        visible={bankOpen}
+        onClose={() => setBankOpen(false)}
+        userId={userId}
+        projectId={project.id}
+        role={role}
+        onDone={() => {
+          setBankOpen(false);
+          onSaved();
+        }}
+      />
     </>
   );
 }

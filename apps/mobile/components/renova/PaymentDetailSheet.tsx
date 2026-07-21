@@ -1,6 +1,9 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Alert, AppState } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Alert, AppState, ActivityIndicator, Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Clipboard from 'expo-clipboard';
+import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
@@ -8,6 +11,8 @@ import { formMetaText } from '@/constants/formTypography';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, ApiError, type Payment, type Stage } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { OsRole } from '@/constants/osSections';
 import { pushStageDetail } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -17,6 +22,9 @@ import { paymentReceiptKey } from '@/constants/sessionKeys';
 
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL, PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
 import { buildPaymentHistory, formatPaymentEventDate } from '@/lib/domain/paymentHistory';
+import { buildPaymentRequisites } from '@/lib/paymentRequisites';
+import { alertPaymentConfirmed } from '@/lib/estimatePayNav';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
@@ -46,10 +54,12 @@ export function PaymentDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   const pathname = usePathname();
   const [step, setStep] = useState<PayStep>('info');
   const [transferAck, setTransferAck] = useState(false);
   const [receiptAttached, setReceiptAttached] = useState(false);
+  const [cardBusy, setCardBusy] = useState(false);
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
@@ -72,19 +82,54 @@ export function PaymentDetailSheet({
     setStep('info');
     setTransferAck(false);
     setReceiptAttached(false);
-    reloadReceiptFlag().catch(() => {});
+    reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
   }, [payment?.id, reloadReceiptFlag]);
 
   useEffect(() => {
     if (!payment) return;
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') reloadReceiptFlag().catch(() => {});
+      if (state === 'active') reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
     });
     return () => sub.remove();
   }, [payment?.id, reloadReceiptFlag]);
 
+  const [reqText, setReqText] = useState('');
+  const [reqMissing, setReqMissing] = useState<string | null>(null);
+  const [reqLoaded, setReqLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!payment || !userId || !projectId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await api.getPaymentRequisites(userId, projectId);
+        if (cancelled) return;
+        const built = buildPaymentRequisites({
+          recipientName: raw.recipient_name,
+          paymentRequisites: raw.payment_requisites,
+          amount: payment.amount,
+          title: payment.title,
+        });
+        setReqText(built.text);
+        setReqMissing(built.missingHint);
+      } catch {
+        if (cancelled) return;
+        const built = buildPaymentRequisites({
+          amount: payment.amount,
+          title: payment.title,
+        });
+        setReqText(built.text);
+        setReqMissing(built.missingHint);
+      } finally {
+        if (!cancelled) setReqLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [payment?.id, payment?.amount, payment?.title, userId, projectId]);
+
   if (!payment) return null;
 
+  const requisites = reqText || buildPaymentRequisites({ amount: payment.amount, title: payment.title }).text;
   const stage = stages.find((st) => st.id === payment.stage_id);
   const isCustomer = role === 'customer';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
@@ -93,34 +138,76 @@ export function PaymentDetailSheet({
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
   const history = buildPaymentHistory(payment);
 
-  const requisites = [
-    'Получатель: исполнитель по договору',
-    'Сбербанк · карта 2202 2065 •••• 4521',
-    `Сумма: ${formatRub(payment.amount)}`,
-    `Назначение: ${payment.title}`,
-  ].join('\n');
-
   const openReceipt = () => {
     setReceiptAttached(true);
-    pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname);
+    pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname, role);
     Alert.alert('Чек', 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить».');
   };
 
-  const openSbp = () => {
+  const openSbp = async () => {
+    if (reqMissing) {
+      Alert.alert('Реквизиты не указаны', reqMissing);
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(String(Math.round(payment.amount)));
+    } catch { /* fallback — пользователь скопирует вручную */ }
     Alert.alert(
       'Перевод',
-      `${requisites}\n\nСкопируйте сумму и назначение в приложении банка или СБП.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Я перевёл',
-          onPress: () => {
-            setTransferAck(true);
-            setStep('confirm');
-          },
-        },
-      ],
+      `${requisites}\n\nСумма скопирована в буфер. Откройте приложение банка или СБП и вставьте сумму.`,
+      Platform.OS === 'web'
+        ? [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
+          ]
+        : [
+            { text: 'Отмена', style: 'cancel' },
+            {
+              text: 'Открыть банк',
+              onPress: () => {
+                // W58: без fake bank:// scheme — пользователь открывает свой банк
+                Alert.alert(
+                  'Реквизиты скопированы',
+                  'Откройте приложение вашего банка или СБП и вставьте реквизиты из буфера.',
+                );
+              },
+            },
+            { text: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
+          ],
     );
+  };
+
+  const copySbpAmount = async () => {
+    const amountText = String(Math.round(payment.amount));
+    await Clipboard.setStringAsync(amountText);
+    Alert.alert(
+      'Сумма скопирована',
+      `${formatRub(payment.amount)} в буфере обмена. Откройте приложение банка и вставьте сумму для перевода по СБП.`,
+      Platform.OS === 'web'
+        ? [{ text: 'OK' }]
+        : [
+            { text: 'OK' },
+            {
+              text: 'Открыть банк',
+              onPress: () => {
+                Alert.alert(
+                  'Сумма в буфере',
+                  'Откройте приложение банка или СБП и вставьте сумму вручную.',
+                );
+              },
+            },
+          ],
+    );
+  };
+
+
+  const copyRequisites = async () => {
+    if (reqMissing) {
+      Alert.alert('Реквизиты не указаны', reqMissing);
+      return;
+    }
+    await Clipboard.setStringAsync(requisites);
+    Alert.alert('Реквизиты скопированы', 'Вставьте в приложении банка для перевода по СБП или реквизитам.');
   };
 
   const goToAcceptance = () => {
@@ -129,7 +216,52 @@ export function PaymentDetailSheet({
       pushStageDetail(stage.id, pathname);
       return;
     }
-    pushOsNav(repairTabRoute(role, 'control'), pathname);
+    pushOsNav(repairTabRoute(role, 'control'), pathname, role);
+  };
+
+  const payWithCard = async () => {
+    if (stageNeedsAcceptance) {
+      Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
+        { text: 'Отмена', style: 'cancel' },
+        { text: 'Перейти к приёмке', onPress: goToAcceptance },
+      ]);
+      return;
+    }
+    setCardBusy(true);
+    try {
+      const pay = await api.checkoutYookassa(userId, projectId, payment.id);
+      if (pay.demo) {
+        await syncProjectSideEffects({
+          user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
+          project: activeProject ?? ({ id: projectId } as any),
+          role,
+        });
+        onChanged?.();
+        onClose();
+        Alert.alert('Оплата (demo)', pay.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.');
+        return;
+      }
+      if (pay.confirmation_url) {
+        await WebBrowser.openBrowserAsync(pay.confirmation_url);
+        Alert.alert(
+          'ЮKassa',
+          'После оплаты вы вернётесь в приложение. Статус счёта обновится автоматически.',
+        );
+      }
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409) {
+        Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Перейти к приёмке', onPress: goToAcceptance },
+        ]);
+      } else if (e instanceof ApiError && e.status === 503) {
+        Alert.alert('ЮKassa', 'Нет ключей YOOKASSA_* на сервере (staging/prod demo выключен). Задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET или оплатите по реквизитам/чеку.');
+      } else {
+        Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось открыть оплату картой'));
+      }
+    } finally {
+      setCardBusy(false);
+    }
   };
 
   const confirm = async () => {
@@ -149,11 +281,26 @@ export function PaymentDetailSheet({
       return;
     }
     try {
-      await api.confirmPayment(userId, projectId, payment.id);
-      await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(() => {});
+      const confirmed = await api.confirmPayment(userId, projectId, payment.id, {
+        // Клиентский gate уже проверил перевод/чек; сервер принимает ack или receipt_id
+        transfer_ack: Boolean(transferAck || receiptAttached),
+      });
+      await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(reportCatch('components.renova.PaymentDetailSheet.1'));
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+        role,
+      });
       onChanged?.();
       onClose();
-      Alert.alert('Оплата подтверждена', 'Исполнитель увидит статус в бюджете и чате.');
+      if (confirmed?.status === 'paid_unverified') {
+        Alert.alert(
+          'Принято без проверки',
+          'Статус «оплачено, не верифицировано». Прикрепите чек — тогда сумма войдёт в бюджет как подтверждённый факт.',
+        );
+      } else {
+        alertPaymentConfirmed(role);
+      }
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 409) {
         Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
@@ -190,13 +337,29 @@ export function PaymentDetailSheet({
                 />
               ) : null}
               <Text style={formMetaText.caption}>
-                Подтверждение — фиксация факта оплаты. Сначала переведите сумму исполнителю или прикрепите чек.
+                Renova фиксирует факт внешнего перевода (СБП/реквизиты/чек), а не проводит банковскую транзакцию внутри приложения.
+                Карта — через ЮKassa. Сначала перевод или чек, затем отдельное подтверждение.
               </Text>
+              {/* W123: пакетное подтверждение из выписки (1С/банк) */}
+              <PrimaryButton
+                title="Импорт выписки (пакетно)"
+                variant="outline"
+                onPress={() => {
+                  onClose();
+                  pushOsNav('/documents', pathname, role);
+                }}
+              />
               {stageNeedsAcceptance ? (
                 <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} />
               ) : (
                 <>
-                  <PrimaryButton title="Перевести (СБП / карта)" onPress={() => setStep('transfer')} />
+                  <PrimaryButton
+                    title={cardBusy ? 'Открываем ЮKassa…' : 'Оплатить картой (ЮKassa)'}
+                    onPress={payWithCard}
+                    disabled={cardBusy}
+                  />
+                  {cardBusy ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
+                  <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} />
                   <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} />
                 </>
               )}
@@ -206,10 +369,14 @@ export function PaymentDetailSheet({
           {canConfirm && step === 'transfer' ? (
             <View style={s.block}>
               <Text style={s.sectionHead}>Реквизиты</Text>
+              {reqMissing ? <Text style={{ color: RenovaTheme.colors.warningText, marginBottom: 8, fontSize: 13 }}>{reqMissing}</Text> : null}
+              {!reqLoaded ? <ActivityIndicator /> : null}
               {requisites.split('\n').map((line) => (
                 <Text key={line} style={formMetaText.caption}>{line}</Text>
               ))}
-              <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={openSbp} />
+              <PrimaryButton title="Скопировать сумму" variant="outline" onPress={() => { copySbpAmount().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать сумму')); }} />
+              <PrimaryButton title="Скопировать реквизиты" variant="outline" onPress={() => { copyRequisites().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать реквизиты')); }} />
+              <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={() => { openSbp().catch(reportCatch('payment.openSbp')); }} />
               <PrimaryButton
                 title="Я перевёл — дальше"
                 onPress={() => { setTransferAck(true); setStep('confirm'); }}
