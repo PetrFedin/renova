@@ -58,4 +58,4 @@ jobs:
         with: { node-version: 20 }
       - run: npm ci && npx playwright install chromium
       - run: npm run dev &
-      - run: sleep 20 && npm run e2e:web || true
+      - run: sleep 20 && npm run e2e:web
