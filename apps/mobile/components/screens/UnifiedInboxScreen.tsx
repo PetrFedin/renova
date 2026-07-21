@@ -18,10 +18,10 @@ function inboxSubtitle(badge: number, chatUnread: number): string {
   const chat = Math.max(0, chatUnread || 0);
   const tasks = Math.max(0, badge - chat);
   if (chat > 0 && tasks > 0) {
-    return `${chat} непрочитанных · ${tasks} ${tasks === 1 ? 'задача' : tasks < 5 ? 'задачи' : 'задач'}`;
+    return `${chat} непрочитанных во всех чатах · ${tasks} ${tasks === 1 ? 'задача' : tasks < 5 ? 'задачи' : 'задач'}`;
   }
   if (chat > 0) {
-    return chat === 1 ? '1 непрочитанное' : `${chat} непрочитанных`;
+    return chat === 1 ? '1 непрочитанное во всех чатах' : `${chat} непрочитанных во всех чатах`;
   }
   if (badge <= 0) return 'Все задачи проекта';
   return `${badge} ${badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач'}`;

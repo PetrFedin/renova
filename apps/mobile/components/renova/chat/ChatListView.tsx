@@ -12,16 +12,27 @@ import { indexChats } from '@/lib/chatSearchCache';
 import { api, ChatThread } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
-import { useChatUnread, useChatInboxThreads } from '@/lib/useChatUnread';
+import { useChatUnread, useChatInboxThreads, useScopedChatUnread } from '@/lib/useChatUnread';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
-import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
+import {
+  CHAT_FILTER_ALL,
+  filterChatThreads,
+  normalizeChatProjectFilter,
+  shouldGroupChatsByProject,
+  isAllProjectsFilter,
+  chatProjectFilterLabel,
+  type ChatProjectFilter,
+} from '@/lib/chatProjectFilter';
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
 import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttention';
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { reportCatch } from '@/lib/reportError';
 import { patchThreadArchivedLocal } from '@/lib/inboxSyncStore';
-import { sumThreadUnread } from '@/lib/domain/chatUnreadSnapshot';
+import {
+  formatScopedUnreadBanner,
+  unreadScopeForChatList,
+} from '@/lib/domain/unreadScope';
 
 type Folder = 'active' | 'archive';
 
@@ -82,6 +93,7 @@ export function ChatListView() {
   const [folder, setFolder] = useState<Folder>('active');
   const [projectFilter, setProjectFilterState] = useState<ChatProjectFilter>(CHAT_FILTER_ALL);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [filterSwitching, setFilterSwitching] = useState(false);
   const [localThreads, setLocalThreads] = useState<ChatThread[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -90,6 +102,29 @@ export function ChatListView() {
     () => projects.map((p) => ({ id: p.id, name: p.name })),
     [projects],
   );
+
+  const listScope = useMemo(
+    () => unreadScopeForChatList({
+      folder,
+      projectFilter,
+      projectCount: projectOptions.length,
+    }),
+    [folder, projectFilter, projectOptions.length],
+  );
+
+  const scopeProjectName = useMemo(() => {
+    if (listScope.type === 'project') {
+      return projectOptions.find((p) => p.id === listScope.projectId)?.name;
+    }
+    if (listScope.type === 'filter' && listScope.filterId.startsWith('project:')) {
+      const id = listScope.filterId.slice('project:'.length);
+      return projectOptions.find((p) => p.id === id)?.name;
+    }
+    return chatProjectFilterLabel(projectFilter, projectOptions);
+  }, [listScope, projectFilter, projectOptions]);
+
+  const scopedUnread = useScopedChatUnread(listScope, { projectName: scopeProjectName });
+  const globalScoped = useScopedChatUnread({ type: 'global' });
 
   useEffect(() => {
     if (!projectOptions.length) {
@@ -108,9 +143,12 @@ export function ChatListView() {
   );
 
   const applyProjectFilter = async (next: ChatProjectFilter) => {
+    setFilterSwitching(true);
     const normalized = normalizeChatProjectFilter(next, projectOptions.map((p) => p.id));
     setProjectFilterState(normalized);
     await setChatProjectFilter(normalized);
+    // Глобальный badge не трогаем — только локальный scope пересчитается из snapshot
+    setFilterSwitching(false);
   };
 
   const reload = useCallback(async () => {
@@ -229,23 +267,26 @@ export function ChatListView() {
     );
   }
 
-  const filterIsAll = projectFilter === CHAT_FILTER_ALL || (Array.isArray(projectFilter) && projectFilter.length === projectOptions.length);
-  // Фильтр проекта: видимая сумма ≤ global (архив не в global)
-  const tabUnread = filterIsAll
-    ? globalUnread
-    : sumThreadUnread(displayThreads.filter((t) => !t.is_archived));
+  const filterIsAll = isAllProjectsFilter(projectFilter, projectOptions.length);
   const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
+  const bannerText = formatScopedUnreadBanner({
+    local: scopedUnread,
+    global: globalScoped,
+  });
+  const showLocalLoading = filterSwitching || (!scopedUnread.reliable && !filterIsAll);
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
-      {folder === 'active' && (globalUnread > 0 || awaitingCount > 0) ? (
+      {folder === 'active' && (bannerText || awaitingCount > 0) ? (
         <View style={s.unreadBanner}>
           <Text style={s.unreadBannerT}>
-            {globalUnread > 0
-              ? `${globalUnread} ${globalUnread === 1 ? 'непрочитанное' : globalUnread < 5 ? 'непрочитанных' : 'непрочитанных'}`
-              : `${awaitingCount} ${awaitingCount === 1 ? 'диалог ждёт' : 'диалогов ждут'} ответа`}
+            {bannerText
+              || `${awaitingCount} ${awaitingCount === 1 ? 'диалог ждёт' : 'диалогов ждут'} ответа`}
           </Text>
         </View>
+      ) : null}
+      {folder === 'active' && showLocalLoading ? (
+        <Text style={s.unreadWarn}>Считаем непрочитанные для фильтра…</Text>
       ) : null}
       {folder === 'active' && unreadStale ? (
         <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.stale'))}>
@@ -261,11 +302,19 @@ export function ChatListView() {
       <View style={s.toolbar}>
         <Pressable style={[s.tab, folder === 'active' && s.tabOn]} onPress={() => setFolder('active')}>
           <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>
-            Чаты{folder === 'active' && tabUnread > 0 ? ` · ${tabUnread}` : ''}
+            {folder === 'active' && scopedUnread.reliable && scopedUnread.count > 0 && listScope.type !== 'global'
+              ? `Чаты · в фильтре ${scopedUnread.count}`
+              : folder === 'active' && scopedUnread.reliable && scopedUnread.count > 0 && listScope.type === 'global'
+                ? `Чаты · всего ${scopedUnread.count}`
+                : 'Чаты'}
           </Text>
         </Pressable>
         <Pressable style={[s.tab, folder === 'archive' && s.tabOn]} onPress={() => setFolder('archive')}>
-          <Text style={[s.tabT, folder === 'archive' && s.tabTOn]}>Архив</Text>
+          <Text style={[s.tabT, folder === 'archive' && s.tabTOn]}>
+            {folder === 'archive' && scopedUnread.reliable && scopedUnread.count > 0
+              ? `Архив · ${scopedUnread.count}`
+              : 'Архив'}
+          </Text>
         </Pressable>
       </View>
 

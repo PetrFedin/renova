@@ -1,5 +1,5 @@
 /** Хуки unread/inbox — единый chatSync orchestrator → inboxSyncStore */
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore, useMemo } from 'react';
 import { useFocusEffect } from 'expo-router';
 import type { UserRole } from '@/lib/api';
 import {
@@ -11,9 +11,11 @@ import {
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
   markThreadRead,
+  selectChatUnread,
   subscribeInboxSync,
   subscribeInboxWs,
 } from '@/lib/inboxSyncStore';
+import type { UnreadScope } from '@/lib/domain/unreadScope';
 import {
   requestChatSync,
   patchChatSyncContext,
@@ -88,7 +90,37 @@ export function useChatUnread(userId?: string, userRole?: UserRole) {
     return ensureInboxWebSocket(userId);
   }, [userId]);
 
-  return { count, reload, inboxWsConnected, failed, stale };
+  // Dock / глобальный badge — всегда явный global scope
+  return {
+    count,
+    scope: { type: 'global' } as const,
+    scopeLabel: 'все чаты',
+    reload,
+    inboxWsConnected,
+    failed,
+    stale,
+  };
+}
+
+/**
+ * Unread для произвольного scope (project / filter / thread).
+ * Глобальный badge не меняется при смене scope — только возвращаемый count.
+ */
+export function useScopedChatUnread(scope: UnreadScope, labelOpts?: { projectName?: string }) {
+  const threads = useSyncExternalStore(
+    subscribeInboxSync,
+    getChatInboxThreadsSnapshot,
+    getChatInboxThreadsSnapshot,
+  );
+  const globalCount = useChatUnreadCount();
+  const stale = useChatUnreadStale();
+  const scopeKey = JSON.stringify(scope);
+  const projectName = labelOpts?.projectName;
+  return useMemo(() => {
+    const parsed = JSON.parse(scopeKey) as UnreadScope;
+    const result = selectChatUnread(parsed, projectName ? { projectName } : undefined);
+    return { ...result, stale, globalCount };
+  }, [scopeKey, projectName, threads, globalCount, stale]);
 }
 
 export function useChatReadSync(userId?: string, userRole?: UserRole) {

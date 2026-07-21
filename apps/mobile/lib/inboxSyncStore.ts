@@ -33,6 +33,11 @@ import {
   decideIncomingChatMessage,
   type IncomingChatMessageEvent,
 } from '@/lib/domain/incomingChatMessage';
+import {
+  selectUnreadCount,
+  type UnreadCountResult,
+  type UnreadScope,
+} from '@/lib/domain/unreadScope';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -251,7 +256,8 @@ export function getChatUnreadSnapshot() {
 }
 
 export function getChatUnreadCountSnapshot() {
-  return chatCount;
+  // Только global — для subscribe. UI должен брать selectChatUnread({ type: 'global' }).
+  return selectChatUnread({ type: 'global' }).count;
 }
 
 export function getChatFailedSnapshot() {
@@ -272,6 +278,25 @@ export function getInboxWsConnectedSnapshot() {
 
 export function getChatInboxThreadsSnapshot(): ChatThread[] {
   return chatThreads;
+}
+
+/**
+ * Unread с обязательным scope.
+ * Запрещено читать count без области — используйте { type: 'global' } для dock/badge.
+ */
+export function selectChatUnread(
+  scope: UnreadScope,
+  labelOpts?: { projectName?: string },
+): UnreadCountResult {
+  return selectUnreadCount(
+    scope,
+    {
+      threads: chatThreads,
+      threadsComplete: true, // inbox snapshot — полный SoT
+      globalTotal: chatCount,
+    },
+    labelOpts,
+  );
 }
 
 export function getInboxTasksSnapshot() {
