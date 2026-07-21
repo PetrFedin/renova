@@ -27,12 +27,13 @@ class ProfileIn(BaseModel):
 
 
 class LeadIn(BaseModel):
-    title: str
+    """W140: заявка заказчика — реальный ввод, не демо-payload."""
+    title: str = Field(min_length=1, max_length=255)
     address: str | None = None
-    area_sqm: float | None = None
+    area_sqm: float = Field(gt=0, description="Площадь м²")
     renovation_type: str = "cosmetic"
-    budget_hint: float | None = None
-    description: str | None = None
+    budget_hint: float = Field(gt=0, description="Ориентир бюджета ₽")
+    description: str | None = Field(default=None, max_length=4000)
 
 
 class QuoteIn(BaseModel):

@@ -15,6 +15,8 @@ import {
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { metaCaptionStyle } from '@/constants/formTypography';
+import { isOfflineBlocked, notifyOfflineBlocked } from '@/lib/offlineUi';
+import type { JobLeadCreateBody } from '@/lib/api/market';
 
 const RENOVATION_TYPES = [
   { id: 'cosmetic', label: 'Косметический' },
@@ -23,14 +25,7 @@ const RENOVATION_TYPES = [
   { id: 'kitchen', label: 'Кухня' },
 ] as const;
 
-export type JobLeadCreateBody = {
-  title: string;
-  address?: string;
-  area_sqm?: number;
-  renovation_type: string;
-  budget_hint?: number;
-  description?: string;
-};
+export type { JobLeadCreateBody };
 
 const TITLE_BY_TYPE: Record<string, string> = {
   cosmetic: 'Косметический ремонт',
@@ -54,7 +49,7 @@ export function CreateJobLeadSheet({
   onClose: () => void;
   onCreate: (body: JobLeadCreateBody) => Promise<void>;
 }) {
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(TITLE_BY_TYPE.cosmetic);
   const [address, setAddress] = useState('');
   const [area, setArea] = useState('');
   const [budget, setBudget] = useState('');
@@ -74,50 +69,68 @@ export function CreateJobLeadSheet({
     setTitleTouched(false);
     setBusy(false);
   }, [visible]);
+
+  const areaSqm = parsePositive(area);
+  const budgetHint = parsePositive(budget);
+  const titleOk = title.trim().length > 0;
+  const canSubmit = titleOk && areaSqm != null && budgetHint != null && !busy;
+
   const pickType = (id: string) => {
     setRenovationType(id);
     if (!titleTouched || !title.trim()) {
-      setTitle(TITLE_BY_TYPE[id] || 'Ремонт');
+      setTitle(TITLE_BY_TYPE[id] || '');
     }
   };
 
+  const requestClose = () => {
+    if (busy) return;
+    onClose();
+  };
+
   async function submit() {
-    const t = title.trim() || TITLE_BY_TYPE[renovationType] || 'Ремонт';
-    const areaSqm = parsePositive(area);
-    const budgetHint = parsePositive(budget);
-    if (!area.trim() || areaSqm == null) {
+    if (busy) return;
+    const t = title.trim();
+    if (!t) {
+      Alert.alert('Название', 'Укажите название заявки');
+      return;
+    }
+    if (areaSqm == null) {
       Alert.alert('Площадь', 'Укажите площадь объекта в м²');
       return;
     }
-    if (!budget.trim() || budgetHint == null) {
+    if (budgetHint == null) {
       Alert.alert('Бюджет', 'Укажите ориентировочный бюджет в ₽');
       return;
     }
     setBusy(true);
     try {
       await onCreate({
-        title: t,
+        title: t.slice(0, 255),
         address: address.trim() || undefined,
         area_sqm: areaSqm,
         renovation_type: renovationType,
         budget_hint: budgetHint,
-        description: description.trim() || undefined,
+        description: description.trim().slice(0, 4000) || undefined,
       });
       onClose();
     } catch (e: unknown) {
-      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать заявку');
+      if (isOfflineBlocked(e)) {
+        notifyOfflineBlocked(e, 'Создание заявки недоступно без интернета.');
+      } else {
+        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать заявку');
+      }
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={requestClose}>
       <KeyboardAvoidingView
         style={s.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Pressable style={s.backdrop} onPress={onClose}>
+        <Pressable style={s.backdrop} onPress={requestClose}>
           <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <Text style={s.head}>Новая заявка</Text>
@@ -132,6 +145,7 @@ export function CreateJobLeadSheet({
                       key={item.id}
                       style={[s.chip, on && s.chipOn]}
                       onPress={() => pickType(item.id)}
+                      disabled={busy}
                     >
                       <Text style={[s.chipT, on && s.chipTOn]}>{item.label}</Text>
                     </Pressable>
@@ -149,6 +163,8 @@ export function CreateJobLeadSheet({
                 }}
                 placeholder="Например: Ремонт двушки"
                 placeholderTextColor={RenovaTheme.colors.textSubtle}
+                maxLength={255}
+                editable={!busy}
               />
 
               <Text style={s.label}>Адрес</Text>
@@ -158,6 +174,7 @@ export function CreateJobLeadSheet({
                 onChangeText={setAddress}
                 placeholder="Город, улица, дом (необязательно)"
                 placeholderTextColor={RenovaTheme.colors.textSubtle}
+                editable={!busy}
               />
 
               <Text style={s.label}>Площадь, м²</Text>
@@ -168,6 +185,7 @@ export function CreateJobLeadSheet({
                 keyboardType="decimal-pad"
                 placeholder="Например: 62"
                 placeholderTextColor={RenovaTheme.colors.textSubtle}
+                editable={!busy}
               />
 
               <Text style={s.label}>Бюджет, ₽</Text>
@@ -178,6 +196,7 @@ export function CreateJobLeadSheet({
                 keyboardType="number-pad"
                 placeholder="Ориентир для исполнителей"
                 placeholderTextColor={RenovaTheme.colors.textSubtle}
+                editable={!busy}
               />
 
               <Text style={s.label}>Комментарий</Text>
@@ -188,6 +207,8 @@ export function CreateJobLeadSheet({
                 placeholder="Сроки, пожелания, этаж…"
                 placeholderTextColor={RenovaTheme.colors.textSubtle}
                 multiline
+                maxLength={4000}
+                editable={!busy}
               />
 
               <PrimaryButton
@@ -195,9 +216,9 @@ export function CreateJobLeadSheet({
                 onPress={() => {
                   submit().catch(() => {});
                 }}
-                disabled={busy}
+                disabled={!canSubmit}
               />
-              <PrimaryButton title="Отмена" variant="outline" onPress={onClose} disabled={busy} />
+              <PrimaryButton title="Отмена" variant="outline" onPress={requestClose} disabled={busy} />
             </ScrollView>
           </Pressable>
         </Pressable>

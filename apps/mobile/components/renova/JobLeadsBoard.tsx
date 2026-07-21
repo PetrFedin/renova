@@ -4,7 +4,8 @@ import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 import { LeadChat } from '@/components/renova/LeadChat';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { CreateJobLeadSheet, type JobLeadCreateBody } from '@/components/renova/CreateJobLeadSheet';
+import { CreateJobLeadSheet } from '@/components/renova/CreateJobLeadSheet';
+import type { JobLeadCreateBody } from '@/lib/api/market';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -17,6 +18,13 @@ import {
 } from '@/lib/jobLeadNav';
 import type { OsRole } from '@/constants/osSections';
 
+const RENOVATION_LABEL: Record<string, string> = {
+  cosmetic: 'Косметический',
+  capital: 'Капитальный',
+  bathroom: 'Ванная',
+  kitchen: 'Кухня',
+};
+
 type L = {
   id: string;
   title: string;
@@ -25,6 +33,7 @@ type L = {
   renovation_type: string;
   budget_hint?: number;
   pre_estimate?: number;
+  description?: string | null;
   status: string;
 };
 
@@ -34,6 +43,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
   const [quote, setQuote] = useState<Record<string, string>>({});
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
   const sync = () =>
     syncProjectSideEffects({
@@ -42,7 +52,13 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
     });
 
   const load = useCallback(() => {
-    api.listJobLeads(userId).then(setItems).catch(() => {});
+    api
+      .listJobLeads(userId)
+      .then((rows) => {
+        setItems(rows);
+        setLoadError(false);
+      })
+      .catch(() => setLoadError(true));
   }, [userId]);
   useEffect(() => {
     load();
@@ -53,12 +69,13 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
     setCreating(true);
     try {
       await api.createJobLead(userId, body);
-      await sync();
-      load();
       alertJobLeadCreated(osRole);
-    } catch (e: unknown) {
-      // ошибку показывает CreateJobLeadSheet
-      throw e;
+      try {
+        await sync();
+        load();
+      } catch {
+        /* заявка уже создана */
+      }
     } finally {
       setCreating(false);
     }
@@ -75,16 +92,29 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
         </View>
       )}
       <Text style={s.head}>Заявки</Text>
+      {loadError ? (
+        <Text style={s.err}>Не удалось загрузить заявки. Откройте экран снова.</Text>
+      ) : null}
       {items.map((l) => (
         <View key={l.id} style={s.row}>
           <Text style={s.n}>
             {l.title} · {l.status}
           </Text>
           <Text style={s.sub}>
-            {[l.address, l.area_sqm != null ? `${l.area_sqm} м²` : null, formatRub(l.budget_hint || 0)]
+            {[
+              RENOVATION_LABEL[l.renovation_type] || l.renovation_type,
+              l.address,
+              l.area_sqm != null ? `${l.area_sqm} м²` : null,
+              l.budget_hint != null ? formatRub(l.budget_hint) : null,
+            ]
               .filter(Boolean)
               .join(' · ')}
           </Text>
+          {l.description ? (
+            <Text style={s.desc} numberOfLines={2}>
+              {l.description}
+            </Text>
+          ) : null}
           {l.pre_estimate ? <Text style={s.q}>Оценка: {formatRub(l.pre_estimate)}</Text> : null}
           <LeadChat userId={userId} leadId={l.id} />
           {role === 'customer' && l.status === 'open' ? (
@@ -177,9 +207,11 @@ const s = StyleSheet.create({
   infoSub: { fontSize: 12, color: '#475569', lineHeight: 17 },
   box: { marginVertical: 10 },
   head: { fontWeight: '800', marginBottom: 8 },
+  err: { fontSize: 12, color: RenovaTheme.colors.danger, marginBottom: 8 },
   row: { backgroundColor: RenovaTheme.colors.surface, padding: 10, borderRadius: 8, marginBottom: 6 },
   n: { fontWeight: '600' },
-  sub: { fontSize: 11, color: '#666' },
+  sub: { fontSize: 11, color: '#666', marginTop: 2 },
+  desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
   q: { fontWeight: '700', color: '#2563eb', marginTop: 4 },
   qrow: { flexDirection: 'row', gap: 8, marginTop: 6, alignItems: 'center' },
   inp: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 8, flex: 1 },
