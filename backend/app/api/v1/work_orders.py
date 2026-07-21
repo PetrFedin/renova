@@ -81,12 +81,15 @@ async def patch_work_order(project_id: str, work_order_id: str, body: WorkOrderP
 
 @router.post("/{project_id}/work-orders/{work_order_id}/transition")
 async def transition_work_order(project_id: str, work_order_id: str, body: WorkOrderTransition, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     w = await wo_svc.get_work_order(db, work_order_id)
     if not w or w.project_id != project_id:
         raise HTTPException(404)
     try:
-        w = await wo_svc.transition(db, w, body.status, user.id)
+        w = await wo_svc.transition(db, w, body.status, user.id, project=project)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        code = str(e)
+        if code in ("only_customer_can_accept_work_order", "only_customer_can_confirm_work_payment"):
+            raise HTTPException(403, code) from e
+        raise HTTPException(400, code) from e
     return wo_svc.wo_dict(w)

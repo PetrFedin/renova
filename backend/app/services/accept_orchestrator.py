@@ -225,6 +225,10 @@ async def finalize_work_acceptance(
         stage=stage,
         acceptance_room_id=getattr(row, "room_id", None),
     )
+    # P0: график отражает приёмку только после единого WA-каскада
+    from app.services.project_work_schedule_service import mark_schedule_items_accepted_for_stage
+
+    await mark_schedule_items_accepted_for_stage(db, project_id=project.id, stage_id=stage.id)
     return AcceptResult(acceptance=row, stage=stage, payment=payment, next_stage=next_stage)
 
 

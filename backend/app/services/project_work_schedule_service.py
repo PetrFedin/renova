@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Payment, PaymentStatus, PaymentType, Project, Stage, StageStatus, User
+from app.models.entities import Project, Stage, StageStatus, User
 from app.models.work_schedule import (
     ProjectWorkSchedule,
     ProjectWorkScheduleItem,
@@ -384,34 +384,34 @@ async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectW
     return await attach_items(db, schedule)
 
 
-async def ensure_pending_stage_payment(db: AsyncSession, stage: Stage) -> None:
-    if not stage.payment_amount or stage.payment_amount <= 0:
-        return
-    existing = (
-        await db.execute(
-            select(Payment)
-            .where(Payment.project_id == stage.project_id)
-            .where(Payment.stage_id == stage.id)
-            .where(Payment.payment_type == PaymentType.stage)
-            .where(Payment.status.in_([PaymentStatus.pending, PaymentStatus.confirmed]))
-            .limit(1)
-        )
-    ).scalars().first()
-    if existing:
-        return
-    db.add(
-        Payment(
-            project_id=stage.project_id,
-            stage_id=stage.id,
-            payment_type=PaymentType.stage,
-            status=PaymentStatus.pending,
-            title=f"Оплата этапа: {stage.name}",
-            amount=stage.payment_amount,
-            created_by=stage.project.contractor_id or stage.project.customer_id,
-            notes="Создано автоматически после приёмки этапа через график работ",
-            created_at=datetime.utcnow(),
-        )
+async def mark_schedule_items_accepted_for_stage(
+    db: AsyncSession, *, project_id: str, stage_id: str
+) -> int:
+    """После finalize_work_acceptance — отразить приёмку в SoT графика (не наоборот)."""
+    rows = list(
+        (
+            await db.execute(
+                select(ProjectWorkScheduleItem)
+                .where(ProjectWorkScheduleItem.project_id == project_id)
+                .where(ProjectWorkScheduleItem.stage_id == stage_id)
+                .where(ProjectWorkScheduleItem.status != WorkScheduleItemStatus.cancelled)
+            )
+        ).scalars().all()
     )
+    now = datetime.utcnow()
+    today = date.today()
+    updated = 0
+    for item in rows:
+        if item.status == WorkScheduleItemStatus.accepted:
+            continue
+        item.status = WorkScheduleItemStatus.accepted
+        item.progress_percent = 100
+        if not item.actual_finish_date:
+            item.actual_finish_date = today
+        item.delay_days = calculate_delay(item)
+        item.updated_at = now
+        updated += 1
+    return updated
 
 
 async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkScheduleItem, status: WorkScheduleItemStatus) -> None:
@@ -433,9 +433,13 @@ async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkSchedul
         stage.status = StageStatus.review
         stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 90)
     elif status == WorkScheduleItemStatus.accepted:
-        # W44: график не обходит work-acceptances — только review, без customer_accepted_at/оплаты
-        stage.status = StageStatus.review
-        stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 95)
+        # P0: accepted только после WA. Если заказчик уже принял — держим done; иначе не повышаем дальше review.
+        if stage.customer_accepted_at or stage.status == StageStatus.done:
+            stage.status = StageStatus.done
+            stage.percent_complete = 100
+        else:
+            stage.status = StageStatus.review
+            stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 95)
 
 
 async def update_item_status(
@@ -443,9 +447,31 @@ async def update_item_status(
     schedule: ProjectWorkSchedule,
     item: ProjectWorkScheduleItem,
     body_status: WorkScheduleItemStatus,
+    *,
+    user: User,
+    project: Project,
     blocking_reason: str | None = None,
     progress_percent: float | None = None,
 ) -> ProjectWorkScheduleItem:
+    """Смена статуса строки графика.
+
+    P0: status=accepted — только заказчик и только после единой приёмки (customer_accepted_at).
+    Исполнитель сдаёт работу через submitted → stage.review → work-acceptances.
+    """
+    if body_status == WorkScheduleItemStatus.accepted:
+        if not is_project_customer(user, project):
+            raise HTTPException(status_code=403, detail="only_customer_can_set_schedule_item_accepted")
+        if item.stage_id:
+            stage = await db.get(Stage, item.stage_id)
+            if stage and stage.project_id == project.id and not stage.customer_accepted_at:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "use_work_acceptance_first",
+                        "message": "Приёмка этапа — только через «Приёмка» (фото и чеклист), не из графика",
+                    },
+                )
+
     item.status = body_status
     item.blocking_reason = blocking_reason
     if progress_percent is not None:
@@ -454,6 +480,8 @@ async def update_item_status(
         item.actual_start_date = date.today()
     if body_status in [WorkScheduleItemStatus.accepted, WorkScheduleItemStatus.cancelled] and not item.actual_finish_date:
         item.actual_finish_date = date.today()
+    if body_status == WorkScheduleItemStatus.accepted:
+        item.progress_percent = max(item.progress_percent or 0, 100)
     item.delay_days = calculate_delay(item)
     item.updated_at = datetime.utcnow()
     await sync_stage_from_item_status(db, item, body_status)

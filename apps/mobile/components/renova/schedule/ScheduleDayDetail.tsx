@@ -118,27 +118,37 @@ export function ScheduleDayDetail({
     if (!wo || isWorkArchived(wo.status)) return null;
     const status = wo.status as WorkOrderStatus;
     const actions = workActions(status, role === 'contractor' ? 'contractor' : 'customer');
-    const primary = actions.find((a) => a.next === 'done' || a.next === 'review' || a.next === 'in_progress') || actions[0];
+    // P0: не подставлять done исполнителю; приоритет сдачи/приёмки по роли
+    const primary =
+      (role === 'customer'
+        ? actions.find((a) => a.next === 'done') || actions.find((a) => a.next === 'in_progress')
+        : actions.find((a) => a.next === 'review') || actions.find((a) => a.next === 'in_progress'))
+      || actions[0];
 
     return (
-      <View style={s.actions}>
-        {primary ? (
-          <Pressable style={s.actionBtn} onPress={() => transitionWork(wo, primary.next)}>
-            <Text style={s.actionBtnT}>{primary.label}</Text>
-          </Pressable>
+      <View>
+        <View style={s.actions}>
+          {primary ? (
+            <Pressable style={s.actionBtn} onPress={() => transitionWork(wo, primary.next)}>
+              <Text style={s.actionBtnT}>{primary.label}</Text>
+            </Pressable>
+          ) : null}
+          {role === 'customer' ? (
+            <Pressable style={s.actionBtnOutline} onPress={() => extendWork(wo, 3, 'Продление срока заказчиком')}>
+              <Text style={s.actionBtnOutlineT}>Продлить +3 дня</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={s.actionBtnOutline}
+              onPress={() => extendWork(wo, 7, 'Запрос продления от исполнителя')}
+            >
+              <Text style={s.actionBtnOutlineT}>Запросить +7 дней</Text>
+            </Pressable>
+          )}
+        </View>
+        {role === 'contractor' && status === 'review' ? (
+          <Text style={s.hint}>Приёмка этапа — только у заказчика в «Ремонт → Приёмка»</Text>
         ) : null}
-        {role === 'customer' ? (
-          <Pressable style={s.actionBtnOutline} onPress={() => extendWork(wo, 3, 'Продление срока заказчиком')}>
-            <Text style={s.actionBtnOutlineT}>Продлить +3 дня</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={s.actionBtnOutline}
-            onPress={() => extendWork(wo, 7, 'Запрос продления от исполнителя')}
-          >
-            <Text style={s.actionBtnOutlineT}>Запросить +7 дней</Text>
-          </Pressable>
-        )}
       </View>
     );
   };
@@ -221,4 +231,5 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.surface,
   },
   actionBtnOutlineT: { color: RenovaTheme.colors.text, fontSize: 12, fontWeight: '600' },
+  hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4, paddingHorizontal: 4, lineHeight: 15 },
 });

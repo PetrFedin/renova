@@ -137,7 +137,7 @@ async def test_accept_emits_acceptance_passed_with_stage_context():
 
 
 async def test_schedule_item_accepted_does_not_bypass_work_acceptance():
-    """W44: schedule status=accepted → review, без customer_accepted_at."""
+    """P0/W44: исполнитель не может accepted; заказчик без WA — 409; после WA — ok."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, h_cust, h_cont = await _demo_project(client)
@@ -155,14 +155,24 @@ async def test_schedule_item_accepted_does_not_bypass_work_acceptance():
         item = next((i for i in items if i.get("stage_id") == active_id), items[0] if items else None)
         if not item:
             pytest.skip("no schedule items")
-        upd = await client.post(
+
+        # Исполнитель не может «принять» строку графика
+        forbidden = await client.post(
             f"/api/v1/projects/{pid}/work-schedules/{sched['id']}/items/{item['id']}/status",
             headers=h_cont,
             json={"status": "accepted"},
         )
-        assert upd.status_code < 400, upd.text
+        assert forbidden.status_code == 403, forbidden.text
+
+        # Заказчик тоже не обходит единую приёмку
+        blocked = await client.post(
+            f"/api/v1/projects/{pid}/work-schedules/{sched['id']}/items/{item['id']}/status",
+            headers=h_cust,
+            json={"status": "accepted"},
+        )
+        assert blocked.status_code == 409, blocked.text
 
         detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()
         stage = next(s for s in detail["stages"] if s["id"] == active_id)
-        assert stage["status"] == "review", stage
         assert not stage.get("customer_accepted_at"), "schedule must not set customer_accepted_at"
+        assert stage["status"] != "done", stage
