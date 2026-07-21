@@ -26,6 +26,9 @@ let wsCleanup: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let reloadInflight: Promise<void> | null = null;
 let lastReloadKey = '';
+/** Инкремент при смене user / каждом reload — отсекает stale responses */
+let syncGeneration = 0;
+let storeUserId: string | null = null;
 
 export function subscribeInboxSync(listener: Listener): () => void {
   listeners.add(listener);
@@ -62,6 +65,11 @@ export function getChatUnreadSnapshot() {
 }
 
 export function getChatUnreadCountSnapshot() {
+  return chatCount;
+}
+
+/** Alias: totalUnread = sum(non-archived thread.unread_count) */
+export function getTotalUnreadSnapshot() {
   return chatCount;
 }
 
@@ -182,18 +190,24 @@ function refreshInboxChatRow(nextChat: number) {
       ...inboxItems,
     ];
   }
-  const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
-  inboxBadge = taskRows + n;
+  // Задачи без чата; chatCount = n уже в store
+  inboxBadge = inboxItems.filter((i) => i.kind !== 'chat').length;
 }
 
-/** Прочитать тред: optimistic local + API + полный resync */
+/**
+ * Прочитать тред: optimistic unread=0 → пересчёт sum → API mark-read →
+ * при ошибке force resync (без отрицательных значений).
+ * knownUnread не вычитается вручную — только applyLocalThreadUnread(0) + sum.
+ */
 export async function markChatReadAndSync(
   userId: string,
   projectId: string,
   threadId: string,
   userRole?: UserRole,
-  knownUnread = 0,
+  _knownUnread = 0,
 ): Promise<void> {
+  if (storeUserId && storeUserId !== userId) return;
+
   const prev = {
     chatCount,
     chatFailed,
@@ -207,22 +221,53 @@ export async function markChatReadAndSync(
   notifyIfChanged(prev);
 
   try {
-    await api.markChatRead(userId, projectId, threadId);
+    const res = await api.markChatRead(userId, projectId, threadId) as {
+      ok?: boolean;
+      thread_id?: string;
+      thread_unread_count?: number;
+      total_unread_count?: number;
+    } | void;
     chatFailed = false;
+    if (res && typeof res === 'object') {
+      if (typeof res.thread_unread_count === 'number') {
+        applyLocalThreadUnread(threadId, Math.max(0, res.thread_unread_count));
+      }
+      if (typeof res.total_unread_count === 'number' && res.total_unread_count >= 0) {
+        // Доверяем серверу только если согласовано с локальной суммой или threads пусты
+        const localSum = sumChatUnread(chatThreads);
+        if (Math.abs(localSum - res.total_unread_count) <= 0 || chatThreads.length === 0) {
+          chatCount = res.total_unread_count;
+        } else {
+          chatCount = localSum;
+        }
+        refreshInboxChatRow(chatCount);
+        notify();
+      }
+    }
+    // Лёгкий deduped reload без шторма (не force если уже inflight)
+    await reloadInboxSync(
+      {
+        userId,
+        userRole,
+        projectId,
+        project: cachedFullSync?.project,
+        osRole: cachedFullSync?.osRole,
+      },
+      false,
+    );
   } catch {
-    /* resync подтянет актуальное */
+    // Ошибка mark-read → принудительный resync к серверу
+    await reloadInboxSync(
+      {
+        userId,
+        userRole,
+        projectId,
+        project: cachedFullSync?.project,
+        osRole: cachedFullSync?.osRole,
+      },
+      true,
+    );
   }
-
-  await reloadInboxSync(
-    {
-      userId,
-      userRole,
-      projectId,
-      project: cachedFullSync?.project,
-      osRole: cachedFullSync?.osRole,
-    },
-    true,
-  );
   emitInboxWs();
 }
 
@@ -246,6 +291,7 @@ export async function reloadInboxSync(
   if (!force && reloadInflight && lastReloadKey === key) return reloadInflight;
 
   lastReloadKey = key;
+  const gen = ++syncGeneration;
   reloadInflight = (async () => {
     const prev = {
       chatCount,
@@ -256,6 +302,7 @@ export async function reloadInboxSync(
     };
 
     if (!merged.userId) {
+      storeUserId = null;
       chatCount = 0;
       chatFailed = false;
       chatThreads = [];
@@ -266,13 +313,24 @@ export async function reloadInboxSync(
       return;
     }
 
+    if (storeUserId && storeUserId !== merged.userId) {
+      // Смена пользователя — мгновенно очистить старые counts
+      chatCount = 0;
+      chatThreads = [];
+      inboxItems = [];
+      inboxBadge = 0;
+      notify();
+    }
+    storeUserId = merged.userId;
+
     const chatState = await loadChatState(merged.userId);
+    if (gen !== syncGeneration) return; // stale
     if (chatState.ok) {
       chatThreads = chatState.threads;
-      chatCount = chatState.unread;
+      chatCount = sumChatUnread(chatState.threads);
       chatFailed = false;
     } else {
-      chatCount = chatState.unread;
+      chatCount = Math.max(0, chatState.unread);
       chatFailed = chatThreads.length === 0 && chatCount === 0;
     }
 
@@ -293,12 +351,10 @@ export async function reloadInboxSync(
           const off = await getOfflineOutboxStatus();
           inboxItems = mergeOfflineInboxItem(inboxItems, off);
         } catch { /* noop */ }
-        const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
-        inboxBadge = taskRows + chatCount;
+        // inboxBadge = только задачи; chatCount отдельно (не смешивать)
+        inboxBadge = inboxItems.filter((i) => i.kind !== 'chat').length;
       } catch {
-        if (!inboxItems.length) {
-          inboxBadge = chatCount;
-        }
+        /* сохраняем предыдущие задачи */
       }
     } else {
       // Нет projectId в этом вызове — не затираем задачи: только выравниваем чат с chatCount.
@@ -370,10 +426,32 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
         };
         ws.onmessage = (e) => {
           if (e.data === 'ping' || e.data === 'pong') return;
+          let payload: InboxWsPayload & {
+            thread_unread_count?: number;
+            total_unread_count?: number;
+            event_id?: string;
+          } = {};
           try {
-            JSON.parse(e.data) as InboxWsPayload;
+            payload = JSON.parse(e.data);
           } catch {
             /* noop */
+          }
+          // Идемпотентные счётчики из payload — без лишнего reload когда возможно
+          if (
+            payload.type === 'chat_read'
+            && payload.thread_id
+            && typeof payload.thread_unread_count === 'number'
+          ) {
+            applyLocalThreadUnread(payload.thread_id, Math.max(0, payload.thread_unread_count));
+            if (typeof payload.total_unread_count === 'number' && payload.total_unread_count >= 0) {
+              chatCount = Math.max(0, payload.total_unread_count);
+            } else {
+              chatCount = sumChatUnread(chatThreads);
+            }
+            refreshInboxChatRow(chatCount);
+            notify();
+            emitInboxWs();
+            return;
           }
           onReload();
           emitInboxWs();

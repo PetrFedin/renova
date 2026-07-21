@@ -13,7 +13,6 @@ import { api, ChatThread } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { useChatUnread, useChatInboxThreads, useInboxWsListener } from '@/lib/useChatUnread';
-import { markChatReadAndSync } from '@/lib/inboxSyncStore';
 import { useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
 import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
@@ -22,6 +21,7 @@ import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttent
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { reportCatch } from '@/lib/reportError';
+import { formatUnreadMessagesRu } from '@/lib/formatUnreadMessagesRu';
 
 type Folder = 'active' | 'archive';
 
@@ -170,13 +170,10 @@ export function ChatListView() {
   }, [displayThreads, groupByProject, projects]);
 
   const openThread = async (t: ChatThread) => {
+    // Mark-read только в ChatThreadView после успешной загрузки (не по тапу на карточку).
     if (!t.project_id) {
       Alert.alert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
       return;
-    }
-    const unread = t.unread_count || 0;
-    if (unread > 0 && user) {
-      await markChatReadAndSync(user.id, t.project_id, t.id, user.role, unread).catch(reportCatch('components.renova.chat.ChatListView.5'));
     }
     if (activeProject?.id !== t.project_id) {
       await loadProject(t.project_id).catch(reportCatch('components.renova.chat.ChatListView.6'));
@@ -228,17 +225,29 @@ export function ChatListView() {
   }
 
   const filterIsAll = projectFilter === CHAT_FILTER_ALL || (Array.isArray(projectFilter) && projectFilter.length === projectOptions.length);
-  const tabUnread = filterIsAll ? globalUnread : displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
+  const filterUnread = displayThreads
+    .filter((th) => !th.is_archived)
+    .reduce((a, th) => a + (th.unread_count || 0), 0);
   const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
-      {folder === 'active' && (globalUnread > 0 || awaitingCount > 0) ? (
+      {folder === 'active' && globalUnread > 0 ? (
         <View style={s.unreadBanner}>
           <Text style={s.unreadBannerT}>
-            {globalUnread > 0
-              ? `${globalUnread} ${globalUnread === 1 ? 'непрочитанное' : globalUnread < 5 ? 'непрочитанных' : 'непрочитанных'}`
-              : `${awaitingCount} ${awaitingCount === 1 ? 'диалог ждёт' : 'диалогов ждут'} ответа`}
+            {!filterIsAll && filterUnread !== globalUnread
+              ? `В фильтре: ${filterUnread} из ${globalUnread}`
+              : `Непрочитанные сообщения: ${globalUnread}`}
+          </Text>
+          {filterIsAll ? (
+            <Text style={s.unreadBannerSub}>{formatUnreadMessagesRu(globalUnread)}</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {folder === 'active' && globalUnread === 0 && awaitingCount > 0 ? (
+        <View style={s.unreadBanner}>
+          <Text style={s.unreadBannerT}>
+            {awaitingCount === 1 ? '1 диалог ждёт ответа' : `${awaitingCount} диалогов ждут ответа`}
           </Text>
         </View>
       ) : null}
@@ -250,9 +259,7 @@ export function ChatListView() {
 
       <View style={s.toolbar}>
         <Pressable style={[s.tab, folder === 'active' && s.tabOn]} onPress={() => setFolder('active')}>
-          <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>
-            Чаты{folder === 'active' && tabUnread > 0 ? ` · ${tabUnread}` : ''}
-          </Text>
+          <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>Чаты</Text>
         </Pressable>
         <Pressable style={[s.tab, folder === 'archive' && s.tabOn]} onPress={() => setFolder('archive')}>
           <Text style={[s.tabT, folder === 'archive' && s.tabTOn]}>Архив</Text>

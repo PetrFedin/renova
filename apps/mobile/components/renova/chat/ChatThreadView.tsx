@@ -1,8 +1,9 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
+  AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
+import type { AppStateStatus } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
@@ -20,6 +21,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatReadSync } from '@/lib/useChatUnread';
+import { getChatInboxThreadsSnapshot } from '@/lib/inboxSyncStore';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
@@ -186,24 +188,22 @@ export function ChatThreadView({
     setChat(await api.getChat(user.id, projectId, threadId));
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
 
+  const appForegroundRef = useRef(AppState.currentState === 'active');
+
   const markThreadRead = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
+    if (!appForegroundRef.current) return; // background: не отмечаем прочитанным
     const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
     const markKey = `${threadId}:${projectId}`;
     if (markedReadRef.current === markKey) return;
-    let knownUnread = 0;
-    try {
-      const inbox = await api.chatInbox(user.id);
-      knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
-    } catch (e) {
-      reportError('chat.markRead.inbox', e, { threadId });
-    }
+    // Unread из store — без лишнего inbox request
+    const knownUnread = getChatInboxThreadsSnapshot().find((t) => t.id === threadId)?.unread_count ?? 0;
     try {
       await syncAfterRead(projectId, threadId, knownUnread);
       markedReadRef.current = markKey;
     } catch {
-      /* badge подтянется следующим reload; не фиксируем ref */
+      /* resync внутри markChatReadAndSync; не фиксируем ref при жёстком сбое */
     }
   }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
 
@@ -214,12 +214,29 @@ export function ChatThreadView({
   loadMessagesRef.current = loadMessages;
   markThreadReadRef.current = markThreadRead;
 
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      const wasBg = !appForegroundRef.current;
+      appForegroundRef.current = next === 'active';
+      if (wasBg && next === 'active' && markedReadRef.current) {
+        markedReadRef.current = null;
+        void markThreadReadRef.current()?.catch(reportCatch('chat.markRead.foreground'));
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       markedReadRef.current = null;
       let cancelled = false;
       (async () => {
-        await loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
+        try {
+          await loadMessagesRef.current();
+        } catch (e) {
+          reportCatch('chat.loadMessages')(e);
+          return; // ошибка загрузки — unread не трогаем
+        }
         if (!cancelled) await markThreadReadRef.current().catch(reportCatch('chat.markRead'));
       })();
       return () => { cancelled = true; };
@@ -246,8 +263,10 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    // Новое сообщение в открытом треде — снова прочитать и сбросить badge.
-    markedReadRef.current = null;
+    // Новое сообщение в открытом focused треде: при foreground сразу mark-read (без +1 badge).
+    if (appForegroundRef.current) {
+      markedReadRef.current = null;
+    }
     reload();
     markThreadRead().catch(reportCatch('chat.markRead.focus'));
   });

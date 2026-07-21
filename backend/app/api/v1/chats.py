@@ -89,9 +89,37 @@ async def patch_thread_state(project_id: str, thread_id: str, body: ThreadState,
 
 @router.post("/{project_id}/chats/{thread_id}/read")
 async def mark_read(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Идемпотентный mark-read: возвращает счётчики для мгновенной синхронизации клиентов."""
     await require_chat_access(db, project_id, thread_id, user, write=False)
     await chat_svc.mark_thread_read(db, thread_id, user.id)
-    return {"ok": True}
+    thread_unread = await chat_svc.count_unread_in_thread(db, thread_id, user.id)
+    # total по всем неархивным чатам доступных проектов
+    from sqlalchemy import select
+    from app.models.entities import Project
+    r = await db.execute(
+        select(Project).where((Project.customer_id == user.id) | (Project.contractor_id == user.id))
+    )
+    project_ids = [p.id for p in r.scalars().all()]
+    total_unread = await chat_svc.count_unread_all(db, user.id, project_ids)
+    from app.core.timeutil import utc_now
+    from app.api.v1.ws import broadcast_inbox
+    payload = {
+        "type": "chat_read",
+        "thread_id": thread_id,
+        "project_id": project_id,
+        "thread_unread_count": thread_unread,
+        "total_unread_count": total_unread,
+        "event_id": f"read:{thread_id}:{user.id}:{int(utc_now().timestamp())}",
+        "occurred_at": utc_now().isoformat(),
+    }
+    await broadcast_inbox(user.id, payload)
+    return {
+        "ok": True,
+        "thread_id": thread_id,
+        "thread_unread_count": thread_unread,
+        "total_unread_count": total_unread,
+        "read_at": utc_now().isoformat(),
+    }
 
 
 @router.get("/{project_id}/chats/{thread_id}")

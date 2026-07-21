@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { tabBarScreenOptions } from '@/constants/tabBar';
 import { OsSectionMenu } from '@/components/renova/os/OsSectionMenu';
+import { OsHeaderChatButton } from '@/components/renova/os/OsHeaderChatButton';
 import { OsProjectPicker } from '@/components/renova/os/OsProjectPicker';
 import { OsAppHeader } from '@/components/renova/os/OsAppHeader';
 import { OsHeaderLogo, OsPathBar } from '@/components/renova/os/OsHeaderBreadcrumb';
@@ -74,6 +75,7 @@ export function OsTabsHeaderBar({ role }: { role: OsRole }) {
             <Ionicons name="person-outline" size={22} color={RenovaTheme.colors.text} />
           </Pressable>
           <OsProjectPicker role={role} />
+          <OsHeaderChatButton role={role} />
           <OsSectionMenu role={role} />
         </View>
       }

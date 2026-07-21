@@ -59,7 +59,8 @@
     "staging:readiness-report": "bash scripts/staging-readiness-report.sh",
     "staging:credentials-probe": "bash scripts/staging-credentials-probe.sh",
     "split:status": "bash scripts/split-release-status.sh",
-    "assert:e2e-bearer": "bash scripts/assert-e2e-bearer.sh"
+    "assert:e2e-bearer": "bash scripts/assert-e2e-bearer.sh",
+    "test:chat-unread": "npx tsx apps/mobile/lib/formatUnreadMessagesRu.test.ts && npx tsx apps/mobile/lib/domain/headerChatBadges.w80.test.ts && npx tsx apps/mobile/lib/domain/moreMenuA11y.w77.test.ts && npx tsx apps/mobile/lib/chatUnreadSync.test.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

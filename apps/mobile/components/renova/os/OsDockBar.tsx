@@ -18,6 +18,7 @@ import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
+import { chatMessagesA11yLabel } from '@/lib/domain/moreMenuA11y';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
@@ -114,9 +115,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={
-              id === 'chat' && chatUnread > 0
-                ? `${label}, ${chatUnread > 99 ? '99+' : chatUnread} непрочитанных`
-                : label
+              id === 'chat' ? chatMessagesA11yLabel(chatUnread) : label
             }
             accessibilityState={active ? { selected: true } : {}}
           >

@@ -1,4 +1,4 @@
-/** Панель «Ещё» в шапке — без дубля dock (столпы + чат уже внизу) */
+/** Панель «Ещё» в шапке — только жёлтый taskBadge; сообщения на OsHeaderChatButton / dock */
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,16 +17,27 @@ import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
 import { moreMenuA11yLabel } from '@/lib/domain/moreMenuA11y';
 import { resolveHeaderMoreBadge, resolveInboxMenuBadges } from '@/lib/domain/headerChatBadges';
+import { formatBadgeCount } from '@/lib/formatUnreadMessagesRu';
 
 export { moreMenuA11yLabel };
 
 type Props = { role: OsRole; iconOnly?: boolean };
 
-function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' | 'warning' }) {
+function LabeledChip({
+  label,
+  count,
+  tone,
+}: {
+  label: string;
+  count: number;
+  tone: 'danger' | 'warning';
+}) {
   if (count <= 0) return null;
   return (
-    <View style={[s.miniBadge, tone === 'warning' && s.miniBadgeWarn]}>
-      <Text style={s.miniBadgeT}>{count > 99 ? '99+' : count}</Text>
+    <View style={[s.chip, tone === 'warning' ? s.chipWarn : s.chipDanger]}>
+      <Text style={s.chipT}>
+        {label}: {formatBadgeCount(count)}
+      </Text>
     </View>
   );
 }
@@ -47,10 +58,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
     );
   }
 
-  /**
-   * Непрочитанный чат: один SoT (inboxSyncStore) → «Ещё», «Входящие» и dock «Сообщения».
-   * Задачи — янтарный бейдж рядом, без подмены числа сообщений.
-   */
+  /** Только задачи — сообщения на отдельной иконке в шапке */
   const headerBadge = resolveHeaderMoreBadge(taskBadge, chatUnread);
   const inboxBadges = resolveInboxMenuBadges(taskBadge, chatUnread);
 
@@ -70,8 +78,8 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
       >
         <Ionicons name="menu-outline" size={22} color={RenovaTheme.colors.text} />
         {headerBadge ? (
-          <View style={[s.badge, headerBadge.tone === 'warning' ? s.badgeTasks : s.badgeChat]}>
-            <Text style={s.badgeT}>{headerBadge.count > 99 ? '99+' : headerBadge.count}</Text>
+          <View style={[s.badge, s.badgeTasks]}>
+            <Text style={s.badgeT}>{formatBadgeCount(headerBadge.count)}</Text>
           </View>
         ) : null}
       </Pressable>
@@ -102,7 +110,6 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                   style={s.item}
                   onPress={() => {
                     setOpen(false);
-                    // W118: util links (inbox/docs/…) через SoT
                     pushOsNav(link.href, pathname, role);
                   }}
                 >
@@ -110,9 +117,8 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                   <Text style={s.itemT}>{link.label}</Text>
                   {link.id === 'inbox' ? (
                     <View style={s.inboxBadges}>
-                      {/* Красный = то же число, что на кнопке «Сообщения» внизу */}
-                      <MenuBadge count={inboxBadges.chat} tone="danger" />
-                      <MenuBadge count={inboxBadges.tasks} tone="warning" />
+                      <LabeledChip label="Сообщения" count={inboxBadges.chat} tone="danger" />
+                      <LabeledChip label="Задачи" count={inboxBadges.tasks} tone="warning" />
                     </View>
                   ) : null}
                 </Pressable>
@@ -151,9 +157,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 3,
   },
-  /** Янтарный = задачи; красный = непрочитанный чат (как dock «Сообщения») */
   badgeTasks: { backgroundColor: RenovaTheme.colors.warning },
-  badgeChat: { backgroundColor: RenovaTheme.colors.danger },
   badgeT: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
   menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },
@@ -183,22 +187,13 @@ const s = StyleSheet.create({
   itemTOn: { color: RenovaTheme.colors.accent },
   check: { fontSize: 14, color: RenovaTheme.colors.accent, fontWeight: '700' },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
-  miniBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: RenovaTheme.colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
+  chip: {
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
-  miniBadgeWarn: { backgroundColor: RenovaTheme.colors.warning },
-  miniBadgeT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
-  inboxBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto' },
-  chatHint: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: RenovaTheme.colors.danger,
-    marginLeft: 2,
-  },
+  chipDanger: { backgroundColor: RenovaTheme.colors.danger },
+  chipWarn: { backgroundColor: RenovaTheme.colors.warning },
+  chipT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
+  inboxBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto', flexShrink: 1 },
 });
