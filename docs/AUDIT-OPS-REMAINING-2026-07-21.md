@@ -1,30 +1,26 @@
 # Ops status — audit checklist (факт 2026-07-21)
 
-## Закрыто в git (`origin/develop`)
+## Закрыто в git
 
 | Было в чеклисте | Факт |
 |-----------------|------|
-| P1.10 CI `e2e:web \|\| true` | **DONE** `971ecad` (push через SSH) — на GitHub уже без `\|\| true` |
-| JWT jti | **DONE** `8c55b38` |
-| StaleCacheBanner | **DONE** `8c55b38` |
-| Outbox worker | **DONE** `8c55b38` |
-| E5 schedule_version | **DONE** `8c55b38` |
-| Hard-purge accounts | **DONE** `8c55b38` (`ALLOW_ACCOUNT_PURGE`) |
+| P1.10 CI `e2e:web` без `\|\| true` | **DONE** `971ecad` + later CI fixes on develop |
+| JWT jti / StaleCacheBanner / outbox / schedule_version / hard-purge | **DONE** wave-10 |
+| **P1.11 Slice-1 security-acl → main** | **DONE** — [PR #5](https://github.com/PetrFedin/renova/pull/5) merged; tag [v0.3.1-security-acl](https://github.com/PetrFedin/renova/releases/tag/v0.3.1-security-acl) |
 | Матрица SECURITY plan | **DONE** P0/P1 code rows |
-| Staging credentials probe | **DONE** `npm run staging:credentials-probe` (`4d8683d`) |
 
-## Ещё не «merge в main» (только процесс)
+## Ещё открыто
 
 | Item | Статус | Действие |
 |------|--------|----------|
-| P1.11 Split → main | **IN PROGRESS** | Slice PR https://github.com/PetrFedin/renova/pull/5 **CI green**; PR #3 draft. Issue #4 |
-| Live staging secrets | **ENV** | На сервере staging: `ENVIRONMENT=staging npm run staging:credentials-probe` |
+| P1.11 Slice-2+ | **NEXT** | acceptance-schedule → payments → offline → documents-fns → ia-portal |
+| Live staging secrets | **ENV** | `ENVIRONMENT=staging npm run staging:credentials-probe` on staging host |
+| Mega-PR #3 | **DRAFT** | do not merge |
 
 ## Команды
 
 ```bash
-git rev-parse origin/develop   # expect 4d8683d+
+git rev-parse origin/main   # expect v0.3.1-security-acl / 7a4080d+
 npm run split:status
 ENVIRONMENT=staging npm run staging:credentials-probe
-npm run staging:readiness-report
 ```
