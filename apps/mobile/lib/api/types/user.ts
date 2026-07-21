@@ -9,5 +9,11 @@ export type User = {
   inn: string | null;
   npd_verified: boolean;
   moy_nalog_linked?: boolean;
+  /** not_connected|authorization_started|admin_enabled|connected|revoked|error */
+  moy_nalog_status?: string;
   profile_code?: string | null;
+  /** JWT from login/demo/sms/me — persist via setAccessToken */
+  access_token?: string | null;
+  refresh_token?: string | null;
+  token_type?: string | null;
 };

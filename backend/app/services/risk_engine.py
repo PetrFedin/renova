@@ -87,7 +87,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
             "cause": f"Плановое окончание {project.planned_end_date.isoformat()}",
             "impact": f"+{d} дн.",
             "action": "Проверить график",
-            "href": "/(customer)/(tabs)/works",
+            "href": "/(customer)/(tabs)/repair?tab=works",
         })
 
 
@@ -124,7 +124,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
             "cause": f"{len(need_buy)} поз. ждут закупки",
             "impact": "Задержка старта работ",
             "action": "Создать закупку",
-            "href": "/(customer)/(tabs)/materials",
+            "href": "/(customer)/(tabs)/repair?tab=materials",
         })
 
     for st in stages:
@@ -139,7 +139,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
                     "cause": f"{len(linked)} поз. не доставлены",
                     "impact": "Работа может встать",
                     "action": "Заказать материалы",
-                    "href": "/(customer)/(tabs)/materials",
+                    "href": "/(customer)/(tabs)/repair?tab=materials",
                 })
                 break
 
@@ -167,7 +167,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
             "cause": f"{len(rework)} этап(ов) возвращены",
             "impact": "Снижает индекс качества",
             "action": "Открыть контроль",
-            "href": "/(customer)/(tabs)/control",
+            "href": "/(customer)/(tabs)/repair?tab=control",
         })
 
     # Issues из таблицы project_issues
@@ -189,7 +189,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
                 "cause": iss.description or "Замечание не закрыто",
                 "impact": f"Срок: {iss.due_at.date().isoformat()}" if iss.due_at else "Требует исправления",
                 "action": "Закрыть замечание",
-                "href": "/(customer)/(tabs)/control",
+                "href": "/(customer)/(tabs)/repair?tab=control",
             })
         stale = [i for i in issues if i.created_at < datetime.utcnow() - timedelta(days=3)]
         if stale and not critical:
@@ -201,7 +201,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
                 "cause": f"{len(stale)} открыты > 3 дней",
                 "impact": "Риск эскалации",
                 "action": "Проверить замечания",
-                "href": "/(customer)/(tabs)/control",
+                "href": "/(customer)/(tabs)/repair?tab=control",
             })
     except Exception:
         pass
@@ -223,7 +223,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
             "cause": f"{len(blocked)} платеж(ей) ждут приёмки этапа",
             "impact": "Нельзя подтвердить оплату",
             "action": "Принять этап",
-            "href": "/(customer)/(tabs)/control",
+            "href": "/(customer)/(tabs)/repair?tab=control",
         })
     elif pending:
         risks.append({

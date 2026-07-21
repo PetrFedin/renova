@@ -105,6 +105,8 @@ async def start_stage(project_id: str, stage_id: str, user: User = Depends(get_c
         code = err.get("code")
         if code == "blocked":
             raise HTTPException(409, detail=err)
+        if code == "contract_not_signed":
+            raise HTTPException(403, detail=err)
         raise HTTPException(400, detail=err.get("message", "Не удалось начать этап"))
     if not stage or stage.project_id != project_id:
         raise HTTPException(404, "Этап не найден")

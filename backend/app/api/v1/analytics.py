@@ -24,8 +24,7 @@ async def contractor_summary(user: User = Depends(get_current_user), db: AsyncSe
 
 @router.get("/projects/{project_id}/analytics")
 async def analytics(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await proj_svc.get_project(db, project_id)
-    if not p: raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     materials = [l for l in p.estimate_lines if l.line_type == LineType.material]
     mp = sum(l.quantity_planned * l.unit_price for l in materials)
     mf = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
@@ -87,9 +86,7 @@ async def budget_room_lines(project_id: str, room_id: str, user: User = Depends(
 async def budget_breakdown(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select, func
     from app.models.entities import EstimateLine, LineType, MaterialPick, WasteOrder, Payment
-    from app.services import project_service as ps
-    p = await ps.get_project(db, project_id)
-    if not p: raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     lines = (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
     works = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.work)
     materials_plan = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.material)
@@ -105,6 +102,7 @@ async def budget_breakdown(project_id: str, user: User = Depends(get_current_use
 async def budget_category_alerts(project_id: str, threshold_pct: float = 10, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
     from app.models.entities import EstimateLine, LineType, MaterialPick, WasteOrder
+    await require_project(db, project_id, user, write=False)
     lines = (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
     picks = (await db.execute(select(MaterialPick).where(MaterialPick.project_id == project_id))).scalars().all()
     waste = (await db.execute(select(WasteOrder).where(WasteOrder.project_id == project_id))).scalars().all()
@@ -126,9 +124,7 @@ async def budget_category_alerts(project_id: str, threshold_pct: float = 10, use
 
 @router.get("/projects/{project_id}/analytics/budget-forecast")
 async def budget_forecast(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services import project_service as ps
-    p = await ps.get_project(db, project_id)
-    if not p: raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     prog = max(p.progress_percent, 1) / 100
     burn = p.budget_spent / prog if prog else p.budget_spent
     forecast = burn
@@ -139,9 +135,7 @@ async def budget_forecast(project_id: str, user: User = Depends(get_current_user
 async def budget_scenario(project_id: str, materials_pct: float = 10, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
     from app.models.entities import EstimateLine, LineType
-    from app.services import project_service as ps
-    p = await ps.get_project(db, project_id)
-    if not p: raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     lines = (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
     mat = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.material)
     delta = mat * materials_pct / 100

@@ -21,6 +21,8 @@ class EnvironmentPolicy:
     forbid_localhost_public_url: bool
     require_non_default_secret: bool
     require_https_public_url: bool
+    # P0 auth: X-User-Id без JWT только local/test
+    allow_header_user_id: bool
 
 
 POLICIES: dict[str, EnvironmentPolicy] = {
@@ -33,6 +35,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         forbid_localhost_public_url=False,
         require_non_default_secret=False,
         require_https_public_url=False,
+        allow_header_user_id=True,
     ),
     "test": EnvironmentPolicy(
         name="test",
@@ -43,6 +46,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         forbid_localhost_public_url=False,
         require_non_default_secret=False,
         require_https_public_url=False,
+        allow_header_user_id=True,
     ),
     "staging": EnvironmentPolicy(
         name="staging",
@@ -52,7 +56,8 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         require_public_base_url=True,
         forbid_localhost_public_url=True,
         require_non_default_secret=True,
-        require_https_public_url=False,
+        require_https_public_url=True,  # P1: staging = реальный пилот / TestFlight
+        allow_header_user_id=False,
     ),
     "production": EnvironmentPolicy(
         name="production",
@@ -63,6 +68,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         forbid_localhost_public_url=True,
         require_non_default_secret=True,
         require_https_public_url=True,
+        allow_header_user_id=False,
     ),
 }
 
@@ -131,11 +137,18 @@ def validate_runtime_settings(
     database_url: str,
     public_base_url: str,
     secret_key: str,
+    auth_allow_header_user_id: bool | None = None,
 ) -> EnvironmentPolicy:
     """Raise ValueError if settings violate profile policy."""
     policy = policy_for(environment)
 
     errors: list[str] = []
+
+    # P0 auth: нельзя форсировать X-User-Id в staging/production
+    if not policy.allow_header_user_id and auth_allow_header_user_id is True:
+        errors.append(
+            f"{policy.name}: AUTH_ALLOW_HEADER_USER_ID=true запрещён — только Authorization Bearer"
+        )
 
     if not policy.allow_sqlite and _is_sqlite(database_url):
         errors.append(
@@ -169,8 +182,14 @@ def collect_warnings(
     environment: str,
     database_url: str,
     secret_key: str,
+    kontur_mode: str | None = None,
+    kontur_api_key: str | None = None,
+    yookassa_shop_id: str | None = None,
+    yookassa_secret: str | None = None,
+    esign_webhook_secret: str | None = None,
+    yookassa_webhook_secret: str | None = None,
 ) -> list[str]:
-    """Soft warnings for development (do not fail startup)."""
+    """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
     warnings: list[str] = []
     if name == "development":
@@ -178,4 +197,22 @@ def collect_warnings(
             warnings.append("development: SECRET_KEY is default — OK for local only")
         if _is_sqlite(database_url):
             warnings.append("development: using SQLite — switch to Postgres before staging")
+    mode = (kontur_mode or "off").strip().lower()
+    if name == "staging" and mode in ("sandbox", "live") and not (kontur_api_key or "").strip():
+        warnings.append(
+            f"staging: KONTUR_MODE={mode} but KONTUR_API_KEY is missing — e-sign will stay unconfigured"
+        )
+    if name in ("staging", "production") and mode in ("sandbox", "live") and not (esign_webhook_secret or "").strip():
+        warnings.append(
+            f"{name}: KONTUR_MODE={mode} but ESIGN_WEBHOOK_SECRET missing — webhooks will 503"
+        )
+    if name in ("staging", "production"):
+        if not ((yookassa_shop_id or "").strip() and (yookassa_secret or "").strip()):
+            warnings.append(
+                f"{name}: YOOKASSA_SHOP_ID/YOOKASSA_SECRET missing — card checkout returns 503 (demo disabled)"
+            )
+        if (yookassa_shop_id or "").strip() and not (yookassa_webhook_secret or "").strip():
+            warnings.append(
+                f"{name}: YOOKASSA_WEBHOOK_SECRET empty — webhook endpoint will 503"
+            )
     return warnings

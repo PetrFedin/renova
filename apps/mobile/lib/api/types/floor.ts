@@ -7,6 +7,7 @@ export type FloorPlan = {
   width_px?: number | null;
   height_px?: number | null;
   pins: { id: string; room_id: string; x_pct: number; y_pct: number; label?: string | null }[];
+  punch?: { id: string; title: string; severity: string; status: string; x_pct: number; y_pct: number; photo_url?: string | null }[];
 };
 
 export type WasteOrder = {

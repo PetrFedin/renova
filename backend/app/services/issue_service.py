@@ -21,6 +21,11 @@ def issue_dict(i: ProjectIssue) -> dict:
         "due_at": i.due_at.isoformat() if i.due_at else None,
         "created_at": i.created_at.isoformat() if i.created_at else None,
         "closed_at": i.closed_at.isoformat() if i.closed_at else None,
+        "floor_plan_id": i.floor_plan_id,
+        "x_pct": i.x_pct,
+        "y_pct": i.y_pct,
+        "photo_key": i.photo_key,
+        "photo_url": f"/api/v1/media/{i.photo_key}" if i.photo_key else None,
     }
 
 
@@ -42,6 +47,10 @@ async def create_issue(
     stage_id: str | None = None,
     severity: str = "medium",
     due_days: int = 3,
+    floor_plan_id: str | None = None,
+    x_pct: float | None = None,
+    y_pct: float | None = None,
+    photo_key: str | None = None,
 ) -> ProjectIssue:
     issue = ProjectIssue(
         project_id=project_id,
@@ -52,6 +61,10 @@ async def create_issue(
         severity=severity,
         status="open",
         due_at=datetime.utcnow() + timedelta(days=due_days),
+        floor_plan_id=floor_plan_id,
+        x_pct=x_pct,
+        y_pct=y_pct,
+        photo_key=photo_key,
     )
     db.add(issue)
     await db.commit()

@@ -47,7 +47,9 @@ def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, 
                     "signer_role": s.signer_role,
                     "signed_at": s.signed_at.isoformat() if s.signed_at else None,
                     "status": s.status,
+                    "provider": getattr(s, "provider_name", None) or s.signature_type,
                     "provider_name": getattr(s, "provider_name", None) or s.signature_type,
+                    "signature_type": s.signature_type,
                     "provider_external_id": getattr(s, "provider_external_id", None),
                 }
                 for s in (signatures or [])
@@ -232,6 +234,9 @@ async def sign_document(
     )
     db.add(sig)
     await db.flush()
+    if result.status == "signed" and doc.status == DocumentStatus.draft.value:
+        doc.status = DocumentStatus.active.value
+        await db.flush()
     return sig
 
 
@@ -332,6 +337,83 @@ async def set_legal_hold(
 
 
 
+
+
+
+async def ensure_contract_draft(db: AsyncSession, *, project_id: str, created_by: str | None) -> dict:
+    """P3-W10: создать draft contract если есть неподписанный договор или его нет."""
+    from app.models.project_documents import DocumentType
+
+    gate = await project_contract_gate(db, project_id)
+    if gate.get("ok") and gate.get("reason") != "no_contract_required":
+        return {"created": False, "document_id": gate.get("document_id"), "pending_titles": []}
+    contracts = list(
+        (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.contract.value,
+                    ProjectDocument.status != DocumentStatus.deleted.value,
+                )
+            )
+        ).scalars().all()
+    )
+    pending = [d for d in contracts if d.status == DocumentStatus.draft.value]
+    if pending:
+        return {"created": False, "document_id": pending[0].id, "pending_titles": [d.title for d in pending[:3]]}
+    if contracts and not pending:
+        return {"created": False, "document_id": contracts[0].id, "pending_titles": [contracts[0].title]}
+    doc = await create_document(
+        db,
+        project_id=project_id,
+        created_by=created_by,
+        title="Договор подряда",
+        document_type=DocumentType.contract.value,
+        notes="Создан автоматически при фиксации сметы",
+    )
+    doc.status = DocumentStatus.draft.value
+    await db.flush()
+    return {"created": True, "document_id": doc.id, "pending_titles": [doc.title]}
+
+
+async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
+    """P3-W7: estimate → eSign → work unlock — блок start_stage без подписанного договора."""
+    from app.models.project_documents import DocumentType
+
+    contracts = list(
+        (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.contract.value,
+                    ProjectDocument.status != DocumentStatus.deleted.value,
+                )
+            )
+        ).scalars().all()
+    )
+    if not contracts:
+        return {"ok": True, "reason": "no_contract_required"}
+    for doc in contracts:
+        sigs = list(
+            (
+                await db.execute(
+                    select(DocumentSignature).where(
+                        DocumentSignature.document_id == doc.id,
+                        DocumentSignature.status == "signed",
+                    )
+                )
+            ).scalars().all()
+        )
+        if sigs:
+            return {"ok": True, "document_id": doc.id}
+    pending = [d.title for d in contracts if d.status == DocumentStatus.draft.value]
+    return {
+        "ok": False,
+        "code": "contract_not_signed",
+        "message": "Подпишите договор перед началом работ",
+        "pending_titles": pending[:3],
+    }
+
 async def complete_external_signature(
     db: AsyncSession,
     *,
@@ -339,7 +421,7 @@ async def complete_external_signature(
     external_id: str,
     status: str = "signed",
 ) -> DocumentSignature | None:
-    """Wave 3f: webhook завершает pending подпись внешнего провайдера."""
+    """Wave 3f: webhook завершает pending подпись внешнего провайдера + activate doc."""
     row = (
         await db.execute(
             select(DocumentSignature).where(
@@ -350,10 +432,15 @@ async def complete_external_signature(
     ).scalar_one_or_none()
     if not row:
         return None
+    if status == "signed" and row.status == "signed" and row.signed_at:
+        return row
     row.status = status
-    if status == "signed":
+    if status == "signed" and not row.signed_at:
         row.signed_at = datetime.utcnow()
-    elif status == "failed":
+        doc = await db.get(ProjectDocument, row.document_id)
+        if doc and doc.status == DocumentStatus.draft.value:
+            doc.status = DocumentStatus.active.value
+    elif status == "failed" and not row.revoked_at:
         row.revoked_at = datetime.utcnow()
     await db.flush()
     return row

@@ -54,6 +54,11 @@ class ProjectWorkSchedule(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # E5: monotonic version; supersedes_id → previous schedule row when re-issued after reject
+    schedule_version: Mapped[int] = mapped_column(Integer, default=1)
+    supersedes_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("project_work_schedules.id"), nullable=True, index=True
+    )
 
 
 class ProjectWorkScheduleItem(Base):

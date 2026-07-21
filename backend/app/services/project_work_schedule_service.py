@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Payment, PaymentStatus, PaymentType, Project, Stage, StageStatus, User
+from app.models.entities import Project, Stage, StageStatus, User
 from app.models.work_schedule import (
     ProjectWorkSchedule,
     ProjectWorkScheduleItem,
@@ -20,6 +20,19 @@ def is_project_member(user: User, project: Project) -> bool:
 
 def is_project_customer(user: User, project: Project) -> bool:
     return user.id == project.customer_id
+
+
+
+async def can_manage_schedule(db: AsyncSession, user: User, project: Project) -> bool:
+    """W66/W72: график — contractor owner/foreman; без подрядчика — заказчик; viewer/member — нет."""
+    if user.id == project.contractor_id:
+        return True
+    if not project.contractor_id and user.id == project.customer_id:
+        return True
+    from app.services.team_service import team_role_for_project
+
+    role = await team_role_for_project(db, user, project)
+    return role in ("owner", "foreman")
 
 
 async def load_items(db: AsyncSession, schedule_id: str) -> list[ProjectWorkScheduleItem]:
@@ -181,8 +194,12 @@ async def get_schedule(db: AsyncSession, project_id: str, schedule_id: str) -> P
 
 
 async def create_schedule(db: AsyncSession, project: Project, user: User, body: WorkScheduleCreateIn) -> ProjectWorkSchedule:
-    if not is_project_member(user, project):
+    from app.services.team_service import can_access_project
+
+    if not await can_access_project(db, user, project, write=True):
         raise HTTPException(status_code=403, detail="only_project_members_can_create_schedule")
+    if not await can_manage_schedule(db, user, project):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_create_schedule")
     schedule = ProjectWorkSchedule(
         project_id=project.id,
         title=body.title,
@@ -206,8 +223,14 @@ async def create_schedule(db: AsyncSession, project: Project, user: User, body: 
 
 
 async def update_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User, body: WorkScheduleUpdateIn) -> ProjectWorkSchedule:
+    # P0: submitted/confirmed frozen until reject→draft
     if schedule.status == WorkScheduleStatus.confirmed:
         raise HTTPException(status_code=409, detail="confirmed_schedule_cannot_be_edited")
+    if schedule.status == WorkScheduleStatus.submitted:
+        raise HTTPException(status_code=409, detail="submitted_schedule_cannot_be_edited")
+    project = await db.get(Project, schedule.project_id)
+    if project and not await can_manage_schedule(db, user, project):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_edit_schedule")
     if body.title is not None:
         schedule.title = body.title
     if body.description is not None:
@@ -227,16 +250,74 @@ async def update_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
     return await attach_items(db, schedule)
 
 
+
+async def sync_stages_from_schedule_items(db: AsyncSession, schedule: ProjectWorkSchedule) -> int:
+    """W46: после confirm даты items → stages (одно направление, SCHEDULE-SOT)."""
+    items = await load_items(db, schedule.id)
+    updated = 0
+    for item in items:
+        if not item.stage_id:
+            continue
+        stage = await db.get(Stage, item.stage_id)
+        if not stage or stage.project_id != schedule.project_id:
+            continue
+        stage.planned_start = item.planned_start_date
+        stage.planned_end = item.planned_finish_date
+        updated += 1
+    await db.flush()
+    return updated
+
+
 async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User) -> ProjectWorkSchedule:
+    from app.services.team_service import can_access_project
+
+    project_gate = await db.get(Project, schedule.project_id)
+    if not project_gate or not await can_access_project(db, user, project_gate, write=True):
+        raise HTTPException(status_code=403, detail="project_forbidden")
+    if not await can_manage_schedule(db, user, project_gate):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_submit_schedule")
     items = await load_items(db, schedule.id)
     if not items:
         raise HTTPException(status_code=409, detail="schedule_items_required")
+    # E5: each submit after draft/reject bumps version (first submit stays v1)
+    prev = int(getattr(schedule, "schedule_version", None) or 1)
+    if schedule.status == WorkScheduleStatus.rejected or (
+        schedule.submitted_at is not None and schedule.status == WorkScheduleStatus.draft
+    ):
+        schedule.schedule_version = prev + 1
+    elif not getattr(schedule, "schedule_version", None):
+        schedule.schedule_version = 1
     schedule.status = WorkScheduleStatus.submitted
     schedule.submitted_by = user.id
     schedule.submitted_at = datetime.utcnow()
     schedule.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(schedule)
+
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+    from app.models.entities import Project
+
+    project = await db.get(Project, schedule.project_id)
+    await act.log_event(
+        db,
+        project_id=schedule.project_id,
+        user_id=user.id,
+        kind="ScheduleSubmitted",
+        title=f"График на согласование: {schedule.title}",
+        link_path="/(customer)/(tabs)/calendar",
+    )
+    if project and project.customer_id and project.customer_id != user.id:
+        await notif.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=schedule.project_id,
+            notification_type="schedule_review",
+            title="Согласуйте план-график",
+            body=schedule.title,
+            link_path="/(customer)/(tabs)/calendar",
+            return_to="/(customer)/(tabs)/home",
+        )
     return await attach_items(db, schedule)
 
 
@@ -249,8 +330,32 @@ async def confirm_schedule(db: AsyncSession, project: Project, schedule: Project
     schedule.confirmed_by = user.id
     schedule.confirmed_at = datetime.utcnow()
     schedule.updated_at = datetime.utcnow()
+    await sync_stages_from_schedule_items(db, schedule)
     await db.commit()
     await db.refresh(schedule)
+
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    await act.log_event(
+        db,
+        project_id=schedule.project_id,
+        user_id=user.id,
+        kind="ScheduleConfirmed",
+        title=f"График согласован: {schedule.title}",
+        link_path="/(contractor)/(tabs)/calendar",
+    )
+    if project.contractor_id and project.contractor_id != user.id:
+        await notif.notify(
+            db,
+            user_id=project.contractor_id,
+            project_id=schedule.project_id,
+            notification_type="schedule_confirmed",
+            title="План-график согласован",
+            body=schedule.title,
+            link_path="/(contractor)/(tabs)/calendar",
+            return_to="/(contractor)/(tabs)/home",
+        )
     return await attach_items(db, schedule)
 
 
@@ -266,37 +371,61 @@ async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectW
     schedule.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(schedule)
+
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    await act.log_event(
+        db,
+        project_id=schedule.project_id,
+        user_id=user.id,
+        kind="ScheduleRejected",
+        title=f"График отклонён: {schedule.title}",
+        body=reason,
+        link_path="/(contractor)/(tabs)/calendar",
+    )
+    if project.contractor_id and project.contractor_id != user.id:
+        await notif.notify(
+            db,
+            user_id=project.contractor_id,
+            project_id=schedule.project_id,
+            notification_type="schedule_rejected",
+            title="План-график на доработку",
+            body=reason or schedule.title,
+            link_path="/(contractor)/(tabs)/calendar",
+            return_to="/(contractor)/(tabs)/home",
+        )
     return await attach_items(db, schedule)
 
 
-async def ensure_pending_stage_payment(db: AsyncSession, stage: Stage) -> None:
-    if not stage.payment_amount or stage.payment_amount <= 0:
-        return
-    existing = (
-        await db.execute(
-            select(Payment)
-            .where(Payment.project_id == stage.project_id)
-            .where(Payment.stage_id == stage.id)
-            .where(Payment.payment_type == PaymentType.stage)
-            .where(Payment.status.in_([PaymentStatus.pending, PaymentStatus.confirmed]))
-            .limit(1)
-        )
-    ).scalars().first()
-    if existing:
-        return
-    db.add(
-        Payment(
-            project_id=stage.project_id,
-            stage_id=stage.id,
-            payment_type=PaymentType.stage,
-            status=PaymentStatus.pending,
-            title=f"Оплата этапа: {stage.name}",
-            amount=stage.payment_amount,
-            created_by=stage.project.contractor_id or stage.project.customer_id,
-            notes="Создано автоматически после приёмки этапа через график работ",
-            created_at=datetime.utcnow(),
-        )
+async def mark_schedule_items_accepted_for_stage(
+    db: AsyncSession, *, project_id: str, stage_id: str
+) -> int:
+    """После finalize_work_acceptance — отразить приёмку в SoT графика (не наоборот)."""
+    rows = list(
+        (
+            await db.execute(
+                select(ProjectWorkScheduleItem)
+                .where(ProjectWorkScheduleItem.project_id == project_id)
+                .where(ProjectWorkScheduleItem.stage_id == stage_id)
+                .where(ProjectWorkScheduleItem.status != WorkScheduleItemStatus.cancelled)
+            )
+        ).scalars().all()
     )
+    now = datetime.utcnow()
+    today = date.today()
+    updated = 0
+    for item in rows:
+        if item.status == WorkScheduleItemStatus.accepted:
+            continue
+        item.status = WorkScheduleItemStatus.accepted
+        item.progress_percent = 100
+        if not item.actual_finish_date:
+            item.actual_finish_date = today
+        item.delay_days = calculate_delay(item)
+        item.updated_at = now
+        updated += 1
+    return updated
 
 
 async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkScheduleItem, status: WorkScheduleItemStatus) -> None:
@@ -318,11 +447,13 @@ async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkSchedul
         stage.status = StageStatus.review
         stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 90)
     elif status == WorkScheduleItemStatus.accepted:
-        stage.status = StageStatus.done
-        stage.actual_end = stage.actual_end or date.today()
-        stage.customer_accepted_at = stage.customer_accepted_at or datetime.utcnow()
-        stage.percent_complete = 100
-        await ensure_pending_stage_payment(db, stage)
+        # P0: done только при реальной приёмке заказчика (не по одному статусу этапа)
+        if stage.customer_accepted_at:
+            stage.status = StageStatus.done
+            stage.percent_complete = 100
+        else:
+            stage.status = StageStatus.review
+            stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 95)
 
 
 async def update_item_status(
@@ -330,9 +461,47 @@ async def update_item_status(
     schedule: ProjectWorkSchedule,
     item: ProjectWorkScheduleItem,
     body_status: WorkScheduleItemStatus,
+    *,
+    user: User,
+    project: Project,
     blocking_reason: str | None = None,
     progress_percent: float | None = None,
 ) -> ProjectWorkScheduleItem:
+    """Смена статуса строки графика.
+
+    P0: status=accepted — только заказчик и только после единой приёмки (customer_accepted_at).
+    Исполнитель сдаёт работу через submitted → stage.review → work-acceptances.
+    """
+    from app.services.schedule_item_transitions import assert_item_transition
+
+    await assert_item_transition(
+        db, user=user, project=project, from_status=item.status, to_status=body_status,
+    )
+    if body_status == WorkScheduleItemStatus.accepted:
+        if not is_project_customer(user, project):
+            raise HTTPException(status_code=403, detail="only_customer_can_set_schedule_item_accepted")
+        # P0 harden: accepted в графике только после единой приёмки (или без привязки к этапу)
+        if item.stage_id:
+            stage = await db.get(Stage, item.stage_id)
+            if not stage or stage.project_id != project.id:
+                raise HTTPException(status_code=409, detail="schedule_item_stage_missing")
+            if not stage.customer_accepted_at:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "use_work_acceptance_first",
+                        "message": "Приёмка этапа — только через «Приёмка» (фото и чеклист), не из графика",
+                    },
+                )
+        elif getattr(item, "requires_customer_acceptance", False):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "use_work_acceptance_first",
+                    "message": "Строка требует приёмку заказчика — сначала завершите приёмку этапа",
+                },
+            )
+
     item.status = body_status
     item.blocking_reason = blocking_reason
     if progress_percent is not None:
@@ -341,6 +510,8 @@ async def update_item_status(
         item.actual_start_date = date.today()
     if body_status in [WorkScheduleItemStatus.accepted, WorkScheduleItemStatus.cancelled] and not item.actual_finish_date:
         item.actual_finish_date = date.today()
+    if body_status == WorkScheduleItemStatus.accepted:
+        item.progress_percent = max(item.progress_percent or 0, 100)
     item.delay_days = calculate_delay(item)
     item.updated_at = datetime.utcnow()
     await sync_stage_from_item_status(db, item, body_status)

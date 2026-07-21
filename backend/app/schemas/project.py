@@ -38,6 +38,7 @@ class RoomUpdate(BaseModel):
 class ProjectUpdate(BaseModel):
     """Редактируемый профиль проекта — без пересчёта комнат/сметы."""
     name: str | None = None
+    vat_rate: float | None = None  # W69 #48: 0 / 5 / 10 / 20
     address: str | None = None
     renovation_type: str | None = None
     property_type: str | None = None
@@ -116,7 +117,9 @@ class RoomOut(BaseModel):
 
 class PaymentCreate(BaseModel):
     title: str
-    amount: float = Field(gt=0)
+    amount: float | None = Field(default=None, gt=0)
+    """W68/W69 #40: доля этапа 1–100%; если задана — amount считается от stage.payment_amount."""
+    percent: float | None = Field(default=None, gt=0, le=100)
     payment_type: str
     stage_id: str | None = None
     notes: str | None = None
@@ -160,16 +163,37 @@ class ProjectOut(BaseModel):
     budget_planned: float
     budget_spent: float
     progress_percent: float
+    vat_rate: float = 0
     rooms_count: int
     stages_count: int
     planned_start_date: str | None = None
     planned_end_date: str | None = None
     pending_payments: int | None = None
+    is_archived: bool = False
+    trashed_at: str | None = None
+    estimate_locked_at: str | None = None
+    estimate_lock_proposed_at: str | None = None
+    estimate_lock_proposed_by: str | None = None
+    # owner | contractor | guest | none — archive/trash только для owner
+    access_mode: str = "owner"
 
 
 class ProjectDetail(ProjectOut):
     read_only: bool = False
-    access_mode: str = "owner"  # owner | contractor | guest
     estimate_lines: list[EstimateLineOut]
     stages: list[StageOut]
     rooms: list[RoomOut] = []
+
+
+class YookassaCheckoutIn(BaseModel):
+    portal_token: str | None = None
+
+
+class YookassaCheckoutOut(BaseModel):
+    demo: bool = False
+    payment_id: str | None = None
+    yookassa_payment_id: str | None = None
+    confirmation_url: str | None = None
+    status: str | None = None
+    error: str | None = None
+    message: str | None = None

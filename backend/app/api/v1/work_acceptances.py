@@ -34,6 +34,8 @@ class AcceptanceCreateIn(BaseModel):
 
 
 class AcceptanceDecisionIn(BaseModel):
+    # inline = hub list (quick only); full = stage fold with checklist
+    mode: str | None = None  # "inline" | "full" | None
     checklist: list[str] | None = None
     quality_score: float | None = Field(default=None, ge=0, le=10)
     comment: str | None = None
@@ -65,13 +67,9 @@ def acceptance_dict(row: WorkAcceptance) -> dict:
 
 
 def project_member_ids(project: Project) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for user_id in [project.customer_id, project.contractor_id, project.foreman_id]:
-        if user_id and user_id not in seen:
-            seen.add(user_id)
-            result.append(user_id)
-    return result
+    from app.services.accept_orchestrator import project_member_ids as _pm
+
+    return _pm(project)
 
 
 def require_acceptance_requester(project: Project, user: User) -> None:
@@ -113,47 +111,23 @@ async def active_acceptance(db: AsyncSession, project_id: str, stage_id: str) ->
     ).scalars().first()
 
 
-async def ensure_stage_payment(db: AsyncSession, project: Project, stage: Stage, created_by: str) -> Payment | None:
-    existing = (
-        await db.execute(
-            select(Payment)
-            .where(Payment.project_id == project.id)
-            .where(Payment.stage_id == stage.id)
-            .where(Payment.payment_type == PaymentType.stage)
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if existing or not stage.payment_amount or stage.payment_amount <= 0:
-        return existing
-
-    payment = Payment(
-        project_id=project.id,
-        stage_id=stage.id,
-        payment_type=PaymentType.stage,
-        title=f"Оплата этапа: {stage.name}",
-        amount=stage.payment_amount,
-        created_by=created_by,
-        notes="Создано при приёмке этапа",
-    )
-    db.add(payment)
-    return payment
+# Канон W44: helpers живут в accept_orchestrator (единый cascade)
+from app.services.accept_orchestrator import (  # noqa: E402
+    activate_next_stage,
+    ensure_stage_payment,
+)
 
 
-async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
-    next_stage = (
-        await db.execute(
-            select(Stage)
-            .where(Stage.project_id == stage.project_id)
-            .where(Stage.sort_order > stage.sort_order)
-            .where(Stage.status == StageStatus.planned)
-            .order_by(Stage.sort_order.asc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if next_stage:
-        next_stage.status = StageStatus.active
-        next_stage.actual_start = next_stage.actual_start or date.today()
-    return next_stage
+@router.get("/{project_id}/work-acceptances/pending-count")
+async def acceptances_pending_count(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services import acceptance_service as acc_svc
+
+    await require_project(db, project_id, user, write=False)
+    return {"count": await acc_svc.pending_count(db, project_id)}
 
 
 @router.get("/{project_id}/work-acceptances")
@@ -239,6 +213,8 @@ async def accept_work(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.accept_orchestrator import finalize_work_acceptance
+
     project = await require_project(db, project_id, user, write=True)
     require_acceptance_decider(project, user)
     row = await db.get(WorkAcceptance, acceptance_id)
@@ -247,109 +223,73 @@ async def accept_work(
     require_pending_decision(row)
     stage = await require_stage(db, project_id, row.stage_id)
 
-    now = datetime.utcnow()
-    row.status = AcceptanceStatus.accepted_with_remarks.value if body.create_issue else AcceptanceStatus.accepted.value
-    row.accepted_by = user.id
-    row.accepted_at = now
-    row.quality_score = body.quality_score
-    row.comment = body.comment or row.comment
-    if body.checklist is not None:
-        row.checklist_json = json.dumps(body.checklist)
+    from app.services.acceptance_policy import assert_accept_policy, policy_dict
+    from app.services import outbox_service as outbox
 
-    stage.status = StageStatus.done
-    stage.customer_accepted_at = stage.customer_accepted_at or now
-    stage.actual_end = stage.actual_end or date.today()
-    stage.percent_complete = 100
-    stage.needs_rework = False
+    source_mode = (getattr(body, "mode", None) or "full").strip().lower()
+    try:
+        assert_accept_policy(
+            stage,
+            checklist=body.checklist,
+            source="inline" if source_mode == "inline" else "api",
+        )
+        result = await finalize_work_acceptance(
+            db,
+            project=project,
+            stage=stage,
+            row=row,
+            accepted_by=user.id,
+            comment=body.comment,
+            quality_score=body.quality_score,
+            create_issue=body.create_issue,
+            checklist=body.checklist,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "photos_required":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "photos_required",
+                    "message": "Добавьте хотя бы одно фото результата этапа перед приёмкой",
+                },
+            ) from exc
+        if code in ("checklist_required", "checklist_incomplete"):
+            pol = policy_dict(stage)
+            raise HTTPException(
+                409,
+                detail={
+                    "code": code,
+                    "message": "Откройте этап и отметьте чек-лист перед приёмкой",
+                    "policy": pol,
+                },
+            ) from exc
+        raise
 
-    if body.create_issue:
-        db.add(ProjectIssue(
-            project_id=project_id,
-            stage_id=stage.id,
-            title=f"Замечание после приёмки: {stage.name}",
-            description=body.comment,
-            severity="low",
-            status="open",
-            created_at=now,
-        ))
-
-    payment = await ensure_stage_payment(db, project, stage, user.id)
-    next_stage = await activate_next_stage(db, stage)
-
-    # D-01: register canonical acceptance act in Document Center
-    from app.services.project_document_service import ensure_acceptance_act_document
-    await ensure_acceptance_act_document(
+    # P1.16: side effects via transactional outbox (same tx as acceptance)
+    await outbox.enqueue(
         db,
-        project_id=project_id,
-        stage_id=stage.id,
-        stage_name=stage.name,
-        acceptance_id=row.id,
-        accepted_by=user.id,
+        aggregate_type="work_acceptance",
+        aggregate_id=result.acceptance.id,
+        event_type="acceptance.side_effects",
+        payload={
+            "project_id": project.id,
+            "stage_id": result.stage.id,
+            "accepted_by": user.id,
+            "comment": body.comment,
+            "payment_id": result.payment.id if result.payment else None,
+            "next_stage_id": result.next_stage.id if result.next_stage else None,
+            "source": "app",
+        },
     )
-
     await db.commit()
-    await db.refresh(row)
-
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="AcceptanceAccepted",
-        title=f"Этап принят: {stage.name}",
-        body=body.comment,
-        link_path=f"/stage/{stage.id}",
-    )
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="StageClosed",
-        title=f"Этап закрыт: {stage.name}",
-        body=body.comment,
-        link_path=f"/stage/{stage.id}",
-        stage_id=stage.id,
-    )
-
-    for member_id in project_member_ids(project):
-        if member_id == user.id:
-            continue
-        await notif.notify(
-            db,
-            user_id=member_id,
-            project_id=project_id,
-            notification_type="stage_review",
-            title=f"Этап принят: {stage.name}",
-            body=body.comment or "Работы по этапу приняты заказчиком.",
-            link_path=f"/stage/{stage.id}",
-            return_to="/(customer)/(tabs)/home",
-        )
-
-    if payment and project.customer_id:
-        await notif.notify(
-            db,
-            user_id=project.customer_id,
-            project_id=project_id,
-            notification_type="payment_pending",
-            title="Подтвердите оплату этапа",
-            body=stage.name,
-            link_path="/(customer)/(tabs)/finance",
-            return_to="/(customer)/(tabs)/home",
-        )
-
-    if next_stage:
-        for member_id in project_member_ids(project):
-            await notif.notify(
-                db,
-                user_id=member_id,
-                project_id=project_id,
-                notification_type="stage_started",
-                title=f"Следующий этап: {next_stage.name}",
-                body="Этап автоматически переведён в работу после приёмки предыдущего.",
-                link_path=f"/stage/{next_stage.id}",
-                return_to="/(customer)/(tabs)/repair",
-            )
-
-    return acceptance_dict(row)
+    await db.refresh(result.acceptance)
+    # Best-effort dispatch; failures stay in outbox for retry
+    try:
+        await outbox.dispatch_pending(db, limit=10)
+    except Exception:
+        pass
+    return acceptance_dict(result.acceptance)
 
 
 @router.post("/{project_id}/work-acceptances/{acceptance_id}/return")
@@ -370,7 +310,11 @@ async def return_work(
 
     row.status = AcceptanceStatus.returned.value
     row.accepted_by = user.id
-    row.quality_score = body.quality_score
+    # W139: не подставляем 5 — пишем только явную оценку (None = без оценки)
+    if body.quality_score is not None:
+        row.quality_score = body.quality_score
+    else:
+        row.quality_score = None
     row.comment = body.comment or row.comment
     if body.checklist is not None:
         row.checklist_json = json.dumps(body.checklist)

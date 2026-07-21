@@ -78,6 +78,8 @@ class WorkScheduleOut(BaseModel):
     description: str | None = None
     planned_start_date: date | None = None
     planned_finish_date: date | None = None
+    schedule_version: int = 1
+    supersedes_id: str | None = None
     rejection_reason: str | None = None
     created_by: str
     submitted_by: str | None = None

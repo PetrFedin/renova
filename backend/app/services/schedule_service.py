@@ -23,7 +23,7 @@ def _stage_delay_days(stage: Stage, today: date | None = None) -> int:
 
 
 async def build_schedule_summary(db: AsyncSession, project: Project) -> dict:
-    """Сводка сроков для Dashboard и OS KPI."""
+    """OS schedule summary — stage-based KPI view; canonical plan dates live in project_work_schedules (SoT)."""
     stages = sorted(project.stages or [], key=lambda s: s.sort_order)
     today = _today()
 

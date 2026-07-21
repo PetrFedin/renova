@@ -6,7 +6,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import WorkOrder, WorkOrderStatus
+from app.models.entities import Project, WorkOrder, WorkOrderStatus
 from app.services import activity_service as act
 from app.services import chat_service as chat_svc
 
@@ -108,10 +108,26 @@ async def update_work_order(db: AsyncSession, w: WorkOrder, patch: dict) -> Work
     return w
 
 
-async def transition(db: AsyncSession, w: WorkOrder, new_status: str, user_id: str) -> WorkOrder:
+async def transition(
+    db: AsyncSession,
+    w: WorkOrder,
+    new_status: str,
+    user_id: str,
+    *,
+    project: Project | None = None,
+) -> WorkOrder:
     cur = w.status.value if hasattr(w.status, "value") else w.status
     if new_status not in ALLOWED.get(cur, set()):
         raise ValueError(f"Нельзя перейти из {cur} в {new_status}")
+    # P0: «принято/done» только заказчик — иначе обход приёмки этапа с графика/карточки
+    if new_status == WorkOrderStatus.done.value:
+        proj = project or await db.get(Project, w.project_id)
+        if not proj or user_id != proj.customer_id:
+            raise ValueError("only_customer_can_accept_work_order")
+    if new_status == WorkOrderStatus.paid.value:
+        proj = project or await db.get(Project, w.project_id)
+        if not proj or user_id != proj.customer_id:
+            raise ValueError("only_customer_can_confirm_work_payment")
     w.status = WorkOrderStatus(new_status)
     today = date.today()
     if new_status == WorkOrderStatus.in_progress.value and not w.actual_start:

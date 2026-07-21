@@ -1,4 +1,10 @@
-"""Демо-данные — 2 роли + гостевой заказчик для read-only."""
+"""Демо-данные — 2 роли + гостевой заказчик для read-only.
+
+Demo login (EXPO_PUBLIC_DEMO=1 in dev):
+  customer   +70000000001
+  contractor +70000000002
+  guest RO   +70000000003
+"""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -6,7 +12,17 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChatMessage, ChatMessageType, Project, User, UserRole, ProjectViewer
+from app.models.entities import (
+    AcceptanceStatus,
+    ChatMessage,
+    ChatMessageType,
+    Project,
+    StageStatus,
+    User,
+    UserRole,
+    ProjectViewer,
+    WorkAcceptance,
+)
 from app.services import project_service as proj_svc
 from app.services import payment_service as pay_svc
 from app.services import chat_service as chat_svc
@@ -219,8 +235,116 @@ async def _seed_house_chats(
     )
 
 
+
+
+
+async def _ensure_demo_acceptance_queue(db: AsyncSession, project_id: str, contractor_id: str) -> None:
+    """W47: demo сразу показывает «Принять этап» (investor 15-min path)."""
+    from app.models.entities import Stage
+
+    p = await db.get(Project, project_id)
+    if not p:
+        return
+    stages = list(
+        (
+            await db.execute(
+                select(Stage).where(Stage.project_id == project_id).order_by(Stage.sort_order.asc())
+            )
+        ).scalars().all()
+    )
+    if not stages:
+        return
+    active = next((s for s in stages if s.status in (StageStatus.active, StageStatus.review)), stages[0])
+    if not active.payment_amount or active.payment_amount <= 0:
+        active.payment_amount = round(max(float(p.budget_planned or 0) * 0.15, 25000.0), 2)
+
+    existing = (
+        await db.execute(
+            select(WorkAcceptance).where(
+                WorkAcceptance.project_id == project_id,
+                WorkAcceptance.stage_id == active.id,
+                WorkAcceptance.status.in_(
+                    (AcceptanceStatus.requested.value, AcceptanceStatus.in_review.value)
+                ),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        if active.status != StageStatus.review:
+            active.status = StageStatus.review
+            active.percent_complete = max(active.percent_complete or 0, 90)
+        from app.models.entities import StagePhoto
+        has_photo = (
+            await db.execute(select(StagePhoto).where(StagePhoto.stage_id == active.id).limit(1))
+        ).scalar_one_or_none()
+        if not has_photo:
+            db.add(
+                StagePhoto(
+                    stage_id=active.id,
+                    user_id=contractor_id,
+                    caption="после — демо",
+                    image_url="https://placehold.co/600x400/png?text=demo-after",
+                )
+            )
+        await db.commit()
+        return
+
+    db.add(
+        WorkAcceptance(
+            project_id=project_id,
+            stage_id=active.id,
+            requested_by=contractor_id,
+            requested_at=datetime.utcnow(),
+            status=AcceptanceStatus.requested.value,
+            comment="Демо: этап готов к приёмке",
+            created_at=datetime.utcnow(),
+        )
+    )
+    active.status = StageStatus.review
+    active.contractor_ready = True
+    active.percent_complete = max(active.percent_complete or 0, 90)
+    # W68 #44: демо-фото результата — иначе приёмка блокируется
+    from app.models.entities import StagePhoto
+    has_photo = (
+        await db.execute(select(StagePhoto).where(StagePhoto.stage_id == active.id).limit(1))
+    ).scalar_one_or_none()
+    if not has_photo:
+        db.add(
+            StagePhoto(
+                stage_id=active.id,
+                user_id=contractor_id,
+                caption="после — демо",
+                image_url="https://placehold.co/600x400/png?text=demo-after",
+            )
+        )
+    await db.commit()
+
+
+async def _ensure_apartment_in_progress(db: AsyncSession, project_id: str, contractor_id: str) -> None:
+    """Канонический demo-объект: исполнитель назначен, первый этап в работе."""
+    p = await proj_svc.get_project(db, project_id)
+    if not p:
+        return
+    if not p.contractor_id:
+        await proj_svc.assign_contractor(db, project_id, contractor_id)
+        p = await proj_svc.get_project(db, project_id)
+    if not p or not p.stages:
+        return
+    first = sorted(p.stages, key=lambda s: s.sort_order)[0]
+    if first.status != StageStatus.active:
+        first.status = StageStatus.active
+    if first.percent_complete < 15:
+        first.percent_complete = 15
+    if (p.progress_percent or 0) < 12:
+        p.progress_percent = 12.0
+    await db.commit()
+    await _ensure_demo_acceptance_queue(db, project_id, contractor_id)
+    await _ensure_demo_procurement(db, project_id)
+
 async def _ensure_house_demo(db: AsyncSession, customer_id: str) -> None:
-    r = await db.execute(select(Project).where(Project.customer_id == customer_id, Project.property_type == "house"))
+    r = await db.execute(
+        select(Project.id).where(Project.customer_id == customer_id, Project.property_type == "house").limit(1)
+    )
     if r.scalar_one_or_none():
         return
     await proj_svc.create_project(
@@ -266,6 +390,58 @@ async def _seed_chats_for_customer_projects(
             await _seed_apartment_chats(db, proj.id, customer.id, contractor.id)
 
 
+
+async def _ensure_demo_procurement(db: AsyncSession, project_id: str) -> None:
+    """W50: демо-цепочка снабжения — потребности из сметы, если пусто."""
+    from sqlalchemy import select as sa_select
+    from app.models.entities import MaterialPick
+    from app.services import purchase_service as pur_svc
+
+    existing = (await db.execute(sa_select(MaterialPick).where(MaterialPick.project_id == project_id).limit(1))).scalar_one_or_none()
+    if existing:
+        return
+    created = await pur_svc.generate_needs_from_estimate(db, project_id)
+    if created:
+        # W66: create_from_picks требует approved (W57) — демо сначала согласует
+        from app.models.entities import MaterialPickStatus
+        for c in created[:3]:
+            c.status = MaterialPickStatus.approved
+        await db.flush()
+        ids = [c.id for c in created[:3]]
+        await pur_svc.create_from_picks(db, project_id, ids, supplier_name="Леруа (демо)")
+
+
+async def _ensure_demo_contractor_profile(db: AsyncSession, contractor_id: str) -> None:
+    """W44: демо-реквизиты СБП — portal/SBP не упираются в «спросите в чате»."""
+    from app.models.entities import ContractorProfile
+
+    existing = (
+        await db.execute(select(ContractorProfile).where(ContractorProfile.user_id == contractor_id))
+    ).scalar_one_or_none()
+    requisites = (
+        "СБП: +70000000002\n"
+        "Получатель: Демо исполнитель\n"
+        "Банк: Т-Банк (demo seed)\n"
+        "Назначение: оплата этапа ремонта Renova"
+    )
+    if existing:
+        if not (existing.payment_requisites or "").strip():
+            existing.payment_requisites = requisites
+        if not existing.company_name:
+            existing.company_name = "Демо Подрядчик Renova"
+        return
+    db.add(
+        ContractorProfile(
+            user_id=contractor_id,
+            company_name="Демо Подрядчик Renova",
+            city="Москва",
+            payment_requisites=requisites,
+            bio="Демо-профиль для investor/pilot walkthrough",
+        )
+    )
+
+
+
 async def ensure_demo_users(db: AsyncSession) -> None:
     names = {"customer": "Демо заказчик", "contractor": "Демо исполнитель", "guest": "Демо гость (read-only)"}
     for key, phone in DEMO_PHONES.items():
@@ -288,6 +464,8 @@ async def ensure_demo_users(db: AsyncSession) -> None:
     customer = r.scalar_one()
     rc = await db.execute(select(User).where(User.phone == DEMO_PHONES["contractor"]))
     contractor = rc.scalar_one()
+    await _ensure_demo_contractor_profile(db, contractor.id)
+    await db.commit()
 
     r2 = await db.execute(select(Project).where(Project.customer_id == customer.id))
     existing_projects = list(r2.scalars().all())
@@ -295,6 +473,11 @@ async def ensure_demo_users(db: AsyncSession) -> None:
         await _ensure_house_demo(db, customer.id)
         r2 = await db.execute(select(Project).where(Project.customer_id == customer.id))
         existing_projects = list(r2.scalars().all())
+        apt = next((x for x in existing_projects if getattr(x, "property_type", "apartment") != "house"), None)
+        if apt:
+            await _ensure_apartment_in_progress(db, apt.id, contractor.id)
+            await _ensure_demo_acceptance_queue(db, apt.id, contractor.id)
+            await _ensure_demo_procurement(db, apt.id)
         await _seed_chats_for_customer_projects(db, customer, contractor, existing_projects)
         await _link_guest(db, existing_projects)
         return
@@ -315,5 +498,8 @@ async def ensure_demo_users(db: AsyncSession) -> None:
         ],
     )
     await pay_svc.create_payment(db, p.id, customer.id, "Аванс 30%", round(p.budget_planned * 0.3, 2), "advance", notes="Демо: подтвердите оплату на вкладке Финансы")
+    await _ensure_apartment_in_progress(db, p.id, contractor.id)
+    await _ensure_demo_acceptance_queue(db, p.id, contractor.id)
+    await _ensure_demo_procurement(db, p.id)
     await _seed_apartment_chats(db, p.id, customer.id, contractor.id)
     await _link_guest(db, [p])

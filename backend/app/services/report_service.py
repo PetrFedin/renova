@@ -49,6 +49,8 @@ async def weekly_report(db: AsyncSession, project_id: str) -> dict:
         return {}
     events = list((await db.execute(select(ActivityEvent).where(ActivityEvent.project_id == project_id, ActivityEvent.created_at >= since).order_by(ActivityEvent.created_at.desc()))).scalars().all())
     summary = await bud.budget_summary(db, project_id)
+    # budget_summary может expire ORM — перезагружаем проект для risk engine
+    p = await risk.load_project_for_risks(db, project_id) or p
     risks = (await risk.compute_project_risks(db, p))[:5]
     issues = await iss.list_issues(db, project_id, status=None)
     open_issues = [i for i in issues if i.status != "closed"]
@@ -56,6 +58,25 @@ async def weekly_report(db: AsyncSession, project_id: str) -> dict:
     done = sum(1 for s in stages if s.status == StageStatus.done)
     total = len(stages) or 1
     overdue = [s.name for s in stages if s.planned_end and s.planned_end < _today() and s.status != StageStatus.done]
+    # W75: гарантия + очередь приёмки в дайджест
+    from app.models.entities import WorkAcceptance
+    warranty_open = [i for i in open_issues if (i.title or "").startswith("[Гарантия]")]
+    now = datetime.utcnow()
+    warranty_overdue = 0
+    for i in warranty_open:
+        due = getattr(i, "due_at", None)
+        if due is not None and due < now:
+            warranty_overdue += 1
+    wa_pending = list(
+        (
+            await db.execute(
+                select(WorkAcceptance).where(
+                    WorkAcceptance.project_id == project_id,
+                    WorkAcceptance.status.in_(["requested", "in_review"]),
+                )
+            )
+        ).scalars().all()
+    )
     return {
         "period": "7d",
         "project_name": p.name,
@@ -66,6 +87,9 @@ async def weekly_report(db: AsyncSession, project_id: str) -> dict:
         "overdue_works": overdue[:5],
         "open_issues_count": len(open_issues),
         "critical_issues": len([i for i in open_issues if i.severity in ("critical", "high")]),
+        "warranty_open": len(warranty_open),
+        "warranty_overdue": warranty_overdue,
+        "pending_acceptances": len(wa_pending),
         "risks": risks,
         "highlights": [e.title for e in events[:12]],
     }

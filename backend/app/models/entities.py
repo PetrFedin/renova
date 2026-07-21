@@ -36,9 +36,13 @@ class PaymentType(str, enum.Enum):
 
 
 class PaymentStatus(str, enum.Enum):
-    pending = "pending"
+    pending = "pending"  # invoice / awaiting_payment
+    processing = "processing"  # yookassa checkout started
+    paid_unverified = "paid_unverified"  # transfer_ack без чека/выписки — не в budget_spent
     confirmed = "confirmed"
     cancelled = "cancelled"
+    disputed = "disputed"
+    refunded = "refunded"
 
 
 class ChangeOrderStatus(str, enum.Enum):
@@ -56,9 +60,16 @@ class User(Base):
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     inn: Mapped[str | None] = mapped_column(String(12), nullable=True)
     moy_nalog_linked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # not_connected|authorization_started|connected|token_expired|revoked|error|admin_enabled
+    moy_nalog_status: Mapped[str] = mapped_column(String(32), default="not_connected")
     profile_code: Mapped[str | None] = mapped_column(String(8), unique=True, nullable=True, index=True)
     npd_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Soft-delete / GDPR retention (P2.21)
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # Access JWT iat must be >= this (set on revoke-all) — kills live access without denylist
+    tokens_invalid_before: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Project(Base):
@@ -80,6 +91,16 @@ class Project(Base):
     planned_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    trashed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    estimate_locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # W57: исполнитель предлагает фиксацию; заказчик подтверждает → estimate_locked_at
+    estimate_lock_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    estimate_lock_proposed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # W68 #39: снимок строк на момент propose — для diff перед lock
+    estimate_propose_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # W69 #48: ставка НДС % (0 / 5 / 20), 0 = без НДС
+    vat_rate: Mapped[float] = mapped_column(Float, default=0)
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     estimate_lines: Mapped[list["EstimateLine"]] = relationship(back_populates="project", cascade="all, delete-orphan")
@@ -210,6 +231,9 @@ class Payment(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    yookassa_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # yookassa | bank_transfer | sbp_manual | cash | imported_bank_statement
+    payment_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="payments")
@@ -240,6 +264,8 @@ class Receipt(Base):
     fn: Mapped[str | None] = mapped_column(String(32), nullable=True)
     fd: Mapped[str | None] = mapped_column(String(32), nullable=True)
     fns_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # verified_live|saved_unverified|verification_pending|verification_failed|demo_verified|invalid
+    verification_status: Mapped[str] = mapped_column(String(32), default="saved_unverified")
     expense_category: Mapped[str] = mapped_column(String(32), default="materials")
     room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
     stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
@@ -282,6 +308,7 @@ class NotificationType(str, enum.Enum):
     room_updated = "room_updated"
     room_created = "room_created"
     payment_pending = "payment_pending"
+    payment_confirmed = "payment_confirmed"
     change_order = "change_order"
     room_change = "room_change"
     chat_message = "chat_message"
@@ -636,6 +663,36 @@ class MaterialPick(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+
+class SelectionStatus(str, enum.Enum):
+    draft = "draft"
+    proposed = "proposed"
+    approved = "approved"
+    rejected = "rejected"
+
+
+class SelectionItem(Base):
+    """P2.2: чистовые материалы — room × category × SKU × allowance × approve."""
+    __tablename__ = "selection_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(32), default="other", index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    sku: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    allowance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price: Mapped[float] = mapped_column(Float, default=0)
+    shop_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    shop_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[SelectionStatus] = mapped_column(Enum(SelectionStatus), default=SelectionStatus.draft)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposed_by_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ActivityEvent(Base):
     __tablename__ = "activity_events"
 
@@ -739,6 +796,8 @@ class ContractorProfile(Base):
     jobs_done: Mapped[int] = mapped_column(Integer, default=0)
     city: Mapped[str | None] = mapped_column(String(64), nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Реквизиты для перевода (СБП/карта/счёт) — без hardcoded demo-карт в UI
+    payment_requisites: Mapped[str | None] = mapped_column(Text, nullable=True)
     visible: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -784,6 +843,20 @@ class LeadMessage(Base):
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
+class JobLeadQuote(Base):
+    """Multiple contractor quotes per lead — customer picks (P2.18)."""
+    __tablename__ = "job_lead_quotes"
+    __table_args__ = (UniqueConstraint("lead_id", "contractor_id", name="uq_lead_contractor_quote"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    lead_id: Mapped[str] = mapped_column(String(36), ForeignKey("job_leads.id"), index=True)
+    contractor_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    pre_estimate: Mapped[float] = mapped_column(Float)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class IssueSeverity(str, enum.Enum):
     low = "low"
     medium = "medium"
@@ -815,6 +888,10 @@ class ProjectIssue(Base):
     status: Mapped[str] = mapped_column(String(16), default="open", index=True)
     assignee_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    floor_plan_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("floor_plans.id"), nullable=True, index=True)
+    x_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    y_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    photo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -1020,3 +1097,61 @@ class ScratchpadLine(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="scratchpad_lines")
+
+
+class UserSession(Base):
+    """Refresh-token session — revoke/rotation for production identity."""
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class PaymentWebhookEvent(Base):
+    """Durable YuKassa webhook idempotency (survives restart / multi-instance)."""
+    __tablename__ = "payment_webhook_events"
+
+    event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), default="yookassa")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    payload_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class PaymentEvent(Base):
+    """Audit trail: who/when/source moved payment status + evidence."""
+    __tablename__ = "payment_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    payment_id: Mapped[str] = mapped_column(String(36), ForeignKey("payments.id"), index=True)
+    actor_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source: Mapped[str] = mapped_column(String(32))  # manual|webhook|bank_import|chat|system
+    old_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(32))
+    evidence_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # receipt|transfer_ack|yookassa|bank_statement
+    evidence_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class DomainOutbox(Base):
+    """Transactional outbox — side effects after commit (P1.16)."""
+    __tablename__ = "domain_outbox"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    aggregate_type: Mapped[str] = mapped_column(String(64), index=True)
+    aggregate_id: Mapped[str] = mapped_column(String(36), index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

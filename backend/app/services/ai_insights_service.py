@@ -69,7 +69,7 @@ async def compute_project_insights(db: AsyncSession, project: Project, *, role: 
             body=f"Прогноз окончания +{sched['forecast_delay_days']} дн. к плану.",
             probability=min(90, 40 + sched["forecast_delay_days"] * 5),
             action="График работ",
-            href="/(customer)/(tabs)/works" if role != "contractor" else "/(contractor)/(tabs)/works",
+            href="/(customer)/(tabs)/repair?tab=works" if role != "contractor" else "/(contractor)/(tabs)/repair?tab=works",
             priority=65,
         ))
 
@@ -98,7 +98,7 @@ async def compute_project_insights(db: AsyncSession, project: Project, *, role: 
             title=f"Закупите материалы: {len(need)} поз.",
             body=f"Для «{active_stages[0].name}» могут понадобиться материалы в ближайшие дни.",
             action="К закупке",
-            href="/(customer)/(tabs)/materials" if role != "contractor" else "/(contractor)/(tabs)/materials",
+            href="/(customer)/(tabs)/repair?tab=materials" if role != "contractor" else "/(contractor)/(tabs)/repair?tab=materials",
             priority=60,
         ))
 

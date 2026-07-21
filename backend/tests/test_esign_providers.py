@@ -95,3 +95,66 @@ async def test_kontur_sandbox_pending_and_webhook(db, monkeypatch):
     assert done is not None
     assert done.status == "signed"
     assert done.signed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_kontur_webhook_idempotent(db, monkeypatch):
+    """P3.1d: повторный webhook не перезаписывает signed_at."""
+    from app.core import config as cfg
+    from app.services.project_document_service import (
+        complete_external_signature,
+        create_document,
+        sign_document,
+    )
+
+    monkeypatch.setattr(cfg.settings, "kontur_mode", "sandbox")
+    monkeypatch.setattr(cfg.settings, "kontur_api_key", "test-key-not-secret")
+
+    doc = await create_document(
+        db,
+        project_id="p1",
+        created_by="u1",
+        title="Договор kontur dup",
+        document_type="contract",
+    )
+    sig = await sign_document(
+        db,
+        doc,
+        signer_user_id="u1",
+        signer_role="customer",
+        provider="kontur",
+    )
+    first = await complete_external_signature(
+        db,
+        provider_name="kontur",
+        external_id=sig.provider_external_id,
+        status="signed",
+    )
+    assert first is not None
+    signed_at = first.signed_at
+    assert signed_at is not None
+
+    second = await complete_external_signature(
+        db,
+        provider_name="kontur",
+        external_id=sig.provider_external_id,
+        status="signed",
+    )
+    assert second is not None
+    assert second.signed_at == signed_at
+
+
+@pytest.mark.asyncio
+async def test_esign_health_endpoint():
+    from httpx import ASGITransport, AsyncClient
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        user = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
+        r = await client.get("/api/v1/esign/health", headers={"X-User-Id": user["id"]})
+        assert r.status_code == 200
+        body = r.json()
+        assert "webhook_kontur" in body
+        assert body["webhook_kontur"].endswith("/api/v1/esign/webhooks/kontur")
+        assert "kontur_mode" in body

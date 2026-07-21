@@ -35,8 +35,17 @@ async def test_demo_flow():
         await client.post(f"/api/v1/projects/{pid}/assign", headers={"X-User-Id": cont["id"]})
         stages = (await client.get(f"/api/v1/projects/{pid}", headers=h)).json()["stages"]
         active = next(s for s in stages if s["status"] == "active")
-        await client.post(f"/api/v1/projects/{pid}/stages/{active['id']}/submit", headers={"X-User-Id": cont["id"]})
-        await client.post(f"/api/v1/projects/{pid}/stages/{active['id']}/accept", headers=h)
+        created = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances",
+            headers={"X-User-Id": cont["id"]},
+            json={"stage_id": active["id"], "comment": "готов"},
+        )
+        acc_id = created.json()["id"]
+        await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
+            headers=h,
+            json={"quality_score": 10},
+        )
         assert (await client.get(f"/api/v1/projects/{pid}/calendar", headers=h)).json()["events"]
         assert (await client.get(f"/api/v1/projects/{pid}/chats", headers=h)).json()
         r = await client.post(

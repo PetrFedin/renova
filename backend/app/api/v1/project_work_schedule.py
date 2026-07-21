@@ -152,6 +152,8 @@ async def update_project_work_schedule_item_status(
         schedule=schedule,
         item=item,
         body_status=body.status,
+        user=user,
+        project=project,
         blocking_reason=body.blocking_reason,
         progress_percent=body.progress_percent,
     )

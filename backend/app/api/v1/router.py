@@ -1,7 +1,9 @@
 from fastapi import APIRouter
+from app.api.v1 import portal
+from app.api.v1 import selections
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
-    budget_planner, purchases, documents, esign, ocr_worker, os, reports, marketplace, design_packages,
+    budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
     approvals, waste_orders, floor_plans, work_types, materials, rework_sla, kpi_history,
     project_checklists, checklist_templates, stage_reactions, articles, analytics, admin,
     audit, subscription, teams, export, push, articles_admin, calendar, change_orders,
@@ -15,6 +17,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(design_packages.router)
 api_router.include_router(marketplace.router)
 api_router.include_router(materials.router)
+api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
 api_router.include_router(waste_orders.router)
 api_router.include_router(floor_plans.router)
@@ -34,7 +37,9 @@ api_router.include_router(stage_reactions.router)
 api_router.include_router(documents.router)
 api_router.include_router(esign.router)
 api_router.include_router(ocr_worker.router)
+api_router.include_router(automation_worker.router)
 api_router.include_router(os.router)
+api_router.include_router(portal.router)
 api_router.include_router(reports.router)
 
 # --- core / identity ---

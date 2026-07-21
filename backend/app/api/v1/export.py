@@ -1,5 +1,6 @@
 """PDF и экспорт проекта — fpdf2 с транслитерацией кириллицы."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,13 +12,44 @@ from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
 
 router = APIRouter(prefix="/projects", tags=["export"])
 
+async def _archive_and_respond(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user: User,
+    title: str,
+    href: str,
+    body: str | bytes,
+    media_type: str,
+    filename: str,
+    notes: str | None = None,
+):
+    """W74: отдать файл и зафиксировать выгрузку в Document Center."""
+    from app.services.integrations.export_archive import register_export_in_documents
+    try:
+        await register_export_in_documents(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            title=title,
+            href=href,
+            notes=notes,
+        )
+    except Exception:
+        # выгрузка важнее архива — не ломаем download
+        pass
+    return Response(
+        body,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+
 
 @router.get("/{project_id}/estimate.pdf")
 async def export_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     pdf = new_pdf()
     pdf_line(pdf, f"Смета: {p.name}", size=14)
     for line in p.estimate_lines:
@@ -71,10 +103,7 @@ async def export_room_pdf(project_id: str, room_id: str, user: User = Depends(ge
 
 @router.get("/{project_id}/export.pdf")
 async def export_project_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     pdf = new_pdf()
     pdf_line(pdf, f"Проект: {p.name}", size=14)
     pdf_line(pdf, f"Бюджет: {p.budget_planned:.0f} / {p.budget_spent:.0f} ₽")
@@ -87,10 +116,7 @@ async def export_project_pdf(project_id: str, user: User = Depends(get_current_u
 
 @router.get("/{project_id}/estimate.csv")
 async def export_estimate_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     lines = ["name,unit,qty_plan,qty_fact,unit_price,total"]
     for line in p.estimate_lines:
         lines.append(f"{line.name},{line.unit},{line.quantity_planned},{line.quantity_actual},{line.unit_price},{line.quantity_planned * line.unit_price}")
@@ -102,10 +128,7 @@ async def export_estimate_csv(project_id: str, user: User = Depends(get_current_
 async def export_xlsx(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from itertools import groupby
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     total = sum(line.quantity_planned * line.unit_price for line in p.estimate_lines)
     sorted_lines = sorted(p.estimate_lines, key=lambda x: x.room_name or "Obschee")
     rows = ""
@@ -152,10 +175,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
     from sqlalchemy import select
     from app.models.entities import MarginSnapshot
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     since = datetime.utcnow() - timedelta(days=7)
     r = await db.execute(select(MarginSnapshot).where(MarginSnapshot.project_id == project_id, MarginSnapshot.recorded_at >= since))
     snaps = list(r.scalars().all())
@@ -176,10 +196,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
 async def export_dossier(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import activity_service as act
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     items = await act.project_feed(db, project_id, limit=100)
     pdf = new_pdf()
     pdf_line(pdf, f"Dossier: {p.name}", size=14)
@@ -192,10 +209,7 @@ async def export_dossier(project_id: str, user: User = Depends(get_current_user)
 async def full_dossier(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import activity_service as act
 
-    await require_project(db, project_id, user, write=False)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     items = await act.project_feed(db, project_id, limit=50)
     pdf = new_pdf()
     pdf_line(pdf, f"Full dossier: {p.name}", size=14)
@@ -206,3 +220,542 @@ async def full_dossier(project_id: str, user: User = Depends(get_current_user), 
     for it in items[:40]:
         pdf_line(pdf, f"{it.get('at', '')[:10]} {it.get('title', '')}", size=8)
     return pdf_response(pdf, f"full-{project_id[:8]}.pdf")
+
+
+@router.get("/{project_id}/export/1c-payments.csv")
+async def export_1c_payments_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.1a: платежи + CO для 1С (CSV ;)."""
+    from app.services.integrations.onec_export import build_1c_payments_csv
+
+    project = await require_project(db, project_id, user, write=False)
+    body = await build_1c_payments_csv(db, project)
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="Выгрузка 1С (CSV)",
+        href=f"/api/v1/projects/{project_id}/export/1c-payments.csv",
+        body=body,
+        media_type="text/csv; charset=utf-8",
+        filename=f"renova-1c-{project_id[:8]}.csv",
+        notes="payments+change_orders",
+    )
+
+
+@router.get("/{project_id}/export/1c-commerceml.xml")
+async def export_1c_commerceml(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.1a++: CommerceML 2.04 subset для 1С."""
+    from app.services.integrations.onec_export import build_1c_commerceml_xml
+
+    project = await require_project(db, project_id, user, write=False)
+    body = await build_1c_commerceml_xml(db, project)
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="1С CommerceML",
+        href=f"/api/v1/projects/{project_id}/export/1c-commerceml.xml",
+        body=body,
+        media_type="application/xml; charset=utf-8",
+        filename=f"renova-cml-{project_id[:8]}.xml",
+        notes="CommerceML 2.04 subset + estimate catalog",
+    )
+
+
+@router.get("/{project_id}/export/1c-payments.xml")
+async def export_1c_payments_xml(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.1a+: XML для 1С (RenovaExchange)."""
+    from app.services.integrations.onec_export import build_1c_payments_xml
+
+    project = await require_project(db, project_id, user, write=False)
+    body = await build_1c_payments_xml(db, project)
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="Выгрузка 1С (XML)",
+        href=f"/api/v1/projects/{project_id}/export/1c-payments.xml",
+        body=body,
+        media_type="application/xml; charset=utf-8",
+        filename=f"renova-1c-{project_id[:8]}.xml",
+        notes="RenovaExchange",
+    )
+
+
+@router.get("/{project_id}/export/bank-register.csv")
+async def export_bank_register_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P4.1b: реестр оплат для сверки с банком."""
+    from app.services.integrations.onec_export import build_bank_register_csv
+
+    project = await require_project(db, project_id, user, write=False)
+    body = await build_bank_register_csv(db, project)
+    return await _archive_and_respond(
+        db,
+        project_id=project_id,
+        user=user,
+        title="Реестр для банка",
+        href=f"/api/v1/projects/{project_id}/export/bank-register.csv",
+        body=body,
+        media_type="text/csv; charset=utf-8",
+        filename=f"renova-bank-{project_id[:8]}.csv",
+        notes="bank register",
+    )
+
+
+@router.get("/{project_id}/digest/weekly/preview")
+async def preview_weekly_digest(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W51: превью дайджеста без push — для демо и Отчётов."""
+    from app.services import report_service as rep
+    from app.services.digest_lite_service import compose_weekly_digest
+
+    project = await require_project(db, project_id, user, write=False)
+    weekly = await rep.weekly_report(db, project_id)
+    composed = await compose_weekly_digest(db, project_name=project.name, weekly=weekly or {})
+    return {
+        "ok": True,
+        **composed,
+        "kpi_path": f"/api/v1/projects/{project_id}/kpi-weekly.pdf",
+    }
+
+
+@router.post("/{project_id}/digest/weekly")
+async def push_weekly_digest(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P2.5/W51: push rule-based (или Ollama) + ссылка на KPI PDF; архив в документах."""
+    from app.services import notification_service as notif
+    from app.services import report_service as rep
+    from app.services import project_document_service as docs_svc
+    from app.services.digest_lite_service import compose_weekly_digest
+    from app.models.project_documents import DocumentType
+
+    project = await require_project(db, project_id, user, write=True)
+    weekly = await rep.weekly_report(db, project_id)
+    composed = await compose_weekly_digest(db, project_name=project.name, weekly=weekly or {})
+    members = [x for x in {project.customer_id, project.contractor_id, user.id} if x]
+    title = composed["title"]
+    body = composed["push_body"]
+    for uid in members:
+        role_reports = "/reports" if uid else "/documents"
+        await notif.notify(
+            db,
+            user_id=uid,
+            project_id=project_id,
+            notification_type="document",
+            title=title,
+            body=body,
+            link_path=role_reports,
+            return_to="/documents",
+        )
+    # Архив текста в Document Center (без PDF blob — KPI отдельно)
+    kpi_path = f"/api/v1/projects/{project_id}/kpi-weekly.pdf"
+    doc = await docs_svc.create_document(
+        db,
+        project_id=project_id,
+        created_by=user.id,
+        document_type=DocumentType.other.value,
+        title=f"Дайджест {composed['generated_at'][:10]}",
+        notes=composed["body"][:4000],
+        href=kpi_path,
+    )
+    await db.commit()
+    return {
+        "ok": True,
+        "notified": len(members),
+        "kpi_path": kpi_path,
+        "ai_narrative": composed["source"] == "ollama",
+        "source": composed["source"],
+        "mode": composed["mode"],
+        "body": composed["body"],
+        "document_id": doc.id,
+    }
+
+
+class WarrantyClaimIn(BaseModel):
+    title: str = Field(default="Гарантийное обращение", min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+
+
+@router.post("/{project_id}/warranty-claims")
+async def create_warranty_claim(
+    project_id: str,
+    body: WarrantyClaimIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P5.1 lite: гарантийный тикет = issue + черновик документа warranty."""
+    from app.models.entities import ProjectIssue
+    from app.models.project_documents import DocumentStatus, DocumentType
+    from app.services import project_document_service as docs_svc
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    project = await require_project(db, project_id, user, write=True)
+    # W73: гарантия работает и после closeout (архив); SLA 14 дней
+    from datetime import datetime, timedelta
+    post_closeout = bool(getattr(project, "is_archived", False))
+    issue = ProjectIssue(
+        project_id=project_id,
+        title=f"[Гарантия] {body.title}"[:255],
+        description=body.description,
+        severity="high",
+        status="open",
+        due_at=datetime.utcnow() + timedelta(days=14),
+    )
+    db.add(issue)
+    await db.flush()
+    draft = await docs_svc.create_document(
+        db,
+        project_id=project_id,
+        created_by=user.id,
+        title=f"Гарантия: {body.title}"[:200],
+        document_type=DocumentType.warranty.value,
+        notes=f"warranty_issue:{issue.id}",
+    )
+    draft.status = DocumentStatus.draft.value
+    await db.flush()
+    # W55: заказчик → Document Center; исполнитель → QC
+    creator_link = "/quality-control" if user.role.value == "contractor" else "/documents"
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="WarrantyClaim",
+        title=issue.title,
+        body=body.description,
+        link_path=creator_link,
+    )
+    other = project.contractor_id if user.id == project.customer_id else project.customer_id
+    if other:
+        other_is_contractor = other == project.contractor_id
+        await notif.notify(
+            db,
+            user_id=other,
+            project_id=project_id,
+            notification_type="issue",
+            title=issue.title,
+            body=body.description or "Новое гарантийное обращение",
+            link_path="/quality-control" if other_is_contractor else "/documents",
+            return_to="/(contractor)/(tabs)/home" if other_is_contractor else "/(customer)/(tabs)/home",
+        )
+    await db.commit()
+    return {
+        "ok": True,
+        "issue_id": issue.id,
+        "document_id": draft.id,
+        "qc_path": f"/quality-control?issueId={issue.id}",
+        "due_at": issue.due_at.isoformat() if issue.due_at else None,
+        "post_closeout": post_closeout,
+        "sla_days": 14,
+    }
+
+
+@router.get("/{project_id}/warranty-claims")
+async def list_warranty_claims(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P5.1: список гарантийных обращений (issues с префиксом [Гарантия])."""
+    from app.services import issue_service as iss
+
+    await require_project(db, project_id, user, write=False)
+    items = await iss.list_issues(db, project_id, status=None)
+    from datetime import datetime
+    warranty = [iss.issue_dict(i) for i in items if (i.title or "").startswith("[Гарантия]")]
+    now = datetime.utcnow()
+    open_items = [i for i in warranty if i.get("status") != "closed"]
+    overdue = 0
+    for raw, d in zip(
+        [i for i in items if (i.title or "").startswith("[Гарантия]") and i.status != "closed"],
+        open_items,
+    ):
+        d["overdue"] = bool(raw.due_at and raw.due_at < now)
+        if d["overdue"]:
+            overdue += 1
+    return {
+        "items": warranty,
+        "open": len(open_items),
+        "overdue": overdue,
+        "post_closeout_allowed": True,
+    }
+
+
+@router.post("/{project_id}/warranty-claims/{issue_id}/close")
+async def close_warranty_claim(
+    project_id: str,
+    issue_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W62: закрыть гарантию — только заказчик (снимает блокер closeout)."""
+    from datetime import datetime
+    from app.models.entities import ProjectIssue, UserRole
+    from app.services import issue_service as iss
+    from app.services import activity_service as act
+
+    project = await require_project(db, project_id, user, write=True)
+    if user.role != UserRole.customer or user.id != project.customer_id:
+        raise HTTPException(403, "warranty_close_customer_only")
+    issue = await db.get(ProjectIssue, issue_id)
+    if not issue or issue.project_id != project_id:
+        raise HTTPException(404, "warranty_not_found")
+    if not (issue.title or "").startswith("[Гарантия]"):
+        raise HTTPException(400, "not_a_warranty_claim")
+    issue.status = "closed"
+    issue.closed_at = datetime.utcnow()
+    # W46: архивируем связанный warranty-документ
+    try:
+        from sqlalchemy import select
+        from app.models.project_documents import ProjectDocument, DocumentStatus, DocumentType
+        docs = (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.warranty.value,
+                    ProjectDocument.notes.contains(f"warranty_issue:{issue.id}"),
+                )
+            )
+        ).scalars().all()
+        for doc in docs:
+            if doc.status != DocumentStatus.archived.value:
+                doc.status = DocumentStatus.archived.value
+    except Exception:
+        pass
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="WarrantyClosed",
+        title=issue.title,
+        link_path="/documents" if user.role.value == "customer" else "/quality-control",
+    )
+    await db.commit()
+    await db.refresh(issue)
+    return {"ok": True, "issue": iss.issue_dict(issue)}
+
+
+
+async def _closeout_snapshot(db, project_id: str, project) -> dict:
+    from sqlalchemy import select
+    from app.models.entities import Stage, StageStatus, Payment, PaymentStatus, ProjectIssue
+    from app.models.project_documents import ProjectDocument, DocumentStatus
+
+    stages = list((await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all())
+    stages_done = all(s.status == StageStatus.done for s in stages) if stages else False
+    payments = list((await db.execute(select(Payment).where(Payment.project_id == project_id))).scalars().all())
+    pending_pay = [p for p in payments if p.status == PaymentStatus.pending]
+    acts = list(
+        (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == "acceptance_act",
+                )
+            )
+        ).scalars().all()
+    )
+    acts_active = [
+        d for d in acts
+        if (d.status.value if hasattr(d.status, "value") else d.status)
+        in (DocumentStatus.active.value, DocumentStatus.archived.value, "active", "archived")
+    ]
+    warranty_open = list(
+        (
+            await db.execute(
+                select(ProjectIssue).where(
+                    ProjectIssue.project_id == project_id,
+                    ProjectIssue.title.startswith("[Гарантия]"),
+                    ProjectIssue.status != "closed",
+                )
+            )
+        ).scalars().all()
+    )
+    # W60: documents — без активного акта приёмки closeout запрещён (канон → documents → warranty)
+    has_acceptance_docs = len(acts_active) > 0
+    ready = bool(
+        stages_done
+        and not pending_pay
+        and has_acceptance_docs
+        and len(warranty_open) == 0
+    )
+    if bool(getattr(project, "is_archived", False)):
+        next_action = "Объект уже в архиве"
+    elif ready:
+        next_action = "Можно завершить объект"
+    elif not stages_done:
+        next_action = "Закройте этапы"
+    elif pending_pay:
+        next_action = "Подтвердите оплаты"
+    elif not has_acceptance_docs:
+        next_action = "Оформите акт приёмки в документах"
+    else:
+        next_action = "Закройте гарантийные обращения"
+    from datetime import datetime as _dt
+    _now = _dt.utcnow()
+    warranty_overdue = sum(1 for w in warranty_open if w.due_at and w.due_at < _now)
+    archived = bool(getattr(project, "is_archived", False))
+    return {
+        "project_id": project_id,
+        "project_name": project.name,
+        "stages_total": len(stages),
+        "stages_done": sum(1 for s in stages if s.status == StageStatus.done),
+        "all_stages_done": stages_done,
+        "pending_payments": len(pending_pay),
+        "acceptance_acts": len(acts),
+        "acceptance_acts_active": len(acts_active),
+        "warranty_open": len(warranty_open),
+        "warranty_overdue": warranty_overdue,
+        "ready": ready,
+        "archived": archived,
+        "post_closeout": archived,
+        "warranty_post_closeout_allowed": True,
+        "next_action": (
+            "Гарантийный режим: можно создавать обращения после сдачи"
+            if archived
+            else next_action
+        ),
+    }
+
+
+@router.get("/{project_id}/closeout-checklist")
+async def closeout_checklist(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W46 lite: готовность объекта к завершению."""
+    project = await require_project(db, project_id, user, write=False)
+    return await _closeout_snapshot(db, project_id, project)
+
+
+@router.post("/{project_id}/closeout")
+async def closeout_project(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W46/W61: завершить объект — только заказчик (финал golden path)."""
+    from datetime import datetime
+    from app.services import activity_service as act
+    from app.models.entities import UserRole
+
+    project = await require_project(db, project_id, user, write=True)
+    if user.role != UserRole.customer or user.id != project.customer_id:
+        raise HTTPException(403, "closeout_customer_only")
+    snap = await _closeout_snapshot(db, project_id, project)
+    if not snap["ready"]:
+        raise HTTPException(409, detail={"code": "closeout_not_ready", **snap})
+    project.is_archived = True
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="ProjectCloseout",
+        title=f"Объект завершён: {project.name}",
+        link_path="/(customer)/(tabs)/home",
+    )
+    await db.commit()
+    snap["archived"] = True
+    snap["next_action"] = "Объект завершён"
+    return {"ok": True, **snap}
+
+
+class BankStatementIn(BaseModel):
+    csv_text: str = Field(min_length=1, max_length=2_000_000)
+    create_expenses: bool = False  # W74: несматченные строки → расходы
+
+
+@router.post("/{project_id}/import/bank-statement")
+async def import_bank_statement(
+    project_id: str,
+    body: BankStatementIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P4.1b/W74: CSV выписки → матч к платежам; опционально расходы из unmatched."""
+    from app.services.integrations.bank_import import (
+        match_bank_rows_to_payments,
+        parse_bank_statement_csv,
+        create_expenses_from_unmatched,
+    )
+    from app.services import activity_service as act
+
+    write = bool(body.create_expenses)
+    project = await require_project(db, project_id, user, write=write)
+    rows = parse_bank_statement_csv(body.csv_text)
+    if not rows:
+        raise HTTPException(400, "Не удалось разобрать CSV (нужны сумма и опционально дата)")
+    result = await match_bank_rows_to_payments(db, project, rows)
+    expenses_meta: dict = {"expenses_created": 0}
+    if body.create_expenses and result.get("unmatched_statement_rows"):
+        expenses_meta = await create_expenses_from_unmatched(
+            db,
+            project_id=project_id,
+            unmatched_rows=result["unmatched_statement_rows"],
+        )
+        await act.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="BankImportExpenses",
+            title=f"Расходы из выписки: {expenses_meta.get('expenses_created', 0)}",
+            link_path="/(customer)/(tabs)/budget",
+        )
+        await db.commit()
+    return {"ok": True, "parsed_rows": len(rows), **result, **expenses_meta}
+
+
+class BankConfirmIn(BaseModel):
+    payment_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+@router.post("/{project_id}/import/bank-statement/confirm")
+async def confirm_bank_statement_matches(
+    project_id: str,
+    body: BankConfirmIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W45: подтвердить matched pending-платежи (те же gate, что PaymentDetailSheet)."""
+    from app.services import payment_service as pay_svc
+    from app.services import activity_service as act
+    from app.services import notification_service as notif
+
+    project = await require_project(db, project_id, user, write=True)
+    if not body.payment_ids:
+        raise HTTPException(400, "payment_ids_required")
+
+    confirmed: list[str] = []
+    blocked: list[str] = []
+    for pid in body.payment_ids:
+        payment = await pay_svc.confirm_payment(db, pid, project_id=project_id, allow_without_settlement=True)
+        if payment:
+            confirmed.append(pid)
+            await act.log_event(
+                db,
+                project_id=project_id,
+                user_id=user.id,
+                kind="PaymentApproved",
+                title=f"Оплата подтверждена (выписка): {payment.title}",
+                body=f"{payment.amount} ₽",
+                link_path="/(customer)/(tabs)/budget?tab=payments",
+                stage_id=payment.stage_id,
+            )
+            if project.contractor_id and project.contractor_id != user.id:
+                await notif.notify(
+                    db,
+                    user_id=project.contractor_id,
+                    project_id=project_id,
+                    notification_type="payment_confirmed",
+                    title="Оплата подтверждена",
+                    body=payment.title,
+                    link_path="/(contractor)/(tabs)/budget?tab=payments",
+                )
+        else:
+            blocked.append(pid)
+    return {
+        "ok": True,
+        "confirmed": confirmed,
+        "blocked": blocked,
+        "confirmed_count": len(confirmed),
+        "blocked_count": len(blocked),
+    }

@@ -47,6 +47,15 @@ export type OsBudgetSummary = {
   risk: string;
   remaining: number;
   segments: Record<string, { planned: number; actual: number }>;
+  /** W71: доп. работы — связь с планом бюджета */
+  change_orders?: {
+    id: string;
+    title: string;
+    amount: number;
+    status: string;
+    description?: string;
+  }[];
+  change_orders_approved_sum?: number;
 };
 
 export type OsExpense = {
@@ -58,6 +67,11 @@ export type OsExpense = {
   expense_date?: string | null;
   room_id?: string | null;
   stage_id?: string | null;
+  /** W56: связанная закупка — факт материалов с сервера */
+  purchase_id?: string | null;
+  material_pick_id?: string | null;
+  receipt_id?: string | null;
+  payment_id?: string | null;
 };
 
 export type OsReport = Record<string, unknown>;
@@ -82,4 +96,9 @@ export type ProjectIssue = {
   room_id?: string | null;
   stage_id?: string | null;
   due_at?: string | null;
+  floor_plan_id?: string | null;
+  x_pct?: number | null;
+  y_pct?: number | null;
+  photo_key?: string | null;
+  photo_url?: string | null;
 };

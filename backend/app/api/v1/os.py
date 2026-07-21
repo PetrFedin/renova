@@ -23,6 +23,10 @@ class IssueIn(BaseModel):
     room_id: str | None = None
     stage_id: str | None = None
     severity: str = "medium"
+    floor_plan_id: str | None = None
+    x_pct: float | None = None
+    y_pct: float | None = None
+    photo_key: str | None = None
 
 
 class CheckIn(BaseModel):
@@ -90,23 +94,118 @@ async def create_issue(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    from app.services import team_service as team_svc
+    project = await require_project(db, project_id, user, write=True)
+    await team_svc.require_capability(db, user, project, "field_write")
     issue = await iss.create_issue(
         db, project_id, body.title,
         description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
+        floor_plan_id=body.floor_plan_id, x_pct=body.x_pct, y_pct=body.y_pct, photo_key=body.photo_key,
     )
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueCreated", title=issue.title, body=issue.severity, link_path="/(customer)/(tabs)/control")
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="IssueCreated",
+        title=issue.title,
+        body=issue.severity,
+        link_path="/control",
+    )
+    from app.services import notification_service as notif_svc
+    from app.services import project_service as proj_svc
+
+    proj = await proj_svc.get_project(db, project_id)
+    if proj:
+        notify_targets = {
+            uid
+            for uid in (proj.customer_id, proj.contractor_id)
+            if uid and uid != user.id
+        }
+        for uid in notify_targets:
+            await notif_svc.notify(
+                db,
+                user_id=uid,
+                project_id=project_id,
+                notification_type="issue",
+                title=f"Новое замечание: {issue.title}",
+                body=issue.description or issue.severity,
+                link_path="/control",
+            )
     return iss.issue_dict(issue)
 
 
 @router.post("/projects/{project_id}/issues/{issue_id}/close")
 async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
-    issue = await iss.update_issue_status(db, issue_id, "closed")
-    if not issue or issue.project_id != project_id:
+    """W63: сначала project bind, потом мутация (без cross-project close)."""
+    from app.models.entities import ProjectIssue, UserRole
+    project = await require_project(db, project_id, user, write=True)
+    existing = await db.get(ProjectIssue, issue_id)
+    if not existing or existing.project_id != project_id:
         raise HTTPException(404)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/(customer)/(tabs)/control")
+    if (existing.title or "").startswith("[Гарантия]"):
+        if user.role != UserRole.customer or user.id != project.customer_id:
+            raise HTTPException(403, "warranty_close_customer_only")
+    # W64: исполнитель отмечает исправление; финал closed — у заказчика
+    next_status = "closed"
+    if user.role == UserRole.contractor and not (existing.title or "").startswith("[Гарантия]"):
+        next_status = "fixed"
+    issue = await iss.update_issue_status(db, issue_id, next_status)
+    if not issue:
+        raise HTTPException(404)
+    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/control")
     return iss.issue_dict(issue)
+
+
+
+@router.post("/projects/{project_id}/issues/{issue_id}/escalate")
+async def escalate_issue(
+    project_id: str,
+    issue_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W69 #50 / W73: эскалация — customer или owner/foreman бригады."""
+    from app.models.entities import ProjectIssue, UserRole
+    from app.services import team_service as team_svc
+    project = await require_project(db, project_id, user, write=True)
+    await team_svc.require_capability(db, user, project, "escalate")
+    existing = await db.get(ProjectIssue, issue_id)
+    if not existing or existing.project_id != project_id:
+        raise HTTPException(404)
+    if existing.status == "closed":
+        raise HTTPException(409, detail={"code": "issue_closed", "message": "Закрытое замечание нельзя эскалировать"})
+    title = existing.title or "Замечание"
+    if not title.startswith("[Спор]"):
+        existing.title = f"[Спор] {title}"
+    existing.severity = "critical"
+    if existing.status in ("fixed", "review"):
+        existing.status = "open"
+    await db.commit()
+    await db.refresh(existing)
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="IssueEscalated",
+        title=existing.title,
+        body="Эскалация спора",
+        link_path="/control",
+    )
+    from app.services import notification_service as notif_svc
+    for uid in {project.customer_id, project.contractor_id}:
+        if not uid or uid == user.id:
+            continue
+        await notif_svc.notify(
+            db,
+            user_id=uid,
+            project_id=project_id,
+            notification_type="issue",
+            title=f"Спор эскалирован: {existing.title}",
+            body="Требуется совместное решение — откройте Контроль качества",
+            link_path="/control",
+        )
+    return iss.issue_dict(existing)
+
 
 @router.post("/projects/{project_id}/rooms/{room_id}/calc-materials")
 async def calc_room_materials(
@@ -151,46 +250,27 @@ async def acceptances_pending(project_id: str, user: User = Depends(get_current_
 
 @router.post("/projects/{project_id}/acceptances/{acceptance_id}/accept")
 async def accept_work(project_id: str, acceptance_id: str, body: AcceptIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services import acceptance_service as acc_svc
-    from app.models.entities import UserRole
-    await require_project(db, project_id, user, write=True)
-    if user.role not in (UserRole.customer,):
-        raise HTTPException(403, "Только заказчик может принять этап")
-    from app.models.entities import WorkAcceptance
-    acc = await db.get(__import__("app.models.entities", fromlist=["WorkAcceptance"]).WorkAcceptance, acceptance_id)
-    if not acc or acc.project_id != project_id:
-        raise HTTPException(404)
-    from app.services import issue_service as iss
-    issues = await iss.list_issues(db, project_id, status=None)
-    open_n = len([i for i in issues if i.stage_id == acc.stage_id and i.status != "closed"])
-    updated = await acc_svc.accept(db, acceptance_id, accepted_by=user.id, with_remarks=body.with_remarks, comment=body.comment, open_issues=open_n)
-    if not updated:
-        raise HTTPException(400)
-    stage = await proj_svc.accept_stage(db, acc.stage_id)
-    if not stage:
-        raise HTTPException(409, "Этап не в статусе приёмки")
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="AcceptancePassed", title=f"Принято: {stage.name}", body=str(updated.quality_score), link_path=f"/stage/{stage.id}", stage_id=stage.id)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="InspectionRequested", title=f"Приёмка завершена: {stage.name}", stage_id=stage.id)
-    return acc_svc.acceptance_dict(updated, stage)
+    from app.api.v1.work_acceptances import AcceptanceDecisionIn, accept_work as canon_accept_work
+
+    # W139: без fake 8/10 — оценка только если клиент передал явно (legacy AcceptIn не имеет score)
+    decision = AcceptanceDecisionIn(
+        comment=body.comment,
+        create_issue=body.with_remarks,
+        quality_score=None,
+    )
+    return await canon_accept_work(project_id, acceptance_id, decision, user, db)
 
 
 @router.post("/projects/{project_id}/acceptances/{acceptance_id}/return")
 async def return_work(project_id: str, acceptance_id: str, body: ReturnIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services import acceptance_service as acc_svc
-    from app.models.entities import UserRole, WorkAcceptance
-    await require_project(db, project_id, user, write=True)
-    if user.role not in (UserRole.customer,):
-        raise HTTPException(403)
-    acc = await db.get(WorkAcceptance, acceptance_id)
-    if not acc or acc.project_id != project_id:
-        raise HTTPException(404)
-    updated = await acc_svc.return_for_rework(db, acceptance_id, comment=body.comment)
-    stage = await proj_svc.reject_stage(db, acc.stage_id, user.id, body.comment)
-    if not stage:
-        raise HTTPException(409)
-    await db.commit()
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="AcceptanceReturned", title=f"Возврат: {stage.name}", body=body.comment, stage_id=stage.id)
-    return acc_svc.acceptance_dict(updated, stage) if updated else {}
+    from app.api.v1.work_acceptances import AcceptanceDecisionIn, return_work as canon_return_work
+
+    decision = AcceptanceDecisionIn(
+        comment=body.comment,
+        create_issue=True,
+        quality_score=None,
+    )
+    return await canon_return_work(project_id, acceptance_id, decision, user, db)
 
 
 @router.get("/projects/{project_id}/os/budget")
@@ -199,6 +279,21 @@ async def os_budget(project_id: str, user: User = Depends(get_current_user), db:
     await require_project(db, project_id, user, write=False)
     return await bud.budget_summary(db, project_id)
 
+
+
+
+@router.get("/projects/{project_id}/budget-summary")
+async def budget_summary_hub(
+    project_id: str,
+    threshold_pct: float = 5,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P2.5: единый JSON для mobile «Бюджет» hub."""
+    from app.services import budget_service as bud
+
+    await require_project(db, project_id, user, write=False)
+    return await bud.budget_hub(db, project_id, threshold_pct=threshold_pct)
 
 @router.get("/projects/{project_id}/os/budget/lines")
 async def os_budget_lines(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

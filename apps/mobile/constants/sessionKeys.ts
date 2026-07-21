@@ -1,6 +1,7 @@
 /** Ключи AsyncStorage сессии Renova */
 export const SESSION_KEYS = {
   userId: 'renova_user_id',
+  accessToken: 'renova_access_token',
   projectId: 'renova_project_id',
   userRole: 'renova_user_role',
   pendingProjectPick: 'renova_pending_project_pick',

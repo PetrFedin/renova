@@ -1,5 +1,6 @@
 /** HTTP-клиент Renova API */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 
 export class ApiError extends Error {
   status: number;
@@ -14,7 +15,15 @@ export class ApiError extends Error {
   }
 }
 
+/** Duck-typing: `instanceof ApiError` ломается при HMR/дублях бандла */
 export function isRateLimitError(e: unknown): boolean {
+  if (e == null || typeof e !== 'object') return false;
+  const err = e as { code?: unknown; status?: unknown; message?: unknown };
+  if (err.code === 'rate_limit' || err.status === 429) return true;
+  if (typeof err.message === 'string') {
+    const m = err.message.toLowerCase();
+    if (m === 'rate_limit' || m.includes('слишком много запросов')) return true;
+  }
   return e instanceof ApiError && (e.code === 'rate_limit' || e.status === 429);
 }
 
@@ -25,13 +34,26 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     const j = JSON.parse(txt) as { detail?: unknown; code?: string; message?: string };
     detail = j.detail;
     if (typeof j.detail === 'string') {
+      // FastAPI часто шлёт detail="rate_limit" — не отдаём сырой код в UI
+      if (j.detail === 'rate_limit' || status === 429) {
+        return {
+          message: 'Слишком много запросов. Подождите несколько секунд и повторите.',
+          code: 'rate_limit',
+          detail,
+        };
+      }
       return { message: j.detail, code: j.detail, detail };
     }
     if (typeof j.message === 'string' && j.message) {
       return { message: j.message, code: j.code, detail };
     }
-    if (typeof j.detail === 'object' && j.detail && 'code' in (j.detail as object)) {
-      code = (j.detail as { code?: string }).code;
+    if (typeof j.detail === 'object' && j.detail) {
+      const d = j.detail as { code?: string; message?: string };
+      // W67 #28: FastAPI detail={message,code} → человекочитаемый текст
+      if (typeof d.message === 'string' && d.message) {
+        return { message: d.message, code: d.code || j.code, detail };
+      }
+      if (typeof d.code === 'string') code = d.code;
     } else if (typeof j.code === 'string') {
       code = j.code;
     }
@@ -65,7 +87,21 @@ function canUseDurableCache(opts: RequestInit) {
 
 function canFallbackToCache(error: unknown) {
   if (!(error instanceof ApiError)) return true;
+  // 429 / rate_limit — безопасный fallback на последний успешный GET (аналитика/проект не падают)
+  if (error.status === 429 || error.code === 'rate_limit') return true;
   return error.status >= 500;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function retryAfterMs(res: Response): number {
+  const raw = res.headers.get('Retry-After');
+  if (!raw) return 1200;
+  const sec = Number(raw);
+  if (Number.isFinite(sec) && sec >= 0) return Math.min(8000, Math.max(400, sec * 1000));
+  return 1200;
 }
 
 async function saveDurableCache<T>(path: string, userId: string | undefined, value: T) {
@@ -86,28 +122,159 @@ async function readDurableCache<T>(path: string, userId?: string): Promise<T | n
   }
 }
 
+const PROJECT_LIST_PATHS = [
+  '/api/v1/projects',
+  '/api/v1/projects?bucket=active',
+  '/api/v1/projects?bucket=archived',
+  '/api/v1/projects?bucket=trashed',
+] as const;
+
+/** Сброс кэша списков проектов после archive/trash/restore — иначе UI до 30с показывает старые данные. */
+export async function invalidateProjectsCache(userId: string): Promise<void> {
+  for (const path of PROJECT_LIST_PATHS) {
+    _cache.delete(cacheKey(path, userId));
+    try {
+      await AsyncStorage.removeItem(storageKey(path, userId));
+    } catch {
+      /* cache is best-effort */
+    }
+  }
+}
+
+/** P1.14: last cachedGet outcome — UI can show «данные могут быть устаревшими» */
+export type CachedGetMeta = {
+  path: string;
+  fromCache: boolean;
+  stale: boolean;
+  cachedAt?: number;
+  errorStatus?: number;
+};
+let _lastCachedGetMeta: CachedGetMeta | null = null;
+export function getLastCachedGetMeta(): CachedGetMeta | null {
+  return _lastCachedGetMeta;
+}
+
 export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
   const k = cacheKey(path, userId);
   const hit = _cache.get(k);
-  if (hit && Date.now() - hit.t < CACHE_TTL) return hit.v as T;
+  if (hit && Date.now() - hit.t < CACHE_TTL) {
+    _lastCachedGetMeta = { path, fromCache: true, stale: false, cachedAt: hit.t };
+    return hit.v as T;
+  }
   try {
     const v = await req<T>(path, {}, userId);
-    _cache.set(k, { t: Date.now(), v });
+    const now = Date.now();
+    _cache.set(k, { t: now, v });
     await saveDurableCache(path, userId, v);
+    _lastCachedGetMeta = { path, fromCache: false, stale: false, cachedAt: now };
     return v;
   } catch (error) {
     if (canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) {
+        const status = error instanceof ApiError ? error.status : undefined;
+        // Do not silently swallow — mark stale for UI + report
+        try {
+          const { reportError } = await import('@/lib/reportError');
+          reportError('api.cachedGet.staleFallback', error, { path, status });
+        } catch { /* report best-effort */ }
         _cache.set(k, { t: Date.now(), v: fallback });
+        _lastCachedGetMeta = {
+          path,
+          fromCache: true,
+          stale: true,
+          cachedAt: Date.now(),
+          errorStatus: status,
+        };
         return fallback;
       }
     }
+    _lastCachedGetMeta = { path, fromCache: false, stale: false };
     throw error;
   }
 }
 
-export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
+const _apiGuard = evaluateApiBaseGuard(
+  process.env.EXPO_PUBLIC_API_URL,
+  process.env.EXPO_PUBLIC_APP_ENV ?? process.env.APP_ENV,
+);
+if (_apiGuard.warning && typeof __DEV__ !== 'undefined' && __DEV__) {
+  console.warn(`[renova:api-base] ${_apiGuard.warning}`);
+}
+if (_apiGuard.blocked) {
+  console.error(`[renova:api-base] BLOCKED: ${_apiGuard.warning}`);
+}
+export const API_BASE = _apiGuard.apiBase;
+export const API_BASE_GUARD = _apiGuard;
+
+/** In-memory JWT (persisted via RenovaContext / AsyncStorage). */
+let _accessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  _accessToken = token && token.trim() ? token.trim() : null;
+}
+
+export function getAccessToken(): string | null {
+  return _accessToken;
+}
+
+let _refreshToken: string | null = null;
+let _refreshInflight: Promise<boolean> | null = null;
+
+export function setRefreshToken(token: string | null) {
+  _refreshToken = token && token.trim() ? token.trim() : null;
+}
+
+export function getRefreshToken(): string | null {
+  return _refreshToken;
+}
+
+/** Rotate refresh → new access. Returns false if session dead. */
+export async function refreshAccessToken(): Promise<boolean> {
+  if (!_refreshToken) return false;
+  if (_refreshInflight) return _refreshInflight;
+  _refreshInflight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: _refreshToken }),
+      });
+      if (!res.ok) {
+        setAccessToken(null);
+        setRefreshToken(null);
+        return false;
+      }
+      const data = await res.json() as { access_token?: string; refresh_token?: string };
+      if (data.access_token) setAccessToken(data.access_token);
+      if (data.refresh_token) setRefreshToken(data.refresh_token);
+      return Boolean(data.access_token);
+    } catch {
+      return false;
+    } finally {
+      _refreshInflight = null;
+    }
+  })();
+  return _refreshInflight;
+}
+
+
+/** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
+export function authHeaders(userId?: string | null): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (_accessToken) {
+    h.Authorization = `Bearer ${_accessToken}`;
+    // JWT present → do not also send X-User-Id (prod must not rely on header)
+    return h;
+  }
+  // X-User-Id только local/test — staging/production клиент не задаёт identity header
+  const env = (process.env.EXPO_PUBLIC_APP_ENV || process.env.APP_ENV || 'development').toLowerCase();
+  const allowHeader = env === 'development' || env === 'test';
+  if (userId && allowHeader) h['X-User-Id'] = userId;
+  return h;
+}
+
+const REQUEST_TIMEOUT_MS = 20_000;
 
 export async function req<T>(path: string, opts: RequestInit = {}, userId?: string): Promise<T> {
   const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
@@ -115,22 +282,73 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(opts.headers as object),
   };
-  if (userId) headers['X-User-Id'] = userId;
+  Object.assign(headers, authHeaders(userId));
   // FormData must manage its own multipart boundary — drop forced JSON content-type
   if (isFormData) delete headers['Content-Type'];
+
+  const isGet = canUseDurableCache(opts);
+  let attempt = 0;
+  let lastError: unknown;
+
   try {
-    const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
-    if (!res.ok) {
-      const txt = await res.text();
-      const parsed = parseApiErrorBody(txt, res.status);
-      throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+    // GET: до 3 попыток при 429 (storm reload stage/home)
+    while (attempt < 3) {
+      attempt += 1;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${API_BASE}${path}`, {
+          ...opts,
+          headers,
+          signal: opts.signal ?? controller.signal,
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          const parsed = parseApiErrorBody(txt, res.status);
+          const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+          // Access expired → one refresh rotation, then retry once
+          if (res.status === 401 && attempt < 2 && !path.includes('/auth/refresh') && getRefreshToken()) {
+            const ok = await refreshAccessToken();
+            if (ok) {
+              Object.assign(headers, authHeaders(userId));
+              lastError = err;
+              continue;
+            }
+          }
+          if (isGet && isRateLimitError(err) && attempt < 3) {
+            lastError = err;
+            await sleep(retryAfterMs(res));
+            continue;
+          }
+          throw err;
+        }
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : undefined;
+        if (isGet && data !== undefined) await saveDurableCache(path, userId, data);
+        return data as T;
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new ApiError(0, 'Сервер не отвечает. Проверьте, что backend запущен (npm run backend:dev).');
+        }
+        if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
+          throw new ApiError(0, 'Сервер недоступен. Запустите backend на порту 8100: cd renova && backend/.venv/bin/uvicorn app.main:app --reload --port 8100');
+        }
+        // rate_limit retry already handled above; other errors exit
+        if (isGet && isRateLimitError(error) && attempt < 3) {
+          lastError = error;
+          await sleep(1200);
+          continue;
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : undefined;
-    if (canUseDurableCache(opts) && data !== undefined) await saveDurableCache(path, userId, data);
-    return data as T;
+    throw lastError instanceof Error
+      ? lastError
+      : new ApiError(429, 'Слишком много запросов. Подождите несколько секунд и повторите.', 'rate_limit');
   } catch (error) {
-    if (canUseDurableCache(opts) && canFallbackToCache(error)) {
+    if (isGet && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) return fallback;
     }

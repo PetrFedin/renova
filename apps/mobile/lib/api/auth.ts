@@ -11,5 +11,7 @@ export const authApi = {
   me: (userId: string) => req<User>('/api/v1/auth/me', {}, userId),
   exportMyData: (userId: string) => req<{ user: object; projects: object[] }>('/api/v1/auth/export', {}, userId),
   anonymizeMe: (userId: string) => req('/api/v1/auth/anonymize', { method: 'POST' }, userId),
+  revokeAllSessions: (userId: string) =>
+    req<{ ok: boolean; revoked: number }>('/api/v1/auth/sessions/revoke-all', { method: 'POST' }, userId),
   registerPushToken: (userId: string, token: string) => req('/api/v1/push/register', { method: 'POST', body: JSON.stringify({ token }) }, userId),
 };
