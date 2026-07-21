@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert, Share, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertTeamJoined } from '@/lib/jobLeadNav';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -116,7 +117,8 @@ export default function TeamQrScreen() {
               setScan(false);
               await api.joinTeam(user.id, m[1]);
               await syncProjectSideEffects({ user, project: activeProject });
-              Alert.alert('Готово', 'Вы в бригаде');
+              // W130: бригада → главная / график
+              alertTeamJoined('contractor');
               router.back();
             }}
           />

@@ -15,6 +15,7 @@ import { isWorkArchived } from '@/lib/domain/workArchive';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { budgetTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
 
 export function WorkOrderDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
@@ -37,6 +38,8 @@ export function WorkOrderDetailScreen() {
       const updated = await api.transitionWorkOrder(user.id, activeProject.id, wo.id, next);
       setWo(updated);
       await syncProjectSideEffects({ user, project: activeProject, role });
+      // W130: WO lifecycle → приёмка / оплаты / график
+      alertWorkOrderAdvanced(role, next);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'offline_queued') {
         Alert.alert('Офлайн', 'Смена статуса отправится при подключении');

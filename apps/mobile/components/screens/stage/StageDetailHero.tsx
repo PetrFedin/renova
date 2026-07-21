@@ -7,6 +7,7 @@ import { api, type StageDetail, type WorkSnapshot, ApiError } from '@/lib/api';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { alertStageStarted } from '@/lib/jobLeadNav';
 
 type Props = {
   stage: StageDetail;
@@ -95,6 +96,8 @@ export function StageDetailHero({
                 user: { id: userId } as any,
                 project: { id: projectId } as any,
               });
+              // W130: старт этапа → график / работы
+              alertStageStarted(role);
             } catch (e: unknown) {
               if (e instanceof Error && e.message === 'offline_queued') {
                 Alert.alert('Офлайн', 'Старт этапа отправится при подключении');
