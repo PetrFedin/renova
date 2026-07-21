@@ -72,6 +72,8 @@ Pinned SHA: `a44cf22`.
 
 ## Wave-6 audit embed (2026-07-21)
 
+Pinned SHA: `9c86b5d`.
+
 - Full silent `.catch(()=>{})` → reportCatch sweep
 - List-load failures → reportError
 - Closure matrix: `docs/AUDIT-CLOSURE-MATRIX-2026-07-21.md`
