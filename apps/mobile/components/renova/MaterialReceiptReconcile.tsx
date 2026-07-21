@@ -1,15 +1,21 @@
 /** Сверка: закупки по смете vs отсканированные чеки */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
 import type { Room, ReceiptItem, MaterialPick } from '@/lib/api';
 import { roomMaterialTotal, roomReceiptTotal } from '@/lib/expenseSummary';
 import { pushRoomDetail } from '@/lib/navigation';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { useRenova } from '@/lib/context/RenovaContext';
+import type { OsRole } from '@/constants/osSections';
 
 export function MaterialReceiptReconcile({ rooms, receipts, picks }: {
   rooms: Room[]; receipts: ReceiptItem[]; picks: MaterialPick[];
 }) {
   const pathname = usePathname();
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const rows = rooms.map((room) => {
     const materials = roomMaterialTotal(picks, room.id);
     const recs = roomReceiptTotal(receipts, room.id);
@@ -33,7 +39,13 @@ export function MaterialReceiptReconcile({ rooms, receipts, picks }: {
         </Pressable>
       ))}
       {unmatched.length === 0 && rows.length > 0 && <Text style={s.ok}>✓ Сверка в норме</Text>}
-      <Text style={s.hintFab}>Добавить чек — кнопка + внизу экрана (Скан или вручную)</Text>
+      {/* W129: явный CTA скана вместо только FAB-подсказки */}
+      <PrimaryButton
+        title="Сканировать чек"
+        variant="outline"
+        compact
+        onPress={() => pushOsNav('/scan-receipt', pathname, role)}
+      />
     </View>
   );
 }
@@ -47,6 +59,5 @@ const s = StyleSheet.create({
   delta: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   over: { color: RenovaTheme.colors.warning },
   under: { color: '#0369a1' },
-  ok: { fontSize: 12, color: RenovaTheme.colors.success, marginTop: 8, fontWeight: '600' },
-  hintFab: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 10, fontStyle: 'italic' },
+  ok: { fontSize: 12, color: RenovaTheme.colors.success, marginTop: 8, fontWeight: '600', marginBottom: 8 },
 });

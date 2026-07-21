@@ -16,6 +16,8 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { useLocalSearchParams, router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { paymentReceiptKey } from '@/constants/sessionKeys';
+import { alertReceiptScanned } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 export default function ScanReceiptScreen() {
   const { returnTo, roomId: roomParam, stageId: stageParam, paymentId } = useLocalSearchParams<{ returnTo?: string; roomId?: string; stageId?: string; paymentId?: string }>();
@@ -48,16 +50,23 @@ export default function ScanReceiptScreen() {
         resolveStageForRoom(activeProject.stages, roomId, stageId),
         paymentId ? String(paymentId) : null,
       ) as { verified: boolean; message: string; amount: number; payment_id?: string | null };
-      Alert.alert(
-        r.verified ? 'Чек принят' : 'Чек сохранён',
-        `${r.message}\nСумма: ${r.amount.toLocaleString('ru-RU')} ₽`,
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
       if (paymentId) {
         await AsyncStorage.setItem(paymentReceiptKey(String(paymentId)), '1');
       }
       await loadProject(activeProject.id);
       await syncProjectSideEffects({ user, project: activeProject }); // W94: бюджет/аналитика
+      // W129: чек → расходы / материалы / оплаты SoT
+      const role = (user.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+      alertReceiptScanned(
+        role,
+        {
+          verified: r.verified,
+          message: r.message,
+          amount: r.amount,
+          paymentId: paymentId ? String(paymentId) : r.payment_id,
+        },
+        () => router.back(),
+      );
     } catch {
       scanned.current = false;
       Alert.alert('Ошибка', 'Не удалось проверить чек. Проверьте QR или сервер.');

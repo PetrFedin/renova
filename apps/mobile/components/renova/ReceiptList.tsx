@@ -6,6 +6,8 @@ import { expenseCategoryLabel, EXPENSE_CATEGORIES, type ExpenseCategoryId } from
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertReceiptReverified } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 export function ReceiptList({
   receipts, rooms, stages, userId, projectId, editable, onUpdated, onReceiptPress, totalLabel = 'Чеки',
@@ -21,6 +23,7 @@ export function ReceiptList({
   totalLabel?: string;
 }) {
   const { user, activeProject } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   if (receipts.length === 0) return null;
   const sum = receipts.reduce((a, r) => a + r.amount, 0);
   const verified = receipts.filter((r) => r.verified).length;
@@ -35,13 +38,10 @@ export function ReceiptList({
     if (!userId || !projectId || r.source === 'manual') return;
     try {
       const res = await api.reverifyReceipt(userId, projectId, r.id) as { verified?: boolean; message?: string; verify_mode?: string };
-      Alert.alert(
-        res.verified ? 'ФНС: ок' : 'ФНС',
-        `${res.message || (res.verified ? 'Подтверждён' : 'Не подтверждён')}` +
-          (res.verify_mode ? ` · режим: ${res.verify_mode}` : ''),
-      );
       await syncAfter();
       onUpdated?.();
+      // W129: ФНС → расходы SoT
+      alertReceiptReverified(role, res);
     } catch (e: unknown) {
       Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось проверить');
     }

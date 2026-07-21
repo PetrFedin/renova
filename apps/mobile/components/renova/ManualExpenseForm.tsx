@@ -9,6 +9,8 @@ import { api } from '@/lib/api';
 import type { ProjectDetail } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertManualExpenseSaved } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 export function ManualExpenseForm({
   userId, project, readOnly, onSaved, initialRoomId, initialStageId, collapsed,
@@ -40,7 +42,8 @@ export function ManualExpenseForm({
       setAmount(''); setDescription('');
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
       onSaved?.();
-      Alert.alert('Сохранено', `${n.toLocaleString('ru-RU')} ₽ добавлено в расходы`);
+      const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+      alertManualExpenseSaved(role, n);
     } catch {
       Alert.alert('Ошибка', 'Не удалось сохранить расход');
     } finally { setBusy(false); }
