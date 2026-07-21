@@ -51,3 +51,15 @@ cd backend && python -m pytest tests/test_environment_guards.py -q
 ## Health
 
 `GET /health` → `{ "status": "ok", "environment": "development", ... }`
+
+
+## Sentry (production)
+
+- `SENTRY_DSN` required in **production**, or explicit `SENTRY_APPROVED_WITHOUT_DSN=true`.
+- Mobile: `EXPO_PUBLIC_SENTRY_DSN` or `EXPO_PUBLIC_SENTRY_APPROVED_WITHOUT_DSN=true`.
+- Events pass through `before_send` / `sanitizeSentryEvent` (no tokens, auth headers, document/message bodies).
+
+## Capability validation
+
+See `validate_capability_settings` in `backend/app/core/environment.py` and `apps/mobile/lib/envSchema.ts`.
+Provider-specific vars are required only when the capability is enabled / partially configured.

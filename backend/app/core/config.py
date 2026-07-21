@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     s3_public_url: str | None = None
 
     sentry_dsn: str | None = None
+    # Explicit exception: allow production boot without SENTRY_DSN (ops-signed)
+    sentry_approved_without_dsn: bool = False
     # Comma-separated; empty = * only in development/test (no credentials)
     cors_allowed_origins: str = ""
 
