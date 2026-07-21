@@ -22,6 +22,7 @@ def _parse_checklist(raw: str | None) -> list[dict]:
 
 
 def compute_quality_score(stage: Stage, open_issues: int = 0, returned_before: bool = False) -> float:
+    """DEPRECATED W139: readiness 0–100, не оценка заказчика 0–10. Не писать в WorkAcceptance.quality_score."""
     items = _parse_checklist(stage.checklist_json)
     if items:
         done = sum(1 for i in items if i.get("done"))

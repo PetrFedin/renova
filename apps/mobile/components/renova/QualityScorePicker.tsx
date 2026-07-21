@@ -2,7 +2,7 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
-const PRESETS = [6, 7, 8, 9, 10] as const;
+const PRESETS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 export function QualityScorePicker({
   value,

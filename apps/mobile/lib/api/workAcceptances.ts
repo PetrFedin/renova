@@ -1,6 +1,7 @@
 /** API: приёмка работ */
 import { req, ApiError } from './client';
 import type { WorkAcceptance } from './types';
+import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 
 export type WorkAcceptanceCreateIn = {
   stage_id: string;
@@ -43,10 +44,18 @@ export const workAcceptancesApi = {
     }
   },
   acceptWork: async (userId: string, projectId: string, acceptanceId: string, body: WorkAcceptanceDecisionIn = {}) => {
+    const safe = {
+      ...acceptanceDecisionBody({
+        qualityScore: body.quality_score,
+        comment: body.comment,
+        createIssue: body.create_issue,
+      }),
+      ...(body.checklist ? { checklist: body.checklist } : {}),
+    };
     try {
       return await req<WorkAcceptance>(
         `/api/v1/projects/${projectId}/work-acceptances/${acceptanceId}/accept`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: JSON.stringify(safe) },
         userId,
       );
     } catch (error) {
@@ -55,17 +64,25 @@ export const workAcceptancesApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances/${acceptanceId}/accept`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify(safe),
         userId,
       });
       throw new Error('offline_queued');
     }
   },
   returnWork: async (userId: string, projectId: string, acceptanceId: string, body: WorkAcceptanceDecisionIn = {}) => {
+    const safe = {
+      ...acceptanceDecisionBody({
+        qualityScore: body.quality_score,
+        comment: body.comment,
+        createIssue: body.create_issue,
+      }),
+      ...(body.checklist ? { checklist: body.checklist } : {}),
+    };
     try {
       return await req<WorkAcceptance>(
         `/api/v1/projects/${projectId}/work-acceptances/${acceptanceId}/return`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: JSON.stringify(safe) },
         userId,
       );
     } catch (error) {
@@ -74,7 +91,7 @@ export const workAcceptancesApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances/${acceptanceId}/return`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify(safe),
         userId,
       });
       throw new Error('offline_queued');

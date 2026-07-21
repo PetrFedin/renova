@@ -116,6 +116,100 @@ async def test_os_acceptance_proxy_uses_canon():
         assert r.json()["status"] == "accepted"
 
 
+
+
+async def test_w139_accept_without_score_clears_stale():
+    """W139: accept/return без quality_score не оставляют stale оценку в БД."""
+    from app.db import session as sess
+    from app.models.entities import WorkAcceptance
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pid, h_cust, h_cont = await _demo_project(client)
+        stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
+        open_st = _open_stage(stages)
+        created = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances",
+            headers=h_cont,
+            json={"stage_id": open_st["id"], "comment": "готов"},
+        )
+        assert created.status_code == 200, created.text
+        acc_id = created.json()["id"]
+
+        async with sess.SessionLocal() as db:
+            row = await db.get(WorkAcceptance, acc_id)
+            assert row is not None
+            row.quality_score = 8.0
+            await db.commit()
+
+        accepted = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
+            headers=h_cust,
+            json={"comment": "без оценки"},
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json().get("quality_score") is None
+
+
+async def test_w139_os_proxy_and_return_without_fake_scores():
+    """W139: OS proxy не пишет 8/10; return без score → None."""
+    from app.db import session as sess
+    from app.models.entities import WorkAcceptance
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pid, h_cust, h_cont = await _demo_project(client)
+        stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
+        open_st = _open_stage(stages)
+        created = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances",
+            headers=h_cont,
+            json={"stage_id": open_st["id"]},
+        )
+        assert created.status_code == 200, created.text
+        acc_id = created.json()["id"]
+
+        async with sess.SessionLocal() as db:
+            row = await db.get(WorkAcceptance, acc_id)
+            assert row is not None
+            row.quality_score = 5.0
+            await db.commit()
+
+        r = await client.post(
+            f"/api/v1/projects/{pid}/acceptances/{acc_id}/accept",
+            headers=h_cust,
+            json={"with_remarks": False, "comment": "via os proxy"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json().get("quality_score") is None
+
+        # fresh acceptance for return path
+        stages2 = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
+        open2 = next((s for s in stages2 if s.get("status") in ("active", "review")), None)
+        if open2 is None:
+            # create next stage path — skip if project fully done
+            return
+        created2 = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances",
+            headers=h_cont,
+            json={"stage_id": open2["id"]},
+        )
+        if created2.status_code != 200:
+            return
+        acc2 = created2.json()["id"]
+        async with sess.SessionLocal() as db:
+            row = await db.get(WorkAcceptance, acc2)
+            assert row is not None
+            row.quality_score = 5.0
+            await db.commit()
+        ret = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances/{acc2}/return",
+            headers=h_cust,
+            json={"comment": "доработка", "create_issue": True},
+        )
+        assert ret.status_code == 200, ret.text
+        assert ret.json().get("quality_score") is None
+
 async def test_accept_emits_acceptance_passed_with_stage_context():
     """W44: AcceptancePassed must carry stage_id into automation via log_event."""
     from unittest.mock import AsyncMock, patch

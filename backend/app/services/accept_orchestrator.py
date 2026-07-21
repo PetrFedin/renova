@@ -179,8 +179,8 @@ async def finalize_work_acceptance(
     row.status = status
     row.accepted_by = accepted_by
     row.accepted_at = now
-    if quality_score is not None:
-        row.quality_score = quality_score
+    # W139: None = явно «без оценки» (не оставляем stale/heuristic score)
+    row.quality_score = quality_score
     row.comment = comment or row.comment
     if checklist is not None:
         row.checklist_json = json.dumps(checklist)

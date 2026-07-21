@@ -33,8 +33,8 @@ export function resolvePushLink(
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
-  if (canonicalPath === '/control') {
-    // W58 / W139: обе роли → hub Приёмка (repair?tab=control); /work-acceptance — redirect
+  if (canonicalPath === '/control' || canonicalPath === '/work-acceptance') {
+    // W58 / W139: legacy control + отдельный центр → hub Ремонт → Приёмка
     const tab = role === 'contractor' ? '/(contractor)/(tabs)/repair' : '/(customer)/(tabs)/repair';
     return { pathname: tab, params: { tab: 'control', returnTo: rt } };
   }

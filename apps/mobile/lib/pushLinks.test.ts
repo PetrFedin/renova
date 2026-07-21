@@ -33,6 +33,8 @@ console.assert(resolvePushLink('/control', '/home', 'customer')?.pathname === '/
 console.assert(resolvePushLink('/control', '/home', 'customer')?.params?.tab === 'control', 'control tab customer');
 console.assert(resolvePushLink('/control', '/home', 'contractor')?.pathname === '/(contractor)/(tabs)/repair', 'control redirect contractor');
 console.assert(resolvePushLink('/control', '/home', 'contractor')?.params?.tab === 'control', 'control tab contractor');
+console.assert(resolvePushLink('/work-acceptance', '/home', 'customer')?.pathname === '/(customer)/(tabs)/repair', 'WA center → hub');
+console.assert(resolvePushLink('/work-acceptance', '/home', 'customer')?.params?.tab === 'control', 'WA center tab');
 console.assert(resolveNotificationLink('stage_review')?.pathname === '/(customer)/(tabs)/repair', 'notify acceptance');
 console.assert(resolveNotificationLink('stage_review')?.params?.tab === 'control', 'notify acceptance tab');
 console.assert(resolveNotificationLink('change_order')?.params?.estimateLayer === 'changes', 'change_order → estimate changes');

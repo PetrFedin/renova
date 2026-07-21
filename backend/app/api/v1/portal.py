@@ -428,6 +428,8 @@ async def portal_return_work(
 
     row.status = AcceptanceStatus.returned.value
     row.accepted_by = user.id
+    # W139: portal без score → явно без оценки (не оставляем stale)
+    row.quality_score = None
     row.comment = body.comment or row.comment
     stage.status = StageStatus.active
     stage.contractor_ready = False
