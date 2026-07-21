@@ -1,6 +1,7 @@
 /** Sheet детали подбора материала — паттерн как ExpenseDetailSheet */
 import { Modal, View, Text, StyleSheet, Pressable, Linking } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, type MaterialPick, type Room, type Stage } from '@/lib/api';
@@ -132,7 +133,12 @@ export function MaterialPickDetailSheet({
             variant="outline"
             onPress={() => {
               onClose();
-              router.push({ pathname: '/material/[id]', params: { id: pick.id, returnTo: pathname } } as any);
+              // W118: полная карточка материала → SoT
+              pushOsNav(
+                { pathname: '/material/[id]', params: { id: pick.id } },
+                pathname,
+                role,
+              );
             }}
           />
           <PrimaryButton title="Закрыть" variant="outline" onPress={onClose} />

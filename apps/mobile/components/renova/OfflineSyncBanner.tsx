@@ -1,7 +1,6 @@
 /** Баннер очереди офлайн-изменений — только для исполнителя (заказчику в demo не показываем) */
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import { RenovaTheme } from '@/constants/Theme';
@@ -9,10 +8,13 @@ import { queueStats } from '@/lib/offlineQueue';
 import { flushOfflineOutbox, subscribeOfflineFlush } from '@/lib/offline';
 import { useNavFromHere } from '@/lib/navigation';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 export function OfflineSyncBanner() {
   const nav = useNavFromHere();
   const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [pending, setPending] = useState(0);
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(true);
@@ -31,10 +33,12 @@ export function OfflineSyncBanner() {
   if (user?.role === 'customer') return null;
   if (!pending) return null;
 
+  const openConflicts = () => pushOsNav('/conflicts', nav.from, role);
+
   return (
     <Pressable
       style={[s.box, !online && s.offline]}
-      onPress={() => router.push({ pathname: '/conflicts', params: { returnTo: nav.from } } as any)}
+      onPress={openConflicts}
     >
       <View style={{ flex: 1 }}>
         <Text style={s.title}>{online ? 'Ожидает синхронизации' : 'Офлайн · изменения в очереди'}</Text>
@@ -48,7 +52,7 @@ export function OfflineSyncBanner() {
             try {
               const r = await flushOfflineOutbox();
               await reload();
-              if (r.conflicts > 0) router.push({ pathname: '/conflicts', params: { returnTo: nav.from } } as any);
+              if (r.conflicts > 0) openConflicts();
             } finally { setBusy(false); }
           }}
           style={s.btn}

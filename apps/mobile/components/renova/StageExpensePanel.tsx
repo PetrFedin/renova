@@ -1,7 +1,7 @@
 /** Расходы этапа: чеки + материалы + ручные — единый список без дублей */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { ExpenseDetailSheet, type ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
@@ -69,7 +69,7 @@ export function StageExpensePanel({
   const sum = rows.reduce((a, r) => a + r.amount, 0);
 
   const onRowPress = (row: ExpenseDetailRow) => {
-    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: setDetailTarget });
+    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: setDetailTarget, role });
   };
 
   if (!rows.length && !stagePicks.length && readOnly) return null;
@@ -101,7 +101,13 @@ export function StageExpensePanel({
               <Pressable
                 key={p.id}
                 style={s.row}
-                onPress={() => router.push({ pathname: '/material/[id]', params: { id: p.id, returnTo: pathname } } as any)}
+                onPress={() =>
+                  pushOsNav(
+                    { pathname: '/material/[id]', params: { id: p.id } },
+                    pathname,
+                    role,
+                  )
+                }
               >
                 <Text style={s.amt}>{formatRub(p.total || p.qty * p.price)}</Text>
                 <Text style={s.meta}>{p.name} · {p.status}</Text>

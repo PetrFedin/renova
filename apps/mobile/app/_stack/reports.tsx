@@ -1,7 +1,8 @@
 /** Отчёты Renova OS — просмотр in-app + PDF (открыть / поделиться / скачать) */
 import { useCallback, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Alert } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, router } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { homeTypography } from '@/constants/homeTypography';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -140,7 +141,7 @@ export default function ReportsScreen() {
             onError={onPdfError}
           />
 
-          <HomeLinkRow title="Все документы и CSV расходов" onPress={() => router.push('/documents' as any)} />
+          <HomeLinkRow title="Все документы и CSV расходов" onPress={() => pushOsNav('/documents')} />
         </View>
       </ScrollView>
     </>

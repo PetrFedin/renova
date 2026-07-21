@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import {
   OS_MENU_SECTIONS,
@@ -11,6 +11,7 @@ import {
   tabsRoute,
   type OsRole,
 } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
@@ -101,7 +102,8 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                   style={s.item}
                   onPress={() => {
                     setOpen(false);
-                    router.push({ pathname: link.href, params: { returnTo: pathname } } as any);
+                    // W118: util links (inbox/docs/…) через SoT
+                    pushOsNav(link.href, pathname, role);
                   }}
                 >
                   <Ionicons name={link.icon} size={18} color={RenovaTheme.colors.textMuted} />

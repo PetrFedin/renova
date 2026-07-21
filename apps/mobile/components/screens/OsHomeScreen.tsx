@@ -1,7 +1,7 @@
 /** Единая главная Renova OS — заказчик и исполнитель */
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -226,7 +226,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     return (
       <ScrollView style={s.container} contentContainerStyle={s.content}>
         <Text style={s.emptyTitle}>Нет объектов</Text>
-        <PrimaryButton title="Заявки и новые объекты" onPress={() => router.push('/job-leads')} />
+        <PrimaryButton title="Заявки и новые объекты" onPress={() => pushOsNav('/job-leads', undefined, role)} />
       </ScrollView>
     );
   }

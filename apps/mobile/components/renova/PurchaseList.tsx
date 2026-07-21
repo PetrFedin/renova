@@ -1,11 +1,13 @@
 /** Список закупок Renova OS */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { Purchase } from '@/lib/api';
 import { PURCHASE_STATUS_LABEL } from '@/constants/labels';
 import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { useRenova } from '@/lib/context/RenovaContext';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   purchases: Purchase[];
@@ -15,6 +17,8 @@ type Props = {
 };
 
 export function PurchaseList({ purchases, readOnly, returnTo, onAdvance }: Props) {
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   if (!purchases.length) return null;
   return (
     <View style={s.wrap}>
@@ -25,7 +29,12 @@ export function PurchaseList({ purchases, readOnly, returnTo, onAdvance }: Props
         const cancel = purchaseCancelStatus(p.status);
         return (
           <View key={p.id} style={s.card}>
-          <Pressable onPress={() => router.push({ pathname: '/purchase/[id]', params: { id: p.id, ...(returnTo ? { returnTo } : {}) } } as any)}>
+          <Pressable
+            onPress={() =>
+              // W118: карточка закупки → SoT
+              pushOsNav({ pathname: '/purchase/[id]', params: { id: p.id } }, returnTo, role)
+            }
+          >
             <View style={s.row}>
               <Text style={s.title}>{p.supplier_name || 'Без поставщика'}</Text>
               <Text style={s.st}>{PURCHASE_STATUS_LABEL[p.status] || p.status}</Text>

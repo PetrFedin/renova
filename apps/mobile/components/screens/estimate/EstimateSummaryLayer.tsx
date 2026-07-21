@@ -5,7 +5,6 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourceLegend';
 import { budgetTabRoute, objectTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { router } from 'expo-router';
 import type { ProjectDetail } from '@/lib/api';
 import { estimateTotals } from '@/lib/domain/estimateFilters';
 
@@ -172,7 +171,12 @@ function PendingChangesChip({ count, pathname }: { count: number; pathname: stri
       accessibilityRole="button"
       onPress={() => {
         const route = objectTabRoute('customer', 'estimate');
-        router.push({ pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes', returnTo: pathname } } as never);
+        // W118: слой доп. работ → SoT
+        pushOsNav(
+          { pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } },
+          pathname,
+          'customer',
+        );
       }}
     >
       {chip}

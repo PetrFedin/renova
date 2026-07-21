@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { DecisionHistoryPanel } from '@/components/renova/DecisionHistoryPanel';
@@ -66,7 +67,7 @@ export default function ActivityScreen() {
     if (activeProject?.id !== selectedProjectId) {
       await loadProject(selectedProjectId).catch(() => {});
     }
-    router.push({ pathname: '/documents', params: { returnTo: '/activity' } } as any);
+    pushOsNav('/documents', '/activity');
   }, [selectedProjectId, activeProject?.id, loadProject]);
 
   if (!user) return null;

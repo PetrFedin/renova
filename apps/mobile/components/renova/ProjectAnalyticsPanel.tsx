@@ -45,6 +45,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     openExpenseRowTarget(row, receipts, expenses, picks, {
       returnTo: budgetAnalyticsReturnTo(user?.role === 'contractor' ? 'contractor' : 'customer'),
       onDetail: setExpenseDetail,
+      role: user?.role === 'contractor' ? 'contractor' : 'customer',
     });
   }, [receipts, expenses, picks, user?.role]);
 

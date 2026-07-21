@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Linking, Pressable } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -76,7 +77,7 @@ export default function MaterialDetailScreen() {
           <Text style={s.row}><Text style={s.label}>Цена</Text> {formatRub(pick.price)} · итого {formatRub(pick.total)}</Text>
           {room && <Text style={s.row}><Text style={s.label}>Комната</Text> {room.name}</Text>}
           {stage && (
-            <Pressable onPress={() => router.push({ pathname: '/stage/[id]', params: { id: stage.id, returnTo: `/material/${pick.id}` } } as any)}>
+            <Pressable onPress={() => pushOsNav({ pathname: '/stage/[id]', params: { id: stage.id } }, `/material/${pick.id}`)}>
               <Text style={s.row}><Text style={s.label}>Этап</Text> <Text style={s.link}>{stage.name}</Text></Text>
             </Pressable>
           )}

@@ -164,7 +164,7 @@ export function BudgetExpensesSection({
       )}
       <UnifiedExpenseList
         rows={filtered}
-        onPress={(row) => openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress })}
+        onPress={(row) => openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress, role })}
       />
       {!filtered.length && (
         <Text style={s.empty}>

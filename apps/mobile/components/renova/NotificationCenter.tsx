@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, AppNotification } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
-import { resolveNotificationLink, resolvePushLink, changeOrderEstimateRoute } from '@/lib/pushLinks';
+import { resolveNotificationLink, changeOrderEstimateRoute } from '@/lib/pushLinks';
+import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { SnoozeUntilPicker } from '@/components/renova/SnoozeUntilPicker';
 
@@ -55,23 +55,20 @@ export function NotificationCenter({
           await api.readNotification(userId, n.id);
           await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
           const back = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
+          // W118: все переходы через pushOsNav SoT
           if (n.notification_type === 'change_order') {
-            const target = changeOrderEstimateRoute(role, back);
-            router.push({ pathname: target.pathname, params: target.params } as any);
+            pushOsNav(changeOrderEstimateRoute(role, back), undefined, role);
             reload();
             return;
           }
           if (n.link_path) {
-            const target = resolvePushLink(n.link_path, back, role);
-            if (target) {
-              router.push({ pathname: target.pathname, params: target.params } as any);
-              reload();
-              return;
-            }
+            pushOsNav(n.link_path, back, role);
+            reload();
+            return;
           }
           const fallback = resolveNotificationLink(n.notification_type, role);
           if (fallback) {
-            router.push({ pathname: fallback.pathname, params: fallback.params } as any);
+            pushOsNav({ pathname: fallback.pathname, params: fallback.params }, undefined, role);
           }
           reload();
         }}>

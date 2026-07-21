@@ -1,7 +1,6 @@
 /** История решений — смета, сроки, согласования (поверх activity API) */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -12,7 +11,7 @@ import {
   type DecisionCategory,
   type DecisionHistoryItem,
 } from '@/lib/domain/buildDecisionHistory';
-import { resolvePushLink } from '@/lib/pushLinks';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
 
@@ -61,9 +60,8 @@ export function DecisionHistoryPanel({
 
   const openItem = (item: DecisionHistoryItem) => {
     if (!item.linkPath) return;
-    const target = resolvePushLink(item.linkPath, back, role);
-    if (!target) return;
-    router.push({ pathname: target.pathname, params: target.params } as any);
+    // W118: единый SoT
+    pushOsNav(item.linkPath, back, role);
   };
 
   return (

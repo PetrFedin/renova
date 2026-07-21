@@ -9,11 +9,11 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 
-import { router } from 'expo-router';
 import { APPROVAL_TYPE_LABEL, approvalSourceLabel, resolveApprovalHref } from '@/lib/approvalLinks';
 import { navigateApproval } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { budgetTabRoute, objectTabRoute, type OsRole } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -47,7 +47,7 @@ export default function ApprovalsScreen() {
           'План бюджета обновлён. Проверьте plan-fact во вкладке «Бюджет».',
           [
             { text: 'OK', style: 'cancel' },
-            { text: 'Открыть бюджет', onPress: () => router.push({ pathname: budget.pathname, params: budget.params } as never) },
+            { text: 'Открыть бюджет', onPress: () => pushOsNav(budget, undefined, 'customer') },
           ],
         );
       }
@@ -111,7 +111,7 @@ export default function ApprovalsScreen() {
                 variant="outline"
                 onPress={() => {
                   const route = objectTabRoute('customer', 'estimate');
-                  router.push({ pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } } as never);
+                  pushOsNav({ pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } }, undefined, 'customer');
                 }}
               />
             ) : null}

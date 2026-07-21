@@ -65,7 +65,7 @@ export function BudgetSummarySection(props: Props) {
   const showMargin = role === 'contractor';
 
   const onRowPress = (row: ExpenseDetailRow) => {
-    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress });
+    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress, role });
   };
 
   return (

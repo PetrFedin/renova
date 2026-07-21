@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, AppNotification } from '@/lib/api';
-
 import { resolvePushLink, resolveNotificationLink } from '@/lib/pushLinks';
+import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 
+/** W118: уведомления → pushOsNav SoT (не сырой router) */
 export function NotificationsList({ userId, defaultReturn }: { userId: string; defaultReturn?: string }) {
   const { user, activeProject } = useRenova();
   const [items, setItems] = useState<AppNotification[]>([]);
@@ -27,10 +27,14 @@ export function NotificationsList({ userId, defaultReturn }: { userId: string; d
           await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
           const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
           const back = (n as any).return_to || defaultReturn || (role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile');
-          const target = resolvePushLink(n.link_path, back, role)
-            || resolveNotificationLink(n.notification_type, role);
-          if (target) router.push({ pathname: target.pathname, params: target.params } as any);
-          else router.push({ pathname: '/inbox', params: { returnTo: back } } as any);
+          if (n.link_path) {
+            pushOsNav(n.link_path, back, role);
+          } else {
+            const target = resolveNotificationLink(n.notification_type, role)
+              || resolvePushLink('/inbox', back, role);
+            if (target) pushOsNav({ pathname: target.pathname, params: target.params }, undefined, role);
+            else pushOsNav('/inbox', back, role);
+          }
           reload();
         }}>
           <Text style={s.title}>{n.title}</Text><Text style={s.body}>{n.body}</Text>
