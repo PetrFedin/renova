@@ -63,6 +63,8 @@ Pinned SHA: `428de3e` (+ Alert import fix).
 
 ## Wave-5 audit embed (2026-07-21)
 
+Pinned SHA: `a44cf22`.
+
 - Sentry init + reportCatch sweep
 - Moy nalog OAuth start/callback scaffold (connected only after tokens)
 - `scripts/split-release-status.sh`
