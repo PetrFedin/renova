@@ -39,8 +39,9 @@ class PaymentType(str, enum.Enum):
 class PaymentStatus(str, enum.Enum):
     pending = "pending"  # invoice / awaiting_payment
     processing = "processing"  # yookassa checkout started
-    paid_unverified = "paid_unverified"  # transfer_ack без чека/выписки — не в budget_spent
+    paid_unverified = "paid_unverified"  # evidence / transfer_ack — ждёт проверки, не в budget_spent
     confirmed = "confirmed"
+    rejected = "rejected"  # evidence отклонено; можно переотправить
     cancelled = "cancelled"
     disputed = "disputed"
     refunded = "refunded"
@@ -235,6 +236,8 @@ class Payment(Base):
     yookassa_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     # yookassa | bank_transfer | sbp_manual | cash | imported_bank_statement
     payment_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Optimistic locking для concurrent approve/reject
+    lock_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="payments")
@@ -1124,6 +1127,43 @@ class PaymentWebhookEvent(Base):
     provider: Mapped[str] = mapped_column(String(32), default="yookassa")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     payload_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+
+class PaymentEvidence(Base):
+    """Квитанция ручного перевода (не эквайринг). Версии при replace."""
+    __tablename__ = "payment_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_id",
+            "idempotency_key",
+            name="uq_payment_evidence_idempotency",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    payment_id: Mapped[str] = mapped_column(String(36), ForeignKey("payments.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    # active | superseded
+    row_status: Mapped[str] = mapped_column(String(16), default="active")
+    claimed_amount: Mapped[float] = mapped_column(Float)
+    transfer_date: Mapped[date] = mapped_column(Date)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    original_filename: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(String(128))
+    file_size: Mapped[int] = mapped_column(Integer)
+    checksum_sha256: Mapped[str] = mapped_column(String(64))
+    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # antivirus: pipeline отсутствует — всегда false (не заявляем проверку)
+    antivirus_scanned: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PaymentEvent(Base):

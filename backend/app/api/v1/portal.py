@@ -184,7 +184,11 @@ async def portal_snapshot(
     except Exception:
         pending_work_schedule = None
     payments = await pay_svc.list_payments(db, project_id)
-    pending = [pay_svc.payment_dict(x) for x in payments if x.status.value == "pending"]
+    pending = []
+    for x in payments:
+        st = x.status.value
+        if st in ("pending", "processing", "paid_unverified", "rejected"):
+            pending.append(pay_svc.payment_dict(x))
     canonical = await docs_svc.list_canonical_documents(db, project_id)
     sel_rows = (
         await db.execute(

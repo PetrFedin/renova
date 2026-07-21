@@ -11,6 +11,8 @@ import { api, ApiError } from '@/lib/api';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { setAccessToken } from '@/lib/api/client';
+import { PortalPaymentEvidenceSheet } from '@/components/renova/PortalPaymentEvidenceSheet';
+import type { Payment } from '@/lib/api/types';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -21,6 +23,7 @@ export default function PortalScreen() {
   const [portalToken, setPortalToken] = useState('');
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof api.portalSnapshot>> | null>(null);
   const [focusSection, setFocusSection] = useState<'payments' | 'docs' | null>(null);
+  const [evidencePay, setEvidencePay] = useState<Payment | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const paymentsY = useRef(0);
   const docsY = useRef(0);
@@ -129,6 +132,7 @@ export default function PortalScreen() {
   ].filter(Boolean);
 
   return (
+    <>
     <ScrollView ref={scrollRef} style={s.wrap} contentContainerStyle={s.content}>
       <View style={s.hero}>
         <Text style={s.brand}>RENOVA</Text>
@@ -457,6 +461,8 @@ export default function PortalScreen() {
                   ) : null}
                   <Pressable
                     style={s.payBtnOutline}
+                    accessibilityRole="button"
+                    accessibilityLabel="Реквизиты и подтверждение перевода"
                     onPress={async () => {
                       if (built.missingHint) {
                         Alert.alert('Реквизиты не указаны', built.missingHint);
@@ -465,11 +471,27 @@ export default function PortalScreen() {
                       try { await Clipboard.setStringAsync(requisites); } catch { /* noop */ }
                       Alert.alert(
                         'Перевод',
-                        `${requisites}\n\nРеквизиты скопированы. Откройте банк или СБП.`,
-                        Platform.OS === 'web'
-                          ? [{ text: 'OK' }]
-                          : [{ text: 'OK' }, { text: 'Готово', onPress: () => {} }],
-                      );
+                        `${requisites}\n\nРеквизиты скопированы. Откройте банк или СБП, затем отметьте перевод.`,
+                        [
+                          { text: 'Позже', style: 'cancel' },
+                          {
+                            text: 'Я перевёл',
+                            onPress: () => setEvidencePay({
+                              id: pay.id,
+                              title: pay.title,
+                              amount: pay.amount,
+                              payment_type: (pay as { payment_type?: string }).payment_type || 'advance',
+                              status: pay.status || 'pending',
+                              stage_id: null,
+                              notes: null,
+                              confirmed_at: null,
+                              created_at: '',
+                              lock_version: (pay as { lock_version?: number }).lock_version,
+                              payment_method: (pay as { payment_method?: string }).payment_method,
+                            }),
+                          },
+                        ],
+                      )
                     }}
                   >
                     <Text style={s.payBtnOutlineT}>Реквизиты / СБП</Text>
@@ -563,6 +585,21 @@ const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 
         ))}
       </View>
     </ScrollView>
+      {session && evidencePay ? (
+        <PortalPaymentEvidenceSheet
+          visible={Boolean(evidencePay)}
+          userId={session.user_id}
+          projectId={session.project_id}
+          payment={evidencePay}
+          role="customer"
+          onClose={() => setEvidencePay(null)}
+          onDone={async () => {
+            await refreshPortalSnapshot(session.user_id, session.project_id);
+            setEvidencePay(null);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
