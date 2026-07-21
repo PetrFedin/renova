@@ -8,8 +8,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "c3d4e5f6a7b8"
-down_revision: Union[str, Sequence[str], None] = "b2c3d4e5f6a7"
+revision: str = "w4jtipurge01"
+down_revision: Union[str, Sequence[str], None] = "w3outbox01"
 branch_labels = None
 depends_on = None
 
