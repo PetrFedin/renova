@@ -5,6 +5,8 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { decideFlushOutcome } from '@/lib/offline/flushPolicy';
+import { filterJobsExceptProject } from '@/lib/offline/projectQueueFilter';
+import { authHeaders } from '@/lib/api/client';
 
 const KEY = 'renova_offline_queue';
 /** Legacy keys from parallel outbox stacks — migrate once into KEY. */
@@ -149,6 +151,16 @@ export async function getQueueStatus(): Promise<OfflineQueueStatus> {
   };
 }
 
+async function emitQueueChanged(): Promise<void> {
+  // W93: баннер/статус очереди без focus (dynamic import — без цикла offline↔queue)
+  try {
+    const { notifyOfflineFlush } = await import('@/lib/offline/flushBus');
+    notifyOfflineFlush();
+  } catch {
+    /* test env */
+  }
+}
+
 export async function enqueue(job: Omit<OfflineJob, 'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError'>) {
   const q = await getQueue();
   q.push({
@@ -160,12 +172,14 @@ export async function enqueue(job: Omit<OfflineJob, 'ts' | 'id' | 'attempts' | '
     conflict: false,
   });
   await AsyncStorage.setItem(KEY, JSON.stringify(q));
+  await emitQueueChanged();
   return q.length;
 }
 
 export async function removeJob(id: string) {
   const q = (await getQueue()).filter((j) => j.id !== id);
   await AsyncStorage.setItem(KEY, JSON.stringify(q));
+  await emitQueueChanged();
   return q.length;
 }
 
@@ -181,7 +195,9 @@ export async function retryJob(id: string) {
       ),
     ),
   );
+  await emitQueueChanged();
 }
+
 
 /**
  * Replay queue against API.
@@ -213,7 +229,7 @@ export async function flush(apiBase: string): Promise<OfflineFlushResult> {
         method: j.method,
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Id': j.userId,
+          ...authHeaders(j.userId),
           'X-Offline-Id': j.id,
         },
         body: j.body,
@@ -280,6 +296,20 @@ export async function flush(apiBase: string): Promise<OfflineFlushResult> {
 
 export async function writeQueue(jobs: OfflineJob[]) {
   await AsyncStorage.setItem(KEY, JSON.stringify(jobs));
+  await emitQueueChanged();
 }
+
+/** После archive/trash/purge — не replay мутации по этому project_id. */
+export async function dropJobsForProject(projectId: string): Promise<number> {
+  const q = await getQueue();
+  const next = filterJobsExceptProject(q, projectId);
+  const dropped = q.length - next.length;
+  if (dropped > 0) {
+    await AsyncStorage.setItem(KEY, JSON.stringify(next));
+    await emitQueueChanged();
+  }
+  return dropped;
+}
+
 export const OFFLINE_QUEUE_KEY = KEY;
 export const OFFLINE_MAX_ATTEMPTS = MAX_ATTEMPTS;
