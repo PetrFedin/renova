@@ -1,6 +1,7 @@
 """Отчёты Renova OS: ежедневный, еженедельный, финальный."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
@@ -13,7 +14,7 @@ from app.services import risk_engine as risk
 
 
 def _today() -> date:
-    return datetime.utcnow().date()
+    return utc_now().date()
 
 
 async def daily_report(db: AsyncSession, project_id: str, *, day: date | None = None) -> dict:
@@ -43,7 +44,7 @@ async def daily_report(db: AsyncSession, project_id: str, *, day: date | None = 
 
 
 async def weekly_report(db: AsyncSession, project_id: str) -> dict:
-    since = datetime.utcnow() - timedelta(days=7)
+    since = utc_now() - timedelta(days=7)
     p = await risk.load_project_for_risks(db, project_id)
     if not p:
         return {}
@@ -61,7 +62,7 @@ async def weekly_report(db: AsyncSession, project_id: str) -> dict:
     # W75: гарантия + очередь приёмки в дайджест
     from app.models.entities import WorkAcceptance
     warranty_open = [i for i in open_issues if (i.title or "").startswith("[Гарантия]")]
-    now = datetime.utcnow()
+    now = utc_now()
     warranty_overdue = 0
     for i in warranty_open:
         due = getattr(i, "due_at", None)

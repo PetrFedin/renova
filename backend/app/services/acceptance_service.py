@@ -1,6 +1,7 @@
 """Приёмка этапов Renova OS — отдельный процесс с quality score."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import json
 from datetime import datetime
 
@@ -70,7 +71,7 @@ async def request_acceptance(db: AsyncSession, stage: Stage, *, requested_by: st
     checklist_json = stage.checklist_json
     if acc:
         acc.status = "requested"
-        acc.requested_at = datetime.utcnow()
+        acc.requested_at = utc_now()
         acc.requested_by = requested_by
         acc.checklist_json = checklist_json
         acc.quality_score = None
@@ -83,7 +84,7 @@ async def request_acceptance(db: AsyncSession, stage: Stage, *, requested_by: st
             room_id=room_id,
             stage_id=stage.id,
             requested_by=requested_by,
-            requested_at=datetime.utcnow(),
+            requested_at=utc_now(),
             status="requested",
             checklist_json=checklist_json,
         )
@@ -111,7 +112,7 @@ async def accept(db: AsyncSession, acceptance_id: str, *, accepted_by: str, with
     returned_before = acc.status == "returned"
     acc.status = "accepted_with_remarks" if with_remarks else "accepted"
     acc.accepted_by = accepted_by
-    acc.accepted_at = datetime.utcnow()
+    acc.accepted_at = utc_now()
     acc.comment = comment
     # W139: не подставляем эвристику как оценку заказчика — только явный score с API
     acc.quality_score = None

@@ -1,6 +1,7 @@
 """Чаты заказчик ↔ исполнитель + расширения OS."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import json
 import secrets
 from datetime import datetime
@@ -195,10 +196,10 @@ async def set_thread_state(
     row = await _get_or_create_read(db, thread_id, user_id)
     if is_pinned is not None:
         row.is_pinned = is_pinned
-        row.pinned_at = datetime.utcnow() if is_pinned else None
+        row.pinned_at = utc_now() if is_pinned else None
     if is_archived is not None:
         row.is_archived = is_archived
-    row.updated_at = datetime.utcnow()
+    row.updated_at = utc_now()
     await db.commit()
     return {"is_pinned": row.is_pinned, "is_archived": row.is_archived, "pinned_at": row.pinned_at.isoformat() if row.pinned_at else None}
 
@@ -230,7 +231,7 @@ async def send_message(
         meta_json=_dump_meta(meta or {}),
     )
     db.add(msg)
-    thread.updated_at = datetime.utcnow()
+    thread.updated_at = utc_now()
     await db.commit()
     await db.refresh(msg)
 
@@ -308,7 +309,7 @@ def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
 
 async def mark_thread_read(db: AsyncSession, thread_id: str, user_id: str) -> None:
     row = await _get_or_create_read(db, thread_id, user_id)
-    now = datetime.utcnow()
+    now = utc_now()
     row.last_read_at = now
     row.updated_at = now
     await db.commit()

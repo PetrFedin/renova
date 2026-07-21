@@ -1,4 +1,5 @@
 """In-app уведомления."""
+from app.core.timeutil import utc_now
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
@@ -59,7 +60,7 @@ async def reaction_digest(push: bool = False, user: User = Depends(get_current_u
     from datetime import timedelta, datetime
     from sqlalchemy import select
     from app.models.entities import AppNotification
-    since = datetime.utcnow() - timedelta(hours=24)
+    since = utc_now() - timedelta(hours=24)
     r = await db.execute(select(AppNotification).where(AppNotification.user_id == user.id, AppNotification.notification_type == 'reaction', AppNotification.created_at >= since))
     items = r.scalars().all()
     if push and items:
@@ -76,7 +77,7 @@ async def approval_digest(user: User = Depends(get_current_user), db: AsyncSessi
     from sqlalchemy import select
     from app.models.entities import AppNotification
     from datetime import datetime, timedelta
-    since = datetime.utcnow() - timedelta(days=7)
+    since = utc_now() - timedelta(days=7)
     from app.models.entities import NotificationType
     r = await db.execute(select(AppNotification).where(
         AppNotification.user_id == user.id,

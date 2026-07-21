@@ -1,3 +1,4 @@
+from app.core.timeutil import utc_now
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,7 +68,7 @@ async def delete_me(user: User = Depends(get_current_user), db: AsyncSession = D
     from datetime import datetime, timedelta
     from app.services import session_service as sess_svc
 
-    now = datetime.utcnow()
+    now = utc_now()
     user.deletion_requested_at = now
     user.deleted_at = now
     user.tokens_invalid_before = now
@@ -245,7 +246,7 @@ async def revoke_all_sessions(user: User = Depends(get_current_user), db: AsyncS
     from app.services import session_service as sess_svc
 
     n = await sess_svc.revoke_all_user_sessions(db, user.id)
-    user.tokens_invalid_before = datetime.utcnow()
+    user.tokens_invalid_before = utc_now()
     await db.commit()
     return {"ok": True, "revoked": n, "access_invalidated": True}
 

@@ -1,3 +1,4 @@
+from app.core.timeutil import utc_now
 from datetime import date, datetime
 
 from fastapi import HTTPException
@@ -106,7 +107,7 @@ async def sync_items_from_stages(db: AsyncSession, schedule: ProjectWorkSchedule
             item.progress_percent = stage.percent_complete or 0
             item.delay_days = calculate_delay(item)
             item.sort_order = stage.sort_order
-            item.updated_at = datetime.utcnow()
+            item.updated_at = utc_now()
         else:
             db.add(
                 ProjectWorkScheduleItem(
@@ -120,8 +121,8 @@ async def sync_items_from_stages(db: AsyncSession, schedule: ProjectWorkSchedule
                     planned_finish_date=planned_finish,
                     progress_percent=stage.percent_complete or 0,
                     sort_order=stage.sort_order if stage.sort_order is not None else index,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    created_at=utc_now(),
+                    updated_at=utc_now(),
                 )
             )
 
@@ -141,8 +142,8 @@ async def create_item(db: AsyncSession, schedule: ProjectWorkSchedule, body: Wor
             requires_photo=body.requires_photo,
             requires_hidden_work_acceptance=body.requires_hidden_work_acceptance,
             sort_order=body.sort_order or index,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utc_now(),
+            updated_at=utc_now(),
         )
     )
 
@@ -207,8 +208,8 @@ async def create_schedule(db: AsyncSession, project: Project, user: User, body: 
         planned_start_date=body.planned_start_date or project.planned_start_date,
         planned_finish_date=body.planned_finish_date or project.planned_end_date,
         created_by=user.id,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=utc_now(),
+        updated_at=utc_now(),
     )
     db.add(schedule)
     await db.flush()
@@ -244,7 +245,7 @@ async def update_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
         for index, item in enumerate(body.items):
             await create_item(db, schedule, item, index)
     schedule.status = WorkScheduleStatus.draft if schedule.status == WorkScheduleStatus.rejected else schedule.status
-    schedule.updated_at = datetime.utcnow()
+    schedule.updated_at = utc_now()
     await db.commit()
     await db.refresh(schedule)
     return await attach_items(db, schedule)
@@ -289,8 +290,8 @@ async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
         schedule.schedule_version = 1
     schedule.status = WorkScheduleStatus.submitted
     schedule.submitted_by = user.id
-    schedule.submitted_at = datetime.utcnow()
-    schedule.updated_at = datetime.utcnow()
+    schedule.submitted_at = utc_now()
+    schedule.updated_at = utc_now()
     await db.commit()
     await db.refresh(schedule)
 
@@ -328,8 +329,8 @@ async def confirm_schedule(db: AsyncSession, project: Project, schedule: Project
         raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_confirm")
     schedule.status = WorkScheduleStatus.confirmed
     schedule.confirmed_by = user.id
-    schedule.confirmed_at = datetime.utcnow()
-    schedule.updated_at = datetime.utcnow()
+    schedule.confirmed_at = utc_now()
+    schedule.updated_at = utc_now()
     await sync_stages_from_schedule_items(db, schedule)
     await db.commit()
     await db.refresh(schedule)
@@ -367,8 +368,8 @@ async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectW
     schedule.status = WorkScheduleStatus.rejected
     schedule.rejection_reason = reason
     schedule.rejected_by = user.id
-    schedule.rejected_at = datetime.utcnow()
-    schedule.updated_at = datetime.utcnow()
+    schedule.rejected_at = utc_now()
+    schedule.updated_at = utc_now()
     await db.commit()
     await db.refresh(schedule)
 
@@ -412,7 +413,7 @@ async def mark_schedule_items_accepted_for_stage(
             )
         ).scalars().all()
     )
-    now = datetime.utcnow()
+    now = utc_now()
     today = date.today()
     updated = 0
     for item in rows:
@@ -513,7 +514,7 @@ async def update_item_status(
     if body_status == WorkScheduleItemStatus.accepted:
         item.progress_percent = max(item.progress_percent or 0, 100)
     item.delay_days = calculate_delay(item)
-    item.updated_at = datetime.utcnow()
+    item.updated_at = utc_now()
     await sync_stage_from_item_status(db, item, body_status)
     await db.commit()
     await db.refresh(item)

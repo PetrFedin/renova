@@ -1,6 +1,7 @@
 """Service layer for ProjectDocument lifecycle (D-01…D-07)."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import datetime
 
 from sqlalchemy import select
@@ -229,7 +230,7 @@ async def sign_document(
         provider_external_id=result.external_id,
         content_hash=content_hash or version.checksum_sha256,
         status=result.status,  # signed | pending (Wave 3f external)
-        signed_at=datetime.utcnow() if result.status == "signed" else None,
+        signed_at=utc_now() if result.status == "signed" else None,
         meta_json=json.dumps(result.meta, ensure_ascii=False) if result.meta else None,
     )
     db.add(sig)
@@ -242,7 +243,7 @@ async def sign_document(
 
 async def archive_document(db: AsyncSession, doc: ProjectDocument) -> ProjectDocument:
     doc.status = DocumentStatus.archived.value
-    doc.archived_at = datetime.utcnow()
+    doc.archived_at = utc_now()
     await db.flush()
     return doc
 
@@ -314,7 +315,7 @@ async def soft_delete_document(db: AsyncSession, doc: ProjectDocument) -> Projec
     if await document_has_signatures(db, doc.id):
         raise ValueError("signed_document_cannot_be_deleted")
     doc.status = DocumentStatus.deleted.value
-    doc.archived_at = datetime.utcnow()
+    doc.archived_at = utc_now()
     await db.flush()
     return doc
 
@@ -436,11 +437,11 @@ async def complete_external_signature(
         return row
     row.status = status
     if status == "signed" and not row.signed_at:
-        row.signed_at = datetime.utcnow()
+        row.signed_at = utc_now()
         doc = await db.get(ProjectDocument, row.document_id)
         if doc and doc.status == DocumentStatus.draft.value:
             doc.status = DocumentStatus.active.value
     elif status == "failed" and not row.revoked_at:
-        row.revoked_at = datetime.utcnow()
+        row.revoked_at = utc_now()
     await db.flush()
     return row

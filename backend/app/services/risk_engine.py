@@ -1,6 +1,7 @@
 """Risk Engine — выявление рисков по данным проекта."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
@@ -191,7 +192,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
                 "action": "Закрыть замечание",
                 "href": "/(customer)/(tabs)/repair?tab=control",
             })
-        stale = [i for i in issues if i.created_at < datetime.utcnow() - timedelta(days=3)]
+        stale = [i for i in issues if i.created_at < utc_now() - timedelta(days=3)]
         if stale and not critical:
             risks.append({
                 "id": _rid("quality", "stale"),

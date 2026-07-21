@@ -1,4 +1,5 @@
 """Редактор сметы и учёт расходников (план vs факт)."""
+from app.core.timeutil import utc_now
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import EstimateLine, LineType, Project
@@ -149,7 +150,7 @@ async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_b
     if not lines:
         return None, {"code": "empty_estimate", "message": "Добавьте строки в смету перед фиксацией"}
     # Повторный propose всегда обновляет TTL и шлёт напоминание
-    proj.estimate_lock_proposed_at = datetime.utcnow()
+    proj.estimate_lock_proposed_at = utc_now()
     proj.estimate_lock_proposed_by = proposed_by
     import json as _json
     proj.estimate_propose_snapshot_json = _json.dumps(serialize_estimate_lines(lines), ensure_ascii=False)
@@ -196,13 +197,13 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
     # W66 #26: просроченный propose — нужна повторная отправка
     if proj.contractor_id and proj.estimate_lock_proposed_at:
         from datetime import timedelta
-        age = datetime.utcnow() - proj.estimate_lock_proposed_at
+        age = utc_now() - proj.estimate_lock_proposed_at
         if age > timedelta(days=14):
             return proj, {
                 "code": "proposal_stale",
                 "message": "Предложение сметы устарело (>14 дн.). Исполнитель должен отправить снова.",
             }
-    proj.estimate_locked_at = datetime.utcnow()
+    proj.estimate_locked_at = utc_now()
     proj.estimate_lock_proposed_at = None
     proj.estimate_lock_proposed_by = None
     proj.estimate_propose_snapshot_json = None

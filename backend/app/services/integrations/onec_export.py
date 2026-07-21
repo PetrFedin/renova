@@ -1,6 +1,7 @@
 """Экспорт для 1С и банковского реестра — CSV с `;` (RU Excel)."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import csv
 import io
 from datetime import datetime
@@ -102,7 +103,7 @@ async def build_bank_register_csv(db: AsyncSession, project: Project) -> str:
             "Экспорт_at",
         ]
     )
-    exported = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    exported = utc_now().isoformat(timespec="seconds") + "Z"
     pname = project.name or project.id
     for p in payments:
         st = p.status.value if hasattr(p.status, "value") else str(p.status)
@@ -144,7 +145,7 @@ async def build_1c_payments_xml(db: AsyncSession, project: Project) -> str:
         )
     ).scalars().all()
     pname = _xml_escape(project.name or project.id)
-    exported = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    exported = utc_now().isoformat(timespec="seconds") + "Z"
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<RenovaExchange version="1.0" exported_at="{exported}" project_id="{_xml_escape(project.id)}">',
@@ -201,7 +202,7 @@ async def build_1c_commerceml_xml(db: AsyncSession, project: Project) -> str:
             select(EstimateLine).where(EstimateLine.project_id == project.id).order_by(EstimateLine.name.asc())
         )
     ).scalars().all()
-    formed = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    formed = utc_now().strftime("%Y-%m-%dT%H:%M:%S")
     pname = _xml_escape(project.name or project.id)
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',

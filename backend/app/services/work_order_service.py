@@ -1,6 +1,7 @@
 """Заказы работ — детальные задачи по комнатам, датам, статусам."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import date, datetime
 
 from sqlalchemy import select
@@ -102,7 +103,7 @@ async def update_work_order(db: AsyncSession, w: WorkOrder, patch: dict) -> Work
         if k in patch:
             v = patch[k]
             setattr(w, k, date.fromisoformat(v) if isinstance(v, str) and v else v)
-    w.updated_at = datetime.utcnow()
+    w.updated_at = utc_now()
     await db.commit()
     await db.refresh(w)
     return w
@@ -134,7 +135,7 @@ async def transition(
         w.actual_start = today
     if new_status == WorkOrderStatus.done.value and not w.actual_end:
         w.actual_end = today
-    w.updated_at = datetime.utcnow()
+    w.updated_at = utc_now()
     await act.log_event(
         db, project_id=w.project_id, user_id=user_id, kind="work_status",
         title=f"{w.title}: {new_status}", room_id=w.room_id, work_type=w.work_type,

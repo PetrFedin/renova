@@ -1,3 +1,4 @@
+from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +23,7 @@ async def _expire_if_needed(db: AsyncSession, s: Subscription) -> Subscription:
     """Trial/Pro с истёкшим expires_at → free (trial помечаем trial_used)."""
     if s.status != SubscriptionStatus.active:
         return s
-    if not s.expires_at or s.expires_at > datetime.utcnow():
+    if not s.expires_at or s.expires_at > utc_now():
         return s
     if s.plan == "trial":
         s.plan = "trial_used"
@@ -38,14 +39,14 @@ async def is_pro(db: AsyncSession, user_id: str) -> bool:
     s = await _expire_if_needed(db, await get_sub(db, user_id))
     if s.status != SubscriptionStatus.active:
         return False
-    return not s.expires_at or s.expires_at > datetime.utcnow()
+    return not s.expires_at or s.expires_at > utc_now()
 
 
 async def activate_pro(db: AsyncSession, user_id: str, days: int = 30) -> Subscription:
     s = await get_sub(db, user_id)
     s.status = SubscriptionStatus.active
     s.plan = "pro"
-    s.expires_at = datetime.utcnow() + timedelta(days=days)
+    s.expires_at = utc_now() + timedelta(days=days)
     await db.commit()
     await db.refresh(s)
     return s
@@ -60,7 +61,7 @@ async def start_trial(db: AsyncSession, user_id: str) -> tuple[Subscription | No
         return None, {"code": "trial_used", "message": "Пробный период уже использован — оформите Pro"}
     s.status = SubscriptionStatus.active
     s.plan = "trial"
-    s.expires_at = datetime.utcnow() + timedelta(days=TRIAL_DAYS)
+    s.expires_at = utc_now() + timedelta(days=TRIAL_DAYS)
     await db.commit()
     await db.refresh(s)
     return s, {"code": "trial_started", "days": TRIAL_DAYS}
@@ -75,7 +76,7 @@ async def subscription_payload(db: AsyncSession, user_id: str) -> dict:
     s = await get_sub(db, user_id)  # refresh after is_pro side effects
     days_left = None
     if s.expires_at and pro:
-        days_left = max(0, (s.expires_at - datetime.utcnow()).days)
+        days_left = max(0, (s.expires_at - utc_now()).days)
     health = yookassa_health()
     return {
         "plan": s.plan,

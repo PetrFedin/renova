@@ -1,4 +1,5 @@
 """Бизнес-логика проектов: создание, dashboard, приёмка этапов."""
+from app.core.timeutil import utc_now
 from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -273,7 +274,7 @@ async def enrich_dashboard_actions(
             )
         ).scalars().all()
     )
-    now = _dt.utcnow()
+    now = utc_now()
     warranty_open = len(warranty_rows)
     warranty_overdue = sum(1 for w in warranty_rows if w.due_at and w.due_at < now)
     pending_sign = int(
@@ -342,7 +343,7 @@ async def reject_stage(db: AsyncSession, stage_id: str, user_id: str, reason: st
     stage.contractor_ready = False
     stage.contractor_ready_at = None
     stage.needs_rework = True
-    stage.rework_deadline = datetime.utcnow() + timedelta(days=3)
+    stage.rework_deadline = utc_now() + timedelta(days=3)
     if reason:
         from app.models.entities import StageComment
         db.add(StageComment(stage_id=stage_id, user_id=user_id, author_role='customer', text=f'Отклонено: {reason}'))
@@ -351,7 +352,7 @@ async def reject_stage(db: AsyncSession, stage_id: str, user_id: str, reason: st
     await db.refresh(stage)
     project = await get_project(db, stage.project_id)
     if project and project.contractor_id:
-        await notif_svc.notify(db, user_id=project.contractor_id, project_id=project.id, notification_type='stage_review', title='Этап отклонён · SLA 3д', body=f'{stage.name} до {(stage.rework_deadline or datetime.utcnow()).date()}', link_path=f'/stage/{stage.id}', return_to='/(contractor)/(tabs)/plan')
+        await notif_svc.notify(db, user_id=project.contractor_id, project_id=project.id, notification_type='stage_review', title='Этап отклонён · SLA 3д', body=f'{stage.name} до {(stage.rework_deadline or utc_now()).date()}', link_path=f'/stage/{stage.id}', return_to='/(contractor)/(tabs)/plan')
     return stage
 
 
@@ -483,7 +484,7 @@ async def unarchive_project(db: AsyncSession, project_id: str, user: User) -> Pr
 async def trash_project(db: AsyncSession, project_id: str, user: User) -> Project:
     from datetime import datetime
     p = await _assert_customer_owner(db, project_id, user)
-    p.trashed_at = datetime.utcnow()
+    p.trashed_at = utc_now()
     p.is_archived = False
     await db.commit()
     await db.refresh(p)

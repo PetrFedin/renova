@@ -1,6 +1,7 @@
 """Automation Engine — правила цепочки: работа → приёмка → оплата → закупка."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -176,7 +177,7 @@ async def process_event(
 async def scan_project_reminders(db: AsyncSession, project: Project) -> list[str]:
     """Периодические напоминания: материалы для активных работ, просрочки."""
     actions: list[str] = []
-    today = datetime.utcnow().date()
+    today = utc_now().date()
     stages = sorted(project.stages or [], key=lambda s: s.sort_order)
 
     for st in stages:

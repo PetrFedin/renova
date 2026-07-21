@@ -1,4 +1,5 @@
 """ORM-модели Renova v1.4."""
+from app.core.timeutil import utc_now
 import enum
 import uuid
 from datetime import date, datetime
@@ -64,7 +65,7 @@ class User(Base):
     moy_nalog_status: Mapped[str] = mapped_column(String(32), default="not_connected")
     profile_code: Mapped[str | None] = mapped_column(String(8), unique=True, nullable=True, index=True)
     npd_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     # Soft-delete / GDPR retention (P2.21)
     deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
@@ -90,7 +91,7 @@ class Project(Base):
     planned_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     planned_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     trashed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     estimate_locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -198,7 +199,7 @@ class StageComment(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     author_role: Mapped[str] = mapped_column(String(16))
     text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     stage: Mapped["Stage"] = relationship(back_populates="comments")
 
@@ -213,7 +214,7 @@ class StagePhoto(Base):
     storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     image_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # fallback base64
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     stage: Mapped["Stage"] = relationship(back_populates="photos")
 
@@ -234,7 +235,7 @@ class Payment(Base):
     yookassa_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     # yookassa | bank_transfer | sbp_manual | cash | imported_bank_statement
     payment_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="payments")
 
@@ -249,7 +250,7 @@ class ChangeOrder(Base):
     amount: Mapped[float] = mapped_column(Float)
     status: Mapped[ChangeOrderStatus] = mapped_column(Enum(ChangeOrderStatus), default=ChangeOrderStatus.pending)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="change_orders")
 
@@ -270,7 +271,7 @@ class Receipt(Base):
     room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
     stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
     payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="receipts")
 
@@ -282,7 +283,7 @@ class ProjectViewer(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class RoomChangeStatus(str, enum.Enum):
@@ -332,7 +333,7 @@ class RoomChangeRequest(Base):
     status: Mapped[RoomChangeStatus] = mapped_column(Enum(RoomChangeStatus), default=RoomChangeStatus.pending)
     message: Mapped[str] = mapped_column(Text)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="room_change_requests")
@@ -346,8 +347,8 @@ class ChatThread(Base):
     title: Mapped[str] = mapped_column(String(255))
     topic: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="chat_threads")
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="thread", cascade="all, delete-orphan")
@@ -368,7 +369,7 @@ class ChatMessage(Base):
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     reply_to_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chat_messages.id"), nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     thread: Mapped["ChatThread"] = relationship(back_populates="messages")
 
@@ -385,7 +386,7 @@ class AppNotification(Base):
     link_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class RepairArticle(Base):
@@ -400,8 +401,8 @@ class RepairArticle(Base):
     summary: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
     published: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class PushToken(Base):
@@ -409,7 +410,7 @@ class PushToken(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     token: Mapped[str] = mapped_column(String(512))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class SubscriptionStatus(str, enum.Enum):
     free = "free"
@@ -432,12 +433,12 @@ class ChatThreadRead(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id"), index=True)
-    last_read_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_read_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class ChatThreadParticipant(Base):
@@ -450,7 +451,7 @@ class ChatThreadParticipant(Base):
     profile_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     invited_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(String(16), default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class AuditLog(Base):
@@ -461,7 +462,7 @@ class AuditLog(Base):
     method: Mapped[str] = mapped_column(String(8))
     path: Mapped[str] = mapped_column(String(512))
     status_code: Mapped[int] = mapped_column(Integer, default=200)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
 
 class Team(Base):
@@ -470,8 +471,8 @@ class Team(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(128))
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
     members: Mapped[list["TeamMember"]] = relationship(back_populates="team", cascade="all, delete-orphan")
 
@@ -484,7 +485,7 @@ class TeamMember(Base):
     team_id: Mapped[str] = mapped_column(String(36), ForeignKey("teams.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     role: Mapped[str] = mapped_column(String(32), default="member")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     team: Mapped["Team"] = relationship(back_populates="members")
 
@@ -498,7 +499,7 @@ class TeamInvite(Base):
     role: Mapped[str] = mapped_column(String(32), default="member")
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class ChecklistTemplate(Base):
     __tablename__ = "checklist_templates"
@@ -507,7 +508,7 @@ class ChecklistTemplate(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(64))
     items_json: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class BudgetAlertSent(Base):
@@ -518,7 +519,7 @@ class BudgetAlertSent(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id"), index=True)
     sent_date: Mapped[str] = mapped_column(String(10))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class ChecklistTemplateVersion(Base):
@@ -530,7 +531,7 @@ class ChecklistTemplateVersion(Base):
     name: Mapped[str] = mapped_column(String(64))
     items_json: Mapped[str] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class CommentReaction(Base):
@@ -552,7 +553,7 @@ class RoomChangeLog(Base):
     field_name: Mapped[str] = mapped_column(String(64))
     old_value: Mapped[str] = mapped_column(String(255))
     new_value: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class MarginSnapshot(Base):
@@ -561,7 +562,7 @@ class MarginSnapshot(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     margin_estimated: Mapped[float] = mapped_column(Float, default=0)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
 
 class ProjectChecklistTemplate(Base):
@@ -571,7 +572,7 @@ class ProjectChecklistTemplate(Base):
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     name: Mapped[str] = mapped_column(String(64))
     items_json: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 
@@ -596,7 +597,7 @@ class Supplier(Base):
     category: Mapped[str | None] = mapped_column(String(32), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     site: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class Purchase(Base):
@@ -613,8 +614,8 @@ class Purchase(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     receipt_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
     items: Mapped[list["PurchaseItem"]] = relationship(back_populates="purchase", cascade="all, delete-orphan")
 
 
@@ -659,8 +660,8 @@ class MaterialPick(Base):
     status: Mapped[MaterialPickStatus] = mapped_column(Enum(MaterialPickStatus), default=MaterialPickStatus.draft)
     analog_of_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("material_picks.id"), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 
@@ -689,8 +690,8 @@ class SelectionItem(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     proposed_by_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class ActivityEvent(Base):
@@ -705,7 +706,7 @@ class ActivityEvent(Base):
     room_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     work_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     link_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
 
 class WasteOrderStatus(str, enum.Enum):
@@ -726,7 +727,7 @@ class FloorPlan(Base):
     width_px: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height_px: Mapped[int | None] = mapped_column(Integer, nullable=True)
     floor_level: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class FloorPlanPin(Base):
@@ -752,7 +753,7 @@ class WasteOrder(Base):
     status: Mapped[WasteOrderStatus] = mapped_column(Enum(WasteOrderStatus), default=WasteOrderStatus.draft)
     price: Mapped[float] = mapped_column(Float, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class FurnitureItem(Base):
@@ -769,7 +770,7 @@ class FurnitureItem(Base):
     x_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     y_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class DesignPackage(Base):
@@ -782,7 +783,7 @@ class DesignPackage(Base):
     file_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="draft")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class ContractorProfile(Base):
@@ -799,7 +800,7 @@ class ContractorProfile(Base):
     # Реквизиты для перевода (СБП/карта/счёт) — без hardcoded demo-карт в UI
     payment_requisites: Mapped[str | None] = mapped_column(Text, nullable=True)
     visible: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class JobLeadStatus(str, enum.Enum):
@@ -823,7 +824,7 @@ class JobLead(Base):
     status: Mapped[JobLeadStatus] = mapped_column(Enum(JobLeadStatus), default=JobLeadStatus.open)
     pre_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
     assigned_contractor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class ContractorPortfolioPhoto(Base):
     __tablename__ = "contractor_portfolio_photos"
@@ -832,7 +833,7 @@ class ContractorPortfolioPhoto(Base):
     profile_id: Mapped[str] = mapped_column(String(36), ForeignKey("contractor_profiles.id"), index=True)
     image_key: Mapped[str] = mapped_column(String(512))
     caption: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class LeadMessage(Base):
     __tablename__ = "lead_messages"
@@ -841,7 +842,7 @@ class LeadMessage(Base):
     lead_id: Mapped[str] = mapped_column(String(36), ForeignKey("job_leads.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class JobLeadQuote(Base):
@@ -854,7 +855,7 @@ class JobLeadQuote(Base):
     contractor_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     pre_estimate: Mapped[float] = mapped_column(Float)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class IssueSeverity(str, enum.Enum):
@@ -892,7 +893,7 @@ class ProjectIssue(Base):
     x_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     y_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     photo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 class DependencyType(str, enum.Enum):
@@ -921,7 +922,7 @@ class WorkDependency(Base):
     dependency_type: Mapped[str] = mapped_column(String(16), default="work")
     criticality: Mapped[str] = mapped_column(String(16), default="high")
     status: Mapped[str] = mapped_column(String(16), default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class PropertyFloor(Base):
@@ -934,7 +935,7 @@ class PropertyFloor(Base):
     floor_number: Mapped[int] = mapped_column(Integer, default=1)
     area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class PropertyObject(Base):
@@ -958,7 +959,7 @@ class PropertyObject(Base):
     has_design_project: Mapped[bool] = mapped_column(Boolean, default=False)
     has_contractor: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class AcceptanceStatus(str, enum.Enum):
     not_requested = "not_requested"
@@ -986,7 +987,7 @@ class WorkAcceptance(Base):
     checklist_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class ExpenseStatus(str, enum.Enum):
@@ -1013,7 +1014,7 @@ class BudgetLine(Base):
     actual_amount: Mapped[float] = mapped_column(Float, default=0)
     expense_type: Mapped[str] = mapped_column(String(32), default="materials")
     status: Mapped[str] = mapped_column(String(16), default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class Expense(Base):
@@ -1036,8 +1037,8 @@ class Expense(Base):
     supplier_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="confirmed", index=True)
-    expense_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expense_date: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 
@@ -1074,8 +1075,8 @@ class WorkOrder(Base):
     budget_spent: Mapped[float] = mapped_column(Float, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="work_orders")
 
@@ -1093,8 +1094,8 @@ class ScratchpadLine(Base):
     promoted_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="scratchpad_lines")
 
@@ -1107,7 +1108,7 @@ class UserSession(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     refresh_token_hash: Mapped[str] = mapped_column(String(128), unique=True)
     device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1121,7 +1122,7 @@ class PaymentWebhookEvent(Base):
 
     event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     provider: Mapped[str] = mapped_column(String(32), default="yookassa")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     payload_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
@@ -1138,7 +1139,7 @@ class PaymentEvent(Base):
     evidence_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # receipt|transfer_ack|yookassa|bank_statement
     evidence_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -1151,7 +1152,7 @@ class DomainOutbox(Base):
     aggregate_id: Mapped[str] = mapped_column(String(36), index=True)
     event_type: Mapped[str] = mapped_column(String(64), index=True)
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
