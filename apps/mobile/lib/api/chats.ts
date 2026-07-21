@@ -21,7 +21,12 @@ export const chatsApi = {
     userId: string,
     projectId: string,
     threadId: string,
-    body: { is_pinned?: boolean; is_archived?: boolean },
+    body: {
+      is_pinned?: boolean;
+      is_archived?: boolean;
+      muted_until?: string | null;
+      clear_mute?: boolean;
+    },
   ) => {
     try {
       return await req(

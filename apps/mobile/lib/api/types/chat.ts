@@ -28,6 +28,11 @@ export type ChatThread = {
   unread_count?: number;
   is_pinned?: boolean;
   is_archived?: boolean;
+  /** Когда пользователь отправил в архив (не равно last_read) */
+  archived_at?: string | null;
+  /** Mute отдельно от archive */
+  muted_until?: string | null;
+  is_muted?: boolean;
   pinned_at?: string | null;
   project_name?: string;
 };

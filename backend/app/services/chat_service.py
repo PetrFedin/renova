@@ -99,6 +99,11 @@ async def count_unread_in_thread(db: AsyncSession, thread_id: str, user_id: str)
 
 
 async def count_unread_project(db: AsyncSession, project_id: str, user_id: str) -> int:
+    """Global unread = только НЕ архивные треды.
+
+    Политика: leftover unread в архиве виден в папке «Архив» и не кормит dock badge.
+    Новое входящее снимает archive → тогда счётчик входит в total.
+    """
     threads = await list_threads(db, project_id)
     total = 0
     for t in threads:
@@ -131,7 +136,19 @@ async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str)
         last = sorted(full.messages, key=lambda m: m.created_at)[-1] if full and full.messages else None
         st = await _get_or_create_read(db, t.id, user_id)
         unread = await count_unread_in_thread(db, t.id, user_id)
-        out.append(thread_dict(t, last, unread=unread, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at))
+        out.append(
+            thread_dict(
+                t,
+                last,
+                unread=unread,
+                is_pinned=st.is_pinned,
+                is_archived=st.is_archived,
+                pinned_at=st.pinned_at,
+                archived_at=getattr(st, "archived_at", None),
+                muted_until=getattr(st, "muted_until", None),
+                is_muted=_is_muted(st),
+            )
+        )
     out.sort(key=lambda x: (not x.get("is_pinned"), x.get("updated_at") or ""), reverse=True)
     return out
 
@@ -185,6 +202,39 @@ async def get_thread(db: AsyncSession, thread_id: str) -> ChatThread | None:
     return r.scalar_one_or_none()
 
 
+def _is_muted(row: ChatThreadRead, *, now: datetime | None = None) -> bool:
+    """Mute отдельно от archive: push подавляются, unread считается."""
+    until = getattr(row, "muted_until", None)
+    if not until:
+        return False
+    return until > (now or utc_now())
+
+
+async def unarchive_recipients(
+    db: AsyncSession,
+    thread_id: str,
+    *,
+    except_user_id: str | None = None,
+    user_ids: list[str] | None = None,
+) -> list[str]:
+    """Снять archive у получателей (не трогает last_read_at / muted_until).
+
+    Возвращает user_id, у кого архив реально снят (для события).
+    """
+    changed: list[str] = []
+    targets = user_ids or []
+    for uid in targets:
+        if not uid or uid == except_user_id:
+            continue
+        row = await _get_or_create_read(db, thread_id, uid)
+        if row.is_archived:
+            row.is_archived = False
+            row.archived_at = None
+            row.updated_at = utc_now()
+            changed.append(uid)
+    return changed
+
+
 async def set_thread_state(
     db: AsyncSession,
     thread_id: str,
@@ -192,16 +242,32 @@ async def set_thread_state(
     *,
     is_pinned: bool | None = None,
     is_archived: bool | None = None,
+    muted_until: datetime | None | object = ...,
 ) -> dict:
+    """Меняет pin/archive/mute. Архивация НЕ сдвигает last_read_at (archive ≠ read)."""
     row = await _get_or_create_read(db, thread_id, user_id)
+    now = utc_now()
     if is_pinned is not None:
         row.is_pinned = is_pinned
-        row.pinned_at = utc_now() if is_pinned else None
+        row.pinned_at = now if is_pinned else None
     if is_archived is not None:
+        # Не трогаем last_read_at — непрочитанные остаются до read / нового события
         row.is_archived = is_archived
-    row.updated_at = utc_now()
+        row.archived_at = now if is_archived else None
+    if muted_until is not ...:
+        row.muted_until = muted_until  # type: ignore[assignment]
+    row.updated_at = now
     await db.commit()
-    return {"is_pinned": row.is_pinned, "is_archived": row.is_archived, "pinned_at": row.pinned_at.isoformat() if row.pinned_at else None}
+    return {
+        "is_pinned": row.is_pinned,
+        "is_archived": row.is_archived,
+        "archived_at": row.archived_at.isoformat() if row.archived_at else None,
+        "muted_until": row.muted_until.isoformat() if row.muted_until else None,
+        "is_muted": _is_muted(row, now=now),
+        "pinned_at": row.pinned_at.isoformat() if row.pinned_at else None,
+        # Явно: archive action не меняет read cursor
+        "last_read_at": row.last_read_at.isoformat() if row.last_read_at else None,
+    }
 
 
 async def send_message(
@@ -232,30 +298,53 @@ async def send_message(
     )
     db.add(msg)
     thread.updated_at = utc_now()
+
+    # Атомарно с сообщением: снять archive у получателей (политика auto-unarchive).
+    # Mute не снимаем; last_read_at не трогаем.
+    proj = await db.get(Project, thread.project_id)
+    recipient_ids: list[str] = []
+    unarchived_for: list[str] = []
+    if proj:
+        recipient_ids = [uid for uid in {proj.customer_id, proj.contractor_id} if uid and uid != user_id]
+        unarchived_for = await unarchive_recipients(
+            db,
+            thread.id,
+            except_user_id=user_id,
+            user_ids=recipient_ids,
+        )
+
     await db.commit()
     await db.refresh(msg)
 
-    proj = await db.get(Project, thread.project_id)
     if proj:
-        targets = {proj.customer_id, proj.contractor_id}
-        targets.discard(user_id)
-        for target in targets:
-            if target:
-                await notif_svc.notify(
-                    db,
-                    user_id=target,
-                    project_id=thread.project_id,
-                    notification_type="chat_message",
-                    title=f"Новое сообщение: {thread.title}",
-                    body=text or "Вложение",
-                    link_path=f"/chat/{thread.id}",
-                    return_to="/(customer)/(tabs)/chat",
-                )
+        for target in recipient_ids:
+            st = await _get_or_create_read(db, thread.id, target)
+            # Mute ≠ archive: при mute push не шлём, unread всё равно вырастет
+            if _is_muted(st):
+                continue
+            await notif_svc.notify(
+                db,
+                user_id=target,
+                project_id=thread.project_id,
+                notification_type="chat_message",
+                title=f"Новое сообщение: {thread.title}",
+                body=text or "Вложение",
+                link_path=f"/chat/{thread.id}",
+                return_to="/(customer)/(tabs)/chat",
+            )
     from app.api.v1.ws import broadcast, broadcast_inbox
 
     await broadcast(thread.id, {"type": "message", "message": msg_dict(msg)})
     if proj:
-        payload = {"type": "inbox", "event": "message", "thread_id": thread.id, "project_id": thread.project_id}
+        payload = {
+            "type": "inbox",
+            "event": "message",
+            "thread_id": thread.id,
+            "project_id": thread.project_id,
+            # Клиент: убрать из archive без дубликата, включить в global unread
+            "unarchived": True,
+            "unarchived_for": unarchived_for,
+        }
         for uid in {proj.customer_id, proj.contractor_id}:
             if uid:
                 await broadcast_inbox(uid, payload)
@@ -270,6 +359,9 @@ def thread_dict(
     is_pinned: bool = False,
     is_archived: bool = False,
     pinned_at: datetime | None = None,
+    archived_at: datetime | None = None,
+    muted_until: datetime | None = None,
+    is_muted: bool = False,
 ) -> dict:
     return {
         "id": t.id,
@@ -281,6 +373,9 @@ def thread_dict(
         "unread_count": unread,
         "is_pinned": is_pinned,
         "is_archived": is_archived,
+        "archived_at": archived_at.isoformat() if archived_at else None,
+        "muted_until": muted_until.isoformat() if muted_until else None,
+        "is_muted": is_muted,
         "pinned_at": pinned_at.isoformat() if pinned_at else None,
     }
 

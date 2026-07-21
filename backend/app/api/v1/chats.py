@@ -1,4 +1,6 @@
 """Чаты проекта."""
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +33,9 @@ class ThreadCreate(BaseModel):
 class ThreadState(BaseModel):
     is_pinned: bool | None = None
     is_archived: bool | None = None
+    # ISO datetime или null — снять mute. Отдельно от archive.
+    muted_until: datetime | None = None
+    clear_mute: bool = False
 
 
 class MessageCreate(BaseModel):
@@ -84,7 +89,19 @@ async def patch_thread_state(project_id: str, thread_id: str, body: ThreadState,
     t = await chat_svc.get_thread(db, thread_id)
     if not t or t.project_id != project_id:
         raise HTTPException(404)
-    return await chat_svc.set_thread_state(db, thread_id, user.id, is_pinned=body.is_pinned, is_archived=body.is_archived)
+    muted_kw: object = ...
+    if body.clear_mute:
+        muted_kw = None
+    elif body.muted_until is not None:
+        muted_kw = body.muted_until
+    return await chat_svc.set_thread_state(
+        db,
+        thread_id,
+        user.id,
+        is_pinned=body.is_pinned,
+        is_archived=body.is_archived,
+        muted_until=muted_kw,
+    )
 
 
 @router.post("/{project_id}/chats/{thread_id}/read")
@@ -101,7 +118,16 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
     await chat_svc.mark_thread_read(db, thread_id, user.id)
     st = await chat_svc._get_or_create_read(db, thread_id, user.id)
     return {
-        **chat_svc.thread_dict(t, unread=0, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
+        **chat_svc.thread_dict(
+            t,
+            unread=0,
+            is_pinned=st.is_pinned,
+            is_archived=st.is_archived,
+            pinned_at=st.pinned_at,
+            archived_at=getattr(st, "archived_at", None),
+            muted_until=getattr(st, "muted_until", None),
+            is_muted=chat_svc._is_muted(st),
+        ),
         "messages": await _msgs_with_read(db, thread_id, t.messages),
         "participants": await chat_svc.list_participants(db, thread_id),
     }

@@ -6,9 +6,21 @@ import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
+import {
+  applyIncomingUnarchive,
+  dedupeThreadsById,
+  sumActiveChatUnread,
+} from '@/lib/domain/archivedChatPolicy';
 
 type Listener = () => void;
-type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
+type InboxWsPayload = {
+  type?: string;
+  event?: string;
+  thread_id?: string;
+  project_id?: string;
+  unarchived?: boolean;
+  unarchived_for?: string[];
+};
 
 const POLL_MS = 25_000;
 const listeners = new Set<Listener>();
@@ -45,9 +57,15 @@ function notify() {
 }
 
 function sumChatUnread(threads: ChatThread[]): number {
-  return threads
-    .filter((t) => !t.is_archived)
-    .reduce((sum, t) => sum + (t.unread_count || 0), 0);
+  return sumActiveChatUnread(threads);
+}
+
+/** Локально снять archive после WS message (без дубликата в store). */
+export function applyChatUnarchiveFromEvent(threadId: string, bumpUnreadBy = 1): void {
+  if (!threadId) return;
+  chatThreads = dedupeThreadsById(applyIncomingUnarchive(chatThreads, threadId, { bumpUnreadBy }));
+  chatCount = sumChatUnread(chatThreads);
+  notify();
 }
 
 function applyLocalThreadUnread(threadId: string, unread = 0) {
@@ -268,8 +286,8 @@ export async function reloadInboxSync(
 
     const chatState = await loadChatState(merged.userId);
     if (chatState.ok) {
-      chatThreads = chatState.threads;
-      chatCount = chatState.unread;
+      chatThreads = dedupeThreadsById(chatState.threads);
+      chatCount = sumChatUnread(chatThreads);
       chatFailed = false;
     } else {
       chatCount = chatState.unread;
@@ -370,10 +388,24 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
         };
         ws.onmessage = (e) => {
           if (e.data === 'ping' || e.data === 'pong') return;
+          let payload: InboxWsPayload | null = null;
           try {
-            JSON.parse(e.data) as InboxWsPayload;
+            payload = JSON.parse(e.data) as InboxWsPayload;
           } catch {
             /* noop */
+          }
+          // Auto-unarchive: сразу убрать из archive в store (без дубликата), затем full reload
+          if (payload?.thread_id) {
+            const uid = userId;
+            const listed = Array.isArray(payload.unarchived_for) ? payload.unarchived_for : null;
+            if (uid && listed && listed.includes(uid)) {
+              // Сервер снял archive именно нам — bump unread локально
+              applyChatUnarchiveFromEvent(payload.thread_id, 1);
+            } else if (payload.event === 'message' || payload.type === 'message') {
+              // Идемпотентно: если локально ещё в архиве — снять без bump (reload уточнит)
+              const local = chatThreads.find((t) => t.id === payload.thread_id);
+              if (local?.is_archived) applyChatUnarchiveFromEvent(payload.thread_id, 0);
+            }
           }
           onReload();
           emitInboxWs();
