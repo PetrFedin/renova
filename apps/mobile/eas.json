@@ -22,7 +22,8 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
         "EXPO_PUBLIC_DEMO": "0",
-        "EXPO_PUBLIC_APP_ENV": "staging"
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_SENTRY_APPROVED_WITHOUT_DSN": "true"
       }
     },
     "testflight": {
@@ -36,7 +37,8 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
         "EXPO_PUBLIC_DEMO": "0",
-        "EXPO_PUBLIC_APP_ENV": "staging"
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_SENTRY_APPROVED_WITHOUT_DSN": "true"
       }
     },
     "production": {
@@ -48,7 +50,8 @@
         "EXPO_PUBLIC_DEMO": "0",
         "SENTRY_ORG": "renova",
         "SENTRY_PROJECT": "mobile",
-        "EXPO_PUBLIC_APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_SENTRY_APPROVED_WITHOUT_DSN": "true"
       }
     },
     "staging": {
@@ -58,7 +61,8 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
         "EXPO_PUBLIC_DEMO": "0",
-        "EXPO_PUBLIC_APP_ENV": "staging"
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_SENTRY_APPROVED_WITHOUT_DSN": "true"
       }
     }
   },

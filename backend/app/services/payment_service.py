@@ -180,4 +180,6 @@ def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
         "created_at": payment.created_at.isoformat(),
         "receipt_id": receipt_id,
         "yookassa_payment_id": payment.yookassa_payment_id,
+        "payment_method": payment.payment_method,
+        "lock_version": int(getattr(payment, "lock_version", 0) or 0),
     }

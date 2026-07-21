@@ -173,22 +173,49 @@ export const osApi = {
   createWarrantyClaim: async (
     userId: string,
     projectId: string,
-    body: { title?: string; description?: string },
+    body: {
+      title?: string;
+      description?: string;
+      client_request_id?: string;
+      category?: string;
+      related_issue_id?: string;
+      work_order_id?: string;
+      acceptance_id?: string;
+    },
+    opts?: { idempotencyKey?: string },
   ) => {
+    const key = opts?.idempotencyKey || body.client_request_id;
+    const payload = {
+      ...body,
+      ...(key ? { client_request_id: key } : {}),
+    };
+    const headers: Record<string, string> = key ? { 'Idempotency-Key': key } : {};
     try {
-      return await req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string; due_at?: string | null; post_closeout?: boolean; sla_days?: number }>(
+      return await req<{
+        ok: boolean;
+        issue_id: string;
+        document_id: string;
+        qc_path?: string;
+        due_at?: string | null;
+        post_closeout?: boolean;
+        sla_days?: number;
+        idempotent_replay?: boolean;
+        similar_open_count?: number;
+        duplicate_hint?: string | null;
+      }>(
         `/api/v1/projects/${projectId}/warranty-claims`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: JSON.stringify(payload), headers },
         userId,
       );
     } catch (e) {
       const { ApiError } = await import('./client');
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
+      // Offline: тот же client_request_id в body — flush не создаст дубль
       await enqueue({
         path: `/api/v1/projects/${projectId}/warranty-claims`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
         userId,
       });
       throw new Error('offline_queued');

@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.environment import (
     collect_warnings,
     policy_for,
+    validate_capability_settings,
     validate_runtime_settings,
 )
 from app.core.logging_config import setup_logging
@@ -40,6 +41,32 @@ async def lifespan(app: FastAPI):
         public_base_url=settings.public_base_url,
         secret_key=settings.secret_key,
         auth_allow_header_user_id=settings.auth_allow_header_user_id,
+        moy_nalog_dev_bypass_enabled=settings.moy_nalog_dev_bypass_enabled,
+    )
+    validate_capability_settings(
+        environment=settings.environment,
+        sentry_dsn=settings.sentry_dsn,
+        sentry_approved_without_dsn=settings.sentry_approved_without_dsn,
+        s3_endpoint=settings.s3_endpoint,
+        s3_access_key=settings.s3_access_key,
+        s3_secret_key=settings.s3_secret_key,
+        s3_bucket=settings.s3_bucket,
+        yookassa_shop_id=settings.yookassa_shop_id,
+        yookassa_secret=settings.yookassa_secret,
+        yookassa_webhook_secret=settings.yookassa_webhook_secret,
+        moy_nalog_enabled=settings.moy_nalog_enabled,
+        moy_nalog_client_id=settings.moy_nalog_client_id,
+        moy_nalog_client_secret=settings.moy_nalog_client_secret,
+        moy_nalog_redirect_uri=settings.moy_nalog_redirect_uri,
+        moy_nalog_token_url=settings.moy_nalog_token_url,
+        kontur_mode=settings.kontur_mode,
+        kontur_api_key=settings.kontur_api_key,
+        esign_webhook_secret=settings.esign_webhook_secret,
+        twilio_sid=settings.twilio_sid,
+        twilio_token=settings.twilio_token,
+        twilio_from=settings.twilio_from,
+        cors_allowed_origins=settings.cors_allowed_origins,
+        public_base_url=settings.public_base_url,
     )
     for warning in collect_warnings(
         environment=settings.environment,
@@ -156,7 +183,17 @@ except Exception:
 if settings.sentry_dsn:
     try:
         import sentry_sdk
-        sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1)
+        from app.core.sentry_sanitize import sentry_before_send
+
+        _env = settings.normalized_environment
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            traces_sample_rate=0.05 if _env == "production" else 0.1,
+            environment=_env,
+            release="renova-api@0.3.7",
+            before_send=sentry_before_send,
+            debug=False,  # never verbose in any deployed profile
+        )
     except Exception:
         pass
 

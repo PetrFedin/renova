@@ -29,6 +29,8 @@ on:
 jobs:
   preflight-and-build:
     runs-on: ubuntu-latest
+    # workflow_dispatch only — still guard if trigger set expands later
+    if: github.event_name == 'workflow_dispatch' && github.repository == github.event.repository.full_name
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

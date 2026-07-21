@@ -140,7 +140,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
             () => setOsBudget(null),
             () => setPendingAcceptance(0),
             () => setWorkScheduleStatus(null),
-            () => { setWarrantyOpen(0); setWarrantyOverdue(0); },
+            () => { /* fail-closed: не обнуляем warranty как «нет обращений» */ },
             () => setPendingChangeOrders(0),
             () => setPendingSignDocs(0),
             () => { setOfflinePending(0); setOfflineBlocked(0); },

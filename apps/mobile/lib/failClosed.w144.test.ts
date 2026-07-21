@@ -22,4 +22,18 @@ const bridge = readFileSync(join(root, '../../backend/app/services/ws_redis_brid
 must(bridge.includes('INSTANCE_ID'), 'ws redis bridge has instance id');
 must(bridge.includes('redis_subscriber_loop'), 'ws redis bridge has subscriber loop');
 
+
+const schedule = readFileSync(join(root, 'components/screens/schedule/UnifiedScheduleView.tsx'), 'utf8');
+must(schedule.includes('useAsyncResource'), 'UnifiedScheduleView uses async resource');
+must(!schedule.includes('setWorkOrders([])'), 'UnifiedScheduleView: no wipe workOrders on error');
+
+const selections = readFileSync(join(root, 'components/screens/OsSelectionsScreen.tsx'), 'utf8');
+must(!selections.includes('setItems([])'), 'OsSelectionsScreen: no setItems([]) on error');
+must(selections.includes('useAsyncResource'), 'OsSelectionsScreen uses async resource');
+
+const docsHub = readFileSync(join(root, 'components/renova/DocumentsHub.tsx'), 'utf8');
+must(!docsHub.includes('.catch(() => ({ open: 0, items: []'), 'DocumentsHub: warranty list fail-closed');
+must(docsHub.includes('Не удалось загрузить гарантии'), 'DocumentsHub shows warranty load error');
+
 console.log('failClosed.w144.test OK');
+

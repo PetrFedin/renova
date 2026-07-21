@@ -16,6 +16,11 @@ import {
   documentCenterSubtitle,
   isCanonicalDocument,
 } from '@/lib/documentCenterMeta';
+import {
+  capabilityModeLabel,
+  normalizeCapability,
+  type ServiceCapability,
+} from '@/lib/api/types/capabilities';
 import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/lib/offlineUi';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
@@ -27,7 +32,8 @@ import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { alertIcalExported } from '@/lib/calendarIcsNav';
-import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { alertWarrantyClosed, alertWarrantyCreated, alertWarrantyConflict } from '@/lib/warrantyNav';
+import { beginWarrantyCreate, clearWarrantyCreateSession, warrantyCreateKeyForRetry } from '@/lib/warrantyCreateSession';
 import { openQcIssue } from '@/lib/qcNav';
 import { alertCloseoutDone, alertDocumentSigned } from '@/lib/scheduleCloseoutNav';
 import { alertDocumentOcrDone } from '@/lib/fieldCommsNav';
@@ -69,11 +75,11 @@ function statusLabel(doc: ProjectDocument) {
   return doc.status || '—';
 }
 
-function formatDocMeta(doc: ProjectDocument) {
+function formatDocMeta(doc: ProjectDocument, ocrMode?: string | null) {
   const parts = [sourceLabel(doc.source), statusLabel(doc)];
   if (doc.version != null) parts.push(`v${doc.version}`);
   if (doc.amount != null) parts.push(formatRub(doc.amount));
-  return documentCenterSubtitle(doc, parts.filter(Boolean) as string[]);
+  return documentCenterSubtitle(doc, parts.filter(Boolean) as string[], ocrMode);
 }
 
 function indexedFilename(doc: ProjectDocument) {
@@ -102,7 +108,9 @@ export function DocumentsHub({
   const [indexLoading, setIndexLoading] = useState(true);
   const [konturAvailable, setKonturAvailable] = useState(false);
   const [konturMode, setKonturMode] = useState<'off' | 'sandbox' | 'live' | string>('off');
-  const [ocrModeLabel, setOcrModeLabel] = useState('LOCAL');
+  const [ocrCap, setOcrCap] = useState<ServiceCapability | null>(null);
+  const [ocrHealthError, setOcrHealthError] = useState<string | null>(null);
+  const [ocrHealthLoading, setOcrHealthLoading] = useState(false);
 
 
   const pdfPath = (path: string) => path.replace('{id}', projectId);
@@ -136,10 +144,52 @@ export function DocumentsHub({
         if (km) setKonturMode(String(km));
       })
       .catch(reportCatch('docs.esignHealth'));
-    // OCR в DC — heuristic/local, не ML live
-    setOcrModeLabel('DEMO');
+    const loadOcrHealth = () => {
+      setOcrHealthLoading(true);
+      api.getOcrHealth(userId)
+        .then((h) => {
+          if (!alive) return;
+          setOcrCap(normalizeCapability(h));
+          setOcrHealthError(null);
+        })
+        .catch((e) => {
+          reportError('docs.ocrHealth', e);
+          if (!alive) return;
+          setOcrCap(normalizeCapability({
+            available: false,
+            mode: 'error',
+            configured: false,
+            healthy: false,
+            message: 'Не удалось проверить OCR',
+          }));
+          setOcrHealthError(e instanceof Error ? e.message : 'OCR health error');
+        })
+        .finally(() => { if (alive) setOcrHealthLoading(false); });
+    };
+    loadOcrHealth();
     return () => { alive = false; };
   }, [userId, projectId]);
+
+  const reloadOcrHealth = useCallback(() => {
+    setOcrHealthLoading(true);
+    api.getOcrHealth(userId)
+      .then((h) => {
+        setOcrCap(normalizeCapability(h));
+        setOcrHealthError(null);
+      })
+      .catch((e) => {
+        reportError('docs.ocrHealth.retry', e);
+        setOcrCap(normalizeCapability({
+          available: false,
+          mode: 'error',
+          configured: false,
+          healthy: false,
+          message: 'Не удалось проверить OCR',
+        }));
+        setOcrHealthError(e instanceof Error ? e.message : 'OCR health error');
+      })
+      .finally(() => setOcrHealthLoading(false));
+  }, [userId]);
 
   const reloadIndex = useCallback(() => {
     setIndexLoading(true);
@@ -282,8 +332,56 @@ ${(res.body || '').slice(0, 220)}`,
         format: isArchived ? 'Post-closeout' : 'Заявка',
         run: async () => {
           const role = (isContractor ? 'contractor' : 'customer') as OsRole;
-          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
+          // Fail-closed: ошибка списка ≠ «обращений нет»
+          let open: { open: number; items: { id: string; title?: string; status?: string }[] };
+          try {
+            open = await api.listWarrantyClaims(userId, projectId);
+          } catch (e: unknown) {
+            Alert.alert(
+              'Не удалось загрузить гарантии',
+              (e instanceof Error ? e.message : 'Ошибка сети')
+                + '\n\nСоздание отключено, пока список не загрузится. Нажмите действие ещё раз, чтобы повторить.',
+            );
+            return;
+          }
           const openItems = (open.items || []).filter((i) => i.status !== 'closed');
+
+          const createOne = async (reuseKey: boolean) => {
+            const key = reuseKey ? warrantyCreateKeyForRetry() : beginWarrantyCreate();
+            try {
+              const res = await api.createWarrantyClaim(
+                userId,
+                projectId,
+                {
+                  title: 'Гарантийное обращение',
+                  description: 'Создано из Document Center',
+                  client_request_id: key,
+                },
+                { idempotencyKey: key },
+              );
+              clearWarrantyCreateSession();
+              void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+              if (res.duplicate_hint) {
+                Alert.alert('Внимание', res.duplicate_hint);
+              }
+              alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+            } catch (e: unknown) {
+              if (e instanceof ApiError && (e.status === 409 || e.code === 'warranty_claim_idempotency_conflict')) {
+                alertWarrantyConflict(e.message);
+                return;
+              }
+              // Timeout/сеть: не очищаем key — retry использует тот же
+              Alert.alert(
+                'Не удалось создать',
+                e instanceof Error ? e.message : 'Ошибка сети',
+                [
+                  { text: 'Отмена', style: 'cancel', onPress: () => clearWarrantyCreateSession() },
+                  { text: 'Повторить', onPress: () => { void createOne(true); } },
+                ],
+              );
+            }
+          };
+
           // W64/W126: заказчик закрывает гарантию — иначе closeout тупик; обе роли → QC
           if (!isContractor && openItems.length > 0) {
             const first = openItems[0];
@@ -310,25 +408,13 @@ ${(res.body || '').slice(0, 220)}`,
                 },
                 {
                   text: 'Создать ещё',
-                  onPress: async () => {
-                    const res = await api.createWarrantyClaim(userId, projectId, {
-                      title: 'Гарантийное обращение',
-                      description: 'Создано из Document Center',
-                    });
-                    void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                    alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
-                  },
+                  onPress: () => { void createOne(false); },
                 },
               ],
             );
             return;
           }
-          const res = await api.createWarrantyClaim(userId, projectId, {
-            title: 'Гарантийное обращение',
-            description: 'Создано из Document Center',
-          });
-          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-          alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+          await createOne(false);
         },
       },
       closeout: {
@@ -575,7 +661,7 @@ ${(res.body || '').slice(0, 220)}`,
         withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, doc.href!, indexedFilename(doc)));
         return;
       }
-      Alert.alert(doc.title, `${formatDocMeta(doc)}\n\nФайл доступен в разделе проекта.`);
+      Alert.alert(doc.title, `${formatDocMeta(doc, ocrCap?.mode)}\n\nФайл доступен в разделе проекта.`);
     };
 
     if (!isCanonicalDocument(doc)) {
@@ -626,7 +712,7 @@ ${(res.body || '').slice(0, 220)}`,
           }
         }),
       }] : []),
-      {
+      ...((ocrCap?.available && ocrCap.run_allowed !== false) ? [{
         text: 'Распознать тип (OCR)',
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {
           await api.runDocumentOcr(userId, projectId, doc.id, true);
@@ -634,7 +720,7 @@ ${(res.body || '').slice(0, 220)}`,
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           alertDocumentOcrDone((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
         }),
-      },
+      }] : []),
       {
         text: doc.meta?.legal_hold ? 'Снять legal hold' : 'Legal hold',
         onPress: () => withBusy(`hold-${doc.id}`, async () => {
@@ -651,7 +737,7 @@ ${(res.body || '').slice(0, 220)}`,
       },
       { text: 'Отмена', style: 'cancel' },
     ];
-    Alert.alert(doc.title, formatDocMeta(doc), actions);
+    Alert.alert(doc.title, formatDocMeta(doc, ocrCap?.mode), actions);
   }
 
   async function doUploadPicked(file: { uri: string; name: string; type: string }) {
@@ -731,12 +817,22 @@ ${(res.body || '').slice(0, 220)}`,
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
       <View style={s.modeRow} accessibilityLabel="Режимы интеграций документов">
-        <Text style={[s.modeChip, s.modeWarn]}>OCR: {ocrModeLabel}</Text>
+        <Pressable onPress={reloadOcrHealth} accessibilityRole="button" accessibilityLabel={`Повторить проверку OCR. Режим ${capabilityModeLabel(ocrCap?.mode)}`}>
+          <Text style={[s.modeChip, ocrCap?.available && ['live', 'local', 'sandbox'].includes(ocrCap.mode) ? s.modeOk : s.modeWarn]}>
+            OCR: {ocrHealthLoading ? '…' : capabilityModeLabel(ocrCap?.mode)}
+            {ocrCap && !ocrCap.available ? ' · UNAVAILABLE' : ''}
+          </Text>
+        </Pressable>
         <Text style={[s.modeChip, konturMode === 'live' ? s.modeOk : s.modeWarn]}>
           Kontur: {(konturMode || 'off').toUpperCase()}{konturAvailable ? '' : ' · UNAVAILABLE'}
         </Text>
         <Text style={[s.modeChip, s.modeWarn]}>Подпись: {konturAvailable ? 'PROVIDER' : 'IN_APP / LOCAL'}</Text>
       </View>
+      {ocrCap && !ocrCap.available ? (
+        <Text style={s.ocrHint} accessibilityRole="text">
+          {ocrCap.mode === 'off' ? 'OCR не настроен' : (ocrCap.message || ocrHealthError || 'OCR недоступен')}
+        </Text>
+      ) : null}
       <OfflineSyncStatus compact />
 
       <View style={s.indexCard}>
@@ -779,11 +875,11 @@ ${(res.body || '').slice(0, 220)}`,
                   onPress={() => openIndexedDocument(doc)}
                   disabled={Boolean(busy)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${doc.title}. ${formatDocMeta(doc)}`}
+                  accessibilityLabel={`${doc.title}. ${formatDocMeta(doc, ocrCap?.mode)}`}
                 >
                   <View style={s.recentMain}>
                     <Text style={s.recentTitle} numberOfLines={1}>{doc.title}</Text>
-                    <Text style={s.recentMeta} numberOfLines={1}>{formatDocMeta(doc)}</Text>
+                    <Text style={s.recentMeta} numberOfLines={1}>{formatDocMeta(doc, ocrCap?.mode)}</Text>
                   </View>
                   {loading ? (
                     <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
@@ -841,6 +937,7 @@ const s = StyleSheet.create({
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   modeChip: { fontSize: 10, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, overflow: 'hidden' },
   modeOk: { backgroundColor: 'rgba(34,140,80,0.14)', color: RenovaTheme.colors.textMuted },
+  ocrHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 8, paddingHorizontal: 4 },
   modeWarn: { backgroundColor: 'rgba(160,120,40,0.14)', color: RenovaTheme.colors.textMuted },
 
   wrap: { paddingHorizontal: 16, paddingBottom: 24 },
