@@ -1,5 +1,7 @@
 """Платежи: авансы, этапы, материалы."""
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import date
+
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -355,3 +357,223 @@ async def yookassa_checkout(
         status=pay.get("status"),
     )
 
+
+class EvidenceReviewIn(BaseModel):
+    reason: str | None = None
+    expected_lock_version: int | None = None
+
+
+@router.post("/{project_id}/payments/{payment_id}/evidence")
+async def submit_payment_evidence(
+    project_id: str,
+    payment_id: str,
+    file: UploadFile = File(...),
+    transfer_date: date = Form(...),
+    claimed_amount: float = Form(...),
+    comment: str | None = Form(None),
+    payment_reference: str | None = Form(None),
+    client_request_id: str | None = Form(None),
+    expected_lock_version: int | None = Form(None),
+    idempotency_key_header: str | None = Header(default=None, alias="Idempotency-Key"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Заказчик: квитанция ручного перевода → paid_unverified (не confirmed)."""
+    from app.services import notification_service as notif
+    from app.services import payment_evidence_service as ev_svc
+
+    project = await require_project(db, project_id, user, write=True)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, detail={"code": "payment_not_found", "message": "Платёж не найден"})
+
+    data = await file.read()
+    key = (idempotency_key_header or client_request_id or "").strip() or None
+    result = await ev_svc.submit_evidence(
+        db,
+        project=project,
+        payment=payment,
+        user=user,
+        data=data,
+        claimed_mime=file.content_type,
+        filename=file.filename,
+        claimed_amount=claimed_amount,
+        transfer_date=transfer_date,
+        comment=comment,
+        payment_reference=payment_reference,
+        idempotency_key=key,
+        expected_lock_version=expected_lock_version,
+    )
+
+    # refresh payment for response
+    payment = await pay_svc.get_payment(db, payment_id)
+    if result.get("notified") and not result.get("idempotent_replay") and project.contractor_id:
+        await notif.notify(
+            db,
+            user_id=project.contractor_id,
+            project_id=project_id,
+            notification_type="payment_pending",
+            title=f"Квитанция на проверку: {payment.title}",
+            body=str(payment.amount),
+            link_path="/(contractor)/(tabs)/budget",
+            return_to="/(contractor)/(tabs)/home",
+        )
+        await db.commit()
+
+    receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
+    return {
+        "ok": True,
+        "idempotent_replay": bool(result.get("idempotent_replay")),
+        "replaced": bool(result.get("replaced")),
+        "message": "Подтверждение отправлено. Платёж ожидает проверки",
+        "payment": pay_svc.payment_dict(payment, receipt_id=receipt_id),
+        "evidence": result["evidence"],
+    }
+
+
+@router.get("/{project_id}/payments/{payment_id}/evidence")
+async def get_payment_evidence(
+    project_id: str,
+    payment_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services import payment_evidence_service as ev_svc
+
+    project = await require_project(db, project_id, user, write=False)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, detail={"code": "payment_not_found", "message": "Платёж не найден"})
+    ev = await ev_svc.get_active_evidence(db, payment_id)
+    receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
+    return {
+        "payment": pay_svc.payment_dict(payment, receipt_id=receipt_id),
+        "evidence": ev_svc.evidence_dict(ev) if ev else None,
+        "can_review": ev_svc.can_review_evidence(user, project),
+        "can_submit": ev_svc.can_submit_evidence(user, project, payment),
+    }
+
+
+@router.get("/{project_id}/payments/{payment_id}/evidence/file")
+async def download_payment_evidence(
+    project_id: str,
+    payment_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Авторизованное скачивание (bucket не публичный)."""
+    from fastapi.responses import Response
+    from app.services import payment_evidence_service as ev_svc
+    from app.services import storage_service as storage_svc
+    from app.models.entities import PaymentEvent, _uuid
+
+    await require_project(db, project_id, user, write=False)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, detail={"code": "payment_not_found", "message": "Платёж не найден"})
+    ev = await ev_svc.get_active_evidence(db, payment_id)
+    if not ev:
+        raise HTTPException(404, detail={"code": "evidence_not_found", "message": "Файл не найден"})
+
+    data = await storage_svc.read_bytes(ev.storage_key)
+    if not data:
+        raise HTTPException(404, detail={"code": "evidence_file_missing", "message": "Файл недоступен"})
+
+    db.add(PaymentEvent(
+        id=_uuid(),
+        payment_id=payment.id,
+        actor_user_id=user.id,
+        source="manual",
+        old_status=payment.status.value,
+        new_status=payment.status.value,
+        evidence_type="download",
+        evidence_ref=ev.id,
+        note="evidence_downloaded",
+    ))
+    await db.commit()
+
+    return Response(
+        content=data,
+        media_type=ev.mime_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{ev.original_filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/{project_id}/payments/{payment_id}/evidence/approve")
+async def approve_payment_evidence(
+    project_id: str,
+    payment_id: str,
+    body: EvidenceReviewIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services import notification_service as notif
+    from app.services import payment_evidence_service as ev_svc
+
+    project = await require_project(db, project_id, user, write=True)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, detail={"code": "payment_not_found", "message": "Платёж не найден"})
+    payment = await ev_svc.approve_evidence(
+        db,
+        project=project,
+        payment=payment,
+        user=user,
+        expected_lock_version=(body.expected_lock_version if body else None),
+    )
+    if project.customer_id:
+        await notif.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=project_id,
+            notification_type="payment_confirmed",
+            title=f"Оплата подтверждена: {payment.title}",
+            body=str(payment.amount),
+            link_path="/(customer)/(tabs)/budget",
+            return_to="/(customer)/(tabs)/home",
+        )
+        await db.commit()
+    receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
+    return {"ok": True, "payment": pay_svc.payment_dict(payment, receipt_id=receipt_id)}
+
+
+@router.post("/{project_id}/payments/{payment_id}/evidence/reject")
+async def reject_payment_evidence(
+    project_id: str,
+    payment_id: str,
+    body: EvidenceReviewIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services import notification_service as notif
+    from app.services import payment_evidence_service as ev_svc
+
+    project = await require_project(db, project_id, user, write=True)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, detail={"code": "payment_not_found", "message": "Платёж не найден"})
+    payment = await ev_svc.reject_evidence(
+        db,
+        project=project,
+        payment=payment,
+        user=user,
+        reason=body.reason or "",
+        expected_lock_version=body.expected_lock_version,
+    )
+    if project.customer_id:
+        await notif.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=project_id,
+            notification_type="payment_pending",
+            title=f"Подтверждение отклонено: {payment.title}",
+            body=(body.reason or "")[:200],
+            link_path="/(customer)/(tabs)/budget",
+            return_to="/(customer)/(tabs)/home",
+        )
+        await db.commit()
+    receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
+    return {"ok": True, "payment": pay_svc.payment_dict(payment, receipt_id=receipt_id)}

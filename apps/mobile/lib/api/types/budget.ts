@@ -11,6 +11,9 @@ export type Payment = {
   created_at: string;
   /** Чек, прикреплённый к счёту (API) */
   receipt_id?: string | null;
+  yookassa_payment_id?: string | null;
+  payment_method?: string | null;
+  lock_version?: number;
 };
 
 export type MaterialPick = {

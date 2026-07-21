@@ -56,4 +56,89 @@ export const paymentsApi = {
       throw new Error('offline_queued');
     }
   },
+
+  /** Ручная квитанция (не YuKassa) → paid_unverified */
+  submitPaymentEvidence: async (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body: {
+      file: { uri: string; name: string; type: string };
+      transferDate: string; // YYYY-MM-DD
+      claimedAmount: number;
+      comment?: string;
+      paymentReference?: string;
+      clientRequestId?: string;
+      expectedLockVersion?: number;
+    },
+  ) => {
+    const form = new FormData();
+    form.append('file', body.file as unknown as Blob);
+    form.append('transfer_date', body.transferDate);
+    form.append('claimed_amount', String(body.claimedAmount));
+    if (body.comment) form.append('comment', body.comment);
+    if (body.paymentReference) form.append('payment_reference', body.paymentReference);
+    if (body.clientRequestId) form.append('client_request_id', body.clientRequestId);
+    if (body.expectedLockVersion != null) form.append('expected_lock_version', String(body.expectedLockVersion));
+    const headers: Record<string, string> = {};
+    if (body.clientRequestId) headers['Idempotency-Key'] = body.clientRequestId;
+    return req<{
+      ok: boolean;
+      idempotent_replay?: boolean;
+      replaced?: boolean;
+      message?: string;
+      payment: Payment;
+      evidence: Record<string, unknown>;
+    }>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/evidence`,
+      { method: 'POST', body: form as unknown as BodyInit, headers } as RequestInit,
+      userId,
+    );
+  },
+
+  getPaymentEvidence: (userId: string, projectId: string, paymentId: string) =>
+    req<{
+      payment: Payment;
+      evidence: {
+        id: string;
+        claimed_amount: number;
+        transfer_date: string;
+        comment?: string | null;
+        payment_reference?: string | null;
+        original_filename: string;
+        mime_type: string;
+        file_size: number;
+        uploaded_by: string;
+        reject_reason?: string | null;
+        antivirus_scanned?: boolean;
+        antivirus_status?: string;
+        created_at?: string;
+      } | null;
+      can_review: boolean;
+      can_submit: boolean;
+    }>(`/api/v1/projects/${projectId}/payments/${paymentId}/evidence`, {}, userId),
+
+  approvePaymentEvidence: (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body?: { expected_lock_version?: number },
+  ) =>
+    req<{ ok: boolean; payment: Payment }>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/evidence/approve`,
+      { method: 'POST', body: JSON.stringify(body || {}) },
+      userId,
+    ),
+
+  rejectPaymentEvidence: (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body: { reason: string; expected_lock_version?: number },
+  ) =>
+    req<{ ok: boolean; payment: Payment }>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/evidence/reject`,
+      { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
 };
