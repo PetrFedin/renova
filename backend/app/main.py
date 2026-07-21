@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
         database_url=settings.database_url,
         public_base_url=settings.public_base_url,
         secret_key=settings.secret_key,
+        auth_allow_header_user_id=settings.auth_allow_header_user_id,
     )
     for warning in collect_warnings(
         environment=settings.environment,

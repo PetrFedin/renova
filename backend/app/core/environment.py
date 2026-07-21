@@ -137,11 +137,18 @@ def validate_runtime_settings(
     database_url: str,
     public_base_url: str,
     secret_key: str,
+    auth_allow_header_user_id: bool | None = None,
 ) -> EnvironmentPolicy:
     """Raise ValueError if settings violate profile policy."""
     policy = policy_for(environment)
 
     errors: list[str] = []
+
+    # P0 auth: нельзя форсировать X-User-Id в staging/production
+    if not policy.allow_header_user_id and auth_allow_header_user_id is True:
+        errors.append(
+            f"{policy.name}: AUTH_ALLOW_HEADER_USER_ID=true запрещён — только Authorization Bearer"
+        )
 
     if not policy.allow_sqlite and _is_sqlite(database_url):
         errors.append(

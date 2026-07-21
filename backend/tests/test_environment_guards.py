@@ -106,3 +106,24 @@ def test_staging_kontur_off_no_warning():
     )
     assert not any("KONTUR" in w for w in warnings)
 
+
+def test_production_forbids_auth_header_override():
+    with pytest.raises(ValueError, match="AUTH_ALLOW_HEADER_USER_ID"):
+        validate_runtime_settings(
+            environment="production",
+            database_url="postgresql+asyncpg://u:p@db/renova",
+            public_base_url="https://api.example.com",
+            secret_key="production-secret-key-32chars!!",
+            auth_allow_header_user_id=True,
+        )
+
+
+def test_development_allows_auth_header_override():
+    policy = validate_runtime_settings(
+        environment="development",
+        database_url="sqlite+aiosqlite:///./x.db",
+        public_base_url="",
+        secret_key="dev",
+        auth_allow_header_user_id=True,
+    )
+    assert policy.allow_header_user_id is True
