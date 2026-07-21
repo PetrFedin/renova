@@ -1,8 +1,9 @@
 /**
- * Атомарная модель unread: threads + total из одного snapshot.
+ * Атомарная модель unread: threads + authoritative server total из одного snapshot.
  *
  * Правила области (scope):
- * - total = сумма unread_count **неархивных** тредов (сообщения, не треды)
+ * - server snapshot: total_unread_messages — источник истины
+ * - local mutations: total меняется на дельту затронутого треда, а не пересчитывается целиком
  * - архив: не входит в global total; карточка архива может показывать свой unread
  * - muted / closed: в модели нет — не учитываются
  * - фильтр проекта на UI не меняет global total (только видимую сумму карточек)
@@ -46,27 +47,42 @@ export type ChatUnreadSnapshotApi = {
   updated_at?: string;
 };
 
-/** Сумма unread только по активным (неархивным) тредам — SoT для total */
+function normalizeUnreadCount(value: unknown, fallback = 0): number {
+  const candidate = typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : fallback;
+  return Math.max(0, Math.trunc(candidate));
+}
+
+function threadUnread(thread: ChatThread | undefined): number {
+  return normalizeUnreadCount(thread?.unread_count);
+}
+
+function threadContribution(thread: ChatThread | undefined): number {
+  return thread && !thread.is_archived ? threadUnread(thread) : 0;
+}
+
+/** Сумма unread только по активным (неархивным) тредам — invariant/legacy helper. */
 export function sumActiveThreadUnread(threads: ChatThread[]): number {
   return threads
     .filter((t) => !t.is_archived)
-    .reduce((sum, t) => sum + Math.max(0, t.unread_count || 0), 0);
+    .reduce((sum, t) => sum + threadUnread(t), 0);
 }
 
-/** Сумма unread в произвольном подмножестве (фильтр проекта / экран) */
+/** Сумма unread в произвольном подмножестве (фильтр проекта / экран). */
 export function sumThreadUnread(threads: ChatThread[]): number {
-  return threads.reduce((sum, t) => sum + Math.max(0, t.unread_count || 0), 0);
+  return threads.reduce((sum, t) => sum + threadUnread(t), 0);
 }
 
+/** Локальный snapshot без server total: total выводится из полного набора тредов. */
 export function snapshotFromThreads(
   threads: ChatThread[],
   revision: number,
   updatedAt?: string,
 ): ChatUnreadSnapshot {
-  const totalUnreadMessages = sumActiveThreadUnread(threads);
   return {
     revision,
-    totalUnreadMessages,
+    totalUnreadMessages: sumActiveThreadUnread(threads),
     threads,
     scope: CHAT_UNREAD_SCOPE,
     updatedAt,
@@ -77,24 +93,22 @@ export function parseChatUnreadSnapshotApi(
   raw: ChatUnreadSnapshotApi | ChatThread[],
   fallbackRevision = Date.now(),
 ): ChatUnreadSnapshot {
-  // Legacy: голый массив тредов
+  // Legacy: голый массив тредов не содержит authoritative total.
   if (Array.isArray(raw)) {
     return snapshotFromThreads(raw, fallbackRevision);
   }
+
   const threads = Array.isArray(raw.threads) ? raw.threads : [];
-  const computed = sumActiveThreadUnread(threads);
-  const reported = Math.max(0, raw.total_unread_messages ?? computed);
-  // Истина — сумма тредов; расхождение залогирует invariant
+  const computedFallback = sumActiveThreadUnread(threads);
   return {
     revision: typeof raw.revision === 'number' && Number.isFinite(raw.revision)
       ? raw.revision
       : fallbackRevision,
-    totalUnreadMessages: computed,
+    // Для нового API серверный total authoritative. Сумма тредов — только fallback/invariant.
+    totalUnreadMessages: normalizeUnreadCount(raw.total_unread_messages, computedFallback),
     threads,
     scope: CHAT_UNREAD_SCOPE,
     updatedAt: raw.updated_at,
-    // reported сохранён только для проверки
-    ...(reported !== computed ? {} : {}),
   };
 }
 
@@ -114,14 +128,20 @@ export function applyChatUnreadSnapshot(
   if (!opts?.force && current && incoming.revision < current.revision) {
     return { ok: false, reason: 'stale_revision', snapshot: current };
   }
-  const normalized = snapshotFromThreads(
-    incoming.threads,
-    // force: берём max, чтобы локальные +1 после mark-read не откатывали monotonic
-    opts?.force && current
+
+  const threads = Array.isArray(incoming.threads) ? incoming.threads : [];
+  const normalized: ChatUnreadSnapshot = {
+    revision: opts?.force && current
       ? Math.max(incoming.revision, current.revision)
       : incoming.revision,
-    incoming.updatedAt,
-  );
+    totalUnreadMessages: normalizeUnreadCount(
+      incoming.totalUnreadMessages,
+      sumActiveThreadUnread(threads),
+    ),
+    threads,
+    scope: CHAT_UNREAD_SCOPE,
+    updatedAt: incoming.updatedAt,
+  };
   return { ok: true, snapshot: normalized };
 }
 
@@ -133,26 +153,35 @@ export function threadsFromChatInbox(
 }
 
 /**
- * Частичное обновление одного треда → новый snapshot с revision+1 (локально)
- * и пересчитанным total в том же action.
+ * Частичное локальное обновление одного треда.
+ * Authoritative global total меняется только на дельту этого треда — так локальный
+ * patch не уничтожает серверную информацию о тредах, отсутствующих в текущем массиве.
  */
 export function patchThreadUnreadInSnapshot(
   current: ChatUnreadSnapshot,
   threadId: string,
   unreadCount: number,
   localRevision = Date.now(),
+  authoritativeTotal?: number,
 ): ChatUnreadSnapshot {
-  const unread = Math.max(0, unreadCount || 0);
-  let found = false;
-  const threads = current.threads.map((t) => {
-    if (t.id !== threadId) return t;
-    found = true;
-    return { ...t, unread_count: unread };
-  });
-  // Новый тред из WS без строки — не добавляем здесь (нужен полный snapshot)
-  void found;
-  const revision = Math.max(localRevision, current.revision + 1);
-  return snapshotFromThreads(threads, revision, new Date().toISOString());
+  const unread = normalizeUnreadCount(unreadCount);
+  const before = current.threads.find((t) => t.id === threadId);
+  const threads = current.threads.map((t) =>
+    t.id === threadId ? { ...t, unread_count: unread } : t,
+  );
+  const after = threads.find((t) => t.id === threadId);
+  const delta = threadContribution(after) - threadContribution(before);
+  const nextTotal = authoritativeTotal == null
+    ? normalizeUnreadCount(current.totalUnreadMessages + delta)
+    : normalizeUnreadCount(authoritativeTotal);
+
+  return {
+    revision: Math.max(localRevision, current.revision + 1),
+    totalUnreadMessages: nextTotal,
+    threads,
+    scope: CHAT_UNREAD_SCOPE,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export function removeThreadFromSnapshot(
@@ -160,12 +189,16 @@ export function removeThreadFromSnapshot(
   threadId: string,
   localRevision = Date.now(),
 ): ChatUnreadSnapshot {
-  const threads = current.threads.filter((t) => t.id !== threadId);
-  return snapshotFromThreads(
-    threads,
-    Math.max(localRevision, current.revision + 1),
-    new Date().toISOString(),
-  );
+  const removed = current.threads.find((t) => t.id === threadId);
+  return {
+    revision: Math.max(localRevision, current.revision + 1),
+    totalUnreadMessages: normalizeUnreadCount(
+      current.totalUnreadMessages - threadContribution(removed),
+    ),
+    threads: current.threads.filter((t) => t.id !== threadId),
+    scope: CHAT_UNREAD_SCOPE,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export function setThreadArchivedInSnapshot(
@@ -174,19 +207,25 @@ export function setThreadArchivedInSnapshot(
   isArchived: boolean,
   localRevision = Date.now(),
 ): ChatUnreadSnapshot {
+  const before = current.threads.find((t) => t.id === threadId);
   const threads = current.threads.map((t) =>
     t.id === threadId ? { ...t, is_archived: isArchived } : t,
   );
-  return snapshotFromThreads(
+  const after = threads.find((t) => t.id === threadId);
+  return {
+    revision: Math.max(localRevision, current.revision + 1),
+    totalUnreadMessages: normalizeUnreadCount(
+      current.totalUnreadMessages + threadContribution(after) - threadContribution(before),
+    ),
     threads,
-    Math.max(localRevision, current.revision + 1),
-    new Date().toISOString(),
-  );
+    scope: CHAT_UNREAD_SCOPE,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 /**
- * Runtime invariant: sum(active thread unread) === total.
- * Для UI-фильтра: sumVisible <= total.
+ * Runtime invariant: для полного атомарного snapshot сумма активных тредов равна total.
+ * Расхождение не даёт клиенту права переписать authoritative server total — только логируется.
  */
 export function checkUnreadInvariant(
   snapshot: ChatUnreadSnapshot,
@@ -200,7 +239,7 @@ export function checkUnreadInvariant(
   return { ok, sumActive, total, sumVisible };
 }
 
-/** Dev/test: структурированное предупреждение без PII */
+/** Dev/test: структурированное предупреждение без PII. */
 export function warnUnreadInvariantIfBroken(
   snapshot: ChatUnreadSnapshot,
   visibleThreads?: ChatThread[],
