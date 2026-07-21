@@ -1,18 +1,36 @@
+import { reportError, reportCatch } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
-import { api, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
+import { api, ApiError, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
+import { pollDocumentSignature } from '@/lib/esignPoll';
 import { exportGdprJsonFile } from '@/lib/exportGdprJson';
+import { apiErrorMessage } from '@/lib/formatPhone';
 import {
   documentCenterSubtitle,
   isCanonicalDocument,
 } from '@/lib/documentCenterMeta';
 import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documentUploadPick';
+import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/lib/offlineUi';
+import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
+import { shareRenovaLink } from '@/lib/messengerShare';
+import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
+import { alertIcalExported } from '@/lib/calendarIcsNav';
+import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { openQcIssue } from '@/lib/qcNav';
+import { alertCloseoutDone, alertDocumentSigned } from '@/lib/scheduleCloseoutNav';
+import { alertDocumentOcrDone } from '@/lib/fieldCommsNav';
 
 type DocRow = {
   id: string;
@@ -74,9 +92,18 @@ export function DocumentsHub({
   projectId: string;
   projectName?: string;
 }) {
+  const { user, activeProject } = useRenova();
+  const isContractor = user?.role === 'contractor';
+  const isArchived = Boolean(activeProject?.is_archived);
   const [busy, setBusy] = useState<string | null>(null);
+  const [bankImportOpen, setBankImportOpen] = useState(false);
+
   const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
+  const [konturAvailable, setKonturAvailable] = useState(false);
+  const [konturMode, setKonturMode] = useState<'off' | 'sandbox' | 'live' | string>('off');
+  const [ocrModeLabel, setOcrModeLabel] = useState('LOCAL');
+
 
   const pdfPath = (path: string) => path.replace('{id}', projectId);
 
@@ -85,18 +112,45 @@ export function DocumentsHub({
     setIndexLoading(true);
     api.listProjectDocuments(userId, projectId)
       .then((result) => { if (alive) setDocIndex(result); })
-      .catch(() => { if (alive) setDocIndex(null); })
+      .catch((e) => {
+        reportError('docs.list', e, { projectId });
+        if (alive) setDocIndex(null);
+      })
       .finally(() => { if (alive) setIndexLoading(false); });
+    api.listEsignProviders(userId)
+      .then(({ providers }) => {
+        if (!alive) return;
+        const k = providers.find((p) => p.name === 'kontur');
+        setKonturAvailable(Boolean(k?.available));
+        const mode = String((k as { mode?: string } | undefined)?.mode || (k?.available ? 'sandbox' : 'off'));
+        setKonturMode(mode);
+      })
+      .catch((e) => {
+        reportError('docs.esignProviders', e);
+        if (alive) { setKonturAvailable(false); setKonturMode('off'); }
+      });
+    api.getEsignHealth(userId)
+      .then((h: any) => {
+        if (!alive) return;
+        const km = h?.kontur_mode || h?.integrations?.esign?.kontur_mode;
+        if (km) setKonturMode(String(km));
+      })
+      .catch(reportCatch('docs.esignHealth'));
+    // OCR в DC — heuristic/local, не ML live
+    setOcrModeLabel('DEMO');
     return () => { alive = false; };
   }, [userId, projectId]);
 
-  const reloadIndex = () => {
+  const reloadIndex = useCallback(() => {
     setIndexLoading(true);
     return api.listProjectDocuments(userId, projectId)
       .then((result) => setDocIndex(result))
-      .catch(() => setDocIndex(null))
+      .catch((e) => { reportError('components.renova.DocumentsHub.DocIndex', e); setDocIndex(null); })
       .finally(() => setIndexLoading(false));
-  };
+  }, [userId, projectId]);
+
+  // W94: после приёмки/подписи/оплаты — индекс документов без remount
+  useProjectDataReload(reloadIndex);
 
   const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 8), [docIndex]);
 
@@ -129,6 +183,229 @@ export function DocumentsHub({
         format: 'CSV',
         run: () => api.exportExpensesCsv(userId, projectId),
       },
+      onecCsv: {
+        id: 'onec',
+        label: 'Выгрузка в 1С (CSV)',
+        desc: 'Файл-заготовка для импорта в 1С (не live-синк)',
+        format: 'CSV',
+        run: () => api.export1cPaymentsCsv(userId, projectId),
+      },
+      onecXml: {
+        id: 'onec-xml',
+        label: 'Выгрузка в 1С (XML)',
+        desc: 'XML-заготовка RenovaExchange (не live-синк)',
+        format: 'XML',
+        run: () => api.export1cPaymentsXml(userId, projectId),
+      },
+      onecCml: {
+        id: 'onec-cml',
+        label: '1С CommerceML',
+        desc: 'CommerceML 2.04 заготовка (не live-синк)',
+        format: 'XML',
+        run: () => api.export1cCommercemlXml(userId, projectId),
+      },
+      bankCsv: {
+        id: 'bank',
+        label: 'Реестр для банка',
+        desc: 'CSV для ручной сверки с банком (не API банка)',
+        format: 'CSV',
+        run: () => api.exportBankRegisterCsv(userId, projectId),
+      },
+      bankImport: {
+        id: 'bank-import',
+        label: 'Импорт выписки',
+        desc: 'CSV банка → матч → confirm оплат (gate приёмки)',
+        format: 'CSV',
+        run: async () => {
+          setBankImportOpen(true);
+        },
+      },
+      weeklyDigest: {
+        id: 'digest',
+        label: 'Недельный дайджест',
+        desc: 'Push + KPI PDF · rule-based (Ollama опционально)',
+        format: 'Push',
+        run: async () => {
+          const res = await api.pushWeeklyDigest(userId, projectId);
+          const modeLabel =
+            res.source === 'ollama' ? 'Текст: Ollama' : 'Текст: rule-based (без LLM)';
+          Alert.alert(
+            'Дайджест отправлен',
+            `${modeLabel}
+Уведомлений: ${res.notified}
+
+${(res.body || '').slice(0, 220)}`,
+            [
+              { text: 'OK', style: 'cancel' },
+              {
+                text: 'KPI PDF',
+                onPress: () => {
+                  void api.exportKpiWeeklyPdf(userId, projectId);
+                },
+              },
+              {
+                // W126: дайджест → inbox (аналог weekly summary)
+                text: 'Входящие',
+                onPress: () => pushOsNav('/inbox', undefined, isContractor ? 'contractor' : 'customer'),
+              },
+            ],
+          );
+        },
+      },
+      // W122: Houzz/BT client portal share
+      portalShare: {
+        id: 'portal',
+        label: isContractor ? 'Портал заказчику' : 'Мой клиентский портал',
+        desc: 'Magic-link: приёмка · подпись · оплата',
+        format: 'Link',
+        run: async () => {
+          const link = await api.createCustomerPortalLink(userId, projectId, {
+            allow_accept_stage: true,
+            allow_pay: true,
+          });
+          await syncProjectSideEffects({
+            user: user ?? ({ id: userId } as any),
+            project: { id: projectId } as any,
+            role: isContractor ? 'contractor' : 'customer',
+          });
+          await shareRenovaLink(link.url, 'портал Renova (приёмка · подпись · оплата)');
+        },
+      },
+      warrantyClaim: {
+        id: 'warranty',
+        label: isArchived ? 'Гарантия после сдачи' : 'Гарантийное обращение',
+        desc: isArchived
+          ? (isContractor ? 'Post-closeout тикет → QC (SLA 14 дней)' : 'После сдачи объекта — SLA 14 дней')
+          : isContractor
+            ? 'Тикет → QC исполнителя'
+            : 'Создать / закрыть открытые (нужно для closeout)',
+        format: isArchived ? 'Post-closeout' : 'Заявка',
+        run: async () => {
+          const role = (isContractor ? 'contractor' : 'customer') as OsRole;
+          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
+          const openItems = (open.items || []).filter((i) => i.status !== 'closed');
+          // W64/W126: заказчик закрывает гарантию — иначе closeout тупик; обе роли → QC
+          if (!isContractor && openItems.length > 0) {
+            const first = openItems[0];
+            Alert.alert(
+              'Открытые гарантии',
+              `Открыто: ${openItems.length}. «${first.title || 'Обращение'}» — закрыть?`,
+              [
+                { text: 'Отмена', style: 'cancel' },
+                {
+                  text: 'В QC',
+                  onPress: () => openQcIssue(first.id, '/documents', role),
+                },
+                {
+                  text: 'Закрыть это',
+                  onPress: async () => {
+                    try {
+                      await api.closeWarrantyClaim(userId, projectId, first.id);
+                      void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                      alertWarrantyClosed(role);
+                    } catch (e: unknown) {
+                      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
+                    }
+                  },
+                },
+                {
+                  text: 'Создать ещё',
+                  onPress: async () => {
+                    const res = await api.createWarrantyClaim(userId, projectId, {
+                      title: 'Гарантийное обращение',
+                      description: 'Создано из Document Center',
+                    });
+                    void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                    alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+                  },
+                },
+              ],
+            );
+            return;
+          }
+          const res = await api.createWarrantyClaim(userId, projectId, {
+            title: 'Гарантийное обращение',
+            description: 'Создано из Document Center',
+          });
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+        },
+      },
+      closeout: {
+        id: 'closeout',
+        label: 'Завершение объекта',
+        desc: isContractor
+          ? 'Статус готовности (завершает только заказчик)'
+          : 'Чеклист этапов / оплат / гарантии',
+        format: 'Closeout',
+        run: async () => {
+          const snap = await api.closeoutChecklist(userId, projectId);
+          if (snap.archived) {
+            Alert.alert('Closeout', 'Объект уже в архиве');
+            return;
+          }
+          const body = [
+            snap.next_action,
+            `Этапы: ${snap.all_stages_done ? 'все сданы' : 'есть открытые'}`,
+            `Оплаты pending: ${snap.pending_payments}`,
+            `Гарантия open: ${snap.warranty_open}${snap.warranty_overdue ? ` (просрочено: ${snap.warranty_overdue})` : ''}`,
+            `Акты: ${snap.acceptance_acts_active}`,
+          ].join('\n');
+          // W61: исполнитель видит чеклист, архивирует только заказчик
+          if (isContractor) {
+            Alert.alert('Готовность объекта', `${body}\n\nЗавершить объект может только заказчик.`);
+            return;
+          }
+          if (!snap.ready) {
+            // W65 #12: deep-link на каждый блокер closeout
+            const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [{ text: 'OK' }];
+            if (!snap.all_stages_done) {
+              buttons.push({
+                text: 'К приёмке',
+                onPress: () => pushOsNav(repairTabRoute('customer', 'control'), undefined, 'customer'),
+              });
+            }
+            if ((snap.pending_payments || 0) > 0) {
+              buttons.push({
+                text: 'К оплатам',
+                onPress: () => pushOsNav(budgetTabRoute('customer', 'payments'), undefined, 'customer'),
+              });
+            }
+            if ((snap.acceptance_acts_active || 0) === 0 && snap.all_stages_done) {
+              buttons.push({
+                text: 'К документам',
+                onPress: () => pushOsNav('/documents', undefined, 'customer'),
+              });
+            }
+            if ((snap.warranty_open || 0) > 0) {
+              buttons.push({
+                text: 'К гарантии',
+                onPress: () => {
+                  void rows.warrantyClaim.run?.();
+                },
+              });
+            }
+            Alert.alert('Ещё не готово', body, buttons);
+            return;
+          }
+          Alert.alert('Завершить объект?', body, [
+            { text: 'Отмена', style: 'cancel' },
+            {
+              text: 'Завершить',
+              onPress: async () => {
+                try {
+                  const res = await api.closeoutProject(userId, projectId);
+                  void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                  // W132: closeout → главная / документы
+                  alertCloseoutDone('customer', res.next_action);
+                } catch (e: unknown) {
+                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось завершить');
+                }
+              },
+            },
+          ]);
+        },
+      },
       activityPdf: {
         id: 'activity',
         label: 'Архив ремонта',
@@ -142,9 +419,14 @@ export function DocumentsHub({
       calendarIcs: {
         id: 'ical',
         label: 'Календарь работ',
-        desc: 'Даты этапов для календаря телефона',
+        desc: 'ICS-файл (импорт вручную; не live-синк Google/Apple)',
         format: 'ICS',
-        run: () => api.exportIcal(userId, projectId),
+        // W124: native Share + CTA на график SoT
+        run: async () => {
+          await api.exportIcal(userId, projectId);
+          const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+          alertIcalExported(role);
+        },
       },
       estimateTable: {
         id: 'estimate-table',
@@ -178,7 +460,12 @@ export function DocumentsHub({
       {
         title: 'Главное',
         hint: 'То, что чаще всего нужно заказчику',
-        rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv],
+        rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv, rows.portalShare],
+      },
+      {
+        title: 'Учёт RU',
+        hint: 'W67: 1С/банк — файлы для ручного импорта, не live API',
+        rows: [rows.onecCsv, rows.onecXml, rows.onecCml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim, rows.closeout],
       },
       {
         title: 'Архив и сроки',
@@ -193,18 +480,26 @@ export function DocumentsHub({
         rows: [rows.dossierPdf, rows.gdpr],
       },
     ];
-  }, [userId, projectId]);
+  }, [userId, projectId, user?.role]);
 
   async function withBusy(id: string, fn: () => Promise<void>) {
     setBusy(id);
     try {
       await fn();
-    } catch (e: any) {
-      const msg = String(e?.message || e || '');
+    } catch (e: unknown) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Документы');
+        return;
+      }
+      const msg = apiErrorMessage(e, '');
+      const providerDown =
+        (e instanceof ApiError && e.status === 501) ||
+        msg.includes('501') ||
+        msg.includes('provider_unavailable');
       Alert.alert(
         'Ошибка',
-        msg.includes('501') || msg.includes('provider_unavailable')
-          ? 'Провайдер подписи пока недоступен (ожидаемо для Kontur/Госключ).'
+        providerDown
+          ? 'Провайдер подписи пока недоступен. Используйте «Подписать в приложении» или повторите позже.'
           : (msg.slice(0, 180) || 'Не удалось выполнить действие. Проверьте связь с API.'),
       );
     } finally {
@@ -266,7 +561,14 @@ export function DocumentsHub({
   function openIndexedDocument(doc: ProjectDocument) {
     const openFile = () => {
       if (!doc.href) {
-        Alert.alert(doc.title, formatDocMeta(doc) || 'Запись без файла.');
+        Alert.alert(
+          doc.title,
+          'Файл ещё не загружен. Добавьте документ через «+ Файл» или дождитесь генерации акта.',
+          [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Загрузить', onPress: () => { void uploadCanonicalDocument(); } },
+          ],
+        );
         return;
       }
       if (doc.href.toLowerCase().includes('.pdf') || doc.href.includes('/media/')) {
@@ -289,34 +591,48 @@ export function DocumentsHub({
         onPress: () => withBusy(`sign-${doc.id}`, async () => {
           await api.signProjectDocument(userId, projectId, doc.id, { provider: 'in_app' });
           await reloadIndex();
-          Alert.alert('Подписано', 'Подпись in_app сохранена.');
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          // W132: подпись → документы / график
+          const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+          alertDocumentSigned(role, 'in_app');
         }),
       },
-      {
+      ...(konturAvailable ? [{
         text: 'Подписать через Контур',
         onPress: () => withBusy(`sign-kontur-${doc.id}`, async () => {
-          const { providers } = await api.listEsignProviders(userId);
-          const kontur = providers.find((p) => p.name === 'kontur');
-          if (!kontur?.available) {
-            Alert.alert('Контур недоступен', 'На сервере не заданы KONTUR_MODE/KONTUR_API_KEY (ожидаемо в dev).');
-            return;
+          const signed = await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' }) as {
+            signing_url?: string | null;
+            external_id?: string | null;
+            status?: string;
+          };
+          if (signed?.signing_url) {
+            await WebBrowser.openBrowserAsync(signed.signing_url);
           }
-          const res: any = await api.signProjectDocument(userId, projectId, doc.id, { provider: 'kontur' });
+          const status = await pollDocumentSignature(userId, projectId, doc.id, { provider: 'kontur' });
           await reloadIndex();
-          Alert.alert(
-            'Контур',
-            res?.document?.meta?.signatures
-              ? 'Запрос подписи создан (pending). Завершение — webhook.'
-              : 'Запрос отправлен (pending).',
-          );
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          if (status === 'signed') {
+            const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+            alertDocumentSigned(role, 'kontur');
+          } else if (status === 'failed') {
+            Alert.alert('Контур', 'Подпись не завершена. Проверьте статус позже.');
+          } else {
+            Alert.alert(
+              'Контур',
+              signed?.signing_url
+                ? 'Подпишите в браузере Контура. Статус обновится по webhook.'
+                : 'Запрос создан (pending). Статус обновится по webhook или при следующем открытии документов.',
+            );
+          }
         }),
-      },
+      }] : []),
       {
         text: 'Распознать тип (OCR)',
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {
           await api.runDocumentOcr(userId, projectId, doc.id, true);
           await reloadIndex();
-          Alert.alert('OCR', 'Классификация обновлена.');
+          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          alertDocumentOcrDone((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
         }),
       },
       {
@@ -396,9 +712,32 @@ export function DocumentsHub({
     }
   }
 
+
   return (
+    <>
+      <BankStatementImportSheet
+        visible={bankImportOpen}
+        onClose={() => setBankImportOpen(false)}
+        userId={userId}
+        projectId={projectId}
+        role={user?.role === 'contractor' ? 'contractor' : 'customer'}
+        onDone={() => {
+          void syncProjectSideEffects({
+            user: user ?? ({ id: userId } as any),
+            project: activeProject ?? ({ id: projectId } as any),
+          });
+        }}
+      />
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
+      <View style={s.modeRow} accessibilityLabel="Режимы интеграций документов">
+        <Text style={[s.modeChip, s.modeWarn]}>OCR: {ocrModeLabel}</Text>
+        <Text style={[s.modeChip, konturMode === 'live' ? s.modeOk : s.modeWarn]}>
+          Kontur: {(konturMode || 'off').toUpperCase()}{konturAvailable ? '' : ' · UNAVAILABLE'}
+        </Text>
+        <Text style={[s.modeChip, s.modeWarn]}>Подпись: {konturAvailable ? 'PROVIDER' : 'IN_APP / LOCAL'}</Text>
+      </View>
+      <OfflineSyncStatus compact />
 
       <View style={s.indexCard}>
         <View style={s.indexHeader}>
@@ -494,10 +833,16 @@ export function DocumentsHub({
         </View>
       ))}
     </View>
+    </>
   );
 }
 
 const s = StyleSheet.create({
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  modeChip: { fontSize: 10, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, overflow: 'hidden' },
+  modeOk: { backgroundColor: 'rgba(34,140,80,0.14)', color: RenovaTheme.colors.textMuted },
+  modeWarn: { backgroundColor: 'rgba(160,120,40,0.14)', color: RenovaTheme.colors.textMuted },
+
   wrap: { paddingHorizontal: 16, paddingBottom: 24 },
   sub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 16, lineHeight: 18 },
   indexCard: { ...card, marginBottom: 18, gap: 10 },
@@ -541,4 +886,5 @@ const s = StyleSheet.create({
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },
   rowTail: { alignItems: 'flex-end', gap: 4, minWidth: 56 },
   format: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.primary, textTransform: 'uppercase' },
+
 });
