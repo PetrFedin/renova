@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Fail if Playwright specs hardcode X-User-Id header (must use authHeaders / helpers).
+# Uses grep/python — ripgrep is not installed on GitHub Actions runners by default.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Only quoted header literals — comments mentioning X-User-Id are OK.
-hits="$(rg -n "['\"]X-User-Id['\"]" e2e --glob '*.spec.ts' || true)"
+hits="$(grep -RIn -E "['\"]X-User-Id['\"]" e2e --include='*.spec.ts' || true)"
 if [[ -n "$hits" ]]; then
   echo "FAIL: e2e specs must not hardcode X-User-Id — use authHeaders(DemoUser):"
   echo "$hits"
   exit 1
 fi
 
-if ! rg -q "export function authHeaders" e2e/helpers.ts; then
+if ! grep -q "export function authHeaders" e2e/helpers.ts; then
   echo "FAIL: e2e/helpers.ts missing authHeaders"
   exit 1
 fi
