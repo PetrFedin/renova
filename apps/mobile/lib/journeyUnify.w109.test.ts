@@ -26,3 +26,7 @@ const works = parseOsHref(TAB_ALIASES['/(customer)/(tabs)/works']!);
 console.assert(works.params?.tab === 'works', 'works alias');
 
 console.log('journeyUnify.w109.test.ts OK');
+
+const planUi = require('fs').readFileSync(require('path').join(__dirname, '../components/renova/schedule/SchedulePlanItems.tsx'), 'utf8');
+console.assert(planUi.includes('updateWorkScheduleItemStatus') && planUi.includes('notifyOfflineQueued'), 'SchedulePlanItems UI');
+
