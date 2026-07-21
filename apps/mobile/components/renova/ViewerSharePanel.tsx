@@ -9,6 +9,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
 import { shareRenovaLink } from '@/lib/messengerShare';
+import { alertViewerGuestAdded } from '@/lib/shareAccessNav';
 
 type V = { user_id: string; phone: string; full_name?: string; role: string };
 
@@ -54,6 +55,8 @@ export function ViewerSharePanel({
       setProfileCode('');
       await syncAfter();
       load();
+      // W135: гость → объект
+      alertViewerGuestAdded('customer');
     } catch (e: unknown) {
       Alert.alert('Не удалось добавить', apiErrorMessage(e, 'Пользователь должен быть в Renova'));
     } finally {

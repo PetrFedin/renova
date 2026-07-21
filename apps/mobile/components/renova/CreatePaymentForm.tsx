@@ -7,6 +7,8 @@ import { StagePickerChips } from '@/components/renova/StagePickerChips';
 import { api, type ProjectDetail } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertPaymentCreated } from '@/lib/estimatePayNav';
+import type { OsRole } from '@/constants/osSections';
 
 /** Backend: contractor может создавать только stage/material (payments.py). */
 const PAY_TYPES = [
@@ -57,7 +59,7 @@ export function CreatePaymentForm({
       setNotes('');
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
       onSaved?.();
-      Alert.alert('Счёт создан', 'Заказчику отправлено уведомление об оплате');
+      alertPaymentCreated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
       Alert.alert(

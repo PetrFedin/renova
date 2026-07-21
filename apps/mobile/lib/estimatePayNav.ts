@@ -76,6 +76,25 @@ export function alertPaymentConfirmed(role: OsRole) {
   );
 }
 
+/** W135: исполнитель выставил счёт */
+export function alertPaymentCreated(role: OsRole) {
+  Alert.alert(
+    'Счёт создан',
+    'Заказчику отправлено уведомление. Следите за оплатой во «Входящих».',
+    [
+      { text: 'OK' },
+      {
+        text: 'Оплаты',
+        onPress: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
+      },
+      {
+        text: 'Входящие',
+        onPress: () => pushOsNav('/inbox', undefined, role),
+      },
+    ],
+  );
+}
+
 /** Задача из сообщения чата */
 export function alertChatTaskCreated(role: OsRole) {
   Alert.alert(

@@ -9,6 +9,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import type { OsRole } from '@/constants/osSections';
+import { alertPortalLinkShared } from '@/lib/shareAccessNav';
 
 type Props = {
   userId: string;
@@ -40,6 +41,8 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
         allowPay ? 'оплата' : null,
       ].filter(Boolean).join(' · ') || 'только просмотр';
       await shareRenovaLink(link.url, `портал Renova (${scopeHint})`);
+      // W135: после шаринга — приёмка / оплаты в кабинете
+      alertPortalLinkShared(role, scopeHint);
     } catch (e: unknown) {
       Alert.alert('Портал', apiErrorMessage(e, 'Не удалось создать ссылку'));
     } finally {

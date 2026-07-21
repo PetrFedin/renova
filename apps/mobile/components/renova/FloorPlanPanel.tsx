@@ -16,6 +16,7 @@ import { pushRoomDetail } from '@/lib/navigation';
 import { RenovaTheme } from '@/constants/Theme';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { openQcIssue } from '@/lib/qcNav';
+import { alertFloorPlanUploaded, alertFloorPunchCreated } from '@/lib/shareAccessNav';
 import type { OsRole } from '@/constants/osSections';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
@@ -126,12 +127,12 @@ export function FloorPlanPanel({
       const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
       // W121: сразу в QC на созданное замечание (Fieldwire)
       openQcIssue(created?.id, pathname, osRole);
-      Alert.alert(
-        'Замечание в QC',
-        photo_key
-          ? 'Сохранено с фото на плане — открыт Контроль качества.'
-          : 'Сохранено в Контроле качества — дополните описание.',
-      );
+      // W135: punch → QC + CTA назад на план
+      alertFloorPunchCreated(osRole, {
+        hasPhoto: Boolean(photo_key),
+        issueId: created?.id,
+        returnTo: pathname,
+      });
     } catch (e) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Замечание на плане');
@@ -160,6 +161,8 @@ export function FloorPlanPanel({
         project: activeProject ?? ({ id: projectId } as any),
       });
       load();
+      // W135: план → punch / комнаты
+      alertFloorPlanUploaded((role === 'contractor' ? 'contractor' : 'customer') as OsRole);
     } catch {
       Alert.alert('Загрузка', 'Не удалось загрузить план');
     } finally {
