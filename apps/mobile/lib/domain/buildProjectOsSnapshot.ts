@@ -9,6 +9,8 @@ import { sanitizeRiskImpact } from './sanitizeRiskImpact';
 import { resolveProjectProgress } from './resolveProjectProgress';
 import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute } from '@/constants/osSections';
 import { closeoutNextActionTitle } from './closeoutHome';
+import { formatCount } from '../i18n/ruPlural';
+import { RU_NOUN } from '../i18n/ruCountLabels';
 
 /**
  * Подсказки для nextAction (W55 schedule + W76 очередь приёмки/ДО/подписи/гарантии).
@@ -208,7 +210,7 @@ export function buildProjectOsSnapshot(
       };
     } else if (pendingSignDocs > 0 && role === 'customer') {
       nextAction = {
-        title: pendingSignDocs === 1 ? 'Подписать документ' : `Подписать ${pendingSignDocs} док.`,
+        title: `Подписать ${formatCount(pendingSignDocs, RU_NOUN.document)}`,
         subtitle: 'Черновики ждут электронной подписи',
         button: 'Документы',
         href: '/documents',
@@ -326,7 +328,7 @@ export function buildProjectOsSnapshot(
     };
   } else if (pendingSignDocs > 0 && role === 'customer') {
     nextAction = {
-      title: pendingSignDocs === 1 ? 'Подписать документ' : `Подписать ${pendingSignDocs} док.`,
+      title: `Подписать ${formatCount(pendingSignDocs, RU_NOUN.document)}`,
       subtitle: 'Черновики в Документах',
       button: 'Документы',
       href: '/documents',

@@ -33,6 +33,7 @@ import {
   formatScopedUnreadBanner,
   unreadScopeForChatList,
 } from '@/lib/domain/unreadScope';
+import { formatCount, formatUnreadCount, pluralCategoryRu, RU_NOUN } from '@/lib/i18n';
 
 type Folder = 'active' | 'archive';
 
@@ -281,7 +282,7 @@ export function ChatListView() {
         <View style={s.unreadBanner}>
           <Text style={s.unreadBannerT}>
             {bannerText
-              || `${awaitingCount} ${awaitingCount === 1 ? 'диалог ждёт' : 'диалогов ждут'} ответа`}
+              || `${formatCount(awaitingCount, RU_NOUN.dialog)} ${pluralCategoryRu(awaitingCount) === 'one' ? 'ждёт' : 'ждут'} ответа`}
           </Text>
         </View>
       ) : null}

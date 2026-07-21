@@ -9,6 +9,7 @@ import { calendarEventInRange, filterCalendarEventsForRole } from '@/lib/domain/
 import { useOsNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { formatCount, RU_NOUN } from '@/lib/i18n';
 
 type DayGroup = { date: string; label: string; count: number; sample: string };
 
@@ -18,11 +19,7 @@ function formatDayLabel(iso: string): string {
 }
 
 function eventLabel(count: number): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} событие`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return `${count} события`;
-  return `${count} событий`;
+  return formatCount(count, RU_NOUN.event);
 }
 
 type Props = {

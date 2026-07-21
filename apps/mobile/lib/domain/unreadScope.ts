@@ -13,6 +13,9 @@ import {
   type ChatProjectFilter,
   isAllProjectsFilter,
 } from '../chatProjectFilter';
+import { formatUnreadCount } from '../i18n/ruCountLabels';
+import { pluralizeRu } from '../i18n/ruPlural';
+import { RU_NOUN } from '../i18n/ruCountLabels';
 
 export type UnreadScope =
   | { type: 'global' }
@@ -186,14 +189,12 @@ export function formatScopedUnreadBanner(opts: {
 
   if (local.scope.type === 'global') {
     if (global.count <= 0) return null;
-    const n = global.count;
-    const word = n === 1 ? 'непрочитанное' : 'непрочитанных';
-    return `Всего: ${n} ${word}`;
+    return `Всего: ${formatUnreadCount(global.count)}`;
   }
 
   if (local.scope.type === 'filter' && local.scope.filterId === 'archive') {
     if (local.count <= 0) return null;
-    return `В архиве: ${local.count} непрочитанных`;
+    return `В архиве: ${formatUnreadCount(local.count)}`;
   }
 
   // project / multi-filter
@@ -201,7 +202,7 @@ export function formatScopedUnreadBanner(opts: {
     return `В ${local.scopeLabel}: нет непрочитанных (всего ${global.count})`;
   }
   if (local.count > 0) {
-    return `В ${local.scopeLabel}: ${local.count} из ${global.count} непрочитанных`;
+    return `В ${local.scopeLabel}: ${local.count} из ${global.count} ${pluralizeRu(global.count, RU_NOUN.unread)}`;
   }
   return null;
 }
@@ -209,8 +210,7 @@ export function formatScopedUnreadBanner(opts: {
 export function formatDockChatA11y(globalCount: number): string {
   const n = Math.max(0, globalCount);
   if (n <= 0) return 'Чаты';
-  const shown = n > 99 ? '99+' : String(n);
-  return `Чаты, ${shown} непрочитанных во всех чатах`;
+  return `Чаты, ${formatUnreadCount(n)} во всех чатах`;
 }
 
 /** @deprecated используйте selectUnreadCount с явным scope */

@@ -62,6 +62,7 @@
     "test:chat-sync": "npx tsx apps/mobile/lib/chatSync/chatSync.test.ts",
     "test:active-thread-unread": "npx tsx apps/mobile/lib/domain/activeThreadUnread.test.ts",
     "test:unread-scope": "npx tsx apps/mobile/lib/domain/unreadScope.test.ts",
+    "test:ru-plural": "npx tsx apps/mobile/lib/i18n/ruPlural.test.ts && npx tsx apps/mobile/lib/domain/moreMenuA11y.w77.test.ts",
     "staging:readiness-report": "bash scripts/staging-readiness-report.sh",
     "staging:credentials-probe": "bash scripts/staging-credentials-probe.sh",
     "split:status": "bash scripts/split-release-status.sh",

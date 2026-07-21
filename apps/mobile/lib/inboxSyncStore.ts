@@ -38,6 +38,7 @@ import {
   type UnreadCountResult,
   type UnreadScope,
 } from '@/lib/domain/unreadScope';
+import { formatUnreadCount } from '@/lib/i18n';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -392,7 +393,7 @@ function refreshInboxChatRow(nextChat: number) {
     inboxItems = inboxItems.filter((i) => i.kind !== 'chat');
   } else if (inboxItems.some((i) => i.kind === 'chat')) {
     inboxItems = inboxItems.map((i) =>
-      i.kind === 'chat' ? { ...i, sub: `${n} непрочитанных` } : i,
+      i.kind === 'chat' ? { ...i, sub: `${formatUnreadCount(n)} во всех чатах` } : i,
     );
   } else {
     // Upsert: иначе dock уже показывает N, а «Входящие» без строки чата / со старым sub.
@@ -402,7 +403,7 @@ function refreshInboxChatRow(nextChat: number) {
         id: 'chat',
         kind: 'chat',
         title: 'Непрочитанные сообщения',
-        sub: `${n} непрочитанных`,
+        sub: `${formatUnreadCount(n)} во всех чатах`,
         href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
         priority: 90,
       },
