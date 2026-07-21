@@ -27,3 +27,16 @@ PUBLIC_BASE_URL=https://api-staging.example.com
 ```bash
 cd backend && .venv/bin/pytest tests/test_schedule_item_transitions.py tests/test_otp_rate_limit.py tests/test_environment_guards.py -q --noconftest
 ```
+
+## CI (локально, не в 4948622)
+
+Изменение `.github/workflows/ci.yml` (`e2e:web` без `|| true`) осталось **uncommitted**:
+OAuth app без scope `workflow` отклоняет push файлов workflow.
+
+Запушить вручную (PAT с `workflow` или `gh auth` с нужным scope):
+
+```bash
+git add .github/workflows/ci.yml
+git commit -m "ci: fail closed on e2e:web"
+git push
+```
