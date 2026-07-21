@@ -13,6 +13,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { objectTabRoute, type OsRole } from '@/constants/osSections';
+import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -176,10 +177,7 @@ export function QualityControlScreen() {
       });
       await load();
       await syncProjectSideEffects({ user, project: activeProject });
-      Alert.alert(
-        'Гарантия',
-        `Тикет создан${wRes.post_closeout ? ' (после сдачи)' : ''}. SLA ${wRes.sla_days || 14} дн. — исполнитель уведомлён`,
-      );
+      alertWarrantyCreated(isCustomer ? 'customer' : 'contractor', wRes);
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Гарантийный тикет');
       else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать');
@@ -209,11 +207,14 @@ export function QualityControlScreen() {
     try {
       if ((issue.title || '').startsWith('[Гарантия]')) {
         await api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
+        await load();
+        await syncProjectSideEffects({ user, project: activeProject });
+        alertWarrantyClosed(user.role === 'contractor' ? 'contractor' : 'customer');
       } else {
         await api.closeIssue(user.id, activeProject.id, issue.id);
+        await load();
+        await syncProjectSideEffects({ user, project: activeProject });
       }
-      await load();
-      await syncProjectSideEffects({ user, project: activeProject });
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');
     } finally {

@@ -39,8 +39,8 @@ export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | stri
       return { pathname: `/(${role})/(tabs)/repair`, params: { tab: 'control' } };
     case 'warranty-claim':
     case 'warranty':
-      // W55: заказчик → документы; исполнитель → QC
-      return role === 'contractor' ? '/quality-control' : '/documents';
+      // W126: обе роли → QC (заказчик закрывает тикеты; документы — closeout)
+      return '/quality-control';
     default:
       break;
   }

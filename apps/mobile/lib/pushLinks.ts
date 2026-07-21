@@ -150,6 +150,9 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
         : { pathname: '/quality-control', params: {} };
     case 'approval':
       return { pathname: '/approvals', params: {} };
+    case 'warranty':
+    case 'warranty_claim':
+      return { pathname: '/quality-control', params: {} };
     case 'deadline':
       return tabsRoute(role, 'calendar');
     case 'waste_reminder':

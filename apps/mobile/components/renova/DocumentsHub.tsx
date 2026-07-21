@@ -26,6 +26,8 @@ import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { alertIcalExported } from '@/lib/calendarIcsNav';
+import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { openQcIssue } from '@/lib/qcNav';
 
 type DocRow = {
   id: string;
@@ -217,6 +219,11 @@ ${(res.body || '').slice(0, 220)}`,
                   void api.exportKpiWeeklyPdf(userId, projectId);
                 },
               },
+              {
+                // W126: дайджест → inbox (аналог weekly summary)
+                text: 'Входящие',
+                onPress: () => pushOsNav('/inbox', undefined, isContractor ? 'contractor' : 'customer'),
+              },
             ],
           );
         },
@@ -250,9 +257,10 @@ ${(res.body || '').slice(0, 220)}`,
             : 'Создать / закрыть открытые (нужно для closeout)',
         format: isArchived ? 'Post-closeout' : 'Заявка',
         run: async () => {
+          const role = (isContractor ? 'contractor' : 'customer') as OsRole;
           const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
           const openItems = (open.items || []).filter((i) => i.status !== 'closed');
-          // W64: заказчик закрывает гарантию здесь — иначе closeout тупик
+          // W64/W126: заказчик закрывает гарантию — иначе closeout тупик; обе роли → QC
           if (!isContractor && openItems.length > 0) {
             const first = openItems[0];
             Alert.alert(
@@ -261,12 +269,16 @@ ${(res.body || '').slice(0, 220)}`,
               [
                 { text: 'Отмена', style: 'cancel' },
                 {
+                  text: 'В QC',
+                  onPress: () => openQcIssue(first.id, '/documents', role),
+                },
+                {
                   text: 'Закрыть это',
                   onPress: async () => {
                     try {
                       await api.closeWarrantyClaim(userId, projectId, first.id);
                       void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                      Alert.alert('Гарантия', 'Обращение закрыто. Можно завершать объект, если остальные гейты готовы.');
+                      alertWarrantyClosed(role);
                     } catch (e: unknown) {
                       Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
                     }
@@ -280,7 +292,7 @@ ${(res.body || '').slice(0, 220)}`,
                       description: 'Создано из Document Center',
                     });
                     void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                    Alert.alert('Гарантия', `Создано${res.post_closeout ? ' (после сдачи)' : ''}. SLA ${res.sla_days || 14} дн. Документ: ${res.document_id.slice(0, 8)}…`);
+                    alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
                   },
                 },
               ],
@@ -292,23 +304,7 @@ ${(res.body || '').slice(0, 220)}`,
             description: 'Создано из Document Center',
           });
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-          Alert.alert(
-            'Гарантия',
-            `Создано${res.post_closeout ? ' (после сдачи)' : ''}. Открытых: ${(open.open || 0) + 1}. SLA ${res.sla_days || 14} дн. Документ: ${res.document_id.slice(0, 8)}…`,
-            [
-              { text: 'OK' },
-              {
-                text: isContractor ? 'Открыть QC' : 'К документам',
-                onPress: () => {
-                  pushOsNav(
-                    isContractor ? (res.qc_path || '/quality-control') : '/documents',
-                    undefined,
-                    isContractor ? 'contractor' : 'customer',
-                  );
-                },
-              },
-            ],
-          );
+          alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
         },
       },
       closeout: {
