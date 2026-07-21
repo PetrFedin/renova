@@ -18,6 +18,7 @@ import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
+import { formatDockChatA11y } from '@/lib/domain/unreadScope';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
@@ -33,7 +34,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
-  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
+  /** Dock: только global scope — не зависит от фильтра списка чатов */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
@@ -115,7 +116,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
             accessibilityRole="button"
             accessibilityLabel={
               id === 'chat' && chatUnread > 0
-                ? `${label}, ${chatUnread > 99 ? '99+' : chatUnread} непрочитанных`
+                ? formatDockChatA11y(chatUnread)
                 : label
             }
             accessibilityState={active ? { selected: true } : {}}

@@ -9,6 +9,8 @@ import { sanitizeRiskImpact } from './sanitizeRiskImpact';
 import { resolveProjectProgress } from './resolveProjectProgress';
 import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute } from '@/constants/osSections';
 import { closeoutNextActionTitle } from './closeoutHome';
+import { formatCount } from '../i18n/ruPlural';
+import { RU_NOUN } from '../i18n/ruCountLabels';
 
 /**
  * Подсказки для nextAction (W55 schedule + W76 очередь приёмки/ДО/подписи/гарантии).
@@ -174,16 +176,16 @@ export function buildProjectOsSnapshot(
     if (unpaid > 0) {
       nextAction = role === 'customer'
         ? {
-          title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,
+          title: `Оплатить ${formatCount(unpaid, RU_NOUN.invoice)}`,
           subtitle: pendingPaymentTotal > 0
             ? `${formatRub(pendingPaymentTotal)} к оплате`
-            : `${unpaid} счёт(ов)`,
+            : formatCount(unpaid, RU_NOUN.invoice),
           button: 'Оплатить',
           href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
           kind: 'payment',
         }
         : {
-          title: unpaid === 1 ? 'Ждём оплату 1 счёта' : `Ждём оплату ${unpaid} счетов`,
+          title: `Ждём оплату · ${formatCount(unpaid, RU_NOUN.invoice)}`,
           subtitle: pendingPaymentTotal > 0
             ? `${formatRub(pendingPaymentTotal)} у заказчика`
             : 'Счёт выставлен',
@@ -208,7 +210,7 @@ export function buildProjectOsSnapshot(
       };
     } else if (pendingSignDocs > 0 && role === 'customer') {
       nextAction = {
-        title: pendingSignDocs === 1 ? 'Подписать документ' : `Подписать ${pendingSignDocs} док.`,
+        title: `Подписать ${formatCount(pendingSignDocs, RU_NOUN.document)}`,
         subtitle: 'Черновики ждут электронной подписи',
         button: 'Документы',
         href: '/documents',
@@ -240,7 +242,7 @@ export function buildProjectOsSnapshot(
     }
   } else if (unpaid > 0 && role === 'contractor') {
     nextAction = {
-      title: unpaid === 1 ? 'Ждём оплату заказчика' : `Ждём оплату · ${unpaid} сч.`,
+      title: unpaid === 1 ? 'Ждём оплату заказчика' : `Ждём оплату · ${formatCount(unpaid, RU_NOUN.invoice)}`,
       subtitle: pendingPaymentTotal > 0
         ? `${formatRub(pendingPaymentTotal)} выставлено`
         : 'Счёт у заказчика',
@@ -250,7 +252,7 @@ export function buildProjectOsSnapshot(
     };
   } else if (unpaid > 0 && role === 'customer') {
     nextAction = {
-      title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,
+      title: `Оплатить ${formatCount(unpaid, RU_NOUN.invoice)}`,
       subtitle: pendingPaymentTotal > 0
         ? `${formatRub(pendingPaymentTotal)} к оплате`
         : 'Счёт после приёмки',
@@ -326,7 +328,7 @@ export function buildProjectOsSnapshot(
     };
   } else if (pendingSignDocs > 0 && role === 'customer') {
     nextAction = {
-      title: pendingSignDocs === 1 ? 'Подписать документ' : `Подписать ${pendingSignDocs} док.`,
+      title: `Подписать ${formatCount(pendingSignDocs, RU_NOUN.document)}`,
       subtitle: 'Черновики в Документах',
       button: 'Документы',
       href: '/documents',

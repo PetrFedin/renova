@@ -1,10 +1,11 @@
 /** Badge непрочитанных — компактный круг */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { formatBadgeCount } from '@/lib/i18n';
 
 export function ChatBadge({ count, size = 18, inline }: { count: number; size?: number; inline?: boolean }) {
-  if (!count || count <= 0) return null;
-  const label = count > 99 ? '99+' : String(count);
+  const label = formatBadgeCount(count);
+  if (!label) return null;
   return (
     <View style={[s.badge, inline ? s.inline : null, { minWidth: size, height: size, borderRadius: size / 2 }]}>
       <Text style={s.text}>{label}</Text>

@@ -12,7 +12,8 @@ import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { reportError, reportCatch } from '@/lib/reportError';
-import { api, ChatDetail, ChatMessage } from '@/lib/api';
+import { api, ChatDetail, ChatMessage, ApiError } from '@/lib/api';
+import { threadsFromChatInbox } from '@/lib/domain/chatUnreadSnapshot';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -20,7 +21,25 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatReadSync } from '@/lib/useChatUnread';
-import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
+import { useChatWebSocket } from '@/lib/useChatWebSocket';
+import {
+  registerThreadSyncLoader,
+  requestChatSync,
+  patchChatSyncContext,
+} from '@/lib/chatSync';
+import {
+  clearActiveThreadContext,
+  getActiveThreadContextSnapshot,
+  ingestIncomingChatMessage,
+  setActiveThreadContext,
+} from '@/lib/inboxSyncStore';
+import { isActivelyReadingThread } from '@/lib/domain/activeThreadContext';
+import {
+  evaluateCanMarkChatRead,
+  shouldFireMarkRead,
+} from '@/lib/domain/canMarkChatRead';
+import { useScreenVisibility } from '@/lib/hooks/useScreenVisibility';
+import { getAppForeground } from '@/lib/screenVisibilityService';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -141,7 +160,14 @@ export function ChatThreadView({
   const syncAfterRead = useChatReadSync(user?.id, user?.role);
   const [chat, setChat] = useState<ChatDetail | null>(null);
   const [chatProjectId, setChatProjectId] = useState<string | null>(projectIdProp ?? null);
-  const markedReadRef = useRef<string | null>(null);
+  const loadGenRef = useRef(0);
+  const loadedThreadRef = useRef<string | null>(null);
+  const canMarkPrevRef = useRef(false);
+  const [screenFocused, setScreenFocused] = useState(false);
+  const [threadLoaded, setThreadLoaded] = useState(false);
+  const [accessConfirmed, setAccessConfirmed] = useState(false);
+  const [latestMessagesRendered, setLatestMessagesRendered] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [typing, setTyping] = useState(false);
@@ -159,6 +185,7 @@ export function ChatThreadView({
     if (!user) return null;
     if (activeProject?.id) {
       try {
+        // GET больше не mark-read — безопасный probe доступа
         await api.getChat(user.id, activeProject.id, threadId);
         return activeProject.id;
       } catch {
@@ -167,68 +194,220 @@ export function ChatThreadView({
     }
     try {
       const inbox = await api.chatInbox(user.id);
-      return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
+      return threadsFromChatInbox(inbox).find((t) => t.id === threadId)?.project_id
+        ?? activeProject?.id
+        ?? null;
     } catch (e) {
       reportError('chat.resolveProjectId.inbox', e, { threadId });
       return activeProject?.id ?? null;
     }
   }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
 
-  const loadMessages = useCallback(async () => {
+  const loadMessages = useCallback(async (signal?: AbortSignal) => {
     if (!user || !threadId) return;
+    const gen = ++loadGenRef.current;
     const projectId = await resolveProjectId();
-    if (!projectId) return;
-    // Не трогаем state, если id тот же — иначе лишний ререндер и цикл focus-эффекта.
+    if (signal?.aborted || gen !== loadGenRef.current) return;
+    if (!projectId) {
+      setLoadFailed(true);
+      setAccessConfirmed(false);
+      setThreadLoaded(false);
+      return;
+    }
     setChatProjectId((prev) => (prev === projectId ? prev : projectId));
     if (activeProject?.id !== projectId) {
       await loadProject(projectId).catch((e) => reportError('chat.loadProject', e, { projectId }));
     }
-    setChat(await api.getChat(user.id, projectId, threadId));
+    if (signal?.aborted || gen !== loadGenRef.current) return;
+    try {
+      const detail = await api.getChat(user.id, projectId, threadId);
+      if (signal?.aborted || gen !== loadGenRef.current) return;
+      loadedThreadRef.current = threadId;
+      setChat(detail);
+      setAccessConfirmed(true);
+      setThreadLoaded(true);
+      setLoadFailed(false);
+      setLatestMessagesRendered(false);
+    } catch (e) {
+      if (signal?.aborted || gen !== loadGenRef.current) return;
+      setLoadFailed(true);
+      setAccessConfirmed(false);
+      setThreadLoaded(false);
+      setLatestMessagesRendered(false);
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status === 403 || status === 404) {
+        reportError('chat.loadMessages.acl', e, { threadId, status });
+      } else {
+        reportError('chat.loadMessages', e, { threadId });
+      }
+      throw e;
+    }
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
 
-  const markThreadRead = useCallback(async (forcedProjectId?: string | null) => {
+  // Регистрация в orchestrator: thread WS/poll идут через requestChatSync(scope:thread)
+  useEffect(() => {
+    if (!threadId || !user?.id) return undefined;
+    patchChatSyncContext({
+      userId: user.id,
+      role: user.role ?? null,
+      projectId: chatProjectId ?? activeProject?.id ?? null,
+    });
+    return registerThreadSyncLoader(threadId, async ({ signal }) => {
+      await loadMessages(signal);
+    });
+  }, [threadId, user?.id, user?.role, chatProjectId, activeProject?.id, loadMessages]);
+
+  const markThreadReadLocal = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
+    // Синхронный guard: background transition не шлёт receipt
+    if (!getAppForeground()) return;
+    if (loadedThreadRef.current !== threadId) return;
     const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
-    const markKey = `${threadId}:${projectId}`;
-    if (markedReadRef.current === markKey) return;
-    let knownUnread = 0;
-    try {
-      const inbox = await api.chatInbox(user.id);
-      knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
-    } catch (e) {
-      reportError('chat.markRead.inbox', e, { threadId });
-    }
-    try {
-      await syncAfterRead(projectId, threadId, knownUnread);
-      markedReadRef.current = markKey;
-    } catch {
-      /* badge подтянется следующим reload; не фиксируем ref */
-    }
-  }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
+    // После await — ещё раз (пользователь мог свернуть app)
+    if (!getAppForeground()) return;
 
-  // Стабильные refs: useFocusEffect НЕ должен зависеть от identity load/mark —
-  // иначе setChatProjectId → новый callback → повторный focus → Maximum update depth.
+    const last = chat?.messages?.length
+      ? [...chat.messages].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-1)[0]
+      : null;
+
+    // Единый store action — dedupe / skip_same / skip_stale / background внутри
+    await syncAfterRead(
+      projectId,
+      threadId,
+      0,
+      last?.id ?? null,
+      last?.created_at ?? null,
+      'thread_visible',
+    );
+  }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead, chat]);
+
   const loadMessagesRef = useRef(loadMessages);
-  const markThreadReadRef = useRef(markThreadRead);
+  const markThreadReadRef = useRef(markThreadReadLocal);
   loadMessagesRef.current = loadMessages;
-  markThreadReadRef.current = markThreadRead;
+  markThreadReadRef.current = markThreadReadLocal;
 
   useFocusEffect(
     useCallback(() => {
-      markedReadRef.current = null;
-      let cancelled = false;
-      (async () => {
-        await loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
-        if (!cancelled) await markThreadReadRef.current().catch(reportCatch('chat.markRead'));
-      })();
-      return () => { cancelled = true; };
+      setScreenFocused(true);
+      canMarkPrevRef.current = false;
+      setThreadLoaded(false);
+      setAccessConfirmed(false);
+      setLatestMessagesRendered(false);
+      setLoadFailed(false);
+      loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
+      return () => {
+        setScreenFocused(false);
+        canMarkPrevRef.current = false;
+      };
     }, [threadId, projectIdProp]),
   );
 
   useEffect(() => {
-    markedReadRef.current = null;
+    canMarkPrevRef.current = false;
+    loadedThreadRef.current = null;
+    setChat(null);
+    setThreadLoaded(false);
+    setAccessConfirmed(false);
+    setLatestMessagesRendered(false);
+    setLoadFailed(false);
   }, [threadId, projectIdProp]);
+
+  // Сообщения отрисованы (включая пустой тред)
+  useEffect(() => {
+    if (!threadLoaded || !accessConfirmed || !chat) return;
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      if (!cancelled) setLatestMessagesRendered(true);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [threadLoaded, accessConfirmed, chat, threadId]);
+
+  // Overlay/modal поверх ленты → messagesVisible false (не suppress unread)
+  const overlayBlocking = inviteOpen || settingsOpen || !!taskMsg;
+  const threadContentReady = threadLoaded && accessConfirmed && latestMessagesRendered && !loadFailed;
+
+  const { appForeground, canMarkRead: visibilityCanMark } = useScreenVisibility({
+    screenFocused,
+    routeThreadId: threadId,
+    activeThreadId: threadId,
+    threadContentReady,
+    overlayBlocking,
+    loggedIn: Boolean(user?.id),
+  });
+
+  const canMarkRead = evaluateCanMarkChatRead({
+    screenFocused,
+    appForeground,
+    threadLoaded,
+    accessConfirmed,
+    latestMessagesRendered,
+    loadFailed,
+    threadMatches: loadedThreadRef.current === threadId,
+    overlayBlocking,
+    loggedIn: Boolean(user?.id),
+  }) && visibilityCanMark;
+
+  const messagesVisible = latestMessagesRendered && !overlayBlocking && !loadFailed && appForeground;
+
+  // Публикуем activeThreadContext в store — inbox snapshot clamp / ingest
+  useEffect(() => {
+    if (!user?.id || !threadId) {
+      clearActiveThreadContext();
+      return undefined;
+    }
+    setActiveThreadContext({
+      threadId,
+      userId: user.id,
+      projectId: chatProjectId ?? activeProject?.id ?? null,
+      screenFocused,
+      appForeground,
+      messagesVisible,
+      threadLoaded,
+      accessConfirmed,
+    });
+    return undefined;
+  }, [
+    user?.id,
+    threadId,
+    chatProjectId,
+    activeProject?.id,
+    screenFocused,
+    appForeground,
+    messagesVisible,
+    threadLoaded,
+    accessConfirmed,
+  ]);
+
+  // Сброс контекста только при уходе с треда / logout (не на каждом tick visibility)
+  useEffect(() => () => {
+    clearActiveThreadContext();
+  }, [threadId, user?.id]);
+
+  useEffect(() => {
+    const prev = canMarkPrevRef.current;
+    canMarkPrevRef.current = canMarkRead;
+    if (!shouldFireMarkRead(prev, canMarkRead)) return;
+    markThreadReadRef.current().catch(reportCatch('chat.markRead'));
+  }, [canMarkRead, threadId]);
+
+  // Background → foreground: reconcile thread; mark-read только после повторного visible (edge canMark)
+  const wasForegroundRef = useRef(appForeground);
+  useEffect(() => {
+    const was = wasForegroundRef.current;
+    wasForegroundRef.current = appForeground;
+    if (was || !appForeground || !screenFocused || !threadId || !user) return;
+    canMarkPrevRef.current = false;
+    void requestChatSync({
+      scope: 'thread',
+      threadId,
+      reason: 'focus',
+      priority: 'high',
+    });
+  }, [appForeground, screenFocused, threadId, user]);
 
   useEffect(() => {
     if (highlightId && chat?.messages.length) {
@@ -237,8 +416,16 @@ export function ChatThreadView({
     }
   }, [highlightId, chat?.messages.length]);
 
-  const reload = useCallback(() => loadMessages().catch(reportCatch('chat.reload')), [loadMessages]);
-  useProjectDataReload(reload);
+  const reload = useCallback(() => {
+    if (!threadId) return Promise.resolve();
+    return requestChatSync({
+      scope: 'thread',
+      threadId,
+      reason: 'manual',
+      priority: 'high',
+    }).then(() => undefined);
+  }, [threadId]);
+  useProjectDataReload(() => { void reload(); });
 
   const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
     if (payload.type === 'typing') {
@@ -246,13 +433,74 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    // Новое сообщение в открытом треде — снова прочитать и сбросить badge.
-    markedReadRef.current = null;
-    reload();
-    markThreadRead().catch(reportCatch('chat.markRead.focus'));
+
+    const rawMsg = (payload as { message?: ChatMessage; message_id?: string }).message;
+    const messageId = rawMsg?.id
+      || (payload as { message_id?: string }).message_id
+      || '';
+    const fromSelf = Boolean((payload as { from_self?: boolean }).from_self);
+
+    const ingest = messageId
+      ? ingestIncomingChatMessage({
+        messageId,
+        threadId,
+        fromSelf,
+        createdAt: rawMsg?.created_at ?? null,
+      })
+      : null;
+
+    // Локально добавить сообщение без полного reload (нет сброса canMark → меньше flicker)
+    if (ingest?.accept && rawMsg?.id) {
+      setChat((prev) => {
+        if (!prev) return prev;
+        if (prev.messages.some((m) => m.id === rawMsg.id)) return prev;
+        return { ...prev, messages: [...prev.messages, rawMsg], updated_at: rawMsg.created_at || prev.updated_at };
+      });
+      if (ingest.shouldMarkRead) {
+        markThreadReadRef.current().catch(reportCatch('chat.markRead.ws'));
+      }
+      return;
+    }
+
+    if (ingest && !ingest.accept) {
+      // duplicate reconnect — не трогаем unread / не reload
+      return;
+    }
+
+    // Нет payload message — soft sync треда, НЕ сбрасываем canMark/rendered (Variant A)
+    if (threadId) {
+      void requestChatSync({
+        scope: 'thread',
+        threadId,
+        reason: 'websocket',
+        priority: 'normal',
+      }).then(() => {
+        // После sync — mark-read только если всё ещё реально видим (не stale canMarkPrev)
+        const ctx = getActiveThreadContextSnapshot();
+        if (
+          getAppForeground()
+          && isActivelyReadingThread(ctx, threadId)
+          && canMarkPrevRef.current
+        ) {
+          markThreadReadRef.current().catch(reportCatch('chat.markRead.afterSync'));
+        }
+      });
+    }
   });
 
-  useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
+  // Fallback poll при обрыве thread WS — через orchestrator (не параллельный setInterval)
+  useEffect(() => {
+    if (wsConnected || !threadId || !user) return undefined;
+    const id = setInterval(() => {
+      void requestChatSync({
+        scope: 'thread',
+        threadId,
+        reason: 'poll',
+        priority: 'low',
+      });
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [wsConnected, threadId, user]);
 
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
@@ -267,6 +515,20 @@ export function ChatThreadView({
       role,
     );
   };
+
+  if (loadFailed && !chat) {
+    return (
+      <View style={s.root}>
+        <BackHeader title="Чат" returnTo={returnTo} />
+        <View style={s.center}>
+          <Text style={{ textAlign: 'center', color: RenovaTheme.colors.textMuted }}>
+            Не удалось открыть чат. Сообщения не отмечены прочитанными.
+          </Text>
+          <PrimaryButton title="Повторить" onPress={() => loadMessages().catch(reportCatch('chat.retry'))} />
+        </View>
+      </View>
+    );
+  }
 
   if (!chat || !user) {
     return (
