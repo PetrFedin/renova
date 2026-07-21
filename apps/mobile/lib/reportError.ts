@@ -1,23 +1,35 @@
 /** Централизованный лог критических сбоев (без silent swallow). */
 type Extra = Record<string, unknown> | undefined;
 
+function captureSentry(error: unknown, message: string, scope: string, payload: Record<string, unknown>): void {
+  const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+  if (!dsn) return;
+  const err = error instanceof Error ? error : new Error(message);
+  try {
+    // Prefer RN SDK when installed
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const SentryRN = require('@sentry/react-native');
+    if (SentryRN?.captureException) {
+      SentryRN.captureException(err, { tags: { scope }, extra: payload });
+      return;
+    }
+  } catch {
+    /* not installed */
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Sentry = require('sentry-expo');
+    Sentry.Native?.captureException?.(err, { tags: { scope }, extra: payload });
+  } catch {
+    /* SDK not installed — console only */
+  }
+}
+
 export function reportError(scope: string, error: unknown, extra?: Extra): void {
   const message = error instanceof Error ? error.message : String(error);
   const payload = { scope, message, extra, at: new Date().toISOString() };
   if (__DEV__) {
     console.warn(`[reportError] ${scope}`, error, extra || '');
   }
-  // Optional Sentry when DSN + SDK available (no hard dependency)
-  try {
-    const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-    if (!dsn) return;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Sentry = require('sentry-expo');
-    Sentry.Native?.captureException?.(error instanceof Error ? error : new Error(message), {
-      tags: { scope },
-      extra: payload,
-    });
-  } catch {
-    /* SDK not installed — console only */
-  }
+  captureSentry(error, message, scope, payload);
 }

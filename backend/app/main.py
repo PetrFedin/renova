@@ -72,6 +72,8 @@ async def lifespan(app: FastAPI):
     ocr_task: asyncio.Task | None = None
     reminder_stop: asyncio.Event | None = None
     reminder_task: asyncio.Task | None = None
+    redis_stop: asyncio.Event | None = None
+    redis_task: asyncio.Task | None = None
     if (settings.document_ocr_mode or "sync").strip().lower() == "async":
         from app.services.document_ocr_worker import ocr_worker_loop
 
@@ -96,12 +98,22 @@ async def lifespan(app: FastAPI):
             settings.automation_reminders_interval_sec,
         )
 
+    # Multi-instance WS: subscribe when REDIS_URL set (publish already in ws.broadcast)
+    if (settings.redis_url or "").strip():
+        from app.services.ws_redis_bridge import redis_subscriber_loop
+
+        redis_stop = asyncio.Event()
+        redis_task = asyncio.create_task(redis_subscriber_loop(redis_stop))
+        logger.info("ws redis bridge enabled")
+
     yield
 
     if ocr_stop is not None:
         ocr_stop.set()
     if reminder_stop is not None:
         reminder_stop.set()
+    if redis_stop is not None:
+        redis_stop.set()
     if reminder_task is not None:
         try:
             await asyncio.wait_for(reminder_task, timeout=5)
@@ -112,6 +124,11 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(ocr_task, timeout=5)
         except Exception:
             ocr_task.cancel()
+    if redis_task is not None:
+        try:
+            await asyncio.wait_for(redis_task, timeout=5)
+        except Exception:
+            redis_task.cancel()
 
 
 setup_logging()

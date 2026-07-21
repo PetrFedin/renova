@@ -53,3 +53,8 @@ Pinned SHA: `c555748` (wave-3 on `develop`, 2026-07-21).
 
 Release still OPEN: split PR develop→main per `docs/SPLIT-RELEASE-PR-PLAN-2026-07-21.md`.
 
+## Wave-4 audit embed (2026-07-21)
+
+- Redis WS subscribe (`ws_redis_bridge`) + fail-closed chat/offline/stage blocked
+- `reportError` → Sentry SDKs optional
+- Doc: `docs/AUDIT-WAVE4-IMPLEMENTATION-2026-07-21.md`

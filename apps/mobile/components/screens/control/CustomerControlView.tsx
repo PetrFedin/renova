@@ -1,3 +1,4 @@
+import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество */
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
@@ -27,8 +28,14 @@ export function CustomerControlView() {
 
   const reload = useCallback(() => {
     if (user && activeProject) {
-      api.listIssues(user.id, activeProject.id).then(setIssues).catch(() => setIssues([]));
-      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch(() => setAcceptances([]));
+      api.listIssues(user.id, activeProject.id).then(setIssues).catch((e) => {
+        reportError('control.issues', e);
+        setIssues([]);
+      });
+      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch((e) => {
+        reportError('control.acceptances', e);
+        setAcceptances([]);
+      });
     }
   }, [user?.id, activeProject?.id]);
 

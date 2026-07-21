@@ -20,6 +20,7 @@ passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 python-multipart = "^0.0.20"
 aiosqlite = "^0.20.0"
 alembic = "^1.14.0"
+redis = {version = "^5.2.0", optional = true}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
@@ -28,3 +29,6 @@ pytest-asyncio = "^0.24.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.extras]
+ws = ["redis"]

@@ -102,8 +102,8 @@ async def inbox_ws(websocket: WebSocket, user_id: str):
 
 
 
-async def _redis_publish(channel: str, msg: str) -> None:
-    """Best-effort cross-instance fanout when REDIS_URL set."""
+async def _redis_publish(channel: str, packed: str) -> None:
+    """Best-effort cross-instance fanout when REDIS_URL set (packed = instance envelope)."""
     from app.core.config import settings
     url = (settings.redis_url or "").strip()
     if not url:
@@ -112,7 +112,7 @@ async def _redis_publish(channel: str, msg: str) -> None:
         import redis.asyncio as redis  # type: ignore
         client = redis.from_url(url, decode_responses=True)
         try:
-            await client.publish(channel, msg)
+            await client.publish(channel, packed)
         finally:
             await client.aclose()
     except Exception:
@@ -121,22 +121,20 @@ async def _redis_publish(channel: str, msg: str) -> None:
 
 
 async def broadcast(thread_id: str, payload: dict) -> None:
+    from app.services.ws_redis_bridge import pack_message, deliver_local_thread
+
     msg = json.dumps(payload)
-    await _redis_publish(f"renova:ws:thread:{thread_id}", msg)
-    for ws in list(rooms.get(thread_id, [])):
-        try:
-            await ws.send_text(msg)
-        except Exception:
-            rooms[thread_id].discard(ws)
+    packed = pack_message(payload)
+    await _redis_publish(f"renova:ws:thread:{thread_id}", packed)
+    await deliver_local_thread(thread_id, msg)
 
 
 async def broadcast_inbox(user_id: str, payload: dict) -> None:
     if not user_id:
         return
+    from app.services.ws_redis_bridge import pack_message, deliver_local_inbox
+
     msg = json.dumps(payload)
-    await _redis_publish(f"renova:ws:inbox:{user_id}", msg)
-    for ws in list(inbox_rooms.get(user_id, [])):
-        try:
-            await ws.send_text(msg)
-        except Exception:
-            inbox_rooms[user_id].discard(ws)
+    packed = pack_message(payload)
+    await _redis_publish(f"renova:ws:inbox:{user_id}", packed)
+    await deliver_local_inbox(user_id, msg)

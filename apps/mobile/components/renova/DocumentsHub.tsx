@@ -1,3 +1,4 @@
+import { reportError } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -111,7 +112,10 @@ export function DocumentsHub({
     setIndexLoading(true);
     api.listProjectDocuments(userId, projectId)
       .then((result) => { if (alive) setDocIndex(result); })
-      .catch(() => { if (alive) setDocIndex(null); })
+      .catch((e) => {
+        reportError('docs.list', e, { projectId });
+        if (alive) setDocIndex(null);
+      })
       .finally(() => { if (alive) setIndexLoading(false); });
     api.listEsignProviders(userId)
       .then(({ providers }) => {
@@ -121,7 +125,10 @@ export function DocumentsHub({
         const mode = String((k as { mode?: string } | undefined)?.mode || (k?.available ? 'sandbox' : 'off'));
         setKonturMode(mode);
       })
-      .catch(() => { if (alive) { setKonturAvailable(false); setKonturMode('off'); } });
+      .catch((e) => {
+        reportError('docs.esignProviders', e);
+        if (alive) { setKonturAvailable(false); setKonturMode('off'); }
+      });
     api.getEsignHealth(userId)
       .then((h: any) => {
         if (!alive) return;

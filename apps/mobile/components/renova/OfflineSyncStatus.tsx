@@ -1,3 +1,4 @@
+import { reportError } from '@/lib/reportError';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,26 +30,35 @@ export function OfflineSyncStatus({
 
   const refresh = useCallback(async () => {
     if (pathIncludes?.length) {
-      const q = await getQueue().catch(() => []);
+      let q: Awaited<ReturnType<typeof getQueue>> = [];
+      try {
+        q = await getQueue();
+      } catch (e) {
+        reportError('offline.getQueue', e);
+        setLastMessage('Не удалось прочитать очередь офлайн');
+        return;
+      }
       const filtered = q.filter((j) => pathIncludes.some((s) => j.path.includes(s)));
       setPending(filtered.filter((j) => !j.blocked && !j.conflict).length);
       setBlocked(filtered.filter((j) => j.blocked).length);
       setConflicts(filtered.filter((j) => j.conflict).length);
       return;
     }
-    const status = await getOfflineOutboxStatus().catch(() => ({
-      total: 0,
-      pending: 0,
-      blocked: 0,
-      conflicts: 0,
-    }));
+    let status: { total: number; pending: number; blocked: number; conflicts: number };
+    try {
+      status = await getOfflineOutboxStatus();
+    } catch (e) {
+      reportError('offline.outboxStatus', e);
+      setLastMessage('Не удалось получить статус синхронизации');
+      return;
+    }
     setPending(status.pending);
     setBlocked(status.blocked);
     setConflicts(status.conflicts);
   }, [pathIncludes]);
 
   useFocusEffect(useCallback(() => {
-    refresh().catch(() => {});
+    refresh().catch((e) => reportError('offline.refresh', e));
   }, [refresh]));
   useEffect(() => subscribeOfflineFlush(() => { void refresh(); }), [refresh]);
 
@@ -66,9 +76,9 @@ export function OfflineSyncStatus({
       await refresh();
       // W112: после flush — inbox + home через канон bus (не только badge)
       if (result.synced > 0) {
-        await syncProjectSideEffects({ user, project: activeProject }).catch(() => {});
+        await syncProjectSideEffects({ user, project: activeProject }).catch((e) => reportError('offline.sideEffects', e));
       } else if (user?.id) {
-        await reloadInboxSync({ userId: user.id, userRole: user.role }).catch(() => {});
+        await reloadInboxSync({ userId: user.id, userRole: user.role }).catch((e) => reportError('offline.inboxSync', e));
       }
     } finally {
       setSyncing(false);

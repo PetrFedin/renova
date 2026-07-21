@@ -1,3 +1,4 @@
+import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество (исполнитель) */
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
@@ -26,8 +27,14 @@ export function ContractorControlView() {
 
   const reload = useCallback(() => {
     if (user && activeProject) {
-      api.listIssues(user.id, activeProject.id).then(setIssues).catch(() => setIssues([]));
-      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch(() => setAcceptances([]));
+      api.listIssues(user.id, activeProject.id).then(setIssues).catch((e) => {
+        reportError('control.issues', e);
+        setIssues([]);
+      });
+      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch((e) => {
+        reportError('control.acceptances', e);
+        setAcceptances([]);
+      });
     }
   }, [user?.id, activeProject?.id]);
 

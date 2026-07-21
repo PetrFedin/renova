@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput } from 'r
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportError } from '@/lib/reportError';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
@@ -184,7 +185,14 @@ export function OsQuickFab({ role }: { role: OsRole }) {
             <Pressable style={s.row} onPress={async () => {
               setChatOpen(false);
               try {
-                const existing = await api.chatInbox(user.id).catch(() => []);
+                let existing: Awaited<ReturnType<typeof api.chatInbox>>;
+                try {
+                  existing = await api.chatInbox(user.id);
+                } catch (e) {
+                  reportError('quickFab.chatInbox', e);
+                  Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть.');
+                  return;
+                }
                 await createProjectChat({
                   userId: user.id,
                   projectId: activeProject.id,

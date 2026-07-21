@@ -29,10 +29,10 @@
 cd backend && pytest tests/test_otp_rate_limit.py -q
 ```
 
-## Не закрыто (ops)
+## Не закрыто (ops) — см. wave-4
 
 1. Split release develop→main
 2. Live staging readiness report
 3. Полный OAuth «Мой налог»
-4. Redis subscriber на каждом инстансе (сейчас только publish; subscribe — follow-up)
-5. Постоянный `@sentry/react-native` в deps
+4. ~~Redis subscriber~~ → wave-4 `ws_redis_bridge`
+5. Постоянный `@sentry/react-native` init в App (DSN wiring ready)

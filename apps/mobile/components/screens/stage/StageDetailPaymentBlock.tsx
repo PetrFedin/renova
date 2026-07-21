@@ -1,3 +1,4 @@
+import { reportError } from '@/lib/reportError';
 /** Оплата этапа — после приёмки, без scroll до счёта */
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -35,7 +36,10 @@ export function StageDetailPaymentBlock({
   const [selected, setSelected] = useState<Payment | null>(null);
 
   const reloadPayments = useCallback(() => {
-    api.listPayments(userId, projectId).then(setPayments).catch(() => setPayments([]));
+    api.listPayments(userId, projectId).then(setPayments).catch((e) => {
+      reportError('stage.payments', e, { projectId });
+      setPayments([]);
+    });
   }, [userId, projectId]);
 
   useEffect(() => {

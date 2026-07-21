@@ -11,6 +11,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
+import { reportError } from '@/lib/reportError';
 import { api, ChatDetail, ChatMessage } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
@@ -164,8 +165,13 @@ export function ChatThreadView({
         /* чат на другом объекте */
       }
     }
-    const inbox = await api.chatInbox(user.id).catch(() => []);
-    return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
+    try {
+      const inbox = await api.chatInbox(user.id);
+      return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
+    } catch (e) {
+      reportError('chat.resolveProjectId.inbox', e, { threadId });
+      return activeProject?.id ?? null;
+    }
   }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
 
   const loadMessages = useCallback(async () => {
@@ -175,7 +181,7 @@ export function ChatThreadView({
     // Не трогаем state, если id тот же — иначе лишний ререндер и цикл focus-эффекта.
     setChatProjectId((prev) => (prev === projectId ? prev : projectId));
     if (activeProject?.id !== projectId) {
-      await loadProject(projectId).catch(() => {});
+      await loadProject(projectId).catch((e) => reportError('chat.loadProject', e, { projectId }));
     }
     setChat(await api.getChat(user.id, projectId, threadId));
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
@@ -186,8 +192,13 @@ export function ChatThreadView({
     if (!projectId) return;
     const markKey = `${threadId}:${projectId}`;
     if (markedReadRef.current === markKey) return;
-    const inbox = await api.chatInbox(user.id).catch(() => [] as import('@/lib/api').ChatThread[]);
-    const knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
+    let knownUnread = 0;
+    try {
+      const inbox = await api.chatInbox(user.id);
+      knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
+    } catch (e) {
+      reportError('chat.markRead.inbox', e, { threadId });
+    }
     try {
       await syncAfterRead(projectId, threadId, knownUnread);
       markedReadRef.current = markKey;

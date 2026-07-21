@@ -31,6 +31,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { alertStageAccepted } from '@/lib/acceptanceNav';
 import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
+import { reportError } from '@/lib/reportError';
 
 const TEMPLATES = ['@заказчик готово к приёмке', 'Работы выполнены по смете', 'Нужен доступ на объект', 'Задержка из-за материалов', 'Готово к приёмке'];
 
@@ -103,7 +104,11 @@ export function StageDetailScreen() {
     const st = await api.getStage(user.id, activeProject.id, id);
     setStage(st);
     api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch(() => setWfChecks([]));
-    api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch(() => {});
+    api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch((e) => {
+      reportError('stage.blocked', e, { stageId: id });
+      // Fail-closed: неизвестный статус deps → блокируем действия
+      setBlocked({ blocked: true, depends_on: 'load_error' });
+    });
     api.getContractGate(user.id, activeProject.id).then(setContractGate).catch(() => setContractGate(null));
     api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch(() => setWorkSnap(null));
     getCustomChecks(id).then(setCustomChecks).catch(() => {});
@@ -111,7 +116,7 @@ export function StageDetailScreen() {
   useProjectDataReload(reload);
 
   useEffect(() => {
-    reload().catch(() => {});
+    reload().catch((e) => reportError('stage.reload', e, { stageId: id }));
     if (id) getCustomChecks(id).then(setCustomChecks);
     if (user && activeProject && id) {
       api.reactionCounts(user.id, activeProject.id, id).then(setReactCounts).catch(() => {});
@@ -299,7 +304,7 @@ export function StageDetailScreen() {
           readOnly={readOnly}
           stages={activeProject.stages || []}
           onChanged={() => {
-            reload().catch(() => {});
+            reload().catch((e) => reportError('stage.reload', e, { stageId: id }));
             loadProject(activeProject.id).catch(() => {});
           }}
         />
