@@ -136,6 +136,9 @@ class PaymentOut(BaseModel):
     confirmed_at: str | None
     created_at: str
     receipt_id: str | None = None
+    yookassa_payment_id: str | None = None
+    payment_method: str | None = None
+    lock_version: int = 0
 
 
 class StageCommentIn(BaseModel):
