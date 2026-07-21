@@ -101,6 +101,14 @@ export function EstimateChangesLayer({
                 {o.title} · {formatRub(o.amount)}
               </Text>
               <Text style={s.meta}>Статус: {changeOrderStatusLabel(o.status)}</Text>
+              {o.status === 'approved' ? (
+                <PrimaryButton
+                  title="В бюджет"
+                  variant="outline"
+                  compact
+                  onPress={() => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role)}
+                />
+              ) : null}
             </View>
           ))}
         </ObjectSection>

@@ -59,8 +59,13 @@ export function resolvePushLink(
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
-  // W101: QC для заказчика → приёмка/документы, не contractor surface
+  // W101/W121: QC заказчика → hub Приёмка; с issueId — stack QC (Fieldwire focus)
   if (canonicalPath === '/quality-control' && role === 'customer') {
+    const q = new URLSearchParams(canonicalQuery || '');
+    const issueId = q.get('issueId') || undefined;
+    if (issueId) {
+      return { pathname: '/quality-control', params: { issueId, returnTo: rt } };
+    }
     return { pathname: '/(customer)/(tabs)/repair', params: { tab: 'control', returnTo: rt } };
   }
 

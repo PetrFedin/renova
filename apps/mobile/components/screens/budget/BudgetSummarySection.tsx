@@ -18,8 +18,7 @@ import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScree
 import { BudgetPeriodDetailSection } from '@/components/screens/budget/BudgetPeriodDetailSection';
 import { parseBudgetFocus, parseBudgetPeriod } from '@/constants/budgetPeriod';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
-import type { OsRole } from '@/constants/osSections';
-import { budgetTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, objectTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 type Props = {
   userId: string;
@@ -110,7 +109,15 @@ export function BudgetSummarySection(props: Props) {
           {(summary?.change_orders ?? []).slice(0, 4).map((co) => (
             <Pressable
               key={co.id}
-              onPress={() => pushOsNav({ pathname: '/documents', params: { focus: 'co' } }, pathname, role)}
+              onPress={() => {
+                // W121: ДО → слой сметы «Изменения» (Buildertrend CO chain)
+                const route = objectTabRoute(role, 'estimate');
+                pushOsNav(
+                  { pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } },
+                  pathname,
+                  role,
+                );
+              }}
               style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border }}
             >
               <Text style={{ fontWeight: '700', color: RenovaTheme.colors.text }}>

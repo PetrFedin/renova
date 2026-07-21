@@ -1,12 +1,11 @@
 /** Контроль — приёмка, замечания, качество */
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { UnifiedAcceptanceList } from '@/components/renova/UnifiedAcceptanceList';
 import { computePendingAcceptanceCount } from '@/lib/domain/acceptancePending';
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -16,10 +15,12 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
+import { openQcIssue } from '@/lib/qcNav';
 
 export function CustomerControlView() {
   const pathname = usePathname();
-  const nav = useNavFromHere();
+  const nav = useNavFromHere('customer');
+  const { issueId: focusIssueId } = useLocalSearchParams<{ issueId?: string }>();
   const { user, activeProject, readOnly } = useRenova();
   const [issues, setIssues] = useState<ProjectIssue[]>([]);
   const [acceptances, setAcceptances] = useState<WorkAcceptance[]>([]);
@@ -40,6 +41,9 @@ export function CustomerControlView() {
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
   const rework = activeProject.stages.filter((s) => s.status === 'rework');
   const openIssues = issues.filter((i) => i.status !== 'closed');
+  const sortedIssues = focusIssueId
+    ? [...openIssues].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId))
+    : openIssues;
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
@@ -60,15 +64,14 @@ export function CustomerControlView() {
       />
 
       <Text style={s.section}>Замечания</Text>
-      {!openIssues.length && <Text style={s.empty}>Нет открытых замечаний</Text>}
-      {openIssues.slice(0, 5).map((iss) => (
+      {!sortedIssues.length && <Text style={s.empty}>Нет открытых замечаний</Text>}
+      {sortedIssues.slice(0, 5).map((iss) => (
         <Pressable
           key={iss.id}
-          style={s.row}
-          onPress={() => { if (iss.stage_id) nav.stage(iss.stage_id); }}
-          disabled={!iss.stage_id}
+          style={[s.row, iss.id === focusIssueId && s.rowFocus]}
+          onPress={() => openQcIssue(iss.id, pathname, 'customer')}
         >
-          <Text style={s.title}>{iss.title}</Text>
+          <Text style={s.title}>{iss.title}{iss.photo_url ? ' · фото' : ''}{iss.floor_plan_id ? ' · план' : ''}</Text>
           <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
           {!readOnly && iss.status !== 'closed' && (
             <PrimaryButton
@@ -84,6 +87,13 @@ export function CustomerControlView() {
           )}
         </Pressable>
       ))}
+      {openIssues.length > 0 ? (
+        <PrimaryButton
+          title="Все замечания (QC)"
+          variant="outline"
+          onPress={() => openQcIssue(sortedIssues[0]?.id, pathname, 'customer')}
+        />
+      ) : null}
 
       {rework.length > 0 && <>
         <Text style={s.section}>Доработка</Text>
@@ -105,6 +115,7 @@ const s = StyleSheet.create({
   n: { fontSize: 22, fontWeight: '800' }, l: { fontSize: 12, color: RenovaTheme.colors.textMuted },
   section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginVertical: 8 },
   row: { ...card, paddingVertical: 12 },
+  rowFocus: { borderWidth: 2, borderColor: RenovaTheme.colors.primary },
   title: { fontSize: 15, fontWeight: '600' },
   meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 12 },

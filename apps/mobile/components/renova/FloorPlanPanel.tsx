@@ -15,6 +15,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushRoomDetail } from '@/lib/navigation';
 import { RenovaTheme } from '@/constants/Theme';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { openQcIssue } from '@/lib/qcNav';
 import type { OsRole } from '@/constants/osSections';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
@@ -108,7 +109,7 @@ export function FloorPlanPanel({
       } catch {
         /* punch без фото — допустимо */
       }
-      await api.createIssue(userId, projectId, {
+      const created = await api.createIssue(userId, projectId, {
         title: 'Замечание на плане',
         severity: 'medium',
         floor_plan_id: plan.id,
@@ -122,12 +123,14 @@ export function FloorPlanPanel({
       });
       await load();
       setPunchMode(false);
-      pushOsNav('/quality-control', pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole);
+      const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+      // W121: сразу в QC на созданное замечание (Fieldwire)
+      openQcIssue(created?.id, pathname, osRole);
       Alert.alert(
         'Замечание в QC',
         photo_key
-          ? 'Сохранено как issue в Контроле качества (с фото на плане).'
-          : 'Сохранено как issue в Контроле качества — дополните описание там.',
+          ? 'Сохранено с фото на плане — открыт Контроль качества.'
+          : 'Сохранено в Контроле качества — дополните описание.',
       );
     } catch (e) {
       if (isOfflineQueued(e)) {
@@ -193,7 +196,7 @@ export function FloorPlanPanel({
                   </Text>
                 </Pressable>
                 <Text style={s.punchHint}>{openPunch.length} на плане</Text>
-                <Pressable onPress={() => pushOsNav('/quality-control', pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole)}>
+                <Pressable onPress={() => openQcIssue(openPunch[0]?.id, pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole)}>
                   <Text style={s.link}>Список →</Text>
                 </Pressable>
               </View>
@@ -212,7 +215,7 @@ export function FloorPlanPanel({
               <Pressable
                 key={item.id}
                 style={[s.punchPin, { left: `${item.x_pct}%`, top: `${item.y_pct}%`, borderColor: punchTone(item.severity, item.status) }]}
-                onPress={() => pushOsNav('/quality-control', pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole)}
+                onPress={() => openQcIssue(item.id, pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole)}
               >
                 <Text style={[s.punchPinT, { color: punchTone(item.severity, item.status) }]}>{item.photo_url ? '▣' : '!'}</Text>
               </Pressable>

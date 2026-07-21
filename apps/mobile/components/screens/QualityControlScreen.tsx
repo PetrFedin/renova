@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -12,7 +12,15 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
-import type { OsRole } from '@/constants/osSections';
+import { objectTabRoute, type OsRole } from '@/constants/osSections';
+
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
+
+function mediaUrl(path?: string | null) {
+  if (!path) return null;
+  if (path.startsWith('http')) return path;
+  return `${API_BASE}${path}`;
+}
 
 function statusLabel(status: string) {
   switch (status) {
@@ -85,6 +93,9 @@ function IssueCard({
         </View>
       </View>
       {item.description ? <Text style={styles.issueText}>{item.description}</Text> : null}
+      {mediaUrl(item.photo_url) ? (
+        <Image source={{ uri: mediaUrl(item.photo_url)! }} style={styles.issuePhoto} resizeMode="cover" />
+      ) : null}
       <View style={styles.issueFooter}>
         {item.stage_id ? (
           <PrimaryButton
@@ -97,6 +108,17 @@ function IssueCard({
                 '/quality-control',
                 role,
               )
+            }
+          />
+        ) : null}
+        {item.floor_plan_id ? (
+          <PrimaryButton
+            title="План"
+            variant="outline"
+            compact
+            onPress={() =>
+              // W121: обратно на план объекта (Fieldwire loop)
+              pushOsNav(objectTabRoute(role, 'plan'), '/quality-control', role)
             }
           />
         ) : null}
@@ -315,7 +337,13 @@ const styles = StyleSheet.create({
   cardBlock: { ...card, gap: RenovaTheme.spacing.sm },
   sectionTitle: { fontSize: RenovaTheme.fontSize.h3, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.bold },
   issueCard: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: RenovaTheme.radius.lg, padding: RenovaTheme.spacing.md, backgroundColor: RenovaTheme.colors.surface, gap: RenovaTheme.spacing.sm },
+  focusedCard: {
+    borderColor: RenovaTheme.colors.primary,
+    borderWidth: 2,
+    backgroundColor: '#EFF6FF',
+  },
   closedCard: { opacity: 0.7 },
+  issuePhoto: { width: '100%', height: 160, borderRadius: RenovaTheme.radius.md, backgroundColor: RenovaTheme.colors.surfaceMuted },
   issueHeader: { flexDirection: 'row', gap: RenovaTheme.spacing.sm, justifyContent: 'space-between', alignItems: 'flex-start' },
   issueMain: { flex: 1, minWidth: 0 },
   issueTitle: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.extrabold },
