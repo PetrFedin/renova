@@ -1,12 +1,14 @@
 /** Превью плана на неделю — одна строка-сводка + детали по ▼ */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { homeRowStyles, homeTypography } from '@/constants/homeTypography';
 import { api, CalendarData } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { calendarEventInRange, filterCalendarEventsForRole } from '@/lib/domain/calendarEvents';
 import { useOsNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 type DayGroup = { date: string; label: string; count: number; sample: string };
 
@@ -36,14 +38,16 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
   const [events, setEvents] = useState<{ date: string; title: string }[]>([]);
   const [expanded, setExpanded] = useState(false);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     api.getCalendar(userId, projectId).then((c: CalendarData) => {
       const from = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
       const to = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
       const week = filterCalendarEventsForRole(c.events, role).filter((e) => calendarEventInRange(e, from, to));
       setEvents(week);
-    }).catch(() => setEvents([]));
+    }).catch((e) => { reportError('components.renova.os.WeekScheduleStrip.Events', e); setEvents([]); });
   }, [userId, projectId, role]);
+  useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   const groups = useMemo(() => {
     const map = new Map<string, DayGroup>();

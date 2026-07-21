@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
+import { reportCatch } from '@/lib/reportError';
 
 export function useHubTab<T extends string>(
   allowed: readonly T[],
@@ -44,7 +45,7 @@ export function useHubTab<T extends string>(
   const setTab = useCallback((tab: T) => {
     setActive(tab);
     router.setParams({ tab });
-    if (persistKey) AsyncStorage.setItem(persistKey, tab).catch(() => {});
+    if (persistKey) AsyncStorage.setItem(persistKey, tab).catch(reportCatch('lib.useHubTab.1'));
   }, [persistKey]);
 
   return [active, setTab];

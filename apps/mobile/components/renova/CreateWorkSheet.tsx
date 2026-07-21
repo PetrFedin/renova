@@ -10,6 +10,11 @@ import { WorkFormSection } from '@/components/renova/work/WorkFormSection';
 import type { MarketEstimate } from '@/constants/regions';
 import { calcRoomMetrics } from '@/lib/calc-engine';
 import { api, Room, isRateLimitError } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertWorkCreated } from '@/lib/fieldCreateNav';
+import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 type Props = {
   visible: boolean;
@@ -51,6 +56,7 @@ export function CreateWorkSheet({
   onCreated,
   onCreatedWork,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const isCustomer = variant === 'customer';
   const [types, setTypes] = useState(WORK_TYPES_FALLBACK);
   const [workType, setWorkType] = useState('electrical');
@@ -155,15 +161,25 @@ export function CreateWorkSheet({
         notes: notes || null,
         publish,
       });
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
       await onCreatedWork?.(wo);
       onCreated();
       onClose();
       setCustomTitle('');
       setNotes('');
       setBudget('');
+      // W133: работа → график / карточка
+      const role = (isCustomer ? 'customer' : 'contractor') as OsRole;
+      alertWorkCreated(role, wo?.id);
     } catch (e) {
       if (isRateLimitError(e)) {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+      } else if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Работа отправится при подключении');
+        onClose();
       } else {
         Alert.alert('Ошибка', 'Не удалось создать работу');
       }

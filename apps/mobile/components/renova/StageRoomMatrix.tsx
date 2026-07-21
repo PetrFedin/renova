@@ -30,7 +30,7 @@ export function StageRoomMatrix({ rooms, stages, canEdit, onToggleLink }: Props)
       <View style={s.box}>
         <Text style={s.head}>Этапы × комнаты</Text>
         <Text style={s.empty}>Пока нет привязок этапов к комнатам.</Text>
-        <Pressable onPress={() => pushOsNav(repairTabRoute('contractor', 'works'), pathname)}>
+        <Pressable onPress={() => pushOsNav(repairTabRoute('contractor', 'works'), pathname, 'contractor')}>
           <Text style={s.link}>→ Настроить в «Ремонт»</Text>
         </Pressable>
       </View>

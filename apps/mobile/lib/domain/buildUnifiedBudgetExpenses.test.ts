@@ -40,6 +40,24 @@ if (!materialTarget || materialTarget.kind !== 'material' || materialTarget.pick
   throw new Error('material row mapping');
 }
 
+const purchaseExpenses = [
+  ...expenses,
+  { id: 'ex3', title: 'Закупка · Плитка', category: 'materials', amount: 600, status: 'confirmed', purchase_id: 'po-1', expense_date: '2026-06-03' },
+] as any[];
+const purchaseRows = buildUnifiedBudgetExpenses(
+  receipts,
+  purchaseExpenses,
+  rooms,
+  stages,
+  [
+    ...picks,
+    { id: 'p2', name: 'Клей', status: 'purchased', qty: 1, price: 200, total: 200, room_id: 'r1', stage_id: 's1' },
+  ] as any[],
+  [{ id: 'po-1', items: [{ material_pick_id: 'p1' }] }] as any[],
+);
+if (purchaseRows.some((row) => row.id === 'mp-p1')) throw new Error('purchase-covered pick must be hidden');
+if (!purchaseRows.some((row) => row.id === 'mp-p2')) throw new Error('uncovered purchased pick must remain visible');
+
 console.log('buildUnifiedBudgetExpenses.test OK');
 
 const approvedOnly = [

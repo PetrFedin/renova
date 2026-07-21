@@ -2,6 +2,8 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
 import { Stage } from '@/lib/api';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushStageDetail } from '@/lib/navigation';
 
@@ -19,6 +21,7 @@ export function ReworkSlaWidget({
   onExtended?: () => void;
 }) {
   const pathname = usePathname();
+  const { user, activeProject } = useRenova();
   const rework = stages.filter(s => s.needs_rework && s.rework_deadline);
   if (!rework.length) return null;
   return (
@@ -35,6 +38,11 @@ export function ReworkSlaWidget({
               variant="outline"
               onPress={async () => {
                 await api.extendReworkSla(userId, projectId, st.id, 1);
+                await syncProjectSideEffects({
+                  user: user ?? ({ id: userId } as any),
+                  project: activeProject ?? ({ id: projectId } as any),
+                  role,
+                });
                 onExtended?.();
               }}
             />

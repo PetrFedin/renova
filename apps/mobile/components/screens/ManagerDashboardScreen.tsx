@@ -8,6 +8,9 @@ import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import type { OsBudgetSummary, OsInsight, OsRisk } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 type LoadState = {
   budget: OsBudgetSummary | null;
@@ -43,24 +46,30 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint: s
 
 export function ManagerDashboardScreen() {
   const { user, activeProject } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [state, setState] = useState<LoadState>({ budget: null, risks: [], insights: [] });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!user || !activeProject) return;
+    setLoadError(false);
     try {
       const [budget, risks, insights] = await Promise.all([
-        api.osBudget(user.id, activeProject.id).catch(() => null),
-        api.osRisks(user.id, activeProject.id).then((r) => r.items).catch(() => []),
-        api.osInsights(user.id, activeProject.id).then((r) => r.items).catch(() => []),
+        api.osBudget(user.id, activeProject.id),
+        api.osRisks(user.id, activeProject.id).then((r) => r.items),
+        api.osInsights(user.id, activeProject.id).then((r) => r.items),
       ]);
       setState({ budget, risks, insights });
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [user, activeProject]);
+  useProjectDataReload(load);
 
   useEffect(() => { load(); }, [load]);
 
@@ -87,6 +96,15 @@ export function ManagerDashboardScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.stateTitle}>Не удалось загрузить сводку</Text>
+        <Text style={styles.stateText}>Ошибка API — не пустой «хороший» статус. Потяните вниз или откройте снова.</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={styles.screen}
@@ -103,7 +121,7 @@ export function ManagerDashboardScreen() {
         <Text style={styles.heroLabel}>Главный риск</Text>
         <Text style={[styles.heroTitle, { color: riskColor }]}>{topRisk?.title || riskLabel(budget?.risk)}</Text>
         <Text style={styles.heroText}>{topRisk?.impact || 'Критичных отклонений в текущей сводке нет.'}</Text>
-        {topRisk?.href ? <PrimaryButton title="Открыть риск" variant="outline" compact onPress={() => router.push(topRisk.href as never)} /> : null}
+        {topRisk?.href ? <PrimaryButton title="Открыть риск" variant="outline" compact onPress={() => pushOsNav(topRisk.href!, undefined, role)} /> : null}
       </View>
 
       <View style={styles.kpiGrid}>
@@ -134,7 +152,7 @@ export function ManagerDashboardScreen() {
           <Text style={styles.sectionTitle}>Что сделать первым</Text>
           <Text style={styles.itemTitle}>{topInsight.title}</Text>
           <Text style={styles.itemText}>{topInsight.body}</Text>
-          <PrimaryButton title={topInsight.action || 'Открыть'} variant="outline" onPress={() => router.push(topInsight.href as never)} />
+          <PrimaryButton title={topInsight.action || 'Открыть'} variant="outline" onPress={() => pushOsNav(topInsight.href, undefined, role)} />
         </View>
       ) : null}
 

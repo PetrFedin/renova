@@ -1,6 +1,6 @@
 /** Выбор проекта в шапке — группы «В работе» / «Завершённые» + портфель */
 import { useState, useEffect, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -11,6 +11,11 @@ import { api, type ProjectSummary } from '@/lib/api';
 import { formatProjectPhaseLabel } from '@/lib/domain/formatProjectPhaseLabel';
 import { summarizePortfolio } from '@/lib/domain/summarizePortfolio';
 import { partitionPortfolioProjects } from '@/lib/domain/portfolioProjects';
+import { ProjectBucketToolbar, type ProjectBucket } from '@/components/renova/ProjectBucketToolbar';
+import { useProjectBuckets } from '@/lib/hooks/useProjectBuckets';
+import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActions';
+import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
+import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import type { OsRole } from '@/constants/osSections';
 
 function projectMeta(p: ProjectSummary, pendingById: Record<string, number>): string {
@@ -39,6 +44,9 @@ function ProjectPickerRow({
   busy,
   pendingById,
   onSelect,
+  bucket = 'active',
+  canManageProject = false,
+  lifecycle,
 }: {
   p: ProjectSummary;
   active: boolean;
@@ -46,29 +54,50 @@ function ProjectPickerRow({
   busy: boolean;
   pendingById: Record<string, number>;
   onSelect: (id: string) => void;
+  bucket?: ProjectBucket;
+  canManageProject?: boolean;
+  lifecycle?: {
+    onArchive?: () => void;
+    onTrash?: () => void;
+    onRestore?: () => void;
+    onUnarchive?: () => void;
+    onPurge?: () => void;
+  };
 }) {
   return (
-    <Pressable
-      style={[s.item, active && s.itemOn]}
-      onPress={() => onSelect(p.id)}
-      disabled={busy}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-    >
-      <View style={s.itemBody}>
-        <Text style={[s.itemTitle, active && s.itemTitleOn]} numberOfLines={1}>{p.name}</Text>
-        <Text style={s.itemMeta} numberOfLines={2}>{projectMeta(p, pendingById)}</Text>
-        <Text style={s.itemProgress} numberOfLines={1}>
-          {formatRub(p.budget_spent)} из {formatRub(p.budget_planned)}
-          {p.progress_percent < 100 ? ` · работы ${p.progress_percent}%` : ''}
-        </Text>
-      </View>
-      {loading ? (
-        <ActivityIndicator size="small" color={RenovaTheme.colors.accent} />
-      ) : active ? (
-        <Ionicons name="checkmark-circle" size={20} color={RenovaTheme.colors.accent} />
+    <View style={[s.itemWrap, canManageProject && s.itemWithActions, active && s.itemOn]} pointerEvents="box-none">
+      <Pressable
+        style={s.item}
+        onPress={() => onSelect(p.id)}
+        disabled={busy || bucket !== 'active'}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+      >
+        <View style={s.itemBody}>
+          <Text style={[s.itemTitle, active && s.itemTitleOn]} numberOfLines={1}>{p.name}</Text>
+          <Text style={s.itemMeta} numberOfLines={2}>{projectMeta(p, pendingById)}</Text>
+          <Text style={s.itemProgress} numberOfLines={1}>
+            {formatRub(p.budget_spent)} из {formatRub(p.budget_planned)}
+            {p.progress_percent < 100 ? ` · работы ${p.progress_percent}%` : ''}
+          </Text>
+        </View>
+        {loading ? (
+          <ActivityIndicator size="small" color={RenovaTheme.colors.accent} />
+        ) : active && bucket === 'active' ? (
+          <Ionicons name="checkmark-circle" size={20} color={RenovaTheme.colors.accent} />
+        ) : null}
+      </Pressable>
+      {canManageProject ? (
+        <ProjectCardLifecycleIcons
+          bucket={bucket}
+          onArchive={lifecycle?.onArchive}
+          onTrash={lifecycle?.onTrash}
+          onRestore={lifecycle?.onRestore}
+          onUnarchive={lifecycle?.onUnarchive}
+          onPurge={lifecycle?.onPurge}
+        />
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -76,46 +105,59 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
   const pathname = usePathname();
   const topInset = useTopInset();
   const { pushTab, pushScreen } = useOsNavFromHere(role);
-  const { user, projects, activeProject, loadProject, showPaywall } = useRenova();
+  const { user, projects, activeProject, loadProject, showPaywall, readOnly } = useRenova();
+  const canManageBuckets = user?.role === 'customer' && !readOnly;
   const [open, setOpen] = useState(false);
+  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, reload: reloadBuckets } = useProjectBuckets(open ? user?.id : undefined, canManageBuckets);
+  const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
 
   const portfolio = useMemo(() => summarizePortfolio(projects, pendingById), [projects, pendingById]);
+  const displayProjects = bucket === 'active' ? projects : bucketItems;
   const { inProgress, completed } = useMemo(
-    () => partitionPortfolioProjects(projects, pendingById),
-    [projects, pendingById],
+    () => partitionPortfolioProjects(displayProjects, pendingById),
+    [displayProjects, pendingById],
   );
-  const showPortfolioRow = projects.length >= 2;
+  const showPortfolioRow = projects.length >= 2 && bucket === 'active';
   const isPortfolioScreen = pathname.includes('/portfolio');
 
   useEffect(() => {
     if (!open || !user) return;
-    const closing = projects.filter((p) => p.progress_percent >= 100);
-    if (!closing.length) {
-      setPendingById({});
-      return;
+    const fromSummary: Record<string, number> = {};
+    for (const p of displayProjects) {
+      if (p.pending_payments != null) fromSummary[p.id] = p.pending_payments;
     }
+    setPendingById(fromSummary);
+
+    const closing = displayProjects.filter((p) => p.progress_percent >= 100 && p.pending_payments == null);
+    if (!closing.length) return;
+
     let cancelled = false;
-    Promise.all(
-      closing.map(async (p) => {
-        if (p.pending_payments != null) return [p.id, p.pending_payments] as const;
-        try {
-          const n = (await api.countPendingPayments(user.id, p.id)) || 0;
-          return [p.id, n] as const;
-        } catch {
-          return [p.id, 0] as const;
-        }
-      }),
-    ).then((rows) => {
-      if (!cancelled) setPendingById(Object.fromEntries(rows));
-    });
-    return () => { cancelled = true; };
-  }, [open, user?.id, projects]);
+    const t = setTimeout(() => {
+      Promise.all(
+        closing.map(async (p) => {
+          try {
+            const n = (await api.countPendingPayments(user.id, p.id)) || 0;
+            return [p.id, n] as const;
+          } catch {
+            return [p.id, 0] as const;
+          }
+        }),
+      ).then((rows) => {
+        if (!cancelled) setPendingById((prev) => ({ ...prev, ...Object.fromEntries(rows) }));
+      });
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [open, user?.id, displayProjects]);
 
   if (!activeProject || projects.length === 0) return null;
 
   async function select(id: string) {
+    if (bucket !== 'active') return;
     if (busyId) return;
     if (id === activeProject?.id) {
       setOpen(false);
@@ -158,10 +200,23 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={s.backdrop}>
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} accessibilityLabel="Закрыть" />
-          <View style={[s.menuWrap, { paddingTop: topInset + 56, maxHeight: '85%' }]}>
-            <ScrollView style={s.menuScroll} contentContainerStyle={s.menuScrollIn} bounces={false}>
+          <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
+            <ScrollView
+              style={s.menuScroll}
+              contentContainerStyle={s.menuScrollIn}
+              bounces={false}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={Platform.OS === 'web'}
+              nestedScrollEnabled
+            >
               <View style={s.menu}>
                 <Text style={s.menuHead}>Объекты</Text>
+                <ProjectBucketToolbar bucket={bucket} onChange={setBucket} archivedCount={archivedCount} trashedCount={trashedCount} canManage={canManageBuckets} />
+                {bucket === 'trashed' && canManageBuckets && trashedCount > 0 ? (
+                  <Pressable style={s.emptyTrashBtn} onPress={emptyTrash}>
+                    <Text style={s.emptyTrashT}>Очистить корзину</Text>
+                  </Pressable>
+                ) : null}
 
                 {showPortfolioRow ? (
                   <>
@@ -207,6 +262,9 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                         busy={!!busyId}
                         pendingById={pendingById}
                         onSelect={select}
+                        bucket={bucket}
+                        canManageProject={canManageProjectLifecycle(p, user?.role, readOnly)}
+                        lifecycle={lifecycleHandlers(p.id)}
                       />
                     ))}
                   </>
@@ -224,9 +282,18 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                         busy={!!busyId}
                         pendingById={pendingById}
                         onSelect={select}
+                        bucket={bucket}
+                        canManageProject={canManageProjectLifecycle(p, user?.role, readOnly)}
+                        lifecycle={lifecycleHandlers(p.id)}
                       />
                     ))}
                   </>
+                ) : null}
+
+                {!inProgress.length && !completed.length ? (
+                  <Text style={s.emptyBucket}>
+                    {bucket === 'active' ? 'Нет проектов' : bucket === 'archived' ? 'Архив пуст' : 'Корзина пуста'}
+                  </Text>
                 ) : null}
 
                 <View style={s.divider} />
@@ -240,16 +307,18 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                   <Ionicons name="create-outline" size={18} color={RenovaTheme.colors.textMuted} />
                   <Text style={s.itemT}>Редактировать профиль</Text>
                 </Pressable>
-                <Pressable
-                  style={s.item}
-                  onPress={() => {
-                    setOpen(false);
-                    pushScreen('/wizard/type');
-                  }}
-                >
-                  <Ionicons name="add-circle-outline" size={18} color={RenovaTheme.colors.accent} />
-                  <Text style={[s.itemT, { color: RenovaTheme.colors.accent }]}>Новый проект</Text>
-                </Pressable>
+                {bucket === 'active' ? (
+                  <Pressable
+                    style={s.item}
+                    onPress={() => {
+                      setOpen(false);
+                      pushScreen('/wizard/type');
+                    }}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color={RenovaTheme.colors.accent} />
+                    <Text style={[s.itemT, { color: RenovaTheme.colors.accent }]}>Новый проект</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </ScrollView>
           </View>
@@ -285,8 +354,22 @@ const s = StyleSheet.create({
   },
   countBadgeT: { color: RenovaTheme.colors.surface, fontSize: 8, fontWeight: '800' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
-  menuWrap: { position: 'absolute', top: 0, right: 12, left: 12, alignItems: 'flex-end' },
-  menuScroll: { maxWidth: 340, width: '100%' },
+  menuWrap: {
+    position: 'absolute',
+    top: 0,
+    right: 12,
+    left: 12,
+    alignItems: 'flex-end',
+    maxHeight: '85%',
+    overflow: 'hidden',
+  },
+  menuScroll: {
+    maxWidth: 340,
+    width: '100%',
+    flex: 1,
+    minHeight: 0,
+    ...(Platform.OS === 'web' ? { overflowY: 'auto' as const, maxHeight: 'min(85vh, 640px)' } : null),
+  },
   menuScrollIn: { alignItems: 'flex-end' },
   menu: {
     minWidth: 280,
@@ -319,14 +402,29 @@ const s = StyleSheet.create({
     paddingBottom: 4,
   },
   sectionHeadGap: { marginTop: 4, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.borderLight },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
+  itemWrap: { paddingBottom: 4, position: 'relative', minHeight: 72 },
+  item: { position: 'relative' as const,
+ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
   portfolioItem: { backgroundColor: RenovaTheme.colors.borderLight },
   itemOn: { backgroundColor: RenovaTheme.colors.infoBg },
-  itemBody: { flex: 1, minWidth: 0 },
+  itemBody: { flex: 1, minWidth: 0, paddingRight: 8 },
+  itemWithActions: { paddingBottom: 36 },
+  itemStatus: { alignSelf: 'flex-start', marginTop: 2 },
   itemTitle: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
   itemTitleOn: { color: RenovaTheme.colors.accent },
   itemMeta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2, lineHeight: 16 },
   itemProgress: { fontSize: 11, color: RenovaTheme.colors.textSubtle, marginTop: 4 },
   itemT: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
+  emptyTrashBtn: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingVertical: 8,
+    borderRadius: RenovaTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.dangerBorder,
+    alignItems: 'center',
+  },
+  emptyTrashT: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.danger },
+  emptyBucket: { fontSize: 12, color: RenovaTheme.colors.textMuted, paddingHorizontal: 16, paddingVertical: 8 },
 });

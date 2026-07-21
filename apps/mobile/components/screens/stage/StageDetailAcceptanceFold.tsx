@@ -1,16 +1,20 @@
-/** Приёмка above fold: фото результата → чеклист → принять/вернуть */
+/** Приёмка above fold: фото результата → чеклист → принять/вернуть (W139: оценка только явно) */
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, Image } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { QualityScorePicker } from '@/components/renova/QualityScorePicker';
 import { PhotoCompare } from '@/components/renova/PhotoCompare';
 import { PhotoSwipeCompare } from '@/components/renova/PhotoSwipeCompare';
 import type { StageDetail } from '@/lib/api';
 
 type StagePhoto = StageDetail['photos'][number];
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { api } from '@/lib/api';
 import { addCustomCheck } from '@/lib/customChecklist';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 type WfCheck = { id: string; text: string; done: boolean };
 
@@ -29,8 +33,9 @@ type Props = {
   after: StagePhoto[];
   swipeOpen: boolean;
   setSwipeOpen: (v: boolean) => void;
-  onAcceptPress: () => void;
-  onRejectPress: () => void;
+  /** qualityScore: null = без оценки (не подставляем 10/5) */
+  onAcceptPress: (qualityScore: number | null) => void;
+  onRejectPress: (qualityScore: number | null) => void;
   onExportAcceptance: () => void;
   onReload: () => Promise<void>;
 };
@@ -55,12 +60,19 @@ export function StageDetailAcceptanceFold({
   onExportAcceptance,
   onReload,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const [newCheck, setNewCheck] = useState('');
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const syncAfter = () =>
+    syncProjectSideEffects({
+      user: user ?? ({ id: userId } as any),
+      project: activeProject ?? ({ id: projectId } as any),
+    });
 
   return (
     <View style={s.wrap}>
       <Text style={s.head}>Приёмка работ</Text>
-      <Text style={s.sub}>Проверьте результат по фото и чеклисту — затем примите или верните на доработку.</Text>
+      <Text style={s.sub}>Проверьте результат по фото и чеклисту — затем примите или верните на доработку. Оценка качества не заполняется автоматически.</Text>
 
       {before.length > 0 || after.length > 0 ? (
         <>
@@ -87,8 +99,13 @@ export function StageDetailAcceptanceFold({
             style={s.checkRow}
             onPress={async () => {
               if (wf) {
-                await api.toggleStageChecklist(userId, projectId, stage.id, wf.id, !wf.done);
-                await onReload();
+                try {
+                  await api.toggleStageChecklist(userId, projectId, stage.id, wf.id, !wf.done);
+                  await onReload();
+                  await syncAfter();
+                } catch (e) {
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Чеклист этапа');
+                }
               } else {
                 setChecks((x) => ({ ...x, [c]: !x[c] }));
               }
@@ -99,8 +116,18 @@ export function StageDetailAcceptanceFold({
         );
       })}
 
-      <PrimaryButton title="Принять этап" disabled={acceptBlocked || !canWrite} onPress={onAcceptPress} />
-      <PrimaryButton title="Вернуть на доработку" variant="dangerOutline" disabled={!canWrite} onPress={onRejectPress} />
+      {canWrite ? <QualityScorePicker value={qualityScore} onChange={setQualityScore} /> : null}
+      <PrimaryButton
+        title="Принять этап"
+        disabled={acceptBlocked || !canWrite}
+        onPress={() => onAcceptPress(qualityScore)}
+      />
+      <PrimaryButton
+        title="Вернуть на доработку"
+        variant="dangerOutline"
+        disabled={!canWrite}
+        onPress={() => onRejectPress(qualityScore)}
+      />
       <PrimaryButton title="Акт приёмки (PDF)" variant="outline" onPress={onExportAcceptance} />
 
       <TextInput style={s.input} placeholder="Свой пункт чеклиста…" value={newCheck} onChangeText={setNewCheck} />
@@ -112,10 +139,11 @@ export function StageDetailAcceptanceFold({
           await addCustomCheck(stageId, newCheck);
           setNewCheck('');
           await onReload();
+          await syncAfter();
         }}
       />
 
-      {acceptBlocked ? <Text style={s.meta}>Отметьте все пункты для приёмки</Text> : null}
+      {acceptBlocked ? <Text style={s.meta}>Нужны фото результата и отмеченный чеклист (если есть пункты)</Text> : null}
       {!acceptBlocked && checklist.length === 0 ? (
         <Text style={s.meta}>Чеклист пуст — при приёмке будет запрос подтверждения</Text>
       ) : null}

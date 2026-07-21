@@ -1,13 +1,18 @@
 /** Детализация расхода — просмотр, правка и удаление */
 import { useEffect, useState } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, TextInput, Alert } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
 import { api, type OsExpense, type ProjectDetail, type ReceiptItem, type Room, type Stage } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertExpenseUpdated, alertExpenseDeleted } from '@/lib/siteOpsNav';
+import type { OsRole } from '@/constants/osSections';
 import { EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 export type ExpenseDetailTarget =
   | { kind: 'expense'; item: OsExpense }
@@ -34,7 +39,9 @@ export function ExpenseDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   const pathname = usePathname();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [amountText, setAmountText] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<ExpenseCategoryId>('materials');
@@ -104,9 +111,20 @@ export function ExpenseDetailSheet({
           stage_id: stageId,
         });
       }
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? project ?? ({ id: projectId } as any),
+      });
       onChanged?.();
       onClose();
+      // W136: правка → расходы / сводка
+      alertExpenseUpdated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
     } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Изменения траты отправятся при подключении');
+        onClose();
+        return;
+      }
       const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось сохранить изменения';
       Alert.alert('Ошибка', msg);
     } finally {
@@ -129,11 +147,21 @@ export function ExpenseDetailSheet({
             } else {
               await api.deleteOsExpense(userId, projectId, target.item.id);
             }
+            await syncProjectSideEffects({
+              user: user ?? ({ id: userId } as any),
+              project: activeProject ?? project ?? ({ id: projectId } as any),
+            });
             onChanged?.();
             onClose();
+            alertExpenseDeleted((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
           } catch (e: unknown) {
-            const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось удалить';
-            Alert.alert('Ошибка', msg);
+            if (e instanceof Error && e.message === 'offline_queued') {
+              Alert.alert('Офлайн', 'Удаление отправится при подключении');
+              onClose();
+            } else {
+              const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось удалить';
+              Alert.alert('Ошибка', msg);
+            }
           } finally {
             setBusy(false);
           }
@@ -186,7 +214,7 @@ export function ExpenseDetailSheet({
           {room ? (
             <View style={s.row}>
               <Text style={s.label}>Комната</Text>
-              <Pressable onPress={() => { onClose(); router.push({ pathname: `/room/${room.id}`, params: { returnTo: pathname } } as any); }}>
+              <Pressable onPress={() => { onClose(); pushOsNav({ pathname: '/room/[id]', params: { id: room.id } }, pathname, role); }}>
                 <Text style={s.link}>{room.name}</Text>
               </Pressable>
             </View>
@@ -194,7 +222,7 @@ export function ExpenseDetailSheet({
           {stage ? (
             <View style={s.row}>
               <Text style={s.label}>Этап</Text>
-              <Pressable onPress={() => { onClose(); router.push({ pathname: `/stage/${stage.id}`, params: { returnTo: pathname } } as any); }}>
+              <Pressable onPress={() => { onClose(); pushOsNav({ pathname: '/stage/[id]', params: { id: stage.id } }, pathname, role); }}>
                 <Text style={s.link}>{stage.name}</Text>
               </Pressable>
             </View>

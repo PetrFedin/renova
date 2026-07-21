@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'expo-router';
-import { ScrollView, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams, usePathname } from 'expo-router';
+import { ScrollView, StyleSheet, Alert } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, ChangeOrder, MaterialStats } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -20,11 +22,14 @@ import {
 import { estimateTotals, type EstimateLineTypeFilter } from '@/lib/domain/estimateFilters';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { showEstimateCategoryFilters } from '@/lib/detailLevelPolicy';
+import { alertEstimateLocked, alertEstimateLockRejected } from '@/lib/estimatePayNav';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => void }) {
   const pathname = usePathname();
+  const { estimateLayer: estimateLayerParam } = useLocalSearchParams<{ estimateLayer?: string }>();
   const detailLevel = useDetailLevel();
   const canWrite = useWriteAllowed();
   const { user, activeProject, loadProject } = useRenova();
@@ -33,12 +38,37 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const [layer, setLayer] = useState<EstimateLayer>('summary');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
+  const [clearingProposal, setClearingProposal] = useState(false);
+  const [locking, setLocking] = useState(false);
+  const [lockDiff, setLockDiff] = useState<Awaited<ReturnType<typeof api.getEstimateLockDiff>> | null>(null);
+
+  /** W95: CO от исполнителя / lock — обновить без remount вкладки сметы */
+  const reloadEstimateSurface = useCallback(() => {
+    if (!user || !activeProject) return;
+    api.materialStats(user.id, activeProject.id).then(setStats).catch(reportCatch('components.screens.estimate.CustomerEstimateView.1'));
+    api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(reportCatch('components.screens.estimate.CustomerEstimateView.2'));
+    if (activeProject.estimate_lock_proposed_at && !activeProject.estimate_locked_at) {
+      api.getEstimateLockDiff(user.id, activeProject.id).then(setLockDiff).catch((e) => { reportError('components.screens.estimate.CustomerEsti.LockDiff', e); setLockDiff(null); });
+    } else {
+      setLockDiff(null);
+    }
+  }, [
+    user?.id,
+    activeProject?.id,
+    activeProject?.estimate_lock_proposed_at,
+    activeProject?.estimate_locked_at,
+  ]);
 
   useEffect(() => {
-    if (!user || !activeProject) return;
-    api.materialStats(user.id, activeProject.id).then(setStats).catch(() => {});
-    api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(() => {});
-  }, [user, activeProject?.id]);
+    reloadEstimateSurface();
+  }, [reloadEstimateSurface]);
+  useProjectDataReload(reloadEstimateSurface);
+
+  useEffect(() => {
+    if (typeof estimateLayerParam === 'string' && estimateLayerParam) {
+      setLayer(normalizeEstimateLayer(estimateLayerParam));
+    }
+  }, [estimateLayerParam]);
 
   const allLines = activeProject?.estimate_lines || [];
   const totals = useMemo(() => estimateTotals(allLines), [allLines]);
@@ -60,7 +90,7 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
-      <ObjectTabGuide tab="estimate" onNextTab={onNextTab} compact />
+      <ObjectTabGuide tab="estimate" onNextTab={onNextTab} />
       <ReadOnlyBanner />
 
       <OsHubTabs tabs={tabs} value={activeLayer} onChange={(id) => setLayer(normalizeEstimateLayer(id))} />
@@ -73,6 +103,50 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
           roomsCount={roomsCount}
           stagesCount={stagesCount}
           pendingChanges={pendingOrders.length}
+          lockDiff={lockDiff}
+          canLock={
+            canWrite
+            && (activeProject.estimate_lines?.length || 0) > 0
+            && Boolean(activeProject.estimate_lock_proposed_at || !activeProject.contractor_id)
+          }
+          locking={locking}
+          canRejectProposal={
+            canWrite
+            && Boolean(activeProject.estimate_lock_proposed_at)
+            && Boolean(activeProject.contractor_id)
+          }
+          clearingProposal={clearingProposal}
+          onLockEstimate={async () => {
+            if (!user || !activeProject) return;
+            setLocking(true);
+            try {
+              await api.lockEstimate(user.id, activeProject.id);
+              await loadProject(activeProject.id);
+              await syncProjectSideEffects({ user, project: activeProject });
+              // W131: lock → договор / график
+              alertEstimateLocked('customer');
+            } catch (e: unknown) {
+              if (e instanceof Error && e.message === 'offline_queued') {
+                Alert.alert('Офлайн', 'Фиксация сметы отправится при подключении');
+              } else {
+                throw e;
+              }
+            } finally {
+              setLocking(false);
+            }
+          }}
+          onRejectProposal={async () => {
+            if (!user || !activeProject) return;
+            setClearingProposal(true);
+            try {
+              await api.rejectEstimateLock(user.id, activeProject.id, 'Нужна правка сметы');
+              await loadProject(activeProject.id);
+              await syncProjectSideEffects({ user, project: activeProject });
+              alertEstimateLockRejected('customer');
+            } finally {
+              setClearingProposal(false);
+            }
+          }}
         />
       )}
 

@@ -4,7 +4,8 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { api, type MaterialPick, type OsExpense, type ReceiptItem } from '@/lib/api';
+import { api, isRateLimitError, type MaterialPick, type OsExpense, type Purchase, type ReceiptItem } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { ExpenseByCategory } from '@/components/renova/ExpenseByCategory';
 import { ExpenseByFloor } from '@/components/renova/ExpenseByFloor';
@@ -22,18 +23,21 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 import { buildUnifiedBudgetExpenses, unifiedExpenseTotal } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { budgetTabHref } from '@/constants/osSections';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 function budgetAnalyticsReturnTo(role: 'customer' | 'contractor') {
   return budgetTabHref(role, 'deviations');
 }
 
 export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
-  const { user, activeProject, loadProject, readOnly } = useRenova();
+  const { user, activeProject, readOnly } = useRenova();
   const canWrite = useWriteAllowed();
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [expenses, setExpenses] = useState<OsExpense[]>([]);
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [apiSummary, setApiSummary] = useState<{ receipts_total: number; expenses_total?: number } | null>(null);
   const [osBudget, setOsBudget] = useState<import('@/lib/api').OsBudgetSummary | null>(null);
   const [kpiPoints, setKpiPoints] = useState<{ id: string; label: string; margin: number }[]>([]);
@@ -43,25 +47,29 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     openExpenseRowTarget(row, receipts, expenses, picks, {
       returnTo: budgetAnalyticsReturnTo(user?.role === 'contractor' ? 'contractor' : 'customer'),
       onDetail: setExpenseDetail,
+      role: user?.role === 'contractor' ? 'contractor' : 'customer',
     });
   }, [receipts, expenses, picks, user?.role]);
 
+  /** Не вызываем loadProject — дублировал getProject и ловил rate_limit storm */
   const reload = useCallback(async () => {
     if (!user || !activeProject) return;
     setLoading(true);
     try {
-      await loadProject(activeProject.id);
-      const [rc, ex, pk, sm, ob, kh] = await Promise.all([
-        api.listReceipts(user.id, activeProject.id).catch(() => [] as ReceiptItem[]),
-        api.osExpenses(user.id, activeProject.id).catch(() => [] as OsExpense[]),
-        api.listMaterialPicks(user.id, activeProject.id).catch(() => [] as MaterialPick[]),
-        api.expensesSummary(user.id, activeProject.id).catch(() => null),
-        api.osBudget(user.id, activeProject.id).catch(() => null),
-        api.kpiHistory(user.id, activeProject.id).catch(() => []),
+      setLoadError(false);
+      const [rc, ex, pk, pur, sm, ob, kh] = await Promise.all([
+        api.listReceipts(user.id, activeProject.id),
+        api.osExpenses(user.id, activeProject.id),
+        api.listMaterialPicks(user.id, activeProject.id),
+        api.listPurchases(user.id, activeProject.id),
+        api.expensesSummary(user.id, activeProject.id),
+        api.osBudget(user.id, activeProject.id),
+        api.kpiHistory(user.id, activeProject.id),
       ]);
       setReceipts(rc);
       setExpenses(ex);
       setPicks(pk);
+      setPurchases(pur);
       setApiSummary(sm);
       setOsBudget(ob);
       setKpiPoints((kh as { margin: number; at: string }[]).slice(-6).map((p) => ({
@@ -69,16 +77,28 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
         label: p.at.slice(5, 10),
         margin: p.margin,
       })));
+    } catch (e) {
+      if (isRateLimitError(e)) return;
+      setLoadError(true);
+      if (__DEV__) console.warn('[ProjectAnalyticsPanel]', e);
     } finally {
       setLoading(false);
     }
-  }, [user?.id, activeProject?.id, loadProject]);
+  }, [user?.id, activeProject?.id]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('analytics.reload')); }, [reload]));
+  useProjectDataReload(reload);
 
   if (!user || !activeProject) {
     const role = user?.role === 'contractor' ? 'contractor' : 'customer';
     return <ProjectEmptyState role={role} />;
+  }
+  if (loadError && !loading) {
+    return (
+      <Text style={{ padding: 12, color: RenovaTheme.colors.textMuted, fontSize: 13 }}>
+        Аналитика не загрузилась — цифры скрыты, чтобы не показывать ложный ноль. Обновите экран.
+      </Text>
+    );
   }
 
   if (loading) {
@@ -89,7 +109,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   const stages = activeProject.stages || [];
   const lines = activeProject.estimate_lines || [];
   const receiptTotal = apiSummary?.receipts_total ?? receipts.reduce((a, r) => a + r.amount, 0);
-  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks);
+  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks, purchases);
   const listTotal = unifiedExpenseTotal(unifiedRows);
 
   const planFact = resolveBudgetFigures(activeProject, osBudget);
@@ -128,6 +148,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
         receipts={receipts}
         expenses={expenses}
         picks={picks}
+        purchases={purchases}
         rooms={rooms}
         stages={stages}
         compact={!full}
@@ -144,7 +165,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
       projectId={activeProject?.id}
       editable={canWrite && !readOnly}
       onClose={() => setExpenseDetail(null)}
-      onChanged={() => { reload().catch(() => {}); }}
+      onChanged={() => { reload().catch(reportCatch('analytics.reload')); }}
     />
     </>
   );

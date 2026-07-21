@@ -1,13 +1,17 @@
 /** Деталь материала — подбор / закупка */
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Linking, Pressable } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, MaterialPick, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
-import { repairTabHref } from '@/constants/osSections';
+import { repairTabRoute } from '@/constants/osSections';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
 import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
 
@@ -40,6 +44,7 @@ export default function MaterialDetailScreen() {
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   if (loading) {
     return (
@@ -73,7 +78,7 @@ export default function MaterialDetailScreen() {
           <Text style={s.row}><Text style={s.label}>Цена</Text> {formatRub(pick.price)} · итого {formatRub(pick.total)}</Text>
           {room && <Text style={s.row}><Text style={s.label}>Комната</Text> {room.name}</Text>}
           {stage && (
-            <Pressable onPress={() => router.push({ pathname: '/stage/[id]', params: { id: stage.id, returnTo: `/material/${pick.id}` } } as any)}>
+            <Pressable onPress={() => pushOsNav({ pathname: '/stage/[id]', params: { id: stage.id } }, `/material/${pick.id}`)}>
               <Text style={s.row}><Text style={s.label}>Этап</Text> <Text style={s.link}>{stage.name}</Text></Text>
             </Pressable>
           )}
@@ -92,16 +97,17 @@ export default function MaterialDetailScreen() {
         {pick.status === 'purchased' && deliveredPurchase && cancelStatus && role === 'contractor' && user && activeProject && (
           <PrimaryButton title={purchaseAdvanceLabel(cancelStatus)} variant="outline" onPress={async () => {
             await api.updatePurchaseStatus(user.id, activeProject.id, deliveredPurchase.id, cancelStatus);
+            await syncProjectSideEffects({ user, project: activeProject });
             reload();
           }} />
         )}
         {role === 'customer' && pick.status === 'pending' && user && activeProject && (
-          <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(user.id, activeProject.id, pick.id); reload(); }} />
+          <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); alertMaterialPickApproved(role); }} />
         )}
         {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
-          <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); reload(); }} />
+          <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); alertMaterialPickSubmitted(role); }} />
         )}
-        <PrimaryButton title="Все материалы" variant="outline" onPress={() => router.replace(repairTabHref(role, 'materials') as any)} />
+        <PrimaryButton title="Все материалы" variant="outline" onPress={() => replaceOsNav(repairTabRoute(role, 'materials'), undefined, role)} />
       </ScrollView>
     </>
   );

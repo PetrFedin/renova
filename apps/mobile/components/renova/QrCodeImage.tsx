@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Image, View, StyleSheet } from 'react-native';
 import QRCode from 'qrcode';
+import { reportError } from '@/lib/reportError';
 
 export function QrCodeImage({ value, size = 200 }: { value: string; size?: number }) {
   const [uri, setUri] = useState<string | null>(null);
@@ -13,7 +14,7 @@ export function QrCodeImage({ value, size = 200 }: { value: string; size?: numbe
     }
     QRCode.toDataURL(value, { width: size, margin: 1 })
       .then((data) => setUri(data))
-      .catch(() => setUri(null));
+      .catch((e) => { reportError('components.renova.QrCodeImage.Uri', e); setUri(null); });
   }, [value, size]);
 
   if (!uri) return null;

@@ -10,16 +10,16 @@ import { RepairControlSummary } from '@/components/renova/RepairControlSummary';
 import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
 import { BUDGET_SEGMENT_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
-import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, ReceiptItem, Room, Stage } from '@/lib/api';
-import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
+import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, Purchase, ReceiptItem, Room, Stage } from '@/lib/api';
+import { buildUnifiedBudgetExpenses, rowToExpenseTarget } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import { formatForecastOverLabel } from '@/lib/domain/formatBudgetHint';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
 import { BudgetPeriodDetailSection } from '@/components/screens/budget/BudgetPeriodDetailSection';
 import { parseBudgetFocus, parseBudgetPeriod } from '@/constants/budgetPeriod';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
-import type { OsRole } from '@/constants/osSections';
-import { budgetTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, objectTabRoute, type OsRole } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 type Props = {
   userId: string;
   projectId: string;
@@ -32,6 +32,7 @@ type Props = {
   budgetAlerts: BudgetAlert[];
   expenses: OsExpense[];
   pendingPayments: Payment[];
+  purchases?: Purchase[];
   stages?: Stage[];
   rooms?: Room[];
   picks?: MaterialPick[];
@@ -50,22 +51,34 @@ type Props = {
 export function BudgetSummarySection(props: Props) {
   const {
     userId, projectId, summary, summaryWidgets, figures, riskColor, receipts, payments,
-    budgetAlerts, expenses, pendingPayments, stages = [], rooms = [], picks = [], bwVisible, role, readOnly, customerBudget,
+    budgetAlerts, expenses, pendingPayments, purchases = [], stages = [], rooms = [], picks = [], bwVisible, role, readOnly, customerBudget,
     projectStart, projectEnd, periodParam, focusParam, onPaymentPress, onExpensePress,
   } = props;
   const pathname = usePathname();
-  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks);
+  const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks, purchases);
   const period = parseBudgetPeriod(periodParam);
   const focus = parseBudgetFocus(focusParam);
 
   const showRepairControl = bwVisible('repair_control');
+  const margin = figures.planned - figures.spent;
+  const showMargin = role === 'contractor';
 
   const onRowPress = (row: ExpenseDetailRow) => {
-    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress });
+    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress, role });
   };
 
   return (
     <>
+      {showMargin ? (
+        <View style={s.limitCard}>
+          <Text style={s.limitTitle}>Маржа (план − факт)</Text>
+          <Text style={s.limitVal}>{formatRub(margin)}</Text>
+          <Text style={s.dataHint}>
+            План {formatRub(figures.planned)} · факт {formatRub(figures.spent)}
+            {figures.planned > 0 ? ` · ${Math.round((margin / figures.planned) * 100)}%` : ''}
+          </Text>
+        </View>
+      ) : null}
       {customerBudget ? (
         <View style={s.limitCard}>
           <Text style={s.limitTitle}>Лимит заказчика</Text>
@@ -84,9 +97,44 @@ export function BudgetSummarySection(props: Props) {
         </View>
       )}
 
+      {(summary?.change_orders?.length ?? 0) > 0 ? (
+        <View style={s.limitCard}>
+          <Text style={s.limitTitle}>Доп. работы (ДО)</Text>
+          <Text style={s.limitVal}>
+            {formatRub(summary?.change_orders_approved_sum ?? 0)}
+          </Text>
+          <Text style={s.dataHint}>
+            В плане бюджета · согласованные ДО. Черновик на подпись — в Документах.
+          </Text>
+          {(summary?.change_orders ?? []).slice(0, 4).map((co) => (
+            <Pressable
+              key={co.id}
+              onPress={() => {
+                // W121: ДО → слой сметы «Изменения» (Buildertrend CO chain)
+                const route = objectTabRoute(role, 'estimate');
+                pushOsNav(
+                  { pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } },
+                  pathname,
+                  role,
+                );
+              }}
+              style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border }}
+            >
+              <Text style={{ fontWeight: '700', color: RenovaTheme.colors.text }}>
+                {co.title} · {formatRub(co.amount)}
+              </Text>
+              <Text style={s.dataHint}>
+                {co.status === 'approved' ? 'Согласовано' : co.status === 'pending' ? 'На согласовании' : co.status}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {bwVisible('summary_kpi') && (
+
         <>
-          <OsWidgetGrid items={summaryWidgets} title="Сводка" returnTo={pathname} />
+          <OsWidgetGrid items={summaryWidgets} title="Сводка" returnTo={pathname} role={role} />
           <BudgetFactStatus
             serverFact={summary?.budget_spent ?? figures.spent}
             listTotal={unifiedRows.reduce((a, r) => a + r.amount, 0)}
@@ -131,6 +179,7 @@ export function BudgetSummarySection(props: Props) {
             rooms={rooms}
             picks={picks}
             returnTo={pathname}
+            role={role}
           />
           <RepairControlSummary
             budgetPlanned={customerBudget ?? summary?.budget_planned ?? figures.planned}
@@ -141,12 +190,12 @@ export function BudgetSummarySection(props: Props) {
           />
         </>
       )}
-      {bwVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} />}
+      {bwVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} returnTo={pathname} role={role} />}
       {bwVisible('actions') && (
         <View style={s.actions}>
           <PrimaryButton title="Таблица" variant="outline" compact onPress={() => api.exportExpensesCsv(userId, projectId)} />
           {role === 'contractor' ? (
-            <PrimaryButton title="Рыночная оценка" variant="outline" compact onPress={() => router.push({ pathname: '/budget-planner', params: { returnTo: pathname } } as any)} />
+            <PrimaryButton title="Рыночная оценка" variant="outline" compact onPress={() => pushOsNav('/budget-planner', pathname, role)} />
           ) : null}
         </View>
       )}
@@ -155,6 +204,7 @@ export function BudgetSummarySection(props: Props) {
           <Text style={s.section}>По статьям</Text>
           <OsWidgetGrid
             returnTo={pathname}
+            role={role}
             items={Object.entries(summary.segments).map(([k, v]) => ({
               id: k,
               label: BUDGET_SEGMENT_LABEL[k] || k,

@@ -1,6 +1,7 @@
 import { Pressable, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportCatch } from '@/lib/reportError';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'dangerOutline';
 type Size = 'sm' | 'md' | 'lg';
@@ -58,7 +59,7 @@ export function PrimaryButton({
       ]}
       onPress={() => {
         if (disabled || loading) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(reportCatch('components.renova.PrimaryButton.1'));
         onPress();
       }}
     >

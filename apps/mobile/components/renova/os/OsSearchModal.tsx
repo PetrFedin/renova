@@ -4,7 +4,9 @@ import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { GlobalSearchBar } from '@/components/renova/GlobalSearchBar';
 import { useHomeSearchHints } from '@/lib/useHomeSearchHints';
+import { useRenova } from '@/lib/context/RenovaContext';
 import type { ProjectDetail } from '@/lib/api';
+import type { OsRole } from '@/constants/osSections';
 
 export function OsSearchModal({
   visible,
@@ -19,6 +21,8 @@ export function OsSearchModal({
 }) {
   const suggestions = useHomeSearchHints();
   const returnTo = usePathname();
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -26,7 +30,13 @@ export function OsSearchModal({
         <Pressable style={s.close} onPress={onClose}>
           <View style={s.closeBar} />
         </Pressable>
-        <GlobalSearchBar project={project} userId={userId} suggestions={suggestions} returnTo={returnTo} />
+        <GlobalSearchBar
+          project={project}
+          userId={userId}
+          suggestions={suggestions}
+          returnTo={returnTo}
+          role={role}
+        />
       </View>
     </Modal>
   );

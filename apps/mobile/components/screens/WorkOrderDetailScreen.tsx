@@ -1,16 +1,22 @@
 /** Детальная работа — статус, описание, связи с чатом / этапом / согласованиями */
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Alert } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WorkOrderDetailPanel } from '@/components/renova/WorkOrderDetailPanel';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, WorkOrder } from '@/lib/api';
 import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { budgetTabRoute } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
+import { reportError } from '@/lib/reportError';
 
 export function WorkOrderDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
@@ -21,18 +27,26 @@ export function WorkOrderDetailScreen() {
 
   const reload = useCallback(() => {
     if (!user || !activeProject || !id) return;
-    api.getWorkOrder(user.id, activeProject.id, id).then(setWo).catch(() => setWo(null));
+    api.getWorkOrder(user.id, activeProject.id, id).then(setWo).catch((e) => { reportError('components.screens.WorkOrderDetailScreen.Wo', e); setWo(null); });
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   async function transition(next: WorkOrderStatus) {
     if (!user || !activeProject || !wo) return;
     try {
       const updated = await api.transitionWorkOrder(user.id, activeProject.id, wo.id, next);
       setWo(updated);
-    } catch {
-      Alert.alert('Ошибка', 'Недопустимый переход статуса');
+      await syncProjectSideEffects({ user, project: activeProject, role });
+      // W130: WO lifecycle → приёмка / оплаты / график
+      alertWorkOrderAdvanced(role, next);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Смена статуса отправится при подключении');
+      } else {
+        Alert.alert('Ошибка', 'Недопустимый переход статуса');
+      }
     }
   }
 
@@ -80,8 +94,19 @@ export function WorkOrderDetailScreen() {
             <Text style={s.section}>Следующий шаг</Text>
             {actions.map((a) => (
               <PrimaryButton key={a.next} title={a.label} variant={a.next === 'cancelled' ? 'outline' : undefined} onPress={() => {
+                const back = `/work-order/${wo.id}`;
                 if (a.next === 'negotiating' && wo.chat_thread_id) {
-                  router.push({ pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id, returnTo: `/work-order/${wo.id}` } } as any);
+                  // W118: чат WO → SoT
+                  pushOsNav(
+                    { pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id } },
+                    back,
+                    role,
+                  );
+                  return;
+                }
+                // W104/W118: оплата — Бюджет/Оплаты через pushOsNav
+                if (a.next === 'paid') {
+                  pushOsNav(budgetTabRoute(role, 'payments'), back, role);
                   return;
                 }
                 transition(a.next);

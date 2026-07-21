@@ -1,12 +1,13 @@
 /** Расходы этапа: чеки + материалы + ручные — единый список без дублей */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { ExpenseDetailSheet, type ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { api, type MaterialPick, type OsExpense, type ProjectDetail, type ReceiptItem } from '@/lib/api';
+import { api, type MaterialPick, type OsExpense, type ProjectDetail, type Purchase, type ReceiptItem } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
@@ -36,6 +37,7 @@ export function StageExpensePanel({
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [expenses, setExpenses] = useState<OsExpense[]>([]);
   const [picks, setPicks] = useState<MaterialPick[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [detailTarget, setDetailTarget] = useState<ExpenseDetailTarget | null>(null);
   const initialRoomId = roomIds?.[0] ?? null;
 
@@ -44,18 +46,21 @@ export function StageExpensePanel({
       api.listReceipts(userId, projectId).catch(() => [] as ReceiptItem[]),
       api.osExpenses(userId, projectId).catch(() => [] as OsExpense[]),
       api.listMaterialPicks(userId, projectId).catch(() => [] as MaterialPick[]),
-    ]).then(([rc, ex, pk]) => {
+      api.listPurchases(userId, projectId).catch(() => [] as Purchase[]),
+    ]).then(([rc, ex, pk, pur]) => {
       setReceipts(rc);
       setExpenses(ex);
       setPicks(pk);
+      setPurchases(pur);
     });
   }, [userId, projectId]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   const rooms = project?.rooms || [];
   const stages = project?.stages || [];
-  const allRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks);
+  const allRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks, purchases);
   const rows = useMemo(() => filterStageRows(allRows, stageId, roomIds), [allRows, stageId, roomIds?.join(',')]);
   const stagePicks = useMemo(
     () => picks.filter((p) => p.stage_id === stageId || (!p.stage_id && p.room_id && roomIds?.includes(p.room_id))),
@@ -64,7 +69,7 @@ export function StageExpensePanel({
   const sum = rows.reduce((a, r) => a + r.amount, 0);
 
   const onRowPress = (row: ExpenseDetailRow) => {
-    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: setDetailTarget });
+    openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: setDetailTarget, role });
   };
 
   if (!rows.length && !stagePicks.length && readOnly) return null;
@@ -96,7 +101,13 @@ export function StageExpensePanel({
               <Pressable
                 key={p.id}
                 style={s.row}
-                onPress={() => router.push({ pathname: '/material/[id]', params: { id: p.id, returnTo: pathname } } as any)}
+                onPress={() =>
+                  pushOsNav(
+                    { pathname: '/material/[id]', params: { id: p.id } },
+                    pathname,
+                    role,
+                  )
+                }
               >
                 <Text style={s.amt}>{formatRub(p.total || p.qty * p.price)}</Text>
                 <Text style={s.meta}>{p.name} · {p.status}</Text>

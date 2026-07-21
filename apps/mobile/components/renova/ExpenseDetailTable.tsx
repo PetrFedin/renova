@@ -12,7 +12,7 @@ import {
 } from '@/lib/domain/expenseAnalytics';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
-import type { OsExpense, ReceiptItem, Room, Stage, MaterialPick } from '@/lib/api';
+import type { OsExpense, ReceiptItem, Room, Stage, MaterialPick, Purchase } from '@/lib/api';
 
 const MODES: { id: ExpenseGroupMode; label: string }[] = [
   { id: 'all', label: 'Все' },
@@ -50,6 +50,7 @@ export function ExpenseDetailTable({
   receipts,
   expenses,
   picks = [],
+  purchases = [],
   rooms,
   stages,
   compact,
@@ -59,6 +60,7 @@ export function ExpenseDetailTable({
   receipts: ReceiptItem[];
   expenses: OsExpense[];
   picks?: MaterialPick[];
+  purchases?: Purchase[];
   rooms: Room[];
   stages: Stage[];
   compact?: boolean;
@@ -68,8 +70,8 @@ export function ExpenseDetailTable({
   const pathname = usePathname();
   const [mode, setMode] = useState<ExpenseGroupMode>('category');
   const rows = useMemo(
-    () => buildExpenseDetailRows(receipts, expenses, picks, rooms, stages),
-    [receipts, expenses, picks, rooms, stages],
+    () => buildExpenseDetailRows(receipts, expenses, picks, rooms, stages, purchases),
+    [receipts, expenses, picks, rooms, stages, purchases],
   );
   const groups = useMemo(() => groupExpenseRows(rows, mode), [rows, mode]);
   const total = rows.reduce((a, r) => a + r.amount, 0);

@@ -3,10 +3,11 @@ import { Platform, Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { authHeaders } from '@/lib/api/client';
 
 export async function fetchPdfBlob(userId: string, path: string): Promise<Blob> {
   const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-  const r = await fetch(`${base}${path}`, { headers: { 'X-User-Id': userId } });
+  const r = await fetch(`${base}${path}`, { headers: authHeaders(userId) });
   if (!r.ok) throw new Error('PDF error');
   return r.blob();
 }

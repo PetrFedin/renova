@@ -1,9 +1,6 @@
-# Split release: develop → main
+# Split release
 
-| # | Slice | Status |
-|---|-------|--------|
-| 1–4 | security…offline | DONE through `v0.3.4` |
-| 5 | documents-fns | IN FLIGHT |
-| 6 | ia-portal | pending |
+| 1–5 | DONE through `v0.3.5` |
+| 6 | ia-portal IN FLIGHT |
 
-Mega-PR #3 — do not merge.
+Close mega-PR #3 after this lands.

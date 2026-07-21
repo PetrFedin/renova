@@ -2,7 +2,7 @@
   "expo": {
     "name": "Renova",
     "slug": "renova",
-    "version": "1.0.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "renova",
@@ -12,10 +12,12 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSPhotoLibraryUsageDescription": "Renova использует фото для загрузки документов и отчётов по ремонту."
+        "NSPhotoLibraryUsageDescription": "Renova использует фото для загрузки документов и отчётов по ремонту.",
+        "NSCameraUsageDescription": "Renova использует камеру для фото документов и отчётов по ремонту."
       },
       "supportsTablet": false,
-      "bundleIdentifier": "ru.renova.app"
+      "bundleIdentifier": "ru.renova.app",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +30,8 @@
       "permissions": [
         "READ_MEDIA_IMAGES",
         "READ_EXTERNAL_STORAGE"
-      ]
+      ],
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",
@@ -47,7 +50,8 @@
       ],
       "expo-asset",
       "expo-web-browser",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

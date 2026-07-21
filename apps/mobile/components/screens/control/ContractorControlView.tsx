@@ -1,3 +1,4 @@
+import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество (исполнитель) */
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
@@ -8,6 +9,8 @@ import { computePendingAcceptanceCount } from '@/lib/domain/acceptancePending';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, ProjectIssue, WorkAcceptance } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -24,12 +27,20 @@ export function ContractorControlView() {
 
   const reload = useCallback(() => {
     if (user && activeProject) {
-      api.listIssues(user.id, activeProject.id).then(setIssues).catch(() => setIssues([]));
-      api.listAcceptances(user.id, activeProject.id).then(setAcceptances).catch(() => setAcceptances([]));
+      api.listIssues(user.id, activeProject.id).then(setIssues).catch((e) => {
+        reportError('control.issues', e);
+        setIssues([]);
+      });
+      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch((e) => {
+        reportError('control.acceptances', e);
+        setAcceptances([]);
+      });
     }
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  // W89: после приёмки/QC в другом экране — обновить список без remount
+  useProjectDataReload(reload);
 
   if (!activeProject || !user) return <ProjectEmptyState role="contractor" />;
 
@@ -46,7 +57,7 @@ export function ContractorControlView() {
       </View>
 
       <Text style={s.section}>Ожидают приёмки</Text>
-      <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} />
+      <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} role="contractor" />
 
       <Text style={s.section}>Замечания</Text>
       {!issues.filter(i => i.status !== 'closed').length && <Text style={s.empty}>Нет открытых замечаний</Text>}
@@ -59,9 +70,21 @@ export function ContractorControlView() {
         >
           <Text style={s.title}>{iss.title}</Text>
           <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
-          {!readOnly && iss.status !== 'closed' && (
-            <PrimaryButton title="Закрыть" compact variant="outline" onPress={() => api.closeIssue(user!.id, activeProject!.id, iss.id).then(reload)} />
-          )}
+          {!readOnly && iss.status !== 'closed' && iss.status !== 'fixed' && !(iss.title || '').startsWith('[Гарантия]') ? (
+            <PrimaryButton
+              title="Исправлено"
+              compact
+              variant="outline"
+              onPress={async () => {
+                await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                await syncProjectSideEffects({ user, project: activeProject });
+                reload();
+              }}
+            />
+          ) : null}
+          {(iss.title || '').startsWith('[Гарантия]') && iss.status !== 'closed' ? (
+            <Text style={s.meta}>Гарантию закрывает заказчик в Документах</Text>
+          ) : null}
         </Pressable>
       ))}
 

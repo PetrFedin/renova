@@ -22,6 +22,7 @@ import { adminApi } from './admin';
 import { scratchpadApi } from './scratchpad';
 import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
+import { selectionsApi } from './selections';
 
 export const api = {
   ...authApi,
@@ -47,7 +48,10 @@ export const api = {
   ...scratchpadApi,
   ...workScheduleApi,
   ...miscApi,
+  ...selectionsApi,
 };
 
-export { ApiError, isRateLimitError, req, cachedGet, API_BASE } from './client';
+export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, API_BASE } from './client';
 export * from './types';
+export type { SelectionItem } from './selections';
+export type { WorkSchedule, WorkScheduleStatus } from './workSchedule';

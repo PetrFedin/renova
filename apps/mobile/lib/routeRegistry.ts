@@ -17,6 +17,10 @@ export type RenovaRoute = {
   status: RouteStatus;
   entryPoints: string[];
   descriptionRu?: string;
+  /** P0.2: tap on pending payment opens this sheet instead of direct confirm */
+  opensSheet?: 'payment';
+  /** Optional redirect when route is a thin wrapper over a tab */
+  redirectTo?: string;
 };
 
 /** Canonical product routes — единый реестр для меню и аудита. */
@@ -43,36 +47,55 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     path: '/finance-center',
     titleRu: 'Финансовый центр',
     audience: 'both',
-    visibility: 'more',
+    visibility: 'hidden',
     status: 'beta',
-    entryPoints: ['home.more'],
+    entryPoints: ['deeplink'],
+    opensSheet: 'payment',
+    redirectTo: '/budget?tab=payments&openPayment=1',
+    descriptionRu: 'Redirect → Бюджет/Оплаты + PaymentDetailSheet (внешний перевод/чек, не прямой confirm)',
+  },
+  {
+    id: 'control',
+    path: '/control',
+    titleRu: 'Контроль',
+    audience: 'both',
+    visibility: 'hidden',
+    status: 'beta',
+    entryPoints: ['deeplink'],
+    redirectTo: '/repair?tab=control',
+    descriptionRu: 'Legacy tab → Ремонт → Приёмка (единый hub, W58/W139)',
   },
   {
     id: 'quality-control',
     path: '/quality-control',
     titleRu: 'Контроль качества',
-    audience: 'both',
-    visibility: 'more',
+    audience: 'contractor',
+    visibility: 'deeplink',
     status: 'beta',
-    entryPoints: ['home.more'],
+    entryPoints: ['repair.control'],
+    descriptionRu: 'Канон входа: Ремонт → Приёмка (contractor). Не в «Ещё».',
   },
   {
     id: 'work-acceptance',
     path: '/work-acceptance',
     titleRu: 'Приёмка работ',
-    audience: 'both',
-    visibility: 'more',
+    audience: 'customer',
+    visibility: 'deeplink',
     status: 'ga',
-    entryPoints: ['home.more', 'stage'],
+    entryPoints: ['repair.control', 'stage', 'home.banner'],
+    redirectTo: '/repair?tab=control',
+    descriptionRu: 'Redirect → Ремонт → Приёмка (единый hub). Карточка этапа — детальная проверка.',
   },
   {
     id: 'work-schedule',
     path: '/work-schedule',
     titleRu: 'График работ',
     audience: 'both',
-    visibility: 'more',
+    visibility: 'hidden',
     status: 'beta',
-    entryPoints: ['home.schedule', 'home.more'],
+    entryPoints: ['deeplink'],
+    redirectTo: '/calendar',
+    descriptionRu: 'Redirect → календарь (единый hub «Сроки»)',
   },
   {
     id: 'documents',
@@ -80,38 +103,220 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     titleRu: 'Документы проекта',
     audience: 'both',
     visibility: 'more',
-    status: 'beta',
-    entryPoints: ['home.more'],
+    status: 'ga',
+    entryPoints: ['os.menu', 'home.more'],
+  },
+  {
+    id: 'approvals',
+    path: '/approvals',
+    titleRu: 'Согласования',
+    audience: 'both',
+    visibility: 'more',
+    status: 'ga',
+    entryPoints: ['home.more', 'os.menu', 'inbox', 'push'],
+    descriptionRu: 'P0.4: CO / материалы / дизайн — решает заказчик. В «Ещё» на Home.',
   },
   {
     id: 'notifications',
     path: '/notifications',
     titleRu: 'Уведомления',
     audience: 'both',
-    visibility: 'more',
+    visibility: 'hidden',
     status: 'beta',
-    entryPoints: ['home.more', 'deeplink'],
+    entryPoints: ['deeplink'],
+    redirectTo: '/inbox',
+    descriptionRu: 'Redirect → /inbox (единый attention channel). Не отдельный экран в меню.',
+  },
+
+  {
+    id: 'inbox',
+    path: '/inbox',
+    titleRu: 'Входящие',
+    audience: 'both',
+    visibility: 'more',
+    status: 'ga',
+    entryPoints: ['os.menu', 'home.more', 'home.attention'],
+    descriptionRu: 'Единый attention channel: задачи + уведомления',
+  },
+  {
+    id: 'scan-receipt',
+    path: '/scan-receipt',
+    titleRu: 'Скан чека',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['budget', 'repair'],
+  },
+  {
+    id: 'stage',
+    path: '/stage/[id]',
+    titleRu: 'Этап работ',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['repair', 'work-schedule', 'calendar'],
+  },
+  {
+    id: 'materials-procurement',
+    path: '/repair?tab=materials&subtab=purchases',
+    titleRu: 'Закупки материалов',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['repair.materials', 'home.next', 'selections'],
+    redirectTo: '/repair?tab=materials&subtab=purchases',
+    descriptionRu: 'P2.4/W50 hub: потребность → закупка → чек. Не пункт «Ещё».',
+  },
+  {
+    id: 'selections',
+    path: '/repair?tab=selections',
+    titleRu: 'Подбор чистовых материалов',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['repair.selections', 'approvals'],
+    redirectTo: '/repair?tab=selections',
+    descriptionRu: 'P2.2: room × category × allowance × approve',
   },
 
   // Hidden / deeplink legacy tabs
-  { id: 'calendar', path: '/calendar', titleRu: 'Календарь', audience: 'both', visibility: 'deeplink', status: 'ga', entryPoints: ['home.schedule'] },
+  {
+    id: 'calendar',
+    path: '/calendar',
+    titleRu: 'Сроки',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['os.menu', 'home.schedule', 'dock.optional'],
+    descriptionRu: 'Единый hub сроков (календарь + план). Не дублировать work-schedule.',
+  },
+  {
+    id: 'warranty-claim',
+    // W55: канон входа — Document Center; QC только для исполнителя (через DocumentsHub)
+    path: '/documents',
+    titleRu: 'Гарантия',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'beta',
+    entryPoints: ['documents.export', 'home.completion'],
+    descriptionRu: 'P5.1 lite: тикет в Document Center; исполнитель → QC',
+  },
+
+  {
+    id: 'design',
+    path: '/design',
+    titleRu: 'Дизайн (legacy)',
+    audience: 'both',
+    visibility: 'hidden',
+    status: 'ga',
+    entryPoints: ['deeplink'],
+    redirectTo: '/object?tab=plan&sub=design',
+    descriptionRu: 'W52: catch-all → Object / plan',
+  },
   { id: 'conflicts', path: '/conflicts', titleRu: 'Конфликты sync', audience: 'contractor', visibility: 'deeplink', status: 'ga', entryPoints: ['offline.banner'] },
-  { id: 'reports', path: '/reports', titleRu: 'Отчёты', audience: 'both', visibility: 'hidden', status: 'wip', entryPoints: [] },
-  { id: 'project-analytics', path: '/project-analytics', titleRu: 'Аналитика', audience: 'both', visibility: 'hidden', status: 'wip', entryPoints: [] },
+  {
+    id: 'portal',
+    path: '/portal?token=',
+    titleRu: 'Web-портал (гость)',
+    audience: 'customer',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['object.viewers'],
+    descriptionRu: 'Magic link: snapshot + accept/pay (W47 honesty). Не пункт меню.',
+  },
+  {
+    id: 'reports',
+    path: '/reports',
+    titleRu: 'Отчёты',
+    audience: 'both',
+    visibility: 'more',
+    status: 'beta',
+    entryPoints: ['home.completion', 'home.more', 'os.menu'],
+    descriptionRu: 'Daily / weekly / final + дайджест push (W51 rule-based)',
+  },
+  {
+    id: 'project-analytics',
+    path: '/project-analytics',
+    titleRu: 'Аналитика',
+    audience: 'both',
+    visibility: 'hidden',
+    status: 'beta',
+    entryPoints: ['deeplink'],
+    redirectTo: '/(customer)/(tabs)/budget?tab=deviations',
+    descriptionRu: 'Legacy deeplink → бюджет / отклонения',
+  },
 ];
+
+
+
+export type MenuRouteFilter = {
+  readOnly?: boolean;
+  phase?: 'setup' | 'active' | 'closing' | 'complete';
+  /** IDs to hide (e.g. notifications already on home) */
+  excludeIds?: string[];
+};
+
+/** Redirect-only entries — not shown in «Ещё» */
+const REDIRECT_ONLY_MENU_IDS = new Set([
+  'work-schedule',
+  'finance-center',
+  'project-analytics',
+  'materials-procurement',
+  'selections',
+  'control',
+  'design',
+  'notifications',
+]);
+
+/** Hard cap: Home «Ещё» и secondary centers ≤ 5 (Sprint IA DoD) */
+export const MAX_MORE_MENU_ITEMS = 5;
+
+/** Guest/readOnly «Ещё» — документы + входящие (без центров решений) */
+const READ_ONLY_MORE_IDS = new Set(['documents', 'inbox']);
+/** KPI/отчёты — только на фазе complete (не раздувать «Ещё» в active) */
+const COMPLETION_PHASE_ONLY_IDS = new Set(['manager-dashboard', 'reports']);
+
+/** User-facing (dock + more + deeplink GA) — для аудита IA; redirect-only не считаем. */
+export function userFacingRouteIds(routes: RenovaRoute[] = RENOVA_ROUTES): string[] {
+  return routes
+    .filter((r) => r.status !== 'wip' && !r.redirectTo && r.visibility !== 'hidden')
+    .map((r) => r.id);
+}
+
+export function resolveRouteRedirect(path: string): string | undefined {
+  return RENOVA_ROUTES.find((r) => r.path === path)?.redirectTo;
+}
 
 export function routesForAudience(audience: 'customer' | 'contractor'): RenovaRoute[] {
   return RENOVA_ROUTES.filter((r) => r.audience === 'both' || r.audience === audience);
 }
 
+/**
+ * Меню «Ещё» на главной / secondary centers.
+ * Приёмка и QC — только через Ремонт → Приёмка (не здесь).
+ * Уведомления — через /inbox (не отдельный пункт).
+ */
 export function menuRoutes(
   audience: 'customer' | 'contractor',
   visibility: RouteVisibility | RouteVisibility[] = 'more',
+  filter?: MenuRouteFilter,
 ): RenovaRoute[] {
   const vis = Array.isArray(visibility) ? visibility : [visibility];
-  return routesForAudience(audience).filter(
+  let routes = routesForAudience(audience).filter(
     (r) => vis.includes(r.visibility) && r.status !== 'wip',
   );
+  routes = routes.filter((r) => !REDIRECT_ONLY_MENU_IDS.has(r.id));
+  if (filter?.readOnly) {
+    routes = routes.filter((r) => READ_ONLY_MORE_IDS.has(r.id));
+  }
+  if (filter?.phase !== 'complete') {
+    routes = routes.filter((r) => !COMPLETION_PHASE_ONLY_IDS.has(r.id));
+  }
+  if (filter?.excludeIds?.length) {
+    const ex = new Set(filter.excludeIds);
+    routes = routes.filter((r) => !ex.has(r.id));
+  }
+  return routes.slice(0, MAX_MORE_MENU_ITEMS);
 }
 
 export function assertRouteRegistryInvariants(routes: RenovaRoute[] = RENOVA_ROUTES): void {

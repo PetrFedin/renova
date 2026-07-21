@@ -1,21 +1,39 @@
-/** «N ждут приёмки» на главной — 1 tap до очереди решений */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+/** «N ждут приёмки» на главной — роль-зависимый CTA (W56/W107) */
+import { Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
+import { pushOsNav, type OsNavHref } from '@/lib/pushOsNav';
 
-export function HomeAcceptanceBanner({ count, role }: { count: number; role: OsRole }) {
-  const { pushNav } = useOsNavFromHere(role);
+type Props = {
+  count: number;
+  role: OsRole;
+  /** W107: прямой /stage/{id} если известен этап в review */
+  href?: OsNavHref;
+};
+
+export function HomeAcceptanceBanner({ count, role, href }: Props) {
+  const { returnTo } = useOsNavFromHere(role);
   if (count <= 0) return null;
+
+  const isContractor = role === 'contractor';
+  const head = isContractor
+    ? `${count} этап(ов) ждут ответа заказчика`
+    : `${count} этап(ов) ждут вашей приёмки`;
+  const link = isContractor ? 'Статус →' : 'Проверить →';
 
   return (
     <Pressable
       style={s.box}
-      onPress={() => pushNav(repairTabRoute(role, 'control'))}
+      onPress={() => {
+        // W107: этап → decide CTA; иначе hub control (inline accept)
+        pushOsNav(href || repairTabRoute(role, 'control'), returnTo);
+      }}
       accessibilityRole="button"
+      accessibilityLabel={head}
     >
-      <Text style={s.head}>{count} этап(ов) ждут вашей приёмки</Text>
-      <Text style={s.link}>Проверить →</Text>
+      <Text style={s.head}>{head}</Text>
+      <Text style={s.link}>{link}</Text>
     </Pressable>
   );
 }

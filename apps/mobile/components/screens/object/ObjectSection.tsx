@@ -1,5 +1,6 @@
 /** Секция внутри вкладок «Объект» */
-import { View, Text, StyleSheet, type ReactNode } from 'react-native';
+import type { ReactNode } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 
 export function ObjectSection({

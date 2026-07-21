@@ -1,10 +1,16 @@
 /** Заказчик: гостевой доступ (только просмотр) */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
+import { shareRenovaLink } from '@/lib/messengerShare';
+import { alertViewerGuestAdded } from '@/lib/shareAccessNav';
+import { reportError } from '@/lib/reportError';
 
 type V = { user_id: string; phone: string; full_name?: string; role: string };
 
@@ -17,15 +23,21 @@ export function ViewerSharePanel({
   projectId: string;
   embedded?: boolean;
 }) {
+  const { user, activeProject } = useRenova();
+  const syncAfter = () => syncProjectSideEffects({
+    user: user ?? ({ id: userId } as any),
+    project: activeProject ?? ({ id: projectId } as any),
+  });
   const [items, setItems] = useState<V[]>([]);
   const [phone, setPhone] = useState('');
   const [profileCode, setProfileCode] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = () => api.listViewers(userId, projectId).then(setItems).catch(() => setItems([]));
-  useEffect(() => {
-    load();
+  const load = useCallback(() => {
+    api.listViewers(userId, projectId).then(setItems).catch((e) => { reportError('components.renova.ViewerSharePanel.Items', e); setItems([]); });
   }, [userId, projectId]);
+  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
 
   const addGuest = async () => {
     const trimmedPhone = normalizePhoneInput(phone);
@@ -42,7 +54,10 @@ export function ViewerSharePanel({
       });
       setPhone('');
       setProfileCode('');
+      await syncAfter();
       load();
+      // W135: гость → объект
+      alertViewerGuestAdded('customer');
     } catch (e: unknown) {
       Alert.alert('Не удалось добавить', apiErrorMessage(e, 'Пользователь должен быть в Renova'));
     } finally {
@@ -61,11 +76,26 @@ export function ViewerSharePanel({
                 <Text style={s.phone}>{v.phone}</Text>
               </View>
               <Pressable
+                accessibilityLabel="Ссылка портала"
+                style={s.linkBtn}
+                onPress={async () => {
+                  try {
+                    const link = await api.createViewerPortalLink(userId, projectId, v.user_id);
+                    await shareRenovaLink(link.url, 'портал объекта (гость)');
+                  } catch (e: unknown) {
+                    Alert.alert('Портал', apiErrorMessage(e, 'Не удалось создать ссылку'));
+                  }
+                }}
+              >
+                <Text style={s.linkBtnT}>🔗</Text>
+              </Pressable>
+              <Pressable
                 accessibilityLabel="Удалить гостя"
                 style={s.remove}
                 onPress={async () => {
                   try {
                     await api.removeViewer(userId, projectId, v.user_id);
+                    await syncAfter();
                     load();
                   } catch (e: unknown) {
                     Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось удалить'));
@@ -78,7 +108,12 @@ export function ViewerSharePanel({
           ))}
         </View>
       ) : (
-        <Text style={s.empty}>Нет гостей</Text>
+        <>
+          <Text style={s.empty}>Нет гостей</Text>
+          <Text style={s.hint}>
+            Ссылка портала шарится через систему (WhatsApp / Telegram). Отдельного WA Business API в MVP нет.
+          </Text>
+        </>
       )}
 
       <View style={s.addBlock}>
@@ -140,6 +175,7 @@ const s = StyleSheet.create({
   meta: { flex: 1, paddingRight: 8 },
   name: { fontWeight: '600', fontSize: 15, color: RenovaTheme.colors.text },
   phone: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 15, marginBottom: 8 },
   empty: { fontSize: 14, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
   addBlock: { gap: 8 },
   addLabel: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
@@ -152,6 +188,16 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FEE2E2',
   },
+  linkBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E0F2FE',
+    marginRight: 6,
+  },
+  linkBtnT: { fontSize: 14 },
   removeT: { color: '#B91C1C', fontWeight: '800', fontSize: 14 },
   inp: {
     borderWidth: 1,

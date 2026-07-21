@@ -43,9 +43,9 @@ export function canEditEstimateLines(ctx: RoleContext): boolean {
   return ctx.role === 'contractor' && !ctx.readOnly;
 }
 
-export function homeHeroLabel(ctx: RoleContext): string {
-  if (ctx.role === 'contractor') return 'Задачи по объекту';
-  return 'Сделать сейчас';
+/** Единая Action Queue на главной (Sprint IA) — не путать с «Ещё» / dock */
+export function homeHeroLabel(_ctx: RoleContext): string {
+  return 'Очередь дел';
 }
 
 export function objectProfileHint(ctx: RoleContext): string {

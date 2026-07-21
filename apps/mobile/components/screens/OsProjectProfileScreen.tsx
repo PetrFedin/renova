@@ -14,6 +14,7 @@ import { isIsoDate } from '@/lib/validateDate';
 import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
 import { formMetaText } from '@/constants/formTypography';
+import { alertProjectProfileSaved } from '@/lib/fieldCreateNav';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
@@ -49,6 +50,7 @@ export function OsProjectProfileScreen({
       name: activeProject.name,
       address: activeProject.address || '',
       renovation_type: activeProject.renovation_type,
+      vat_rate: activeProject.vat_rate ?? 0,
       property_type: activeProject.property_type === 'house' ? 'house' : 'apartment',
       planned_start_date: activeProject.planned_start_date || '',
       planned_end_date: activeProject.planned_end_date || '',
@@ -93,10 +95,14 @@ export function OsProjectProfileScreen({
     }
     setBusy(true);
     try {
+      const datesChanged =
+        (start || null) !== (activeProject?.planned_start_date || null)
+        || (end || null) !== (activeProject?.planned_end_date || null);
       await updateProjectProfile({
         name: values.name.trim(),
         address: values.address.trim() || undefined,
         renovation_type: values.renovation_type,
+        vat_rate: values.vat_rate ?? 0,
         property_type: values.property_type,
         planned_start_date: start || null,
         planned_end_date: end || null,
@@ -106,7 +112,8 @@ export function OsProjectProfileScreen({
       });
       if (budgetDirty) setBudgetDirty(false);
       setDirty(false);
-      Alert.alert('Сохранено', 'Профиль объекта обновлён');
+      // W133: сроки → график
+      alertProjectProfileSaved(role, datesChanged);
     } catch {
       Alert.alert('Ошибка', 'Не удалось сохранить. Проверьте подключение к серверу.');
     } finally {
@@ -117,7 +124,7 @@ export function OsProjectProfileScreen({
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       {readOnly && <ReadOnlyBanner />}
-      <ObjectTabGuide tab="profile" role={role} onNextTab={onNextTab} compact />
+      <ObjectTabGuide tab="profile" role={role} onNextTab={onNextTab} />
       <ProjectProfileFields
         variant="profile"
         role={role}

@@ -1,24 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, AppNotification } from '@/lib/api';
+import { resolvePushLink, resolveNotificationLink } from '@/lib/pushLinks';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
-import { resolvePushLink } from '@/lib/pushLinks';
-
+/** W118: уведомления → pushOsNav SoT (не сырой router) */
 export function NotificationsList({ userId, defaultReturn }: { userId: string; defaultReturn?: string }) {
+  const { user, activeProject } = useRenova();
   const [items, setItems] = useState<AppNotification[]>([]);
-  useEffect(() => { api.listNotifications(userId).then(setItems).catch(() => {}); }, [userId]);
+  const reload = useCallback(() => {
+    api.listNotifications(userId).then(setItems).catch(reportCatch('components.renova.NotificationsList.1'));
+  }, [userId]);
+  useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
   if (!items.length) return <Text style={s.empty}>Нет уведомлений</Text>;
   return (
     <View style={s.wrap}>
       {items.slice(0, 10).map((n) => (
         <Pressable key={n.id} style={[s.row, !n.read && s.unread]} onPress={async () => {
           await api.readNotification(userId, n.id);
-          const back = (n as any).return_to || defaultReturn || '/(customer)/(tabs)/profile';
-          const target = resolvePushLink(n.link_path, back);
-          if (target) router.push({ pathname: target.pathname, params: target.params } as any);
-          setItems(await api.listNotifications(userId));
+          await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
+          const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+          const back = (n as any).return_to || defaultReturn || (role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile');
+          if (n.link_path) {
+            pushOsNav(n.link_path, back, role);
+          } else {
+            const target = resolveNotificationLink(n.notification_type, role)
+              || resolvePushLink('/inbox', back, role);
+            if (target) pushOsNav({ pathname: target.pathname, params: target.params }, undefined, role);
+            else pushOsNav('/inbox', back, role);
+          }
+          reload();
         }}>
           <Text style={s.title}>{n.title}</Text><Text style={s.body}>{n.body}</Text>
         </Pressable>

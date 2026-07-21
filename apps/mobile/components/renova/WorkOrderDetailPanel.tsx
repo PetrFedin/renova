@@ -1,16 +1,18 @@
 /** Панель детализации работы — заметки, связи, подсказки по процессу */
 import { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, type WorkOrder } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import {
   formatScheduleRange,
 } from '@/lib/formatScheduleDate';
 import { WORK_STATUS_LABEL, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
 import { calendarTabRoute, repairTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 type Props = {
   wo: WorkOrder;
@@ -38,6 +40,7 @@ export function WorkOrderDetailPanel({
   projectId,
   onUpdated,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const [notes, setNotes] = useState(wo.notes || '');
   const [saving, setSaving] = useState(false);
   const status = (wo.status in WORK_STATUS_LABEL ? wo.status : 'draft') as WorkOrderStatus;
@@ -46,9 +49,15 @@ export function WorkOrderDetailPanel({
     setSaving(true);
     try {
       await api.patchWorkOrder(userId, projectId, wo.id, { notes: notes.trim() || null });
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onUpdated();
       Alert.alert('Сохранено', 'Описание работы обновлено');
-    } catch {
+    } catch (e) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Описание работы');
+        onUpdated();
+        return;
+      }
       Alert.alert('Ошибка', 'Не удалось сохранить описание');
     } finally {
       setSaving(false);
@@ -57,19 +66,20 @@ export function WorkOrderDetailPanel({
 
   function openLink(id: string) {
     if (id === 'chat' && wo.chat_thread_id) {
-      router.push({ pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id, returnTo: `/work-order/${wo.id}` } } as any);
+      pushOsNav({ pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id } }, `/work-order/${wo.id}`, role);
       return;
     }
     if (id === 'stage' && wo.stage_id) {
-      router.push({ pathname: '/stage/[id]', params: { id: wo.stage_id, returnTo: `/work-order/${wo.id}` } } as any);
+      pushOsNav({ pathname: '/stage/[id]', params: { id: wo.stage_id } }, `/work-order/${wo.id}`, role);
       return;
     }
     if (id === 'materials') {
-      pushOsNav(repairTabHref(role, 'materials'), `/work-order/${wo.id}`);
+      pushOsNav(repairTabHref(role, 'materials'), `/work-order/${wo.id}`, role);
       return;
     }
     if (id === 'approvals') {
-      pushOsNav('/approvals', `/work-order/${wo.id}`);
+      // W114: /approvals через resolvePushLink + role
+      pushOsNav('/approvals', `/work-order/${wo.id}`, role);
     }
   }
 
@@ -135,7 +145,7 @@ export function WorkOrderDetailPanel({
         );
       })}
 
-      <PrimaryButton title="Календарь" variant="outline" onPress={() => pushOsNav(calendarTabRoute(role), `/work-order/${wo.id}`)} />
+      <PrimaryButton title="Календарь" variant="outline" onPress={() => pushOsNav(calendarTabRoute(role), `/work-order/${wo.id}`, role)} />
     </View>
   );
 }

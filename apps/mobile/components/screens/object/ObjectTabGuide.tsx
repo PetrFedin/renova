@@ -5,7 +5,9 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { budgetTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 import { formMetaText } from '@/constants/formTypography';
 import { objectProfileHint } from '@/lib/domain/roleCapabilities';
+import { objectTabGuideCompact } from '@/lib/detailLevelPolicy';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { useDetailLevel } from '@/lib/useDetailLevel';
 
 export type ObjectTabId = 'profile' | 'rooms' | 'estimate' | 'plan';
 
@@ -46,16 +48,18 @@ export function ObjectTabGuide({
   tab,
   role,
   onNextTab,
-  compact,
+  compact: compactProp,
 }: {
   tab: ObjectTabId;
   role?: OsRole;
   onNextTab?: (tab: ObjectTabId) => void;
-  /** Одна строка без блоков «Что здесь / Что делать» */
+  /** Принудительный compact; по умолчанию — из detailLevel (brief → compact) */
   compact?: boolean;
 }) {
   const g = GUIDES[tab];
   const pathname = usePathname();
+  const detailLevel = useDetailLevel();
+  const compact = compactProp ?? objectTabGuideCompact(detailLevel);
   const doText = tab === 'profile' && role ? objectProfileHint({ role, readOnly: false }) : g.do;
   if (compact) {
     return (
@@ -91,7 +95,7 @@ export function ObjectTabGuide({
       {tab === 'plan' && role && !compact ? (
         <View style={s.linksRow}>
           {PLAN_LINKS(role).map((link) => (
-            <Pressable key={link.label} style={s.linkBtn} onPress={() => pushOsNav(link.href, pathname)}>
+            <Pressable key={link.label} style={s.linkBtn} onPress={() => pushOsNav(link.href, pathname, role)}>
               <Text style={s.linkT}>{link.label}</Text>
             </Pressable>
           ))}

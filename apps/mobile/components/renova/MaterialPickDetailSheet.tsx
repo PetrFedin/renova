@@ -1,15 +1,22 @@
 /** Sheet детали подбора материала — паттерн как ExpenseDetailSheet */
 import { Modal, View, Text, StyleSheet, Pressable, Linking } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, type MaterialPick, type Room, type Stage } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { OsRole } from '@/constants/osSections';
 import { MATERIAL_PICK_STATUS_LABEL } from '@/constants/labels';
 import { pushRoomDetail, pushStageDetail } from '@/lib/navigation';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
 import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
 import type { Purchase } from '@/lib/api';
+import {
+  alertMaterialPickApproved,
+  alertMaterialPickSubmitted,
+} from '@/lib/procurementNav';
 
 export function MaterialPickDetailSheet({
   pick,
@@ -34,6 +41,7 @@ export function MaterialPickDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   if (!pick) return null;
 
   const pathname = usePathname();
@@ -91,15 +99,27 @@ export function MaterialPickDetailSheet({
           {!readOnly && isCustomer && pick.status === 'pending' && (
             <PrimaryButton title="Согласовать" onPress={async () => {
               await api.approveMaterialPick(userId, projectId, pick.id);
+              await syncProjectSideEffects({
+                user: user ?? ({ id: userId } as any),
+                project: activeProject ?? ({ id: projectId } as any),
+                role,
+              });
               onChanged?.();
               onClose();
+              alertMaterialPickApproved(role);
             }} />
           )}
           {!readOnly && isContractor && pick.status === 'draft' && (
             <PrimaryButton title="На согласование" variant="outline" onPress={async () => {
               await api.submitMaterialPick(userId, projectId, pick.id);
+              await syncProjectSideEffects({
+                user: user ?? ({ id: userId } as any),
+                project: activeProject ?? ({ id: projectId } as any),
+                role,
+              });
               onChanged?.();
               onClose();
+              alertMaterialPickSubmitted(role);
             }} />
           )}
           {!readOnly && cancelStatus && deliveredPurchase && (
@@ -108,6 +128,11 @@ export function MaterialPickDetailSheet({
               variant="outline"
               onPress={async () => {
                 await api.updatePurchaseStatus(userId, projectId, deliveredPurchase.id, cancelStatus);
+                await syncProjectSideEffects({
+                  user: user ?? ({ id: userId } as any),
+                  project: activeProject ?? ({ id: projectId } as any),
+                  role,
+                });
                 onChanged?.();
                 onClose();
               }}
@@ -119,7 +144,12 @@ export function MaterialPickDetailSheet({
             variant="outline"
             onPress={() => {
               onClose();
-              router.push({ pathname: '/material/[id]', params: { id: pick.id, returnTo: pathname } } as any);
+              // W118: полная карточка материала → SoT
+              pushOsNav(
+                { pathname: '/material/[id]', params: { id: pick.id } },
+                pathname,
+                role,
+              );
             }}
           />
           <PrimaryButton title="Закрыть" variant="outline" onPress={onClose} />

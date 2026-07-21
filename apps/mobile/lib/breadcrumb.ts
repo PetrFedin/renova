@@ -21,7 +21,7 @@ export const HUB_TAB_LABELS: Record<string, Record<string, string>> = {
     stages: 'Расходы',
     analytics: 'Отклонения',
   },
-  object: { profile: 'Профиль', rooms: 'Комнаты', estimate: 'Смета', plan: 'План' },
+  object: { profile: 'Данные объекта', rooms: 'Комнаты', estimate: 'Смета', plan: 'План' },
 };
 
 const HUB_ROUTES = new Set(['object', 'repair', 'budget']);

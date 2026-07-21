@@ -1,10 +1,12 @@
+import { reportError } from '@/lib/reportError';
 /** Оплата этапа — после приёмки, без scroll до счёта */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
 import { api, type Payment, type Stage } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import type { OsRole } from '@/constants/osSections';
 
 type Props = {
@@ -33,12 +35,22 @@ export function StageDetailPaymentBlock({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [selected, setSelected] = useState<Payment | null>(null);
 
+  const reloadPayments = useCallback(() => {
+    api.listPayments(userId, projectId).then(setPayments).catch((e) => {
+      reportError('stage.payments', e, { projectId });
+      setPayments([]);
+    });
+  }, [userId, projectId]);
+
   useEffect(() => {
-    api.listPayments(userId, projectId).then(setPayments).catch(() => setPayments([]));
-  }, [userId, projectId, stageId, stageStatus]);
+    reloadPayments();
+  }, [reloadPayments, stageId, stageStatus]);
+  // W95: после YuKassa/confirm на другом экране — блок оплаты этапа без remount
+  useProjectDataReload(reloadPayments);
 
   const pending = payments.find((p) => p.stage_id === stageId && p.status === 'pending');
   const isCustomer = role === 'customer';
+  const showContractorPending = role === 'contractor' && !!pending && stageStatus !== 'review';
 
   if (stageStatus === 'review' && isCustomer && stagePaymentAmount > 0) {
     return (
@@ -48,7 +60,17 @@ export function StageDetailPaymentBlock({
     );
   }
 
-  if (!pending || !isCustomer) return null;
+  if (!pending) return null;
+
+  if (showContractorPending) {
+    return (
+      <View style={s.hintBox}>
+        <Text style={s.hint}>Ожидает оплаты заказчиком</Text>
+      </View>
+    );
+  }
+
+  if (!isCustomer) return null;
 
   return (
     <>
@@ -68,7 +90,7 @@ export function StageDetailPaymentBlock({
         onClose={() => setSelected(null)}
         onChanged={() => {
           onChanged?.();
-          api.listPayments(userId, projectId).then(setPayments).catch(() => {});
+          reloadPayments();
         }}
       />
     </>

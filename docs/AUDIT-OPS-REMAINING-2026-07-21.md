@@ -1,3 +1,3 @@
 # Ops status
 
-Slices 1–4 on main. Next: documents-fns. Staging credentials ENV-only. Mega-PR #3 draft.
+Slices 1–5 on main. Slice-6 ia-portal next (remaining mobile IA/portal). Staging ENV-only.

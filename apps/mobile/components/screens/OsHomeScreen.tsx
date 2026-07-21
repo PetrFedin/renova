@@ -1,7 +1,7 @@
 /** Единая главная Renova OS — заказчик и исполнитель */
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -21,6 +21,11 @@ import { clearHomeSearchHints, setHomeSearchHints } from '@/lib/homeSearchHints'
 import { fallbackDashboard } from '@/lib/domain/fallbackDashboard';
 import { api, Dashboard, ReceiptItem, MaterialPick, Purchase, OsRisk, OsScheduleSummary, OsInsight, OsBudgetSummary } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
+import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyBadge';
+import { getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
+import { mergeDigestInsight } from '@/lib/domain/digestHomeInsight';
+import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
+import { reportCatch } from '@/lib/reportError';
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
   const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading } = useRenova();
@@ -36,6 +41,18 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [pendingAcceptance, setPendingAcceptance] = useState(0);
   const [pendingPayments, setPendingPayments] = useState(0);
   const [pendingPaymentTotal, setPendingPaymentTotal] = useState(0);
+  /** W55/W76: подсказки nextAction (график, гарантия, ДО, подписи) */
+  const [workScheduleStatus, setWorkScheduleStatus] = useState<string | null>(null);
+  const [warrantyOpen, setWarrantyOpen] = useState(0);
+  const [warrantyOverdue, setWarrantyOverdue] = useState(0);
+  const [pendingChangeOrders, setPendingChangeOrders] = useState(0);
+  const [pendingSignDocs, setPendingSignDocs] = useState(0);
+  const [offlinePending, setOfflinePending] = useState(0);
+  const [offlineBlocked, setOfflineBlocked] = useState(0);
+  const [closeoutReady, setCloseoutReady] = useState(false);
+  const [closeoutArchived, setCloseoutArchived] = useState(false);
+  const [closeoutNext, setCloseoutNext] = useState<string | null>(null);
+  const [closeoutAllStagesDone, setCloseoutAllStagesDone] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -59,17 +76,13 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         setDash(fallbackDashboard(activeProject));
       }
 
-      if (role === 'customer') {
-        try {
-          const items = await api.listPayments(user.id, activeProject.id);
-          const pending = items.filter((p) => p.status === 'pending');
-          setPendingPayments(pending.length);
-          setPendingPaymentTotal(pending.reduce((sum, p) => sum + p.amount, 0));
-        } catch {
-          setPendingPayments(0);
-          setPendingPaymentTotal(0);
-        }
-      } else {
+      // W65: pending payments для обеих ролей (заказчик платит, исполнитель ждёт)
+      try {
+        const items = await api.listPayments(user.id, activeProject.id);
+        const pending = items.filter((p) => p.status === 'pending');
+        setPendingPayments(pending.length);
+        setPendingPaymentTotal(pending.reduce((sum, p) => sum + p.amount, 0));
+      } catch {
         setPendingPayments(0);
         setPendingPaymentTotal(0);
       }
@@ -80,10 +93,39 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         api.listPurchases(user.id, activeProject.id).then(setPurchases),
         api.osRisks(user.id, activeProject.id).then((r) => setApiRisks(r.items)),
         api.osSchedule(user.id, activeProject.id).then(setOsSchedule),
-        api.osInsights(user.id, activeProject.id).then((r) => setInsights(r.items)),
+        api.osInsights(user.id, activeProject.id).then(async (r) => {
+          let items = r.items || [];
+          try {
+            const dig = await api.previewWeeklyDigest(user.id, activeProject.id);
+            items = mergeDigestInsight(items, dig);
+          } catch { /* noop */ }
+          setInsights(items);
+        }),
         api.budgetAlerts(user.id, activeProject.id).then(setBudgetAlerts),
         api.osBudget(user.id, activeProject.id).then(setOsBudget),
         api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)),
+        api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => setWorkScheduleStatus(s?.status ?? null)),
+        // W76: гарантия / ДО / черновики подписи → nextAction
+        api.listWarrantyClaims(user.id, activeProject.id).then((r) => {
+          setWarrantyOpen(r.open ?? 0);
+          setWarrantyOverdue(r.overdue ?? 0);
+        }),
+        api.listChangeOrders(user.id, activeProject.id).then((orders) => {
+          setPendingChangeOrders(orders.filter((o) => o.status === 'pending').length);
+        }),
+        api.listProjectDocuments(user.id, activeProject.id).then((res) => {
+          setPendingSignDocs((res.items || []).filter((d) => d.status === 'draft').length);
+        }),
+        getOfflineOutboxStatus().then((st) => {
+          setOfflinePending(st.pending || 0);
+          setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
+        }),
+        api.closeoutChecklist(user.id, activeProject.id).then((cl) => {
+          setCloseoutReady(Boolean(cl.ready));
+          setCloseoutArchived(Boolean(cl.archived));
+          setCloseoutNext(cl.next_action || null);
+          setCloseoutAllStagesDone(Boolean(cl.all_stages_done));
+        }),
       ]);
       results.forEach((r, i) => {
         if (r.status === 'rejected') {
@@ -97,6 +139,17 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
             () => setBudgetAlerts([]),
             () => setOsBudget(null),
             () => setPendingAcceptance(0),
+            () => setWorkScheduleStatus(null),
+            () => { setWarrantyOpen(0); setWarrantyOverdue(0); },
+            () => setPendingChangeOrders(0),
+            () => setPendingSignDocs(0),
+            () => { setOfflinePending(0); setOfflineBlocked(0); },
+            () => {
+              setCloseoutReady(false);
+              setCloseoutArchived(false);
+              setCloseoutNext(null);
+              setCloseoutAllStagesDone(false);
+            },
           ];
           fallbacks[i]?.();
         }
@@ -108,12 +161,48 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     }
   }
 
-  useEffect(() => { load(); refreshProjects().catch(() => {}); }, [user?.id, activeProject?.id]);
+  useEffect(() => { load(); refreshProjects().catch(reportCatch('components.screens.OsHomeScreen.1')); }, [user?.id, activeProject?.id]);
+
+  // W79: после sync offline — обновить счётчики hero без полного reload проекта
+  useEffect(() => subscribeOfflineFlush(() => {
+    getOfflineOutboxStatus()
+      .then((st) => {
+        setOfflinePending(st.pending || 0);
+        setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
+      })
+      .catch(reportCatch('components.screens.OsHomeScreen.2'));
+  }), []);
+
+  // W81: график/объект изменились → обновить nextAction (submitted → confirmed)
+  useEffect(() => subscribeProjectDataChanged(() => {
+    load().catch(reportCatch('components.screens.OsHomeScreen.3'));
+  }), [user?.id, activeProject?.id]);
 
   const snap = useMemo(() => {
     if (!activeProject || !dash) return null;
-    return buildProjectOsSnapshot(activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole as any, osBudget, pendingAcceptance, pendingPayments, pendingPaymentTotal);
-  }, [activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget, pendingAcceptance, pendingPayments, pendingPaymentTotal]);
+    return buildProjectOsSnapshot(
+      activeProject,
+      dash,
+      receipts,
+      picks,
+      purchases,
+      apiRisks,
+      osSchedule,
+      snapRole as any,
+      osBudget,
+      pendingAcceptance || dash.pending_acceptances || 0,
+      pendingPayments,
+      pendingPaymentTotal,
+      { status: workScheduleStatus, warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs, offlinePending, offlineBlocked,
+        closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone },
+    );
+  }, [
+    activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
+    pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
+    warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
+    offlinePending, offlineBlocked,
+    closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone,
+  ]);
 
   useEffect(() => {
     if (!snap) {
@@ -138,7 +227,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     return (
       <ScrollView style={s.container} contentContainerStyle={s.content}>
         <Text style={s.emptyTitle}>Нет объектов</Text>
-        <PrimaryButton title="Заявки и новые объекты" onPress={() => router.push('/job-leads')} />
+        <PrimaryButton title="Заявки и новые объекты" onPress={() => pushOsNav('/job-leads', undefined, role)} />
       </ScrollView>
     );
   }
@@ -153,13 +242,11 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       );
     }
     return (
-      <ScrollView style={s.container} contentContainerStyle={s.content}>
-        <ProjectEmptyState
-          role={role}
-          showCreate
-          hideHomeButton
-        />
-      </ScrollView>
+      <ProjectEmptyState
+        role={role}
+        showCreate
+        hideHomeButton
+      />
     );
   }
 
@@ -172,7 +259,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       <ScrollView style={s.container} contentContainerStyle={s.content}>
         <Text style={s.emptyTitle}>Не удалось загрузить главную</Text>
         {loadError ? <Text style={s.hint}>{loadError}</Text> : null}
-        <PrimaryButton title="Повторить" onPress={() => load().catch(() => {})} />
+        <PrimaryButton title="Повторить" onPress={() => load().catch(reportCatch('components.screens.OsHomeScreen.4'))} />
       </ScrollView>
     );
   }
@@ -198,7 +285,8 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      <HomeScreenBody
+      <IntegrationHonestyBadge />
+        <HomeScreenBody
         role={role}
         user={user}
         activeProject={activeProject}

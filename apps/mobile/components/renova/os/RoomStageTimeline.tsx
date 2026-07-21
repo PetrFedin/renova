@@ -7,13 +7,14 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { RoomStageCard } from '@/lib/api';
 import { pushStageDetail } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 const ST_COLOR: Record<string, string> = {
   completed: '#22c55e', waiting_acceptance: '#f59e0b', in_progress: RenovaTheme.colors.accent,
   waiting_materials: '#94a3b8', not_started: '#cbd5e1', preparation: '#60a5fa', paused: '#a78bfa',
 };
 
-export function RoomStageTimeline({ stages }: { stages: RoomStageCard[] }) {
+export function RoomStageTimeline({ stages, role = 'customer' }: { stages: RoomStageCard[]; role?: OsRole }) {
   const pathname = usePathname();
   const sorted = useMemo(() => [...stages].sort((a, b) => a.sort_order - b.sort_order), [stages]);
   const currentId = sorted.find((s) => s.is_current)?.id ?? sorted.find((s) => s.display_status === 'waiting_acceptance')?.id;
@@ -46,7 +47,12 @@ export function RoomStageTimeline({ stages }: { stages: RoomStageCard[] }) {
                   <View style={s.bar}><View style={[s.fill, { width: `${Math.min(100, st.percent_complete)}%` }]} /></View>
                   {st.planned_start && st.planned_end && <Text style={s.dates}>{st.planned_start.slice(0, 10)} → {st.planned_end.slice(0, 10)}</Text>}
                   <View style={s.actions}>
-                    <PrimaryButton title={st.next_action.button} compact variant={st.is_current ? 'primary' : 'outline'} onPress={() => pushOsNav(st.next_action.href, pathname)} />
+                    <PrimaryButton
+                      title={st.next_action.button}
+                      compact
+                      variant={st.is_current ? 'primary' : 'outline'}
+                      onPress={() => pushOsNav(st.next_action.href, pathname, role)}
+                    />
                     <Pressable onPress={() => pushStageDetail(st.id, pathname)}><Text style={s.link}>Подробнее ›</Text></Pressable>
                   </View>
                 </>

@@ -1,9 +1,9 @@
 /** Слой «Итог» — сумма сметы и быстрые переходы в деньги / материалы */
-import { View, Text, StyleSheet } from 'react-native';
+import { Alert, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourceLegend';
-import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, objectTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { ProjectDetail } from '@/lib/api';
 import { estimateTotals } from '@/lib/domain/estimateFilters';
@@ -15,6 +15,26 @@ type Props = {
   roomsCount: number;
   stagesCount: number;
   pendingChanges: number;
+  /** Заказчик / исполнитель может зафиксировать базовую смету (P0.4) */
+  canLock?: boolean;
+  locking?: boolean;
+  onLockEstimate?: () => Promise<void>;
+  canRejectProposal?: boolean;
+  canWithdrawProposal?: boolean;
+  clearingProposal?: boolean;
+  onRejectProposal?: () => Promise<void>;
+  onWithdrawProposal?: () => Promise<void>;
+  /** W68 #39 */
+  lockDiff?: {
+    has_baseline: boolean;
+    has_changes: boolean;
+    added: { name: string }[];
+    removed: { name: string }[];
+    changed: { name?: string }[];
+    baseline_total: number;
+    current_total: number;
+    delta_total: number;
+  } | null;
 };
 
 export function EstimateSummaryLayer({
@@ -24,26 +44,53 @@ export function EstimateSummaryLayer({
   roomsCount,
   stagesCount,
   pendingChanges,
+  canLock,
+  locking,
+  onLockEstimate,
+  canRejectProposal,
+  canWithdrawProposal,
+  clearingProposal,
+  onRejectProposal,
+  onWithdrawProposal,
+  lockDiff,
 }: Props) {
+  const lockedAt = project.estimate_locked_at;
   return (
     <View style={s.wrap}>
       <View style={s.totalBox}>
         <Text style={s.totalLabel}>Итого по смете</Text>
         <Text style={s.total}>{formatRub(project.budget_planned)}</Text>
+        {(project.vat_rate ?? 0) > 0 ? (
+          <Text style={s.breakdown}>
+            НДС {project.vat_rate}% · сумма в смете с учётом ставки
+          </Text>
+        ) : (
+          <Text style={s.breakdown}>Без НДС (ставка 0%)</Text>
+        )}
+        {lockedAt ? (
+          <Text style={s.locked}>Согласована · зафиксирована {lockedAt.slice(0, 10)}</Text>
+        ) : project.estimate_lock_proposed_at ? (
+          <Text style={s.unlocked}>На согласовании у заказчика · {project.estimate_lock_proposed_at.slice(0, 10)}</Text>
+        ) : (
+          <Text style={s.unlocked}>Черновик — согласуйте сумму, чтобы открыть договор и этапы</Text>
+        )}
         <Text style={s.breakdown}>
           Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} (
           {totals.materialsCount})
         </Text>
+        {lockDiff?.has_baseline ? (
+          <Text style={s.breakdown}>
+            {lockDiff.has_changes
+              ? `Изменения с отправки: +${lockDiff.added.length} / −${lockDiff.removed.length} / Δ ${lockDiff.changed.length} · Δ ${formatRub(lockDiff.delta_total)}`
+              : 'С момента отправки сметы изменений нет'}
+          </Text>
+        ) : null}
       </View>
 
       <View style={s.metaRow}>
         <MetaChip label="Комнаты" value={roomsCount ? `${roomsCount}` : '—'} />
         <MetaChip label="Этапы" value={stagesCount ? `${stagesCount}` : '—'} />
-        <MetaChip
-          label="На согласовании"
-          value={pendingChanges ? `${pendingChanges}` : '0'}
-          warn={pendingChanges > 0}
-        />
+        <PendingChangesChip count={pendingChanges} pathname={pathname} />
       </View>
 
       <EstimateSourceLegend compact />
@@ -52,21 +99,88 @@ export function EstimateSummaryLayer({
         Детализация по комнатам — вкладка «Детализация». Доп. работы и решения — «Изменения». PDF и Excel — «Документы».
       </Text>
 
+      {!lockedAt && canLock && onLockEstimate ? (
+        <PrimaryButton
+          title={locking ? 'Фиксация…' : 'Согласовать и зафиксировать смету'}
+          disabled={!!locking || !!clearingProposal}
+          onPress={() => {
+            void onLockEstimate().catch((e: unknown) => {
+              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка фиксации сметы');
+            });
+          }}
+        />
+      ) : null}
+      {!lockedAt && canRejectProposal && onRejectProposal ? (
+        <PrimaryButton
+          title={clearingProposal ? 'Отклонение…' : 'Отклонить — нужна правка'}
+          variant="outline"
+          disabled={!!clearingProposal || !!locking}
+          onPress={() => {
+            void onRejectProposal().catch((e: unknown) => {
+              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отклонения');
+            });
+          }}
+        />
+      ) : null}
+      {!lockedAt && canWithdrawProposal && onWithdrawProposal ? (
+        <PrimaryButton
+          title={clearingProposal ? 'Отзыв…' : 'Отозвать предложение'}
+          variant="outline"
+          disabled={!!clearingProposal}
+          onPress={() => {
+            void onWithdrawProposal().catch((e: unknown) => {
+              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');
+            });
+          }}
+        />
+      ) : null}
+      {lockedAt ? (
+        <PrimaryButton
+          title="→ Документы (договор)"
+          variant="outline"
+          compact
+          onPress={() => pushOsNav('/documents', pathname, 'customer')}
+        />
+      ) : null}
+
       <View style={s.links}>
         <PrimaryButton
           title="→ Деньги"
           variant="outline"
           compact
-          onPress={() => pushOsNav(budgetTabRoute('customer', 'summary'), pathname)}
+          onPress={() => pushOsNav(budgetTabRoute('customer', 'summary'), pathname, 'customer')}
         />
         <PrimaryButton
           title="→ Материалы"
           variant="outline"
           compact
-          onPress={() => pushOsNav(repairTabRoute('customer', 'materials'), pathname)}
+          onPress={() => pushOsNav(repairTabRoute('customer', 'materials'), pathname, 'customer')}
         />
       </View>
     </View>
+  );
+}
+
+function PendingChangesChip({ count, pathname }: { count: number; pathname: string }) {
+  const chip = (
+    <MetaChip label="На согласовании" value={count ? `${count}` : '0'} warn={count > 0} />
+  );
+  if (!count) return chip;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => {
+        const route = objectTabRoute('customer', 'estimate');
+        // W118: слой доп. работ → SoT
+        pushOsNav(
+          { pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } },
+          pathname,
+          'customer',
+        );
+      }}
+    >
+      {chip}
+    </Pressable>
   );
 }
 
@@ -84,6 +198,8 @@ const s = StyleSheet.create({
   totalBox: { marginBottom: 4 },
   totalLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
   total: { fontSize: 32, fontWeight: '800', color: RenovaTheme.colors.primary, marginTop: 4 },
+  locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '700' },
+  unlocked: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
   breakdown: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 17 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {

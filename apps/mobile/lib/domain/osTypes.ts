@@ -12,6 +12,7 @@ export type OsEventType =
   | 'PaymentApproved' | 'InspectionRequested' | 'IssueCreated' | 'IssueClosed'
   | 'AcceptancePassed' | 'DocumentUploaded';
 
+/** W55: expense = смета/бюджет; work = график/работы */
 export type OsNextActionKind = 'accept' | 'expense' | 'material' | 'issue' | 'payment' | 'work' | 'review';
 
 export interface OsRiskItem {

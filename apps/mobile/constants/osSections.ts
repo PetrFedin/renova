@@ -26,19 +26,30 @@ const CONTRACTOR_CORE: OsSection[] = [
   { id: 'budget', label: 'Бюджет', routeName: 'budget', icon: 'budget' },
 ];
 
-/** Верхнее меню: 4 столпа + сообщения + календарь */
+/** Верхнее меню «Ещё»: только то, чего нет в dock (не дублировать 4 столпа + chat) */
 export const OS_MENU_SECTIONS: Record<OsRole, OsSection[]> = {
   customer: [
-    ...CUSTOMER_CORE,
-    { id: 'chat', label: 'Сообщения', routeName: 'chat', icon: 'chat' },
-    { id: 'calendar', label: 'Календарь', routeName: 'calendar', icon: 'calendar' },
+    { id: 'calendar', label: 'Сроки', routeName: 'calendar', icon: 'calendar' },
   ],
   contractor: [
-    ...CONTRACTOR_CORE,
-    { id: 'chat', label: 'Сообщения', routeName: 'chat', icon: 'chat' },
-    { id: 'calendar', label: 'Календарь', routeName: 'calendar', icon: 'calendar' },
+    { id: 'calendar', label: 'Сроки', routeName: 'calendar', icon: 'calendar' },
   ],
 };
+
+/** Утилиты шапки «Ещё» — вместе с OS_MENU_SECTIONS ≤ MAX_HEADER_MORE_ITEMS */
+export const MAX_HEADER_MORE_ITEMS = 6;
+
+export const OS_MORE_UTIL_LINKS: {
+  id: string;
+  label: string;
+  href: string;
+  icon: 'time-outline' | 'document-text-outline' | 'mail-unread-outline' | 'checkmark-done-outline';
+}[] = [
+  { id: 'inbox', label: 'Входящие', href: '/inbox', icon: 'mail-unread-outline' },
+  { id: 'approvals', label: 'Согласования', href: '/approvals', icon: 'checkmark-done-outline' },
+  { id: 'documents', label: 'Документы', href: '/documents', icon: 'document-text-outline' },
+  { id: 'activity', label: 'Архив ремонта', href: '/activity', icon: 'time-outline' },
+];
 
 export const OS_SECTIONS: Record<OsRole, OsSection[]> = {
   customer: CUSTOMER_CORE,
@@ -183,10 +194,21 @@ export function objectTabRoute(role: OsRole, tab: string, sub?: string): OsTabRo
   return tabsRoute(role, 'object', tab, sub ? { sub } : undefined);
 }
 
+export type BudgetNavParams = {
+  roomId?: string;
+  stageId?: string;
+  period?: string;
+  focus?: string;
+  view?: string;
+  /** W138: сразу открыть PaymentDetailSheet (канон оплаты) */
+  openPayment?: string;
+  paymentId?: string;
+};
+
 export function budgetTabHref(
   role: OsRole,
   tab: string,
-  params?: { roomId?: string; stageId?: string; period?: string; focus?: string; view?: string },
+  params?: BudgetNavParams,
 ): string {
   const extra: Record<string, string> = {};
   if (params?.roomId) extra.roomId = params.roomId;
@@ -194,6 +216,8 @@ export function budgetTabHref(
   if (params?.period) extra.period = params.period;
   if (params?.focus) extra.focus = params.focus;
   if (params?.view) extra.view = params.view;
+  if (params?.openPayment) extra.openPayment = params.openPayment;
+  if (params?.paymentId) extra.paymentId = params.paymentId;
   const r = tabsRoute(role, 'budget', tab, Object.keys(extra).length ? extra : undefined);
   if (!r.params) return r.pathname;
   const qs = new URLSearchParams(r.params).toString();
@@ -203,7 +227,7 @@ export function budgetTabHref(
 export function budgetTabRoute(
   role: OsRole,
   tab: string,
-  params?: { roomId?: string; stageId?: string; period?: string; focus?: string; view?: string },
+  params?: BudgetNavParams,
 ): OsTabRoute {
   const extra: Record<string, string> = {};
   if (params?.roomId) extra.roomId = params.roomId;
@@ -211,5 +235,7 @@ export function budgetTabRoute(
   if (params?.period) extra.period = params.period;
   if (params?.focus) extra.focus = params.focus;
   if (params?.view) extra.view = params.view;
+  if (params?.openPayment) extra.openPayment = params.openPayment;
+  if (params?.paymentId) extra.paymentId = params.paymentId;
   return tabsRoute(role, 'budget', tab, Object.keys(extra).length ? extra : undefined);
 }

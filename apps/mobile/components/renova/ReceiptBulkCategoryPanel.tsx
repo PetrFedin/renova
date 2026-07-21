@@ -6,6 +6,10 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';
 import { expenseCategoryLabel } from '@/constants/labels';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertReceiptsBulkCategorized } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   userId: string;
@@ -19,6 +23,7 @@ type Props = {
 export function ReceiptBulkCategoryPanel({
   userId, projectId, receiptIds, readOnly, filterLabel, onDone,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const [category, setCategory] = useState<ExpenseCategoryId>('materials');
   const [busy, setBusy] = useState(false);
 
@@ -30,7 +35,11 @@ export function ReceiptBulkCategoryPanel({
       await Promise.all(
         receiptIds.map((id) => api.patchReceipt(userId, projectId, id, { expense_category: category })),
       );
-      Alert.alert('Готово', `Категория «${expenseCategoryLabel(category)}» — ${receiptIds.length} чек(ов)`);
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
+      alertReceiptsBulkCategorized((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, expenseCategoryLabel(category), receiptIds.length);
       onDone();
     } catch {
       Alert.alert('Ошибка', 'Не удалось обновить категории. Проверьте сервер.');

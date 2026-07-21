@@ -1,5 +1,5 @@
 /** График этапов — read-only обзор; сроки меняются в «Календарь», ход — в «Ремонт» */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { stageStatusLabel } from '@/constants/labels';
@@ -7,7 +7,9 @@ import { calendarTabRoute, objectTabRoute, repairTabRoute, type OsRole } from '@
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useNavFromHere } from '@/lib/navigation';
 import { api, type ProjectPlan } from '@/lib/api';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { formatScheduleRange, formatScheduleWorkSpan } from '@/lib/formatScheduleDate';
+import { reportCatch } from '@/lib/reportError';
 
 export function PlanSchedulePanel({
   userId,
@@ -25,9 +27,11 @@ export function PlanSchedulePanel({
   const nav = useNavFromHere();
   const [plan, setPlan] = useState<ProjectPlan | null>(null);
 
-  useEffect(() => {
-    api.getPlan(userId, projectId).then(setPlan).catch(() => {});
+  const reload = useCallback(() => {
+    api.getPlan(userId, projectId).then(setPlan).catch(reportCatch('components.renova.PlanSchedulePanel.1'));
   }, [userId, projectId]);
+  useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   if (!plan) {
     return (

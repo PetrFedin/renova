@@ -5,12 +5,15 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StagePickerChips } from '@/components/renova/StagePickerChips';
 import { api, type ProjectDetail } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertPaymentCreated } from '@/lib/estimatePayNav';
+import type { OsRole } from '@/constants/osSections';
 
+/** Backend: contractor может создавать только stage/material (payments.py). */
 const PAY_TYPES = [
-  { id: 'advance', label: 'Аванс' },
   { id: 'stage', label: 'Этап' },
   { id: 'material', label: 'Материалы' },
-  { id: 'final', label: 'Финал' },
 ] as const;
 
 export function CreatePaymentForm({
@@ -22,22 +25,31 @@ export function CreatePaymentForm({
   project: ProjectDetail;
   onSaved?: () => void;
 }) {
+  const { user } = useRenova();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [paymentType, setPaymentType] = useState<(typeof PAY_TYPES)[number]['id']>('stage');
   const [stageId, setStageId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  /** W69 #40 */
+  const [percent, setPercent] = useState<number | null>(null);
 
   async function submit() {
     const n = parseFloat(amount.replace(',', '.'));
-    if (!title.trim()) { Alert.alert('Счёт', 'Укажите название'); return; }
-    if (!n || n <= 0) { Alert.alert('Счёт', 'Укажите сумму больше 0'); return; }
+    if (!title.trim() && !(paymentType === 'stage' && percent)) { Alert.alert('Счёт', 'Укажите название'); return; }
+    if (paymentType === 'stage' && !stageId) {
+      Alert.alert('Счёт', 'Выберите этап для счёта за этап');
+      return;
+    }
+    if (percent == null && (!n || n <= 0)) { Alert.alert('Счёт', 'Укажите сумму или % этапа'); return; }
     setBusy(true);
     try {
+      const stage = project.stages?.find((s) => s.id === stageId);
       await api.createPayment(userId, project.id, {
-        title: title.trim(),
-        amount: n,
+        title: title.trim() || (stage && percent ? `${stage.name}: ${percent}%` : 'Оплата этапа'),
+        amount: percent != null ? undefined : n,
+        percent: percent ?? undefined,
         payment_type: paymentType,
         stage_id: stageId,
         notes: notes.trim() || null,
@@ -45,10 +57,17 @@ export function CreatePaymentForm({
       setTitle('');
       setAmount('');
       setNotes('');
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
       onSaved?.();
-      Alert.alert('Отправлено', 'Счёт отправлен заказчику на подтверждение');
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось создать счёт');
+      alertPaymentCreated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      Alert.alert(
+        'Ошибка',
+        msg.includes('403') || msg.includes('Forbidden')
+          ? 'Этот тип счёта недоступен исполнителю. Используйте «Этап» или «Материалы».'
+          : 'Не удалось создать счёт',
+      );
     } finally {
       setBusy(false);
     }
@@ -57,9 +76,29 @@ export function CreatePaymentForm({
   return (
     <View style={s.box}>
       <Text style={s.head}>Новый счёт</Text>
-      <Text style={s.hint}>Заказчик получит уведомление и подтвердит оплату</Text>
+      <Text style={s.hint}>Этап или материалы. Для этапа можно выставить долю 30/50/70/100% от суммы этапа.</Text>
       <TextInput style={s.inp} value={title} onChangeText={setTitle} placeholder="Название (например: Штукатурка)" editable={!busy} />
-      <TextInput style={s.inp} value={amount} onChangeText={setAmount} placeholder="Сумма, ₽" keyboardType="decimal-pad" editable={!busy} />
+      {paymentType === 'stage' ? (
+        <View style={s.typeRow}>
+          {[30, 50, 70, 100].map((p) => (
+            <PrimaryButton
+              key={p}
+              title={`${p}%`}
+              compact
+              variant={percent === p ? 'primary' : 'outline'}
+              onPress={() => { setPercent(p); setAmount(''); }}
+            />
+          ))}
+        </View>
+      ) : null}
+      <TextInput
+        style={s.inp}
+        value={amount}
+        onChangeText={(v) => { setAmount(v); setPercent(null); }}
+        placeholder={percent != null ? `= ${percent}% этапа` : 'Сумма, ₽'}
+        keyboardType="decimal-pad"
+        editable={!busy && percent == null}
+      />
       <View style={s.typeRow}>
         {PAY_TYPES.map((t) => (
           <PrimaryButton
@@ -81,9 +120,17 @@ export function CreatePaymentForm({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
-  head: { fontWeight: '800', marginBottom: 4 },
-  hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10 },
-  inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },
-  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  box: { gap: 10, marginBottom: 16, padding: 12, borderRadius: 12, backgroundColor: RenovaTheme.colors.surface },
+  head: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
+  hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 4 },
+  inp: {
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: RenovaTheme.colors.text,
+    backgroundColor: RenovaTheme.colors.background,
+  },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

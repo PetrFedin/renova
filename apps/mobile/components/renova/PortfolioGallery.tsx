@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
+import { reportCatch } from '@/lib/reportError';
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
 export function PortfolioGallery({ userId, profileId }: { userId: string; profileId: string }) {
   const [photos, setPhotos] = useState<{ id: string; image_url: string; caption?: string }[]>([]);
-  useEffect(() => { api.contractorPortfolio(userId, profileId).then(setPhotos).catch(() => {}); }, [profileId]);
+  useEffect(() => { api.contractorPortfolio(userId, profileId).then(setPhotos).catch(reportCatch('components.renova.PortfolioGallery.1')); }, [profileId]);
   if (!photos.length) return null;
   return (
     <View style={s.box}><Text style={s.head}>Портфолио</Text>

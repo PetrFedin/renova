@@ -12,6 +12,8 @@ import { ScratchpadLineRow } from '@/components/renova/scratchpad/ScratchpadLine
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ScratchpadLine } from '@/lib/api';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { budgetTabHref, calendarTabHref, type OsRole } from '@/constants/osSections';
@@ -22,7 +24,8 @@ const HINT = 'Пишите что угодно. [ ] пункт · [x] сдела
 export function ScratchpadScreen({ role }: { role: OsRole }) {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { user, activeProject, readOnly } = useRenova();
-  const [lines, setLines] = useState<ScratchpadLine[]>([]);
+  const [lines, setLines] = useState<ScratchpadLine[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [promoteLine, setPromoteLine] = useState<ScratchpadLine | null>(null);
@@ -32,10 +35,17 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api.listScratchpad(user.id, activeProject.id).then((d) => setLines(d.lines || [])).catch(() => setLines([]));
+    setLoadError(null);
+    api.listScratchpad(user.id, activeProject.id)
+      .then((d) => setLines(d.lines || []))
+      .catch(() => {
+        setLines([]);
+        setLoadError('Не удалось загрузить заметки');
+      });
   }, [user?.id, activeProject?.id]);
 
   useEffect(() => { reload(); }, [reload]);
+  useProjectDataReload(reload);
 
   const active = useMemo(() => lines.filter((l) => !l.done && !l.promoted_kind), [lines]);
   const done = useMemo(() => lines.filter((l) => l.done || l.promoted_kind), [lines]);
@@ -50,8 +60,13 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       // Сразу показываем строку — не ждём повторный GET (раньше cachedGet отдавал старый список).
       setLines((prev) => [...prev, line]);
       reload();
-    } catch {
-      Alert.alert('Черновик', 'Не удалось сохранить строку');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Строка черновика отправится при подключении');
+        setDraft('');
+      } else {
+        Alert.alert('Черновик', 'Не удалось сохранить строку');
+      }
     } finally {
       setBusy(false);
     }
@@ -62,7 +77,11 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
     try {
       await api.patchScratchpadLine(user.id, activeProject.id, line.id, { done: !line.done });
       reload();
-    } catch { /* offline */ }
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Статус строки в очереди');
+      }
+    }
   };
 
   const deleteLine = (line: ScratchpadLine) => {
@@ -122,7 +141,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         onPress: async () => {
           if (!user || !activeProject) return;
           try {
-            const existing = await api.chatInbox(user.id).catch(() => []);
+            // Fail-closed: без inbox не создаём чат «вслепую» (дубли/потеря контекста)
+            const existing = await api.chatInbox(user.id);
             const title = line.text.slice(0, 60);
             await createProjectChat({
               userId: user.id,
@@ -131,11 +151,11 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
               existingThreads: existing,
               onOpen: async (threadId) => {
                 await markPromoted(line, 'chat', threadId);
-                pushOsNav({ pathname: '/chat/[threadId]', params: { threadId } }, returnTo);
+                pushOsNav({ pathname: '/chat/[threadId]', params: { threadId } }, returnTo, role);
               },
             });
           } catch {
-            Alert.alert('Чат', 'Не удалось создать чат');
+            Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть и повторите.');
           }
         },
       },
@@ -143,7 +163,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         text: '→ Расход',
         onPress: async () => {
           await markPromoted(line, 'expense');
-          pushOsNav(budgetTabHref(role, 'expenses'), returnTo);
+          await syncProjectSideEffects({ user, project: activeProject });
+          pushOsNav(budgetTabHref(role, 'expenses'), returnTo, role);
         },
       },
       { text: 'Отмена', style: 'cancel' },
@@ -181,6 +202,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       </View>
 
       <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 120 }}>
+        {loadError ? (
+          <Text style={[s.empty, { color: '#B45309' }]}>{loadError}</Text>
+        ) : null}
         {active.length ? (
           <>
             <Text style={s.section}>Активные ({active.length})</Text>
@@ -196,9 +220,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
               />
             ))}
           </>
-        ) : (
+        ) : !loadError ? (
           <Text style={s.empty}>Пока пусто — запишите мысли ниже, пока не забыли.</Text>
-        )}
+        ) : null}
         {done.length ? (
           <>
             <Text style={[s.section, { marginTop: 16 }]}>Сделано / оформлено ({done.length})</Text>
@@ -243,8 +267,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         onCreatedWork={async (wo) => {
           if (!promoteLine) return;
           await markPromoted(promoteLine, 'work_order', wo.id);
+          await syncProjectSideEffects({ user, project: activeProject });
           const date = (wo.planned_start || new Date().toISOString()).slice(0, 10);
-          pushOsNav(calendarTabHref(role, { date }), returnTo);
+          pushOsNav(calendarTabHref(role, { date }), returnTo, role);
         }}
       />
 

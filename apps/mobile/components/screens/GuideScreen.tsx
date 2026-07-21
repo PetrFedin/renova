@@ -4,12 +4,13 @@ import { ScrollView, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, ArticleSummary } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
+import { reportCatch } from '@/lib/reportError';
 
 export function GuideScreen() {
   const nav = useNavFromHere();
   const [articles, setArticles] = useState<ArticleSummary[]>([]);
 
-  useEffect(() => { api.listArticles().then(setArticles).catch(() => {}); }, []);
+  useEffect(() => { api.listArticles().then(setArticles).catch(reportCatch('components.screens.GuideScreen.1')); }, []);
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>

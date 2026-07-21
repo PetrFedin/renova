@@ -30,7 +30,16 @@ if (schedTile.hint !== 'работы завершены') throw new Error('closi
 const payDetail = buildHomeKpiDetail('kpi_budget', closingSnap, 'customer');
 const schedDetail = buildHomeKpiDetail('kpi_schedule', closingSnap, 'customer');
 if (!payDetail?.actionLabel.includes('Оплатить')) throw new Error('pay action');
-if (schedDetail?.actionHref !== '/reports') throw new Error('schedule action = reports not payments');
-if (payDetail?.actionHref === schedDetail?.actionHref) throw new Error('actions must differ');
+// closing (есть unpaid): schedule KPI ведёт к оплате (OsTabRoute)
+const closingHref = schedDetail?.actionHref;
+const closingOk =
+  typeof closingHref === 'object'
+  && closingHref?.pathname?.includes('budget')
+  && closingHref?.params?.tab === 'payments';
+if (!closingOk) throw new Error('closing schedule → payments');
+
+const completeSnap: ProjectOsSnapshot = { ...closingSnap, pendingPayments: 0, pendingPaymentTotal: 0, healthLabel: 'Завершён', healthLevel: 'good', healthFactors: [] };
+const completeSched = buildHomeKpiDetail('kpi_schedule', completeSnap, 'customer');
+if (completeSched?.actionHref !== '/documents') throw new Error('complete schedule → documents');
 
 console.log('buildHomeKpiDetail.test OK');

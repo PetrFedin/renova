@@ -1,6 +1,5 @@
 /** «Сделать сейчас» v2 — hero stack + full-width CTA */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { homeLayout, homeRowStyles, homeTypography } from '@/constants/homeTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -13,6 +12,7 @@ import type { ProjectOsSnapshot, OsNextAction } from '@/lib/domain/osTypes';
 import type { OsInsight } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { isClosingPhaseSecondary, resolveProjectPhase } from '@/lib/domain/resolveProjectPhase';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 type Props = {
   role: OsRole;
@@ -43,19 +43,22 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
     ? insights.find((i) => i.kind !== 'payment') || insights[0]
     : null;
 
-  const hasContent = showHero || secondary.length > 0 || copilotFallback || inboxForLink.length > 0;
+  const hasContent = showHero || secondary.length > 0 || copilotFallback || showInbox;
   if (!hasContent) return null;
+
+  const inboxCount = inboxForLink.length;
+  const inboxLinkLabel = inboxCount > 0 ? `Все задачи (${inboxCount}) →` : 'Входящие →';
 
   return (
     <View style={s.wrap}>
       <View style={s.zoneHead}>
         <Text style={homeTypography.zoneLabel}>{homeHeroLabel({ role, readOnly })}</Text>
-        {inboxForLink.length > 0 ? (
+        {showInbox && !readOnly ? (
           <Pressable
-            onPress={() => router.push({ pathname: '/inbox', params: { returnTo, heroKind: hero.kind } } as any)}
+            onPress={() => pushOsNav('/inbox', returnTo, role)}
             hitSlop={8}
           >
-            <Text style={homeTypography.link}>Все задачи ({inboxForLink.length}) →</Text>
+            <Text style={homeTypography.link}>{inboxLinkLabel}</Text>
           </Pressable>
         ) : null}
       </View>

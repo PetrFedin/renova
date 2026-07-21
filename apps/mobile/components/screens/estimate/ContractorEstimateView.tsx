@@ -4,6 +4,7 @@ import { ScrollView, Text, View, StyleSheet, TextInput, Alert } from 'react-nati
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { AddEstimateLineForm } from '@/components/renova/AddEstimateLineForm';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -16,6 +17,8 @@ import { api } from '@/lib/api';
 import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
+import { alertChangeOrderSubmitted } from '@/lib/procurementNav';
+import { alertEstimateProposed, alertEstimateProposalRevoked } from '@/lib/estimatePayNav';
 import { screenLayout } from '@/constants/screenLayout';
 import {
   estimateTotals,
@@ -26,7 +29,7 @@ import {
 export function ContractorEstimateView() {
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
-  const { user, activeProject, loadProject } = useRenova();
+  const { user, activeProject, loadProject, isContractorOwner, teamRole } = useRenova();
   const [coTitle, setCoTitle] = useState('Доп. розетки');
   const [coAmount, setCoAmount] = useState('8500');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
@@ -46,32 +49,54 @@ export function ContractorEstimateView() {
 
   async function patchLine(lineId: string, body: object) {
     if (!user) return;
-    await api.patchEstimateLine(user.id, activeProject!.id, lineId, body);
-    await loadProject(activeProject!.id);
+    try {
+      await api.patchEstimateLine(user.id, activeProject!.id, lineId, body);
+      await loadProject(activeProject!.id);
+      await syncProjectSideEffects({ user, project: activeProject });
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Изменение строки отправится при подключении');
+        return;
+      }
+      throw e;
+    }
   }
 
   async function addChangeOrder() {
     if (!user) return;
-    await api.createChangeOrder(user.id, activeProject.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
-    await loadProject(activeProject.id);
-    Alert.alert('Изменение сметы', 'Отправлен заказчику на согласование');
+    try {
+      await api.createChangeOrder(user.id, activeProject.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
+      await loadProject(activeProject.id);
+      await syncProjectSideEffects({ user, project: activeProject });
+      // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
+      alertChangeOrderSubmitted('contractor');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Допсоглашение отправится при подключении');
+        return;
+      }
+      throw e;
+    }
   }
 
   return (
     <>
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
-        <ObjectTabGuide tab="estimate" compact />
+        <ObjectTabGuide tab="estimate" />
 
         <View style={styles.totalBox}>
           <Text style={styles.totalLabel}>Смета проекта</Text>
           <Text style={styles.total}>{formatRub(activeProject.budget_planned)}</Text>
+          {activeProject.estimate_locked_at ? (
+            <Text style={styles.locked}>Зафиксирована · {activeProject.estimate_locked_at.slice(0, 10)}</Text>
+          ) : null}
           <Text style={styles.breakdown}>
             Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} ({totals.materialsCount})
           </Text>
         </View>
 
-        <EstimateSourceLegend compact />
+        <EstimateSourceLegend />
         <EstimateFilterBar
           lines={allLines}
           lineType={lineType}
@@ -84,6 +109,45 @@ export function ContractorEstimateView() {
           Редактор · {filtered.length} поз. · {formatRub(filteredTotal)}
         </Text>
         <EstimateEditorByRoom lines={filtered} canWrite={canWrite} onPatch={patchLine} />
+
+        {user && canWrite && !activeProject.estimate_locked_at && allLines.length > 0 && (
+          <>
+            <PrimaryButton
+              title={activeProject.estimate_lock_proposed_at ? 'Смета у заказчика на согласовании' : 'Отправить смету на согласование'}
+              variant="outline"
+              disabled={!!activeProject.estimate_lock_proposed_at || !isContractorOwner}
+              onPress={async () => {
+                try {
+                  await api.proposeEstimateLock(user.id, activeProject.id);
+                  await loadProject(activeProject.id);
+                  await syncProjectSideEffects({ user, project: activeProject });
+                  alertEstimateProposed('contractor');
+                } catch (e: unknown) {
+                  Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отправки сметы');
+                }
+              }}
+            />
+            {!isContractorOwner && teamRole && teamRole !== 'owner' ? (
+              <Text style={{ color: '#64748B', marginTop: 8 }}>Отправку сметы делает главный исполнитель (не {teamRole}).</Text>
+            ) : null}
+            {activeProject.estimate_lock_proposed_at ? (
+              <PrimaryButton
+                title="Отозвать предложение"
+                variant="outline"
+                onPress={async () => {
+                  try {
+                    await api.withdrawEstimateLock(user.id, activeProject.id);
+                    await loadProject(activeProject.id);
+                    await syncProjectSideEffects({ user, project: activeProject });
+                    alertEstimateProposalRevoked('contractor');
+                  } catch (e: unknown) {
+                    Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');
+                  }
+                }}
+              />
+            ) : null}
+          </>
+        )}
 
         {user && canWrite && (
           <AddEstimateLineForm
@@ -106,8 +170,8 @@ export function ContractorEstimateView() {
 
         <Text style={styles.meta}>{DOCUMENTS_MENU_HINT}</Text>
         <View style={styles.links}>
-          <PrimaryButton title="→ Бюджет" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute('contractor', 'summary'), pathname)} />
-          <PrimaryButton title="→ Материалы" variant="outline" compact onPress={() => pushOsNav(repairTabRoute('contractor', 'materials'), pathname)} />
+          <PrimaryButton title="→ Бюджет" variant="outline" onPress={() => pushOsNav(budgetTabRoute('contractor', 'summary'), pathname, 'contractor')} />
+          <PrimaryButton title="→ Материалы" variant="outline" onPress={() => pushOsNav(repairTabRoute('contractor', 'materials'), pathname, 'contractor')} />
         </View>
 
         <Text style={styles.section}>Изменение сметы (доп. работа)</Text>
@@ -125,6 +189,7 @@ const styles = StyleSheet.create({
   totalBox: { marginBottom: 12 },
   totalLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
   total: { fontSize: 28, fontWeight: '800', color: RenovaTheme.colors.primary, marginTop: 4 },
+  locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '600' },
   breakdown: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
   sectionTitle: { fontWeight: '700', fontSize: 13, marginBottom: 8, color: RenovaTheme.colors.text },
   meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16, marginTop: 8 },

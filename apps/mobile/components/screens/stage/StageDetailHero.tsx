@@ -4,6 +4,11 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { api, type StageDetail, type WorkSnapshot, ApiError } from '@/lib/api';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
+import { alertStageStarted } from '@/lib/jobLeadNav';
+import { alertStageSubmittedForAcceptance } from '@/lib/fieldCreateNav';
 
 type Props = {
   stage: StageDetail;
@@ -11,6 +16,7 @@ type Props = {
   isContractor: boolean;
   canWrite: boolean;
   blocked: { blocked: boolean; depends_on?: string } | null;
+  contractGate?: { ok: boolean; message?: string; pending_titles?: string[] } | null;
   userId: string;
   projectId: string;
   onReload: () => Promise<void>;
@@ -24,13 +30,18 @@ export function StageDetailHero({
   isContractor,
   canWrite,
   blocked,
+  contractGate,
   userId,
   projectId,
   onReload,
   onProjectReload,
   onSubmitStage,
 }: Props) {
+  const role: OsRole = isContractor ? 'contractor' : 'customer';
+  const stageReturn = `/stage/${stage.id}`;
   const statusLabel = STAGE_STATUS_LABEL[stage.status] || stage.status;
+
+  const openDocs = () => pushOsNav('/documents', stageReturn, role);
 
   return (
     <View style={s.box}>
@@ -57,6 +68,22 @@ export function StageDetailHero({
         </View>
       ) : null}
 
+      {isContractor && stage.status === 'planned' && contractGate && !contractGate.ok ? (
+        <View style={s.warnBox}>
+          <Text style={s.warnHead}>Перед началом работ</Text>
+          <Text style={s.warnItem}>{contractGate.message || 'Подпишите договор'}</Text>
+          {(contractGate.pending_titles || []).slice(0, 2).map((title) => (
+            <Text key={title} style={s.warnItem}>• {title}</Text>
+          ))}
+          <PrimaryButton
+            title="К документам"
+            variant="outline"
+            compact
+            onPress={openDocs}
+          />
+        </View>
+      ) : null}
+
       {isContractor && stage.status === 'planned' ? (
         <PrimaryButton
           disabled={!canWrite || blocked?.blocked}
@@ -66,9 +93,32 @@ export function StageDetailHero({
               await api.startStage(userId, projectId, stage.id);
               await onReload();
               await onProjectReload();
+              await syncProjectSideEffects({
+                user: { id: userId } as any,
+                project: { id: projectId } as any,
+              });
+              // W130: старт этапа → график / работы
+              alertStageStarted(role);
             } catch (e: unknown) {
-              if (e instanceof ApiError && e.status === 409) {
+              if (e instanceof Error && e.message === 'offline_queued') {
+                Alert.alert('Офлайн', 'Старт этапа отправится при подключении');
+              } else if (e instanceof ApiError && e.status === 409) {
                 Alert.alert('Блокировка', 'Сначала завершите зависимый этап');
+              } else if (e instanceof ApiError && e.status === 403) {
+                const d = e.detail as { code?: string; message?: string; pending_titles?: string[] } | undefined;
+                if (d?.code === 'contract_not_signed') {
+                  const titles = (d.pending_titles || []).join(', ');
+                  Alert.alert(
+                    'Нужен договор',
+                    [d.message || 'Подпишите договор перед началом работ', titles ? `Документы: ${titles}` : ''].filter(Boolean).join('\n'),
+                    [
+                      { text: 'Отмена', style: 'cancel' },
+                      { text: 'К документам', onPress: openDocs },
+                    ],
+                  );
+                } else {
+                  Alert.alert('Доступ запрещён', d?.message || e.message);
+                }
               } else throw e;
             }
           }}
@@ -84,6 +134,8 @@ export function StageDetailHero({
               await onSubmitStage(stage.id);
               await onReload();
               await onProjectReload();
+              // W133: сдача → приёмка / inbox
+              alertStageSubmittedForAcceptance(role);
             } catch (e: unknown) {
               if (e instanceof Error && e.message === 'offline_queued') {
                 Alert.alert('Офлайн', 'Сдача отправится при подключении');

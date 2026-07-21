@@ -5,6 +5,10 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StagePickerChips } from '@/components/renova/StagePickerChips';
 import { api, type ProjectDetail, type ReceiptItem } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertReceiptsBulkLinked } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   userId: string;
@@ -15,6 +19,7 @@ type Props = {
 };
 
 export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDone }: Props) {
+  const { user, activeProject } = useRenova();
   const unlinked = receipts.filter((r) => !r.stage_id);
   const [stageId, setStageId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,7 +43,11 @@ export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDo
           }),
         ),
       );
-      Alert.alert('Готово', `Привязано чеков: ${unlinked.length}`);
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? project,
+      });
+      alertReceiptsBulkLinked((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, unlinked.length);
       onDone();
     } catch {
       Alert.alert('Ошибка', 'Не удалось привязать все чеки. Проверьте сервер.');

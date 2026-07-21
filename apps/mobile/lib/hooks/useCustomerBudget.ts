@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { getCustomerBudget, setCustomerBudget } from '@/lib/customerBudgetPrefs';
 import { normalizeCustomerBudget, resolveCustomerBudget } from '@/lib/customerBudgetSync';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 type Options = {
   projectId?: string | null;
@@ -23,7 +24,7 @@ export function useCustomerBudget({ projectId, userId, serverBudget }: Options) 
     setLoading(true);
     getCustomerBudget(projectId)
       .then(setLocal)
-      .catch(() => setLocal(null))
+      .catch((e) => { reportError('customerBudget', e); setLocal(null); })
       .finally(() => setLoading(false));
   }, [projectId]);
 
@@ -40,6 +41,10 @@ export function useCustomerBudget({ projectId, userId, serverBudget }: Options) 
           const synced = normalizeCustomerBudget(p.customer_budget) ?? rounded;
           await setCustomerBudget(projectId, synced);
           setLocal(synced);
+          await syncProjectSideEffects({
+            user: { id: userId } as any,
+            project: { id: projectId, customer_budget: synced } as any,
+          });
           return synced;
         } catch {
           await setCustomerBudget(projectId, rounded);

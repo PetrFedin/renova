@@ -9,12 +9,13 @@ import {
 } from '@/constants/budgetWidgets';
 import { getBudgetWidgets, toggleBudgetWidget, resetBudgetWidgets } from '@/lib/budgetWidgetPrefs';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 export function BudgetWidgetSettings({ role, embedded }: { role: OsRole; embedded?: boolean }) {
   const [enabled, setEnabled] = useState<Set<BudgetWidgetId>>(new Set(BUDGET_WIDGET_DEFAULT));
   const [expanded, setExpanded] = useState(!embedded);
 
-  useEffect(() => { getBudgetWidgets(role).then((ids) => setEnabled(new Set(ids))).catch(() => {}); }, [role]);
+  useEffect(() => { getBudgetWidgets(role).then((ids) => setEnabled(new Set(ids))).catch(reportCatch('components.renova.os.BudgetWidgetSettings.1')); }, [role]);
 
   const onToggle = async (id: BudgetWidgetId) => {
     if (enabled.has(id) && enabled.size <= 1) {

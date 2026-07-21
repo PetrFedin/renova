@@ -1,4 +1,4 @@
-/** Legacy routes — aliases, redirect и однократный deprecation log в dev */
+/** Legacy routes — aliases, redirect и deprecation log (W52: см. resolveCatchAllSlug). */
 import { parseOsHref, type OsTabRoute } from '../constants/osSections';
 
 /** Legacy tab-маршруты → канонические hub-пути */
