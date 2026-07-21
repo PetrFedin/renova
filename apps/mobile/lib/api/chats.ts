@@ -1,12 +1,21 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
-import type { ChatDetail, ChatMessage, ChatThread, MarkChatReadResponse, User } from './types';
-export type { MarkChatReadResponse };
+import type { ChatDetail, ChatInboxSnapshot, ChatMessage, ChatThread, User } from './types';
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
     req<ChatThread[]>(`/api/v1/projects/${projectId}/chats?archived=${archived ? 'true' : 'false'}`, {}, userId),
-  chatInbox: (userId: string) => req<ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
-  chatUnreadTotal: (userId: string) => req<{ count: number }>(`/api/v1/chats/unread-total`, {}, userId),
+  /**
+   * Атомарный snapshot: { revision, total_unread_messages, threads }.
+   * Legacy array всё ещё парсится на клиенте.
+   */
+  chatInbox: (userId: string) =>
+    req<ChatInboxSnapshot | ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
+  chatUnreadTotal: (userId: string) =>
+    req<{
+      count: number;
+      revision?: number;
+      total_unread_messages?: number;
+    }>(`/api/v1/chats/unread-total`, {}, userId),
   createChat: async (userId: string, projectId: string, title: string, topic?: string) => {
     const body = JSON.stringify({ title, topic });
     try {
@@ -147,18 +156,38 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  /** Прочтение чата — authoritative counters; offline queue при сети */
-  markChatRead: async (userId: string, projectId: string, threadId: string): Promise<MarkChatReadResponse> => {
+  /** W114: прочтение чата — только после видимости треда; cursor через read_through_message_id */
+  markChatRead: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    readThroughMessageId?: string | null,
+  ) => {
+    const body = JSON.stringify(
+      readThroughMessageId ? { read_through_message_id: readThroughMessageId } : {},
+    );
     try {
-      return await req<MarkChatReadResponse>(
+      return await req<{
+        ok: boolean;
+        thread_id: string;
+        read_through_message_id?: string | null;
+        thread_unread_count: number;
+        total_unread_count?: number;
+        read_at?: string;
+      }>(
         `/api/v1/projects/${projectId}/chats/${threadId}/read`,
-        { method: 'POST' },
+        { method: 'POST', body },
         userId,
       );
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/chats/${threadId}/read`, method: 'POST', body: '{}', userId });
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/read`,
+        method: 'POST',
+        body,
+        userId,
+      });
       throw new Error('offline_queued');
     }
   },

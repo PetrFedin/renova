@@ -1,6 +1,7 @@
-/** Красный badge непрочитанных сообщений (не для задач — см. TaskBadge). */
+/** Красный badge используется только для непрочитанных сообщений. */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { formatBadgeCount } from '@/lib/i18n';
 
 export function ChatBadge({
   count,
@@ -11,11 +12,10 @@ export function ChatBadge({
   count: number;
   size?: number;
   inline?: boolean;
-  /** Скрыть от a11y, если число уже в label родителя */
   accessibilityHidden?: boolean;
 }) {
-  if (!count || count <= 0) return null;
-  const label = count > 99 ? '99+' : String(count);
+  const label = formatBadgeCount(count);
+  if (!label) return null;
   return (
     <View
       accessible={!accessibilityHidden}

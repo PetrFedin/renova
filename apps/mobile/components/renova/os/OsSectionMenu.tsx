@@ -1,4 +1,4 @@
-/** Панель «Ещё» в шапке — только жёлтый taskBadge; сообщения на dock «Сообщения» */
+/** Панель «Ещё»: собственный badge — только задачи; сообщения доступны через dock и строку «Входящие». */
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +17,7 @@ import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
 import { moreMenuA11yLabel } from '@/lib/domain/moreMenuA11y';
 import { resolveHeaderMoreBadge, resolveInboxMenuBadges } from '@/lib/domain/headerChatBadges';
-import { formatBadgeCount } from '@/lib/formatUnreadMessagesRu';
+import { formatBadgeCount } from '@/lib/i18n';
 
 export { moreMenuA11yLabel };
 
@@ -34,10 +34,12 @@ function LabeledChip({
 }) {
   if (count <= 0) return null;
   return (
-    <View style={[s.chip, tone === 'warning' ? s.chipWarn : s.chipDanger]}>
-      <Text style={s.chipT}>
-        {label}: {formatBadgeCount(count)}
-      </Text>
+    <View
+      accessible
+      accessibilityLabel={`${label}: ${count}`}
+      style={[s.chip, tone === 'warning' ? s.chipWarning : s.chipDanger]}
+    >
+      <Text style={s.chipText}>{label}: {formatBadgeCount(count)}</Text>
     </View>
   );
 }
@@ -53,12 +55,9 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
 
   if (__DEV__ && sections.length + utilLinks.length > MAX_HEADER_MORE_ITEMS) {
-    console.warn(
-      `[IA] Header «Ещё» exceeds ${MAX_HEADER_MORE_ITEMS}: ${sections.length + utilLinks.length}`,
-    );
+    console.warn(`[IA] Header «Ещё» exceeds ${MAX_HEADER_MORE_ITEMS}: ${sections.length + utilLinks.length}`);
   }
 
-  /** Только задачи — сообщения на dock «Сообщения», не на «Ещё» */
   const headerBadge = resolveHeaderMoreBadge(taskBadge, chatUnread);
   const inboxBadges = resolveInboxMenuBadges(taskBadge, chatUnread);
 
@@ -78,8 +77,8 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
       >
         <Ionicons name="menu-outline" size={22} color={RenovaTheme.colors.text} />
         {headerBadge ? (
-          <View style={[s.badge, s.badgeTasks]}>
-            <Text style={s.badgeT}>{formatBadgeCount(headerBadge.count)}</Text>
+          <View style={[s.badge, s.badgeTasks]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Text style={s.badgeText}>{formatBadgeCount(headerBadge.count)}</Text>
           </View>
         ) : null}
       </Pressable>
@@ -98,7 +97,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                       color={active ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted}
                       size={18}
                     />
-                    <Text style={[s.itemT, active && s.itemTOn]}>{sec.label}</Text>
+                    <Text style={[s.itemText, active && s.itemTextOn]}>{sec.label}</Text>
                     {active ? <Text style={s.check}>✓</Text> : null}
                   </Pressable>
                 );
@@ -114,7 +113,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                   }}
                 >
                   <Ionicons name={link.icon} size={18} color={RenovaTheme.colors.textMuted} />
-                  <Text style={s.itemT}>{link.label}</Text>
+                  <Text style={s.itemText}>{link.label}</Text>
                   {link.id === 'inbox' ? (
                     <View style={s.inboxBadges}>
                       <LabeledChip label="Сообщения" count={inboxBadges.chat} tone="danger" />
@@ -132,12 +131,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
 }
 
 const s = StyleSheet.create({
-  btn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   btnIcon: {
     width: 40,
     height: 40,
@@ -158,11 +152,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 3,
   },
   badgeTasks: { backgroundColor: RenovaTheme.colors.warning },
-  badgeT: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
+  badgeText: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
   menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },
   menu: {
-    minWidth: 220,
+    minWidth: 280,
+    maxWidth: '94%',
     backgroundColor: RenovaTheme.colors.surface,
     borderRadius: RenovaTheme.radius.md,
     borderWidth: 1,
@@ -183,17 +178,13 @@ const s = StyleSheet.create({
   },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
   itemOn: { backgroundColor: RenovaTheme.colors.borderLight },
-  itemT: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
-  itemTOn: { color: RenovaTheme.colors.accent },
+  itemText: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
+  itemTextOn: { color: RenovaTheme.colors.accent },
   check: { fontSize: 14, color: RenovaTheme.colors.accent, fontWeight: '700' },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
-  chip: {
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  chipDanger: { backgroundColor: RenovaTheme.colors.danger },
-  chipWarn: { backgroundColor: RenovaTheme.colors.warning },
-  chipT: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
   inboxBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto', flexShrink: 1 },
+  chip: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3 },
+  chipDanger: { backgroundColor: RenovaTheme.colors.danger },
+  chipWarning: { backgroundColor: RenovaTheme.colors.warning },
+  chipText: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
 });

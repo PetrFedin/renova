@@ -1,31 +1,37 @@
-/**
- * Хуки unread/inbox — только подписка на store + requestInboxSync.
- * Не создают собственные WebSocket / polling.
- */
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+/** Хуки unread/inbox — единый chatSync orchestrator → inboxSyncStore */
+import { useCallback, useEffect, useRef, useSyncExternalStore, useMemo } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { AppState, type AppStateStatus } from 'react-native';
 import type { UserRole } from '@/lib/api';
 import {
   ensureInboxWebSocket,
-  findThreadProjectId,
   getChatFailedSnapshot,
   getChatInboxThreadsSnapshot,
   getChatUnreadCountSnapshot,
+  getChatUnreadStaleSnapshot,
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
-  getMarkReadSyncFailedSnapshot,
   markThreadRead,
-  requestInboxSync,
+  selectChatUnread,
   subscribeInboxSync,
-  type MarkReadResult,
+  subscribeInboxWs,
 } from '@/lib/inboxSyncStore';
-import { inboxTaskBadge } from '@/lib/domain/buildInboxItems';
+import type { UnreadScope } from '@/lib/domain/unreadScope';
+import {
+  requestChatSync,
+  patchChatSyncContext,
+  logoutChatSync,
+} from '@/lib/chatSync';
+import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
+import type { MarkThreadReadSource } from '@/lib/domain/markThreadReadPolicy';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { subscribeOfflineFlush } from '@/lib/offline';
 import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
 import { reportCatch } from '@/lib/reportError';
+
+export function useInboxWsListener(onPush: () => void) {
+  useEffect(() => subscribeInboxWs(onPush), [onPush]);
+}
 
 function useChatUnreadCount() {
   return useSyncExternalStore(subscribeInboxSync, getChatUnreadCountSnapshot, getChatUnreadCountSnapshot);
@@ -33,6 +39,10 @@ function useChatUnreadCount() {
 
 function useChatFailed() {
   return useSyncExternalStore(subscribeInboxSync, getChatFailedSnapshot, getChatFailedSnapshot);
+}
+
+function useChatUnreadStale() {
+  return useSyncExternalStore(subscribeInboxSync, getChatUnreadStaleSnapshot, getChatUnreadStaleSnapshot);
 }
 
 function useInboxWsConnected() {
@@ -43,127 +53,198 @@ function useInboxItems() {
   return useSyncExternalStore(subscribeInboxSync, getInboxItemsSnapshot, getInboxItemsSnapshot);
 }
 
-function useMarkReadSyncFailed() {
-  return useSyncExternalStore(subscribeInboxSync, getMarkReadSyncFailedSnapshot, getMarkReadSyncFailedSnapshot);
-}
-
 export function useChatUnread(userId?: string, userRole?: UserRole) {
   const count = useChatUnreadCount();
   const failed = useChatFailed();
+  const stale = useChatUnreadStale();
   const inboxWsConnected = useInboxWsConnected();
-  const markReadSyncFailed = useMarkReadSyncFailed();
+
+  useEffect(() => {
+    if (!userId) {
+      logoutChatSync();
+      return;
+    }
+    patchChatSyncContext({
+      userId,
+      role: userRole ?? null,
+    });
+  }, [userId, userRole]);
 
   const reload = useCallback(async () => {
     if (!userId) return;
-    await requestInboxSync({ reason: 'manual', userId, userRole });
+    patchChatSyncContext({ userId, role: userRole ?? null });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
   }, [userId, userRole]);
 
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
-      void requestInboxSync({ reason: 'focus', userId, userRole }).catch(reportCatch('chatUnread.focus'));
+      patchChatSyncContext({ userId, role: userRole ?? null });
+      void requestChatSync({ scope: 'all', reason: 'focus' }).catch(reportCatch('chatUnread.reload'));
     }, [userId, userRole]),
   );
 
   useEffect(() => {
     if (!userId) return undefined;
+    // WS → onChatInboxWsEvent внутри store; onReload больше не нужен
     return ensureInboxWebSocket(userId);
   }, [userId]);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active' && userId) {
-        void requestInboxSync({ reason: 'foreground', userId, userRole }).catch(reportCatch('chatUnread.fg'));
-      }
-    });
-    return () => sub.remove();
-  }, [userId, userRole]);
+  // Dock / глобальный badge — всегда явный global scope
+  return {
+    count,
+    scope: { type: 'global' } as const,
+    scopeLabel: 'все чаты',
+    reload,
+    inboxWsConnected,
+    failed,
+    stale,
+  };
+}
 
-  return { count, reload, inboxWsConnected, failed, markReadSyncFailed };
+/**
+ * Unread для произвольного scope (project / filter / thread).
+ * Глобальный badge не меняется при смене scope — только возвращаемый count.
+ */
+export function useScopedChatUnread(scope: UnreadScope, labelOpts?: { projectName?: string }) {
+  const threads = useSyncExternalStore(
+    subscribeInboxSync,
+    getChatInboxThreadsSnapshot,
+    getChatInboxThreadsSnapshot,
+  );
+  const globalCount = useChatUnreadCount();
+  const stale = useChatUnreadStale();
+  const scopeKey = JSON.stringify(scope);
+  const projectName = labelOpts?.projectName;
+  return useMemo(() => {
+    const parsed = JSON.parse(scopeKey) as UnreadScope;
+    const result = selectChatUnread(parsed, projectName ? { projectName } : undefined);
+    return { ...result, stale, globalCount };
+  }, [scopeKey, projectName, threads, globalCount, stale]);
 }
 
 export function useChatReadSync(userId?: string, userRole?: UserRole) {
   return useCallback(
-    async (projectId: string, threadId: string, knownUnread = 0): Promise<MarkReadResult | void> => {
+    async (
+      projectId: string,
+      threadId: string,
+      _knownUnread = 0,
+      readThroughMessageId?: string | null,
+      throughCreatedAt?: string | null,
+      source: MarkThreadReadSource = 'thread_visible',
+    ) => {
       if (!userId || !projectId || !threadId) return;
-      return markThreadRead(userId, projectId, threadId, userRole, knownUnread);
+      await markThreadRead({
+        userId,
+        projectId,
+        threadId,
+        throughMessageId: readThroughMessageId,
+        throughCreatedAt,
+        userRole,
+        source,
+      });
     },
     [userId, userRole],
   );
 }
 
-/**
- * Задачи «Входящие»: taskBadge отдельно от chatUnread.
- * Смешанный attention badge удалён из UI-контракта.
- */
+/** Задачи «Входящие» + единый badge (задачи + непрочитанные сообщения) */
 export function useInboxTasks(role: OsRole) {
   const { user, activeProject } = useRenova();
   const items = useInboxItems();
   const chatUnread = useChatUnreadCount();
   const taskBadge = inboxTaskBadge(items);
-  const markReadSyncFailed = useMarkReadSyncFailed();
+  const badge = inboxAttentionBadge(items, chatUnread);
   const projectId = activeProject?.id;
   const projectRef = useRef(activeProject);
   projectRef.current = activeProject;
 
-  const sync = useCallback(async (reason: 'focus' | 'manual' | 'offline_flush' | 'project_change' | 'initial') => {
-    if (!user?.id) return;
-    await requestInboxSync({
-      reason,
+  useEffect(() => {
+    if (!user?.id) {
+      logoutChatSync();
+      return;
+    }
+    patchChatSyncContext({
       userId: user.id,
-      userRole: user.role,
-      projectId,
-      project: projectRef.current,
-      osRole: role,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
     });
+  }, [user?.id, user?.role, role, projectId]);
+
+  const reload = useCallback(async () => {
+    if (!user?.id) return;
+    patchChatSyncContext({
+      userId: user.id,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
+    });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
   }, [user?.id, user?.role, projectId, role]);
 
   useFocusEffect(
     useCallback(() => {
-      void sync('focus').catch(reportCatch('inboxTasks.focus'));
-    }, [sync]),
+      if (!user?.id) return;
+      patchChatSyncContext({
+        userId: user.id,
+        role: role ?? user.role ?? null,
+        projectId: projectId ?? null,
+      });
+      void requestChatSync({ scope: 'all', reason: 'focus' }).catch(reportCatch('chatUnread.reload'));
+    }, [user?.id, user?.role, projectId, role]),
   );
+
+  // WS bus: sync уже в orchestrator через onChatInboxWsEvent — не дублируем reload.
 
   useEffect(() => {
     if (!user?.id) return undefined;
     return ensureInboxWebSocket(user.id);
   }, [user?.id]);
 
+  // W79: после flush — один reconciliation через orchestrator
   useEffect(() => subscribeOfflineFlush(() => {
-    void sync('offline_flush').catch(reportCatch('inboxTasks.flush'));
-  }), [sync]);
+    if (!user?.id) return;
+    patchChatSyncContext({
+      userId: user.id,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
+    });
+    void requestChatSync({ scope: 'all', reason: 'offline_flush', priority: 'high' })
+      .catch(reportCatch('chatUnread.reload'));
+  }), [user?.id, user?.role, projectId, role]);
 
+  // W88: projectDataBus → один sync (coalesce), не независимая цепочка
   useEffect(() => subscribeProjectDataChanged(() => {
-    void sync('project_change').catch(reportCatch('inboxTasks.bus'));
-  }), [sync]);
+    if (!user?.id) return;
+    void requestChatSync({ scope: 'all', reason: 'project_change', priority: 'high' })
+      .catch(reportCatch('chatUnread.reload'));
+  }), [user?.id]);
 
+  // W81: смена объекта → context + sync
   useEffect(() => {
-    void sync('initial').catch(reportCatch('inboxTasks.project'));
-  }, [sync]);
+    if (!user?.id) return;
+    patchChatSyncContext({
+      userId: user.id,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
+    });
+    void requestChatSync({ scope: 'all', reason: 'project_change', priority: 'high' })
+      .catch(reportCatch('chatUnread.reload'));
+  }, [user?.id, user?.role, projectId, role]);
 
-  return {
-    items,
-    taskBadge,
-    chatUnread,
-    markReadSyncFailed,
-    reload: () => sync('manual'),
-  };
+  return { items, badge, taskBadge, chatUnread, reload };
 }
 
 function useChatInboxThreadsSnapshot() {
   return useSyncExternalStore(subscribeInboxSync, getChatInboxThreadsSnapshot, getChatInboxThreadsSnapshot);
 }
 
+/** Список чатов из store — синхронен с badge */
 export function useChatInboxThreads(userId?: string, userRole?: UserRole) {
   const threads = useChatInboxThreadsSnapshot();
   const reload = useCallback(async () => {
     if (!userId) return;
-    await requestInboxSync({ reason: 'manual', userId, userRole });
+    patchChatSyncContext({ userId, role: userRole ?? null });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
   }, [userId, userRole]);
-  return { threads, reload, findThreadProjectId };
-}
-
-/** @deprecated store сам обрабатывает WS — не создавайте вторую цепочку reload */
-export function useInboxWsListener(_onPush: () => void) {
-  useEffect(() => () => {}, []);
+  return { threads, reload };
 }

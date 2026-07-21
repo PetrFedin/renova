@@ -1,5 +1,7 @@
 /** Фильтр чатов по объектам — один, несколько или все */
 import type { ChatThread } from '@/lib/api';
+import { pluralizeRu } from './i18n/ruPlural';
+import { RU_NOUN } from './i18n/ruCountLabels';
 
 export type ChatProjectFilter = {
   /** null — все объекты; иначе только выбранные id */
@@ -57,11 +59,7 @@ export function chatProjectFilterLabel(
     return projects.find((p) => p.id === filter.projectIds![0])?.name || '1 объект';
   }
   const n = filter.projectIds.length;
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  const word =
-    mod10 === 1 && mod100 !== 11 ? 'объект' : mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20) ? 'объекта' : 'объектов';
-  return `${n} ${word}`;
+  return `${n} ${pluralizeRu(n, RU_NOUN.project)}`;
 }
 
 export function isAllProjectsFilter(filter: ChatProjectFilter, projectCount: number): boolean {

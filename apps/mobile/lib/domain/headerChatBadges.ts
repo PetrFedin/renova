@@ -1,10 +1,4 @@
-/**
- * Семантика бейджей (SoT: inboxSyncStore.totalUnread / taskBadge).
- *
- * Красный — только непрочитанные сообщения (dock «Сообщения»).
- * Жёлтый — только задачи («Ещё» + TaskBadge на calendar/home).
- * Сообщения НЕ возвращаются на badge кнопки «Ещё».
- */
+/** Стабильная семантика navigation badges: chat и tasks никогда не смешиваются. */
 
 export type HeaderMoreBadge = {
   count: number;
@@ -12,22 +6,18 @@ export type HeaderMoreBadge = {
   kind: 'tasks';
 };
 
-/** Badge кнопки «Ещё»: только задачи (жёлтый). */
+/** Кнопка «Ещё» показывает только taskBadge. chatUnread намеренно игнорируется. */
 export function resolveHeaderMoreBadge(taskBadge: number, _chatUnread = 0): HeaderMoreBadge | null {
   const tasks = Math.max(0, taskBadge || 0);
-  if (tasks > 0) return { count: tasks, tone: 'warning', kind: 'tasks' };
-  return null;
+  return tasks > 0 ? { count: tasks, tone: 'warning', kind: 'tasks' } : null;
 }
 
-/** Число непрочитанных на dock «Сообщения». */
+/** Dock «Сообщения» показывает только global unread сообщений. */
 export function dockChatBadgeCount(chatUnread: number): number {
   return Math.max(0, chatUnread || 0);
 }
 
-/**
- * Бейджи строки «Входящие» в панели «Ещё»:
- * red = сообщения (как dock); amber = задачи.
- */
+/** Строка «Входящие» содержит два явно подписанных независимых счётчика. */
 export function resolveInboxMenuBadges(taskBadge: number, chatUnread: number): {
   chat: number;
   tasks: number;

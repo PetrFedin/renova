@@ -1,286 +1,318 @@
-/**
- * Единый источник истины для глобального unread чатов и project-scoped inbox задач.
- *
- * Инварианты:
- * - chatCount относится ко всем неархивным чатам текущего пользователя;
- * - project filter не влияет на chatCount;
- * - старый reload не может перезаписать optimistic/authoritative mark-read;
- * - chat transport один на пользователя, fallback poll работает только без WS;
- * - project-scoped задачи не смешиваются с глобальным chat sync.
- */
-import type { ChatThread, MarkChatReadResponse, ProjectDetail, UserRole } from '@/lib/api';
+/** Единый store: chat threads, unread, inbox задачи — один reload и одно WS */
+import { api, type ChatThread, type ProjectDetail, type UserRole } from '@/lib/api';
 import { buildInboxItems, type InboxItem } from '@/lib/domain/buildInboxItems';
 import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
 import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
-import { formatUnreadMessagesRu } from '@/lib/formatUnreadMessagesRu';
-import { sumActiveUnread } from '@/lib/inboxSyncRevision';
-
-type InboxApi = {
-  chatInbox: (userId: string) => Promise<ChatThread[]>;
-  chatUnreadTotal: (userId: string) => Promise<{ count: number }>;
-  markChatRead: (userId: string, projectId: string, threadId: string) => Promise<MarkChatReadResponse>;
-};
-
-let apiImpl: InboxApi | null = null;
-
-function getApi(): InboxApi {
-  if (apiImpl) return apiImpl;
-  // Lazy import keeps pure store tests independent from the RN API client bootstrap.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { api: defaultApi } = require('@/lib/api') as { api: InboxApi };
-  apiImpl = {
-    chatInbox: defaultApi.chatInbox.bind(defaultApi),
-    chatUnreadTotal: defaultApi.chatUnreadTotal.bind(defaultApi),
-    markChatRead: defaultApi.markChatRead.bind(defaultApi),
-  };
-  return apiImpl;
-}
-
-export type InboxSyncReason =
-  | 'initial'
-  | 'focus'
-  | 'manual'
-  | 'websocket_reconcile'
-  | 'offline_flush'
-  | 'foreground'
-  | 'mark_read_failure'
-  | 'project_change'
-  | 'invariant_reconcile';
-
-export type InboxSyncStatus = 'idle' | 'loading' | 'refreshing' | 'success' | 'stale' | 'error';
-export type AppError = { message: string; code?: string };
-
-export type InboxSyncResult =
-  | { status: 'confirmed'; source: 'threads'; totalUnread: number }
-  | { status: 'stale'; source: 'total_fallback'; totalUnread: number; error: AppError }
-  | { status: 'failed'; source: 'cache'; totalUnread: number; error: AppError };
-
-export type MarkReadResult =
-  | { status: 'confirmed'; response: MarkChatReadResponse }
-  | { status: 'reconciled' }
-  | { status: 'failed'; error: AppError };
+import {
+  decideMarkReadAction,
+  recordMarkReadDiag,
+  type ConfirmedReadCursor,
+  type MarkThreadReadSource,
+} from '@/lib/domain/markThreadReadPolicy';
+import {
+  applyChatUnreadSnapshot,
+  parseChatUnreadSnapshotApi,
+  patchThreadUnreadInSnapshot,
+  setThreadArchivedInSnapshot,
+  snapshotFromThreads,
+  sumActiveThreadUnread,
+  warnUnreadInvariantIfBroken,
+  type ChatUnreadSnapshot,
+} from '@/lib/domain/chatUnreadSnapshot';
+import {
+  EMPTY_ACTIVE_THREAD_CONTEXT,
+  isActivelyReadingThread,
+  type ActiveThreadContext,
+} from '@/lib/domain/activeThreadContext';
+import {
+  getAppForeground,
+  onAppForegroundChange,
+  ensureScreenVisibilityListening,
+} from '@/lib/screenVisibilityService';
+import {
+  clearIncomingMessageDedupe,
+  clampSnapshotForActiveRead,
+  decideIncomingChatMessage,
+  type IncomingChatMessageEvent,
+} from '@/lib/domain/incomingChatMessage';
+import {
+  selectUnreadCount,
+  type UnreadCountResult,
+  type UnreadScope,
+} from '@/lib/domain/unreadScope';
+import { formatUnreadCount } from '@/lib/i18n';
 
 type Listener = () => void;
-type InboxWsPayload = {
-  type?: string;
-  event?: string;
-  event_id?: string;
-  thread_id?: string;
-  project_id?: string;
-  thread_unread_count?: number;
-  total_unread_count?: number;
-  unread_revision?: number;
-  occurred_at?: string;
-};
+type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
 
-type GlobalSyncMeta = {
-  requestSequence: number;
-  userId: string;
-  startedAtMutationRevision: number;
-};
-
-type ProjectSyncMeta = {
-  requestSequence: number;
-  contextKey: string;
-};
-
-type FullSyncContext = {
-  userId: string;
-  userRole?: UserRole;
-  projectId: string;
-  osRole: OsRole;
-  project?: ProjectDetail | null;
-};
-
-type ChatLoadResult =
-  | { source: 'threads'; threads: ChatThread[]; total: number }
-  | { source: 'total_fallback'; threads: ChatThread[]; total: number; error: AppError }
-  | { source: 'cache'; threads: ChatThread[]; total: number; error: AppError };
-
-const POLL_MS = 25_000;
-const EVENT_LRU_MAX = 128;
 const listeners = new Set<Listener>();
 
+/** SoT unread: атомарный snapshot (threads + total + revision) */
+let unreadSnapshot: ChatUnreadSnapshot | null = null;
+/** Открытый видимый тред — для suppress unread flicker */
+let activeThreadContext: ActiveThreadContext = { ...EMPTY_ACTIVE_THREAD_CONTEXT };
 let chatCount = 0;
 let chatFailed = false;
+/** Список не загрузился / устарел — total не подменяем отдельно */
+let chatUnreadStale = false;
 let inboxWsConnected = false;
 let chatThreads: ChatThread[] = [];
 let inboxItems: InboxItem[] = [];
 let inboxBadge = 0;
-let markReadSyncFailed = false;
-let syncStatus: InboxSyncStatus = 'idle';
-let syncError: AppError | null = null;
-let lastSyncedAt: number | null = null;
-
-let storeUserId: string | null = null;
-let cachedFullSync: FullSyncContext | null = null;
-
-let serverRevision = 0;
-let currentUnreadRevision = 0;
-let localMutationRevision = 0;
-let globalRequestSequence = 0;
-let projectRequestSequence = 0;
-
-let globalInflight: Promise<InboxSyncResult> | null = null;
-let globalInflightMeta: GlobalSyncMeta | null = null;
-let projectInflight: Promise<boolean> | null = null;
-let projectInflightMeta: ProjectSyncMeta | null = null;
-let reconcileScheduled = false;
 
 let wsUserId: string | undefined;
 let wsRefCount = 0;
 let wsCleanup: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-let pollUserId: string | null = null;
+let reloadInflight: Promise<void> | null = null;
+let lastReloadKey = '';
+let loadGeneration = 0;
+/** Последний userId, для которого загружали unread — смена → сброс snapshot */
+let lastChatUserId: string | undefined;
 
-let visibleThreadId: string | null = null;
-let visibleThreadFocused = false;
-let visibleAppForeground = false;
-let visibleThreadOwner: string | null = null;
-let visibleRegistrationSequence = 0;
-const pendingVisibleThreadIds = new Set<string>();
+/** In-flight mark-read: один запрос на threadId */
+const markInflight = new Map<string, Promise<MarkThreadReadResult>>();
+/** Последний подтверждённый сервером cursor */
+const confirmedRead = new Map<string, ConfirmedReadCursor>();
 
-const processedEventIds: string[] = [];
-const processedEventSet = new Set<string>();
+export type MarkThreadReadArgs = {
+  userId: string;
+  projectId: string;
+  threadId: string;
+  throughMessageId?: string | null;
+  throughCreatedAt?: string | null;
+  userRole?: UserRole;
+  source: MarkThreadReadSource;
+  /** Повтор после ошибки сети — обойти skip_same */
+  force?: boolean;
+};
+
+export type MarkThreadReadResult = {
+  status:
+    | 'sent'
+    | 'deduplicated'
+    | 'skipped_same'
+    | 'skipped_stale'
+    | 'skipped_background'
+    | 'skipped_not_visible'
+    | 'error';
+  threadId: string;
+  throughMessageId: string | null;
+  source: MarkThreadReadSource;
+};
 
 export function subscribeInboxSync(listener: Listener): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 function notify() {
-  listeners.forEach((listener) => {
+  listeners.forEach((fn) => {
     try {
-      listener();
+      fn();
     } catch {
-      // A broken subscriber must not prevent the remaining UI from updating.
+      /* noop */
     }
   });
 }
 
-function normalizeCount(value: number | null | undefined): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.trunc(value ?? 0));
+/** Атомарно зафиксировать snapshot в store-полях */
+function commitUnreadSnapshot(next: ChatUnreadSnapshot, opts?: { failed?: boolean; stale?: boolean }) {
+  unreadSnapshot = next;
+  chatThreads = next.threads;
+  chatCount = next.totalUnreadMessages;
+  if (opts?.failed != null) chatFailed = opts.failed;
+  if (opts?.stale != null) chatUnreadStale = opts.stale;
+  warnUnreadInvariantIfBroken(next, undefined, 'commitUnreadSnapshot');
 }
 
-export function sumActiveChatUnread(threads: ChatThread[]): number {
-  return normalizeCount(sumActiveUnread(threads));
-}
-
-function refreshInboxChatRow(nextChat: number) {
-  const count = normalizeCount(nextChat);
-  const withoutChat = inboxItems.filter((item) => item.kind !== 'chat');
-  if (count <= 0) {
-    inboxItems = withoutChat;
-  } else {
-    const role = cachedFullSync?.osRole ?? 'customer';
-    inboxItems = [
-      {
-        id: 'chat',
-        kind: 'chat',
-        title: 'Непрочитанные сообщения',
-        sub: formatUnreadMessagesRu(count),
-        href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
-        priority: 90,
-      },
-      ...withoutChat,
-    ];
+function applyIncomingSnapshot(
+  incoming: ChatUnreadSnapshot,
+  opts?: { force?: boolean },
+): boolean {
+  const result = applyChatUnreadSnapshot(unreadSnapshot, incoming, opts);
+  if (!result.ok) {
+    chatUnreadStale = true;
+    warnUnreadInvariantIfBroken(result.snapshot, undefined, 'stale_revision_rejected');
+    return false;
   }
-  inboxBadge = inboxItems.filter((item) => item.kind !== 'chat').length;
-}
+  const tid = activeThreadContext.threadId;
+  const reading = tid ? isActivelyReadingThread(activeThreadContext, tid) : false;
+  const serverUnread = reading && tid
+    ? (result.snapshot.threads.find((t) => t.id === tid)?.unread_count ?? 0)
+    : 0;
 
-function applyLocalThreadUnread(threadId: string, unread = 0) {
-  const nextUnread = normalizeCount(unread);
-  chatThreads = chatThreads.map((thread) => (
-    thread.id === threadId ? { ...thread, unread_count: nextUnread } : thread
-  ));
-  chatCount = sumActiveChatUnread(chatThreads);
-  refreshInboxChatRow(chatCount);
-}
+  // Одна транзакция: snapshot + clamp unread активного читаемого треда (нет 0→N→0)
+  const clamped = clampSnapshotForActiveRead(
+    result.snapshot,
+    activeThreadContext,
+    sumActiveThreadUnread,
+  );
+  commitUnreadSnapshot(
+    snapshotFromThreads(clamped.threads, result.snapshot.revision, result.snapshot.updatedAt),
+    { failed: false, stale: false },
+  );
 
-function rememberEventId(id: string): boolean {
-  if (!id) return false;
-  if (processedEventSet.has(id)) return true;
-  processedEventSet.add(id);
-  processedEventIds.push(id);
-  while (processedEventIds.length > EVENT_LRU_MAX) {
-    const old = processedEventIds.shift();
-    if (old) processedEventSet.delete(old);
+  // Сервер ещё считает unread — подтвердить cursor без визуального bump
+  if (reading && tid && serverUnread > 0) {
+    const ctx = { ...activeThreadContext };
+    queueMicrotask(() => {
+      if (!ctx.userId || !ctx.projectId || !ctx.threadId) return;
+      if (!isActivelyReadingThread(activeThreadContext, ctx.threadId)) return;
+      void markThreadRead({
+        userId: ctx.userId,
+        projectId: ctx.projectId,
+        threadId: ctx.threadId,
+        source: 'thread_ws',
+      });
+    });
   }
-  return false;
-}
-
-function acceptUnreadRevision(revision: number | undefined): boolean {
-  if (!Number.isFinite(revision)) return true;
-  const next = Math.trunc(revision ?? 0);
-  if (next <= currentUnreadRevision) return false;
-  currentUnreadRevision = next;
   return true;
 }
 
-function contextKey(userId: string, projectId?: string, osRole?: OsRole): string {
-  return `${userId}:${projectId ?? 'global'}:${osRole ?? 'none'}`;
+function applyLocalThreadUnread(threadId: string, unread = 0) {
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  // Не поднимаем unread активного читаемого треда локальным patch
+  const nextUnread = isActivelyReadingThread(activeThreadContext, threadId)
+    ? 0
+    : unread;
+  const next = patchThreadUnreadInSnapshot(base, threadId, nextUnread);
+  commitUnreadSnapshot(next, { failed: false, stale: false });
 }
 
-function toAppError(error: unknown, fallback: string): AppError {
-  if (error instanceof Error) return { message: error.message || fallback };
-  return { message: fallback };
-}
-
-function captureComparableState() {
-  return {
-    chatCount,
-    chatFailed,
-    inboxItems,
-    inboxBadge,
-    inboxWsConnected,
-    markReadSyncFailed,
-    syncStatus,
-    syncError,
-    lastSyncedAt,
-    chatThreads,
+/**
+ * Зафиксировать, какой тред сейчас реально виден (Variant A policy).
+ * Вызывает ChatThreadView при изменении gate.
+ */
+export function setActiveThreadContext(next: ActiveThreadContext): void {
+  // Синхронный foreground перекрывает устаревший React state
+  const fg = getAppForeground();
+  activeThreadContext = {
+    ...next,
+    appForeground: next.appForeground && fg,
+    // Background → лента не видна (не обнуляем unread — только флаг видимости)
+    messagesVisible: next.messagesVisible && fg,
   };
 }
 
-function notifyIfChanged(previous: ReturnType<typeof captureComparableState>) {
-  if (
-    previous.chatCount === chatCount
-    && previous.chatFailed === chatFailed
-    && previous.inboxItems === inboxItems
-    && previous.inboxBadge === inboxBadge
-    && previous.inboxWsConnected === inboxWsConnected
-    && previous.markReadSyncFailed === markReadSyncFailed
-    && previous.syncStatus === syncStatus
-    && previous.syncError === syncError
-    && previous.lastSyncedAt === lastSyncedAt
-    && previous.chatThreads === chatThreads
-  ) {
+export function clearActiveThreadContext(): void {
+  activeThreadContext = { ...EMPTY_ACTIVE_THREAD_CONTEXT };
+}
+
+export function getActiveThreadContextSnapshot(): ActiveThreadContext {
+  return { ...activeThreadContext };
+}
+
+/**
+ * Немедленный сброс visibility при background (до React re-render).
+ * Unread локально НЕ обнуляем — только запрещаем mark-read / suppress.
+ */
+export function patchActiveThreadForeground(appForeground: boolean): void {
+  if (!activeThreadContext.threadId) return;
+  if (activeThreadContext.appForeground === appForeground
+    && (appForeground || !activeThreadContext.messagesVisible)) {
     return;
   }
-  notify();
+  activeThreadContext = {
+    ...activeThreadContext,
+    appForeground,
+    messagesVisible: appForeground ? activeThreadContext.messagesVisible : false,
+  };
+}
+
+// Синхронный bridge: AppState/document → activeThreadContext
+ensureScreenVisibilityListening();
+onAppForegroundChange((fg) => {
+  patchActiveThreadForeground(fg);
+});
+
+export type IngestIncomingMessageResult = {
+  accept: boolean;
+  bumpUnread: boolean;
+  shouldMarkRead: boolean;
+  reason: string;
+};
+
+/**
+ * Атомарно: dedupe messageId + unread bump/suppress.
+ * Сообщения в UI добавляет caller; mark-read — если shouldMarkRead.
+ */
+export function ingestIncomingChatMessage(
+  event: IncomingChatMessageEvent,
+): IngestIncomingMessageResult {
+  const decision = decideIncomingChatMessage({
+    event,
+    active: activeThreadContext,
+  });
+  if (!decision.accept) {
+    return {
+      accept: false,
+      bumpUnread: false,
+      shouldMarkRead: false,
+      reason: decision.reason,
+    };
+  }
+
+  const prev = {
+    chatCount,
+    chatFailed,
+    chatUnreadStale,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
+  };
+
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  if (decision.bumpUnread) {
+    const cur = base.threads.find((t) => t.id === event.threadId)?.unread_count ?? 0;
+    commitUnreadSnapshot(
+      patchThreadUnreadInSnapshot(base, event.threadId, cur + 1),
+      { failed: false, stale: false },
+    );
+    refreshInboxChatRow(chatCount);
+  } else if (decision.shouldMarkRead || decision.reason === 'applied_suppress') {
+    // Явно держим 0 в той же транзакции (сервер мог уже успеть отдать +1)
+    commitUnreadSnapshot(
+      patchThreadUnreadInSnapshot(base, event.threadId, 0),
+      { failed: false, stale: false },
+    );
+    refreshInboxChatRow(chatCount);
+  }
+
+  notifyIfChanged(prev);
+  return {
+    accept: true,
+    bumpUnread: decision.bumpUnread,
+    shouldMarkRead: decision.shouldMarkRead,
+    reason: decision.reason,
+  };
 }
 
 export function getChatUnreadSnapshot() {
-  return { count: chatCount, failed: chatFailed, inboxWsConnected, markReadSyncFailed };
+  return { count: chatCount, failed: chatFailed, inboxWsConnected, stale: chatUnreadStale };
 }
 
 export function getChatUnreadCountSnapshot() {
-  return chatCount;
-}
-
-export function getTotalUnreadSnapshot() {
-  return chatCount;
+  // Только global — для subscribe. UI должен брать selectChatUnread({ type: 'global' }).
+  return selectChatUnread({ type: 'global' }).count;
 }
 
 export function getChatFailedSnapshot() {
   return chatFailed;
 }
 
-export function getMarkReadSyncFailedSnapshot() {
-  return markReadSyncFailed;
+export function getChatUnreadStaleSnapshot() {
+  return chatUnreadStale;
+}
+
+export function getChatUnreadRevisionSnapshot() {
+  return unreadSnapshot?.revision ?? 0;
 }
 
 export function getInboxWsConnectedSnapshot() {
@@ -291,8 +323,23 @@ export function getChatInboxThreadsSnapshot(): ChatThread[] {
   return chatThreads;
 }
 
-export function getInboxItemsSnapshot() {
-  return inboxItems;
+/**
+ * Unread с обязательным scope.
+ * Запрещено читать count без области — используйте { type: 'global' } для dock/badge.
+ */
+export function selectChatUnread(
+  scope: UnreadScope,
+  labelOpts?: { projectName?: string },
+): UnreadCountResult {
+  return selectUnreadCount(
+    scope,
+    {
+      threads: chatThreads,
+      threadsComplete: true, // inbox snapshot — полный SoT
+      globalTotal: chatCount,
+    },
+    labelOpts,
+  );
 }
 
 export function getInboxTasksSnapshot() {
@@ -303,147 +350,64 @@ export function getInboxBadgeSnapshot() {
   return inboxBadge;
 }
 
-export function getInboxSyncStateSnapshot() {
-  return {
-    userId: storeUserId,
-    status: syncStatus,
-    error: syncError,
-    lastSyncedAt,
-    totalUnread: chatCount,
-  };
+export function getInboxItemsSnapshot() {
+  return inboxItems;
 }
 
-export function getInboxSyncRevisions() {
-  return {
-    serverRevision,
-    currentUnreadRevision,
-    localMutationRevision,
-    reloadRequestSequence: globalRequestSequence,
-    projectRequestSequence,
-  };
-}
-
-export function findThreadProjectId(threadId: string): string | null {
-  return chatThreads.find((thread) => thread.id === threadId)?.project_id ?? null;
-}
-
-export function registerVisibleChatThread(opts: {
-  threadId: string;
-  focused: boolean;
-  foreground: boolean;
-}): string {
-  const owner = `visible:${++visibleRegistrationSequence}`;
-  visibleThreadOwner = owner;
-  visibleThreadId = opts.threadId;
-  visibleThreadFocused = Boolean(opts.focused);
-  visibleAppForeground = Boolean(opts.foreground);
-  return owner;
-}
-
-export function updateVisibleChatThread(
-  owner: string,
-  opts: { threadId: string; focused: boolean; foreground: boolean },
-): void {
-  if (visibleThreadOwner !== owner) return;
-  visibleThreadId = opts.threadId;
-  visibleThreadFocused = Boolean(opts.focused);
-  visibleAppForeground = Boolean(opts.foreground);
-}
-
-export function unregisterVisibleChatThread(owner: string): void {
-  if (visibleThreadOwner !== owner) return;
-  visibleThreadOwner = null;
-  visibleThreadId = null;
-  visibleThreadFocused = false;
-  visibleAppForeground = false;
-}
-
-/** Legacy adapter. New code should use register/update/unregister with an owner token. */
-export function setVisibleChatThread(opts: {
-  threadId: string | null;
-  focused: boolean;
-  foreground: boolean;
-}): void {
-  const owner = 'legacy-visible-thread';
-  if (!opts.threadId) {
-    if (visibleThreadOwner === owner) unregisterVisibleChatThread(owner);
+function notifyIfChanged(prev: {
+  chatCount: number;
+  chatFailed: boolean;
+  chatUnreadStale: boolean;
+  inboxBadge: number;
+  inboxItems: InboxItem[];
+  inboxWsConnected: boolean;
+  revision: number;
+}) {
+  if (
+    prev.chatCount === chatCount
+    && prev.chatFailed === chatFailed
+    && prev.chatUnreadStale === chatUnreadStale
+    && prev.inboxBadge === inboxBadge
+    && prev.inboxItems === inboxItems
+    && prev.inboxWsConnected === inboxWsConnected
+    && prev.revision === (unreadSnapshot?.revision ?? 0)
+  ) {
     return;
   }
-  visibleThreadOwner = owner;
-  visibleThreadId = opts.threadId;
-  visibleThreadFocused = Boolean(opts.focused);
-  visibleAppForeground = Boolean(opts.foreground);
+  notify();
 }
 
-function isThreadVisiblyOpen(threadId: string | undefined): boolean {
-  return Boolean(
-    threadId
-    && visibleThreadId === threadId
-    && visibleThreadFocused
-    && visibleAppForeground,
-  );
+/**
+ * Загрузка unread snapshot без apply — apply только после guards (abort/context).
+ */
+async function fetchChatSnapshot(userId: string): Promise<
+  | { ok: true; snapshot: ChatUnreadSnapshot }
+  | { ok: false }
+> {
+  try {
+    const raw = await api.chatInbox(userId);
+    return { ok: true, snapshot: parseChatUnreadSnapshotApi(raw, Date.now()) };
+  } catch {
+    return { ok: false };
+  }
 }
 
-function resetDataState() {
-  chatCount = 0;
-  chatFailed = false;
-  chatThreads = [];
-  inboxItems = [];
-  inboxBadge = 0;
-  markReadSyncFailed = false;
-  syncStatus = 'idle';
-  syncError = null;
-  lastSyncedAt = null;
-  cachedFullSync = null;
-  currentUnreadRevision = 0;
-  pendingVisibleThreadIds.clear();
-  processedEventIds.length = 0;
-  processedEventSet.clear();
-  visibleThreadOwner = null;
-  visibleThreadId = null;
-  visibleThreadFocused = false;
-  visibleAppForeground = false;
-}
-
-export function resetInboxSync(options: { stopTransport?: boolean } = {}): void {
-  const previous = captureComparableState();
-  localMutationRevision += 1;
-  globalRequestSequence += 1;
-  projectRequestSequence += 1;
-  globalInflight = null;
-  globalInflightMeta = null;
-  projectInflight = null;
-  projectInflightMeta = null;
-  storeUserId = null;
-  resetDataState();
-  if (options.stopTransport !== false) stopInboxWebSocket();
-  notifyIfChanged(previous);
-}
-
-function setUserScope(userId: string) {
-  if (storeUserId === userId) return;
-  const previous = captureComparableState();
-  localMutationRevision += 1;
-  globalRequestSequence += 1;
-  projectRequestSequence += 1;
-  globalInflight = null;
-  globalInflightMeta = null;
-  projectInflight = null;
-  projectInflightMeta = null;
-  storeUserId = userId;
-  resetDataState();
-  storeUserId = userId;
-  notifyIfChanged(previous);
-}
-
-function mergeFullSyncContext(opts: {
+let cachedFullSync: {
   userId: string;
+  userRole?: UserRole;
+  projectId: string;
+  osRole: OsRole;
+  project?: ProjectDetail | null;
+} | null = null;
+
+function mergeReloadOpts(opts: {
+  userId?: string;
   userRole?: UserRole;
   projectId?: string;
   project?: ProjectDetail | null;
   osRole?: OsRole;
-}): FullSyncContext | null {
-  if (opts.projectId && opts.osRole) {
+}) {
+  if (opts.userId && opts.projectId && opts.osRole) {
     cachedFullSync = {
       userId: opts.userId,
       userRole: opts.userRole,
@@ -451,359 +415,310 @@ function mergeFullSyncContext(opts: {
       osRole: opts.osRole,
       project: opts.project,
     };
-    return cachedFullSync;
   }
-  if (cachedFullSync?.userId === opts.userId) return cachedFullSync;
-  return null;
-}
-
-async function loadChatState(userId: string): Promise<ChatLoadResult> {
-  try {
-    const threads = await getApi().chatInbox(userId);
-    return {
-      source: 'threads',
-      threads,
-      total: sumActiveChatUnread(threads),
-    };
-  } catch (threadsError) {
-    try {
-      const { count } = await getApi().chatUnreadTotal(userId);
-      return {
-        source: 'total_fallback',
-        threads: chatThreads,
-        total: normalizeCount(count),
-        error: toAppError(threadsError, 'chat_inbox_failed'),
-      };
-    } catch (totalError) {
-      return {
-        source: 'cache',
-        threads: chatThreads,
-        total: chatCount,
-        error: toAppError(totalError, 'chat_sync_failed'),
-      };
-    }
-  }
-}
-
-function canApplyGlobal(meta: GlobalSyncMeta): boolean {
-  return Boolean(
-    storeUserId === meta.userId
-    && globalRequestSequence === meta.requestSequence
-    && localMutationRevision === meta.startedAtMutationRevision,
-  );
-}
-
-async function syncGlobalChat(userId: string, force: boolean): Promise<InboxSyncResult> {
-  if (
-    !force
-    && globalInflight
-    && globalInflightMeta
-    && globalInflightMeta.userId === userId
-    && globalInflightMeta.startedAtMutationRevision === localMutationRevision
-    && globalInflightMeta.requestSequence === globalRequestSequence
-  ) {
-    return globalInflight;
-  }
-
-  const meta: GlobalSyncMeta = {
-    requestSequence: ++globalRequestSequence,
-    userId,
-    startedAtMutationRevision: localMutationRevision,
-  };
-  globalInflightMeta = meta;
-  const previous = captureComparableState();
-  syncStatus = chatThreads.length || chatCount ? 'refreshing' : 'loading';
-  syncError = null;
-  notifyIfChanged(previous);
-
-  globalInflight = (async () => {
-    const loaded = await loadChatState(userId);
-    if (!canApplyGlobal(meta)) {
-      return { status: 'failed', source: 'cache', totalUnread: chatCount, error: { message: 'stale_sync_ignored' } };
-    }
-
-    const beforeApply = captureComparableState();
-    if (loaded.source === 'threads') {
-      chatThreads = loaded.threads;
-      chatCount = loaded.total;
-      chatFailed = false;
-      syncStatus = 'success';
-      syncError = null;
-      lastSyncedAt = Date.now();
-      serverRevision += 1;
-      refreshInboxChatRow(chatCount);
-      notifyIfChanged(beforeApply);
-      return { status: 'confirmed', source: 'threads', totalUnread: chatCount };
-    }
-
-    if (loaded.source === 'total_fallback') {
-      // The total endpoint is authoritative for the global badge. The thread list remains stale.
-      chatCount = loaded.total;
-      chatFailed = false;
-      syncStatus = 'stale';
-      syncError = loaded.error;
-      lastSyncedAt = Date.now();
-      serverRevision += 1;
-      refreshInboxChatRow(chatCount);
-      notifyIfChanged(beforeApply);
-      return {
-        status: 'stale',
-        source: 'total_fallback',
-        totalUnread: chatCount,
-        error: loaded.error,
-      };
-    }
-
-    chatFailed = true;
-    syncStatus = chatThreads.length || chatCount ? 'stale' : 'error';
-    syncError = loaded.error;
-    notifyIfChanged(beforeApply);
-    return {
-      status: 'failed',
-      source: 'cache',
-      totalUnread: chatCount,
-      error: loaded.error,
-    };
-  })();
-
-  try {
-    return await globalInflight;
-  } finally {
-    if (globalInflightMeta?.requestSequence === meta.requestSequence) {
-      globalInflight = null;
-      globalInflightMeta = null;
-    }
-  }
-}
-
-async function syncProjectInbox(context: FullSyncContext, force: boolean): Promise<boolean> {
-  const key = contextKey(context.userId, context.projectId, context.osRole);
-  if (
-    !force
-    && projectInflight
-    && projectInflightMeta?.contextKey === key
-    && projectInflightMeta.requestSequence === projectRequestSequence
-  ) {
-    return projectInflight;
-  }
-
-  const meta: ProjectSyncMeta = {
-    requestSequence: ++projectRequestSequence,
-    contextKey: key,
-  };
-  projectInflightMeta = meta;
-
-  projectInflight = (async () => {
-    try {
-      let nextItems = await buildInboxItems({
-        userId: context.userId,
-        projectId: context.projectId,
-        role: context.osRole,
-        chatUnread: chatCount,
-        project: context.project,
-      });
-      try {
-        nextItems = mergeOfflineInboxItem(nextItems, await getOfflineOutboxStatus());
-      } catch {
-        // Offline status is supplemental; keep the server items.
-      }
-
-      if (
-        storeUserId !== context.userId
-        || projectRequestSequence !== meta.requestSequence
-        || projectInflightMeta?.contextKey !== key
-      ) {
-        return false;
-      }
-
-      const previous = captureComparableState();
-      inboxItems = nextItems;
-      inboxBadge = inboxItems.filter((item) => item.kind !== 'chat').length;
-      notifyIfChanged(previous);
-      return true;
-    } catch {
-      return false;
-    }
-  })();
-
-  try {
-    return await projectInflight;
-  } finally {
-    if (projectInflightMeta?.requestSequence === meta.requestSequence) {
-      projectInflight = null;
-      projectInflightMeta = null;
-    }
-  }
-}
-
-export async function requestInboxSync(opts: {
-  reason: InboxSyncReason;
-  force?: boolean;
-  userId?: string;
-  userRole?: UserRole;
-  projectId?: string;
-  project?: ProjectDetail | null;
-  osRole?: OsRole;
-  scope?: 'all' | 'chat';
-}): Promise<InboxSyncResult> {
-  if (!opts.userId) {
-    resetInboxSync();
-    return {
-      status: 'failed',
-      source: 'cache',
-      totalUnread: 0,
-      error: { message: 'missing_user' },
-    };
-  }
-
-  setUserScope(opts.userId);
-  const context = mergeFullSyncContext({
+  if (!opts.userId) return opts;
+  if (opts.projectId && opts.osRole) return opts;
+  if (!cachedFullSync || cachedFullSync.userId !== opts.userId) return opts;
+  return {
     userId: opts.userId,
-    userRole: opts.userRole,
-    projectId: opts.projectId,
-    project: opts.project,
-    osRole: opts.osRole,
-  });
+    userRole: opts.userRole ?? cachedFullSync.userRole,
+    projectId: cachedFullSync.projectId,
+    osRole: cachedFullSync.osRole,
+    project: opts.project ?? cachedFullSync.project,
+  };
+}
 
-  const result = await syncGlobalChat(opts.userId, Boolean(opts.force));
-  if (opts.scope !== 'chat' && context) {
-    await syncProjectInbox(context, Boolean(opts.force));
+/** После markChatRead / partial reload — синхронизировать строку чата и inboxBadge с chatCount */
+function refreshInboxChatRow(nextChat: number) {
+  const n = Math.max(0, nextChat || 0);
+  if (n <= 0) {
+    inboxItems = inboxItems.filter((i) => i.kind !== 'chat');
+  } else if (inboxItems.some((i) => i.kind === 'chat')) {
+    inboxItems = inboxItems.map((i) =>
+      i.kind === 'chat' ? { ...i, sub: `${formatUnreadCount(n)} во всех чатах` } : i,
+    );
+  } else {
+    // Upsert: иначе dock уже показывает N, а «Входящие» без строки чата / со старым sub.
+    const role = cachedFullSync?.osRole ?? 'customer';
+    inboxItems = [
+      {
+        id: 'chat',
+        kind: 'chat',
+        title: 'Непрочитанные сообщения',
+        sub: `${formatUnreadCount(n)} во всех чатах`,
+        href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
+        priority: 90,
+      },
+      ...inboxItems,
+    ];
   }
-  return result;
+  const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
+  inboxBadge = taskRows + n;
 }
 
-export function invalidateUnreadReloads(): void {
-  localMutationRevision += 1;
-  globalRequestSequence += 1;
-}
-
-function scheduleInvariantReconcile() {
-  if (reconcileScheduled || !storeUserId) return;
-  reconcileScheduled = true;
-  const userId = storeUserId;
-  const context = cachedFullSync?.userId === userId ? cachedFullSync : null;
-  queueMicrotask(() => {
-    reconcileScheduled = false;
-    if (storeUserId !== userId) return;
-    void requestInboxSync({
-      reason: 'invariant_reconcile',
-      force: true,
-      userId,
-      userRole: context?.userRole,
-      projectId: context?.projectId,
-      project: context?.project,
-      osRole: context?.osRole,
-      scope: 'chat',
-    });
-  });
-}
-
-function applyAuthoritativeCounters(
-  threadId: string | undefined,
-  threadUnread: number | undefined,
-  totalUnread: number,
-  unreadRevision?: number,
-) {
-  if (!acceptUnreadRevision(unreadRevision)) return;
-
-  if (threadId && typeof threadUnread === 'number') {
-    chatThreads = chatThreads.map((thread) => (
-      thread.id === threadId
-        ? { ...thread, unread_count: normalizeCount(threadUnread) }
-        : thread
-    ));
-  }
-
-  chatCount = normalizeCount(totalUnread);
-  chatFailed = false;
-  syncStatus = 'success';
-  syncError = null;
-  lastSyncedAt = Date.now();
-  serverRevision += 1;
+/** Точечное обновление unread треда — total пересчитывается в том же action */
+function patchThreadReadLocal(threadId: string, threadUnread = 0) {
+  const prev = {
+    chatCount,
+    chatFailed,
+    chatUnreadStale,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
+  };
+  applyLocalThreadUnread(threadId, threadUnread);
   refreshInboxChatRow(chatCount);
-
-  const localSum = sumActiveChatUnread(chatThreads);
-  if (chatThreads.length > 0 && localSum !== chatCount) scheduleInvariantReconcile();
+  notifyIfChanged(prev);
 }
 
-export async function markThreadRead(
-  userId: string,
-  projectId: string,
-  threadId: string,
-  userRole?: UserRole,
-  _knownUnread = 0,
-): Promise<MarkReadResult> {
-  if (storeUserId && storeUserId !== userId) {
-    return { status: 'failed', error: { message: 'user_mismatch' } };
-  }
-  if (!storeUserId) storeUserId = userId;
+/**
+ * Локально архивировать/разархивировать тред с пересчётом total.
+ */
+export function patchThreadArchivedLocal(threadId: string, isArchived: boolean) {
+  const prev = {
+    chatCount,
+    chatFailed,
+    chatUnreadStale,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
+  };
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  commitUnreadSnapshot(setThreadArchivedInSnapshot(base, threadId, isArchived), {
+    failed: false,
+    stale: false,
+  });
+  refreshInboxChatRow(chatCount);
+  notifyIfChanged(prev);
+}
 
-  const previous = captureComparableState();
-  invalidateUnreadReloads();
-  applyLocalThreadUnread(threadId, 0);
-  markReadSyncFailed = false;
-  notifyIfChanged(previous);
+/**
+ * Единый mark-read: dedupe in-flight, ignore stale/same cursor,
+ * точечный patch store; полный reload только при ошибке API.
+ */
+export async function markThreadRead(args: MarkThreadReadArgs): Promise<MarkThreadReadResult> {
+  const {
+    userId,
+    projectId,
+    threadId,
+    throughMessageId = null,
+    throughCreatedAt = null,
+    userRole,
+    source,
+    force = false,
+  } = args;
+
+  const base = {
+    threadId,
+    throughMessageId,
+    source,
+  };
+
+  // Автоматические источники: только реальный просмотр (не background / push delivery)
+  const autoSources: MarkThreadReadSource[] = ['thread_visible', 'thread_ws'];
+  if (!force && autoSources.includes(source)) {
+    if (!getAppForeground()) {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_background' });
+      return { status: 'skipped_background', ...base };
+    }
+    // WS / snapshot reconcile: тред должен быть активно читаем
+    if (source === 'thread_ws' && !isActivelyReadingThread(activeThreadContext, threadId)) {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_not_visible' });
+      return { status: 'skipped_not_visible', ...base };
+    }
+  }
+
+  const evalDecision = (hasInflight: boolean) =>
+    decideMarkReadAction({
+      force,
+      throughMessageId,
+      throughCreatedAt,
+      confirmed: confirmedRead.get(threadId) ?? null,
+      hasInflight,
+    });
+
+  // Уже есть in-flight → ждём и не стартуем второй API
+  const existing = markInflight.get(threadId);
+  if (existing) {
+    recordMarkReadDiag({ ...base, outcome: 'deduplicated' });
+    await existing;
+    const after = evalDecision(false);
+    if (after.action === 'skip_same') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_same' });
+      return { status: 'skipped_same', ...base };
+    }
+    if (after.action === 'skip_stale') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_stale' });
+      return { status: 'skipped_stale', ...base };
+    }
+    if (after.action === 'await_inflight') {
+      return { status: 'deduplicated', ...base };
+    }
+    // более новый cursor — fall through к новому send
+  } else {
+    const early = evalDecision(false);
+    if (early.action === 'skip_same') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_same' });
+      return { status: 'skipped_same', ...base };
+    }
+    if (early.action === 'skip_stale') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_stale' });
+      return { status: 'skipped_stale', ...base };
+    }
+  }
+
+  // Атомарный claim слота до любого await I/O
+  let resolveClaim!: (r: MarkThreadReadResult) => void;
+  const claim = new Promise<MarkThreadReadResult>((res) => {
+    resolveClaim = res;
+  });
+  // Если проиграли гонку — другой уже поставил promise
+  if (markInflight.has(threadId)) {
+    recordMarkReadDiag({ ...base, outcome: 'deduplicated' });
+    await markInflight.get(threadId);
+    const afterRace = evalDecision(false);
+    if (afterRace.action === 'send') {
+      // редкий случай: нужно отправить новый cursor — рекурсия с тем же args
+      return markThreadRead(args);
+    }
+    const status = afterRace.action === 'skip_stale'
+      ? 'skipped_stale' as const
+      : afterRace.action === 'skip_same'
+        ? 'skipped_same' as const
+        : 'deduplicated' as const;
+    recordMarkReadDiag({ ...base, outcome: status === 'deduplicated' ? 'deduplicated' : status });
+    return { status, ...base };
+  }
+  markInflight.set(threadId, claim);
 
   try {
-    const response = await getApi().markChatRead(userId, projectId, threadId);
-    const revision = (response as MarkChatReadResponse & { unread_revision?: number }).unread_revision;
-    applyAuthoritativeCounters(
-      response.thread_id || threadId,
-      response.thread_unread_count,
-      response.total_unread_count,
-      revision,
-    );
-    pendingVisibleThreadIds.delete(threadId);
-    markReadSyncFailed = false;
-    notify();
-    return { status: 'confirmed', response };
-  } catch (error) {
-    const appError = toAppError(error, 'mark_read_failed');
-    const reconciled = await requestInboxSync({
-      reason: 'mark_read_failure',
-      force: true,
-      userId,
-      userRole,
-      projectId,
-      scope: 'chat',
-    });
+    patchThreadReadLocal(threadId, 0);
+    recordMarkReadDiag({ ...base, outcome: 'patched' });
 
-    if (reconciled.status === 'confirmed' && reconciled.source === 'threads') {
-      markReadSyncFailed = false;
-      notify();
-      return { status: 'reconciled' };
+    try {
+      const res = await api.markChatRead(userId, projectId, threadId, throughMessageId);
+      chatFailed = false;
+      const serverUnread = typeof res?.thread_unread_count === 'number' ? res.thread_unread_count : 0;
+      const confirmedId = res?.read_through_message_id ?? throughMessageId;
+      confirmedRead.set(threadId, {
+        messageId: confirmedId ?? null,
+        createdAt: throughCreatedAt,
+      });
+      // Total только из суммы тредов — не подставляем независимый server total
+      patchThreadReadLocal(threadId, serverUnread);
+      if (
+        typeof res?.total_unread_count === 'number'
+        && res.total_unread_count !== chatCount
+        && (typeof __DEV__ === 'undefined' || __DEV__)
+      ) {
+        warnUnreadInvariantIfBroken(
+          unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now()),
+          undefined,
+          'mark_read_server_total_mismatch',
+        );
+      }
+      const ok: MarkThreadReadResult = { status: 'sent', ...base };
+      recordMarkReadDiag({ ...base, outcome: 'sent' });
+      resolveClaim(ok);
+      return ok;
+    } catch {
+      recordMarkReadDiag({ ...base, outcome: 'error' });
+      try {
+        const { requestChatSync, patchChatSyncContext } = await import('@/lib/chatSync');
+        patchChatSyncContext({
+          userId,
+          role: userRole ?? null,
+          projectId: projectId ?? cachedFullSync?.projectId ?? null,
+        });
+        await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
+      } catch {
+        await reloadInboxSync(
+          {
+            userId,
+            userRole,
+            projectId,
+            project: cachedFullSync?.project,
+            osRole: cachedFullSync?.osRole,
+          },
+          true,
+        );
+      }
+      const err: MarkThreadReadResult = { status: 'error', ...base };
+      resolveClaim(err);
+      return err;
     }
-
-    markReadSyncFailed = true;
-    syncStatus = chatThreads.length || chatCount ? 'stale' : 'error';
-    syncError = appError;
-    notify();
-    return { status: 'failed', error: appError };
+  } finally {
+    if (markInflight.get(threadId) === claim) {
+      markInflight.delete(threadId);
+    }
   }
 }
 
-/** @deprecated Use markThreadRead and inspect MarkReadResult. */
+/** @deprecated используйте markThreadRead */
 export async function markChatReadAndSync(
   userId: string,
   projectId: string,
   threadId: string,
   userRole?: UserRole,
-  knownUnread = 0,
+  _knownUnread = 0,
+  readThroughMessageId?: string | null,
 ): Promise<void> {
-  await markThreadRead(userId, projectId, threadId, userRole, knownUnread);
-}
-
-export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: UserRole): Promise<void> {
-  await requestInboxSync({
-    reason: 'mark_read_failure',
-    force: true,
+  await markThreadRead({
     userId,
+    projectId,
+    threadId,
+    throughMessageId: readThroughMessageId,
     userRole,
-    scope: 'chat',
+    source: 'manual',
   });
 }
 
-/** Compatibility adapter for older callers. */
+/** Сброс confirmed cursors (смена пользователя) */
+export function clearMarkReadCursors(): void {
+  confirmedRead.clear();
+  markInflight.clear();
+}
+
+export function getConfirmedReadCursor(threadId: string): ConfirmedReadCursor | null {
+  return confirmedRead.get(threadId) ?? null;
+}
+
+export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: UserRole): Promise<void> {
+  try {
+    const { requestChatSync, patchChatSyncContext } = await import('@/lib/chatSync');
+    patchChatSyncContext({ userId, role: userRole ?? null });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
+  } catch {
+    await reloadInboxSync({ userId, userRole }, true);
+  }
+  emitInboxWs();
+}
+
+export type ReloadInboxSyncGuards = {
+  signal?: AbortSignal;
+  /** Ключ на старте запроса — сверить перед apply */
+  contextKey?: string;
+  getContextKey?: () => string;
+};
+
+function guardsAborted(guards?: ReloadInboxSyncGuards): boolean {
+  if (guards?.signal?.aborted) return true;
+  if (
+    guards?.contextKey != null
+    && guards.getContextKey
+    && guards.contextKey !== guards.getContextKey()
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Низкоуровневый reload. Предпочтительный вход — `requestChatSync` (оркестратор).
+ * guards: AbortSignal + context key — не применять ответ чужого/старого контекста.
+ */
 export async function reloadInboxSync(
   opts: {
     userId?: string;
@@ -813,98 +728,116 @@ export async function reloadInboxSync(
     osRole?: OsRole;
   },
   force = false,
+  guards?: ReloadInboxSyncGuards,
 ): Promise<void> {
-  await requestInboxSync({
-    reason: force ? 'manual' : 'focus',
-    force,
-    ...opts,
-  });
-}
+  const merged = mergeReloadOpts(opts);
+  const key = [merged.userId, merged.userRole, merged.projectId, merged.osRole].join(':');
+  if (!force && reloadInflight && lastReloadKey === key) return reloadInflight;
 
-function handleInboxWsPayload(payload: InboxWsPayload) {
-  if (payload.event_id && rememberEventId(payload.event_id)) return;
+  lastReloadKey = key;
+  const generation = ++loadGeneration;
+  reloadInflight = (async () => {
+    const prev = {
+      chatCount,
+      chatFailed,
+      chatUnreadStale,
+      inboxBadge,
+      inboxItems,
+      inboxWsConnected,
+      revision: unreadSnapshot?.revision ?? 0,
+    };
 
-  if (payload.type === 'chat_read' && payload.thread_id) {
-    if (
-      typeof payload.thread_unread_count === 'number'
-      && typeof payload.total_unread_count === 'number'
-    ) {
-      applyAuthoritativeCounters(
-        payload.thread_id,
-        payload.thread_unread_count,
-        payload.total_unread_count,
-        payload.unread_revision,
-      );
-      notify();
+    if (!merged.userId) {
+      chatCount = 0;
+      chatFailed = false;
+      chatUnreadStale = false;
+      chatThreads = [];
+      unreadSnapshot = null;
+      inboxItems = [];
+      inboxBadge = 0;
+      cachedFullSync = null;
+      lastChatUserId = undefined;
+      clearActiveThreadContext();
+      clearIncomingMessageDedupe();
+      clearMarkReadCursors();
+      notifyIfChanged(prev);
       return;
     }
+
+    // Смена пользователя: не показываем чужой unread до нового snapshot
+    if (lastChatUserId && lastChatUserId !== merged.userId) {
+      chatCount = 0;
+      chatFailed = false;
+      chatUnreadStale = false;
+      chatThreads = [];
+      unreadSnapshot = null;
+      clearActiveThreadContext();
+      clearIncomingMessageDedupe();
+      clearMarkReadCursors();
+    }
+    lastChatUserId = merged.userId;
+
+    if (guardsAborted(guards)) return;
+
+    const chatState = await fetchChatSnapshot(merged.userId);
+    if (generation !== loadGeneration || guardsAborted(guards)) return;
+    if (chatState.ok) {
+      applyIncomingSnapshot(chatState.snapshot, { force: true });
+    } else {
+      // Ошибка списка: не трогаем total отдельно — помечаем stale/failed
+      chatFailed = chatThreads.length === 0 && chatCount === 0;
+      chatUnreadStale = true;
+      if (chatThreads.length === 0) {
+        chatFailed = true;
+      }
+    }
+
+    const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
+    const syncOsRole = merged.osRole ?? cachedFullSync?.osRole;
+
+    if (syncProjectId && syncOsRole) {
+      try {
+        inboxItems = await buildInboxItems({
+          userId: merged.userId,
+          projectId: syncProjectId,
+          role: syncOsRole,
+          chatUnread: chatCount,
+          project: merged.project ?? cachedFullSync?.project,
+        });
+        if (generation !== loadGeneration || guardsAborted(guards)) return;
+        // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
+        try {
+          const off = await getOfflineOutboxStatus();
+          inboxItems = mergeOfflineInboxItem(inboxItems, off);
+        } catch { /* noop */ }
+        const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
+        inboxBadge = taskRows + chatCount;
+      } catch {
+        if (!inboxItems.length) {
+          inboxBadge = chatCount;
+        }
+      }
+    } else {
+      // Нет projectId в этом вызове — не затираем задачи: только выравниваем чат с chatCount.
+      refreshInboxChatRow(chatCount);
+    }
+
+    if (generation !== loadGeneration || guardsAborted(guards)) return;
+    notifyIfChanged(prev);
+  })();
+
+  try {
+    await reloadInflight;
+  } finally {
+    reloadInflight = null;
   }
-
-  const isMessageEvent = payload.type === 'chat_message_created'
-    || payload.event === 'message'
-    || payload.type === 'inbox';
-
-  if (isMessageEvent && payload.thread_id) {
-    // Do not pretend that a message is read before the thread reload/render commit.
-    // ChatThreadView will POST /read after the message is actually displayed.
-    if (isThreadVisiblyOpen(payload.thread_id)) {
-      pendingVisibleThreadIds.add(payload.thread_id);
-      return;
-    }
-
-    if (
-      typeof payload.thread_unread_count === 'number'
-      && typeof payload.total_unread_count === 'number'
-    ) {
-      applyAuthoritativeCounters(
-        payload.thread_id,
-        payload.thread_unread_count,
-        payload.total_unread_count,
-        payload.unread_revision,
-      );
-      notify();
-      return;
-    }
-  }
-
-  if (!storeUserId) return;
-  void requestInboxSync({
-    reason: 'websocket_reconcile',
-    userId: storeUserId,
-    userRole: cachedFullSync?.userRole,
-    projectId: cachedFullSync?.projectId,
-    project: cachedFullSync?.project,
-    osRole: cachedFullSync?.osRole,
-    scope: 'chat',
-  });
 }
 
 function stopPoll() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = null;
-  pollUserId = null;
-}
-
-function ensurePoll(userId: string) {
-  if (inboxWsConnected) {
-    stopPoll();
-    return;
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
-  if (pollTimer && pollUserId === userId) return;
-  stopPoll();
-  pollUserId = userId;
-  pollTimer = setInterval(() => {
-    if (inboxWsConnected || storeUserId !== userId) return;
-    void requestInboxSync({
-      reason: 'websocket_reconcile',
-      userId,
-      userRole: cachedFullSync?.userRole,
-      projectId: cachedFullSync?.projectId,
-      project: cachedFullSync?.project,
-      osRole: cachedFullSync?.osRole,
-      scope: 'chat',
-    });
-  }, POLL_MS);
 }
 
 function stopInboxWebSocket() {
@@ -914,90 +847,114 @@ function stopInboxWebSocket() {
   wsRefCount = 0;
   inboxWsConnected = false;
   stopPoll();
+  void import('@/lib/chatSync').then((m) => {
+    m.setChatInboxWsConnected(false);
+  }).catch(() => { /* test env */ });
 }
 
-function startInboxWebSocket(userId: string) {
+function startInboxWebSocket(userId: string, _onReload: () => void) {
   let alive = true;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let pingTimer: ReturnType<typeof setInterval> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
+  let pingTimer: ReturnType<typeof setInterval> | null = null;
 
   const connect = () => {
     if (!alive || !userId) return;
     const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
     void (async () => {
       try {
-        const query = await buildWsAuthQuery();
+        const qs = await buildWsAuthQuery();
         if (!alive) return;
-        const socket = new WebSocket(`${base}/ws/inbox/${userId}${query}`);
-
-        socket.onopen = () => {
+        const ws = new WebSocket(`${base}/ws/inbox/${userId}${qs}`);
+        ws.onopen = () => {
           attempt = 0;
-          const previous = inboxWsConnected;
-          inboxWsConnected = true;
-          stopPoll();
-          if (!previous) notify();
+          if (alive) {
+            const prev = inboxWsConnected;
+            inboxWsConnected = true;
+            if (!prev) notify();
+            void import('@/lib/chatSync').then((m) => {
+              m.setChatInboxWsConnected(true);
+            }).catch(() => { /* test env */ });
+          }
           pingTimer = setInterval(() => {
             try {
-              if (socket.readyState === WebSocket.OPEN) socket.send('ping');
+              if (ws.readyState === WebSocket.OPEN) ws.send('ping');
             } catch {
-              // Reconnect will be handled by onclose.
+              /* noop */
             }
           }, 25_000);
         };
-
-        socket.onmessage = (event) => {
-          if (event.data === 'ping' || event.data === 'pong') return;
+        ws.onmessage = (e) => {
+          if (e.data === 'ping' || e.data === 'pong') return;
           try {
-            handleInboxWsPayload(JSON.parse(event.data) as InboxWsPayload);
+            JSON.parse(e.data) as InboxWsPayload;
           } catch {
-            // Malformed payloads are ignored and the fallback poll remains available.
+            /* noop */
           }
+          // Нормализованное событие → orchestrator (debounce + coalesce), не прямой reload
+          void import('@/lib/chatSync').then((m) => {
+            m.onChatInboxWsEvent();
+          }).catch(() => { /* test env */ });
+          emitInboxWs();
         };
-
-        socket.onerror = () => socket.close();
-        socket.onclose = () => {
+        ws.onerror = () => {
+          ws.close();
+        };
+        ws.onclose = () => {
           if (pingTimer) clearInterval(pingTimer);
           pingTimer = null;
-          const previous = inboxWsConnected;
-          inboxWsConnected = false;
-          if (previous) notify();
+          if (alive) {
+            const prev = inboxWsConnected;
+            inboxWsConnected = false;
+            if (prev) notify();
+            void import('@/lib/chatSync').then((m) => {
+              m.setChatInboxWsConnected(false);
+            }).catch(() => { /* test env */ });
+          }
           if (!alive) return;
-          ensurePoll(userId);
           attempt += 1;
-          const delay = Math.min(30_000, 2_000 * 2 ** Math.min(attempt - 1, 4));
-          reconnectTimer = setTimeout(connect, delay);
+          const delay = Math.min(30_000, 2000 * 2 ** Math.min(attempt - 1, 4));
+          timer = setTimeout(connect, delay);
         };
       } catch {
-        inboxWsConnected = false;
-        ensurePoll(userId);
+        if (alive) {
+          const prev = inboxWsConnected;
+          inboxWsConnected = false;
+          if (prev) notify();
+          void import('@/lib/chatSync').then((m) => {
+            m.setChatInboxWsConnected(false);
+          }).catch(() => { /* test env */ });
+        }
         attempt += 1;
-        reconnectTimer = setTimeout(connect, 4_000);
+        timer = setTimeout(connect, 4000);
       }
     })();
   };
 
-  ensurePoll(userId);
   connect();
 
   return () => {
     alive = false;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (timer) clearTimeout(timer);
     if (pingTimer) clearInterval(pingTimer);
     stopPoll();
   };
 }
 
+/** Одно WS на пользователя — ref-counted. Sync через chatSync, не через onReload. */
 export function ensureInboxWebSocket(userId: string | undefined, _onReload?: () => void) {
   if (!userId) {
     stopInboxWebSocket();
     return () => {};
   }
 
-  if (wsUserId && wsUserId !== userId) stopInboxWebSocket();
+  if (wsUserId && wsUserId !== userId) {
+    stopInboxWebSocket();
+  }
+
   if (!wsCleanup || wsUserId !== userId) {
     wsUserId = userId;
-    wsCleanup = startInboxWebSocket(userId);
+    wsCleanup = startInboxWebSocket(userId, () => {});
   }
 
   wsRefCount += 1;
@@ -1005,41 +962,6 @@ export function ensureInboxWebSocket(userId: string | undefined, _onReload?: () 
     wsRefCount = Math.max(0, wsRefCount - 1);
     if (wsRefCount === 0) stopInboxWebSocket();
   };
-}
-
-export function __resetInboxSyncStoreForTests() {
-  resetInboxSync();
-  serverRevision = 0;
-  currentUnreadRevision = 0;
-  localMutationRevision = 0;
-  globalRequestSequence = 0;
-  projectRequestSequence = 0;
-  apiImpl = null;
-}
-
-export function __setInboxSyncApiForTests(mock: InboxApi) {
-  apiImpl = mock;
-}
-
-export function __seedInboxSyncStoreForTests(opts: {
-  userId: string;
-  threads: ChatThread[];
-  chatCount?: number;
-}) {
-  storeUserId = opts.userId;
-  chatThreads = opts.threads;
-  chatCount = opts.chatCount ?? sumActiveChatUnread(opts.threads);
-  syncStatus = 'success';
-  lastSyncedAt = Date.now();
-  refreshInboxChatRow(chatCount);
-}
-
-export function __dispatchInboxWsForTests(payload: InboxWsPayload) {
-  handleInboxWsPayload(payload);
-}
-
-export function __getPendingVisibleThreadsForTests(): string[] {
-  return Array.from(pendingVisibleThreadIds);
 }
 
 export { subscribeInboxWs, emitInboxWs };

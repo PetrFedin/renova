@@ -74,7 +74,6 @@ export function OsTabsHeaderBar({ role }: { role: OsRole }) {
             <Ionicons name="person-outline" size={22} color={RenovaTheme.colors.text} />
           </Pressable>
           <OsProjectPicker role={role} />
-          {/* Сообщения только на dock — без дублирующей иконки в шапке */}
           <OsSectionMenu role={role} />
         </View>
       }

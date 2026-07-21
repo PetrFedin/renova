@@ -1,6 +1,7 @@
-/** Жёлтый/янтарный badge задач — не путать с красным ChatBadge (сообщения). */
+/** Жёлтый/янтарный badge используется только для задач. */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { formatBadgeCount } from '@/lib/i18n';
 
 export function TaskBadge({
   count,
@@ -11,11 +12,10 @@ export function TaskBadge({
   count: number;
   size?: number;
   inline?: boolean;
-  /** Скрыть от a11y, если число уже в label родителя */
   accessibilityHidden?: boolean;
 }) {
-  if (!count || count <= 0) return null;
-  const label = count > 99 ? '99+' : String(count);
+  const label = formatBadgeCount(count);
+  if (!label) return null;
   return (
     <View
       accessible={!accessibilityHidden}

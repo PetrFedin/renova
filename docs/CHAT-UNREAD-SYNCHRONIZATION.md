@@ -1,113 +1,53 @@
 # Chat unread synchronization
 
-**Дата:** 2026-07-21  
 **Ветка:** `agent/chat-unread-synchronization`  
 **PR:** Draft #29
 
-## Источник истины
+## Итоговая архитектура
 
-Мобильный store: `apps/mobile/lib/inboxSyncStore.ts`
+PR объединяет проверенный chat-stack: read-after-visible, idempotent mark-read, atomic unread snapshot, единый orchestrator, active-thread policy, явные unread scopes и foreground guard.
 
-```
-totalUnread = sum(thread.unread_count) по неархивным чатам
-```
+### UI-инварианты
 
-Backend SoT: `GET /api/v1/chats/inbox` + `ChatThreadRead.last_read_at`.  
-После успешного `POST .../read` authoritative: `thread_unread_count` + `total_unread_count` из ответа (локальная сумма не откатывает серверный total).
+- нижняя кнопка «Сообщения» показывает только global unread сообщений;
+- кнопка «Ещё» показывает только жёлтый task badge;
+- строка «Входящие» показывает два подписанных счётчика: `Сообщения: N` и `Задачи: N`;
+- красный `ChatBadge` используется только для сообщений;
+- жёлтый `TaskBadge` используется только для задач;
+- отдельной верхней кнопки сообщений нет.
 
-## Sync orchestrator
+### Read lifecycle
 
-Один orchestrator в `inboxSyncStore`:
+Чат отмечается прочитанным только после одновременного выполнения условий:
 
-| Механизм | Правило |
-|----------|---------|
-| Inbox WebSocket | одно соединение на user (ref-count) |
-| Fallback poll | один timer: 25s без WS / 60s при WS |
-| Inflight reload | один на user scope; join только если тот же `localMutationRevision` + `reloadRequestSequence` |
+- экран focused;
+- приложение foreground и web-документ видим;
+- доступ к треду подтверждён;
+- актуальный transcript загружен;
+- сообщения прошли render commit;
+- поверх ленты нет блокирующего overlay.
 
-Компоненты (`useChatUnread`, `useInboxTasks`, `ChatListView`) только:
+`POST /read` принимает `read_through_message_id`. GET чата не изменяет read-state. Mark-read дедуплицируется по треду и cursor; после ошибки выполняется один reconciliation.
 
-- подписываются на store;
-- вызывают `requestInboxSync({ reason })`;
-- **не** создают собственные WS/polling.
+### Synchronization
 
-Reasons: `initial | focus | manual | websocket_reconcile | offline_flush | foreground | mark_read_failure | project_change | invariant_reconcile`.
+- один chat sync orchestrator;
+- context key включает пользователя, роль и объект;
+- старые и отменённые ответы не применяются;
+- inbox/thread WS коалесцируются;
+- fallback polling включается только при разрыве WS;
+- atomic inbox snapshot содержит revision, threads и global total;
+- stale revisions игнорируются;
+- logout очищает store и transport.
 
-### Invalidation старых запросов
+### Active thread
 
-При начале mark-read:
+Входящее сообщение в реально видимом треде сначала попадает в transcript, затем read cursor подтверждается после sync/render. Background, unfocused screen и modal overlay не считаются чтением.
 
-1. `invalidateUnreadReloads()` → `localMutationRevision++`, `reloadRequestSequence++`;
-2. optimistic `unread=0` для треда;
-3. старые in-flight reload **не применяются** (`canApplyReload`);
-4. **не** присоединяемся к pre-read inflight;
-5. при успешных counters из POST — **без** полного reload.
+## Проверки
 
-Каждый reload помнит `{ requestSequence, userId, startedAtMutationRevision }`.
+Специализированные скрипты chat-stack находятся в `package.json`; backend покрывает read-after-visible и atomic unread snapshot. GitHub CI должен быть зелёным после интеграционного merge.
 
-## Read lifecycle
+## Ручная приёмка
 
-Единственный backend endpoint изменения read-state:
-
-`POST /api/v1/projects/{project_id}/chats/{thread_id}/read`
-
-`GET .../chats/{thread_id}` — **чистый**: не вызывает `mark_thread_read`.
-
-Клиент:
-
-1. `loadMessages` только загружает и `setChat`;
-2. `useFocusEffect` + `AppState`;
-3. после render commit `useEffect` (gate `shouldMarkThreadReadAfterCommit`) → `markThreadRead`;
-4. project id: route params → `inboxSyncStore.threads` → inbox API (не GET chat).
-
-Mark-read **не** выполняется при ошибке загрузки, до commit, в background, на unfocused, на stale thread.
-
-Открытый focused+foreground тред: входящее сообщение не поднимает badge; после reload сообщений — mark-read. Background / unfocused — unread растёт.
-
-## Event dedup
-
-`event_id` = UUID (не timestamp). Store хранит LRU последних ID. Дубликат: без unread bump, без второго reload/mark-read.
-
-`chat_message_created` предпочтительно с counters; иначе один deduped reconcile.
-
-## Цвета и UI
-
-| Цвет | Значение |
-|------|----------|
-| Красный `ChatBadge` | только непрочитанные сообщения |
-| Жёлтый `TaskBadge` | только задачи |
-
-### UI locations
-
-| Место | Что показывает | Цвет |
-|-------|----------------|------|
-| Нижняя «Сообщения» | global `totalUnread` | Красный |
-| Кнопка «Ещё» | только `taskBadge` | Жёлтый |
-| Строка «Входящие» в «Ещё» | Сообщения: N · Задачи: N | Красный / жёлтый |
-| Список чатов | одна строка «N непрочитанных» / «В фильтре: X из Y» | Текст |
-| Карточка чата | unread треда (+ a11y label) | Красный |
-
-**Нет** отдельной верхней иконки сообщений (`OsHeaderChatButton` удалён).  
-Сообщения **не** возвращаются на badge кнопки «Ещё».
-
-## Error recovery
-
-`markThreadRead` → `MarkReadResult`: `confirmed | reconciled | failed`.  
-При ошибке: один force sync; если и он упал — флаг `markReadSyncFailed` и текст «Не удалось синхронизировать прочтение» (без Alert). Retry на focus/foreground.
-
-## Тесты
-
-```bash
-npm run test:chat-unread
-# включает store + gate + lifecycle contract
-
-cd backend && .venv/bin/python -m pytest \
-  tests/test_chat_mark_read_contract.py \
-  tests/test_chat_mark_read_http.py -q
-```
-
-HTTP-тест покрывает: auth/ACL, unread до read, POST counters, GET без side-effect, идемпотентность, архив.
-
-## Ручная приёмка (обязательна до Ready)
-
-Двухсессионный smoke + evidence. PR остаётся **Draft**, пока не подтверждены критерии из PR description.
+PR остаётся Draft до двухсессионного smoke test с записью экрана: 3 → 0 после открытия, background 0 → 1, foreground после отображения → 0, WS off → корректный polling, deep link/push/search/inbox/offline/reconnect.

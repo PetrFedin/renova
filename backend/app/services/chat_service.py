@@ -78,7 +78,7 @@ async def _get_or_create_read(db: AsyncSession, thread_id: str, user_id: str) ->
     if row:
         return row
     # Не ставим utcnow(): иначе первое появление строки (inbox/pin) ложно «прочитывает» историю.
-    # Прочтение — только mark_thread_read (POST .../read). GET chat side-effect не делает.
+    # Прочтение — только mark_thread_read (POST /read), не GET chat.
     row = ChatThreadRead(thread_id=thread_id, user_id=user_id, last_read_at=datetime(1970, 1, 1))
     db.add(row)
     await db.flush()
@@ -252,30 +252,13 @@ async def send_message(
                     return_to="/(customer)/(tabs)/chat",
                 )
     from app.api.v1.ws import broadcast, broadcast_inbox
-    import uuid
 
     await broadcast(thread.id, {"type": "message", "message": msg_dict(msg)})
     if proj:
-        # Уникальный event_id (UUID), не timestamp; counters — authoritative для клиента
+        payload = {"type": "inbox", "event": "message", "thread_id": thread.id, "project_id": thread.project_id}
         for uid in {proj.customer_id, proj.contractor_id}:
-            if not uid:
-                continue
-            pr = await db.execute(
-                select(Project).where((Project.customer_id == uid) | (Project.contractor_id == uid))
-            )
-            project_ids = [p.id for p in pr.scalars().all()]
-            thread_unread = await count_unread_in_thread(db, thread.id, uid)
-            total_unread = await count_unread_all(db, uid, project_ids)
-            payload = {
-                "type": "chat_message_created",
-                "event_id": str(uuid.uuid4()),
-                "thread_id": thread.id,
-                "project_id": thread.project_id,
-                "thread_unread_count": thread_unread,
-                "total_unread_count": total_unread,
-                "occurred_at": utc_now().isoformat(),
-            }
-            await broadcast_inbox(uid, payload)
+            if uid:
+                await broadcast_inbox(uid, payload)
     return msg
 
 
@@ -324,12 +307,58 @@ def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
     }
 
 
-async def mark_thread_read(db: AsyncSession, thread_id: str, user_id: str) -> None:
+async def mark_thread_read(
+    db: AsyncSession,
+    thread_id: str,
+    user_id: str,
+    *,
+    read_through_message_id: str | None = None,
+) -> dict:
+    """Монотонный read cursor по last_read_at (из сообщения или now).
+
+    Не уменьшает позицию. Идемпотентен. Не пишет activity events.
+    """
     row = await _get_or_create_read(db, thread_id, user_id)
-    now = utc_now()
-    row.last_read_at = now
-    row.updated_at = now
-    await db.commit()
+    cursor_at = utc_now()
+    resolved_msg_id = read_through_message_id
+
+    if read_through_message_id:
+        msg = await db.get(ChatMessage, read_through_message_id)
+        if not msg or msg.thread_id != thread_id:
+            from fastapi import HTTPException
+            raise HTTPException(400, "read_through_message_id не принадлежит треду")
+        cursor_at = msg.created_at
+        resolved_msg_id = msg.id
+    else:
+        # Без явного cursor — до последнего доступного сообщения треда
+        r = await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.thread_id == thread_id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(1)
+        )
+        last = r.scalar_one_or_none()
+        if last:
+            cursor_at = last.created_at
+            resolved_msg_id = last.id
+
+    # Монотонность: никогда не откатываем курсор назад
+    if row.last_read_at and cursor_at < row.last_read_at:
+        cursor_at = row.last_read_at
+        # оставляем прежний курсор — идемпотентный no-op по времени
+    else:
+        row.last_read_at = cursor_at
+        row.updated_at = utc_now()
+        await db.commit()
+
+    unread = await count_unread_in_thread(db, thread_id, user_id)
+    return {
+        "ok": True,
+        "thread_id": thread_id,
+        "read_through_message_id": resolved_msg_id,
+        "thread_unread_count": unread,
+        "read_at": row.last_read_at.isoformat() if row.last_read_at else None,
+    }
 
 
 async def read_map(db: AsyncSession, thread_id: str) -> dict[str, datetime]:

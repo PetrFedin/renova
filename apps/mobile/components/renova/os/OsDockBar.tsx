@@ -19,7 +19,8 @@ import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
-import { chatMessagesA11yLabel } from '@/lib/domain/moreMenuA11y';
+import { formatDockChatA11y } from '@/lib/domain/unreadScope';
+import { formatTasks } from '@/lib/i18n';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
@@ -35,7 +36,6 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
-  /** Dock «Сообщения» = global totalUnread */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
@@ -52,7 +52,6 @@ export function OsDockBar({ role }: { role: OsRole }) {
     );
   }, [activeProject, role, detailLevel]);
 
-  /** Не вызываем setState, если состав кнопок тот же — иначе цикл с новой ссылкой массива. */
   const applyItems = useCallback((next: DockItemId[]) => {
     setItems((prev) => {
       if (prev.length === next.length && prev.every((id, i) => id === next[i])) return prev;
@@ -109,6 +108,9 @@ export function OsDockBar({ role }: { role: OsRole }) {
         const active = isActive(id);
         const color = active ? RenovaTheme.colors.tabActive : RenovaTheme.colors.tabInactive;
         const label = dockItemLabel(id, role, item.label);
+        const taskCountForItem = id === 'calendar' || (id === 'home' && !items.includes('calendar'))
+          ? todayTasks
+          : 0;
         return (
           <Pressable
             key={id}
@@ -116,7 +118,11 @@ export function OsDockBar({ role }: { role: OsRole }) {
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={
-              id === 'chat' ? chatMessagesA11yLabel(chatUnread) : label
+              id === 'chat'
+                ? (chatUnread > 0 ? formatDockChatA11y(chatUnread) : label)
+                : taskCountForItem > 0
+                  ? `${label}, ${formatTasks(taskCountForItem)}`
+                  : label
             }
             accessibilityState={active ? { selected: true } : {}}
           >
