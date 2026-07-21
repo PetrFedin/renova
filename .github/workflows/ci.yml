@@ -67,4 +67,5 @@ jobs:
           poetry run pip install fpdf2 alembic
           cd ..
           npm ci && npx playwright install chromium
+          bash scripts/assert-e2e-bearer.sh
           bash scripts/ci-playwright.sh api

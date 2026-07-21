@@ -1,3 +1,13 @@
+
+## Wave competitive audit (2026-07-15) — DONE
+
+| Артефакт | Назначение |
+|----------|------------|
+| `MARKET-COMPETITIVE-AUDIT-2026-07-15.md` | Рынок + внутренние gaps + dead ends |
+| `PRODUCT-REMEDIATION-PLAN-2026-07-15.md` | Фазы P0–P3 с файлами и DoD |
+
+**Следующий приоритет:** P0.1 единый канон приёмки (см. remediation plan).
+
 # Renova — детальный план приоритетов (после A-01 / A-03)
 
 **Дата:** 2026-07-15  
@@ -357,10 +367,24 @@ Score: documents ~7.5 · overall ~77%.
 - Merge PR #2 → `main`, tag `v0.2.0`
 
 
+
+## Wave TestFlight prep (2026-07-15) — IN PROGRESS
+
+| Шаг | Статус | Док |
+|-----|--------|-----|
+| eas-build.yml YAML fix | DONE | `EAS-BUILD-FIX-2026-07-15.md` |
+| eas.json testflight profile | DONE | `TESTFLIGHT-PREP-RUNBOOK.md` |
+| app 0.2.0 + iOS permissions | DONE | `apps/mobile/app.json` |
+| testflight-preflight.sh | DONE | `npm run testflight:preflight` |
+| Реальный staging URL в eas.json | **TODO ops** | заменить `api-staging.example.com` |
+| EAS init + первый билд | **TODO ops** | `eas init`, `EXPO_TOKEN` |
+| TestFlight в ASC | **TODO ops** | notes в `TESTFLIGHT-NOTES-v0.2.md` |
+
+
 ## Post-v0.2 backlog (новый приоритет)
 
-1. TestFlight — `TESTFLIGHT-NOTES-v0.2.md`
+1. TestFlight — runbook `TESTFLIGHT-PREP-RUNBOOK.md` (ops: staging URL + EAS build)
 2. Kontur/Goskey live HTTP
 3. Production OCR engine
 4. poetry.lock + alembic (без pip sidecar в CI)
-5. EAS build workflow (сейчас fail вне merge gate)
+5. ~~EAS build workflow~~ — YAML fixed; manual dispatch only

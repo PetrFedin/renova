@@ -58,7 +58,8 @@
     "typecheck:mobile:raw": "cd apps/mobile && npx tsc --noEmit -p .",
     "staging:readiness-report": "bash scripts/staging-readiness-report.sh",
     "staging:credentials-probe": "bash scripts/staging-credentials-probe.sh",
-    "split:status": "bash scripts/split-release-status.sh"
+    "split:status": "bash scripts/split-release-status.sh",
+    "assert:e2e-bearer": "bash scripts/assert-e2e-bearer.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

@@ -1,7 +1,7 @@
-# TestFlight notes — Renova 0.2.0 (draft)
+# TestFlight notes — Renova 0.2.0
 
 **Build target:** Expo / iOS TestFlight  
-**Git:** branch `main` после merge `develop` (пакет Wave 2–3b)  
+**Git:** tag `v0.2.0` / branch `main` после merge `develop` (пакет Wave 2–3b)  
 **API:** staging с `ENVIRONMENT=staging`, Postgres, `alembic upgrade head`
 
 ## What to Test (RU для тестировщиков)
@@ -41,3 +41,13 @@ Please verify: upload docs, guest read-only, stage acceptance → act, offline s
 ## Updated 2026-07-15
 
 Includes develop waves through **3f** (DocumentPicker + Kontur scaffold).
+
+
+## Engineer runbook
+
+Полный путь build/submit: **`docs/TESTFLIGHT-PREP-RUNBOOK.md`**
+
+```bash
+npm run testflight:preflight
+cd apps/mobile && npx eas build --platform ios --profile testflight
+```

@@ -1,9 +1,17 @@
 # Ops
 
-Split + mobile parity on `main`. Only staging secrets left:
+Split + mobile parity on `main`. E2E JWT Bearer landed (#18).
+
+## Staging secrets (human)
 
 `ENVIRONMENT=staging npm run staging:credentials-probe`
 
-## E2E auth (done on develop → PR)
+Probe now also fails closed on: `AUTH_ALLOW_HEADER_USER_ID=true`, SQLite `DATABASE_URL`, default/short `SECRET_KEY`, localhost `PUBLIC_BASE_URL`, `CORS=*`, `ALLOW_DEMO_SEED`.
 
-API Playwright specs use `authHeaders(DemoUser)` — JWT Bearer when `/auth/demo` returns `access_token`, so gates work when staging forbids `X-User-Id`. Fallback to `X-User-Id` only for local/dev without token.
+Synthetic check without local `.env`:
+
+`ENV_FILE=/dev/null ENVIRONMENT=staging … bash scripts/staging-credentials-probe.sh`
+
+## E2E auth (on main)
+
+API Playwright specs use `authHeaders(DemoUser)`. CI gate: `npm run assert:e2e-bearer` (no raw `'X-User-Id'` in `e2e/*.spec.ts`).
