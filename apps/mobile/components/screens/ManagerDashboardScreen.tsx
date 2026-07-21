@@ -9,6 +9,8 @@ import { api } from '@/lib/api';
 import type { OsBudgetSummary, OsInsight, OsRisk } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 type LoadState = {
   budget: OsBudgetSummary | null;
@@ -44,6 +46,7 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint: s
 
 export function ManagerDashboardScreen() {
   const { user, activeProject } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [state, setState] = useState<LoadState>({ budget: null, risks: [], insights: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -105,7 +108,7 @@ export function ManagerDashboardScreen() {
         <Text style={styles.heroLabel}>Главный риск</Text>
         <Text style={[styles.heroTitle, { color: riskColor }]}>{topRisk?.title || riskLabel(budget?.risk)}</Text>
         <Text style={styles.heroText}>{topRisk?.impact || 'Критичных отклонений в текущей сводке нет.'}</Text>
-        {topRisk?.href ? <PrimaryButton title="Открыть риск" variant="outline" compact onPress={() => router.push(topRisk.href as never)} /> : null}
+        {topRisk?.href ? <PrimaryButton title="Открыть риск" variant="outline" compact onPress={() => pushOsNav(topRisk.href!, undefined, role)} /> : null}
       </View>
 
       <View style={styles.kpiGrid}>
@@ -136,7 +139,7 @@ export function ManagerDashboardScreen() {
           <Text style={styles.sectionTitle}>Что сделать первым</Text>
           <Text style={styles.itemTitle}>{topInsight.title}</Text>
           <Text style={styles.itemText}>{topInsight.body}</Text>
-          <PrimaryButton title={topInsight.action || 'Открыть'} variant="outline" onPress={() => router.push(topInsight.href as never)} />
+          <PrimaryButton title={topInsight.action || 'Открыть'} variant="outline" onPress={() => pushOsNav(topInsight.href, undefined, role)} />
         </View>
       ) : null}
 

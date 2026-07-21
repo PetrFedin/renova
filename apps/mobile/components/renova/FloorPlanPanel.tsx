@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent, ActivityIndicator, Platform } from 'react-native';
-import { usePathname, router } from 'expo-router';
+import { usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -14,6 +14,8 @@ import { FurnitureLayer } from '@/components/renova/FurnitureLayer';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushRoomDetail } from '@/lib/navigation';
 import { RenovaTheme } from '@/constants/Theme';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 const MAP_H = 180;
@@ -120,7 +122,7 @@ export function FloorPlanPanel({
       });
       await load();
       setPunchMode(false);
-      router.push('/quality-control' as never);
+      pushOsNav('/quality-control', pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole);
       Alert.alert(
         'Замечание в QC',
         photo_key
@@ -191,7 +193,7 @@ export function FloorPlanPanel({
                   </Text>
                 </Pressable>
                 <Text style={s.punchHint}>{openPunch.length} на плане</Text>
-                <Pressable onPress={() => router.push('/quality-control' as never)}>
+                <Pressable onPress={() => pushOsNav('/quality-control', pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole)}>
                   <Text style={s.link}>Список →</Text>
                 </Pressable>
               </View>
@@ -210,7 +212,7 @@ export function FloorPlanPanel({
               <Pressable
                 key={item.id}
                 style={[s.punchPin, { left: `${item.x_pct}%`, top: `${item.y_pct}%`, borderColor: punchTone(item.severity, item.status) }]}
-                onPress={() => router.push('/quality-control' as never)}
+                onPress={() => pushOsNav('/quality-control', pathname, (role === 'contractor' ? 'contractor' : 'customer') as OsRole)}
               >
                 <Text style={[s.punchPinT, { color: punchTone(item.severity, item.status) }]}>{item.photo_url ? '▣' : '!'}</Text>
               </Pressable>

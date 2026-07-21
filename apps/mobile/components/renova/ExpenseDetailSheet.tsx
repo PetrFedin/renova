@@ -1,7 +1,7 @@
 /** Детализация расхода — просмотр, правка и удаление */
 import { useEffect, useState } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, TextInput, Alert } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
@@ -10,6 +10,8 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 export type ExpenseDetailTarget =
   | { kind: 'expense'; item: OsExpense }
@@ -38,6 +40,7 @@ export function ExpenseDetailSheet({
 }) {
   const { user, activeProject } = useRenova();
   const pathname = usePathname();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [amountText, setAmountText] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<ExpenseCategoryId>('materials');
@@ -207,7 +210,7 @@ export function ExpenseDetailSheet({
           {room ? (
             <View style={s.row}>
               <Text style={s.label}>Комната</Text>
-              <Pressable onPress={() => { onClose(); router.push({ pathname: `/room/${room.id}`, params: { returnTo: pathname } } as any); }}>
+              <Pressable onPress={() => { onClose(); pushOsNav({ pathname: '/room/[id]', params: { id: room.id } }, pathname, role); }}>
                 <Text style={s.link}>{room.name}</Text>
               </Pressable>
             </View>
@@ -215,7 +218,7 @@ export function ExpenseDetailSheet({
           {stage ? (
             <View style={s.row}>
               <Text style={s.label}>Этап</Text>
-              <Pressable onPress={() => { onClose(); router.push({ pathname: `/stage/${stage.id}`, params: { returnTo: pathname } } as any); }}>
+              <Pressable onPress={() => { onClose(); pushOsNav({ pathname: '/stage/[id]', params: { id: stage.id } }, pathname, role); }}>
                 <Text style={s.link}>{stage.name}</Text>
               </Pressable>
             </View>

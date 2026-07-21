@@ -1,21 +1,40 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
 import { formatRub, RenovaTheme, card } from '@/constants/Theme';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 export type BudgetAlert = { room_id: string; room_name: string; plan: number; fact: number; over_pct?: number };
 
-export function BudgetAlerts({ items, returnTo }: { items: BudgetAlert[]; returnTo?: string }) {
-  const over = items.filter(i => i.fact > i.plan && i.plan > 0);
+/** W117: превышение бюджета → паспорт комнаты через pushOsNav SoT */
+export function BudgetAlerts({
+  items,
+  returnTo,
+  role: roleProp,
+}: {
+  items: BudgetAlert[];
+  returnTo?: string;
+  role?: OsRole;
+}) {
+  const { user } = useRenova();
+  const role: OsRole = roleProp ?? (user?.role === 'contractor' ? 'contractor' : 'customer');
+  const over = items.filter((i) => i.fact > i.plan && i.plan > 0);
   if (!over.length) return null;
   const back = returnTo || '/';
   return (
     <View style={s.box}>
       <Text style={s.head}>Бюджет · превышение ({over.length})</Text>
-      {over.map(i => (
+      {over.map((i) => (
         <Pressable
           key={i.room_id}
           style={s.row}
-          onPress={() => router.push({ pathname: `/room/${i.room_id}`, params: { overrun: '1', returnTo: back } } as any)}
+          onPress={() =>
+            pushOsNav(
+              { pathname: '/room/[id]', params: { id: i.room_id, overrun: '1' } },
+              back,
+              role,
+            )
+          }
         >
           <Text style={s.n}>{i.room_name}</Text>
           <Text style={s.v}>+{formatRub(i.fact - i.plan)}</Text>

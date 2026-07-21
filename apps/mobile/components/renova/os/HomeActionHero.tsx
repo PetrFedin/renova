@@ -1,6 +1,5 @@
 /** «Сделать сейчас» v2 — hero stack + full-width CTA */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { homeLayout, homeRowStyles, homeTypography } from '@/constants/homeTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -13,6 +12,7 @@ import type { ProjectOsSnapshot, OsNextAction } from '@/lib/domain/osTypes';
 import type { OsInsight } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { isClosingPhaseSecondary, resolveProjectPhase } from '@/lib/domain/resolveProjectPhase';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 type Props = {
   role: OsRole;
@@ -55,7 +55,7 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
         <Text style={homeTypography.zoneLabel}>{homeHeroLabel({ role, readOnly })}</Text>
         {showInbox && !readOnly ? (
           <Pressable
-            onPress={() => router.push({ pathname: '/inbox', params: { returnTo, heroKind: hero.kind } } as any)}
+            onPress={() => pushOsNav('/inbox', returnTo, role)}
             hitSlop={8}
           >
             <Text style={homeTypography.link}>{inboxLinkLabel}</Text>

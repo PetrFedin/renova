@@ -17,6 +17,7 @@ import { useProjectBuckets } from '@/lib/hooks/useProjectBuckets';
 import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActions';
 import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 type Props = {
   role: OsRole;
@@ -267,7 +268,7 @@ export function ProjectEmptyState({
         <PrimaryButton
           title="Создать объект"
           variant={projects.length ? 'outline' : 'primary'}
-          onPress={() => router.push({ pathname: '/wizard/type', params: { returnTo: pathname } } as any)}
+          onPress={() => pushOsNav('/wizard/type', pathname, role === 'contractor' ? 'contractor' : 'customer')}
         />
       )}
       {!projects.length && role === 'customer' ? (

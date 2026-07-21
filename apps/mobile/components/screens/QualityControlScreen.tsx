@@ -11,6 +11,8 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { pushOsNav } from '@/lib/pushOsNav';
+import type { OsRole } from '@/constants/osSections';
 
 function statusLabel(status: string) {
   switch (status) {
@@ -57,6 +59,7 @@ function IssueCard({
   closeHint,
   closeLabel = 'Закрыть',
   onEscalate,
+  role = 'customer',
 }: {
   item: ProjectIssue;
   onClose: (issue: ProjectIssue) => void;
@@ -66,6 +69,7 @@ function IssueCard({
   canClose: boolean;
   closeHint?: string;
   closeLabel?: string;
+  role?: OsRole;
 }) {
   const isClosed = item.status === 'closed';
   const tone = severityTone(item.severity);
@@ -83,7 +87,18 @@ function IssueCard({
       {item.description ? <Text style={styles.issueText}>{item.description}</Text> : null}
       <View style={styles.issueFooter}>
         {item.stage_id ? (
-          <PrimaryButton title="Этап" variant="outline" compact onPress={() => router.push(`/stage/${item.stage_id}?returnTo=${encodeURIComponent('/quality-control')}` as never)} />
+          <PrimaryButton
+            title="Этап"
+            variant="outline"
+            compact
+            onPress={() =>
+              pushOsNav(
+                { pathname: '/stage/[id]', params: { id: item.stage_id! } },
+                '/quality-control',
+                role,
+              )
+            }
+          />
         ) : null}
         {!isClosed && canClose ? (
           <PrimaryButton title={closeLabel} compact onPress={() => onClose(item)} loading={acting} disabled={acting} />
@@ -258,6 +273,7 @@ export function QualityControlScreen() {
                   : undefined
             }
             closeLabel={!isCustomer && !(item.title || '').startsWith('[Гарантия]') ? 'Исправлено' : 'Закрыть'}
+            role={isCustomer ? 'customer' : 'contractor'}
           />
         )) : <Text style={styles.emptyText}>Открытых замечаний нет. Редкий случай, когда тишина — хороший KPI.</Text>}
       </View>
@@ -273,6 +289,7 @@ export function QualityControlScreen() {
               onClose={closeIssue} onEscalate={escalateIssue}
               acting={false}
               canClose={false}
+              role={isCustomer ? 'customer' : 'contractor'}
             />
           ))}
         </View>

@@ -183,12 +183,12 @@ export function BudgetSummarySection(props: Props) {
           />
         </>
       )}
-      {bwVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} />}
+      {bwVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} returnTo={pathname} role={role} />}
       {bwVisible('actions') && (
         <View style={s.actions}>
           <PrimaryButton title="Таблица" variant="outline" compact onPress={() => api.exportExpensesCsv(userId, projectId)} />
           {role === 'contractor' ? (
-            <PrimaryButton title="Рыночная оценка" variant="outline" compact onPress={() => router.push({ pathname: '/budget-planner', params: { returnTo: pathname } } as any)} />
+            <PrimaryButton title="Рыночная оценка" variant="outline" compact onPress={() => pushOsNav('/budget-planner', pathname, role)} />
           ) : null}
         </View>
       )}

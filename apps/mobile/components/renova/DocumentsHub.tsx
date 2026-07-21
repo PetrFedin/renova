@@ -21,6 +21,8 @@ import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
 
 type DocRow = {
   id: string;
@@ -269,9 +271,6 @@ ${(res.body || '').slice(0, 220)}`,
             title: 'Гарантийное обращение',
             description: 'Создано из Document Center',
           });
-          const nextPath = isContractor
-            ? (res.qc_path || `/quality-control?issueId=${res.issue_id}`)
-            : '/documents';
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           Alert.alert(
             'Гарантия',
@@ -281,8 +280,11 @@ ${(res.body || '').slice(0, 220)}`,
               {
                 text: isContractor ? 'Открыть QC' : 'К документам',
                 onPress: () => {
-                  const { router } = require('expo-router');
-                  router.push(nextPath as never);
+                  pushOsNav(
+                    isContractor ? (res.qc_path || '/quality-control') : '/documents',
+                    undefined,
+                    isContractor ? 'contractor' : 'customer',
+                  );
                 },
               },
             ],
@@ -320,28 +322,19 @@ ${(res.body || '').slice(0, 220)}`,
             if (!snap.all_stages_done) {
               buttons.push({
                 text: 'К приёмке',
-                onPress: () => {
-                  const { router } = require('expo-router');
-                  router.push('/(customer)/(tabs)/repair?tab=control' as never);
-                },
+                onPress: () => pushOsNav(repairTabRoute('customer', 'control'), undefined, 'customer'),
               });
             }
             if ((snap.pending_payments || 0) > 0) {
               buttons.push({
                 text: 'К оплатам',
-                onPress: () => {
-                  const { router } = require('expo-router');
-                  router.push('/(customer)/(tabs)/budget?tab=payments' as never);
-                },
+                onPress: () => pushOsNav(budgetTabRoute('customer', 'payments'), undefined, 'customer'),
               });
             }
             if ((snap.acceptance_acts_active || 0) === 0 && snap.all_stages_done) {
               buttons.push({
                 text: 'К документам',
-                onPress: () => {
-                  const { router } = require('expo-router');
-                  router.push('/documents' as never);
-                },
+                onPress: () => pushOsNav('/documents', undefined, 'customer'),
               });
             }
             if ((snap.warranty_open || 0) > 0) {

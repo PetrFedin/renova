@@ -1,7 +1,6 @@
 /** Панель детализации работы — заметки, связи, подсказки по процессу */
 import { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
-import { router } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, type WorkOrder } from '@/lib/api';
@@ -67,11 +66,11 @@ export function WorkOrderDetailPanel({
 
   function openLink(id: string) {
     if (id === 'chat' && wo.chat_thread_id) {
-      router.push({ pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id, returnTo: `/work-order/${wo.id}` } } as any);
+      pushOsNav({ pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id } }, `/work-order/${wo.id}`, role);
       return;
     }
     if (id === 'stage' && wo.stage_id) {
-      router.push({ pathname: '/stage/[id]', params: { id: wo.stage_id, returnTo: `/work-order/${wo.id}` } } as any);
+      pushOsNav({ pathname: '/stage/[id]', params: { id: wo.stage_id } }, `/work-order/${wo.id}`, role);
       return;
     }
     if (id === 'materials') {
