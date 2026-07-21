@@ -34,7 +34,7 @@ export function resolvePushLink(
   }
 
   if (canonicalPath === '/control') {
-    // W58: обе роли → hub Приёмка (repair?tab=control); /work-acceptance остаётся API-экраном
+    // W58 / W139: обе роли → hub Приёмка (repair?tab=control); /work-acceptance — redirect
     const tab = role === 'contractor' ? '/(contractor)/(tabs)/repair' : '/(customer)/(tabs)/repair';
     return { pathname: tab, params: { tab: 'control', returnTo: rt } };
   }

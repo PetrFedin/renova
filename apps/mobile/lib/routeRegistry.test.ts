@@ -33,6 +33,7 @@ if (headerMoreCount > MAX_HEADER_MORE_ITEMS) {
 
 const wa = RENOVA_ROUTES.find((r) => r.id === 'work-acceptance');
 if (wa?.visibility !== 'deeplink') throw new Error('work-acceptance must be deeplink');
+if (wa?.redirectTo !== '/repair?tab=control') throw new Error('work-acceptance must redirect to repair control');
 
 const notif = RENOVA_ROUTES.find((r) => r.id === 'notifications');
 if (notif?.redirectTo !== '/inbox') throw new Error('notifications must redirect to /inbox');

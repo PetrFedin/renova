@@ -83,7 +83,8 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'deeplink',
     status: 'ga',
     entryPoints: ['repair.control', 'stage', 'home.banner'],
-    descriptionRu: 'Канон входа: Ремонт → Приёмка (customer). Не в «Ещё».',
+    redirectTo: '/repair?tab=control',
+    descriptionRu: 'Redirect → Ремонт → Приёмка (единый hub). Карточка этапа — детальная проверка.',
   },
   {
     id: 'work-schedule',

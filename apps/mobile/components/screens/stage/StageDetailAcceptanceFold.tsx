@@ -1,9 +1,10 @@
-/** Приёмка above fold: фото результата → чеклист → принять/вернуть */
+/** Приёмка above fold: фото результата → чеклист → принять/вернуть (W139: оценка только явно) */
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, Image } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { QualityScorePicker } from '@/components/renova/QualityScorePicker';
 import { PhotoCompare } from '@/components/renova/PhotoCompare';
 import { PhotoSwipeCompare } from '@/components/renova/PhotoSwipeCompare';
 import type { StageDetail } from '@/lib/api';
@@ -32,8 +33,9 @@ type Props = {
   after: StagePhoto[];
   swipeOpen: boolean;
   setSwipeOpen: (v: boolean) => void;
-  onAcceptPress: () => void;
-  onRejectPress: () => void;
+  /** qualityScore: null = без оценки (не подставляем 10/5) */
+  onAcceptPress: (qualityScore: number | null) => void;
+  onRejectPress: (qualityScore: number | null) => void;
   onExportAcceptance: () => void;
   onReload: () => Promise<void>;
 };
@@ -60,6 +62,7 @@ export function StageDetailAcceptanceFold({
 }: Props) {
   const { user, activeProject } = useRenova();
   const [newCheck, setNewCheck] = useState('');
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
   const syncAfter = () =>
     syncProjectSideEffects({
       user: user ?? ({ id: userId } as any),
@@ -69,7 +72,7 @@ export function StageDetailAcceptanceFold({
   return (
     <View style={s.wrap}>
       <Text style={s.head}>Приёмка работ</Text>
-      <Text style={s.sub}>Проверьте результат по фото и чеклисту — затем примите или верните на доработку.</Text>
+      <Text style={s.sub}>Проверьте результат по фото и чеклисту — затем примите или верните на доработку. Оценка качества не заполняется автоматически.</Text>
 
       {before.length > 0 || after.length > 0 ? (
         <>
@@ -113,8 +116,18 @@ export function StageDetailAcceptanceFold({
         );
       })}
 
-      <PrimaryButton title="Принять этап" disabled={acceptBlocked || !canWrite} onPress={onAcceptPress} />
-      <PrimaryButton title="Вернуть на доработку" variant="dangerOutline" disabled={!canWrite} onPress={onRejectPress} />
+      {canWrite ? <QualityScorePicker value={qualityScore} onChange={setQualityScore} /> : null}
+      <PrimaryButton
+        title="Принять этап"
+        disabled={acceptBlocked || !canWrite}
+        onPress={() => onAcceptPress(qualityScore)}
+      />
+      <PrimaryButton
+        title="Вернуть на доработку"
+        variant="dangerOutline"
+        disabled={!canWrite}
+        onPress={() => onRejectPress(qualityScore)}
+      />
       <PrimaryButton title="Акт приёмки (PDF)" variant="outline" onPress={onExportAcceptance} />
 
       <TextInput style={s.input} placeholder="Свой пункт чеклиста…" value={newCheck} onChangeText={setNewCheck} />

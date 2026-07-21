@@ -277,7 +277,11 @@ async def return_work(
 
     row.status = AcceptanceStatus.returned.value
     row.accepted_by = user.id
-    row.quality_score = body.quality_score
+    # W139: не подставляем 5 — пишем только явную оценку (None = без оценки)
+    if body.quality_score is not None:
+        row.quality_score = body.quality_score
+    else:
+        row.quality_score = None
     row.comment = body.comment or row.comment
     if body.checklist is not None:
         row.checklist_json = json.dumps(body.checklist)

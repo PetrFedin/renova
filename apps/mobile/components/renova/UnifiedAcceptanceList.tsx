@@ -1,11 +1,13 @@
-/** Единый список приёмки — заказчик решает inline; исполнитель видит статус (W56 / W102) */
+/** Единый список приёмки — заказчик решает inline; исполнитель видит статус (W56 / W102 / W139) */
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { pushStageDetail } from '@/lib/navigation';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { QualityScorePicker } from '@/components/renova/QualityScorePicker';
 import { buildUnifiedAcceptanceItems, type UnifiedAcceptanceItem } from '@/lib/domain/acceptancePending';
 import { api, type Stage, type WorkAcceptance } from '@/lib/api';
+import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -31,6 +33,8 @@ export function UnifiedAcceptanceList({
   const items = buildUnifiedAcceptanceItems(stages, acceptances);
   const isContractor = role === 'contractor';
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** Оценка только по явному выбору пользователя (не 10/5 по умолчанию) */
+  const [scores, setScores] = useState<Record<string, number | null>>({});
 
   const projectId = activeProject?.id;
   const userId = user?.id;
@@ -44,16 +48,29 @@ export function UnifiedAcceptanceList({
     }
     setBusyId(item.id);
     try {
+      const qualityScore = scores[item.id] ?? null;
       if (action === 'accept') {
-        await api.acceptWork(userId, projectId, item.acceptanceId, {});
+        await api.acceptWork(
+          userId,
+          projectId,
+          item.acceptanceId,
+          acceptanceDecisionBody({ qualityScore, comment: 'Работы приняты' }),
+        );
         await syncProjectSideEffects({ user, project: activeProject });
         onChanged?.();
-        // W125: оплата / план с ✓ pin (тот же SoT, что WorkAcceptanceScreen)
+        // W125: оплата / план с ✓ pin (единый SoT с карточкой этапа)
         alertStageAccepted(role);
       } else {
-        await api.returnWork(userId, projectId, item.acceptanceId, {
-          comment: 'Нужна доработка',
-        });
+        await api.returnWork(
+          userId,
+          projectId,
+          item.acceptanceId,
+          acceptanceDecisionBody({
+            qualityScore,
+            comment: 'Нужна доработка',
+            createIssue: true,
+          }),
+        );
         await syncProjectSideEffects({ user, project: activeProject });
         onChanged?.();
         Alert.alert('На доработку', 'Исполнитель получил задачу на правку.');
@@ -87,7 +104,7 @@ export function UnifiedAcceptanceList({
       <Text style={s.hint}>
         {isContractor
           ? `${items.length} этап(ов) у заказчика на проверке — откройте этап или отправьте повторно из работ.`
-          : `${items.length} этап(ов) ждут решения — примите или верните на доработку прямо здесь.`}
+          : `${items.length} этап(ов) ждут решения — примите или верните на доработку. Оценка качества только если реально проверили.`}
       </Text>
       {items.map((it) => (
         <AcceptanceRow
@@ -95,9 +112,15 @@ export function UnifiedAcceptanceList({
           item={it}
           isContractor={isContractor}
           busy={busyId === it.id}
+          qualityScore={scores[it.id] ?? null}
+          onScoreChange={(v) => setScores((prev) => ({ ...prev, [it.id]: v }))}
           onOpen={() => pushStageDetail(it.stageId, returnTo)}
-          onAccept={() => { decide(it, 'accept').catch(() => {}); }}
-          onReturn={() => { decide(it, 'return').catch(() => {}); }}
+          onAccept={() => {
+            decide(it, 'accept').catch(() => {});
+          }}
+          onReturn={() => {
+            decide(it, 'return').catch(() => {});
+          }}
         />
       ))}
     </>
@@ -111,6 +134,8 @@ function AcceptanceRow({
   onReturn,
   isContractor,
   busy,
+  qualityScore,
+  onScoreChange,
 }: {
   item: UnifiedAcceptanceItem;
   onOpen: () => void;
@@ -118,45 +143,55 @@ function AcceptanceRow({
   onReturn: () => void;
   isContractor: boolean;
   busy: boolean;
+  qualityScore: number | null;
+  onScoreChange: (v: number | null) => void;
 }) {
   return (
-    <View style={s.row}>
-      <Pressable onPress={onOpen} style={{ flex: 1 }}>
-        <Text style={s.title}>{item.title}</Text>
-        <Text style={s.meta}>
-          {item.sub}
-          {item.kind === 'acceptance' ? (isContractor ? ' · у заказчика' : ' · приёмка') : ' · откройте этап'}
-        </Text>
-      </Pressable>
-      {isContractor ? (
-        <PrimaryButton title="Открыть этап" compact onPress={onOpen} />
-      ) : (
+    <View style={s.rowCard}>
+      <View style={s.rowTop}>
+        <Pressable onPress={onOpen} style={{ flex: 1 }}>
+          <Text style={s.title}>{item.title}</Text>
+          <Text style={s.meta}>
+            {item.sub}
+            {item.kind === 'acceptance' ? (isContractor ? ' · у заказчика' : ' · приёмка') : ' · откройте этап'}
+          </Text>
+        </Pressable>
+        {isContractor ? <PrimaryButton title="Открыть этап" compact onPress={onOpen} /> : null}
+      </View>
+      {!isContractor ? (
         <View style={s.actions}>
-          <PrimaryButton
-            title="Принять этап"
-            compact
-            disabled={busy || item.kind !== 'acceptance'}
-            onPress={item.kind === 'acceptance' ? onAccept : onOpen}
-          />
-          <PrimaryButton
-            title="На доработку"
-            compact
-            variant="outline"
-            disabled={busy}
-            onPress={item.kind === 'acceptance' ? onReturn : onOpen}
-          />
+          {item.kind === 'acceptance' ? (
+            <QualityScorePicker value={qualityScore} onChange={onScoreChange} />
+          ) : null}
+          <View style={s.btnRow}>
+            <PrimaryButton
+              title="Принять этап"
+              compact
+              disabled={busy || item.kind !== 'acceptance'}
+              onPress={item.kind === 'acceptance' ? onAccept : onOpen}
+            />
+            <PrimaryButton
+              title="На доработку"
+              compact
+              variant="outline"
+              disabled={busy}
+              onPress={item.kind === 'acceptance' ? onReturn : onOpen}
+            />
+          </View>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10, lineHeight: 16 },
-  row: { ...card, paddingVertical: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowCard: { ...card, paddingVertical: 12, marginBottom: 8, gap: 8 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 15, fontWeight: '600' },
   meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 10, textAlign: 'center' },
   emptyBox: { ...card, alignItems: 'center', paddingVertical: 16 },
-  actions: { gap: 6, maxWidth: 140 },
+  actions: { gap: 8 },
+  btnRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

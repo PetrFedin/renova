@@ -9,7 +9,7 @@ const links = readFileSync(join(mobile, 'components/renova/StageExpenseLinksPane
 const hero = readFileSync(join(mobile, 'components/screens/stage/StageDetailHero.tsx'), 'utf8');
 const budget = readFileSync(join(mobile, 'components/screens/budget/BudgetSummarySection.tsx'), 'utf8');
 const pay = readFileSync(join(mobile, 'components/renova/PaymentDetailSheet.tsx'), 'utf8');
-const accept = readFileSync(join(mobile, 'components/screens/WorkAcceptanceScreen.tsx'), 'utf8');
+const accept = readFileSync(join(mobile, 'app/work-acceptance.tsx'), 'utf8');
 const ical = readFileSync(join(mobile, 'components/renova/IcalImportButton.tsx'), 'utf8');
 const changes = readFileSync(join(mobile, 'components/screens/estimate/EstimateChangesLayer.tsx'), 'utf8');
 
@@ -22,7 +22,7 @@ console.assert(hero.includes("pushOsNav('/documents'") || hero.includes('openDoc
 console.assert(budget.includes("pathname: '/documents'") && budget.includes('focus: \'co\''), 'budget CO docs');
 console.assert(pay.includes('scan-receipt') && pay.includes('role)'), 'payment scan role');
 console.assert(pay.includes('repairTabRoute(role, \'control\')'), 'payment→accept SoT');
-console.assert(accept.includes('repairTabHref(osRole, \'control\')'), 'acceptance→stage SoT');
+console.assert(accept.includes("tab: 'control'"), 'acceptance deeplink→hub SoT');
 console.assert(ical.includes('notifyOfflineQueued'), 'ical UX offline');
 console.assert(changes.includes("pushOsNav('/documents'"), 'CO sign SoT');
 

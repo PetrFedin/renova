@@ -10,7 +10,7 @@ const files: Record<string, string> = {
   chat: 'components/renova/chat/ChatThreadView.tsx',
   search: 'components/renova/GlobalSearchBar.tsx',
   fab: 'components/renova/os/OsQuickFab.tsx',
-  accept: 'components/screens/WorkAcceptanceScreen.tsx',
+  accept: 'lib/acceptanceNav.ts',
   leads: 'components/renova/JobLeadsBoard.tsx',
   layout: 'app/_layout.tsx',
   ctx: 'lib/context/RenovaContext.tsx',

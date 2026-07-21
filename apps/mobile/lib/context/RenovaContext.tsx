@@ -128,8 +128,8 @@ type Ctx = {
   createProjectFromWizard: (extra?: Partial<WizardDraft>) => Promise<CreateProjectResult>;
   updateProjectProfile: (patch: ProjectProfilePatch) => Promise<void>;
   submitStage: (stageId: string) => Promise<void>;
-  acceptStage: (stageId: string) => Promise<void>;
-  rejectStage: (stageId: string, reason: string) => Promise<void>;
+  acceptStage: (stageId: string, opts?: { qualityScore?: number | null }) => Promise<void>;
+  rejectStage: (stageId: string, reason: string, opts?: { qualityScore?: number | null }) => Promise<void>;
   logout: () => Promise<void>;
   
   paywallVisible: boolean;
@@ -550,17 +550,23 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     [user, activeProject, loadProject],
   );
 
-  const rejectStage = useCallback(async (stageId: string, reason: string) => {
+  const rejectStage = useCallback(async (stageId: string, reason: string, opts?: { qualityScore?: number | null }) => {
     if (!user || !activeProject) return;
-    await api.rejectStage(user.id, activeProject.id, stageId, reason);
+    await api.rejectStage(user.id, activeProject.id, stageId, reason, opts);
     await loadProject(activeProject.id);
     await syncProjectSideEffects({ user, project: activeProject });
   }, [user, activeProject, loadProject]);
 
   const acceptStage = useCallback(
-    async (stageId: string) => {
+    async (stageId: string, opts?: { qualityScore?: number | null }) => {
       if (!user || !activeProject) return;
-      try { await api.acceptStage(user.id, activeProject.id, stageId); } catch (e: any) { if (e?.message === 'offline_queued') { /* queued */ } else throw e; }
+      try {
+        await api.acceptStage(user.id, activeProject.id, stageId, opts);
+      } catch (e: any) {
+        if (e?.message === 'offline_queued') {
+          /* queued */
+        } else throw e;
+      }
       await loadProject(activeProject.id);
       await syncProjectSideEffects({ user, project: activeProject });
     },

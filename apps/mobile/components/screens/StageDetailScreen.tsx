@@ -28,6 +28,7 @@ import { StageDetailAccordion } from '@/components/screens/stage/StageDetailAcco
 import { DecisionHistoryPanel } from '@/components/renova/DecisionHistoryPanel';
 import { repairTabRoute, objectTabHref } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertStageAccepted } from '@/lib/acceptanceNav';
 import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 
@@ -94,6 +95,7 @@ export function StageDetailScreen() {
   const [workSnap, setWorkSnap] = useState<WorkSnapshot | null>(null);
   const [contractGate, setContractGate] = useState<{ ok: boolean; message?: string; pending_titles?: string[] } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectQualityScore, setRejectQualityScore] = useState<number | null>(null);
   const canWrite = useWriteAllowed();
 
   const reload = useCallback(async () => {
@@ -141,18 +143,19 @@ export function StageDetailScreen() {
     }
   };
 
-  const runAcceptStage = async () => {
+  const runAcceptStage = async (qualityScore: number | null = null) => {
     try {
-      await acceptStage(stage!.id);
+      await acceptStage(stage!.id, { qualityScore });
       await reload();
       await loadProject(activeProject!.id);
+      alertStageAccepted(role);
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Приёмка');
       else throw e;
     }
   };
 
-  const onAcceptPress = () => {
+  const onAcceptPress = (qualityScore: number | null) => {
     if (!canWrite || acceptBlocked) return;
     if (CHECKLIST.length === 0) {
       Alert.alert(
@@ -160,12 +163,12 @@ export function StageDetailScreen() {
         'Список проверок пуст. Принять этап без отметки пунктов?',
         [
           { text: 'Отмена', style: 'cancel' },
-          { text: 'Принять', onPress: () => { runAcceptStage().catch(() => {}); } },
+          { text: 'Принять', onPress: () => { runAcceptStage(qualityScore).catch(() => {}); } },
         ],
       );
       return;
     }
-    runAcceptStage().catch(() => {});
+    runAcceptStage(qualityScore).catch(() => {});
   };
 
   if (!activeProject || !stage || !user) {
@@ -277,7 +280,10 @@ export function StageDetailScreen() {
             swipeOpen={swipeOpen}
             setSwipeOpen={setSwipeOpen}
             onAcceptPress={onAcceptPress}
-            onRejectPress={() => setRejectOpen(true)}
+            onRejectPress={(qualityScore) => {
+              setRejectQualityScore(qualityScore);
+              setRejectOpen(true);
+            }}
             onExportAcceptance={() => { onExportAcceptance().catch(() => {}); }}
             onReload={reload}
           />
@@ -421,7 +427,7 @@ export function StageDetailScreen() {
         onConfirm={async (reason) => {
           setRejectOpen(false);
           try {
-            await rejectStage(stage.id, reason);
+            await rejectStage(stage.id, reason, { qualityScore: rejectQualityScore });
             await reload();
           } catch (e: unknown) {
             if (e instanceof Error && e.message === 'offline_queued') {

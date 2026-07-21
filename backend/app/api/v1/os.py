@@ -252,10 +252,11 @@ async def acceptances_pending(project_id: str, user: User = Depends(get_current_
 async def accept_work(project_id: str, acceptance_id: str, body: AcceptIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.api.v1.work_acceptances import AcceptanceDecisionIn, accept_work as canon_accept_work
 
+    # W139: без fake 8/10 — оценка только если клиент передал явно (legacy AcceptIn не имеет score)
     decision = AcceptanceDecisionIn(
         comment=body.comment,
         create_issue=body.with_remarks,
-        quality_score=8 if body.with_remarks else 10,
+        quality_score=None,
     )
     return await canon_accept_work(project_id, acceptance_id, decision, user, db)
 
@@ -267,7 +268,7 @@ async def return_work(project_id: str, acceptance_id: str, body: ReturnIn, user:
     decision = AcceptanceDecisionIn(
         comment=body.comment,
         create_issue=True,
-        quality_score=5,
+        quality_score=None,
     )
     return await canon_return_work(project_id, acceptance_id, decision, user, db)
 

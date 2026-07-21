@@ -1,6 +1,7 @@
 /** API: stages */
 import { req, API_BASE, ApiError } from './client';
 import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
+import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 
 async function activeAcceptance(userId: string, projectId: string, stageId: string): Promise<WorkAcceptance | null> {
   const items = await req<WorkAcceptance[]>(
@@ -92,10 +93,16 @@ export const stagesApi = {
       throw new Error('offline_queued');
     }
   },
-  rejectStage: async (userId: string, projectId: string, stageId: string, text: string) => {
+  rejectStage: async (
+    userId: string,
+    projectId: string,
+    stageId: string,
+    text: string,
+    opts?: { qualityScore?: number | null },
+  ) => {
     const acceptance = await activeAcceptance(userId, projectId, stageId);
     if (!acceptance) throw new ApiError(409, 'Нет активной приёмки по этапу', 'acceptance_not_requested');
-    const body = { quality_score: 5, comment: text, create_issue: true };
+    const body = acceptanceDecisionBody({ comment: text, createIssue: true, qualityScore: opts?.qualityScore });
     try {
       return await req(
         `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/return`,
@@ -114,13 +121,22 @@ export const stagesApi = {
       throw new Error('offline_queued');
     }
   },
-  acceptStage: async (userId: string, projectId: string, stageId: string) => {
+  acceptStage: async (
+    userId: string,
+    projectId: string,
+    stageId: string,
+    opts?: { qualityScore?: number | null; comment?: string },
+  ) => {
     const acceptance = await activeAcceptance(userId, projectId, stageId);
     if (!acceptance) throw new ApiError(409, 'Нет активной приёмки по этапу', 'acceptance_not_requested');
+    const body = acceptanceDecisionBody({
+      qualityScore: opts?.qualityScore,
+      comment: opts?.comment ?? 'Работы приняты',
+    });
     try {
       return await req(
         `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/accept`,
-        { method: 'POST', body: JSON.stringify({ quality_score: 10, comment: 'Работы приняты' }) },
+        { method: 'POST', body: JSON.stringify(body) },
         userId,
       );
     } catch (error) {
@@ -129,7 +145,7 @@ export const stagesApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/accept`,
         method: 'POST',
-        body: JSON.stringify({ quality_score: 10, comment: 'Работы приняты' }),
+        body: JSON.stringify(body),
         userId,
       });
       throw new Error('offline_queued');

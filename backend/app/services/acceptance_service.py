@@ -112,7 +112,8 @@ async def accept(db: AsyncSession, acceptance_id: str, *, accepted_by: str, with
     acc.accepted_by = accepted_by
     acc.accepted_at = datetime.utcnow()
     acc.comment = comment
-    acc.quality_score = compute_quality_score(stage, open_issues=open_issues, returned_before=returned_before)
+    # W139: не подставляем эвристику как оценку заказчика — только явный score с API
+    acc.quality_score = None
     await db.flush()
     return acc
 
