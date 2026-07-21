@@ -35,24 +35,49 @@ export const WORK_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   cancelled: [],
 };
 
-/** Кнопки действий по роли */
-export function workActions(status: WorkOrderStatus, role: 'customer' | 'contractor'): { label: string; next: WorkOrderStatus }[] {
+/**
+ * Кнопки по роли.
+ * P0: done/paid — только заказчик (нельзя «принять свою работу» с графика).
+ */
+export function workActions(
+  status: WorkOrderStatus,
+  role: 'customer' | 'contractor',
+): { label: string; next: WorkOrderStatus }[] {
   const next = WORK_TRANSITIONS[status] || [];
-  return next.map((n) => ({
-    next: n,
-    label: actionLabel(status, n, role),
-  })).filter((a) => a.label);
+  return next
+    .filter((n) => isTransitionAllowedForRole(status, n, role))
+    .map((n) => ({
+      next: n,
+      label: actionLabel(status, n, role),
+    }))
+    .filter((a) => a.label);
+}
+
+export function isTransitionAllowedForRole(
+  from: WorkOrderStatus,
+  to: WorkOrderStatus,
+  role: 'customer' | 'contractor',
+): boolean {
+  if (to === 'done' || to === 'paid') return role === 'customer';
+  if (to === 'review') return role === 'contractor';
+  if (to === 'approved') return role === 'customer';
+  if (from === 'review' && to === 'in_progress') return true; // возврат на доработку — обе роли
+  if (to === 'in_progress' && from === 'approved') return role === 'contractor';
+  if (to === 'published' || to === 'negotiating' || to === 'cancelled') {
+    return role === 'contractor' || role === 'customer';
+  }
+  return true;
 }
 
 function actionLabel(from: WorkOrderStatus, to: WorkOrderStatus, role: 'customer' | 'contractor'): string {
   if (to === 'published') return 'Опубликовать';
   if (to === 'negotiating') return 'Обсудить в чате';
-  if (to === 'approved') return role === 'customer' ? 'Согласовать' : 'Отправить на согласование';
+  if (to === 'approved') return 'Согласовать';
+  if (from === 'review' && to === 'in_progress') return 'Вернуть на доработку';
   if (to === 'in_progress') return 'Начать работу';
   if (to === 'review') return 'На приёмку';
-  if (to === 'done') return role === 'customer' ? 'Принять результат' : 'Завершить';
-  if (to === 'in_progress' && from === 'review') return 'Вернуть на доработку';
-  if (to === 'paid') return role === 'customer' ? 'Подтвердить оплату' : 'Запросить оплату';
+  if (to === 'done') return 'Принять результат';
+  if (to === 'paid') return 'Подтвердить оплату';
   if (to === 'cancelled') return 'Отменить';
   return to;
 }

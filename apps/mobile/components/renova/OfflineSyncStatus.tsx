@@ -1,34 +1,66 @@
-import { useCallback, useState } from 'react';
+import { reportError } from '@/lib/reportError';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 
 import { RenovaTheme, card } from '@/constants/Theme';
-import { flushOfflineOutbox, getOfflineOutboxStatus } from '@/lib/offline';
-
+import { flushOfflineOutbox, getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
+import { getQueue } from '@/lib/offlineQueue';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { reloadInboxSync } from '@/lib/inboxSyncStore';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 /** Статус канонической offline-очереди (тот же storage, что layout flush). */
-export function OfflineSyncStatus({ compact = false }: { compact?: boolean }) {
+export function OfflineSyncStatus({
+  compact = false,
+  pathIncludes,
+  label,
+}: {
+  compact?: boolean;
+  /** Если задано — считаем только jobs, чей path содержит одну из строк (W75 приёмка) */
+  pathIncludes?: string[];
+  label?: string;
+}) {
   const [pending, setPending] = useState(0);
   const [blocked, setBlocked] = useState(0);
   const [conflicts, setConflicts] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const { user, activeProject } = useRenova();
 
   const refresh = useCallback(async () => {
-    const status = await getOfflineOutboxStatus().catch(() => ({
-      total: 0,
-      pending: 0,
-      blocked: 0,
-      conflicts: 0,
-    }));
+    if (pathIncludes?.length) {
+      let q: Awaited<ReturnType<typeof getQueue>> = [];
+      try {
+        q = await getQueue();
+      } catch (e) {
+        reportError('offline.getQueue', e);
+        setLastMessage('Не удалось прочитать очередь офлайн');
+        return;
+      }
+      const filtered = q.filter((j) => pathIncludes.some((s) => j.path.includes(s)));
+      setPending(filtered.filter((j) => !j.blocked && !j.conflict).length);
+      setBlocked(filtered.filter((j) => j.blocked).length);
+      setConflicts(filtered.filter((j) => j.conflict).length);
+      return;
+    }
+    let status: { total: number; pending: number; blocked: number; conflicts: number };
+    try {
+      status = await getOfflineOutboxStatus();
+    } catch (e) {
+      reportError('offline.outboxStatus', e);
+      setLastMessage('Не удалось получить статус синхронизации');
+      return;
+    }
     setPending(status.pending);
     setBlocked(status.blocked);
     setConflicts(status.conflicts);
-  }, []);
+  }, [pathIncludes]);
 
   useFocusEffect(useCallback(() => {
-    refresh().catch(() => {});
+    refresh().catch((e) => reportError('offline.refresh', e));
   }, [refresh]));
+  useEffect(() => subscribeOfflineFlush(() => { void refresh(); }), [refresh]);
 
   const runSync = async () => {
     setSyncing(true);
@@ -42,6 +74,12 @@ export function OfflineSyncStatus({ compact = false }: { compact?: boolean }) {
         setLastMessage('Все доступные изменения отправлены');
       }
       await refresh();
+      // W112: после flush — inbox + home через канон bus (не только badge)
+      if (result.synced > 0) {
+        await syncProjectSideEffects({ user, project: activeProject }).catch((e) => reportError('offline.sideEffects', e));
+      } else if (user?.id) {
+        await reloadInboxSync({ userId: user.id, userRole: user.role }).catch((e) => reportError('offline.inboxSync', e));
+      }
     } finally {
       setSyncing(false);
     }
@@ -49,13 +87,17 @@ export function OfflineSyncStatus({ compact = false }: { compact?: boolean }) {
 
   if (compact && pending === 0 && blocked === 0 && conflicts === 0) return null;
 
+  const scope = label ? `${label}: ` : '';
+  const unsynced = pending + blocked + conflicts;
   const title = pending > 0
-    ? `${pending} изменений ждут отправки`
+    ? `${scope}Не синхронизировано: ${pending} действий`
     : conflicts > 0
-      ? `${conflicts} конфликтов требуют разбора`
+      ? `${scope}Не синхронизировано: ${conflicts} конфликтов`
       : blocked > 0
-        ? `${blocked} изменений заблокированы`
-        : 'Офлайн-очередь пуста';
+        ? `${scope}Не синхронизировано: ${blocked} заблокированы`
+        : unsynced > 0
+          ? `${scope}Не синхронизировано: ${unsynced}`
+          : 'Офлайн-очередь пуста';
 
   const hint = lastMessage || (
     conflicts > 0

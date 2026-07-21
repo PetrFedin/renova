@@ -1,35 +1,113 @@
-/** Единый список приёмки — очередь решений для заказчика */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+/** Единый список приёмки — заказчик решает inline; исполнитель видит статус (W56 / W102 / W139) */
+import { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { pushStageDetail } from '@/lib/navigation';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { QualityScorePicker } from '@/components/renova/QualityScorePicker';
 import { buildUnifiedAcceptanceItems, type UnifiedAcceptanceItem } from '@/lib/domain/acceptancePending';
-import type { Stage, WorkAcceptance } from '@/lib/api';
+import { api, type Stage, type WorkAcceptance } from '@/lib/api';
+import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { alertStageAccepted } from '@/lib/acceptanceNav';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export function UnifiedAcceptanceList({
   stages,
   acceptances,
   returnTo,
   role = 'customer',
+  onChanged,
 }: {
   stages: Stage[] | undefined;
   acceptances: WorkAcceptance[];
   returnTo?: string;
   role?: 'customer' | 'contractor';
+  /** После accept/return — обновить parent (список acceptances) */
+  onChanged?: () => void;
 }) {
+  const { user, activeProject } = useRenova();
   const items = buildUnifiedAcceptanceItems(stages, acceptances);
+  const isContractor = role === 'contractor';
+  const [busyId, setBusyId] = useState<string | null>(null);
+  /** Оценка только по явному выбору пользователя (не 10/5 по умолчанию) */
+  const [scores, setScores] = useState<Record<string, number | null>>({});
+
+  const projectId = activeProject?.id;
+  const userId = user?.id;
+
+  const decide = async (item: UnifiedAcceptanceItem, action: 'accept' | 'return') => {
+    if (!userId || !projectId) return;
+    if (item.kind !== 'acceptance') {
+      // Нет WorkAcceptance — открыть этап для чеклиста/решения
+      pushStageDetail(item.stageId, returnTo);
+      return;
+    }
+    setBusyId(item.id);
+    try {
+      const qualityScore = scores[item.id] ?? null;
+      if (action === 'accept') {
+        await api.acceptWork(
+          userId,
+          projectId,
+          item.acceptanceId,
+          {
+            ...acceptanceDecisionBody({ qualityScore, comment: 'Работы приняты' }),
+            mode: 'inline',
+          },
+        );
+        await syncProjectSideEffects({ user, project: activeProject });
+        onChanged?.();
+        // W125: оплата / план с ✓ pin (единый SoT с карточкой этапа)
+        alertStageAccepted(role);
+      } else {
+        await api.returnWork(
+          userId,
+          projectId,
+          item.acceptanceId,
+          acceptanceDecisionBody({
+            qualityScore,
+            comment: 'Нужна доработка',
+            createIssue: true,
+          }),
+        );
+        await syncProjectSideEffects({ user, project: activeProject });
+        onChanged?.();
+        Alert.alert('На доработку', 'Исполнитель получил задачу на правку.');
+      }
+    } catch (e: unknown) {
+      if (isOfflineQueued(e)) notifyOfflineQueued(action === 'accept' ? 'Приёмка' : 'Возврат');
+      else {
+        const code = (e as { code?: string })?.code;
+        if (action === 'accept' && (code === 'checklist_required' || code === 'checklist_incomplete')) {
+          Alert.alert('Нужен чек-лист', 'Откройте этап и отметьте пункты перед приёмкой.', [
+            { text: 'К этапу', onPress: () => pushStageDetail(item.stageId, returnTo) },
+            { text: 'OK' },
+          ]);
+        } else {
+          Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось выполнить действие');
+        }
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (!items.length) {
     return (
       <View style={s.emptyBox}>
-        <Text style={s.empty}>Сейчас ничего не ждёт вашей приёмки</Text>
+        <Text style={s.empty}>
+          {isContractor ? 'Нет этапов на приёмке у заказчика' : 'Сейчас ничего не ждёт вашей приёмки'}
+        </Text>
         <PrimaryButton
           title="Открыть этапы"
           variant="outline"
           compact
-          onPress={() => pushOsNav(repairTabRoute(role, 'works', 'awaiting'), returnTo)}
+          onPress={() => pushOsNav(repairTabRoute(role, 'works', 'review'), returnTo)}
         />
       </View>
     );
@@ -37,12 +115,26 @@ export function UnifiedAcceptanceList({
 
   return (
     <>
-      <Text style={s.hint}>{items.length} этап(ов) ждут проверки — откройте, отметьте чеклист и примите или верните на доработку.</Text>
+      <Text style={s.hint}>
+        {isContractor
+          ? `${items.length} этап(ов) у заказчика на проверке — откройте этап или отправьте повторно из работ.`
+          : `${items.length} этап(ов) ждут решения — примите или верните на доработку. Оценка качества только если реально проверили.`}
+      </Text>
       {items.map((it) => (
         <AcceptanceRow
           key={it.id}
           item={it}
+          isContractor={isContractor}
+          busy={busyId === it.id}
+          qualityScore={scores[it.id] ?? null}
+          onScoreChange={(v) => setScores((prev) => ({ ...prev, [it.id]: v }))}
           onOpen={() => pushStageDetail(it.stageId, returnTo)}
+          onAccept={() => {
+            decide(it, 'accept').catch(reportCatch('acceptance.accept'));
+          }}
+          onReturn={() => {
+            decide(it, 'return').catch(reportCatch('acceptance.return'));
+          }}
         />
       ))}
     </>
@@ -52,29 +144,68 @@ export function UnifiedAcceptanceList({
 function AcceptanceRow({
   item,
   onOpen,
+  onAccept,
+  onReturn,
+  isContractor,
+  busy,
+  qualityScore,
+  onScoreChange,
 }: {
   item: UnifiedAcceptanceItem;
   onOpen: () => void;
+  onAccept: () => void;
+  onReturn: () => void;
+  isContractor: boolean;
+  busy: boolean;
+  qualityScore: number | null;
+  onScoreChange: (v: number | null) => void;
 }) {
   return (
-    <View style={s.row}>
-      <Pressable onPress={onOpen} style={{ flex: 1 }}>
-        <Text style={s.title}>{item.title}</Text>
-        <Text style={s.meta}>
-          {item.sub}
-          {item.kind === 'acceptance' ? ' · приёмка' : ''}
-        </Text>
-      </Pressable>
-      <PrimaryButton title="Проверить" compact onPress={onOpen} />
+    <View style={s.rowCard}>
+      <View style={s.rowTop}>
+        <Pressable onPress={onOpen} style={{ flex: 1 }}>
+          <Text style={s.title}>{item.title}</Text>
+          <Text style={s.meta}>
+            {item.sub}
+            {item.kind === 'acceptance' ? (isContractor ? ' · у заказчика' : ' · приёмка') : ' · откройте этап'}
+          </Text>
+        </Pressable>
+        {isContractor ? <PrimaryButton title="Открыть этап" compact onPress={onOpen} /> : null}
+      </View>
+      {!isContractor ? (
+        <View style={s.actions}>
+          {item.kind === 'acceptance' ? (
+            <QualityScorePicker value={qualityScore} onChange={onScoreChange} />
+          ) : null}
+          <View style={s.btnRow}>
+            <PrimaryButton
+              title="Принять этап"
+              compact
+              disabled={busy || item.kind !== 'acceptance'}
+              onPress={item.kind === 'acceptance' ? onAccept : onOpen}
+            />
+            <PrimaryButton
+              title="На доработку"
+              compact
+              variant="outline"
+              disabled={busy}
+              onPress={item.kind === 'acceptance' ? onReturn : onOpen}
+            />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10, lineHeight: 16 },
-  row: { ...card, paddingVertical: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowCard: { ...card, paddingVertical: 12, marginBottom: 8, gap: 8 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 15, fontWeight: '600' },
   meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 10, textAlign: 'center' },
   emptyBox: { ...card, alignItems: 'center', paddingVertical: 16 },
+  actions: { gap: 8 },
+  btnRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

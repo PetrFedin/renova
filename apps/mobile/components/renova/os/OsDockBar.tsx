@@ -17,10 +17,12 @@ import {
 import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
+import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
 import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/resolveDynamicDock';
+import { reportCatch } from '@/lib/reportError';
 
 const REPAIR_SEGMENTS = new Set(['repair', 'works', 'materials', 'control', 'stages']);
 const OBJECT_SEGMENTS = new Set(['object', 'rooms', 'estimate', 'plan']);
@@ -30,7 +32,9 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const bottomPad = useBottomInset();
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
-  const { count: chatUnread } = useChatUnread(user?.id, user?.role);
+  const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
+  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
+  const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
   const section = resolveSectionId(pathname);
@@ -46,18 +50,26 @@ export function OsDockBar({ role }: { role: OsRole }) {
     );
   }, [activeProject, role, detailLevel]);
 
+  /** Не вызываем setState, если состав кнопок тот же — иначе цикл с новой ссылкой массива. */
+  const applyItems = useCallback((next: DockItemId[]) => {
+    setItems((prev) => {
+      if (prev.length === next.length && prev.every((id, i) => id === next[i])) return prev;
+      return next;
+    });
+  }, []);
+
   const reloadPrefs = useCallback(() => {
-    getDockBar(role).then(setItems).catch(() => {});
-  }, [role]);
+    getDockBar(role).then(applyItems).catch(reportCatch('components.renova.os.OsDockBar.1'));
+  }, [role, applyItems]);
 
   useFocusEffect(useCallback(() => {
-    if (dynamicItems) setItems(dynamicItems);
+    if (dynamicItems) applyItems(dynamicItems);
     else reloadPrefs();
-  }, [dynamicItems, reloadPrefs]));
+  }, [dynamicItems, reloadPrefs, applyItems]));
 
   useEffect(() => {
-    if (dynamicItems) setItems(dynamicItems);
-  }, [dynamicItems]);
+    if (dynamicItems) applyItems(dynamicItems);
+  }, [dynamicItems, applyItems]);
 
   useEffect(() => subscribeDockBar(() => {
     if (!dynamicItems) reloadPrefs();
@@ -101,7 +113,11 @@ export function OsDockBar({ role }: { role: OsRole }) {
             style={({ pressed }) => [s.tab, pressed && s.pressed]}
             onPress={() => go(id)}
             accessibilityRole="button"
-            accessibilityLabel={label}
+            accessibilityLabel={
+              id === 'chat' && chatUnread > 0
+                ? `${label}, ${chatUnread > 99 ? '99+' : chatUnread} непрочитанных`
+                : label
+            }
             accessibilityState={active ? { selected: true } : {}}
           >
             <View style={s.iconWrap}>
@@ -138,7 +154,14 @@ const s = StyleSheet.create({
     paddingVertical: 4,
   },
   pressed: { opacity: 0.65 },
-  iconWrap: { position: 'relative', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' },
+  iconWrap: {
+    position: 'relative',
+    width: 32,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
   label: {
     fontSize: 10,
     fontWeight: '600',

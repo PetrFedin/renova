@@ -8,8 +8,11 @@ import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/doma
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { dayTaskCount, formatCalendarEventDates, isPeriodCalendarEvent, isWorkCalendarEvent } from '@/lib/domain/calendarEvents';
 import { api } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { CalendarEvent, WorkOrder } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
+import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -69,6 +72,7 @@ export function ScheduleDayDetail({
   workOrders = [],
   onChanged,
 }: Props) {
+  const { user, activeProject } = useRenova();
   const label = new Date(date + 'T12:00:00').toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' });
   const tasks = dayTaskCount(events);
   const woById = new Map(workOrders.map((w) => [w.id, w]));
@@ -79,10 +83,15 @@ export function ScheduleDayDetail({
     const nextEnd = addDays(base, days);
     try {
       await api.patchWorkOrder(userId, projectId, wo.id, { planned_end: nextEnd, notes: note });
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
       Alert.alert('Срок обновлён', `Новый дедлайн: ${nextEnd}`);
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось продлить срок');
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Продление срока отправится при подключении');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось продлить срок');
+      }
     }
   };
 
@@ -90,9 +99,16 @@ export function ScheduleDayDetail({
     if (!userId || !projectId || readOnly) return;
     try {
       await api.transitionWorkOrder(userId, projectId, wo.id, next);
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось обновить статус');
+      // W133: день календаря → те же CTA, что WO detail
+      alertWorkOrderAdvanced(role === 'contractor' ? 'contractor' : 'customer', next);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'offline_queued') {
+        Alert.alert('Офлайн', 'Смена статуса отправится при подключении');
+      } else {
+        Alert.alert('Ошибка', 'Не удалось обновить статус');
+      }
     }
   };
 
@@ -102,27 +118,37 @@ export function ScheduleDayDetail({
     if (!wo || isWorkArchived(wo.status)) return null;
     const status = wo.status as WorkOrderStatus;
     const actions = workActions(status, role === 'contractor' ? 'contractor' : 'customer');
-    const primary = actions.find((a) => a.next === 'done' || a.next === 'review' || a.next === 'in_progress') || actions[0];
+    // P0: не подставлять done исполнителю; приоритет сдачи/приёмки по роли
+    const primary =
+      (role === 'customer'
+        ? actions.find((a) => a.next === 'done') || actions.find((a) => a.next === 'in_progress')
+        : actions.find((a) => a.next === 'review') || actions.find((a) => a.next === 'in_progress'))
+      || actions[0];
 
     return (
-      <View style={s.actions}>
-        {primary ? (
-          <Pressable style={s.actionBtn} onPress={() => transitionWork(wo, primary.next)}>
-            <Text style={s.actionBtnT}>{primary.label}</Text>
-          </Pressable>
+      <View>
+        <View style={s.actions}>
+          {primary ? (
+            <Pressable style={s.actionBtn} onPress={() => transitionWork(wo, primary.next)}>
+              <Text style={s.actionBtnT}>{primary.label}</Text>
+            </Pressable>
+          ) : null}
+          {role === 'customer' ? (
+            <Pressable style={s.actionBtnOutline} onPress={() => extendWork(wo, 3, 'Продление срока заказчиком')}>
+              <Text style={s.actionBtnOutlineT}>Продлить +3 дня</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={s.actionBtnOutline}
+              onPress={() => extendWork(wo, 7, 'Запрос продления от исполнителя')}
+            >
+              <Text style={s.actionBtnOutlineT}>Запросить +7 дней</Text>
+            </Pressable>
+          )}
+        </View>
+        {role === 'contractor' && status === 'review' ? (
+          <Text style={s.hint}>Приёмка этапа — только у заказчика в «Ремонт → Приёмка»</Text>
         ) : null}
-        {role === 'customer' ? (
-          <Pressable style={s.actionBtnOutline} onPress={() => extendWork(wo, 3, 'Продление срока заказчиком')}>
-            <Text style={s.actionBtnOutlineT}>Продлить +3 дня</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={s.actionBtnOutline}
-            onPress={() => extendWork(wo, 7, 'Запрос продления от исполнителя')}
-          >
-            <Text style={s.actionBtnOutlineT}>Запросить +7 дней</Text>
-          </Pressable>
-        )}
       </View>
     );
   };
@@ -205,4 +231,5 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.surface,
   },
   actionBtnOutlineT: { color: RenovaTheme.colors.text, fontSize: 12, fontWeight: '600' },
+  hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4, paddingHorizontal: 4, lineHeight: 15 },
 });
