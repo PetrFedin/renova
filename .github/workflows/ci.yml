@@ -30,7 +30,13 @@ jobs:
         run: bash scripts/secret-scan.sh
 
       - name: Workflow YAML syntax
-        run: ruby -ryaml -e 'Dir[".github/workflows/*.yml"].each { |f| YAML.load_stream(File.read(f)); puts "YAML OK #{f}" }'
+        run: |
+          ruby -ryaml <<'RUBY'
+          Dir[".github/workflows/*.yml"].each do |f|
+            YAML.load_stream(File.read(f))
+            puts "YAML OK #{f}"
+          end
+          RUBY
 
 
       - name: Install JS (lockfile)
