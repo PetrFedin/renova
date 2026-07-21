@@ -250,10 +250,26 @@ export function ContractorProfileScreen() {
               }
             }}
           />
-          {user?.moy_nalog_linked ? (
+          {user?.moy_nalog_linked || (user?.moy_nalog_status && user.moy_nalog_status !== 'not_connected') ? (
             <Text style={ps.msg}>
-              «Мой налог»: флаг linked в профиле — без OAuth это не полноценное подключение ФНС.
+              «Мой налог»: {user?.moy_nalog_status || 'linked'} — без OAuth ФНС это не live-подключение.
             </Text>
+          ) : null}
+          {user?.moy_nalog_linked ? (
+            <PrimaryButton
+              title="Отключить «Мой налог»"
+              variant="outline"
+              onPress={async () => {
+                if (!user) return;
+                try {
+                  const r = await api.unlinkMoyNalog(user.id);
+                  setMsg(r.message || 'Связь снята');
+                  await refreshMe();
+                } catch (e: any) {
+                  Alert.alert('Мой налог', e?.message || 'Не удалось отключить');
+                }
+              }}
+            />
           ) : null}
           <PrimaryButton
             title="Экспорт данных"

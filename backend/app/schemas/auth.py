@@ -16,6 +16,7 @@ class UserOut(BaseModel):
     inn: str | None
     npd_verified: bool
     moy_nalog_linked: bool = False
+    moy_nalog_status: str = "not_connected"
     profile_code: str | None = None
     # Выдаётся на login/register/demo/sms; /me может не включать
     access_token: str | None = None

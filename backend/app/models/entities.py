@@ -60,6 +60,8 @@ class User(Base):
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     inn: Mapped[str | None] = mapped_column(String(12), nullable=True)
     moy_nalog_linked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # not_connected|authorization_started|connected|token_expired|revoked|error|admin_enabled
+    moy_nalog_status: Mapped[str] = mapped_column(String(32), default="not_connected")
     profile_code: Mapped[str | None] = mapped_column(String(8), unique=True, nullable=True, index=True)
     npd_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

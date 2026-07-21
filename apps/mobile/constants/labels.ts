@@ -23,6 +23,7 @@ export const PAYMENT_TYPE_LABEL: Record<string, string> = {
 
 export const PAYMENT_STATUS_LABEL: Record<string, string> = {
   pending: 'Ожидает оплаты',
+  paid_unverified: 'Оплачено без чека',
   confirmed: 'Оплачено',
   rejected: 'Отклонено',
 };

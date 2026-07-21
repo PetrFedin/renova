@@ -38,3 +38,18 @@ npm run release:notes:v0.3
 - `npm run merge:check:live` — merge gate с auto-start API
 - `npm run ci:push-workflow` — push CI workflow (нужен `gh auth refresh -s workflow`)
 
+## Wave-3 audit embed (2026-07-21)
+
+Pinned SHA: set after push of wave-3 commit on `develop`.
+
+Влито в develop (не всё в main):
+- OTP rate-limit / verify lockout + auth_audit
+- `User.moy_nalog_status` + `/fns/moy-nalog/unlink` (honesty, не fake OAuth)
+- `paid_unverified` filter в BudgetPayments + labels
+- Scratchpad fail-closed chatInbox
+- Optional `REDIS_URL` pub/sub в WS broadcast
+- `expo-secure-store` dependency для JWT storage
+- sqlite_compat syntax fix (orphan try/except wave-1)
+
+Release still OPEN: split PR develop→main per `docs/SPLIT-RELEASE-PR-PLAN-2026-07-21.md`.
+

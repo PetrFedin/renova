@@ -49,6 +49,7 @@ class MoyNalogLinkResponse(BaseModel):
     linked: bool
     message: str
     mode: str = "enabled"  # demo | enabled — never implies real OAuth yet
+    status: str = "not_connected"
 
 
 @router.post("/verify-me", response_model=CheckNpdResponse)
@@ -78,15 +79,33 @@ async def link_moy_nalog(user: User = Depends(get_current_user), db: AsyncSessio
             501,
             "«Мой налог» OAuth ещё не подключён. Задайте MOY_NALOG_ENABLED=true после интеграции или используйте demo в development.",
         )
-    user.moy_nalog_linked = True  # flag only — OAuth tokens not stored yet
-    await db.commit()
+    # Не OAuth: статус admin_enabled / demo — UI не должен писать «подключён»
     mode = "demo" if demo_ok and not settings.moy_nalog_enabled else "enabled"
+    user.moy_nalog_linked = True  # legacy flag
+    user.moy_nalog_status = "admin_enabled" if mode == "enabled" else "authorization_started"
+    await db.commit()
     return MoyNalogLinkResponse(
         linked=True,
         mode=mode,
+        status=user.moy_nalog_status,
         message=(
-            "Demo: флаг linked без OAuth ФНС. Не считайте это полноценным подключением."
+            "Demo: интеграция включена без OAuth ФНС. Чеки live недоступны."
             if mode == "demo"
             else "Интеграция включена администратором — аккаунт ФНС ещё не авторизован через OAuth."
         ),
+    )
+
+
+
+@router.post("/moy-nalog/unlink", response_model=MoyNalogLinkResponse)
+async def unlink_moy_nalog(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Отозвать флаг «Мой налог» (пока без provider tokens)."""
+    user.moy_nalog_linked = False
+    user.moy_nalog_status = "revoked"
+    await db.commit()
+    return MoyNalogLinkResponse(
+        linked=False,
+        mode="enabled",
+        status="revoked",
+        message="Связь «Мой налог» снята. Для реального отзыва в ФНС нужен OAuth revoke.",
     )

@@ -8,6 +8,7 @@ from app.schemas.auth import DemoLoginRequest, RegisterRequest, UserOut, SmsSend
 from app.services.seed_demo import DEMO_PHONES
 from app.services.fns.status_npd import check_taxpayer_npd_status
 from app.core.security import create_access_token
+from app.services.auth_audit import log_auth_event
 from app.core.config import settings
 from app.core.environment import policy_for
 
@@ -81,13 +82,18 @@ async def delete_me(user: User = Depends(get_current_user), db: AsyncSession = D
 @router.post("/sms/send")
 async def sms_send(body: SmsSendRequest):
     from app.services.otp_service import send_otp
-    return await send_otp(body.phone)
+    result = await send_otp(body.phone)
+    if not result.get("ok"):
+        code = 429 if result.get("rate_limited") or result.get("locked") else 400
+        raise HTTPException(code, result.get("message") or "otp_send_failed")
+    return result
 
 
 @router.post("/sms/verify", response_model=UserOut)
 async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
     from app.services.otp_service import verify_otp
     if not verify_otp(body.phone, body.code):
+        await log_auth_event(db, user_id=None, path="/auth/sms/verify", status_code=400, note="bad_otp")
         raise HTTPException(400, "Неверный или просроченный код")
     result = await db.execute(select(User).where(User.phone == body.phone))
     user = result.scalar_one_or_none()
@@ -108,7 +114,9 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
         chat_svc.ensure_profile_code(user)
         await db.commit()
         await db.refresh(user)
-    return await user_out_with_token(user, db)
+    out = await user_out_with_token(user, db)
+    await log_auth_event(db, user_id=user.id, path="/auth/sms/verify", status_code=200, note="login_ok")
+    return out
 
 @router.post("/register", response_model=UserOut)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
@@ -163,7 +171,9 @@ async def demo_login(body: DemoLoginRequest, db: AsyncSession = Depends(get_db))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "Запустите backend — демо-данные создаются при старте")
-    return await user_out_with_token(user, db)
+    out = await user_out_with_token(user, db)
+    await log_auth_event(db, user_id=user.id, path="/auth/demo", status_code=200, note="demo_login_ok")
+    return out
 
 
 @router.post("/demo/guest", response_model=UserOut)
@@ -185,6 +195,7 @@ async def refresh_tokens(body: RefreshRequest, db: AsyncSession = Depends(get_db
     from app.services import session_service as sess_svc
     rotated = await sess_svc.rotate_session(db, body.refresh_token)
     if not rotated:
+        await log_auth_event(db, user_id=None, path="/auth/refresh", status_code=401, note="bad_refresh")
         raise HTTPException(401, "invalid_or_expired_refresh")
     sess, raw = rotated
     user = await db.get(User, sess.user_id)

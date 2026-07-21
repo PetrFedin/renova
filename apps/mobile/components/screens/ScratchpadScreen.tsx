@@ -24,7 +24,8 @@ const HINT = 'Пишите что угодно. [ ] пункт · [x] сдела
 export function ScratchpadScreen({ role }: { role: OsRole }) {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { user, activeProject, readOnly } = useRenova();
-  const [lines, setLines] = useState<ScratchpadLine[]>([]);
+  const [lines, setLines] = useState<ScratchpadLine[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [promoteLine, setPromoteLine] = useState<ScratchpadLine | null>(null);
@@ -34,7 +35,13 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api.listScratchpad(user.id, activeProject.id).then((d) => setLines(d.lines || [])).catch(() => setLines([]));
+    setLoadError(null);
+    api.listScratchpad(user.id, activeProject.id)
+      .then((d) => setLines(d.lines || []))
+      .catch(() => {
+        setLines([]);
+        setLoadError('Не удалось загрузить заметки');
+      });
   }, [user?.id, activeProject?.id]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -134,7 +141,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         onPress: async () => {
           if (!user || !activeProject) return;
           try {
-            const existing = await api.chatInbox(user.id).catch(() => []);
+            // Fail-closed: без inbox не создаём чат «вслепую» (дубли/потеря контекста)
+            const existing = await api.chatInbox(user.id);
             const title = line.text.slice(0, 60);
             await createProjectChat({
               userId: user.id,
@@ -147,7 +155,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
               },
             });
           } catch {
-            Alert.alert('Чат', 'Не удалось создать чат');
+            Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть и повторите.');
           }
         },
       },
@@ -194,6 +202,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       </View>
 
       <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 120 }}>
+        {loadError ? (
+          <Text style={[s.empty, { color: '#B45309' }]}>{loadError}</Text>
+        ) : null}
         {active.length ? (
           <>
             <Text style={s.section}>Активные ({active.length})</Text>
@@ -209,9 +220,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
               />
             ))}
           </>
-        ) : (
+        ) : !loadError ? (
           <Text style={s.empty}>Пока пусто — запишите мысли ниже, пока не забыли.</Text>
-        )}
+        ) : null}
         {done.length ? (
           <>
             <Text style={[s.section, { marginTop: 16 }]}>Сделано / оформлено ({done.length})</Text>

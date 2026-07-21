@@ -270,7 +270,9 @@ def ensure_os_schema() -> None:
               SELECT MIN(id) FROM expenses WHERE receipt_id IS NOT NULL GROUP BY receipt_id
             ) AND receipt_id IS NOT NULL
         """)
-    
+    except Exception:
+        pass
+
     if "user_sessions" not in tables:
         c.executescript(
             """
@@ -304,10 +306,18 @@ def ensure_os_schema() -> None:
             except Exception:
                 pass
 
-    conn.commit()
+    if "users" in tables:
+        uc = cols("users")
+        if "moy_nalog_status" not in uc:
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN moy_nalog_status TEXT DEFAULT 'not_connected'")
+            except Exception:
+                pass
+
+    try:
+        conn.commit()
     except Exception:
         pass
-
 
     # Очистка «сирот» и E2E-мусора — завышенный budget_spent (164k+)
     try:

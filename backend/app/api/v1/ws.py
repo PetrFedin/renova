@@ -101,8 +101,28 @@ async def inbox_ws(websocket: WebSocket, user_id: str):
         inbox_rooms[user_id].discard(websocket)
 
 
+
+async def _redis_publish(channel: str, msg: str) -> None:
+    """Best-effort cross-instance fanout when REDIS_URL set."""
+    from app.core.config import settings
+    url = (settings.redis_url or "").strip()
+    if not url:
+        return
+    try:
+        import redis.asyncio as redis  # type: ignore
+        client = redis.from_url(url, decode_responses=True)
+        try:
+            await client.publish(channel, msg)
+        finally:
+            await client.aclose()
+    except Exception:
+        # Fail-open locally: in-process rooms still deliver on this instance
+        pass
+
+
 async def broadcast(thread_id: str, payload: dict) -> None:
     msg = json.dumps(payload)
+    await _redis_publish(f"renova:ws:thread:{thread_id}", msg)
     for ws in list(rooms.get(thread_id, [])):
         try:
             await ws.send_text(msg)
@@ -114,6 +134,7 @@ async def broadcast_inbox(user_id: str, payload: dict) -> None:
     if not user_id:
         return
     msg = json.dumps(payload)
+    await _redis_publish(f"renova:ws:inbox:{user_id}", msg)
     for ws in list(inbox_rooms.get(user_id, [])):
         try:
             await ws.send_text(msg)

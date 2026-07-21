@@ -47,11 +47,16 @@ export function BudgetPaymentsSection({
       ) : null}
       <Text style={s.section}>Счета и история</Text>
       <View style={s.filterRow}>
-        {(['all', 'pending', 'confirmed'] as PaymentFilter[]).map((f) => (
+        {(['all', 'pending', 'paid_unverified', 'confirmed'] as PaymentFilter[]).map((f) => (
           <PrimaryButton
             key={f}
             compact
-            title={f === 'all' ? 'Все' : f === 'pending' ? 'Ожидают' : 'Оплачено'}
+            title={
+              f === 'all' ? 'Все'
+              : f === 'pending' ? 'Ожидают'
+              : f === 'paid_unverified' ? 'Без чека'
+              : 'Оплачено'
+            }
             variant={payFilter === f ? 'primary' : 'outline'}
             onPress={() => setPayFilter(f)}
           />
@@ -59,7 +64,13 @@ export function BudgetPaymentsSection({
       </View>
       {!filteredPayments.length && (
         <Text style={s.empty}>
-          {payFilter === 'pending' ? 'Нет ожидающих оплат' : payFilter === 'confirmed' ? 'История оплат пуста' : 'Счетов пока нет'}
+          {payFilter === 'pending'
+            ? 'Нет ожидающих оплат'
+            : payFilter === 'paid_unverified'
+              ? 'Нет оплат без чека'
+              : payFilter === 'confirmed'
+                ? 'История оплат пуста'
+                : 'Счетов пока нет'}
         </Text>
       )}
       {filteredPayments.map((p) => (
@@ -71,7 +82,11 @@ export function BudgetPaymentsSection({
               {p.confirmed_at ? ` · ${new Date(p.confirmed_at).toLocaleDateString('ru-RU')}` : ''}
             </Text>
           </View>
-          <Text style={[s.status, p.status === 'pending' && { color: RenovaTheme.colors.warning }]}>
+          <Text style={[
+            s.status,
+            p.status === 'pending' && { color: RenovaTheme.colors.warning },
+            p.status === 'paid_unverified' && { color: RenovaTheme.colors.warning },
+          ]}>
             {PAYMENT_STATUS_LABEL[p.status] || p.status}
           </Text>
         </Pressable>
