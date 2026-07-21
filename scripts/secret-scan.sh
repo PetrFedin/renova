@@ -7,20 +7,26 @@ python3 - <<'PY'
 from pathlib import Path
 import re, subprocess, sys
 
+# Patterns built without embedding full PEM armor markers as contiguous literals
+# (avoids self-matching this scanner file).
+_begin = "-----BEGIN "
+_end_key = "PRIVATE KEY-----"
 patterns = [
-    (re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"), "private_key"),
+    (re.compile(_begin + r"(?:RSA |EC |OPENSSH )?" + _end_key), "private_key"),
     (re.compile(r"sk_live_[A-Za-z0-9]{20,}"), "payment_live_key"),
     (re.compile(r"ghp_[A-Za-z0-9]{36}"), "github_pat"),
     (re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"), "slack_token"),
     (re.compile(r"AKIA[0-9A-Z]{16}"), "aws_access_key_id"),
-    (re.compile(r"-----BEGIN PRIVATE KEY-----"), "private_key"),
     (re.compile(r"bot[0-9]{8,}:[A-Za-z0-9_-]{30,}"), "telegram_bot_token"),
 ]
 
+skip_exact = {"scripts/secret-scan.sh"}
 skip_parts = ("node_modules", ".venv", "package-lock", ".png", ".jpg", ".webp", ".lock")
 tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
 hits = []
 for rel in tracked:
+    if rel in skip_exact:
+        continue
     if any(s in rel for s in skip_parts):
         continue
     p = Path(rel)
