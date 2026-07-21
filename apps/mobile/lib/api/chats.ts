@@ -1,11 +1,21 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
-import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
+import type { ChatDetail, ChatInboxSnapshot, ChatMessage, ChatThread, User } from './types';
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
     req<ChatThread[]>(`/api/v1/projects/${projectId}/chats?archived=${archived ? 'true' : 'false'}`, {}, userId),
-  chatInbox: (userId: string) => req<ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
-  chatUnreadTotal: (userId: string) => req<{ count: number }>(`/api/v1/chats/unread-total`, {}, userId),
+  /**
+   * Атомарный snapshot: { revision, total_unread_messages, threads }.
+   * Legacy array всё ещё парсится на клиенте.
+   */
+  chatInbox: (userId: string) =>
+    req<ChatInboxSnapshot | ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
+  chatUnreadTotal: (userId: string) =>
+    req<{
+      count: number;
+      revision?: number;
+      total_unread_messages?: number;
+    }>(`/api/v1/chats/unread-total`, {}, userId),
   createChat: async (userId: string, projectId: string, title: string, topic?: string) => {
     const body = JSON.stringify({ title, topic });
     try {

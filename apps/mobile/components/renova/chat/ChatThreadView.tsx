@@ -14,6 +14,7 @@ import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { reportError, reportCatch } from '@/lib/reportError';
 import { api, ChatDetail, ChatMessage, ApiError } from '@/lib/api';
+import { threadsFromChatInbox } from '@/lib/domain/chatUnreadSnapshot';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -186,7 +187,9 @@ export function ChatThreadView({
     }
     try {
       const inbox = await api.chatInbox(user.id);
-      return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
+      return threadsFromChatInbox(inbox).find((t) => t.id === threadId)?.project_id
+        ?? activeProject?.id
+        ?? null;
     } catch (e) {
       reportError('chat.resolveProjectId.inbox', e, { threadId });
       return activeProject?.id ?? null;

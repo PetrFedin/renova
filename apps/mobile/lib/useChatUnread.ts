@@ -7,6 +7,7 @@ import {
   getChatFailedSnapshot,
   getChatInboxThreadsSnapshot,
   getChatUnreadCountSnapshot,
+  getChatUnreadStaleSnapshot,
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
   reloadInboxSync,
@@ -34,6 +35,10 @@ function useChatFailed() {
   return useSyncExternalStore(subscribeInboxSync, getChatFailedSnapshot, getChatFailedSnapshot);
 }
 
+function useChatUnreadStale() {
+  return useSyncExternalStore(subscribeInboxSync, getChatUnreadStaleSnapshot, getChatUnreadStaleSnapshot);
+}
+
 function useInboxWsConnected() {
   return useSyncExternalStore(subscribeInboxSync, getInboxWsConnectedSnapshot, getInboxWsConnectedSnapshot);
 }
@@ -45,6 +50,7 @@ function useInboxItems() {
 export function useChatUnread(userId?: string, userRole?: UserRole) {
   const count = useChatUnreadCount();
   const failed = useChatFailed();
+  const stale = useChatUnreadStale();
   const inboxWsConnected = useInboxWsConnected();
 
   const reload = useCallback(async () => {
@@ -64,7 +70,7 @@ export function useChatUnread(userId?: string, userRole?: UserRole) {
     });
   }, [userId, reload]);
 
-  return { count, reload, inboxWsConnected, failed };
+  return { count, reload, inboxWsConnected, failed, stale };
 }
 
 export function useChatReadSync(userId?: string, userRole?: UserRole) {

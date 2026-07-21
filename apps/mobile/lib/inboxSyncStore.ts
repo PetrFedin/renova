@@ -12,6 +12,15 @@ import {
   type ConfirmedReadCursor,
   type MarkThreadReadSource,
 } from '@/lib/domain/markThreadReadPolicy';
+import {
+  applyChatUnreadSnapshot,
+  parseChatUnreadSnapshotApi,
+  patchThreadUnreadInSnapshot,
+  setThreadArchivedInSnapshot,
+  snapshotFromThreads,
+  warnUnreadInvariantIfBroken,
+  type ChatUnreadSnapshot,
+} from '@/lib/domain/chatUnreadSnapshot';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -19,8 +28,12 @@ type InboxWsPayload = { type?: string; event?: string; thread_id?: string; proje
 const POLL_MS = 25_000;
 const listeners = new Set<Listener>();
 
+/** SoT unread: атомарный snapshot (threads + total + revision) */
+let unreadSnapshot: ChatUnreadSnapshot | null = null;
 let chatCount = 0;
 let chatFailed = false;
+/** Список не загрузился / устарел — total не подменяем отдельно */
+let chatUnreadStale = false;
 let inboxWsConnected = false;
 let chatThreads: ChatThread[] = [];
 let inboxItems: InboxItem[] = [];
@@ -32,6 +45,9 @@ let wsCleanup: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let reloadInflight: Promise<void> | null = null;
 let lastReloadKey = '';
+let loadGeneration = 0;
+/** Последний userId, для которого загружали unread — смена → сброс snapshot */
+let lastChatUserId: string | undefined;
 
 /** In-flight mark-read: один запрос на threadId */
 const markInflight = new Map<string, Promise<MarkThreadReadResult>>();
@@ -74,21 +90,38 @@ function notify() {
   });
 }
 
-function sumChatUnread(threads: ChatThread[]): number {
-  return threads
-    .filter((t) => !t.is_archived)
-    .reduce((sum, t) => sum + (t.unread_count || 0), 0);
+/** Атомарно зафиксировать snapshot в store-полях */
+function commitUnreadSnapshot(next: ChatUnreadSnapshot, opts?: { failed?: boolean; stale?: boolean }) {
+  unreadSnapshot = next;
+  chatThreads = next.threads;
+  chatCount = next.totalUnreadMessages;
+  if (opts?.failed != null) chatFailed = opts.failed;
+  if (opts?.stale != null) chatUnreadStale = opts.stale;
+  warnUnreadInvariantIfBroken(next, undefined, 'commitUnreadSnapshot');
+}
+
+function applyIncomingSnapshot(
+  incoming: ChatUnreadSnapshot,
+  opts?: { force?: boolean },
+): boolean {
+  const result = applyChatUnreadSnapshot(unreadSnapshot, incoming, opts);
+  if (!result.ok) {
+    chatUnreadStale = true;
+    warnUnreadInvariantIfBroken(result.snapshot, undefined, 'stale_revision_rejected');
+    return false;
+  }
+  commitUnreadSnapshot(result.snapshot, { failed: false, stale: false });
+  return true;
 }
 
 function applyLocalThreadUnread(threadId: string, unread = 0) {
-  chatThreads = chatThreads.map((t) =>
-    t.id === threadId ? { ...t, unread_count: unread } : t,
-  );
-  chatCount = sumChatUnread(chatThreads);
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  const next = patchThreadUnreadInSnapshot(base, threadId, unread);
+  commitUnreadSnapshot(next, { failed: false, stale: false });
 }
 
 export function getChatUnreadSnapshot() {
-  return { count: chatCount, failed: chatFailed, inboxWsConnected };
+  return { count: chatCount, failed: chatFailed, inboxWsConnected, stale: chatUnreadStale };
 }
 
 export function getChatUnreadCountSnapshot() {
@@ -97,6 +130,14 @@ export function getChatUnreadCountSnapshot() {
 
 export function getChatFailedSnapshot() {
   return chatFailed;
+}
+
+export function getChatUnreadStaleSnapshot() {
+  return chatUnreadStale;
+}
+
+export function getChatUnreadRevisionSnapshot() {
+  return unreadSnapshot?.revision ?? 0;
 }
 
 export function getInboxWsConnectedSnapshot() {
@@ -122,33 +163,42 @@ export function getInboxItemsSnapshot() {
 function notifyIfChanged(prev: {
   chatCount: number;
   chatFailed: boolean;
+  chatUnreadStale: boolean;
   inboxBadge: number;
   inboxItems: InboxItem[];
   inboxWsConnected: boolean;
+  revision: number;
 }) {
   if (
     prev.chatCount === chatCount
     && prev.chatFailed === chatFailed
+    && prev.chatUnreadStale === chatUnreadStale
     && prev.inboxBadge === inboxBadge
     && prev.inboxItems === inboxItems
     && prev.inboxWsConnected === inboxWsConnected
+    && prev.revision === (unreadSnapshot?.revision ?? 0)
   ) {
     return;
   }
   notify();
 }
 
-async function loadChatState(userId: string): Promise<{ threads: ChatThread[]; unread: number; ok: boolean }> {
+/**
+ * Загрузка unread: только атомарный inbox snapshot.
+ * Нельзя подменять total через unread-total без threads.
+ */
+async function loadChatState(userId: string): Promise<{ ok: boolean }> {
   try {
-    const threads = await api.chatInbox(userId);
-    return { threads, unread: sumChatUnread(threads), ok: true };
+    const raw = await api.chatInbox(userId);
+    const incoming = parseChatUnreadSnapshotApi(raw, Date.now());
+    // Сеть — SoT; out-of-order отсекает loadGeneration в reloadInboxSync
+    applyIncomingSnapshot(incoming, { force: true });
+    return { ok: true };
   } catch {
-    try {
-      const { count } = await api.chatUnreadTotal(userId);
-      return { threads: chatThreads, unread: count, ok: true };
-    } catch {
-      return { threads: chatThreads, unread: chatCount, ok: false };
-    }
+    // Ошибка списка: не трогаем total отдельно — помечаем stale/failed
+    chatFailed = chatThreads.length === 0 && chatCount === 0;
+    chatUnreadStale = true;
+    return { ok: false };
   }
 }
 
@@ -216,16 +266,40 @@ function refreshInboxChatRow(nextChat: number) {
   inboxBadge = taskRows + n;
 }
 
-/** Точечное обновление unread треда без полного inbox rebuild */
+/** Точечное обновление unread треда — total пересчитывается в том же action */
 function patchThreadReadLocal(threadId: string, threadUnread = 0) {
   const prev = {
     chatCount,
     chatFailed,
+    chatUnreadStale,
     inboxBadge,
     inboxItems,
     inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
   };
   applyLocalThreadUnread(threadId, threadUnread);
+  refreshInboxChatRow(chatCount);
+  notifyIfChanged(prev);
+}
+
+/**
+ * Локально архивировать/разархивировать тред с пересчётом total.
+ */
+export function patchThreadArchivedLocal(threadId: string, isArchived: boolean) {
+  const prev = {
+    chatCount,
+    chatFailed,
+    chatUnreadStale,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
+  };
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  commitUnreadSnapshot(setThreadArchivedInSnapshot(base, threadId, isArchived), {
+    failed: false,
+    stale: false,
+  });
   refreshInboxChatRow(chatCount);
   notifyIfChanged(prev);
 }
@@ -328,20 +402,18 @@ export async function markThreadRead(args: MarkThreadReadArgs): Promise<MarkThre
         messageId: confirmedId ?? null,
         createdAt: throughCreatedAt,
       });
-      if (typeof res?.total_unread_count === 'number') {
-        const prev = {
-          chatCount,
-          chatFailed,
-          inboxBadge,
-          inboxItems,
-          inboxWsConnected,
-        };
-        applyLocalThreadUnread(threadId, serverUnread);
-        chatCount = res.total_unread_count;
-        refreshInboxChatRow(chatCount);
-        notifyIfChanged(prev);
-      } else {
-        patchThreadReadLocal(threadId, serverUnread);
+      // Total только из суммы тредов — не подставляем независимый server total
+      patchThreadReadLocal(threadId, serverUnread);
+      if (
+        typeof res?.total_unread_count === 'number'
+        && res.total_unread_count !== chatCount
+        && (typeof __DEV__ === 'undefined' || __DEV__)
+      ) {
+        warnUnreadInvariantIfBroken(
+          unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now()),
+          undefined,
+          'mark_read_server_total_mismatch',
+        );
       }
       const ok: MarkThreadReadResult = { status: 'sent', ...base };
       recordMarkReadDiag({ ...base, outcome: 'sent' });
@@ -419,35 +491,48 @@ export async function reloadInboxSync(
   if (!force && reloadInflight && lastReloadKey === key) return reloadInflight;
 
   lastReloadKey = key;
+  const generation = ++loadGeneration;
   reloadInflight = (async () => {
     const prev = {
       chatCount,
       chatFailed,
+      chatUnreadStale,
       inboxBadge,
       inboxItems,
       inboxWsConnected,
+      revision: unreadSnapshot?.revision ?? 0,
     };
 
     if (!merged.userId) {
       chatCount = 0;
       chatFailed = false;
+      chatUnreadStale = false;
       chatThreads = [];
+      unreadSnapshot = null;
       inboxItems = [];
       inboxBadge = 0;
       cachedFullSync = null;
+      lastChatUserId = undefined;
       clearMarkReadCursors();
       notifyIfChanged(prev);
       return;
     }
 
-    const chatState = await loadChatState(merged.userId);
-    if (chatState.ok) {
-      chatThreads = chatState.threads;
-      chatCount = chatState.unread;
+    // Смена пользователя: не показываем чужой unread до нового snapshot
+    if (lastChatUserId && lastChatUserId !== merged.userId) {
+      chatCount = 0;
       chatFailed = false;
-    } else {
-      chatCount = chatState.unread;
-      chatFailed = chatThreads.length === 0 && chatCount === 0;
+      chatUnreadStale = false;
+      chatThreads = [];
+      unreadSnapshot = null;
+      clearMarkReadCursors();
+    }
+    lastChatUserId = merged.userId;
+
+    const chatState = await loadChatState(merged.userId);
+    if (generation !== loadGeneration) return;
+    if (!chatState.ok && chatThreads.length === 0) {
+      chatFailed = true;
     }
 
     const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
@@ -462,6 +547,7 @@ export async function reloadInboxSync(
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
+        if (generation !== loadGeneration) return;
         // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
         try {
           const off = await getOfflineOutboxStatus();
@@ -479,6 +565,7 @@ export async function reloadInboxSync(
       refreshInboxChatRow(chatCount);
     }
 
+    if (generation !== loadGeneration) return;
     notifyIfChanged(prev);
   })();
 
