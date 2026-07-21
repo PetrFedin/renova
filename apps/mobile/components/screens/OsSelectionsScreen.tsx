@@ -1,10 +1,13 @@
-/** P2.2: Подбор чистовых материалов — room × category × approve */
+/** P2.2: Подбор чистовых материалов — room × category × approve.
+ * Data honesty: ошибка API ≠ пустой список; empty только после success []. */
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, Alert, TextInput } from 'react-native';
+import { ActivityIndicator, ScrollView, View, Text, StyleSheet, Pressable, Alert, TextInput } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { InfoBanner } from '@/components/ui/InfoBanner';
+import { InlineLoadError } from '@/components/ui/InlineLoadError';
+import { StaleDataBanner } from '@/components/ui/StaleDataBanner';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -14,7 +17,7 @@ import { screenLayout } from '@/constants/screenLayout';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertSelectionApproved, alertSelectionProposed } from '@/lib/procurementNav';
-import { reportError } from '@/lib/reportError';
+import { hasLoadedData, isEmptySuccessList, isInitialPending, useAsyncResource } from '@/lib/asyncResource';
 
 const CATEGORIES: { key: string; label: string }[] = [
   { key: 'all', label: 'Все' },
@@ -37,7 +40,10 @@ const STATUS_LABEL: Record<string, string> = {
 export function OsSelectionsScreen({ role }: { role: OsRole }) {
   const pathname = usePathname();
   const { user, activeProject, readOnly } = useRenova();
-  const [items, setItems] = useState<SelectionItem[]>([]);
+  const projectId = activeProject?.id;
+  const userId = user?.id;
+  const enabled = Boolean(userId && projectId);
+
   const [filter, setFilter] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
@@ -48,13 +54,21 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
   const isCustomer = role === 'customer';
   const canWrite = !readOnly && !isCustomer;
 
-  const reload = useCallback(() => {
-    if (!user || !activeProject) return;
-    api.listSelections(user.id, activeProject.id).then(setItems).catch((e) => { reportError('components.screens.OsSelectionsScreen.Items', e); setItems([]); });
-  }, [user?.id, activeProject?.id]);
+  const fetchItems = useCallback(
+    () => api.listSelections(userId!, projectId!),
+    [userId, projectId],
+  );
+
+  const { resource, reload } = useAsyncResource<SelectionItem[]>(fetchItems, {
+    scope: 'components.screens.OsSelectionsScreen.Items',
+    projectId,
+    enabled,
+  });
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   useProjectDataReload(reload);
+
+  const items = resource.data ?? [];
 
   const filtered = useMemo(() => {
     if (filter === 'all') return items;
@@ -98,13 +112,23 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
     }
   };
 
+  const showEmptyAll = isEmptySuccessList(resource) || (resource.status === 'success' && filtered.length === 0);
+
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       <Text style={s.hint}>
         Подбор чистовых материалов: исполнитель предлагает → заказчик согласует. Лимит — allowance.
       </Text>
 
-      {pending > 0 && isCustomer ? (
+      {resource.stale ? (
+        <StaleDataBanner
+          message="Подборы: показаны ранее загруженные данные."
+          onRetry={reload}
+          accessibilityRetryLabel="Повторить обновление подборов"
+        />
+      ) : null}
+
+      {pending > 0 && isCustomer && hasLoadedData(resource) ? (
         <InfoBanner tone="warning" title={`${pending} на согласовании`} message="Примите или отклоните позиции подбора." />
       ) : null}
 
@@ -138,14 +162,30 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
         )
       )}
 
-      {!filtered.length ? (
+      {resource.status === 'error' && !hasLoadedData(resource) ? (
+        <InlineLoadError
+          title="Подборы недоступны"
+          message={resource.error || 'Не удалось загрузить подборы'}
+          onRetry={reload}
+          accessibilityRetryLabel="Повторить загрузку подборов"
+        />
+      ) : null}
+
+      {isInitialPending(resource.status) && !hasLoadedData(resource) ? (
+        <View style={s.loadingBox}>
+          <ActivityIndicator color={RenovaTheme.colors.accent} />
+          <Text style={s.emptyM}>Загрузка подборов…</Text>
+        </View>
+      ) : null}
+
+      {showEmptyAll && hasLoadedData(resource) && !filtered.length ? (
         <View style={s.empty}>
           <Text style={s.emptyT}>Подбор пуст</Text>
           <Text style={s.emptyM}>Исполнитель добавляет варианты плитки, сантехники, света и т.д.</Text>
         </View>
       ) : null}
 
-      {filtered.map((item) => (
+      {hasLoadedData(resource) ? filtered.map((item) => (
         <View key={item.id} style={s.card}>
           <Text style={s.cardTitle}>{item.title}</Text>
           <Text style={s.meta}>{roomName(item.room_id)} · {CATEGORIES.find((c) => c.key === item.category)?.label || item.category}</Text>
@@ -225,7 +265,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
             </View>
           )}
         </View>
-      ))}
+      )) : null}
     </ScrollView>
   );
 }
@@ -243,6 +283,7 @@ const s = StyleSheet.create({
   empty: { ...card, marginBottom: 12 },
   emptyT: { fontWeight: '700', fontSize: 15 },
   emptyM: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 6 },
+  loadingBox: { ...card, marginBottom: 12, alignItems: 'center', gap: 8 },
   card: { ...card, marginBottom: 10, gap: 6 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text },
   meta: { fontSize: 13, color: RenovaTheme.colors.textMuted },
