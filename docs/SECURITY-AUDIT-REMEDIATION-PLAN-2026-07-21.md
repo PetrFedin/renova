@@ -38,7 +38,7 @@
 | P1.8 | no sessions | **DONE** — sessions + revoke-all + jti + tokens_invalid_before (wave-10) | **P1** | — |
 | P1.9 | OTP not prod | **DONE** — secrets + cooldown + Redis when `REDIS_URL` | **P1** | — |
 | P1.10 | CI `e2e:web \|\| true` | **DONE** — `971ecad` (SSH push, fail-closed) | **P1** | — |
-| P1.11 | PR #3 too big | **OPS IN PROGRESS** — pin `971ecad`; comment on PR #3; slices in SPLIT plan; do not merge mega-PR | **P1** | open slice PRs |
+| P1.11 | PR #3 too big | **OPS** — PR #3 converted to **draft**; slice-1 issue #4; pin `4d8683d` | **P1** | merge slices, not #3 |
 | P1.12 | staging HTTPS soft | **DONE** (wave-7) | **P1** | — |
 | P1.13 | CORS `*` | **DONE** (wave-7) | **P1** | — |
 | P1.14 | cache masks errors | **DONE** — meta + `StaleCacheBanner` (wave-10) | **P1** | — |
@@ -285,3 +285,4 @@ Tags после каждого slice: `v0.3.<n>-security` и т.д.
 
 - 2026-07-21: Wave-10 — jti + tokens_invalid_before; StaleCacheBanner; outbox worker; schedule_version; hard-purge endpoint; plan matrix sync; CI push helper (`scripts/push-ci-workflow.sh`); split-release next script.
 - 2026-07-21: P1.10 CI fail-closed pushed (`971ecad`, SSH). Staging credentials probe script + split pin.
+- 2026-07-21: Checklist re-verified — P1.10+optional code already on origin; PR #3→draft; issue #4 security-acl slice.
