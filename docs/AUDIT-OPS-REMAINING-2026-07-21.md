@@ -15,3 +15,8 @@ Synthetic probe: `ENV_FILE=/dev/null ENVIRONMENT=staging … bash scripts/stagin
 ## E2E auth (on main)
 
 `authHeaders(DemoUser)` + CI `npm run assert:e2e-bearer`.
+
+## Product (W148)
+
+Schedule plan item status CTAs on calendar hub (`SchedulePlanItems`) — API W109 was unused in UI.
+App/API version aligned to **0.3.6** (tags v0.3.1…v0.3.6).

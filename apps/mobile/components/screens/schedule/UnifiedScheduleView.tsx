@@ -23,9 +23,11 @@ import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { formatScheduleRange } from '@/lib/formatScheduleDate';
 import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats';
 import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
+import { SchedulePlanItems } from '@/components/renova/schedule/SchedulePlanItems';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import {
   alertScheduleConfirmed,
   alertScheduleRejected,
@@ -258,8 +260,13 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                   setSchedule(created);
                   setPlanHint(`План создан · ${created.status}`);
                   reload();
-                } catch {
-                  setPlanHint('Не удалось создать план из этапов');
+                } catch (e) {
+                  if (isOfflineQueued(e)) {
+                    notifyOfflineQueued('Создание графика');
+                    setPlanHint('План в офлайн-очереди');
+                  } else {
+                    setPlanHint('Не удалось создать план из этапов');
+                  }
                 } finally {
                   setPlanBusy(false);
                 }
@@ -286,7 +293,8 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                   // W132: график → inbox заказчика
                   alertScheduleSubmitted(role);
                 } catch (e: unknown) {
-                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Отправка графика');
+                  else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
                 } finally {
                   setPlanBusy(false);
                 }
@@ -310,7 +318,8 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                     // W132: согласован → этапы / календарь
                     alertScheduleConfirmed(role);
                   } catch (e: unknown) {
-                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось согласовать');
+                    if (isOfflineQueued(e)) notifyOfflineQueued('Согласование графика');
+                    else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось согласовать');
                   } finally {
                     setPlanBusy(false);
                   }
@@ -334,7 +343,8 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                         await syncScheduleSideEffects();
                         alertScheduleRejected(role);
                       } catch (e: unknown) {
-                        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
+                        if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
+                        else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
                       } finally {
                         setPlanBusy(false);
                       }
@@ -353,7 +363,8 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                           await syncScheduleSideEffects();
                           alertScheduleRejected(role);
                         } catch (e: unknown) {
-                          Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
+                          if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
+                          else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
                         } finally {
                           setPlanBusy(false);
                         }
@@ -368,6 +379,20 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
           ) : null}
           {role === 'customer' && schedule?.status === 'confirmed' ? (
             <Text style={s.planSub}>График согласован — сроки зафиксированы</Text>
+          ) : null}
+          {schedule && (schedule.items?.length ?? 0) > 0 ? (
+            <SchedulePlanItems
+              schedule={schedule}
+              role={role}
+              userId={user.id}
+              projectId={activeProject.id}
+              canManage={canManageSchedulePlan}
+              readOnly={readOnly}
+              onChanged={(next) => {
+                setSchedule(next);
+                void syncScheduleSideEffects();
+              }}
+            />
           ) : null}
         </View>
         <ScheduleExecutionStrip stats={executionStats} />
