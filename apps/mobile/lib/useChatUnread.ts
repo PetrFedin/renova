@@ -21,7 +21,9 @@ import {
   patchChatSyncContext,
   logoutChatSync,
 } from '@/lib/chatSync';
-import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
+import { useActionRequiredCount } from '@/lib/useTodayTaskCount';
+import { reconcileTaskCounters } from '@/lib/taskCountersStore';
+import { getDeviceTimezone } from '@/lib/i18n';
 import type { MarkThreadReadSource } from '@/lib/domain/markThreadReadPolicy';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -153,8 +155,15 @@ export function useInboxTasks(role: OsRole) {
   const { user, activeProject } = useRenova();
   const items = useInboxItems();
   const chatUnread = useChatUnreadCount();
-  const taskBadge = inboxTaskBadge(items);
-  const badge = inboxAttentionBadge(items, chatUnread);
+  /** SoT: actionRequired с /tasks/counters — не локальный подсчёт строк UI */
+  const { count: actionRequired, reliable: actionReliable } = useActionRequiredCount(
+    user?.id,
+    activeProject?.id,
+    role,
+  );
+  const taskBadge = actionReliable ? actionRequired : 0;
+  /** attention = SoT actionRequired + chat; без локального подсчёта строк UI */
+  const attentionBadge = Math.max(0, taskBadge) + Math.max(0, chatUnread);
   const projectId = activeProject?.id;
   const projectRef = useRef(activeProject);
   projectRef.current = activeProject;
@@ -200,7 +209,7 @@ export function useInboxTasks(role: OsRole) {
     return ensureInboxWebSocket(user.id);
   }, [user?.id]);
 
-  // W79: после flush — один reconciliation через orchestrator
+  // W79: после flush — один reconciliation через orchestrator + task counters
   useEffect(() => subscribeOfflineFlush(() => {
     if (!user?.id) return;
     patchChatSyncContext({
@@ -210,6 +219,14 @@ export function useInboxTasks(role: OsRole) {
     });
     void requestChatSync({ scope: 'all', reason: 'offline_flush', priority: 'high' })
       .catch(reportCatch('chatUnread.reload'));
+    if (projectId) {
+      void reconcileTaskCounters({
+        userId: user.id,
+        projectId,
+        role: role ?? user.role ?? undefined,
+        timezone: getDeviceTimezone(),
+      });
+    }
   }), [user?.id, user?.role, projectId, role]);
 
   // W88: projectDataBus → один sync (coalesce), не независимая цепочка
@@ -217,7 +234,15 @@ export function useInboxTasks(role: OsRole) {
     if (!user?.id) return;
     void requestChatSync({ scope: 'all', reason: 'project_change', priority: 'high' })
       .catch(reportCatch('chatUnread.reload'));
-  }), [user?.id]);
+    if (projectId) {
+      void reconcileTaskCounters({
+        userId: user.id,
+        projectId,
+        role: role ?? user.role ?? undefined,
+        timezone: getDeviceTimezone(),
+      });
+    }
+  }), [user?.id, user?.role, projectId, role]);
 
   // W81: смена объекта → context + sync
   useEffect(() => {
@@ -231,7 +256,7 @@ export function useInboxTasks(role: OsRole) {
       .catch(reportCatch('chatUnread.reload'));
   }, [user?.id, user?.role, projectId, role]);
 
-  return { items, badge, taskBadge, chatUnread, reload };
+  return { items, badge: attentionBadge, taskBadge, chatUnread, reload };
 }
 
 function useChatInboxThreadsSnapshot() {

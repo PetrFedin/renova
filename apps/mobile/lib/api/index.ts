@@ -23,6 +23,7 @@ import { scratchpadApi } from './scratchpad';
 import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
 import { selectionsApi } from './selections';
+import { tasksApi } from './tasks';
 
 export const api = {
   ...authApi,
@@ -48,6 +49,9 @@ export const api = {
   ...scratchpadApi,
   ...workScheduleApi,
   ...miscApi,
+  ...selectionsApi,
+  ...tasksApi,
+};
   ...selectionsApi,
 };
 

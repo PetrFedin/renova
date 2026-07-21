@@ -36,7 +36,11 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
   /** Dock: только global scope — не зависит от фильтра списка чатов */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
-  const { count: todayTasks, reliable: todayTasksReliable } = useTodayTaskCount(user?.id, activeProject?.id, role);
+  const { count: todayTasks, reliable: todayTasksReliable, overdue: overdueTasks } = useTodayTaskCount(
+    user?.id,
+    activeProject?.id,
+    role,
+  );
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
   const section = resolveSectionId(pathname);
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
@@ -124,9 +128,13 @@ export function OsDockBar({ role }: { role: OsRole }) {
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
               {id === 'chat' && <ChatBadge count={chatUnread} />}
+              {/* Calendar badge = dueToday only; не переносим на home при отсутствии calendar в dock */}
               {id === 'calendar' && todayTasksReliable && todayTasks > 0 && <ChatBadge count={todayTasks} />}
-              {id === 'home' && !items.includes('calendar') && todayTasksReliable && todayTasks > 0 && (
-                <ChatBadge count={todayTasks} />
+              {id === 'calendar' && todayTasksReliable && overdueTasks > 0 && (
+                <View
+                  style={s.overdueDot}
+                  accessibilityLabel={`Просрочено: ${overdueTasks}`}
+                />
               )}
             </View>
             <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{label}</Text>
@@ -162,6 +170,18 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
+  },
+  /** Отдельный визуальный сигнал overdue (не смешивать с dueToday badge) */
+  overdueDot: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: RenovaTheme.colors.warning,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.surface,
   },
   label: {
     fontSize: 10,

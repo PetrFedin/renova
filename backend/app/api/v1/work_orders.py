@@ -87,6 +87,12 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
         raise HTTPException(404)
     try:
         w = await wo_svc.transition(db, w, body.status, user.id, project=project)
+        try:
+            from app.services.task_counters_service import publish_task_updated
+            uids = [x for x in (getattr(project, "customer_id", None), getattr(project, "contractor_id", None), user.id) if x]
+            await publish_task_updated(user_ids=uids, project_id=project.id, task_id=w.id)
+        except Exception:
+            pass
     except ValueError as e:
         code = str(e)
         if code in ("only_customer_can_accept_work_order", "only_customer_can_confirm_work_payment"):

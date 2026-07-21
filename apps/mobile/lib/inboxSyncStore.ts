@@ -886,15 +886,29 @@ function startInboxWebSocket(userId: string, _onReload: () => void) {
         };
         ws.onmessage = (e) => {
           if (e.data === 'ping' || e.data === 'pong') return;
+          let payload: InboxWsPayload | null = null;
           try {
-            JSON.parse(e.data) as InboxWsPayload;
+            payload = JSON.parse(e.data) as InboxWsPayload;
           } catch {
             /* noop */
           }
-          // Нормализованное событие → orchestrator (debounce + coalesce), не прямой reload
-          void import('@/lib/chatSync').then((m) => {
-            m.onChatInboxWsEvent();
-          }).catch(() => { /* test env */ });
+          const kind = payload?.type || payload?.event;
+          if (kind === 'task.updated') {
+            // Единый SoT счётчиков задач — delta/reconcile, не chat sync
+            void import('@/lib/taskCountersStore').then((m) => {
+              m.handleTaskUpdatedEvent({
+                type: 'task.updated',
+                revision: (payload as { revision?: string | number })?.revision,
+                project_id: payload?.project_id,
+                counter_delta: (payload as { counter_delta?: Record<string, number> })?.counter_delta,
+              });
+            }).catch(() => { /* test env */ });
+          } else {
+            // Нормализованное chat/inbox событие → orchestrator (debounce + coalesce)
+            void import('@/lib/chatSync').then((m) => {
+              m.onChatInboxWsEvent();
+            }).catch(() => { /* test env */ });
+          }
           emitInboxWs();
         };
         ws.onerror = () => {

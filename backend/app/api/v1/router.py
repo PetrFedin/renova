@@ -8,7 +8,7 @@ from app.api.v1 import (
     project_checklists, checklist_templates, stage_reactions, articles, analytics, admin,
     audit, subscription, teams, export, push, articles_admin, calendar, change_orders,
     chats, estimate, fns, media, notifications, payments, projects, receipts, room_requests,
-    rooms, stages_ext, project_work_schedule,
+    rooms, stages_ext, project_work_schedule, tasks,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -60,6 +60,7 @@ api_router.include_router(projects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
 api_router.include_router(calendar.router)
+api_router.include_router(tasks.router)
 api_router.include_router(chat_inbox.router)
 api_router.include_router(chats.router)
 

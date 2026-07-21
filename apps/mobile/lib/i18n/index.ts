@@ -26,3 +26,4 @@ export {
   formatDialogs,
   nounRu,
 } from './ruCountLabels';
+export { getDeviceTimezone } from './deviceTimezone';
