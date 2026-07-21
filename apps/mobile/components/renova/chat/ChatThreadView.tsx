@@ -285,7 +285,7 @@ export function ChatThreadView({
     <View style={s.root}>
       <BackHeader title={chat.title} returnTo={returnTo} />
       <View style={s.topActions}>
-        <Text style={[s.wsDot, wsConnected ? s.wsOn : s.wsOff]}>{wsConnected ? '● онлайн' : '○ обновление'}</Text>
+        <Text style={[s.wsDot, wsConnected ? s.wsOn : s.wsOff]}>{wsConnected ? '● онлайн' : '○ опрос 15 с'}</Text>
         <Pressable onPress={() => setInviteOpen(true)}><Text style={s.topLink}>+ Участник</Text></Pressable>
         <Pressable onPress={() => setSettingsOpen(true)}><Text style={s.topLink}>Настройки</Text></Pressable>
         <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch(() => Alert.alert('Ошибка', 'Не удалось экспортировать документ'))}>
@@ -359,7 +359,7 @@ export function ChatThreadView({
       )}
 
       <View style={s.composer}>
-        {!wsConnected && <Text style={s.wsHint}>Обновление каждые 15 с · WS переподключается…</Text>}
+        {!wsConnected && <Text style={s.wsHint}>Нет live-соединения — обновление каждые 15 с (не «онлайн»)</Text>}
         {typing && <Text style={s.typing}>печатает…</Text>}
         <TextInput
           style={s.input}
@@ -414,18 +414,17 @@ export function ChatThreadView({
                     }
                   }
                 };
-                Alert.alert('Счёт в бюджете', 'Выберите сумму. Заказчик увидит счёт в «Деньги → Оплаты».', [
+                const openPaymentForm = () => {
+                  const osRole = role === 'contractor' ? 'contractor' : 'customer';
+                  pushOsNav(budgetTabRoute(osRole, 'payments', { openPayment: '1' }), returnTo || pathname, osRole);
+                };
+                Alert.alert('Счёт в бюджете', 'Быстрая сумма или полная форма (сумма / этап / тип). Заказчик увидит счёт в «Деньги → Оплаты».', [
                   { text: 'Отмена', style: 'cancel' },
                   { text: '5 000 ₽', onPress: () => { createInvoice(5000).catch(() => {}); } },
                   { text: '10 000 ₽', onPress: () => { createInvoice(10000).catch(() => {}); } },
                   { text: '25 000 ₽', onPress: () => { createInvoice(25000).catch(() => {}); } },
-                  {
-                    text: 'Открыть оплаты',
-                    onPress: () => {
-                      const osRole = role === 'contractor' ? 'contractor' : 'customer';
-                      pushOsNav(budgetTabRoute(osRole, 'payments', { openPayment: '1' }), returnTo || pathname, osRole);
-                    },
-                  },
+                  { text: 'Другая сумма…', onPress: openPaymentForm },
+                  { text: 'Открыть оплаты', onPress: openPaymentForm },
                 ]);
               }}><Text style={s.toolBtn}>💳</Text></Pressable>
             </>

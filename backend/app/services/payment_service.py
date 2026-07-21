@@ -62,14 +62,39 @@ async def confirm_payment(
         if not stage or stage.project_id != payment.project_id or not stage.customer_accepted_at:
             return None
 
+    receipt_id = None
     if not allow_without_settlement:
         # YuKassa id at checkout ≠ paid; only webhook uses allow_without_settlement
         receipt_id = await receipt_id_for_payment(db, payment.id)
         if not (receipt_id or transfer_ack):
             return None
 
+    old_status = payment.status.value if hasattr(payment.status, "value") else str(payment.status)
     payment.status = PaymentStatus.confirmed
     payment.confirmed_at = datetime.utcnow()
+    if allow_without_settlement:
+        payment.payment_method = payment.payment_method or "yookassa"
+        evidence_type, evidence_ref, source = "yookassa", payment.yookassa_payment_id, "webhook"
+    elif receipt_id:
+        payment.payment_method = payment.payment_method or "bank_transfer"
+        evidence_type, evidence_ref, source = "receipt", receipt_id, "manual"
+    else:
+        payment.payment_method = payment.payment_method or "bank_transfer"
+        evidence_type, evidence_ref, source = "transfer_ack", None, "manual"
+    try:
+        from app.models.entities import PaymentEvent, _uuid as _pay_uuid
+        db.add(PaymentEvent(
+            id=_pay_uuid(),
+            payment_id=payment.id,
+            source=source,
+            old_status=old_status,
+            new_status=PaymentStatus.confirmed.value,
+            evidence_type=evidence_type,
+            evidence_ref=evidence_ref,
+            note="confirm_payment",
+        ))
+    except Exception:
+        pass
     project = await db.get(Project, payment.project_id)
     if project:
         project.budget_spent = round(project.budget_spent + payment.amount, 2)

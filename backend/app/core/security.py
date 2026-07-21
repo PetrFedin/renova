@@ -1,6 +1,8 @@
-"""JWT access tokens (HS256) — production auth SoT."""
+"""JWT access + refresh tokens (HS256) — production auth SoT."""
 from __future__ import annotations
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -11,10 +13,20 @@ from app.core.config import settings
 ALGORITHM = "HS256"
 
 
+def effective_access_expire_minutes() -> int:
+    """Staging/production: short-lived access (15–20 min). Local: long session OK."""
+    env = getattr(settings, "normalized_environment", None) or settings.environment
+    env = str(env).lower()
+    configured = max(5, int(settings.access_token_expire_minutes))
+    if env in ("staging", "production"):
+        return min(configured, 20)
+    return configured
+
+
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:
     """subject = user.id (JWT `sub`)."""
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(minutes=max(5, int(settings.access_token_expire_minutes)))
+    expire = now + timedelta(minutes=effective_access_expire_minutes())
     payload: dict[str, Any] = {
         "sub": subject,
         "iat": int(now.timestamp()),
@@ -24,6 +36,15 @@ def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> st
     if extra:
         payload.update(extra)
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def mint_refresh_token() -> str:
+    """Opaque refresh token (store only hash server-side)."""
+    return secrets.token_urlsafe(48)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def decode_access_token(token: str) -> dict[str, Any]:

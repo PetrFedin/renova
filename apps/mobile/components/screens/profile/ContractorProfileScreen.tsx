@@ -237,13 +237,24 @@ export function ContractorProfileScreen() {
             onPress={async () => {
               if (!user) return;
               try {
-                const r = await api.linkMoyNalog(user.id);
-                setMsg(r.message);
-              } catch {
-                Alert.alert('Ошибка');
+                const r = await api.linkMoyNalog(user.id) as { message?: string; mode?: string; linked?: boolean };
+                // Honesty: admin-enabled ≠ OAuth-авторизованный аккаунт ФНС
+                if (r.mode === 'enabled' || r.mode === 'demo') {
+                  setMsg(r.message || 'Интеграция включена администратором — аккаунт ФНС ещё не авторизован через OAuth');
+                } else {
+                  setMsg(r.message || 'Статус обновлён');
+                }
+                await refreshMe();
+              } catch (e: any) {
+                Alert.alert('Мой налог', e?.message || 'Интеграция недоступна (нужен OAuth или MOY_NALOG_ENABLED)');
               }
             }}
           />
+          {user?.moy_nalog_linked ? (
+            <Text style={ps.msg}>
+              «Мой налог»: флаг linked в профиле — без OAuth это не полноценное подключение ФНС.
+            </Text>
+          ) : null}
           <PrimaryButton
             title="Экспорт данных"
             variant="outline"

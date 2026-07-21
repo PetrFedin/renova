@@ -1,6 +1,7 @@
-/** Компактная подсказка «заполните профиль» — dismiss на проект */
+/** Компактная подсказка «заполните профиль» — dismiss на проект.
+ * Важно: на web Pressable → <button>; вложенные button запрещены DOM. */
 import { useEffect, useState } from 'react';
-import { Text, StyleSheet, Pressable } from 'react-native';
+import { Text, StyleSheet, Pressable, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';
@@ -26,17 +27,19 @@ export function ProjectProfileHint({ project, role }: { project: ProjectDetail; 
   const gapLabel = formatProfileGapLabel(gaps);
 
   return (
-    <Pressable
-      style={s.row}
-      onPress={() => pushTab('object', 'profile')}
-      accessibilityRole="button"
-    >
-      <Text style={s.text} numberOfLines={1}>Добавьте {gapLabel}</Text>
-      <Text style={homeTypography.link}>Профиль →</Text>
+    <View style={s.row}>
+      <Pressable
+        style={s.main}
+        onPress={() => pushTab('object', 'profile')}
+        accessibilityRole="button"
+        accessibilityLabel={`Добавьте ${gapLabel}. Открыть профиль`}
+      >
+        <Text style={s.text} numberOfLines={1}>Добавьте {gapLabel}</Text>
+        <Text style={homeTypography.link}>Профиль →</Text>
+      </Pressable>
       <Pressable
         hitSlop={8}
-        onPress={(e) => {
-          e.stopPropagation?.();
+        onPress={() => {
           AsyncStorage.setItem(dismissKey(project.id), '1').catch(() => {});
           setDismissed(true);
         }}
@@ -45,7 +48,7 @@ export function ProjectProfileHint({ project, role }: { project: ProjectDetail; 
       >
         <Text style={s.dismiss}>×</Text>
       </Pressable>
-    </Pressable>
+    </View>
   );
 }
 
@@ -61,6 +64,13 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.borderLight,
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
+  },
+  main: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: homeLayout.innerGap,
+    minWidth: 0,
   },
   text: { flex: 1, fontSize: 12, color: RenovaTheme.colors.textMuted },
   dismiss: { fontSize: 18, color: RenovaTheme.colors.textSubtle, lineHeight: 18, paddingHorizontal: 4 },

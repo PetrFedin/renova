@@ -270,7 +270,41 @@ def ensure_os_schema() -> None:
               SELECT MIN(id) FROM expenses WHERE receipt_id IS NOT NULL GROUP BY receipt_id
             ) AND receipt_id IS NOT NULL
         """)
-        conn.commit()
+    
+    if "user_sessions" not in tables:
+        c.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS user_sessions (
+              id TEXT PRIMARY KEY, user_id TEXT NOT NULL, refresh_token_hash TEXT NOT NULL UNIQUE,
+              device_id TEXT, created_at TEXT, expires_at TEXT, revoked_at TEXT, last_used_at TEXT,
+              ip TEXT, user_agent TEXT
+            );
+            CREATE TABLE IF NOT EXISTS payment_webhook_events (
+              event_id TEXT PRIMARY KEY, provider TEXT DEFAULT 'yookassa', created_at TEXT, payload_kind TEXT
+            );
+            CREATE TABLE IF NOT EXISTS payment_events (
+              id TEXT PRIMARY KEY, payment_id TEXT NOT NULL, actor_user_id TEXT, source TEXT NOT NULL,
+              old_status TEXT, new_status TEXT NOT NULL, evidence_type TEXT, evidence_ref TEXT,
+              idempotency_key TEXT, created_at TEXT, note TEXT
+            );
+            """
+        )
+    if "receipts" in tables:
+        rc = cols("receipts")
+        if "verification_status" not in rc:
+            try:
+                c.execute("ALTER TABLE receipts ADD COLUMN verification_status TEXT DEFAULT 'saved_unverified'")
+            except Exception:
+                pass
+    if "payments" in tables:
+        pc = cols("payments")
+        if "payment_method" not in pc:
+            try:
+                c.execute("ALTER TABLE payments ADD COLUMN payment_method TEXT")
+            except Exception:
+                pass
+
+    conn.commit()
     except Exception:
         pass
 

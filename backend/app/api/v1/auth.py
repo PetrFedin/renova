@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import User, UserRole
-from app.schemas.auth import DemoLoginRequest, RegisterRequest, UserOut, SmsSendRequest, SmsVerifyRequest
+from app.schemas.auth import DemoLoginRequest, RegisterRequest, UserOut, SmsSendRequest, SmsVerifyRequest, RefreshRequest
 from app.services.seed_demo import DEMO_PHONES
 from app.services.fns.status_npd import check_taxpayer_npd_status
 from app.core.security import create_access_token
@@ -25,12 +25,22 @@ def _open_registration_allowed() -> bool:
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-def user_out_with_token(user: User) -> UserOut:
-    """UserOut + JWT access_token (login/register/demo/sms)."""
+async def user_out_with_token(
+    user: User,
+    db=None,
+    *,
+    device_id: str | None = None,
+    issue_refresh: bool = True,
+) -> UserOut:
+    """UserOut + JWT access; refresh только на login (не на каждый /me)."""
     out = UserOut.model_validate(user, from_attributes=True)
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
     out.access_token = create_access_token(user.id, {"role": role})
     out.token_type = "bearer"
+    if issue_refresh and db is not None:
+        from app.services import session_service as sess_svc
+        _, raw = await sess_svc.create_session(db, user.id, device_id=device_id)
+        out.refresh_token = raw
     return out
 
 
@@ -98,7 +108,7 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
         chat_svc.ensure_profile_code(user)
         await db.commit()
         await db.refresh(user)
-    return user_out_with_token(user)
+    return await user_out_with_token(user, db)
 
 @router.post("/register", response_model=UserOut)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
@@ -128,7 +138,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return user_out_with_token(user)
+    return await user_out_with_token(user, db)
 
 
 @router.get("/me", response_model=UserOut)
@@ -138,8 +148,8 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
         chat_svc.ensure_profile_code(user)
         await db.commit()
         await db.refresh(user)
-    # Fresh token: mobile can persist after cold start with only userId (dev) or refresh session
-    return user_out_with_token(user)
+    # Fresh access only — не плодим user_sessions на каждый poll /me
+    return await user_out_with_token(user, db, issue_refresh=False)
 
 
 @router.post("/demo", response_model=UserOut)
@@ -153,7 +163,7 @@ async def demo_login(body: DemoLoginRequest, db: AsyncSession = Depends(get_db))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "Запустите backend — демо-данные создаются при старте")
-    return user_out_with_token(user)
+    return await user_out_with_token(user, db)
 
 
 @router.post("/demo/guest", response_model=UserOut)
@@ -166,4 +176,30 @@ async def demo_guest(db: AsyncSession = Depends(get_db)) -> UserOut:
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "Запустите backend — демо-данные создаются при старте")
-    return user_out_with_token(user)
+    return await user_out_with_token(user, db)
+
+
+@router.post("/refresh", response_model=UserOut)
+async def refresh_tokens(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
+    """Rotate refresh token and mint new access JWT."""
+    from app.services import session_service as sess_svc
+    rotated = await sess_svc.rotate_session(db, body.refresh_token)
+    if not rotated:
+        raise HTTPException(401, "invalid_or_expired_refresh")
+    sess, raw = rotated
+    user = await db.get(User, sess.user_id)
+    if not user:
+        raise HTTPException(401, "user_not_found")
+    out = UserOut.model_validate(user, from_attributes=True)
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    out.access_token = create_access_token(user.id, {"role": role})
+    out.refresh_token = raw
+    out.token_type = "bearer"
+    return out
+
+
+@router.post("/logout")
+async def logout_session(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    from app.services import session_service as sess_svc
+    await sess_svc.revoke_session(db, body.refresh_token)
+    return {"ok": True}

@@ -124,7 +124,27 @@ def check_webhook_ip(client_ip: str | None) -> bool:
 
 
 def remember_webhook(event_id: str) -> bool:
+    """In-memory fast path (single process). Prefer remember_webhook_durable in handlers."""
     if event_id in _seen_keys:
+        return False
+    _seen_keys.add(event_id)
+    return True
+
+
+async def remember_webhook_durable(db, event_id: str, *, kind: str | None = None) -> bool:
+    """True = first time (process). False = duplicate. Survives restart via payment_webhook_events."""
+    from sqlalchemy.exc import IntegrityError
+    from app.models.entities import PaymentWebhookEvent
+
+    if event_id in _seen_keys:
+        return False
+    row = PaymentWebhookEvent(event_id=event_id, provider="yookassa", payload_kind=kind)
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        _seen_keys.add(event_id)
         return False
     _seen_keys.add(event_id)
     return True

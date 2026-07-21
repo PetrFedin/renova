@@ -14,7 +14,7 @@ function signalPreviewReady() {
 }
 
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
-import { setAccessToken } from '@/lib/api/client';
+import { setAccessToken, setRefreshToken } from '@/lib/api/client';
 import {
   bootstrapPreviewDemo,
   inferDemoRole,
@@ -60,19 +60,25 @@ function deferPushRegistration(userId: string) {
 import { syncCustomerBudgetOnLoad } from '@/lib/customerBudgetMigrate';
 import { buildProjectCreatePayload } from '@/lib/wizard/buildProjectCreatePayload';
 
-const KEYS = { userId: 'renova_user_id', projectId: 'renova_project_id', accessToken: 'renova_access_token' };
+const KEYS = { userId: 'renova_user_id', projectId: 'renova_project_id', accessToken: 'renova_access_token', refreshToken: 'renova_refresh_token' };
 
-async function persistAccessToken(user: { access_token?: string | null }) {
+async function persistAccessToken(user: { access_token?: string | null; refresh_token?: string | null }) {
   const tok = user.access_token?.trim();
   if (tok) {
     setAccessToken(tok);
     await AsyncStorage.setItem(KEYS.accessToken, tok);
   }
+  const refresh = user.refresh_token?.trim();
+  if (refresh) {
+    setRefreshToken(refresh);
+    await AsyncStorage.setItem(KEYS.refreshToken, refresh);
+  }
 }
 
 async function clearAccessToken() {
   setAccessToken(null);
-  await AsyncStorage.removeItem(KEYS.accessToken);
+  setRefreshToken(null);
+  await AsyncStorage.multiRemove([KEYS.accessToken, KEYS.refreshToken]);
 }
 
 
@@ -215,15 +221,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(KEYS.projectId, id);
         await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
         await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
-        // W81: inbox/задачи и home hints для нового объекта
-        await reloadInboxSync({
+        notifyProjectDataChanged();
+        // Inbox/чат — не блокируем вход в объект (раньше ждал buildInboxItems → «Выберите объект» висел)
+        void reloadInboxSync({
           userId: user.id,
           userRole: user.role,
           projectId: id,
           project: p,
           osRole: user.role === 'contractor' ? 'contractor' : 'customer',
         }).catch(() => {});
-        notifyProjectDataChanged();
       } catch (e) {
         // Duck-typed rate_limit (HMR) — не роняем UI, оставляем текущий activeProject
         if (isRateLimitError(e)) return;
@@ -339,7 +345,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         const uid = await AsyncStorage.getItem(KEYS.userId);
         const storedRole = await AsyncStorage.getItem('renova_user_role');
         const storedTok = await AsyncStorage.getItem(KEYS.accessToken);
+        const storedRefresh = await AsyncStorage.getItem(KEYS.refreshToken);
         if (storedTok) setAccessToken(storedTok);
+        if (storedRefresh) setRefreshToken(storedRefresh);
 
         // Preview iframe: автодемо без ручного онбординга
         if (!uid && isPreviewFrame() && reachable) {
@@ -357,7 +365,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           u = await api.me(uid);
           await persistAccessToken(u);
         } catch {
-          await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken]);
+          await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, KEYS.refreshToken]);
           await clearAccessToken();
           if (reachable) {
             const recovered = await recoverDemoSession(inferDemoRole(null, storedRole));
@@ -583,7 +591,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
   const logout = useCallback(async () => {
-    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, SESSION_KEYS.pendingProjectPick, SESSION_KEYS.projectExplicitlyPicked]);
+    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, KEYS.refreshToken, SESSION_KEYS.pendingProjectPick, SESSION_KEYS.projectExplicitlyPicked]);
     await clearAccessToken();
     setUser(null);
     setProjects([]);

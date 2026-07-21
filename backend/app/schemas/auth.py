@@ -19,6 +19,7 @@ class UserOut(BaseModel):
     profile_code: str | None = None
     # Выдаётся на login/register/demo/sms; /me может не включать
     access_token: str | None = None
+    refresh_token: str | None = None
     token_type: str | None = None
 
 
@@ -36,3 +37,8 @@ class SmsVerifyRequest(BaseModel):
     role: str = Field(pattern="^(customer|contractor)$")
     full_name: str | None = None
     inn: str | None = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=20)
+    device_id: str | None = None

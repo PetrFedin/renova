@@ -4,7 +4,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services.subscription_service import PRO_PRICE, activate_pro, start_trial, subscription_payload
-from app.services.yookassa_service import create_payment, check_webhook_ip, remember_webhook, process_webhook, demo_allowed
+from app.services.yookassa_service import create_payment, check_webhook_ip, remember_webhook_durable, process_webhook, demo_allowed
 from app.core.config import settings
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
@@ -73,7 +73,7 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
         raise HTTPException(401, "invalid webhook")
     body = await request.json()
     eid = body.get('object', {}).get('id') or body.get('event', '')
-    if eid and not remember_webhook(str(eid)):
+    if eid and not await remember_webhook_durable(db, str(eid), kind=str((body or {}).get("event") or "")):
         return {"ok": True, "duplicate": True}
     event = body.get("event")
     obj = body.get("object") or {}

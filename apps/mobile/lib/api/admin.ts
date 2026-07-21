@@ -1,7 +1,7 @@
 /** API: admin */
 import { req, cachedGet, API_BASE } from './client';
 export const adminApi = {
-  linkMoyNalog: (userId: string) => req<{ linked: boolean; message: string }>('/api/v1/fns/moy-nalog/link', { method: 'POST' }, userId),
+  linkMoyNalog: (userId: string) => req<{ linked: boolean; message: string; mode?: string }>('/api/v1/fns/moy-nalog/link', { method: 'POST' }, userId),
   checkNpd: (inn: string) => req('/api/v1/fns/check-npd', { method: 'POST', body: JSON.stringify({ inn }) }),
   verifyNpdMe: (userId: string, inn: string) => req<{ is_npd: boolean; message: string; badge: string }>('/api/v1/fns/verify-me', { method: 'POST', body: JSON.stringify({ inn }) }, userId),
   setMemberRole: (userId: string, memberId: string, role: string) => req('/api/v1/teams/member-role', { method: 'PATCH', body: JSON.stringify({ user_id: memberId, role }) }, userId),

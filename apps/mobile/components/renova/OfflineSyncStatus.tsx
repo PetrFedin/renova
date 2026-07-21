@@ -78,13 +78,16 @@ export function OfflineSyncStatus({
   if (compact && pending === 0 && blocked === 0 && conflicts === 0) return null;
 
   const scope = label ? `${label}: ` : '';
+  const unsynced = pending + blocked + conflicts;
   const title = pending > 0
-    ? `${scope}${pending} изменений ждут отправки`
+    ? `${scope}Не синхронизировано: ${pending} действий`
     : conflicts > 0
-      ? `${conflicts} конфликтов требуют разбора`
+      ? `${scope}Не синхронизировано: ${conflicts} конфликтов`
       : blocked > 0
-        ? `${blocked} изменений заблокированы`
-        : 'Офлайн-очередь пуста';
+        ? `${scope}Не синхронизировано: ${blocked} заблокированы`
+        : unsynced > 0
+          ? `${scope}Не синхронизировано: ${unsynced}`
+          : 'Офлайн-очередь пуста';
 
   const hint = lastMessage || (
     conflicts > 0

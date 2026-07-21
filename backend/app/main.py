@@ -15,6 +15,7 @@ from app.core.environment import (
 from app.core.logging_config import setup_logging
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.audit import AuditMiddleware
+from app.middleware.correlation import CorrelationIdMiddleware
 from app.db.session import init_db, SessionLocal
 import app.models.entities  # noqa: F401
 import app.models.work_schedule  # noqa: F401
@@ -127,6 +128,7 @@ if settings.sentry_dsn:
 
 app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
 
+app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(

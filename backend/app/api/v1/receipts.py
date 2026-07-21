@@ -83,6 +83,12 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
         fn=parsed.get("fn"),
         fd=parsed.get("fd"),
         fns_verified=check["verified"],
+        verification_status=(
+            "verified_live" if check.get("verified") and check.get("mode") == "live"
+            else "demo_verified" if check.get("verified") and check.get("mode") == "demo"
+            else "verification_failed" if check.get("mode") == "live" and not check.get("verified")
+            else "saved_unverified"
+        ),
         expense_category=cat,
         room_id=body.room_id,
         stage_id=stage_id,
@@ -103,6 +109,7 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
         "id": rec.id,
         "amount": rec.amount,
         "verified": rec.fns_verified,
+        "verification_status": getattr(rec, "verification_status", None) or ("verified_live" if rec.fns_verified else "saved_unverified"),
         "message": check["message"],
         "expense_category": cat,
         "room_id": rec.room_id,
@@ -208,6 +215,7 @@ async def list_receipts(project_id: str, user: User = Depends(get_current_user),
             "id": r.id,
             "amount": r.amount,
             "verified": r.fns_verified,
+            "verification_status": getattr(r, "verification_status", None) or ("verified_live" if r.fns_verified else "saved_unverified"),
             "created_at": r.created_at.isoformat(),
             "receipt_at": meta.get("receipt_at"),
             "fn": r.fn,
@@ -237,14 +245,24 @@ async def reverify_receipt(
         raise HTTPException(400, "no_qr_raw")
     parsed = parse_receipt_qr(rec.qr_raw)
     check = await verify_receipt(parsed)
-    rec.fns_verified = bool(check.get("verified"))
     from app.services.fns.receipt_verify import fns_receipt_health
     health = fns_receipt_health()
+    rec.fns_verified = bool(check.get("verified"))
+    mode = check.get("mode") or ("live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "offline"))
+    if rec.fns_verified and mode == "live":
+        rec.verification_status = "verified_live"
+    elif rec.fns_verified and mode == "demo":
+        rec.verification_status = "demo_verified"
+    elif mode == "live" and not rec.fns_verified:
+        rec.verification_status = "verification_failed"
+    else:
+        rec.verification_status = "saved_unverified"
     verify_mode = "live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "off")
     await db.commit()
     return {
         "id": rec.id,
         "verified": rec.fns_verified,
+        "verification_status": getattr(rec, "verification_status", None) or ("verified_live" if rec.fns_verified else "saved_unverified"),
         "message": check.get("message"),
         "mode": check.get("mode"),
         "verify_mode": verify_mode,

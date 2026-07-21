@@ -177,26 +177,35 @@ export function ProjectEmptyState({
       setPendingById({});
       return;
     }
-    const closing = projects.filter((p) => p.progress_percent >= 100);
-    if (!closing.length) {
-      setPendingById({});
-      return;
+    // Уже обогащённые в context — без лишних N+1 на экране «Выберите объект»
+    const fromSummary: Record<string, number> = {};
+    for (const p of projects) {
+      if (p.pending_payments != null) fromSummary[p.id] = p.pending_payments;
     }
+    setPendingById(fromSummary);
+
+    const closing = projects.filter((p) => p.progress_percent >= 100 && p.pending_payments == null);
+    if (!closing.length) return;
+
     let cancelled = false;
-    Promise.all(
-      closing.map(async (p) => {
-        if (p.pending_payments != null) return [p.id, p.pending_payments] as const;
-        try {
-          const n = (await api.countPendingPayments(user.id, p.id)) || 0;
-          return [p.id, n] as const;
-        } catch {
-          return [p.id, 0] as const;
-        }
-      }),
-    ).then((rows) => {
-      if (!cancelled) setPendingById(Object.fromEntries(rows));
-    });
-    return () => { cancelled = true; };
+    const t = setTimeout(() => {
+      Promise.all(
+        closing.map(async (p) => {
+          try {
+            const n = (await api.countPendingPayments(user.id, p.id)) || 0;
+            return [p.id, n] as const;
+          } catch {
+            return [p.id, 0] as const;
+          }
+        }),
+      ).then((rows) => {
+        if (!cancelled) setPendingById((prev) => ({ ...prev, ...Object.fromEntries(rows) }));
+      });
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [user?.id, projects]);
 
   if (projects.length > 0 && projectResolving && autoPick) {

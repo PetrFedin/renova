@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./renova.db"
     secret_key: str = "dev-secret-change-me"
     # JWT (HS256). Staging/production: только Bearer, без X-User-Id.
-    access_token_expire_minutes: int = 60 * 24 * 14  # 14 дней — mobile session
+    access_token_expire_minutes: int = 60 * 24 * 14  # local default; staging/prod capped to 20m in security.py
+    refresh_token_expire_days: int = 30
     # None = по policy профиля; True/False = явный override
     auth_allow_header_user_id: bool | None = None
     fns_npd_status_url: str = (

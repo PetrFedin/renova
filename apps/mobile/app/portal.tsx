@@ -132,7 +132,8 @@ export default function PortalScreen() {
     <ScrollView ref={scrollRef} style={s.wrap} contentContainerStyle={s.content}>
       <View style={s.hero}>
         <Text style={s.brand}>RENOVA</Text>
-        <Text style={s.brandSub}>Портал заказчика</Text>
+        <Text style={s.brandSub}>Портал просмотра и согласований</Text>
+        <Text style={s.muted}>Без чата и доп. работ — полный контур в приложении Renova</Text>
         <Text style={s.title}>{snapshot.project.name}</Text>
         {snapshot.project.address ? <Text style={s.muted}>{snapshot.project.address}</Text> : null}
         {snapshot.contractor_company_name || snapshot.contractor_recipient_name ? (

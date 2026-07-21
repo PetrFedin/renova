@@ -1,6 +1,8 @@
 """H0 / W53: staging readiness checklist for investors & pilots (no secrets)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from typing import Any
 
 from app.core.config import settings
@@ -8,6 +10,25 @@ from app.core.environment import _is_https, _is_localhost_url, normalize_environ
 from app.services.yookassa_service import yookassa_health
 from app.services.fns.receipt_verify import fns_receipt_health
 
+
+
+def _git_sha() -> str | None:
+    import os
+    import subprocess
+    for key in ("GIT_SHA", "COMMIT_SHA", "SOURCE_VERSION", "RENDER_GIT_COMMIT", "HEROKU_SLUG_COMMIT"):
+        v = (os.environ.get(key) or "").strip()
+        if v:
+            return v[:40]
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(Path(__file__).resolve().parents[2]),
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+        return out.decode().strip()[:40]
+    except Exception:
+        return None
 
 def build_h0_readiness() -> dict[str, Any]:
     """Сводка H0: что блокирует демо инвестору (keys / URL / honesty)."""
@@ -84,6 +105,7 @@ def build_h0_readiness() -> dict[str, Any]:
     ready = len(blockers) == 0 and env in ("staging", "production")
     score = round(100 * sum(1 for c in checks if c["ok"]) / max(len(checks), 1))
 
+    from datetime import datetime, timezone
     return {
         "environment": env,
         "ready_for_investor_demo": ready,
@@ -91,6 +113,8 @@ def build_h0_readiness() -> dict[str, Any]:
         "blockers": blockers,
         "checks": checks,
         "public_base_url_host": public.split("/")[2] if public.startswith("http") else public[:40],
+        "git_sha": _git_sha(),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
         "hint": (
             "Готово к демо инвестору"
             if ready

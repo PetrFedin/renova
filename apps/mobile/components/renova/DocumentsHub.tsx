@@ -100,6 +100,9 @@ export function DocumentsHub({
   const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
   const [konturAvailable, setKonturAvailable] = useState(false);
+  const [konturMode, setKonturMode] = useState<'off' | 'sandbox' | 'live' | string>('off');
+  const [ocrModeLabel, setOcrModeLabel] = useState('LOCAL');
+
 
   const pdfPath = (path: string) => path.replace('{id}', projectId);
 
@@ -113,9 +116,21 @@ export function DocumentsHub({
     api.listEsignProviders(userId)
       .then(({ providers }) => {
         if (!alive) return;
-        setKonturAvailable(Boolean(providers.find((p) => p.name === 'kontur')?.available));
+        const k = providers.find((p) => p.name === 'kontur');
+        setKonturAvailable(Boolean(k?.available));
+        const mode = String((k as { mode?: string } | undefined)?.mode || (k?.available ? 'sandbox' : 'off'));
+        setKonturMode(mode);
       })
-      .catch(() => { if (alive) setKonturAvailable(false); });
+      .catch(() => { if (alive) { setKonturAvailable(false); setKonturMode('off'); } });
+    api.getEsignHealth(userId)
+      .then((h: any) => {
+        if (!alive) return;
+        const km = h?.kontur_mode || h?.integrations?.esign?.kontur_mode;
+        if (km) setKonturMode(String(km));
+      })
+      .catch(() => {});
+    // OCR в DC — heuristic/local, не ML live
+    setOcrModeLabel('DEMO');
     return () => { alive = false; };
   }, [userId, projectId]);
 
@@ -708,6 +723,13 @@ ${(res.body || '').slice(0, 220)}`,
       />
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
+      <View style={s.modeRow} accessibilityLabel="Режимы интеграций документов">
+        <Text style={[s.modeChip, s.modeWarn]}>OCR: {ocrModeLabel}</Text>
+        <Text style={[s.modeChip, konturMode === 'live' ? s.modeOk : s.modeWarn]}>
+          Kontur: {(konturMode || 'off').toUpperCase()}{konturAvailable ? '' : ' · UNAVAILABLE'}
+        </Text>
+        <Text style={[s.modeChip, s.modeWarn]}>Подпись: {konturAvailable ? 'PROVIDER' : 'IN_APP / LOCAL'}</Text>
+      </View>
       <OfflineSyncStatus compact />
 
       <View style={s.indexCard}>
@@ -809,6 +831,11 @@ ${(res.body || '').slice(0, 220)}`,
 }
 
 const s = StyleSheet.create({
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  modeChip: { fontSize: 10, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, overflow: 'hidden' },
+  modeOk: { backgroundColor: 'rgba(34,140,80,0.14)', color: RenovaTheme.colors.textMuted },
+  modeWarn: { backgroundColor: 'rgba(160,120,40,0.14)', color: RenovaTheme.colors.textMuted },
+
   wrap: { paddingHorizontal: 16, paddingBottom: 24 },
   sub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 16, lineHeight: 18 },
   indexCard: { ...card, marginBottom: 18, gap: 10 },

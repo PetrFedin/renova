@@ -77,7 +77,12 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           const b = await api.stageBlocked(user.id, activeProject.id, s.id);
           return [s.id, b] as const;
         } catch {
-          return [s.id, { blocked: false }] as const;
+          // Fail-closed: без ответа API этап нельзя считать разблокированным
+          return [s.id, {
+            blocked: true,
+            depends_on: 'Не удалось проверить зависимости',
+            status_label: 'check_failed',
+          }] as const;
         }
       }),
     );

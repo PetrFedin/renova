@@ -44,6 +44,8 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   const [filter, setFilter] = useState('all');
   const [busy, setBusy] = useState(false);
   const [subtab, setSubtab] = useState<MaterialSubtab>('picks');
+  /** loading | loaded | error — ошибка ≠ пустой список / 0 ₽ */
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
 
   useEffect(() => {
     if (isMaterialSubtab(typeof subtabParam === 'string' ? subtabParam : undefined)) {
@@ -58,9 +60,22 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(() => setPicks([]));
-    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => setPurchases([]));
-    api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(() => setReceipts([]));
+    setLoadState('loading');
+    Promise.all([
+      api.listMaterialPicks(user.id, activeProject.id),
+      api.listPurchases(user.id, activeProject.id),
+      api.listReceipts(user.id, activeProject.id),
+    ])
+      .then(([p, pu, r]) => {
+        setPicks(p);
+        setPurchases(pu);
+        setReceipts(r);
+        setLoadState('loaded');
+      })
+      .catch(() => {
+        // Не затираем последними [] — иначе «нет закупок» при сбое API
+        setLoadState('error');
+      });
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
@@ -77,6 +92,20 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   }, [picks, filter]);
 
   if (!activeProject || !user) return <ProjectEmptyState role={role} />;
+
+  if (loadState === 'error') {
+    return (
+      <View style={[screenLayout.screen, { padding: 16, gap: 12 }]}>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text }}>
+          Не удалось загрузить материалы
+        </Text>
+        <Text style={{ fontSize: 13, color: RenovaTheme.colors.textMuted }}>
+          Данные не загружены — это не «ноль закупок». Проверьте сеть и повторите.
+        </Text>
+        <PrimaryButton title="Повторить" onPress={reload} />
+      </View>
+    );
+  }
 
   const needBuy = picks.filter((p) => p.status === 'draft' || p.status === 'pending').length;
   const ordered = picks.filter((p) => p.status === 'approved').length;

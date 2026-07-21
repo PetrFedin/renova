@@ -124,26 +124,34 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
   useEffect(() => {
     if (!open || !user) return;
-    const closing = displayProjects.filter((p) => p.progress_percent >= 100);
-    if (!closing.length) {
-      setPendingById({});
-      return;
+    const fromSummary: Record<string, number> = {};
+    for (const p of displayProjects) {
+      if (p.pending_payments != null) fromSummary[p.id] = p.pending_payments;
     }
+    setPendingById(fromSummary);
+
+    const closing = displayProjects.filter((p) => p.progress_percent >= 100 && p.pending_payments == null);
+    if (!closing.length) return;
+
     let cancelled = false;
-    Promise.all(
-      closing.map(async (p) => {
-        if (p.pending_payments != null) return [p.id, p.pending_payments] as const;
-        try {
-          const n = (await api.countPendingPayments(user.id, p.id)) || 0;
-          return [p.id, n] as const;
-        } catch {
-          return [p.id, 0] as const;
-        }
-      }),
-    ).then((rows) => {
-      if (!cancelled) setPendingById(Object.fromEntries(rows));
-    });
-    return () => { cancelled = true; };
+    const t = setTimeout(() => {
+      Promise.all(
+        closing.map(async (p) => {
+          try {
+            const n = (await api.countPendingPayments(user.id, p.id)) || 0;
+            return [p.id, n] as const;
+          } catch {
+            return [p.id, 0] as const;
+          }
+        }),
+      ).then((rows) => {
+        if (!cancelled) setPendingById((prev) => ({ ...prev, ...Object.fromEntries(rows) }));
+      });
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [open, user?.id, displayProjects]);
 
   if (!activeProject || projects.length === 0) return null;

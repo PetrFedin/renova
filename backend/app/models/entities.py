@@ -221,6 +221,8 @@ class Payment(Base):
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     yookassa_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # yookassa | bank_transfer | sbp_manual | cash | imported_bank_statement
+    payment_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="payments")
@@ -251,6 +253,8 @@ class Receipt(Base):
     fn: Mapped[str | None] = mapped_column(String(32), nullable=True)
     fd: Mapped[str | None] = mapped_column(String(32), nullable=True)
     fns_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # verified_live|saved_unverified|verification_pending|verification_failed|demo_verified|invalid
+    verification_status: Mapped[str] = mapped_column(String(32), default="saved_unverified")
     expense_category: Mapped[str] = mapped_column(String(32), default="materials")
     room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
     stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
@@ -1068,3 +1072,47 @@ class ScratchpadLine(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="scratchpad_lines")
+
+
+class UserSession(Base):
+    """Refresh-token session — revoke/rotation for production identity."""
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class PaymentWebhookEvent(Base):
+    """Durable YuKassa webhook idempotency (survives restart / multi-instance)."""
+    __tablename__ = "payment_webhook_events"
+
+    event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), default="yookassa")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    payload_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class PaymentEvent(Base):
+    """Audit trail: who/when/source moved payment status + evidence."""
+    __tablename__ = "payment_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    payment_id: Mapped[str] = mapped_column(String(36), ForeignKey("payments.id"), index=True)
+    actor_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source: Mapped[str] = mapped_column(String(32))  # manual|webhook|bank_import|chat|system
+    old_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(32))
+    evidence_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # receipt|transfer_ack|yookassa|bank_statement
+    evidence_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+

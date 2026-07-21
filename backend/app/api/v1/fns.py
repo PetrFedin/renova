@@ -48,6 +48,7 @@ async def check_npd(body: CheckNpdRequest) -> CheckNpdResponse:
 class MoyNalogLinkResponse(BaseModel):
     linked: bool
     message: str
+    mode: str = "enabled"  # demo | enabled — never implies real OAuth yet
 
 
 @router.post("/verify-me", response_model=CheckNpdResponse)
@@ -77,14 +78,15 @@ async def link_moy_nalog(user: User = Depends(get_current_user), db: AsyncSessio
             501,
             "«Мой налог» OAuth ещё не подключён. Задайте MOY_NALOG_ENABLED=true после интеграции или используйте demo в development.",
         )
-    user.moy_nalog_linked = True
+    user.moy_nalog_linked = True  # flag only — OAuth tokens not stored yet
     await db.commit()
     mode = "demo" if demo_ok and not settings.moy_nalog_enabled else "enabled"
     return MoyNalogLinkResponse(
         linked=True,
+        mode=mode,
         message=(
-            "«Мой налог» подключён (demo). Чеки будут создаваться при приёмке этапа."
+            "Demo: флаг linked без OAuth ФНС. Не считайте это полноценным подключением."
             if mode == "demo"
-            else "«Мой налог» отмечен как подключённый."
+            else "Интеграция включена администратором — аккаунт ФНС ещё не авторизован через OAuth."
         ),
     )

@@ -186,6 +186,47 @@ export function getAccessToken(): string | null {
   return _accessToken;
 }
 
+let _refreshToken: string | null = null;
+let _refreshInflight: Promise<boolean> | null = null;
+
+export function setRefreshToken(token: string | null) {
+  _refreshToken = token && token.trim() ? token.trim() : null;
+}
+
+export function getRefreshToken(): string | null {
+  return _refreshToken;
+}
+
+/** Rotate refresh → new access. Returns false if session dead. */
+export async function refreshAccessToken(): Promise<boolean> {
+  if (!_refreshToken) return false;
+  if (_refreshInflight) return _refreshInflight;
+  _refreshInflight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: _refreshToken }),
+      });
+      if (!res.ok) {
+        setAccessToken(null);
+        setRefreshToken(null);
+        return false;
+      }
+      const data = await res.json() as { access_token?: string; refresh_token?: string };
+      if (data.access_token) setAccessToken(data.access_token);
+      if (data.refresh_token) setRefreshToken(data.refresh_token);
+      return Boolean(data.access_token);
+    } catch {
+      return false;
+    } finally {
+      _refreshInflight = null;
+    }
+  })();
+  return _refreshInflight;
+}
+
+
 /** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
 export function authHeaders(userId?: string | null): Record<string, string> {
   const h: Record<string, string> = {};
@@ -194,8 +235,10 @@ export function authHeaders(userId?: string | null): Record<string, string> {
     // JWT present → do not also send X-User-Id (prod must not rely on header)
     return h;
   }
-  // Legacy fallback for cold sessions without token (dev/test allow_header only)
-  if (userId) h['X-User-Id'] = userId;
+  // X-User-Id только local/test — staging/production клиент не задаёт identity header
+  const env = (process.env.EXPO_PUBLIC_APP_ENV || process.env.APP_ENV || 'development').toLowerCase();
+  const allowHeader = env === 'development' || env === 'test';
+  if (userId && allowHeader) h['X-User-Id'] = userId;
   return h;
 }
 
@@ -231,6 +274,15 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
           const txt = await res.text();
           const parsed = parseApiErrorBody(txt, res.status);
           const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+          // Access expired → one refresh rotation, then retry once
+          if (res.status === 401 && attempt < 2 && !path.includes('/auth/refresh') && getRefreshToken()) {
+            const ok = await refreshAccessToken();
+            if (ok) {
+              Object.assign(headers, authHeaders(userId));
+              lastError = err;
+              continue;
+            }
+          }
           if (isGet && isRateLimitError(err) && attempt < 2) {
             lastError = err;
             await sleep(retryAfterMs(res));
