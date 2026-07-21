@@ -61,3 +61,10 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 - [x] Kontur/Goskey env scaffold + webhooks
 - [x] Release prep docs (`RELEASE-v0.2-PREP.md`)
 - [ ] Human: merge PR #2 + tag v0.2.0
+
+## Warranty fail-closed / idempotency
+
+- [ ] List error ≠ empty claims; create blocked until list loads
+- [ ] Idempotency-Key scope (user, project); migration `w5warranty01`
+- [ ] Conflict 409 UX; audit without full defect description
+

@@ -1143,6 +1143,36 @@ class PaymentEvent(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+
+class WarrantyClaimIdempotency(Base):
+    """Идемпотентность POST /warranty-claims.
+
+    Scope ключа: (user_id, project_id, idempotency_key) — один пользовательский
+    submit на проект не создаёт дубль при retry. payload_hash ловит conflict
+    при том же key и другом теле.
+    """
+    __tablename__ = "warranty_claim_idempotency"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "project_id",
+            "idempotency_key",
+            name="uq_warranty_claim_idempotency_scope",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    issue_id: Mapped[str] = mapped_column(String(36), index=True)
+    document_id: Mapped[str] = mapped_column(String(36), index=True)
+    # Укороченный ответ для replay (без полного description)
+    response_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
 class DomainOutbox(Base):
     """Transactional outbox — side effects after commit (P1.16)."""
     __tablename__ = "domain_outbox"

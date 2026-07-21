@@ -1,6 +1,6 @@
 """PDF и экспорт проекта — fpdf2 с транслитерацией кириллицы."""
 from app.core.timeutil import utc_now
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header, Header
 from pydantic import BaseModel, Field
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -373,6 +373,12 @@ async def push_weekly_digest(project_id: str, user: User = Depends(get_current_u
 class WarrantyClaimIn(BaseModel):
     title: str = Field(default="Гарантийное обращение", min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=4000)
+    # Client-generated UUID (дубль Idempotency-Key header; нужен для offline queue)
+    client_request_id: str | None = Field(default=None, max_length=128)
+    category: str | None = Field(default=None, max_length=64)
+    related_issue_id: str | None = Field(default=None, max_length=36)
+    work_order_id: str | None = Field(default=None, max_length=36)
+    acceptance_id: str | None = Field(default=None, max_length=36)
 
 
 @router.post("/{project_id}/warranty-claims")
@@ -381,72 +387,29 @@ async def create_warranty_claim(
     body: WarrantyClaimIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    idempotency_key_header: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    """P5.1 lite: гарантийный тикет = issue + черновик документа warranty."""
-    from app.models.entities import ProjectIssue
-    from app.models.project_documents import DocumentStatus, DocumentType
-    from app.services import project_document_service as docs_svc
-    from app.services import activity_service as act
-    from app.services import notification_service as notif
+    """P5.1 lite: гарантийный тикет = issue + warranty doc.
+
+    Идемпотентность: Idempotency-Key header или body.client_request_id.
+    Scope: (user_id, project_id, key). Role из payload не доверяем — только JWT/session user.
+    """
+    from app.services.warranty_claim_service import create_warranty_claim_idempotent
 
     project = await require_project(db, project_id, user, write=True)
-    # W73: гарантия работает и после closeout (архив); SLA 14 дней
-    from datetime import datetime, timedelta
-    post_closeout = bool(getattr(project, "is_archived", False))
-    issue = ProjectIssue(
-        project_id=project_id,
-        title=f"[Гарантия] {body.title}"[:255],
+    key = (idempotency_key_header or body.client_request_id or "").strip() or None
+    return await create_warranty_claim_idempotent(
+        db,
+        project=project,
+        user=user,
+        title=body.title,
         description=body.description,
-        severity="high",
-        status="open",
-        due_at=utc_now() + timedelta(days=14),
+        idempotency_key=key,
+        category=body.category,
+        related_issue_id=body.related_issue_id,
+        work_order_id=body.work_order_id,
+        acceptance_id=body.acceptance_id,
     )
-    db.add(issue)
-    await db.flush()
-    draft = await docs_svc.create_document(
-        db,
-        project_id=project_id,
-        created_by=user.id,
-        title=f"Гарантия: {body.title}"[:200],
-        document_type=DocumentType.warranty.value,
-        notes=f"warranty_issue:{issue.id}",
-    )
-    draft.status = DocumentStatus.draft.value
-    await db.flush()
-    # W55: заказчик → Document Center; исполнитель → QC
-    creator_link = "/quality-control" if user.role.value == "contractor" else "/documents"
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="WarrantyClaim",
-        title=issue.title,
-        body=body.description,
-        link_path=creator_link,
-    )
-    other = project.contractor_id if user.id == project.customer_id else project.customer_id
-    if other:
-        other_is_contractor = other == project.contractor_id
-        await notif.notify(
-            db,
-            user_id=other,
-            project_id=project_id,
-            notification_type="issue",
-            title=issue.title,
-            body=body.description or "Новое гарантийное обращение",
-            link_path="/quality-control" if other_is_contractor else "/documents",
-            return_to="/(contractor)/(tabs)/home" if other_is_contractor else "/(customer)/(tabs)/home",
-        )
-    await db.commit()
-    return {
-        "ok": True,
-        "issue_id": issue.id,
-        "document_id": draft.id,
-        "qc_path": f"/quality-control?issueId={issue.id}",
-        "due_at": issue.due_at.isoformat() if issue.due_at else None,
-        "post_closeout": post_closeout,
-        "sla_days": 14,
-    }
 
 
 @router.get("/{project_id}/warranty-claims")
