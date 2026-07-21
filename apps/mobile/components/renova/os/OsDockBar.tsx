@@ -17,7 +17,11 @@ import {
 import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
-import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
+import { buildNavigationBadges } from '@/lib/domain/navigationBadges';
+import {
+  calendarDockA11yLabel,
+  chatMessagesA11yLabel,
+} from '@/lib/domain/moreMenuA11y';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
@@ -33,9 +37,17 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
-  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
-  const chatUnread = dockChatBadgeCount(chatUnreadRaw);
-  const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
+  const { count: todayTasksRaw } = useTodayTaskCount(user?.id, activeProject?.id, role);
+  /**
+   * Устойчивые слоты: messages ← unreadMessages, calendar/home ← dueTasks.
+   * Сообщения и задачи не суммируются и не подменяют друг друга.
+   */
+  const navBadges = buildNavigationBadges({
+    unreadMessages: chatUnreadRaw,
+    dueTasks: todayTasksRaw,
+  });
+  const chatUnread = navBadges.unreadMessages;
+  const todayTasks = navBadges.dueTasks;
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
   const section = resolveSectionId(pathname);
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
@@ -114,18 +126,22 @@ export function OsDockBar({ role }: { role: OsRole }) {
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={
-              id === 'chat' && chatUnread > 0
-                ? `${label}, ${chatUnread > 99 ? '99+' : chatUnread} непрочитанных`
-                : label
+              id === 'chat'
+                ? chatMessagesA11yLabel(chatUnread, label)
+                : id === 'calendar'
+                  ? calendarDockA11yLabel(todayTasks, label)
+                  : id === 'home' && !items.includes('calendar')
+                    ? calendarDockA11yLabel(todayTasks, label)
+                    : label
             }
             accessibilityState={active ? { selected: true } : {}}
           >
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
-              {id === 'chat' && <ChatBadge count={chatUnread} />}
-              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} />}
-              {id === 'home' && !items.includes('calendar') && todayTasks > 0 && (
-                <ChatBadge count={todayTasks} />
+              {id === 'chat' && <ChatBadge count={chatUnread} tone="danger" />}
+              {id === 'calendar' && <ChatBadge count={todayTasks} tone="warning" />}
+              {id === 'home' && !items.includes('calendar') && (
+                <ChatBadge count={todayTasks} tone="warning" />
               )}
             </View>
             <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{label}</Text>
