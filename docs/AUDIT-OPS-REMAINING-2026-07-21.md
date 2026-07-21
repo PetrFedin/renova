@@ -17,7 +17,7 @@
 
 | Item | Статус | Действие |
 |------|--------|----------|
-| P1.11 Split → main | **IN PROGRESS** | PR #3 → **draft** (не мержить). Issue slice-1: https://github.com/PetrFedin/renova/issues/4 |
+| P1.11 Split → main | **IN PROGRESS** | Slice PR https://github.com/PetrFedin/renova/pull/5 **CI green**; PR #3 draft. Issue #4 |
 | Live staging secrets | **ENV** | На сервере staging: `ENVIRONMENT=staging npm run staging:credentials-probe` |
 
 ## Команды
