@@ -1,4 +1,3 @@
-import { budgetTabRoute } from '@/constants/osSections';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -15,6 +14,7 @@ import { apiErrorMessage } from '@/lib/formatPhone';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { repairTabHref } from '@/constants/osSections';
+import { alertStageAccepted } from '@/lib/acceptanceNav';
 
 type AcceptanceState = {
   acceptances: WorkAcceptance[];
@@ -216,24 +216,8 @@ export function WorkAcceptanceScreen() {
       });
       await load();
       await syncProjectSideEffects({ user, project: activeProject, role });
-      Alert.alert(
-        'Этап принят',
-        'Можно оплатить работы по этапу.',
-        [
-          { text: 'Позже', style: 'cancel' },
-          {
-            text: 'Оплатить',
-            onPress: () => {
-              // W119: после приёмки → оплаты SoT
-              pushOsNav(
-                budgetTabRoute(role === 'contractor' ? 'contractor' : 'customer', 'payments'),
-                undefined,
-                role === 'contractor' ? 'contractor' : 'customer',
-              );
-            },
-          },
-        ],
-      );
+      // W125: оплата + план этажа (✓ pin после mark_acceptance_pin_on_plan)
+      alertStageAccepted(role === 'contractor' ? 'contractor' : 'customer');
     } catch (e) {
       handleActionError(e, 'Принятие этапа');
     } finally {

@@ -221,8 +221,9 @@ export function FloorPlanPanel({
               </Pressable>
             ))}
             {!punchMode && plan.pins.map((p) => {
+              const accepted = Boolean(p.label?.trim().startsWith('✓'));
               const pan = PanResponder.create({
-                onStartShouldSetPanResponder: () => role === 'contractor',
+                onStartShouldSetPanResponder: () => role === 'contractor' && !accepted,
                 onPanResponderMove: (_, g) =>
                   setDrag({
                     id: p.id,
@@ -241,12 +242,16 @@ export function FloorPlanPanel({
               return (
                 <View key={p.id} {...pan.panHandlers} style={[s.pin, { left: `${x}%`, top: `${y}%` }]}>
                   <Pressable onPress={() => pushRoomDetail(p.room_id, pathname)}>
-                    <Text style={s.pinT}>{p.label || '·'}</Text>
+                    <Text style={[s.pinT, accepted && s.pinAccepted]}>{p.label || '·'}</Text>
                   </Pressable>
                 </View>
               );
             })}
           </View>
+          {/* W125: легенда приёмки на плане */}
+          {!punchMode && (plan.pins ?? []).some((p) => p.label?.trim().startsWith('✓')) ? (
+            <Text style={s.acceptLegend}>✓ на метке комнаты = этап принят</Text>
+          ) : null}
           {punchMode ? (
             <View style={s.punchModeRow}>
               {addingPunch ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
@@ -317,6 +322,9 @@ const s = StyleSheet.create({
   link: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, marginTop: 4 },
   pin: { position: 'absolute', zIndex: 1 },
   pinT: { backgroundColor: RenovaTheme.colors.primary, color: RenovaTheme.colors.surface, fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  /** W125: метка после mark_acceptance_pin_on_plan */
+  pinAccepted: { backgroundColor: '#166534', borderWidth: 1, borderColor: '#BBF7D0' },
+  acceptLegend: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 6 },
   punchPin: {
     position: 'absolute',
     zIndex: 3,

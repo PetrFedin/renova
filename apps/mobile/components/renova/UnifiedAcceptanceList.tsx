@@ -11,6 +11,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { alertStageAccepted } from '@/lib/acceptanceNav';
 
 export function UnifiedAcceptanceList({
   stages,
@@ -45,15 +46,18 @@ export function UnifiedAcceptanceList({
     try {
       if (action === 'accept') {
         await api.acceptWork(userId, projectId, item.acceptanceId, {});
-        Alert.alert('Принято', 'Этап принят. Можно перейти к оплате.');
+        await syncProjectSideEffects({ user, project: activeProject });
+        onChanged?.();
+        // W125: оплата / план с ✓ pin (тот же SoT, что WorkAcceptanceScreen)
+        alertStageAccepted(role);
       } else {
         await api.returnWork(userId, projectId, item.acceptanceId, {
           comment: 'Нужна доработка',
         });
+        await syncProjectSideEffects({ user, project: activeProject });
+        onChanged?.();
         Alert.alert('На доработку', 'Исполнитель получил задачу на правку.');
       }
-      await syncProjectSideEffects({ user, project: activeProject });
-      onChanged?.();
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued(action === 'accept' ? 'Приёмка' : 'Возврат');
       else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось выполнить действие');
