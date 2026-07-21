@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from threading import Lock
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -21,6 +22,22 @@ UNREAD_SCOPE = {
     "unit": "messages",
 }
 
+# Epoch microseconds remain below Number.MAX_SAFE_INTEGER for centuries.
+# The process-local sequence prevents equal/reversed revisions when multiple
+# snapshots are built inside the same clock tick or the wall clock moves back.
+_revision_lock = Lock()
+_last_revision = 0
+
+
+def _next_revision() -> int:
+    """Return a strictly increasing, JavaScript-safe snapshot revision."""
+    global _last_revision
+
+    now_us = time.time_ns() // 1_000
+    with _revision_lock:
+        _last_revision = max(now_us, _last_revision + 1)
+        return _last_revision
+
 
 async def _user_projects(db: AsyncSession, user: User) -> list[tuple[str, str]]:
     r = await db.execute(
@@ -37,7 +54,7 @@ def _build_snapshot(threads: list[dict]) -> dict:
             continue
         total += max(0, int(th.get("unread_count") or 0))
     return {
-        "revision": int(time.time() * 1000),
+        "revision": _next_revision(),
         "total_unread_messages": total,
         "threads": threads,
         "scope": UNREAD_SCOPE,
