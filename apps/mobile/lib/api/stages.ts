@@ -1,5 +1,5 @@
 /** API: stages */
-import { req, API_BASE, ApiError } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 
@@ -14,8 +14,9 @@ async function activeAcceptance(userId: string, projectId: string, stageId: stri
 
 export const stagesApi = {
   getPlan: (userId: string, projectId: string) => req<ProjectPlan>(`/api/v1/projects/${projectId}/plan`, {}, userId),
+  /** cachedGet: при 429 отдаёт durable cache — экран этапа не падает Uncaught */
   getStage: (userId: string, projectId: string, stageId: string) =>
-    req<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}`, {}, userId),
+    cachedGet<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}`, userId),
   addStageComment: async (userId: string, projectId: string, stageId: string, text: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/comments`, { method: 'POST', body: JSON.stringify({ text }) }, userId);

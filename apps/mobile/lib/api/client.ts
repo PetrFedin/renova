@@ -291,8 +291,8 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
   let lastError: unknown;
 
   try {
-    // GET: один retry при 429 — снижает uncaught rate_limit при storm reload
-    while (attempt < 2) {
+    // GET: до 3 попыток при 429 (storm reload stage/home)
+    while (attempt < 3) {
       attempt += 1;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -315,7 +315,7 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
               continue;
             }
           }
-          if (isGet && isRateLimitError(err) && attempt < 2) {
+          if (isGet && isRateLimitError(err) && attempt < 3) {
             lastError = err;
             await sleep(retryAfterMs(res));
             continue;
@@ -334,7 +334,7 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
           throw new ApiError(0, 'Сервер недоступен. Запустите backend на порту 8100: cd renova && backend/.venv/bin/uvicorn app.main:app --reload --port 8100');
         }
         // rate_limit retry already handled above; other errors exit
-        if (isGet && isRateLimitError(error) && attempt < 2) {
+        if (isGet && isRateLimitError(error) && attempt < 3) {
           lastError = error;
           await sleep(1200);
           continue;

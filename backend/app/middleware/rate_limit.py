@@ -21,7 +21,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
         win = _buckets[key]
         win[:] = [t for t in win if now - t < 60]
-        if len(win) >= settings.rate_limit_rpm:
-            return JSONResponse({"detail": "rate_limit"}, status_code=429)
+        # Local/dev: stage detail fires 5+ GETs per reload × bus notify → 120 rpm слишком жёстко
+        limit = settings.rate_limit_rpm
+        if settings.normalized_environment in ("development", "test"):
+            limit = max(limit, 400)
+        if len(win) >= limit:
+            return JSONResponse(
+                {"detail": "rate_limit"},
+                status_code=429,
+                headers={"Retry-After": "2"},
+            )
         win.append(now)
         return await call_next(request)

@@ -12,6 +12,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, StageDetail, WorkSnapshot } from '@/lib/api';
+import { isRateLimitError } from '@/lib/api/client';
 import { compressUri } from '@/lib/compressImage';
 import { checklistForStage } from '@/lib/checklistTemplates';
 import { StageExpensePanel } from '@/components/renova/StageExpensePanel';
@@ -101,16 +102,34 @@ export function StageDetailScreen() {
 
   const reload = useCallback(async () => {
     if (!user || !activeProject || !id) return;
-    const st = await api.getStage(user.id, activeProject.id, id);
-    setStage(st);
-    api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch((e) => { reportError('components.screens.StageDetailScreen.WfChecks', e); setWfChecks([]); });
+    try {
+      const st = await api.getStage(user.id, activeProject.id, id);
+      setStage(st);
+    } catch (e) {
+      // 429 / сеть: оставляем предыдущий stage, не роняем экран (Uncaught)
+      reportError(isRateLimitError(e) ? 'stage.reload.rate_limit' : 'stage.reload.getStage', e, { stageId: id });
+      return;
+    }
+    // Вторичные GET — с catch; при rate_limit не затираем UI fail-closed без нужды
+    api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch((e) => {
+      reportError('components.screens.StageDetailScreen.WfChecks', e);
+      if (!isRateLimitError(e)) setWfChecks([]);
+    });
     api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch((e) => {
       reportError('stage.blocked', e, { stageId: id });
-      // Fail-closed: неизвестный статус deps → блокируем действия
-      setBlocked({ blocked: true, depends_on: 'load_error' });
+      // Fail-closed только при реальной ошибке доступа/сервера — не при 429
+      if (!isRateLimitError(e)) {
+        setBlocked({ blocked: true, depends_on: 'load_error' });
+      }
     });
-    api.getContractGate(user.id, activeProject.id).then(setContractGate).catch((e) => { reportError('components.screens.StageDetailScreen.ContractGate', e); setContractGate(null); });
-    api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch((e) => { reportError('components.screens.StageDetailScreen.WorkSnap', e); setWorkSnap(null); });
+    api.getContractGate(user.id, activeProject.id).then(setContractGate).catch((e) => {
+      reportError('components.screens.StageDetailScreen.ContractGate', e);
+      if (!isRateLimitError(e)) setContractGate(null);
+    });
+    api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch((e) => {
+      reportError('components.screens.StageDetailScreen.WorkSnap', e);
+      if (!isRateLimitError(e)) setWorkSnap(null);
+    });
     getCustomChecks(id).then(setCustomChecks).catch(reportCatch('stage.customChecks'));
   }, [user?.id, activeProject?.id, id]);
   useProjectDataReload(reload);
