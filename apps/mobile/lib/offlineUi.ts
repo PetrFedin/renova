@@ -1,11 +1,22 @@
-/** Человеческие сообщения для офлайн-очереди — без технического offline_queued */
+/** Человеческие сообщения для офлайн-очереди — без технического offline_queued (W66 #24) */
 import { Alert } from 'react-native';
+import { OFFLINE_MESSAGES } from '@/lib/offlineErrors';
 
 export function isOfflineQueued(e: unknown): boolean {
   return e instanceof Error && e.message === 'offline_queued';
 }
 
+export function isOfflineBlocked(e: unknown): string | null {
+  if (e instanceof Error && e.message in OFFLINE_MESSAGES) return e.message;
+  return null;
+}
+
 /** Короткое уведомление вместо сырого кода ошибки */
 export function notifyOfflineQueued(actionLabel = 'Действие'): void {
-  Alert.alert('Нет сети', `${actionLabel} выполнится автоматически при подключении к интернету.`);
+  Alert.alert('Нет сети', `${actionLabel} поставлено в очередь и выполнится при появлении интернета. Не закрывайте приложение сразу.`);
+}
+
+export function notifyOfflineBlocked(e: unknown, fallback = 'Действие недоступно без интернета.'): void {
+  const code = isOfflineBlocked(e);
+  Alert.alert('Нет сети', code ? OFFLINE_MESSAGES[code] : fallback);
 }
