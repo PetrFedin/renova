@@ -41,7 +41,9 @@ async def test_bank_confirm_pending_after_acceptance():
         await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
 
         stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
-        active = next(s for s in stages if s["status"] == "active")
+        # После assign demo часто в review (очередь приёмки), не active
+        active = next((s for s in stages if s["status"] in ("active", "review")), None)
+        assert active, [s.get("status") for s in stages]
         # request + accept → pending stage payment
         acc = await client.post(
             f"/api/v1/projects/{pid}/work-acceptances",

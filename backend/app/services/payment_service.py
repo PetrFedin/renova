@@ -38,7 +38,17 @@ async def confirm_payment(
     *,
     project_id: str | None = None,
     allow_without_acceptance: bool = False,
+    transfer_ack: bool = False,
+    allow_without_settlement: bool = False,
 ) -> Payment | None:
+    """Confirm pending payment.
+
+    Settlement proof (manual customer confirm):
+    - linked receipt, OR
+    - YuKassa payment id, OR
+    - transfer_ack=True (клиент: «я перевёл»), OR
+    - allow_without_settlement (bank match / trusted machine paths)
+    """
     payment = await db.get(Payment, payment_id)
     if not payment or payment.status != PaymentStatus.pending:
         return None
@@ -50,6 +60,12 @@ async def confirm_payment(
 
         stage = await db.get(Stage, payment.stage_id)
         if not stage or stage.project_id != payment.project_id or not stage.customer_accepted_at:
+            return None
+
+    if not allow_without_settlement:
+        receipt_id = await receipt_id_for_payment(db, payment.id)
+        has_yk = bool(getattr(payment, "yookassa_payment_id", None))
+        if not (receipt_id or has_yk or transfer_ack):
             return None
 
     payment.status = PaymentStatus.confirmed
@@ -64,7 +80,6 @@ async def confirm_payment(
     await db.commit()
     await db.refresh(payment)
     return payment
-
 
 
 async def attach_yookassa_id(db: AsyncSession, payment_id: str, yookassa_id: str) -> None:

@@ -12,7 +12,7 @@ export function alertStageAccepted(role: OsRole) {
     { text: 'Позже', style: 'cancel' },
     {
       text: 'Оплатить',
-      onPress: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
+      onPress: () => pushOsNav(budgetTabRoute(role, 'payments', { openPayment: '1' }), undefined, role),
     },
     {
       text: 'Открыть план',

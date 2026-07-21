@@ -280,7 +280,10 @@ export function PaymentDetailSheet({
       return;
     }
     try {
-      await api.confirmPayment(userId, projectId, payment.id);
+      await api.confirmPayment(userId, projectId, payment.id, {
+        // Клиентский gate уже проверил перевод/чек; сервер принимает ack или receipt_id
+        transfer_ack: Boolean(transferAck || receiptAttached),
+      });
       await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(() => {});
       await syncProjectSideEffects({
         user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
@@ -327,7 +330,8 @@ export function PaymentDetailSheet({
                 />
               ) : null}
               <Text style={formMetaText.caption}>
-                Подтверждение — фиксация факта оплаты. Сначала переведите сумму исполнителю или прикрепите чек.
+                Renova фиксирует факт внешнего перевода (СБП/реквизиты/чек), а не проводит банковскую транзакцию внутри приложения.
+                Карта — через ЮKassa. Сначала перевод или чек, затем отдельное подтверждение.
               </Text>
               {/* W123: пакетное подтверждение из выписки (1С/банк) */}
               <PrimaryButton

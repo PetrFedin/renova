@@ -727,7 +727,7 @@ async def confirm_bank_statement_matches(
     confirmed: list[str] = []
     blocked: list[str] = []
     for pid in body.payment_ids:
-        payment = await pay_svc.confirm_payment(db, pid, project_id=project_id)
+        payment = await pay_svc.confirm_payment(db, pid, project_id=project_id, allow_without_settlement=True)
         if payment:
             confirmed.append(pid)
             await act.log_event(

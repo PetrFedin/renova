@@ -51,8 +51,8 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     status: 'beta',
     entryPoints: ['deeplink'],
     opensSheet: 'payment',
-    redirectTo: '/budget?tab=payments',
-    descriptionRu: 'Redirect only — оплата через «Бюджет → Оплаты» и PaymentDetailSheet',
+    redirectTo: '/budget?tab=payments&openPayment=1',
+    descriptionRu: 'Redirect → Бюджет/Оплаты + PaymentDetailSheet (внешний перевод/чек, не прямой confirm)',
   },
   {
     id: 'control',

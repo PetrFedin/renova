@@ -179,7 +179,7 @@ export function buildProjectOsSnapshot(
             ? `${formatRub(pendingPaymentTotal)} к оплате`
             : `${unpaid} счёт(ов)`,
           button: 'Оплатить',
-          href: budgetTabRoute(role, 'payments'),
+          href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
           kind: 'payment',
         }
         : {
@@ -188,7 +188,7 @@ export function buildProjectOsSnapshot(
             ? `${formatRub(pendingPaymentTotal)} у заказчика`
             : 'Счёт выставлен',
           button: 'Счета',
-          href: budgetTabRoute(role, 'payments'),
+          href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
           kind: 'payment',
         };
     } else if (warrantyOpen > 0) {
@@ -245,7 +245,7 @@ export function buildProjectOsSnapshot(
         ? `${formatRub(pendingPaymentTotal)} выставлено`
         : 'Счёт у заказчика',
       button: 'Счета',
-      href: budgetTabRoute(role, 'payments'),
+      href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
       kind: 'payment',
     };
   } else if (unpaid > 0 && role === 'customer') {
@@ -255,7 +255,7 @@ export function buildProjectOsSnapshot(
         ? `${formatRub(pendingPaymentTotal)} к оплате`
         : 'Счёт после приёмки',
       button: 'Оплатить',
-      href: budgetTabRoute(role, 'payments'),
+      href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
       kind: 'payment',
     };
   } else if (offlineBlocked > 0) {
@@ -407,7 +407,7 @@ export function buildProjectOsSnapshot(
           ? `до ${deadline}`
           : 'Рекомендация по проекту',
       button: dash.next_action_type === 'payment' ? 'Оплатить' : 'Открыть',
-      href: dash.next_action_type === 'payment' ? budgetTabRoute(role, 'payments') : repairTabRoute(role, 'works'),
+      href: dash.next_action_type === 'payment' ? budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined) : repairTabRoute(role, 'works'),
       kind: dash.next_action_type === 'payment' ? 'payment' : 'work',
     };
   } else {

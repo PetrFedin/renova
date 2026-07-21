@@ -26,6 +26,12 @@ class FakeSession:
     async def refresh(self, _obj):
         return None
 
+    async def execute(self, _stmt):
+        class _Result:
+            def scalar_one_or_none(self):
+                return None
+        return _Result()
+
 
 @pytest.mark.asyncio
 async def test_confirm_payment_rejects_foreign_project_before_mutation():
@@ -75,3 +81,31 @@ async def test_confirm_stage_payment_requires_customer_acceptance():
     assert payment.status == PaymentStatus.pending
     assert payment.confirmed_at is None
     assert session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_confirm_requires_settlement_proof(monkeypatch):
+    """Manual confirm without receipt/ack/YuKassa must not succeed."""
+    async def _noop_expense(_db, _payment):
+        return None
+
+    monkeypatch.setattr("app.services.budget_service.expense_from_payment", _noop_expense)
+    payment = Payment(
+        id="payment-3",
+        project_id="project-a",
+        stage_id=None,
+        payment_type=PaymentType.material,
+        title="Материалы",
+        amount=1000,
+        status=PaymentStatus.pending,
+        created_by="contractor-1",
+    )
+    project = Project(id="project-a", name="P", customer_id="c1", renovation_type="capital", budget_spent=0.0)
+    session = FakeSession(payment=payment, project=project)
+    blocked = await payment_service.confirm_payment(session, payment.id, project_id="project-a")
+    assert blocked is None
+    ok = await payment_service.confirm_payment(
+        session, payment.id, project_id="project-a", transfer_ack=True
+    )
+    assert ok is not None
+    assert ok.status == PaymentStatus.confirmed

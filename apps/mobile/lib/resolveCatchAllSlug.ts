@@ -25,7 +25,7 @@ export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | stri
     case 'work-schedule':
       return calendarTabRoute(role);
     case 'finance-center':
-      return budgetTabRoute(role, 'payments');
+      return budgetTabRoute(role, 'payments', { openPayment: '1' });
     case 'project-analytics':
       return budgetTabRoute(role, 'deviations');
     case 'design':

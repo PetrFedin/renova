@@ -27,6 +27,7 @@ console.assert(confirmedCustomer?.pathname.includes('budget') && confirmedCustom
 const confirmedContractor = resolveNotificationLink('payment_confirmed', 'contractor');
 console.assert(confirmedContractor?.pathname.includes('(contractor)'), 'notify payment confirmed contractor');
 console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.tab === 'payments', 'finance-center redirect');
+console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.openPayment === '1', 'finance-center opens sheet');
 console.assert(resolvePushLink('/work-schedule', '/home', 'customer')?.pathname.includes('calendar'), 'work-schedule redirect');
 console.assert(resolvePushLink('/control', '/home', 'customer')?.pathname === '/(customer)/(tabs)/repair', 'control redirect customer');
 console.assert(resolvePushLink('/control', '/home', 'customer')?.params?.tab === 'control', 'control tab customer');

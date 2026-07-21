@@ -105,6 +105,7 @@ async def test_manual_create_and_confirm_use_honest_notification_types(monkeypat
         confirm_resp = await client.post(
             f"/api/v1/projects/proj-w56/payments/{created['id']}/confirm",
             headers={"X-User-Id": "cust-w56"},
+            json={"transfer_ack": True},
         )
         assert confirm_resp.status_code == 200
         confirmed = confirm_resp.json()

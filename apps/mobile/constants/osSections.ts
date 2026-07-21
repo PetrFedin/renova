@@ -194,10 +194,21 @@ export function objectTabRoute(role: OsRole, tab: string, sub?: string): OsTabRo
   return tabsRoute(role, 'object', tab, sub ? { sub } : undefined);
 }
 
+export type BudgetNavParams = {
+  roomId?: string;
+  stageId?: string;
+  period?: string;
+  focus?: string;
+  view?: string;
+  /** W138: сразу открыть PaymentDetailSheet (канон оплаты) */
+  openPayment?: string;
+  paymentId?: string;
+};
+
 export function budgetTabHref(
   role: OsRole,
   tab: string,
-  params?: { roomId?: string; stageId?: string; period?: string; focus?: string; view?: string },
+  params?: BudgetNavParams,
 ): string {
   const extra: Record<string, string> = {};
   if (params?.roomId) extra.roomId = params.roomId;
@@ -205,6 +216,8 @@ export function budgetTabHref(
   if (params?.period) extra.period = params.period;
   if (params?.focus) extra.focus = params.focus;
   if (params?.view) extra.view = params.view;
+  if (params?.openPayment) extra.openPayment = params.openPayment;
+  if (params?.paymentId) extra.paymentId = params.paymentId;
   const r = tabsRoute(role, 'budget', tab, Object.keys(extra).length ? extra : undefined);
   if (!r.params) return r.pathname;
   const qs = new URLSearchParams(r.params).toString();
@@ -214,7 +227,7 @@ export function budgetTabHref(
 export function budgetTabRoute(
   role: OsRole,
   tab: string,
-  params?: { roomId?: string; stageId?: string; period?: string; focus?: string; view?: string },
+  params?: BudgetNavParams,
 ): OsTabRoute {
   const extra: Record<string, string> = {};
   if (params?.roomId) extra.roomId = params.roomId;
@@ -222,5 +235,7 @@ export function budgetTabRoute(
   if (params?.period) extra.period = params.period;
   if (params?.focus) extra.focus = params.focus;
   if (params?.view) extra.view = params.view;
+  if (params?.openPayment) extra.openPayment = params.openPayment;
+  if (params?.paymentId) extra.paymentId = params.paymentId;
   return tabsRoute(role, 'budget', tab, Object.keys(extra).length ? extra : undefined);
 }

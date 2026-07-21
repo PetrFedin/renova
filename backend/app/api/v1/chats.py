@@ -156,7 +156,7 @@ async def _confirm_message(project_id: str, thread_id: str, message_id: str, use
             if meta_project and str(meta_project) != str(project_id):
                 raise HTTPException(409, "payment_project_mismatch")
             from app.services import payment_service as pay_svc
-            confirmed = await pay_svc.confirm_payment(db, pid, project_id=project_id)
+            confirmed = await pay_svc.confirm_payment(db, pid, project_id=project_id, transfer_ack=True)
             if not confirmed:
                 raise HTTPException(404, "payment_not_found_or_not_pending")
     return chat_svc.msg_dict(msg)

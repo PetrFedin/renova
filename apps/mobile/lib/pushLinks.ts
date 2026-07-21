@@ -28,7 +28,8 @@ export function resolvePushLink(
   const canonicalQuery = canonical.includes('?') ? canonical.split('?')[1] : query;
 
   if (canonicalPath === '/finance-center') {
-    const target = budgetTabRoute(role, 'payments');
+    // W138: legacy «Финансовый центр» → Бюджет/Оплаты + sheet (не прямой confirm)
+    const target = budgetTabRoute(role, 'payments', { openPayment: '1' });
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 

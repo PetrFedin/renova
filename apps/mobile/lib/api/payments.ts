@@ -30,13 +30,29 @@ export const paymentsApi = {
       { method: 'POST', body: body ? JSON.stringify(body) : undefined },
       userId,
     ),
-  confirmPayment: async (userId: string, projectId: string, paymentId: string) => {
+  /** W138: transfer_ack / чек обязательны на сервере — не прямой confirm без расчёта */
+  confirmPayment: async (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    opts?: { transfer_ack?: boolean },
+  ) => {
+    const body = JSON.stringify({ transfer_ack: Boolean(opts?.transfer_ack) });
     try {
-      return await req<Payment>(`/api/v1/projects/${projectId}/payments/${paymentId}/confirm`, { method: 'POST' }, userId);
+      return await req<Payment>(
+        `/api/v1/projects/${projectId}/payments/${paymentId}/confirm`,
+        { method: 'POST', body },
+        userId,
+      );
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/payments/${paymentId}/confirm`, method: 'POST', body: '{}', userId });
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/payments/${paymentId}/confirm`,
+        method: 'POST',
+        body,
+        userId,
+      });
       throw new Error('offline_queued');
     }
   },

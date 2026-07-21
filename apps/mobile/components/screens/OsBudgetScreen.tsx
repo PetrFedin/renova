@@ -1,5 +1,5 @@
 /** Единый «Бюджет» — оркестратор вкладок (данные в useOsBudgetScreen) */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -28,13 +28,24 @@ import { normalizeBudgetTab } from '@/constants/budgetTabs';
 export type { BudgetTab } from '@/constants/budgetTabs';
 
 export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: BudgetTab }) {
-  const { roomId: roomParam, stageId: stageParam, period: periodParam, focus: focusParam, view: viewParam, tab: tabParam } = useLocalSearchParams<{
+  const {
+    roomId: roomParam,
+    stageId: stageParam,
+    period: periodParam,
+    focus: focusParam,
+    view: viewParam,
+    tab: tabParam,
+    openPayment: openPaymentParam,
+    paymentId: paymentIdParam,
+  } = useLocalSearchParams<{
     roomId?: string;
     stageId?: string;
     period?: string;
     focus?: string;
     view?: ExpenseView;
     tab?: string;
+    openPayment?: string;
+    paymentId?: string;
   }>();
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
@@ -78,6 +89,19 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
   const serverFact = summary?.budget_spent ?? figures.spent;
   const riskColor = summary?.risk === 'high' ? RenovaTheme.colors.danger : summary?.risk === 'medium' ? RenovaTheme.colors.warning : RenovaTheme.colors.success;
   const period = (periodParam as string) || 'month';
+
+  useEffect(() => {
+    if (paymentDetail) return;
+    const wantOpen = openPaymentParam === '1' || openPaymentParam === 'true' || Boolean(paymentIdParam);
+    if (!wantOpen) return;
+    if (resolvedTab !== 'payments' && resolvedTab !== 'summary') return;
+    const pendingList = payments.filter((x) => x.status === 'pending');
+    const target =
+      (paymentIdParam && payments.find((x) => x.id === paymentIdParam))
+      || pendingList[0]
+      || null;
+    if (target) setPaymentDetail(target);
+  }, [openPaymentParam, paymentIdParam, payments, resolvedTab, paymentDetail]);
 
   const summaryWidgets: OsWidget[] = [
     {

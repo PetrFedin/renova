@@ -1,5 +1,6 @@
 """Платежи: авансы, этапы, материалы."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
@@ -159,10 +160,17 @@ async def create_payment(
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
 
 
+
+class ConfirmPaymentIn(BaseModel):
+    """Фиксация внешнего перевода (не эквайринг Renova), кроме путей с чеком/ЮKassa."""
+    transfer_ack: bool = False
+
+
 @router.post("/{project_id}/payments/{payment_id}/confirm", response_model=PaymentOut)
 async def confirm_payment(
     project_id: str,
     payment_id: str,
+    body: ConfirmPaymentIn | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -174,8 +182,29 @@ async def confirm_payment(
     if not existing or existing.project_id != project_id:
         raise HTTPException(404, "Платёж не найден")
 
-    payment = await pay_svc.confirm_payment(db, payment_id, project_id=project_id)
+    ack = bool(body.transfer_ack) if body else False
+    payment = await pay_svc.confirm_payment(
+        db,
+        payment_id,
+        project_id=project_id,
+        transfer_ack=ack,
+    )
     if not payment:
+        # Distinguish settlement vs acceptance for honest UX
+        receipt_id = await pay_svc.receipt_id_for_payment(db, payment_id)
+        has_yk = bool(getattr(existing, "yookassa_payment_id", None))
+        if not (receipt_id or has_yk or ack) and existing.status.value == "pending":
+            # Accepted stage (or non-stage) but no settlement proof
+            settlement_blocked = True
+            if existing.payment_type == PaymentType.stage and existing.stage_id:
+                stage = await db.get(Stage, existing.stage_id)
+                if not stage or not stage.customer_accepted_at:
+                    settlement_blocked = False
+            if settlement_blocked:
+                raise HTTPException(
+                    409,
+                    "Сначала отметьте перевод или прикрепите чек — подтверждение без расчёта запрещено",
+                )
         if existing.payment_type == PaymentType.stage:
             from app.services import activity_service as act
 
