@@ -22,9 +22,10 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
+import { alertIcalExported } from '@/lib/calendarIcsNav';
 
 type DocRow = {
   id: string;
@@ -399,7 +400,12 @@ ${(res.body || '').slice(0, 220)}`,
         label: 'Календарь работ',
         desc: 'ICS-файл (импорт вручную; не live-синк Google/Apple)',
         format: 'ICS',
-        run: () => api.exportIcal(userId, projectId),
+        // W124: native Share + CTA на график SoT
+        run: async () => {
+          await api.exportIcal(userId, projectId);
+          const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+          alertIcalExported(role);
+        },
       },
       estimateTable: {
         id: 'estimate-table',

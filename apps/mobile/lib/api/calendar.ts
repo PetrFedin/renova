@@ -50,21 +50,10 @@ export const calendarApi = {
     }
   },
 
+  /** W124: .ics → Share/download (native + web); не live Google/Apple sync */
   exportIcal: async (userId: string, projectId: string) => {
-    const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/calendar.ics`, {
-      headers: { 'X-User-Id': userId },
-    });
-    if (!r.ok) throw new Error('ical');
-    const blob = await r.blob();
-    if (typeof window !== 'undefined') {
-      const u = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = u;
-      a.download = 'renova.ics';
-      a.click();
-      URL.revokeObjectURL(u);
-    }
+    const { exportIcalFile } = await import('@/lib/exportIcalFile');
+    await exportIcalFile(userId, projectId, `renova-${projectId.slice(0, 8)}.ics`);
   },
 
   osSchedule: (userId: string, projectId: string) =>

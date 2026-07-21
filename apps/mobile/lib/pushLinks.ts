@@ -151,8 +151,10 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'approval':
       return { pathname: '/approvals', params: {} };
     case 'deadline':
-    case 'waste_reminder':
       return tabsRoute(role, 'calendar');
+    case 'waste_reminder':
+      // W124: остатки/материалы — не общий календарь
+      return repairTabRoute(role, 'materials');
     case 'room_updated':
     case 'room_created':
       return objectTabRoute(role, 'rooms');
