@@ -276,17 +276,27 @@ export function authHeaders(userId?: string | null): Record<string, string> {
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-export async function req<T>(path: string, opts: RequestInit = {}, userId?: string): Promise<T> {
-  const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
+export type ReqOptions = RequestInit & {
+  /**
+   * GET: при 5xx/сети отдавать durable cache.
+   * Для «истинного» отсутствия ресурса (план не создан) — false,
+   * иначе cache null/plan нельзя отличить от ошибки.
+   */
+  cacheFallback?: boolean;
+};
+
+export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
+  const { cacheFallback = true, ...fetchOpts } = opts;
+  const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(opts.headers as object),
+    ...(fetchOpts.headers as object),
   };
   Object.assign(headers, authHeaders(userId));
   // FormData must manage its own multipart boundary — drop forced JSON content-type
   if (isFormData) delete headers['Content-Type'];
 
-  const isGet = canUseDurableCache(opts);
+  const isGet = canUseDurableCache(fetchOpts);
   let attempt = 0;
   let lastError: unknown;
 
@@ -298,9 +308,9 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
         const res = await fetch(`${API_BASE}${path}`, {
-          ...opts,
+          ...fetchOpts,
           headers,
-          signal: opts.signal ?? controller.signal,
+          signal: fetchOpts.signal ?? controller.signal,
         });
         if (!res.ok) {
           const txt = await res.text();
@@ -348,7 +358,7 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
       ? lastError
       : new ApiError(429, 'Слишком много запросов. Подождите несколько секунд и повторите.', 'rate_limit');
   } catch (error) {
-    if (isGet && canFallbackToCache(error)) {
+    if (isGet && cacheFallback && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) return fallback;
     }
