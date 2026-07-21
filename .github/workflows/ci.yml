@@ -50,6 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           poetry run python -m alembic upgrade head
+
   playwright:
     runs-on: ubuntu-latest
     steps:
@@ -69,3 +70,23 @@ jobs:
           npm ci && npx playwright install chromium
           bash scripts/assert-e2e-bearer.sh
           bash scripts/ci-playwright.sh api
+
+  chat-unread:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install JavaScript dependencies
+        run: npm ci
+      - name: Mobile unread contracts
+        run: npm run test:chat-unread
+      - name: Backend unread contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pytest tests/test_chat_read_after_visible.py tests/test_chat_unread_snapshot.py -q
