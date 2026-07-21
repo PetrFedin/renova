@@ -4,8 +4,10 @@ import { useFocusEffect } from 'expo-router';
 import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, Purchase, ReceiptItem } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { BudgetAlert } from '@/components/renova/BudgetAlerts';
+import { reportError } from '@/lib/reportError';
 
-export type PaymentFilter = 'all' | 'pending' | 'confirmed';
+export type PaymentFilter = 'all' | 'pending' | 'confirmed' | 'paid_unverified';
+export type BudgetLoadState = 'loading' | 'loaded' | 'error';
 
 export function useOsBudgetScreen() {
   const { user, activeProject, loadProject } = useRenova();
@@ -17,24 +19,35 @@ export function useOsBudgetScreen() {
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [payFilter, setPayFilter] = useState<PaymentFilter>('all');
+  const [loadState, setLoadState] = useState<BudgetLoadState>('loading');
 
   const reloadLegacy = useCallback(async () => {
     if (!user || !activeProject) return;
-    api.osBudget(user.id, activeProject.id).then(setSummary).catch(() => setSummary(null));
-    api.osExpenses(user.id, activeProject.id).then(setExpenses).catch(() => setExpenses([]));
-    api.listPayments(user.id, activeProject.id).then(setPayments).catch(() => setPayments([]));
-    api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(() => setReceipts([]));
-    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => setPurchases([]));
-    api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(() => setPicks([]));
-    api.budgetAlerts(user.id, activeProject.id).then(setBudgetAlerts).catch(() => setBudgetAlerts([]));
+    const [sm, ex, pay, rc, pur, pk, al] = await Promise.all([
+      api.osBudget(user.id, activeProject.id),
+      api.osExpenses(user.id, activeProject.id),
+      api.listPayments(user.id, activeProject.id),
+      api.listReceipts(user.id, activeProject.id),
+      api.listPurchases(user.id, activeProject.id),
+      api.listMaterialPicks(user.id, activeProject.id),
+      api.budgetAlerts(user.id, activeProject.id),
+    ]);
+    setSummary(sm);
+    setExpenses(ex);
+    setPayments(pay);
+    setReceipts(rc);
+    setPurchases(pur);
+    setPicks(pk);
+    setBudgetAlerts(al);
   }, [user?.id, activeProject?.id]);
 
   const reload = useCallback(async () => {
     if (!user || !activeProject) return;
+    setLoadState('loading');
     try {
       const [hub, purchaseRows] = await Promise.all([
         api.budgetSummaryHub(user.id, activeProject.id),
-        api.listPurchases(user.id, activeProject.id).catch(() => [] as Purchase[]),
+        api.listPurchases(user.id, activeProject.id),
       ]);
       setSummary(hub.summary);
       setExpenses(hub.expenses);
@@ -43,21 +56,30 @@ export function useOsBudgetScreen() {
       setPurchases(purchaseRows);
       setPicks(hub.material_picks);
       setBudgetAlerts(hub.budget_alerts);
-    } catch {
-      await reloadLegacy();
+      setLoadState('loaded');
+    } catch (e) {
+      try {
+        await reloadLegacy();
+        setLoadState('loaded');
+      } catch (e2) {
+        reportError('budget.reload', e2);
+        setLoadState('error');
+      }
     }
-    loadProject(activeProject.id).catch(() => {});
+    loadProject(activeProject.id).catch((err) => reportError('budget.loadProject', err));
   }, [user?.id, activeProject?.id, loadProject, reloadLegacy]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch((e) => reportError('budget.focus', e)); }, [reload]));
 
-  const pending = payments.filter((p) => p.status === 'pending');
+  const pending = payments.filter((p) => p.status === 'pending' || p.status === 'paid_unverified');
   const sortedPayments = [...payments].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   const filteredPayments = payFilter === 'pending'
     ? sortedPayments.filter((p) => p.status === 'pending')
-    : payFilter === 'confirmed'
-      ? sortedPayments.filter((p) => p.status === 'confirmed')
-      : sortedPayments;
+    : payFilter === 'paid_unverified'
+      ? sortedPayments.filter((p) => p.status === 'paid_unverified')
+      : payFilter === 'confirmed'
+        ? sortedPayments.filter((p) => p.status === 'confirmed')
+        : sortedPayments;
 
   return {
     user,
@@ -74,5 +96,6 @@ export function useOsBudgetScreen() {
     pending,
     filteredPayments,
     reload,
+    loadState,
   };
 }

@@ -36,6 +36,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [apiSummary, setApiSummary] = useState<{ receipts_total: number; expenses_total?: number } | null>(null);
   const [osBudget, setOsBudget] = useState<import('@/lib/api').OsBudgetSummary | null>(null);
   const [kpiPoints, setKpiPoints] = useState<{ id: string; label: string; margin: number }[]>([]);
@@ -54,14 +55,15 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     if (!user || !activeProject) return;
     setLoading(true);
     try {
+      setLoadError(false);
       const [rc, ex, pk, pur, sm, ob, kh] = await Promise.all([
-        api.listReceipts(user.id, activeProject.id).catch(() => [] as ReceiptItem[]),
-        api.osExpenses(user.id, activeProject.id).catch(() => [] as OsExpense[]),
-        api.listMaterialPicks(user.id, activeProject.id).catch(() => [] as MaterialPick[]),
-        api.listPurchases(user.id, activeProject.id).catch(() => [] as Purchase[]),
-        api.expensesSummary(user.id, activeProject.id).catch(() => null),
-        api.osBudget(user.id, activeProject.id).catch(() => null),
-        api.kpiHistory(user.id, activeProject.id).catch(() => []),
+        api.listReceipts(user.id, activeProject.id),
+        api.osExpenses(user.id, activeProject.id),
+        api.listMaterialPicks(user.id, activeProject.id),
+        api.listPurchases(user.id, activeProject.id),
+        api.expensesSummary(user.id, activeProject.id),
+        api.osBudget(user.id, activeProject.id),
+        api.kpiHistory(user.id, activeProject.id),
       ]);
       setReceipts(rc);
       setExpenses(ex);
@@ -76,6 +78,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
       })));
     } catch (e) {
       if (isRateLimitError(e)) return;
+      setLoadError(true);
       if (__DEV__) console.warn('[ProjectAnalyticsPanel]', e);
     } finally {
       setLoading(false);
@@ -88,6 +91,13 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   if (!user || !activeProject) {
     const role = user?.role === 'contractor' ? 'contractor' : 'customer';
     return <ProjectEmptyState role={role} />;
+  }
+  if (loadError && !loading) {
+    return (
+      <Text style={{ padding: 12, color: RenovaTheme.colors.textMuted, fontSize: 13 }}>
+        Аналитика не загрузилась — цифры скрыты, чтобы не показывать ложный ноль. Обновите экран.
+      </Text>
+    );
   }
 
   if (loading) {

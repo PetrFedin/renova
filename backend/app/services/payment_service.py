@@ -50,7 +50,12 @@ async def confirm_payment(
     Machine paths (webhook / bank match): allow_without_settlement=True.
     """
     payment = await db.get(Payment, payment_id)
-    if not payment or payment.status != PaymentStatus.pending:
+    confirmable = {
+        PaymentStatus.pending,
+        PaymentStatus.processing,
+        PaymentStatus.paid_unverified,
+    }
+    if not payment or payment.status not in confirmable:
         return None
     if project_id is not None and payment.project_id != project_id:
         return None
@@ -70,17 +75,42 @@ async def confirm_payment(
             return None
 
     old_status = payment.status.value if hasattr(payment.status, "value") else str(payment.status)
+
+    # transfer_ack alone → paid_unverified (не финансовый факт в budget_spent)
+    unverified_only = (
+        not allow_without_settlement
+        and not receipt_id
+        and bool(transfer_ack)
+    )
+    if unverified_only:
+        payment.status = PaymentStatus.paid_unverified
+        payment.payment_method = payment.payment_method or "bank_transfer"
+        try:
+            from app.models.entities import PaymentEvent, _uuid as _pay_uuid
+            db.add(PaymentEvent(
+                id=_pay_uuid(),
+                payment_id=payment.id,
+                source="manual",
+                old_status=old_status,
+                new_status=PaymentStatus.paid_unverified.value,
+                evidence_type="transfer_ack",
+                evidence_ref=None,
+                note="ack_without_receipt",
+            ))
+        except Exception:
+            pass
+        await db.commit()
+        await db.refresh(payment)
+        return payment
+
     payment.status = PaymentStatus.confirmed
     payment.confirmed_at = datetime.utcnow()
     if allow_without_settlement:
         payment.payment_method = payment.payment_method or "yookassa"
         evidence_type, evidence_ref, source = "yookassa", payment.yookassa_payment_id, "webhook"
-    elif receipt_id:
-        payment.payment_method = payment.payment_method or "bank_transfer"
-        evidence_type, evidence_ref, source = "receipt", receipt_id, "manual"
     else:
         payment.payment_method = payment.payment_method or "bank_transfer"
-        evidence_type, evidence_ref, source = "transfer_ack", None, "manual"
+        evidence_type, evidence_ref, source = "receipt", receipt_id, "manual"
     try:
         from app.models.entities import PaymentEvent, _uuid as _pay_uuid
         db.add(PaymentEvent(
@@ -111,6 +141,8 @@ async def attach_yookassa_id(db: AsyncSession, payment_id: str, yookassa_id: str
     payment = await db.get(Payment, payment_id)
     if payment:
         payment.yookassa_payment_id = yookassa_id
+        if payment.status == PaymentStatus.pending:
+            payment.status = PaymentStatus.processing
         await db.commit()
 
 

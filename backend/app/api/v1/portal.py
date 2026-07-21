@@ -273,6 +273,22 @@ async def portal_snapshot(
     else:
         payments_mode = "off"
 
+    # Portal lite: согласование доп. работ (без чата)
+    from app.models.entities import ChangeOrder, ChangeOrderStatus
+    co_rows = (
+        await db.execute(
+            select(ChangeOrder).where(
+                ChangeOrder.project_id == project_id,
+                ChangeOrder.status == ChangeOrderStatus.pending,
+            ).order_by(ChangeOrder.created_at.desc())
+        )
+    ).scalars().all()
+    pending_change_orders = [
+        {"id": c.id, "title": c.title, "amount": c.amount, "description": c.description, "status": c.status.value}
+        for c in co_rows[:10]
+    ]
+    can_decide_co = user.id == p.customer_id and user.role == UserRole.customer and not read_only
+
     return {
         "project": {"id": p.id, "name": p.name, "address": p.address, "progress_percent": p.progress_percent},
         "read_only": read_only,
@@ -290,6 +306,8 @@ async def portal_snapshot(
         "selections_total": len(sel_rows),
         "pending_acceptances": pending_acceptances,
         "estimate_summary": estimate_summary,
+        "pending_change_orders": pending_change_orders,
+        "can_decide_change_orders": can_decide_co,
         "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
         "can_confirm_schedule": user.id == p.customer_id and user.role == UserRole.customer and not read_only,
         "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
@@ -673,3 +691,63 @@ async def portal_reject_estimate(
     if result.get("code") == "customer_reject_required":
         raise HTTPException(403, detail=result)
     return {"ok": True, "code": "cleared", "reason": body.reason or "Нужна правка сметы"}
+
+
+
+class PortalChangeOrderIn(BaseModel):
+    token: str
+
+
+@router.post("/portal/projects/{project_id}/change-orders/{order_id}/approve")
+async def portal_approve_change_order(
+    project_id: str,
+    order_id: str,
+    body: PortalChangeOrderIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """Согласование доп. работ из lite-портала (scope accept_stage / customer)."""
+    try:
+        claims = portal_tok.verify_portal_token(body.token)
+    except ValueError:
+        raise HTTPException(401, "invalid_portal_token")
+    if claims["project_id"] != project_id:
+        raise HTTPException(401, "token_mismatch")
+    user = await db.get(User, claims["user_id"])
+    project = await db.get(Project, project_id)
+    if not user or not project:
+        raise HTTPException(404)
+    if user.id != project.customer_id or user.role != UserRole.customer:
+        raise HTTPException(403, "change_order_customer_only")
+    from app.services import change_order_service as co_svc
+    co, _ = await co_svc.approve_with_sign_draft(
+        db, project_id=project_id, order_id=order_id, created_by=user.id
+    )
+    if not co:
+        raise HTTPException(404, "change_order_not_found")
+    return {"id": co.id, "status": co.status.value}
+
+
+@router.post("/portal/projects/{project_id}/change-orders/{order_id}/reject")
+async def portal_reject_change_order(
+    project_id: str,
+    order_id: str,
+    body: PortalChangeOrderIn,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        claims = portal_tok.verify_portal_token(body.token)
+    except ValueError:
+        raise HTTPException(401, "invalid_portal_token")
+    if claims["project_id"] != project_id:
+        raise HTTPException(401, "token_mismatch")
+    user = await db.get(User, claims["user_id"])
+    project = await db.get(Project, project_id)
+    if not user or not project:
+        raise HTTPException(404)
+    if user.id != project.customer_id or user.role != UserRole.customer:
+        raise HTTPException(403, "change_order_customer_only")
+    from app.services import change_order_service as co_svc
+    co = await co_svc.reject(db, order_id)
+    if not co or co.project_id != project_id:
+        raise HTTPException(404, "change_order_not_found")
+    return {"id": co.id, "status": co.status.value}

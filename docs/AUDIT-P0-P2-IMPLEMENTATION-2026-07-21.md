@@ -29,3 +29,8 @@ Pin: see `git rev-parse HEAD` after merge.
 ## Migration
 
 `alembic upgrade head` → revision `y9z0a1b2c3d4`
+
+## Wave 2 (same day)
+
+- paid_unverified SM; portal CO approve/reject; invoice ACL; budget/manager fail-closed; secure token store; reportError
+- Split PR plan: `docs/SPLIT-RELEASE-PR-PLAN-2026-07-21.md`

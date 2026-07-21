@@ -292,6 +292,51 @@ export default function PortalScreen() {
         </View>
       ) : null}
 
+      {(snapshot.pending_change_orders?.length ?? 0) > 0 ? (
+        <View style={s.card}>
+          <Text style={s.cardHead}>Доп. работы на согласовании ({snapshot.pending_change_orders!.length})</Text>
+          <Text style={s.muted}>Портал согласований — без чата. Полный диалог в приложении Renova.</Text>
+          {snapshot.pending_change_orders!.map((co) => (
+            <View key={co.id} style={{ marginTop: 10, gap: 8 }}>
+              <Text style={s.line}>{co.title} · {formatRub(co.amount)}</Text>
+              {co.description ? <Text style={s.muted}>{co.description}</Text> : null}
+              {snapshot.can_decide_change_orders ? (
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                  <Pressable
+                    style={s.acceptBtn}
+                    onPress={async () => {
+                      try {
+                        await api.portalApproveChangeOrder(session.project_id, co.id, portalToken);
+                        setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                        Alert.alert('Согласовано', `«${co.title}»`);
+                      } catch {
+                        Alert.alert('Ошибка', 'Не удалось согласовать');
+                      }
+                    }}
+                  >
+                    <Text style={s.acceptBtnT}>Согласовать</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[s.acceptBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: RenovaTheme.colors.border }]}
+                    onPress={async () => {
+                      try {
+                        await api.portalRejectChangeOrder(session.project_id, co.id, portalToken);
+                        setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                        Alert.alert('Отклонено', `«${co.title}»`);
+                      } catch {
+                        Alert.alert('Ошибка', 'Не удалось отклонить');
+                      }
+                    }}
+                  >
+                    <Text style={[s.acceptBtnT, { color: RenovaTheme.colors.text }]}>Отклонить</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {snapshot.estimate_summary ? (
         <View style={s.card}>
           <Text style={s.cardHead}>Смета</Text>

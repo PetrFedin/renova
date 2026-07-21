@@ -172,7 +172,7 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         existing = await pay_svc.get_payment(db, payment_id)
         if not existing or existing.project_id != project_id:
             return {"ok": True, "handled": False, "reason": "payment_not_found"}
-        if existing.status.value != "pending":
+        if existing.status.value not in ("pending", "processing", "paid_unverified"):
             return {"ok": True, "handled": True, "duplicate": True}
 
         if yk_id:

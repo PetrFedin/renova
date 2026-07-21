@@ -49,17 +49,21 @@ export function ManagerDashboardScreen() {
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [state, setState] = useState<LoadState>({ budget: null, risks: [], insights: [] });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!user || !activeProject) return;
+    setLoadError(false);
     try {
       const [budget, risks, insights] = await Promise.all([
-        api.osBudget(user.id, activeProject.id).catch(() => null),
-        api.osRisks(user.id, activeProject.id).then((r) => r.items).catch(() => []),
-        api.osInsights(user.id, activeProject.id).then((r) => r.items).catch(() => []),
+        api.osBudget(user.id, activeProject.id),
+        api.osRisks(user.id, activeProject.id).then((r) => r.items),
+        api.osInsights(user.id, activeProject.id).then((r) => r.items),
       ]);
       setState({ budget, risks, insights });
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -88,6 +92,15 @@ export function ManagerDashboardScreen() {
       <View style={styles.center}>
         <ActivityIndicator color={RenovaTheme.colors.primaryMuted} />
         <Text style={styles.stateText}>Собираем управленческую сводку...</Text>
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.stateTitle}>Не удалось загрузить сводку</Text>
+        <Text style={styles.stateText}>Ошибка API — не пустой «хороший» статус. Потяните вниз или откройте снова.</Text>
       </View>
     );
   }

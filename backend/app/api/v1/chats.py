@@ -198,6 +198,8 @@ async def task_from_message(project_id: str, thread_id: str, message_id: str, bo
 @router.post("/{project_id}/chats/{thread_id}/invoice")
 async def invoice_from_chat(project_id: str, thread_id: str, body: PaymentFromChat, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
+    if user.role.value != "contractor":
+        raise HTTPException(403, "only_contractor_can_invoice_from_chat")
     t = await chat_svc.get_thread(db, thread_id)
     if not t or t.project_id != project_id:
         raise HTTPException(404)

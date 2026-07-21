@@ -95,7 +95,19 @@ export const miscApi = {
       { method: 'POST', body: JSON.stringify({ token, reason: reason || null }) },
       undefined,
     ),
-    portalSnapshot: (userId: string, projectId: string) =>
+    portalApproveChangeOrder: (projectId: string, orderId: string, token: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/change-orders/${orderId}/approve`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalRejectChangeOrder: (projectId: string, orderId: string, token: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v1/portal/projects/${projectId}/change-orders/${orderId}/reject`,
+      { method: 'POST', body: JSON.stringify({ token }) },
+      undefined,
+    ),
+  portalSnapshot: (userId: string, projectId: string) =>
     req<{
       project: { id: string; name: string; address?: string | null; progress_percent?: number };
       read_only: boolean;
@@ -112,6 +124,8 @@ export const miscApi = {
       can_accept_stage?: boolean;
       can_sign_documents?: boolean;
       pending_draft_documents?: { id: string; title: string; status?: string }[];
+      pending_change_orders?: { id: string; title: string; amount: number; description?: string | null; status: string }[];
+      can_decide_change_orders?: boolean;
       /** Trust: реквизиты исполнителя — без demo-карт */
       contractor_recipient_name?: string | null;
       contractor_company_name?: string | null;

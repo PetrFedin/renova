@@ -36,9 +36,13 @@ class PaymentType(str, enum.Enum):
 
 
 class PaymentStatus(str, enum.Enum):
-    pending = "pending"
+    pending = "pending"  # invoice / awaiting_payment
+    processing = "processing"  # yookassa checkout started
+    paid_unverified = "paid_unverified"  # transfer_ack без чека/выписки — не в budget_spent
     confirmed = "confirmed"
     cancelled = "cancelled"
+    disputed = "disputed"
+    refunded = "refunded"
 
 
 class ChangeOrderStatus(str, enum.Enum):

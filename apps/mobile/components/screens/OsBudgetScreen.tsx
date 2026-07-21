@@ -1,6 +1,7 @@
 /** Единый «Бюджет» — оркестратор вкладок (данные в useOsBudgetScreen) */
 import { useEffect, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -56,7 +57,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
 
   const {
     user, activeProject, summary, expenses, payments, receipts, purchases, picks, budgetAlerts,
-    payFilter, setPayFilter, pending, filteredPayments, reload,
+    payFilter, setPayFilter, pending, filteredPayments, reload, loadState,
   } = useOsBudgetScreen();
 
   const { customerBudget } = useCustomerBudget({
@@ -67,6 +68,20 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
 
   if (!activeProject || !user) {
     return <ProjectEmptyState role={role} />;
+  }
+
+  if (loadState === 'error') {
+    return (
+      <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center' }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text }}>
+          Не удалось загрузить бюджет
+        </Text>
+        <Text style={{ fontSize: 13, color: RenovaTheme.colors.textMuted }}>
+          Данные не загружены — это не «0 ₽ расходов». Проверьте сеть и повторите.
+        </Text>
+        <PrimaryButton title="Повторить" onPress={() => { void reload(); }} />
+      </View>
+    );
   }
 
   const resolvedTab = normalizeBudgetTab(tabParam ?? tab).tab;

@@ -15,6 +15,7 @@ function signalPreviewReady() {
 
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
 import { setAccessToken, setRefreshToken } from '@/lib/api/client';
+import { secureGet, secureSet, secureMultiRemove } from '@/lib/secureTokenStore';
 import {
   bootstrapPreviewDemo,
   inferDemoRole,
@@ -66,19 +67,19 @@ async function persistAccessToken(user: { access_token?: string | null; refresh_
   const tok = user.access_token?.trim();
   if (tok) {
     setAccessToken(tok);
-    await AsyncStorage.setItem(KEYS.accessToken, tok);
+    await secureSet(KEYS.accessToken, tok);
   }
   const refresh = user.refresh_token?.trim();
   if (refresh) {
     setRefreshToken(refresh);
-    await AsyncStorage.setItem(KEYS.refreshToken, refresh);
+    await secureSet(KEYS.refreshToken, refresh);
   }
 }
 
 async function clearAccessToken() {
   setAccessToken(null);
   setRefreshToken(null);
-  await AsyncStorage.multiRemove([KEYS.accessToken, KEYS.refreshToken]);
+  await secureMultiRemove([KEYS.accessToken, KEYS.refreshToken]);
 }
 
 
@@ -344,8 +345,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
         const uid = await AsyncStorage.getItem(KEYS.userId);
         const storedRole = await AsyncStorage.getItem('renova_user_role');
-        const storedTok = await AsyncStorage.getItem(KEYS.accessToken);
-        const storedRefresh = await AsyncStorage.getItem(KEYS.refreshToken);
+        const storedTok = await secureGet(KEYS.accessToken);
+        const storedRefresh = await secureGet(KEYS.refreshToken);
         if (storedTok) setAccessToken(storedTok);
         if (storedRefresh) setRefreshToken(storedRefresh);
 
@@ -366,6 +367,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           await persistAccessToken(u);
         } catch {
           await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, KEYS.refreshToken]);
+          await secureMultiRemove([KEYS.accessToken, KEYS.refreshToken]);
           await clearAccessToken();
           if (reachable) {
             const recovered = await recoverDemoSession(inferDemoRole(null, storedRole));
@@ -592,6 +594,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, KEYS.refreshToken, SESSION_KEYS.pendingProjectPick, SESSION_KEYS.projectExplicitlyPicked]);
+    await secureMultiRemove([KEYS.accessToken, KEYS.refreshToken]);
     await clearAccessToken();
     setUser(null);
     setProjects([]);

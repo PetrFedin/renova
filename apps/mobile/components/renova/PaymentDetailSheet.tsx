@@ -280,7 +280,7 @@ export function PaymentDetailSheet({
       return;
     }
     try {
-      await api.confirmPayment(userId, projectId, payment.id, {
+      const confirmed = await api.confirmPayment(userId, projectId, payment.id, {
         // Клиентский gate уже проверил перевод/чек; сервер принимает ack или receipt_id
         transfer_ack: Boolean(transferAck || receiptAttached),
       });
@@ -292,8 +292,14 @@ export function PaymentDetailSheet({
       });
       onChanged?.();
       onClose();
-      // W131: оплата → бюджет / inbox
-      alertPaymentConfirmed(role);
+      if (confirmed?.status === 'paid_unverified') {
+        Alert.alert(
+          'Принято без проверки',
+          'Статус «оплачено, не верифицировано». Прикрепите чек — тогда сумма войдёт в бюджет как подтверждённый факт.',
+        );
+      } else {
+        alertPaymentConfirmed(role);
+      }
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 409) {
         Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
