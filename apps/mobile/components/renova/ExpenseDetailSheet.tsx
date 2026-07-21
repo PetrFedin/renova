@@ -13,7 +13,6 @@ import type { OsRole } from '@/constants/osSections';
 import { EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
 import { pushOsNav } from '@/lib/pushOsNav';
-import type { OsRole } from '@/constants/osSections';
 
 export type ExpenseDetailTarget =
   | { kind: 'expense'; item: OsExpense }
