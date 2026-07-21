@@ -17,6 +17,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORKS_FILTER_LABEL } from '@/constants/labels';
 import {
   CUSTOMER_WORKS_FILTERS,
+  countStagesForCustomerFilters,
   filterStagesForCustomer,
   type CustomerWorksFilter,
 } from '@/lib/domain/customerWorksFilters';
@@ -125,8 +126,19 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     return filteredBase.filter((s) => !query || s.name.toLowerCase().includes(query.toLowerCase()));
   }, [activeProject, filter, query, blockedMap, isCustomer]);
 
+  const customerFilterCounts = useMemo(() => {
+    if (!isCustomer || !activeProject) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    return countStagesForCustomerFilters(activeProject.stages || [], blockedMap, today);
+  }, [isCustomer, activeProject, blockedMap]);
+
   const activeFilters = isCustomer
-    ? CUSTOMER_WORKS_FILTERS
+    ? CUSTOMER_WORKS_FILTERS.map((f) => ({
+        ...f,
+        label: customerFilterCounts
+          ? `${f.label} (${customerFilterCounts[f.key]})`
+          : f.label,
+      }))
     : showAdvancedFilters
       ? FILTERS
       : FILTERS.slice(0, 4);
@@ -174,10 +186,11 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         {isContractor && !showAdvancedFilters && (
           <PrimaryButton title="Ещё фильтры" variant="ghost" compact onPress={() => setShowAdvancedFilters(true)} />
         )}
-        {user && (
+        {/* Заказчик: зависимости/WO не зависят от чипов — прячем, иначе вкладки «одинаковые» */}
+        {user && (!isCustomer || filter === 'all') && (
           <StageDependenciesPanel userId={user.id} projectId={activeProject.id} role={role} />
         )}
-        {user && (
+        {user && (!isCustomer || filter === 'all') && (
           <WorkOrdersListPanel
             userId={user.id}
             projectId={activeProject.id}
