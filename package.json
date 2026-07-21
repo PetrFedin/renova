@@ -59,7 +59,8 @@
     "staging:readiness-report": "bash scripts/staging-readiness-report.sh",
     "staging:credentials-probe": "bash scripts/staging-credentials-probe.sh",
     "split:status": "bash scripts/split-release-status.sh",
-    "assert:e2e-bearer": "bash scripts/assert-e2e-bearer.sh"
+    "assert:e2e-bearer": "bash scripts/assert-e2e-bearer.sh",
+    "test:archived-chat-unread": "npx tsx apps/mobile/lib/domain/archivedChatPolicy.test.ts && npx tsx apps/mobile/lib/domain/archivedChatPolicy.smoke.test.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

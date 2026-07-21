@@ -22,6 +22,12 @@ import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttent
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { reportCatch } from '@/lib/reportError';
+import {
+  archiveUnreadExplanation,
+  countArchivedWithUnread,
+  isMuteActive,
+  sumArchivedChatUnread,
+} from '@/lib/domain/archivedChatPolicy';
 
 type Folder = 'active' | 'archive';
 
@@ -41,6 +47,7 @@ function ThreadCard({
   viewerRole?: 'customer' | 'contractor';
 }) {
   const unread = thread.unread_count || 0;
+  const muted = thread.is_muted || isMuteActive(thread.muted_until);
   const awaiting = !unread && threadAwaitingReply(thread, viewerRole);
   return (
     <Pressable
@@ -59,6 +66,7 @@ function ThreadCard({
           ) : null}
           <Text style={s.preview} numberOfLines={1}>{preview}</Text>
           {awaiting ? <Text style={s.awaiting}>Ждёт вашего ответа</Text> : null}
+          {muted ? <Text style={s.mutedBadge}>Без звука</Text> : null}
         </View>
         <View style={s.rightCol}>
           <Text style={s.meta}>{thread.updated_at.slice(0, 16).replace('T', ' ')}</Text>
@@ -190,6 +198,7 @@ export function ChatListView() {
       Alert.alert('Ошибка', 'Чат не привязан к объекту.');
       return;
     }
+    const muted = t.is_muted || isMuteActive(t.muted_until);
     Alert.alert(t.title, t.project_name || undefined, [
       {
         text: t.is_pinned ? 'Открепить' : 'Закрепить',
@@ -206,10 +215,27 @@ export function ChatListView() {
         text: folder === 'archive' ? 'Вернуть из архива' : 'В архив',
         onPress: async () => {
           try {
+            // Archive ≠ read: только is_archived, unread_count не трогаем
             await api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' });
             await reload();
           } catch (e) {
             if (isOfflineQueued(e)) notifyOfflineQueued(folder === 'archive' ? 'Восстановление чата' : 'Архивация чата');
+          }
+        },
+      },
+      {
+        text: muted ? 'Включить звук' : 'Без звука на 24 ч',
+        onPress: async () => {
+          try {
+            if (muted) {
+              await api.patchChatState(user.id, t.project_id, t.id, { clear_mute: true });
+            } else {
+              const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+              await api.patchChatState(user.id, t.project_id, t.id, { muted_until: until });
+            }
+            await reload();
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued(muted ? 'Включение звука' : 'Отключение звука');
           }
         },
       },
@@ -230,6 +256,8 @@ export function ChatListView() {
   const filterIsAll = projectFilter === CHAT_FILTER_ALL || (Array.isArray(projectFilter) && projectFilter.length === projectOptions.length);
   const tabUnread = filterIsAll ? globalUnread : displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
   const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
+  const archivedUnread = sumArchivedChatUnread(sourceThreads);
+  const archivedUnreadThreads = countArchivedWithUnread(sourceThreads);
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
@@ -239,6 +267,13 @@ export function ChatListView() {
             {globalUnread > 0
               ? `${globalUnread} ${globalUnread === 1 ? 'непрочитанное' : globalUnread < 5 ? 'непрочитанных' : 'непрочитанных'}`
               : `${awaitingCount} ${awaitingCount === 1 ? 'диалог ждёт' : 'диалогов ждут'} ответа`}
+          </Text>
+        </View>
+      ) : null}
+      {folder === 'archive' ? (
+        <View style={s.archiveHint}>
+          <Text style={s.archiveHintT}>
+            {archiveUnreadExplanation(archivedUnread, archivedUnreadThreads)}
           </Text>
         </View>
       ) : null}
@@ -255,7 +290,9 @@ export function ChatListView() {
           </Text>
         </Pressable>
         <Pressable style={[s.tab, folder === 'archive' && s.tabOn]} onPress={() => setFolder('archive')}>
-          <Text style={[s.tabT, folder === 'archive' && s.tabTOn]}>Архив</Text>
+          <Text style={[s.tabT, folder === 'archive' && s.tabTOn]}>
+            Архив{archivedUnread > 0 ? ` · ${archivedUnread}` : ''}
+          </Text>
         </Pressable>
       </View>
 
@@ -334,6 +371,15 @@ const s = StyleSheet.create({
     marginBottom: 10,
   },
   unreadBannerT: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.danger, textAlign: 'center' },
+  archiveHint: {
+    backgroundColor: RenovaTheme.colors.warningBg,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.warningBorder,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  archiveHintT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.warningText, lineHeight: 17 },
   unreadWarn: { fontSize: 12, color: RenovaTheme.colors.warning, marginBottom: 8, textAlign: 'center' },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' },
   tab: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface },
@@ -351,6 +397,7 @@ const s = StyleSheet.create({
   projectName: { fontSize: 11, color: RenovaTheme.colors.accent, fontWeight: '600', marginTop: 2 },
   preview: { color: RenovaTheme.colors.textMuted, marginTop: 4, fontSize: 13 },
   awaiting: { fontSize: 11, color: RenovaTheme.colors.warning, fontWeight: '700', marginTop: 3 },
+  mutedBadge: { fontSize: 11, color: RenovaTheme.colors.textMuted, fontWeight: '700', marginTop: 3 },
   rightCol: { alignItems: 'flex-end', minWidth: 56 },
   meta: { fontSize: 10, color: RenovaTheme.colors.textMuted },
   awaitDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: RenovaTheme.colors.warning, marginTop: 4 },

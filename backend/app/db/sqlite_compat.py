@@ -385,7 +385,7 @@ def ensure_os_schema() -> None:
     # Chat enhancements
     if "chat_thread_reads" in tables:
         ctr = cols("chat_thread_reads")
-        for col, typ in [("is_archived", "INTEGER DEFAULT 0"), ("is_pinned", "INTEGER DEFAULT 0"), ("pinned_at", "TEXT")]:
+        for col, typ in [("is_archived", "INTEGER DEFAULT 0"), ("archived_at", "TEXT"), ("muted_until", "TEXT"), ("is_pinned", "INTEGER DEFAULT 0"), ("pinned_at", "TEXT")]:
             if col not in ctr:
                 try: c.execute(f"ALTER TABLE chat_thread_reads ADD COLUMN {col} {typ}")
                 except Exception: pass

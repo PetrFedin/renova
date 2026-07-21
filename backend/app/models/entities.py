@@ -435,6 +435,10 @@ class ChatThreadRead(Base):
     thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id"), index=True)
     last_read_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Когда пользователь положил тред в архив (не трогает last_read_at / mute)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Mute отдельно от archive: до этого момента push подавляются
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
