@@ -6,15 +6,33 @@ import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
+import {
+  decideMarkReadAction,
+  recordMarkReadDiag,
+  type ConfirmedReadCursor,
+  type MarkThreadReadSource,
+} from '@/lib/domain/markThreadReadPolicy';
+import {
+  applyChatUnreadSnapshot,
+  parseChatUnreadSnapshotApi,
+  patchThreadUnreadInSnapshot,
+  setThreadArchivedInSnapshot,
+  snapshotFromThreads,
+  warnUnreadInvariantIfBroken,
+  type ChatUnreadSnapshot,
+} from '@/lib/domain/chatUnreadSnapshot';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
 
-const POLL_MS = 25_000;
 const listeners = new Set<Listener>();
 
+/** SoT unread: атомарный snapshot (threads + total + revision) */
+let unreadSnapshot: ChatUnreadSnapshot | null = null;
 let chatCount = 0;
 let chatFailed = false;
+/** Список не загрузился / устарел — total не подменяем отдельно */
+let chatUnreadStale = false;
 let inboxWsConnected = false;
 let chatThreads: ChatThread[] = [];
 let inboxItems: InboxItem[] = [];
@@ -26,6 +44,33 @@ let wsCleanup: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let reloadInflight: Promise<void> | null = null;
 let lastReloadKey = '';
+let loadGeneration = 0;
+/** Последний userId, для которого загружали unread — смена → сброс snapshot */
+let lastChatUserId: string | undefined;
+
+/** In-flight mark-read: один запрос на threadId */
+const markInflight = new Map<string, Promise<MarkThreadReadResult>>();
+/** Последний подтверждённый сервером cursor */
+const confirmedRead = new Map<string, ConfirmedReadCursor>();
+
+export type MarkThreadReadArgs = {
+  userId: string;
+  projectId: string;
+  threadId: string;
+  throughMessageId?: string | null;
+  throughCreatedAt?: string | null;
+  userRole?: UserRole;
+  source: MarkThreadReadSource;
+  /** Повтор после ошибки сети — обойти skip_same */
+  force?: boolean;
+};
+
+export type MarkThreadReadResult = {
+  status: 'sent' | 'deduplicated' | 'skipped_same' | 'skipped_stale' | 'error';
+  threadId: string;
+  throughMessageId: string | null;
+  source: MarkThreadReadSource;
+};
 
 export function subscribeInboxSync(listener: Listener): () => void {
   listeners.add(listener);
@@ -44,21 +89,38 @@ function notify() {
   });
 }
 
-function sumChatUnread(threads: ChatThread[]): number {
-  return threads
-    .filter((t) => !t.is_archived)
-    .reduce((sum, t) => sum + (t.unread_count || 0), 0);
+/** Атомарно зафиксировать snapshot в store-полях */
+function commitUnreadSnapshot(next: ChatUnreadSnapshot, opts?: { failed?: boolean; stale?: boolean }) {
+  unreadSnapshot = next;
+  chatThreads = next.threads;
+  chatCount = next.totalUnreadMessages;
+  if (opts?.failed != null) chatFailed = opts.failed;
+  if (opts?.stale != null) chatUnreadStale = opts.stale;
+  warnUnreadInvariantIfBroken(next, undefined, 'commitUnreadSnapshot');
+}
+
+function applyIncomingSnapshot(
+  incoming: ChatUnreadSnapshot,
+  opts?: { force?: boolean },
+): boolean {
+  const result = applyChatUnreadSnapshot(unreadSnapshot, incoming, opts);
+  if (!result.ok) {
+    chatUnreadStale = true;
+    warnUnreadInvariantIfBroken(result.snapshot, undefined, 'stale_revision_rejected');
+    return false;
+  }
+  commitUnreadSnapshot(result.snapshot, { failed: false, stale: false });
+  return true;
 }
 
 function applyLocalThreadUnread(threadId: string, unread = 0) {
-  chatThreads = chatThreads.map((t) =>
-    t.id === threadId ? { ...t, unread_count: unread } : t,
-  );
-  chatCount = sumChatUnread(chatThreads);
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  const next = patchThreadUnreadInSnapshot(base, threadId, unread);
+  commitUnreadSnapshot(next, { failed: false, stale: false });
 }
 
 export function getChatUnreadSnapshot() {
-  return { count: chatCount, failed: chatFailed, inboxWsConnected };
+  return { count: chatCount, failed: chatFailed, inboxWsConnected, stale: chatUnreadStale };
 }
 
 export function getChatUnreadCountSnapshot() {
@@ -67,6 +129,14 @@ export function getChatUnreadCountSnapshot() {
 
 export function getChatFailedSnapshot() {
   return chatFailed;
+}
+
+export function getChatUnreadStaleSnapshot() {
+  return chatUnreadStale;
+}
+
+export function getChatUnreadRevisionSnapshot() {
+  return unreadSnapshot?.revision ?? 0;
 }
 
 export function getInboxWsConnectedSnapshot() {
@@ -92,33 +162,38 @@ export function getInboxItemsSnapshot() {
 function notifyIfChanged(prev: {
   chatCount: number;
   chatFailed: boolean;
+  chatUnreadStale: boolean;
   inboxBadge: number;
   inboxItems: InboxItem[];
   inboxWsConnected: boolean;
+  revision: number;
 }) {
   if (
     prev.chatCount === chatCount
     && prev.chatFailed === chatFailed
+    && prev.chatUnreadStale === chatUnreadStale
     && prev.inboxBadge === inboxBadge
     && prev.inboxItems === inboxItems
     && prev.inboxWsConnected === inboxWsConnected
+    && prev.revision === (unreadSnapshot?.revision ?? 0)
   ) {
     return;
   }
   notify();
 }
 
-async function loadChatState(userId: string): Promise<{ threads: ChatThread[]; unread: number; ok: boolean }> {
+/**
+ * Загрузка unread snapshot без apply — apply только после guards (abort/context).
+ */
+async function fetchChatSnapshot(userId: string): Promise<
+  | { ok: true; snapshot: ChatUnreadSnapshot }
+  | { ok: false }
+> {
   try {
-    const threads = await api.chatInbox(userId);
-    return { threads, unread: sumChatUnread(threads), ok: true };
+    const raw = await api.chatInbox(userId);
+    return { ok: true, snapshot: parseChatUnreadSnapshotApi(raw, Date.now()) };
   } catch {
-    try {
-      const { count } = await api.chatUnreadTotal(userId);
-      return { threads: chatThreads, unread: count, ok: true };
-    } catch {
-      return { threads: chatThreads, unread: chatCount, ok: false };
-    }
+    return { ok: false };
   }
 }
 
@@ -186,51 +261,255 @@ function refreshInboxChatRow(nextChat: number) {
   inboxBadge = taskRows + n;
 }
 
-/** Прочитать тред: optimistic local + API + полный resync */
+/** Точечное обновление unread треда — total пересчитывается в том же action */
+function patchThreadReadLocal(threadId: string, threadUnread = 0) {
+  const prev = {
+    chatCount,
+    chatFailed,
+    chatUnreadStale,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
+  };
+  applyLocalThreadUnread(threadId, threadUnread);
+  refreshInboxChatRow(chatCount);
+  notifyIfChanged(prev);
+}
+
+/**
+ * Локально архивировать/разархивировать тред с пересчётом total.
+ */
+export function patchThreadArchivedLocal(threadId: string, isArchived: boolean) {
+  const prev = {
+    chatCount,
+    chatFailed,
+    chatUnreadStale,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
+  };
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  commitUnreadSnapshot(setThreadArchivedInSnapshot(base, threadId, isArchived), {
+    failed: false,
+    stale: false,
+  });
+  refreshInboxChatRow(chatCount);
+  notifyIfChanged(prev);
+}
+
+/**
+ * Единый mark-read: dedupe in-flight, ignore stale/same cursor,
+ * точечный patch store; полный reload только при ошибке API.
+ */
+export async function markThreadRead(args: MarkThreadReadArgs): Promise<MarkThreadReadResult> {
+  const {
+    userId,
+    projectId,
+    threadId,
+    throughMessageId = null,
+    throughCreatedAt = null,
+    userRole,
+    source,
+    force = false,
+  } = args;
+
+  const base = {
+    threadId,
+    throughMessageId,
+    source,
+  };
+
+  const evalDecision = (hasInflight: boolean) =>
+    decideMarkReadAction({
+      force,
+      throughMessageId,
+      throughCreatedAt,
+      confirmed: confirmedRead.get(threadId) ?? null,
+      hasInflight,
+    });
+
+  // Уже есть in-flight → ждём и не стартуем второй API
+  const existing = markInflight.get(threadId);
+  if (existing) {
+    recordMarkReadDiag({ ...base, outcome: 'deduplicated' });
+    await existing;
+    const after = evalDecision(false);
+    if (after.action === 'skip_same') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_same' });
+      return { status: 'skipped_same', ...base };
+    }
+    if (after.action === 'skip_stale') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_stale' });
+      return { status: 'skipped_stale', ...base };
+    }
+    if (after.action === 'await_inflight') {
+      return { status: 'deduplicated', ...base };
+    }
+    // более новый cursor — fall through к новому send
+  } else {
+    const early = evalDecision(false);
+    if (early.action === 'skip_same') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_same' });
+      return { status: 'skipped_same', ...base };
+    }
+    if (early.action === 'skip_stale') {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_stale' });
+      return { status: 'skipped_stale', ...base };
+    }
+  }
+
+  // Атомарный claim слота до любого await I/O
+  let resolveClaim!: (r: MarkThreadReadResult) => void;
+  const claim = new Promise<MarkThreadReadResult>((res) => {
+    resolveClaim = res;
+  });
+  // Если проиграли гонку — другой уже поставил promise
+  if (markInflight.has(threadId)) {
+    recordMarkReadDiag({ ...base, outcome: 'deduplicated' });
+    await markInflight.get(threadId);
+    const afterRace = evalDecision(false);
+    if (afterRace.action === 'send') {
+      // редкий случай: нужно отправить новый cursor — рекурсия с тем же args
+      return markThreadRead(args);
+    }
+    const status = afterRace.action === 'skip_stale'
+      ? 'skipped_stale' as const
+      : afterRace.action === 'skip_same'
+        ? 'skipped_same' as const
+        : 'deduplicated' as const;
+    recordMarkReadDiag({ ...base, outcome: status === 'deduplicated' ? 'deduplicated' : status });
+    return { status, ...base };
+  }
+  markInflight.set(threadId, claim);
+
+  try {
+    patchThreadReadLocal(threadId, 0);
+    recordMarkReadDiag({ ...base, outcome: 'patched' });
+
+    try {
+      const res = await api.markChatRead(userId, projectId, threadId, throughMessageId);
+      chatFailed = false;
+      const serverUnread = typeof res?.thread_unread_count === 'number' ? res.thread_unread_count : 0;
+      const confirmedId = res?.read_through_message_id ?? throughMessageId;
+      confirmedRead.set(threadId, {
+        messageId: confirmedId ?? null,
+        createdAt: throughCreatedAt,
+      });
+      // Total только из суммы тредов — не подставляем независимый server total
+      patchThreadReadLocal(threadId, serverUnread);
+      if (
+        typeof res?.total_unread_count === 'number'
+        && res.total_unread_count !== chatCount
+        && (typeof __DEV__ === 'undefined' || __DEV__)
+      ) {
+        warnUnreadInvariantIfBroken(
+          unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now()),
+          undefined,
+          'mark_read_server_total_mismatch',
+        );
+      }
+      const ok: MarkThreadReadResult = { status: 'sent', ...base };
+      recordMarkReadDiag({ ...base, outcome: 'sent' });
+      resolveClaim(ok);
+      return ok;
+    } catch {
+      recordMarkReadDiag({ ...base, outcome: 'error' });
+      try {
+        const { requestChatSync, patchChatSyncContext } = await import('@/lib/chatSync');
+        patchChatSyncContext({
+          userId,
+          role: userRole ?? null,
+          projectId: projectId ?? cachedFullSync?.projectId ?? null,
+        });
+        await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
+      } catch {
+        await reloadInboxSync(
+          {
+            userId,
+            userRole,
+            projectId,
+            project: cachedFullSync?.project,
+            osRole: cachedFullSync?.osRole,
+          },
+          true,
+        );
+      }
+      const err: MarkThreadReadResult = { status: 'error', ...base };
+      resolveClaim(err);
+      return err;
+    }
+  } finally {
+    if (markInflight.get(threadId) === claim) {
+      markInflight.delete(threadId);
+    }
+  }
+}
+
+/** @deprecated используйте markThreadRead */
 export async function markChatReadAndSync(
   userId: string,
   projectId: string,
   threadId: string,
   userRole?: UserRole,
-  knownUnread = 0,
+  _knownUnread = 0,
+  readThroughMessageId?: string | null,
 ): Promise<void> {
-  const prev = {
-    chatCount,
-    chatFailed,
-    inboxBadge,
-    inboxItems,
-    inboxWsConnected,
-  };
+  await markThreadRead({
+    userId,
+    projectId,
+    threadId,
+    throughMessageId: readThroughMessageId,
+    userRole,
+    source: 'manual',
+  });
+}
 
-  applyLocalThreadUnread(threadId, 0);
-  refreshInboxChatRow(chatCount);
-  notifyIfChanged(prev);
+/** Сброс confirmed cursors (смена пользователя) */
+export function clearMarkReadCursors(): void {
+  confirmedRead.clear();
+  markInflight.clear();
+}
 
-  try {
-    await api.markChatRead(userId, projectId, threadId);
-    chatFailed = false;
-  } catch {
-    /* resync подтянет актуальное */
-  }
-
-  await reloadInboxSync(
-    {
-      userId,
-      userRole,
-      projectId,
-      project: cachedFullSync?.project,
-      osRole: cachedFullSync?.osRole,
-    },
-    true,
-  );
-  emitInboxWs();
+export function getConfirmedReadCursor(threadId: string): ConfirmedReadCursor | null {
+  return confirmedRead.get(threadId) ?? null;
 }
 
 export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: UserRole): Promise<void> {
-  await reloadInboxSync({ userId, userRole }, true);
+  try {
+    const { requestChatSync, patchChatSyncContext } = await import('@/lib/chatSync');
+    patchChatSyncContext({ userId, role: userRole ?? null });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
+  } catch {
+    await reloadInboxSync({ userId, userRole }, true);
+  }
   emitInboxWs();
 }
 
+export type ReloadInboxSyncGuards = {
+  signal?: AbortSignal;
+  /** Ключ на старте запроса — сверить перед apply */
+  contextKey?: string;
+  getContextKey?: () => string;
+};
+
+function guardsAborted(guards?: ReloadInboxSyncGuards): boolean {
+  if (guards?.signal?.aborted) return true;
+  if (
+    guards?.contextKey != null
+    && guards.getContextKey
+    && guards.contextKey !== guards.getContextKey()
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Низкоуровневый reload. Предпочтительный вход — `requestChatSync` (оркестратор).
+ * guards: AbortSignal + context key — не применять ответ чужого/старого контекста.
+ */
 export async function reloadInboxSync(
   opts: {
     userId?: string;
@@ -240,40 +519,64 @@ export async function reloadInboxSync(
     osRole?: OsRole;
   },
   force = false,
+  guards?: ReloadInboxSyncGuards,
 ): Promise<void> {
   const merged = mergeReloadOpts(opts);
   const key = [merged.userId, merged.userRole, merged.projectId, merged.osRole].join(':');
   if (!force && reloadInflight && lastReloadKey === key) return reloadInflight;
 
   lastReloadKey = key;
+  const generation = ++loadGeneration;
   reloadInflight = (async () => {
     const prev = {
       chatCount,
       chatFailed,
+      chatUnreadStale,
       inboxBadge,
       inboxItems,
       inboxWsConnected,
+      revision: unreadSnapshot?.revision ?? 0,
     };
 
     if (!merged.userId) {
       chatCount = 0;
       chatFailed = false;
+      chatUnreadStale = false;
       chatThreads = [];
+      unreadSnapshot = null;
       inboxItems = [];
       inboxBadge = 0;
       cachedFullSync = null;
+      lastChatUserId = undefined;
+      clearMarkReadCursors();
       notifyIfChanged(prev);
       return;
     }
 
-    const chatState = await loadChatState(merged.userId);
-    if (chatState.ok) {
-      chatThreads = chatState.threads;
-      chatCount = chatState.unread;
+    // Смена пользователя: не показываем чужой unread до нового snapshot
+    if (lastChatUserId && lastChatUserId !== merged.userId) {
+      chatCount = 0;
       chatFailed = false;
+      chatUnreadStale = false;
+      chatThreads = [];
+      unreadSnapshot = null;
+      clearMarkReadCursors();
+    }
+    lastChatUserId = merged.userId;
+
+    if (guardsAborted(guards)) return;
+
+    const chatState = await fetchChatSnapshot(merged.userId);
+    if (generation !== loadGeneration || guardsAborted(guards)) return;
+    if (chatState.ok) {
+      applyIncomingSnapshot(chatState.snapshot, { force: true });
     } else {
-      chatCount = chatState.unread;
+      // Ошибка списка: не трогаем total отдельно — помечаем stale/failed
       chatFailed = chatThreads.length === 0 && chatCount === 0;
+      chatUnreadStale = true;
+      if (chatThreads.length === 0) {
+        chatFailed = true;
+      }
     }
 
     const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
@@ -288,6 +591,7 @@ export async function reloadInboxSync(
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
+        if (generation !== loadGeneration || guardsAborted(guards)) return;
         // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
         try {
           const off = await getOfflineOutboxStatus();
@@ -305,6 +609,7 @@ export async function reloadInboxSync(
       refreshInboxChatRow(chatCount);
     }
 
+    if (generation !== loadGeneration || guardsAborted(guards)) return;
     notifyIfChanged(prev);
   })();
 
@@ -313,14 +618,6 @@ export async function reloadInboxSync(
   } finally {
     reloadInflight = null;
   }
-}
-
-function ensurePoll(userId: string, reload: () => void) {
-  if (pollTimer) clearInterval(pollTimer);
-  const ms = inboxWsConnected ? 60_000 : POLL_MS;
-  pollTimer = setInterval(() => {
-    reload();
-  }, ms);
 }
 
 function stopPoll() {
@@ -337,9 +634,12 @@ function stopInboxWebSocket() {
   wsRefCount = 0;
   inboxWsConnected = false;
   stopPoll();
+  void import('@/lib/chatSync').then((m) => {
+    m.setChatInboxWsConnected(false);
+  }).catch(() => { /* test env */ });
 }
 
-function startInboxWebSocket(userId: string, onReload: () => void) {
+function startInboxWebSocket(userId: string, _onReload: () => void) {
   let alive = true;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
@@ -359,6 +659,9 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
             const prev = inboxWsConnected;
             inboxWsConnected = true;
             if (!prev) notify();
+            void import('@/lib/chatSync').then((m) => {
+              m.setChatInboxWsConnected(true);
+            }).catch(() => { /* test env */ });
           }
           pingTimer = setInterval(() => {
             try {
@@ -375,7 +678,10 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
           } catch {
             /* noop */
           }
-          onReload();
+          // Нормализованное событие → orchestrator (debounce + coalesce), не прямой reload
+          void import('@/lib/chatSync').then((m) => {
+            m.onChatInboxWsEvent();
+          }).catch(() => { /* test env */ });
           emitInboxWs();
         };
         ws.onerror = () => {
@@ -388,6 +694,9 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
             const prev = inboxWsConnected;
             inboxWsConnected = false;
             if (prev) notify();
+            void import('@/lib/chatSync').then((m) => {
+              m.setChatInboxWsConnected(false);
+            }).catch(() => { /* test env */ });
           }
           if (!alive) return;
           attempt += 1;
@@ -399,6 +708,9 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
           const prev = inboxWsConnected;
           inboxWsConnected = false;
           if (prev) notify();
+          void import('@/lib/chatSync').then((m) => {
+            m.setChatInboxWsConnected(false);
+          }).catch(() => { /* test env */ });
         }
         attempt += 1;
         timer = setTimeout(connect, 4000);
@@ -407,7 +719,6 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
   };
 
   connect();
-  ensurePoll(userId, onReload);
 
   return () => {
     alive = false;
@@ -417,8 +728,8 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
   };
 }
 
-/** Одно WS на пользователя — ref-counted */
-export function ensureInboxWebSocket(userId: string | undefined, onReload: () => void) {
+/** Одно WS на пользователя — ref-counted. Sync через chatSync, не через onReload. */
+export function ensureInboxWebSocket(userId: string | undefined, _onReload?: () => void) {
   if (!userId) {
     stopInboxWebSocket();
     return () => {};
@@ -430,7 +741,7 @@ export function ensureInboxWebSocket(userId: string | undefined, onReload: () =>
 
   if (!wsCleanup || wsUserId !== userId) {
     wsUserId = userId;
-    wsCleanup = startInboxWebSocket(userId, onReload);
+    wsCleanup = startInboxWebSocket(userId, () => {});
   }
 
   wsRefCount += 1;
