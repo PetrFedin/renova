@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Platform, View, StyleSheet, Pressable } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,22 @@ import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { projectPickRoute } from '@/lib/osEntry';
 import { replaceOsNav } from '@/lib/pushOsNav';
+
+/**
+ * Стабильный screenOptions для expo-router Tabs.
+ * Новый объект/`tabBar` на каждый рендер → Maximum update depth (React Navigation setState).
+ */
+const OS_TABS_SCREEN_OPTIONS = {
+  ...tabBarScreenOptions,
+  tabBar: () => null,
+  tabBarStyle: { display: 'none' as const },
+  headerShown: false,
+  lazy: true,
+  freezeOnBlur: true,
+  detachInactiveScreens: true,
+  sceneStyle: { flex: 1, overflow: 'hidden' as const },
+  contentStyle: { paddingBottom: 0, flex: 1 },
+};
 
 /** Шапка: лого + иконки в ряду; путь — отдельный контейнер под линией */
 export function OsTabsHeaderBar({ role }: { role: OsRole }) {
@@ -72,17 +88,7 @@ export function OsTabsHeaderBar({ role }: { role: OsRole }) {
 }
 
 export function useOsTabsScreenOptions(_role: OsRole) {
-  return {
-    ...tabBarScreenOptions,
-    tabBar: () => null,
-    tabBarStyle: { display: 'none' as const },
-    headerShown: false,
-    lazy: true,
-    freezeOnBlur: true,
-    detachInactiveScreens: true,
-    sceneStyle: { flex: 1, overflow: 'hidden' as const },
-    contentStyle: { paddingBottom: 0, flex: 1 },
-  };
+  return OS_TABS_SCREEN_OPTIONS;
 }
 
 /** Оболочка вкладок: шапка + контент + нижняя панель */
@@ -90,14 +96,23 @@ export function OsTabsShell({ role, children }: { role: OsRole; children: ReactN
   const pathname = usePathname();
   const { user, activeProject } = useRenova();
   const [pendingPick, setPendingPick] = useState(false);
+  const pickNavLock = useRef(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick).then((v) => setPendingPick(v === '1'));
+    AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick).then((v) => {
+      const next = v === '1';
+      setPendingPick((prev) => (prev === next ? prev : next));
+    });
   }, [pathname, activeProject?.id, user?.id]);
 
   useEffect(() => {
-    if (!user || activeProject || !pendingPick) return;
+    if (!user || activeProject || !pendingPick) {
+      pickNavLock.current = false;
+      return;
+    }
     if (pathname.includes('/onboarding/')) return;
+    if (pickNavLock.current) return;
+    pickNavLock.current = true;
     replaceOsNav(projectPickRoute());
   }, [user?.id, activeProject?.id, pendingPick, pathname]);
 

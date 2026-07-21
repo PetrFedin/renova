@@ -50,18 +50,26 @@ export function OsDockBar({ role }: { role: OsRole }) {
     );
   }, [activeProject, role, detailLevel]);
 
+  /** Не вызываем setState, если состав кнопок тот же — иначе цикл с новой ссылкой массива. */
+  const applyItems = useCallback((next: DockItemId[]) => {
+    setItems((prev) => {
+      if (prev.length === next.length && prev.every((id, i) => id === next[i])) return prev;
+      return next;
+    });
+  }, []);
+
   const reloadPrefs = useCallback(() => {
-    getDockBar(role).then(setItems).catch(reportCatch('components.renova.os.OsDockBar.1'));
-  }, [role]);
+    getDockBar(role).then(applyItems).catch(reportCatch('components.renova.os.OsDockBar.1'));
+  }, [role, applyItems]);
 
   useFocusEffect(useCallback(() => {
-    if (dynamicItems) setItems(dynamicItems);
+    if (dynamicItems) applyItems(dynamicItems);
     else reloadPrefs();
-  }, [dynamicItems, reloadPrefs]));
+  }, [dynamicItems, reloadPrefs, applyItems]));
 
   useEffect(() => {
-    if (dynamicItems) setItems(dynamicItems);
-  }, [dynamicItems]);
+    if (dynamicItems) applyItems(dynamicItems);
+  }, [dynamicItems, applyItems]);
 
   useEffect(() => subscribeDockBar(() => {
     if (!dynamicItems) reloadPrefs();
