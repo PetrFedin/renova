@@ -17,7 +17,7 @@ import { screenLayout } from '@/constants/screenLayout';
 import { procurementNextAction, readyPickIds } from '@/lib/domain/procurementNextAction';
 import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { alertPurchaseCreated } from '@/lib/procurementNav';
+import { alertPurchaseCreated, alertPurchaseAdvanced } from '@/lib/procurementNav';
 
 const PICK_FILTERS = [
   { key: 'all', label: 'Все' },
@@ -140,6 +140,8 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
     await syncProjectSideEffects({ user, project: activeProject });
     reload();
+    // W128: заказ → оплата → доставка → факт бюджета
+    alertPurchaseAdvanced(role, status);
   };
 
   return (

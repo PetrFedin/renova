@@ -1,7 +1,13 @@
-/** W127: selections → approve → purchase → budget fact (Buildertrend/Smetter chain) */
+/** W127–W128: selections → purchase lifecycle → budget fact (Buildertrend/Smetter) */
 import { Alert } from 'react-native';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { budgetTabRoute, objectTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
+import {
+  budgetTabRoute,
+  calendarTabRoute,
+  objectTabRoute,
+  repairTabRoute,
+  type OsRole,
+} from '@/constants/osSections';
 
 /** Заказчик согласовал позицию — подрядчик может создать закупку */
 export function alertMaterialPickApproved(role: OsRole) {
@@ -100,5 +106,97 @@ export function alertChangeOrderApproved(
       ? `${amountLabel} в плане бюджета. Подпишите черновик в Документах.`
       : `${amountLabel} добавлено к плану бюджета.`,
     buttons,
+  );
+}
+
+/** W128: шаг жизненного цикла закупки → факт / календарь / материалы */
+export function alertPurchaseAdvanced(role: OsRole, status: string) {
+  if (status === 'delivered') {
+    Alert.alert(
+      'Доставлено · в факте',
+      'Сумма учтена в факте бюджета. Можно сверить расходы или даты доставки в календаре.',
+      [
+        { text: 'OK', style: 'cancel' },
+        {
+          text: 'Расходы',
+          onPress: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
+        },
+        {
+          text: 'Сводка',
+          onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
+        },
+        {
+          text: 'Календарь',
+          onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
+        },
+      ],
+    );
+    return;
+  }
+  if (status === 'cancelled') {
+    Alert.alert(
+      'Убрано из факта',
+      'Позиции снова доступны для закупки. Факт бюджета пересчитан.',
+      [
+        { text: 'OK' },
+        {
+          text: 'К материалам',
+          onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+        },
+      ],
+    );
+    return;
+  }
+  if (status === 'paid') {
+    Alert.alert(
+      'Оплачено',
+      'Отметьте доставку — тогда сумма попадёт в факт бюджета.',
+      [{ text: 'OK' }],
+    );
+    return;
+  }
+  if (status === 'ordered') {
+    Alert.alert(
+      'Заказано у поставщика',
+      'Далее: оплата → доставка. После «Доставлено» — факт в бюджете.',
+      [
+        { text: 'OK' },
+        {
+          text: 'Календарь',
+          onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
+        },
+      ],
+    );
+    return;
+  }
+}
+
+/** W128: чистовой selection (OsSelections) согласован → материалы/закупка */
+export function alertSelectionApproved(role: OsRole) {
+  Alert.alert(
+    'Подбор согласован',
+    'Позиция в «Ремонт → Материалы → Потребности». Создайте закупку.',
+    [
+      { text: 'OK', style: 'cancel' },
+      {
+        text: 'К закупкам',
+        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+      },
+    ],
+  );
+}
+
+/** Подрядчик отправил selection заказчику */
+export function alertSelectionProposed(role: OsRole) {
+  Alert.alert(
+    'На согласование',
+    'Заказчик увидит вариант в подборе. После согласования — закупка.',
+    [
+      { text: 'OK' },
+      {
+        text: 'К материалам',
+        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+      },
+    ],
   );
 }

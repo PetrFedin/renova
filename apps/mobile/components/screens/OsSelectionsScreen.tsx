@@ -13,6 +13,7 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertSelectionApproved, alertSelectionProposed } from '@/lib/procurementNav';
 
 const CATEGORIES: { key: string; label: string }[] = [
   { key: 'all', label: 'Все' },
@@ -162,6 +163,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                 await api.proposeSelection(user.id, activeProject.id, item.id);
                 await syncProjectSideEffects({ user, project: activeProject });
                 reload();
+                alertSelectionProposed(role);
               } catch (e: unknown) {
                 if (e instanceof Error && e.message === 'offline_queued') {
                   Alert.alert('Офлайн', 'Отправка на согласование в очереди');
@@ -173,7 +175,9 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
             <PrimaryButton title="Отправить снова" variant="outline" compact onPress={async () => {
               try {
                 await api.proposeSelection(user.id, activeProject.id, item.id);
+                await syncProjectSideEffects({ user, project: activeProject });
                 reload();
+                alertSelectionProposed(role);
               } catch (e: unknown) {
                 if (e instanceof Error && e.message === 'offline_queued') {
                   Alert.alert('Офлайн', 'Повторная отправка в очереди');
@@ -189,17 +193,8 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                   await api.approveSelection(user.id, activeProject.id, item.id);
                   await syncProjectSideEffects({ user, project: activeProject });
                   reload();
-                  Alert.alert(
-                    'Согласовано',
-                    'Позиция в «Ремонт → Материалы → Потребности». Создайте закупку.',
-                    [
-                      { text: 'OK', style: 'cancel' },
-                      {
-                        text: 'К закупкам',
-                        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), pathname),
-                      },
-                    ],
-                  );
+                  // W128: selection → материалы/закупка SoT
+                  alertSelectionApproved(role);
                 } catch (e: unknown) {
                   if (e instanceof Error && e.message === 'offline_queued') {
                     Alert.alert('Офлайн', 'Согласование отправится при подключении');
@@ -215,6 +210,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                     onPress: async () => {
                       try {
                         await api.rejectSelection(user.id, activeProject.id, item.id);
+                        await syncProjectSideEffects({ user, project: activeProject });
                         reload();
                       } catch (e: unknown) {
                         if (e instanceof Error && e.message === 'offline_queued') {

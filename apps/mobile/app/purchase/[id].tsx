@@ -10,15 +10,14 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
-import { calendarTabRoute, repairTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, calendarTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
+import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel } from '@/lib/domain/purchaseLifecycle';
+import { alertPurchaseAdvanced } from '@/lib/procurementNav';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', approved: 'Согласовано', ordered: 'Заказано', paid: 'Оплачено',
   partial: 'Частично', delivered: 'Доставлено', cancelled: 'Отменено', returned: 'Возврат',
-};
-const NEXT: Record<string, string | null> = {
-  draft: 'ordered', ordered: 'paid', paid: 'delivered', approved: 'ordered',
 };
 
 export default function PurchaseDetailScreen() {
@@ -40,7 +39,7 @@ export default function PurchaseDetailScreen() {
 
   if (!purchase) return <View style={s.center}><Text>Загрузка…</Text></View>;
 
-  const next = NEXT[purchase.status];
+  const next = PURCHASE_NEXT_STATUS[purchase.status];
 
   return (
     <>
@@ -60,10 +59,23 @@ export default function PurchaseDetailScreen() {
         ))}
         {canWrite && next && user && activeProject && (
           <PrimaryButton
-            title={next === 'ordered' ? 'Отметить заказ' : next === 'paid' ? 'Оплачено' : 'Доставлено'}
-            onPress={async () => { await api.updatePurchaseStatus(user.id, activeProject.id, purchase.id, next); await syncProjectSideEffects({ user, project: activeProject }); reload(); }}
+            title={purchaseAdvanceLabel(next)}
+            onPress={async () => {
+              await api.updatePurchaseStatus(user.id, activeProject.id, purchase.id, next);
+              await syncProjectSideEffects({ user, project: activeProject });
+              reload();
+              // W128: lifecycle → факт / календарь
+              alertPurchaseAdvanced(role, next);
+            }}
           />
         )}
+        {purchase.status === 'delivered' ? (
+          <PrimaryButton
+            title="Расходы бюджета"
+            variant="outline"
+            onPress={() => pushOsNav(budgetTabRoute(role, 'expenses'), returnTo || `/purchase/${id}`, role)}
+          />
+        ) : null}
         {(purchase.ordered_at || purchase.delivered_at) && (
           <PrimaryButton
             title="В календаре"
