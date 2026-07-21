@@ -1,14 +1,8 @@
-/** W77: a11y шапки «Ещё» — задачи inbox ≠ непрочитанный чат (чат в dock). */
-export function moreMenuA11yLabel(taskBadge: number, chatUnread = 0): string {
-  if (taskBadge <= 0 && chatUnread <= 0) return 'Ещё';
-  const parts: string[] = ['Ещё'];
-  if (taskBadge > 0) {
-    parts.push(taskBadge === 1 ? '1 задача во входящих' : `${taskBadge} задач во входящих`);
-  }
-  if (chatUnread > 0) {
-    parts.push(
-      chatUnread === 1 ? '1 непрочитанное в сообщениях' : `${chatUnread} непрочитанных в сообщениях`,
-    );
-  }
-  return parts.join(', ');
+/** A11y «Ещё» — только action-единицы; сообщения на dock «Сообщения». */
+export function moreMenuA11yLabel(taskBadge: number, _chatUnread = 0): string {
+  const tasks = Math.max(0, taskBadge || 0);
+  if (tasks <= 0) return 'Ещё';
+  if (tasks === 1) return 'Ещё, 1 задача требует внимания';
+  if (tasks >= 2 && tasks <= 4) return `Ещё, ${tasks} задачи требуют внимания`;
+  return `Ещё, ${tasks} задач требуют внимания`;
 }

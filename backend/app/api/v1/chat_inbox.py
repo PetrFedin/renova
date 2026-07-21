@@ -26,7 +26,22 @@ async def inbox(user: User = Depends(get_current_user), db: AsyncSession = Depen
 
 @router.get("/unread-total")
 async def unread_total(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Структурированный ответ непрочитанных сообщений.
+
+    `count` deprecated — равен unread_messages. Action-категории (задачи/оплаты/…)
+    считаются на клиенте через InboxCounters; здесь всегда 0, чтобы не смешивать
+    единицы в одном агрегате.
+    """
     projects = await _user_projects(db, user)
     ids = [p[0] for p in projects]
     count = await chat_svc.count_unread_all(db, user.id, ids)
-    return {"count": count}
+    unread = int(count or 0)
+    return {
+        "count": unread,  # deprecated: используйте unread_messages
+        "unread_messages": unread,
+        "active_tasks": 0,
+        "pending_approvals": 0,
+        "payment_actions": 0,
+        "quality_actions": 0,
+        "total_action_groups": 1 if unread > 0 else 0,
+    }
