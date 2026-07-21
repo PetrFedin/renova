@@ -12,3 +12,8 @@ backend/uploads/
 dist/
 node_modules/
 test-results/
+# CI / local E2E sqlite
+backend/ci-playwright*.db
+backend/e2e-local-test.db
+backend/ci.db
+
