@@ -1,7 +1,8 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
+  ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal, AppState,
+  type AppStateStatus,
 } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -12,7 +13,7 @@ import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { reportError, reportCatch } from '@/lib/reportError';
-import { api, ChatDetail, ChatMessage } from '@/lib/api';
+import { api, ChatDetail, ChatMessage, ApiError } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -27,6 +28,10 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { router } from 'expo-router';
+import {
+  evaluateCanMarkChatRead,
+  shouldFireMarkRead,
+} from '@/lib/domain/canMarkChatRead';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -142,6 +147,15 @@ export function ChatThreadView({
   const [chat, setChat] = useState<ChatDetail | null>(null);
   const [chatProjectId, setChatProjectId] = useState<string | null>(projectIdProp ?? null);
   const markedReadRef = useRef<string | null>(null);
+  const loadGenRef = useRef(0);
+  const loadedThreadRef = useRef<string | null>(null);
+  const canMarkPrevRef = useRef(false);
+  const [screenFocused, setScreenFocused] = useState(false);
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [threadLoaded, setThreadLoaded] = useState(false);
+  const [accessConfirmed, setAccessConfirmed] = useState(false);
+  const [latestMessagesRendered, setLatestMessagesRendered] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [typing, setTyping] = useState(false);
@@ -153,12 +167,18 @@ export function ChatThreadView({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => setAppState(next));
+    return () => sub.remove();
+  }, []);
+
   const resolveProjectId = useCallback(async (): Promise<string | null> => {
     if (projectIdProp) return projectIdProp;
     if (chatProjectId) return chatProjectId;
     if (!user) return null;
     if (activeProject?.id) {
       try {
+        // GET больше не mark-read — безопасный probe доступа
         await api.getChat(user.id, activeProject.id, threadId);
         return activeProject.id;
       } catch {
@@ -176,22 +196,57 @@ export function ChatThreadView({
 
   const loadMessages = useCallback(async () => {
     if (!user || !threadId) return;
+    const gen = ++loadGenRef.current;
     const projectId = await resolveProjectId();
-    if (!projectId) return;
-    // Не трогаем state, если id тот же — иначе лишний ререндер и цикл focus-эффекта.
+    if (gen !== loadGenRef.current) return;
+    if (!projectId) {
+      setLoadFailed(true);
+      setAccessConfirmed(false);
+      setThreadLoaded(false);
+      return;
+    }
     setChatProjectId((prev) => (prev === projectId ? prev : projectId));
     if (activeProject?.id !== projectId) {
       await loadProject(projectId).catch((e) => reportError('chat.loadProject', e, { projectId }));
     }
-    setChat(await api.getChat(user.id, projectId, threadId));
+    if (gen !== loadGenRef.current) return;
+    try {
+      const detail = await api.getChat(user.id, projectId, threadId);
+      if (gen !== loadGenRef.current) return;
+      loadedThreadRef.current = threadId;
+      setChat(detail);
+      setAccessConfirmed(true);
+      setThreadLoaded(true);
+      setLoadFailed(false);
+      setLatestMessagesRendered(false);
+    } catch (e) {
+      if (gen !== loadGenRef.current) return;
+      setLoadFailed(true);
+      setAccessConfirmed(false);
+      setThreadLoaded(false);
+      setLatestMessagesRendered(false);
+      const status = e instanceof ApiError ? e.status : 0;
+      if (status === 403 || status === 404) {
+        reportError('chat.loadMessages.acl', e, { threadId, status });
+      } else {
+        reportError('chat.loadMessages', e, { threadId });
+      }
+      throw e;
+    }
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
 
   const markThreadRead = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
+    if (loadedThreadRef.current !== threadId) return;
     const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
     const markKey = `${threadId}:${projectId}`;
     if (markedReadRef.current === markKey) return;
+
+    const readThrough = chat?.messages?.length
+      ? [...chat.messages].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-1)[0]?.id ?? null
+      : null;
+
     let knownUnread = 0;
     try {
       const inbox = await api.chatInbox(user.id);
@@ -200,15 +255,14 @@ export function ChatThreadView({
       reportError('chat.markRead.inbox', e, { threadId });
     }
     try {
-      await syncAfterRead(projectId, threadId, knownUnread);
+      await syncAfterRead(projectId, threadId, knownUnread, readThrough);
       markedReadRef.current = markKey;
     } catch {
-      /* badge подтянется следующим reload; не фиксируем ref */
+      /* resync в store; не фиксируем ref — можно повторить при следующем gate */
+      markedReadRef.current = null;
     }
-  }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
+  }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead, chat]);
 
-  // Стабильные refs: useFocusEffect НЕ должен зависеть от identity load/mark —
-  // иначе setChatProjectId → новый callback → повторный focus → Maximum update depth.
   const loadMessagesRef = useRef(loadMessages);
   const markThreadReadRef = useRef(markThreadRead);
   loadMessagesRef.current = loadMessages;
@@ -216,19 +270,61 @@ export function ChatThreadView({
 
   useFocusEffect(
     useCallback(() => {
+      setScreenFocused(true);
       markedReadRef.current = null;
-      let cancelled = false;
-      (async () => {
-        await loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
-        if (!cancelled) await markThreadReadRef.current().catch(reportCatch('chat.markRead'));
-      })();
-      return () => { cancelled = true; };
+      canMarkPrevRef.current = false;
+      setThreadLoaded(false);
+      setAccessConfirmed(false);
+      setLatestMessagesRendered(false);
+      setLoadFailed(false);
+      loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
+      return () => {
+        setScreenFocused(false);
+        canMarkPrevRef.current = false;
+      };
     }, [threadId, projectIdProp]),
   );
 
   useEffect(() => {
     markedReadRef.current = null;
+    canMarkPrevRef.current = false;
+    loadedThreadRef.current = null;
+    setChat(null);
+    setThreadLoaded(false);
+    setAccessConfirmed(false);
+    setLatestMessagesRendered(false);
+    setLoadFailed(false);
   }, [threadId, projectIdProp]);
+
+  // Сообщения отрисованы (включая пустой тред)
+  useEffect(() => {
+    if (!threadLoaded || !accessConfirmed || !chat) return;
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      if (!cancelled) setLatestMessagesRendered(true);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [threadLoaded, accessConfirmed, chat, threadId]);
+
+  const canMarkRead = evaluateCanMarkChatRead({
+    screenFocused,
+    appForeground: appState === 'active',
+    threadLoaded,
+    accessConfirmed,
+    latestMessagesRendered,
+    loadFailed,
+    threadMatches: loadedThreadRef.current === threadId,
+  });
+
+  useEffect(() => {
+    const prev = canMarkPrevRef.current;
+    canMarkPrevRef.current = canMarkRead;
+    if (!shouldFireMarkRead(prev, canMarkRead)) return;
+    markThreadReadRef.current().catch(reportCatch('chat.markRead'));
+  }, [canMarkRead, threadId]);
 
   useEffect(() => {
     if (highlightId && chat?.messages.length) {
@@ -246,10 +342,11 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    // Новое сообщение в открытом треде — снова прочитать и сбросить badge.
+    // Новое сообщение: перезагрузка; mark-read только через canMarkRead false→true
     markedReadRef.current = null;
+    canMarkPrevRef.current = false;
+    setLatestMessagesRendered(false);
     reload();
-    markThreadRead().catch(reportCatch('chat.markRead.focus'));
   });
 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
@@ -267,6 +364,20 @@ export function ChatThreadView({
       role,
     );
   };
+
+  if (loadFailed && !chat) {
+    return (
+      <View style={s.root}>
+        <BackHeader title="Чат" returnTo={returnTo} />
+        <View style={s.center}>
+          <Text style={{ textAlign: 'center', color: RenovaTheme.colors.textMuted }}>
+            Не удалось открыть чат. Сообщения не отмечены прочитанными.
+          </Text>
+          <PrimaryButton title="Повторить" onPress={() => loadMessages().catch(reportCatch('chat.retry'))} />
+        </View>
+      </View>
+    );
+  }
 
   if (!chat || !user) {
     return (
