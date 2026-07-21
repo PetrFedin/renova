@@ -1,5 +1,6 @@
 /** API: Document Center (+ OCR / e-sign Wave 3d) */
-import { req } from './client';
+import { req, ApiError } from './client';
+import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
 import type { ProjectDocumentsResponse } from './types';
 
 export type EsignProvider = {
@@ -15,7 +16,7 @@ export const documentsApi = {
   listEsignProviders: (userId: string) =>
     req<{ providers: EsignProvider[] }>('/api/v1/esign/providers', {}, userId),
 
-  createProjectDocument: (
+  createProjectDocument: async (
     userId: string,
     projectId: string,
     body: {
@@ -28,25 +29,56 @@ export const documentsApi = {
       storage_key?: string | null;
       mime_type?: string | null;
     },
-  ) =>
-    req(`/api/v1/projects/${projectId}/documents`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }, userId),
+  ) => {
+    // W108: метаданные документа в офлайн-очередь (файлы — отдельно, OFFLINE_UPLOAD_BLOCKED)
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (body.storage_key || body.href?.startsWith('data:')) {
+        throw new Error(OFFLINE_UPLOAD_BLOCKED);
+      }
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/documents`,
+        method: 'POST',
+        body: JSON.stringify(body),
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
-  signProjectDocument: (
+  signProjectDocument: async (
     userId: string,
     projectId: string,
     documentId: string,
     opts?: { provider?: string; signature_type?: string },
-  ) =>
-    req(`/api/v1/projects/${projectId}/documents/${documentId}/sign`, {
-      method: 'POST',
-      body: JSON.stringify({
-        signature_type: opts?.signature_type || opts?.provider || 'in_app',
-        provider: opts?.provider || 'in_app',
-      }),
-    }, userId),
+  ) => {
+    const body = JSON.stringify({
+      signature_type: opts?.signature_type || opts?.provider || 'in_app',
+      provider: opts?.provider || 'in_app',
+    });
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents/${documentId}/sign`, {
+        method: 'POST',
+        body,
+      }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/documents/${documentId}/sign`,
+        method: 'POST',
+        body,
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
   getDocumentOcr: (userId: string, projectId: string, documentId: string) =>
     req<{ document_id: string; document_type: string; ocr: Record<string, unknown> }>(
@@ -78,11 +110,24 @@ export const documentsApi = {
       body: JSON.stringify({ enabled, retention_until: retentionUntil ?? null }),
     }, userId),
 
-  archiveProjectDocument: (userId: string, projectId: string, documentId: string) =>
-    req(`/api/v1/projects/${projectId}/documents/${documentId}/archive`, {
-      method: 'POST',
-      body: '{}',
-    }, userId),
+  archiveProjectDocument: async (userId: string, projectId: string, documentId: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents/${documentId}/archive`, {
+        method: 'POST',
+        body: '{}',
+      }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/documents/${documentId}/archive`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
 
   uploadProjectDocument: async (
     userId: string,
@@ -95,10 +140,18 @@ export const documentsApi = {
     if (fields?.title) form.append('title', fields.title);
     if (fields?.document_type) form.append('document_type', fields.document_type);
     if (fields?.notes) form.append('notes', fields.notes);
-    return req(`/api/v1/projects/${projectId}/documents/upload`, {
-      method: 'POST',
-      body: form as unknown as BodyInit,
-    } as RequestInit, userId);
+    try {
+      return await req(`/api/v1/projects/${projectId}/documents/upload`, {
+        method: 'POST',
+        body: form as unknown as BodyInit,
+      } as RequestInit, userId);
+    } catch (e) {
+      // Upload cannot be queued offline — explicit user-facing block
+      if (!(e instanceof ApiError) || e.status >= 500) {
+        throw new Error(OFFLINE_UPLOAD_BLOCKED);
+      }
+      throw e;
+    }
   },
 
   restoreProjectDocument: (userId: string, projectId: string, documentId: string) =>
