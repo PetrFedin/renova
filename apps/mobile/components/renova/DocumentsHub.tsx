@@ -32,7 +32,8 @@ import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { alertIcalExported } from '@/lib/calendarIcsNav';
-import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { alertWarrantyClosed, alertWarrantyCreated, alertWarrantyConflict } from '@/lib/warrantyNav';
+import { beginWarrantyCreate, clearWarrantyCreateSession, warrantyCreateKeyForRetry } from '@/lib/warrantyCreateSession';
 import { openQcIssue } from '@/lib/qcNav';
 import { alertCloseoutDone, alertDocumentSigned } from '@/lib/scheduleCloseoutNav';
 import { alertDocumentOcrDone } from '@/lib/fieldCommsNav';
@@ -331,8 +332,56 @@ ${(res.body || '').slice(0, 220)}`,
         format: isArchived ? 'Post-closeout' : 'Заявка',
         run: async () => {
           const role = (isContractor ? 'contractor' : 'customer') as OsRole;
-          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
+          // Fail-closed: ошибка списка ≠ «обращений нет»
+          let open: { open: number; items: { id: string; title?: string; status?: string }[] };
+          try {
+            open = await api.listWarrantyClaims(userId, projectId);
+          } catch (e: unknown) {
+            Alert.alert(
+              'Не удалось загрузить гарантии',
+              (e instanceof Error ? e.message : 'Ошибка сети')
+                + '\n\nСоздание отключено, пока список не загрузится. Нажмите действие ещё раз, чтобы повторить.',
+            );
+            return;
+          }
           const openItems = (open.items || []).filter((i) => i.status !== 'closed');
+
+          const createOne = async (reuseKey: boolean) => {
+            const key = reuseKey ? warrantyCreateKeyForRetry() : beginWarrantyCreate();
+            try {
+              const res = await api.createWarrantyClaim(
+                userId,
+                projectId,
+                {
+                  title: 'Гарантийное обращение',
+                  description: 'Создано из Document Center',
+                  client_request_id: key,
+                },
+                { idempotencyKey: key },
+              );
+              clearWarrantyCreateSession();
+              void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+              if (res.duplicate_hint) {
+                Alert.alert('Внимание', res.duplicate_hint);
+              }
+              alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+            } catch (e: unknown) {
+              if (e instanceof ApiError && (e.status === 409 || e.code === 'warranty_claim_idempotency_conflict')) {
+                alertWarrantyConflict(e.message);
+                return;
+              }
+              // Timeout/сеть: не очищаем key — retry использует тот же
+              Alert.alert(
+                'Не удалось создать',
+                e instanceof Error ? e.message : 'Ошибка сети',
+                [
+                  { text: 'Отмена', style: 'cancel', onPress: () => clearWarrantyCreateSession() },
+                  { text: 'Повторить', onPress: () => { void createOne(true); } },
+                ],
+              );
+            }
+          };
+
           // W64/W126: заказчик закрывает гарантию — иначе closeout тупик; обе роли → QC
           if (!isContractor && openItems.length > 0) {
             const first = openItems[0];
@@ -359,25 +408,13 @@ ${(res.body || '').slice(0, 220)}`,
                 },
                 {
                   text: 'Создать ещё',
-                  onPress: async () => {
-                    const res = await api.createWarrantyClaim(userId, projectId, {
-                      title: 'Гарантийное обращение',
-                      description: 'Создано из Document Center',
-                    });
-                    void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                    alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
-                  },
+                  onPress: () => { void createOne(false); },
                 },
               ],
             );
             return;
           }
-          const res = await api.createWarrantyClaim(userId, projectId, {
-            title: 'Гарантийное обращение',
-            description: 'Создано из Document Center',
-          });
-          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-          alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+          await createOne(false);
         },
       },
       closeout: {

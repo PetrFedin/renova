@@ -31,4 +31,9 @@ const selections = readFileSync(join(root, 'components/screens/OsSelectionsScree
 must(!selections.includes('setItems([])'), 'OsSelectionsScreen: no setItems([]) on error');
 must(selections.includes('useAsyncResource'), 'OsSelectionsScreen uses async resource');
 
+const docsHub = readFileSync(join(root, 'components/renova/DocumentsHub.tsx'), 'utf8');
+must(!docsHub.includes('.catch(() => ({ open: 0, items: []'), 'DocumentsHub: warranty list fail-closed');
+must(docsHub.includes('Не удалось загрузить гарантии'), 'DocumentsHub shows warranty load error');
+
 console.log('failClosed.w144.test OK');
+

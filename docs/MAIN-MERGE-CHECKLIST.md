@@ -69,3 +69,9 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 - [ ] `MY_NALOG_DEV_BYPASS_ENABLED` не true на staging/prod
 - [ ] Audit на запрещённый bypass; secrets не в response
 
+## Warranty fail-closed / idempotency
+
+- [ ] List error ≠ empty claims; create blocked until list loads
+- [ ] Idempotency-Key scope (user, project); migration `w5warranty01`
+- [ ] Conflict 409 UX; audit without full defect description
+
