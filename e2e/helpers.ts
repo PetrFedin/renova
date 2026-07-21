@@ -4,6 +4,16 @@ import type { Page } from '@playwright/test';
 export const API = process.env.RENOVA_API ?? 'http://127.0.0.1:8100';
 export const WEB = process.env.RENOVA_WEB ?? 'http://127.0.0.1:8081';
 
+/** Demo/auth user from POST /auth/demo — prefer Bearer (staging forbids X-User-Id). */
+export type DemoUser = { id: string; access_token?: string | null; role?: string };
+
+/** Auth header SoT for API e2e: JWT when present, else X-User-Id (dev only). */
+export function authHeaders(user: DemoUser): Record<string, string> {
+  const tok = user.access_token?.trim();
+  if (tok) return { Authorization: `Bearer ${tok}` };
+  return { 'X-User-Id': user.id };
+}
+
 export type DemoProject = {
   id: string;
   name: string;
@@ -46,18 +56,20 @@ export async function seedDemoCustomerSession(
   page: Page,
   userId: string,
   projectId: string,
+  accessToken?: string | null,
 ): Promise<void> {
   await page.goto('/');
   await page.evaluate(
-    ({ uid, pid }) => {
+    ({ uid, pid, tok }) => {
       localStorage.setItem('renova_user_id', uid);
       localStorage.setItem('renova_project_id', pid);
       localStorage.setItem('renova_user_role', 'customer');
       localStorage.setItem('renova_detail_quiz_done', '1');
       localStorage.removeItem('renova_pending_project_pick');
       localStorage.setItem('renova_project_explicitly_picked', '1');
+      if (tok) localStorage.setItem('renova_access_token', tok);
     },
-    { uid: userId, pid: projectId },
+    { uid: userId, pid: projectId, tok: accessToken?.trim() || '' },
   );
   await page.reload();
 }
@@ -66,18 +78,20 @@ export async function seedDemoContractorSession(
   page: Page,
   userId: string,
   projectId: string,
+  accessToken?: string | null,
 ): Promise<void> {
   await page.goto('/');
   await page.evaluate(
-    ({ uid, pid }) => {
+    ({ uid, pid, tok }) => {
       localStorage.setItem('renova_user_id', uid);
       localStorage.setItem('renova_project_id', pid);
       localStorage.setItem('renova_user_role', 'contractor');
       localStorage.setItem('renova_detail_quiz_done', '1');
       localStorage.removeItem('renova_pending_project_pick');
       localStorage.setItem('renova_project_explicitly_picked', '1');
+      if (tok) localStorage.setItem('renova_access_token', tok);
     },
-    { uid: userId, pid: projectId },
+    { uid: userId, pid: projectId, tok: accessToken?.trim() || '' },
   );
   await page.reload();
 }
@@ -88,14 +102,16 @@ export async function prepareContractGateScenario(
 ): Promise<{
   contractorId: string;
   customerId: string;
+  contractor: DemoUser;
+  customer: DemoUser;
   projectId: string;
   stageId: string;
   documentId: string;
 }> {
-  const cont = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json();
-  const cust = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json();
-  const hCont = { 'X-User-Id': cont.id as string };
-  const hCust = { 'X-User-Id': cust.id as string };
+  const cont = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json()) as DemoUser;
+  const cust = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
+  const hCont = authHeaders(cont);
+  const hCust = authHeaders(cust);
 
   const created = await request.post(`${API}/api/v1/projects`, {
     headers: hCust,
@@ -129,8 +145,10 @@ export async function prepareContractGateScenario(
   const planned = (detail.stages as { id: string; status: string }[]).find((s) => s.status === 'planned');
   if (!planned) throw new Error('no planned stage for contract gate');
   return {
-    contractorId: cont.id as string,
-    customerId: cust.id as string,
+    contractorId: cont.id,
+    customerId: cust.id,
+    contractor: cont,
+    customer: cust,
     projectId: pid,
     stageId: planned.id,
     documentId,
@@ -140,13 +158,14 @@ export async function prepareContractGateScenario(
 /** Убрать E2E Gate Test проект после spec (best-effort trash). */
 export async function cleanupE2eGateProject(
   request: import('@playwright/test').APIRequestContext,
-  customerId: string,
+  customer: DemoUser | string,
   projectId: string,
 ): Promise<void> {
+  const headers = typeof customer === 'string'
+    ? { 'X-User-Id': customer }
+    : authHeaders(customer);
   try {
-    await request.post(`${API}/api/v1/projects/${projectId}/trash`, {
-      headers: { 'X-User-Id': customerId },
-    });
+    await request.post(`${API}/api/v1/projects/${projectId}/trash`, { headers });
   } catch {
     /* best-effort */
   }
