@@ -17,6 +17,7 @@
 | **W104** contractor stubs | ✅ chat invoice amounts · team errors · WO→payments |
 | **W105** portal estimate + IA | ✅ portal lock/reject · «Согласования» в Ещё |
 | **W106** field offline + hero accept | ✅ start/propose/schedule/purchases queue · nextAction → `/stage/[id]` |
+| **W149** QC fixed notify | ✅ contractor→fixed+notify · customer→closed+notify · IssueFixed event |
 
 ## Ещё открыто (не код-only)
 

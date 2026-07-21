@@ -29,7 +29,7 @@ async def daily_report(db: AsyncSession, project_id: str, *, day: date | None = 
     stages = (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
     tomorrow_works = [s.name for s in stages if s.planned_start == tomorrow or (s.status == StageStatus.active and s.planned_end == tomorrow)]
     expenses = list((await db.execute(select(Expense).where(Expense.project_id == project_id, Expense.expense_date >= start, Expense.expense_date < end, Expense.status.in_(("confirmed", "pending_receipt"))))).scalars().all())
-    done_today = [e.title for e in events if e.kind in ("WorkCompleted", "AcceptancePassed", "IssueClosed")]
+    done_today = [e.title for e in events if e.kind in ("WorkCompleted", "AcceptancePassed", "IssueClosed", "IssueFixed")]
     return {
         "date": day.isoformat(),
         "project_name": p.name,

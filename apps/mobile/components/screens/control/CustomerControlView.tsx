@@ -1,6 +1,6 @@
 import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество */
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { Alert, ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { UnifiedAcceptanceList } from '@/components/renova/UnifiedAcceptanceList';
@@ -17,6 +17,7 @@ import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
 import { openQcIssue } from '@/lib/qcNav';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 export function CustomerControlView() {
   const pathname = usePathname();
@@ -86,9 +87,22 @@ export function CustomerControlView() {
               compact
               variant="outline"
               onPress={async () => {
-                await api.closeIssue(user!.id, activeProject!.id, iss.id);
-                await syncProjectSideEffects({ user, project: activeProject });
-                reload();
+                try {
+                  const wasFixed = iss.status === 'fixed';
+                  await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                  await syncProjectSideEffects({ user, project: activeProject });
+                  reload();
+                  if (wasFixed) {
+                    Alert.alert('QC', 'Исправление подтверждено — замечание закрыто');
+                  }
+                } catch (e) {
+                  if (isOfflineQueued(e)) {
+                    notifyOfflineQueued(iss.status === 'fixed' ? 'Подтверждение исправления' : 'Закрытие замечания');
+                  } else {
+                    reportError('control.customerClose', e);
+                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось обновить');
+                  }
+                }
               }}
             />
           )}

@@ -1,5 +1,5 @@
 """Замечания и дефекты Renova OS."""
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +60,7 @@ async def create_issue(
         description=description,
         severity=severity,
         status="open",
-        due_at=datetime.utcnow() + timedelta(days=due_days),
+        due_at=datetime.now(timezone.utc) + timedelta(days=due_days),
         floor_plan_id=floor_plan_id,
         x_pct=x_pct,
         y_pct=y_pct,
@@ -78,7 +78,7 @@ async def update_issue_status(db: AsyncSession, issue_id: str, status: str) -> P
         return None
     issue.status = status
     if status == "closed":
-        issue.closed_at = datetime.utcnow()
+        issue.closed_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(issue)
     return issue

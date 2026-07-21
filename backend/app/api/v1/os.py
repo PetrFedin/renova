@@ -136,8 +136,10 @@ async def create_issue(
 
 @router.post("/projects/{project_id}/issues/{issue_id}/close")
 async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """W63: сначала project bind, потом мутация (без cross-project close)."""
+    """W63/W64/W149: contractor → fixed (+notify customer); customer → closed (+notify contractor)."""
     from app.models.entities import ProjectIssue, UserRole
+    from app.services import notification_service as notif_svc
+
     project = await require_project(db, project_id, user, write=True)
     existing = await db.get(ProjectIssue, issue_id)
     if not existing or existing.project_id != project_id:
@@ -152,7 +154,40 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
     issue = await iss.update_issue_status(db, issue_id, next_status)
     if not issue:
         raise HTTPException(404)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="IssueClosed", title=issue.title, link_path="/control")
+
+    event_kind = "IssueFixed" if next_status == "fixed" else "IssueClosed"
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind=event_kind,
+        title=issue.title,
+        body="Исправление отмечено — подтвердите в Контроле" if next_status == "fixed" else "Замечание закрыто",
+        link_path="/control",
+    )
+
+    # Честный контур: заказчик узнаёт про fixed; исполнитель — про финальное closed
+    if next_status == "fixed" and project.customer_id and project.customer_id != user.id:
+        await notif_svc.notify(
+            db,
+            user_id=project.customer_id,
+            project_id=project_id,
+            notification_type="issue",
+            title=f"Исправлено: {issue.title}",
+            body="Подтвердите устранение в Контроле качества",
+            link_path="/control",
+        )
+    elif next_status == "closed" and project.contractor_id and project.contractor_id != user.id:
+        await notif_svc.notify(
+            db,
+            user_id=project.contractor_id,
+            project_id=project_id,
+            notification_type="issue",
+            title=f"Закрыто: {issue.title}",
+            body="Заказчик подтвердил устранение замечания",
+            link_path="/control",
+        )
+
     return iss.issue_dict(issue)
 
 
