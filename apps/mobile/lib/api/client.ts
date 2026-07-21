@@ -189,8 +189,12 @@ export function getAccessToken(): string | null {
 /** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
 export function authHeaders(userId?: string | null): Record<string, string> {
   const h: Record<string, string> = {};
-  if (_accessToken) h.Authorization = `Bearer ${_accessToken}`;
-  // Legacy fallback: still send X-User-Id in dev when token missing (backend allow_header)
+  if (_accessToken) {
+    h.Authorization = `Bearer ${_accessToken}`;
+    // JWT present → do not also send X-User-Id (prod must not rely on header)
+    return h;
+  }
+  // Legacy fallback for cold sessions without token (dev/test allow_header only)
   if (userId) h['X-User-Id'] = userId;
   return h;
 }

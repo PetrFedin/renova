@@ -10,6 +10,7 @@ import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { api, ApiError } from '@/lib/api';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
+import { setAccessToken } from '@/lib/api/client';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -63,6 +64,7 @@ export default function PortalScreen() {
         }
         setPortalToken(tok);
         const sess = await api.exchangePortalToken(tok);
+        if (sess.access_token) setAccessToken(sess.access_token);
         await AsyncStorage.setItem(PORTAL_USER_KEY, sess.user_id);
         if (cancelled) return;
         setSession(sess);

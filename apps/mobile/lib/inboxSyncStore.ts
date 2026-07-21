@@ -5,6 +5,7 @@ import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
 import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
+import { getAccessToken } from '@/lib/api/client';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -348,7 +349,9 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
     if (!alive || !userId) return;
     const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
     try {
-      const ws = new WebSocket(`${base}/ws/inbox/${userId}`);
+      const tok = getAccessToken();
+      const qs = tok ? `?token=${encodeURIComponent(tok)}` : '';
+      const ws = new WebSocket(`${base}/ws/inbox/${userId}${qs}`);
       ws.onopen = () => {
         attempt = 0;
         if (alive) {

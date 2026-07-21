@@ -1,5 +1,6 @@
 /** WebSocket inbox — обновление списка чатов и badge без polling */
 import { useEffect, useRef, useState } from 'react';
+import { getAccessToken } from '@/lib/api/client';
 
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
 
@@ -27,7 +28,9 @@ export function useInboxWebSocket(
       if (!alive) return;
       const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
       try {
-        const ws = new WebSocket(`${base}/ws/inbox/${userId}`);
+        const tok = getAccessToken();
+        const qs = tok ? `?token=${encodeURIComponent(tok)}` : '';
+        const ws = new WebSocket(`${base}/ws/inbox/${userId}${qs}`);
         ws.onopen = () => {
           attempt = 0;
           if (alive) setConnected(true);

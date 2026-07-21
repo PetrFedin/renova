@@ -45,7 +45,7 @@ export const miscApi = {
       userId,
     ),
   exchangePortalToken: (token: string) =>
-    req<{ user_id: string; project_id: string; project_name: string; read_only: boolean; access_mode: string; role: string; scopes?: string[] }>(
+    req<{ user_id: string; project_id: string; project_name: string; read_only: boolean; access_mode: string; role: string; scopes?: string[]; access_token?: string; token_type?: string }>(
       '/api/v1/auth/portal/session',
       { method: 'POST', body: JSON.stringify({ token }) },
       undefined,

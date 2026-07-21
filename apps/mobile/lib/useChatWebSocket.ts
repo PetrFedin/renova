@@ -1,5 +1,6 @@
 /** WebSocket чата — reconnect с backoff, fallback polling когда offline */
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { getAccessToken } from '@/lib/api/client';
 
 type ChatWsPayload = { type?: string; message?: unknown };
 
@@ -27,7 +28,9 @@ export function useChatWebSocket(
       if (!alive) return;
       const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
       try {
-        const ws = new WebSocket(`${base}/ws/chats/${threadId}`);
+        const tok = getAccessToken();
+        const qs = tok ? `?token=${encodeURIComponent(tok)}` : '';
+        const ws = new WebSocket(`${base}/ws/chats/${threadId}${qs}`);
         wsRef.current = ws;
         ws.onopen = () => {
           attempt = 0;

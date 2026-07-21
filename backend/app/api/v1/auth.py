@@ -8,6 +8,20 @@ from app.schemas.auth import DemoLoginRequest, RegisterRequest, UserOut, SmsSend
 from app.services.seed_demo import DEMO_PHONES
 from app.services.fns.status_npd import check_taxpayer_npd_status
 from app.core.security import create_access_token
+from app.core.config import settings
+from app.core.environment import policy_for
+
+
+def _demo_endpoints_allowed() -> bool:
+    if settings.allow_demo_seed is not None:
+        return bool(settings.allow_demo_seed)
+    return policy_for(settings.normalized_environment).allow_demo_seed
+
+
+def _open_registration_allowed() -> bool:
+    """Register without OTP — only local/test. Staging/prod → sms/verify."""
+    return settings.normalized_environment in ("development", "test")
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -88,10 +102,13 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
 
 @router.post("/register", response_model=UserOut)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
+    if not _open_registration_allowed():
+        raise HTTPException(403, "registration_via_sms_only")
     result = await db.execute(select(User).where(User.phone == body.phone))
     existing = result.scalar_one_or_none()
     if existing:
-        return user_out_with_token(existing)
+        # Never mint JWT for existing user without OTP proof
+        raise HTTPException(409, "user_exists_use_sms")
 
     npd_verified = False
     if body.role == "contractor" and body.inn and len(body.inn) == 12:
@@ -127,6 +144,8 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
 
 @router.post("/demo", response_model=UserOut)
 async def demo_login(body: DemoLoginRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
+    if not _demo_endpoints_allowed():
+        raise HTTPException(404, "demo_disabled")
     if body.role not in DEMO_PHONES or body.role == "guest":
         raise HTTPException(400, "Доступны роли: customer, contractor")
     phone = DEMO_PHONES[body.role]
@@ -140,6 +159,8 @@ async def demo_login(body: DemoLoginRequest, db: AsyncSession = Depends(get_db))
 @router.post("/demo/guest", response_model=UserOut)
 async def demo_guest(db: AsyncSession = Depends(get_db)) -> UserOut:
     """Гостевой read-only доступ — заказчик с project_viewers, не отдельная роль."""
+    if not _demo_endpoints_allowed():
+        raise HTTPException(404, "demo_disabled")
     phone = DEMO_PHONES["guest"]
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()

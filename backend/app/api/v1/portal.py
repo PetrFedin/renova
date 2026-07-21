@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
+from app.core.security import create_access_token
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
 from app.services import portal_token_service as portal_tok
@@ -51,6 +52,15 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
     if claims["project_id"] != project.id or claims["user_id"] != user.id:
         raise HTTPException(401, "token_mismatch")
 
+    # P0: portal snapshot/API need Bearer — magic link alone must mint access JWT
+    access_token = create_access_token(
+        user.id,
+        {
+            "role": user.role.value,
+            "portal": True,
+            "project_id": project.id,
+        },
+    )
     return {
         "user_id": user.id,
         "project_id": project.id,
@@ -59,6 +69,8 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
         "access_mode": mode,
         "role": user.role.value,
         "scopes": claims.get("scopes", ["read"]),
+        "access_token": access_token,
+        "token_type": "bearer",
     }
 
 

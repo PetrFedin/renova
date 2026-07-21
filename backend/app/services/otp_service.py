@@ -1,4 +1,4 @@
-"""SMS OTP для входа — dev: код в ответе API; prod: Twilio."""
+"""SMS OTP для входа — demo_code только development/test."""
 import random
 import time
 from app.core.config import settings
@@ -20,8 +20,11 @@ async def send_otp(phone: str) -> dict:
     _store[p] = (code, time.time() + _TTL)
     sms = await send_sms(phone, f"Renova: код входа {code}")
     out = {"ok": True, "message": "Код отправлен"}
-    if sms.get("demo") or getattr(settings, "debug", True):
+    # P0: never return OTP in staging/production responses
+    if settings.normalized_environment in ("development", "test"):
         out["demo_code"] = code
+        if sms.get("demo"):
+            out["demo"] = True
     return out
 
 
