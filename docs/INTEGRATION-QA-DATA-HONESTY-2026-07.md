@@ -1,7 +1,7 @@
 # Integration QA — data honesty release (2026-07)
 
 **Branch:** `integration/data-honesty-release`  
-**Final SHA:** `9693fc39d661433aa9d02926e4fbb8546bed422f`  
+**Final SHA:** `abe5e2bd840c53318253c55218cfe48f7df4e67d` (code tip `9693fc39` + this report)  
 **Base main SHA:** `09b16cb234fb555176c3eac8916f91ad1d5b28f1`  
 **Date:** 2026-07-21  
 **Auto-merge:** **не выполнялся** (ни PR №24–28, ни integration → main).
