@@ -10,6 +10,8 @@ export type WorkAcceptanceCreateIn = {
 };
 
 export type WorkAcceptanceDecisionIn = {
+  /** inline = hub (только quick); full = карточка этапа с чек-листом */
+  mode?: 'inline' | 'full';
   checklist?: string[];
   quality_score?: number;
   comment?: string;
@@ -50,6 +52,7 @@ export const workAcceptancesApi = {
         comment: body.comment,
         createIssue: body.create_issue,
       }),
+      ...(body.mode ? { mode: body.mode } : { mode: 'full' as const }),
       ...(body.checklist ? { checklist: body.checklist } : {}),
     };
     try {

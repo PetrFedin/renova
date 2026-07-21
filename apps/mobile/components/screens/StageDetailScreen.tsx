@@ -150,7 +150,13 @@ export function StageDetailScreen() {
 
   const runAcceptStage = async (qualityScore: number | null = null) => {
     try {
-      await acceptStage(stage!.id, { qualityScore });
+      await acceptStage(stage!.id, {
+        qualityScore,
+        checklist: CHECKLIST.filter((c) => {
+          const wf = wfChecks.find((x) => x.text === c);
+          return wf ? wf.done : !!checks[c];
+        }),
+      });
       await reload();
       await loadProject(activeProject!.id);
       alertStageAccepted(role);

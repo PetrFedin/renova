@@ -176,6 +176,10 @@ async def finalize_work_acceptance(
     if not photos:
         raise ValueError("photos_required")
 
+    from app.services.acceptance_policy import assert_accept_policy
+
+    assert_accept_policy(stage, checklist=checklist, source="api")
+
     row.status = status
     row.accepted_by = accepted_by
     row.accepted_at = now

@@ -235,3 +235,12 @@ async def logout_session(body: RefreshRequest, db: AsyncSession = Depends(get_db
     from app.services import session_service as sess_svc
     await sess_svc.revoke_session(db, body.refresh_token)
     return {"ok": True}
+
+
+@router.post("/sessions/revoke-all")
+async def revoke_all_sessions(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P1.8: выйти на всех устройствах (revoke refresh sessions)."""
+    from app.services import session_service as sess_svc
+
+    n = await sess_svc.revoke_all_user_sessions(db, user.id)
+    return {"ok": True, "revoked": n}

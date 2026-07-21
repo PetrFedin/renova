@@ -313,6 +313,24 @@ export function ContractorProfileScreen() {
         {msg ? <Text style={ps.msg}>{msg}</Text> : null}
       </ProfileSection>
 
+            <ProfileSection title="Безопасность">
+        <View style={ps.actionGap}>
+          <PrimaryButton
+            title="Выйти на всех устройствах"
+            variant="outline"
+            onPress={async () => {
+              if (!user?.id) return;
+              try {
+                const r = await api.revokeAllSessions(user.id);
+                Alert.alert('Готово', `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.`);
+              } catch (e) {
+                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось');
+              }
+            }}
+          />
+        </View>
+      </ProfileSection>
+
       <ProfileSection title="Ещё">
         <ProfileExtraLinks items={EXTRA_ITEMS} returnTo="/(contractor)/(tabs)/profile" role="contractor" />
       </ProfileSection>

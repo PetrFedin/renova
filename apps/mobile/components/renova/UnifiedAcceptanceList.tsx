@@ -55,7 +55,10 @@ export function UnifiedAcceptanceList({
           userId,
           projectId,
           item.acceptanceId,
-          acceptanceDecisionBody({ qualityScore, comment: 'Работы приняты' }),
+          {
+            ...acceptanceDecisionBody({ qualityScore, comment: 'Работы приняты' }),
+            mode: 'inline',
+          },
         );
         await syncProjectSideEffects({ user, project: activeProject });
         onChanged?.();
@@ -78,7 +81,17 @@ export function UnifiedAcceptanceList({
       }
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued(action === 'accept' ? 'Приёмка' : 'Возврат');
-      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось выполнить действие');
+      else {
+        const code = (e as { code?: string })?.code;
+        if (action === 'accept' && (code === 'checklist_required' || code === 'checklist_incomplete')) {
+          Alert.alert('Нужен чек-лист', 'Откройте этап и отметьте пункты перед приёмкой.', [
+            { text: 'К этапу', onPress: () => pushStageDetail(item.stageId, returnTo) },
+            { text: 'OK' },
+          ]);
+        } else {
+          Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось выполнить действие');
+        }
+      }
     } finally {
       setBusyId(null);
     }

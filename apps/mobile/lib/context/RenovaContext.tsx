@@ -136,7 +136,7 @@ type Ctx = {
   createProjectFromWizard: (extra?: Partial<WizardDraft>) => Promise<CreateProjectResult>;
   updateProjectProfile: (patch: ProjectProfilePatch) => Promise<void>;
   submitStage: (stageId: string) => Promise<void>;
-  acceptStage: (stageId: string, opts?: { qualityScore?: number | null }) => Promise<void>;
+  acceptStage: (stageId: string, opts?: { qualityScore?: number | null; checklist?: string[] }) => Promise<void>;
   rejectStage: (stageId: string, reason: string, opts?: { qualityScore?: number | null }) => Promise<void>;
   logout: () => Promise<void>;
   

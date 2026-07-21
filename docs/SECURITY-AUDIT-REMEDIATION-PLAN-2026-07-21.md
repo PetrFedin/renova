@@ -35,20 +35,20 @@
 | P0.5 | webhook amount/secret weak | **OPEN** — secret optional; no amount/currency verify | **P0** | require secret staging+; verify amount |
 | P0.6 | schedule edit after submitted | **OPEN** — `update_schedule` блокирует только `confirmed` | **P0** | freeze submitted; ACL `can_manage_schedule` |
 | P0.7 | item status transition matrix | **PARTIAL** — жёстко только `accepted` | **P0** | matrix + role gates |
-| P1.8 | no sessions | **УСТАРЕЛО / PARTIAL** — refresh + `user_sessions` + TTL≤20m staging + SecureStore есть; нет jti UI revoke-all | **P1** | jti + revoke-all UX + access 15m default staging |
-| P1.9 | OTP not prod | **PARTIAL** — rate-limit/lock есть; store in-process; `random` | **P1** | Redis OTP + `secrets` |
+| P1.8 | no sessions | **DONE** — refresh + sessions + `POST /sessions/revoke-all` + profile CTA | **P1** | jti optional later |
+| P1.9 | OTP not prod | **DONE** — secrets + cooldown + Redis when `REDIS_URL` | **P1** | — |
 | P1.10 | CI `e2e:web \|\| true` | **OPEN** | **P1** | fail CI on e2e; add security jobs |
 | P1.11 | PR #3 too big | **OPS** | **P1** | split release slices (уже план) |
-| P1.12 | staging HTTPS soft | **OPEN** | **P1** | `require_https` staging=True |
-| P1.13 | CORS `*` | **OPEN** | **P1** | env allowlist |
-| P1.14 | cache masks errors | **OPEN** (проверить client cache layer) | **P1** | stale metadata + UI |
-| P1.15 | inline accept без checklist | **OPEN** (policy отсутствует) | **P1** | `acceptance_policy` |
-| P1.16 | accept commit before side-effects | **OPEN** | **P1** | outbox pattern |
-| P2.17 | lead address public | **OPEN** | **P2** | city/district until assign |
-| P2.18 | first quote wins | **OPEN** | **P2** | `job_lead_quotes` |
+| P1.12 | staging HTTPS soft | **DONE** (wave-7) | **P1** | — |
+| P1.13 | CORS `*` | **DONE** (wave-7) | **P1** | — |
+| P1.14 | cache masks errors | **DONE** — `getLastCachedGetMeta` + reportError on stale | **P1** | optional banner UI |
+| P1.15 | inline accept без checklist | **DONE** — quick/full + inline 409 | **P1** | — |
+| P1.16 | accept commit before side-effects | **DONE** — `domain_outbox` | **P1** | worker cron optional |
+| P2.17 | lead address public | **DONE** (wave-8) | **P2** | — |
+| P2.18 | first quote wins | **DONE** (wave-8) | **P2** | — |
 | P2.19 | WS single-process | **DONE opt-in** Redis bridge | **P2** | document REDIS_URL for multi |
-| P2.20 | WS token in query | **OPEN** | **P2** | short-lived ticket |
-| P2.21 | DELETE /me destructive | **OPEN** | **P2** | soft delete / retention |
+| P2.20 | WS token in query | **DONE** (wave-8) | **P2** | — |
+| P2.21 | DELETE /me destructive | **DONE** soft-delete (wave-8) | **P2** | hard purge job later |
 
 ---
 
@@ -281,3 +281,4 @@ Tags после каждого slice: `v0.3.<n>-security` и т.д.
 - 2026-07-21: Phase D — staging HTTPS required; CORS allowlist; CI e2e without `|| true`; OTP secrets + 60s resend cooldown.
 - 2026-07-21: Hotfix MaterialPickList + UnifiedScheduleView broken imports (SyntaxError).
 - 2026-07-21: Phase E — lead address privacy, job_lead_quotes+accept, soft DELETE /me, WS tickets + mobile buildWsAuthQuery.
+- 2026-07-21: Wave-9 P1 — acceptance_policy, domain_outbox, Redis OTP, revoke-all, cachedGet stale meta.

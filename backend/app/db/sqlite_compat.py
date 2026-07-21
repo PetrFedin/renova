@@ -474,6 +474,25 @@ def ensure_os_schema() -> None:
 
     # Trust: честные реквизиты перевода в профиле исполнителя
 
+    if "domain_outbox" not in tables:
+        try:
+            c.executescript("""
+                CREATE TABLE IF NOT EXISTS domain_outbox (
+                  id TEXT PRIMARY KEY,
+                  aggregate_type TEXT NOT NULL,
+                  aggregate_id TEXT NOT NULL,
+                  event_type TEXT NOT NULL,
+                  payload_json TEXT DEFAULT '{}',
+                  created_at TEXT,
+                  processed_at TEXT,
+                  attempts INTEGER DEFAULT 0,
+                  last_error TEXT
+                );
+                CREATE INDEX IF NOT EXISTS ix_domain_outbox_pending ON domain_outbox(processed_at, created_at);
+            """)
+        except Exception:
+            pass
+
     # Soft-delete users + multi-quote leads (wave-8 / Phase E)
     if "users" in tables:
         ucols = cols("users")

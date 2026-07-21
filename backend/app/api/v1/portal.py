@@ -386,19 +386,29 @@ async def portal_accept_work(
                 },
             ) from exc
         raise
+    from app.services import outbox_service as outbox
+
+    await outbox.enqueue(
+        db,
+        aggregate_type="work_acceptance",
+        aggregate_id=result.acceptance.id,
+        event_type="acceptance.side_effects",
+        payload={
+            "project_id": project.id,
+            "stage_id": result.stage.id,
+            "accepted_by": user.id,
+            "comment": body.comment,
+            "payment_id": result.payment.id if result.payment else None,
+            "next_stage_id": result.next_stage.id if result.next_stage else None,
+            "source": "portal",
+        },
+    )
     await db.commit()
     await db.refresh(result.acceptance)
-
-    await emit_acceptance_side_effects(
-        db,
-        project=project,
-        stage=result.stage,
-        accepted_by=user.id,
-        comment=body.comment,
-        payment=result.payment,
-        next_stage=result.next_stage,
-        source="portal",
-    )
+    try:
+        await outbox.dispatch_pending(db, limit=10)
+    except Exception:
+        pass
     return acceptance_dict(result.acceptance)
 
 

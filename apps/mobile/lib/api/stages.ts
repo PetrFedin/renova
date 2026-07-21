@@ -125,14 +125,18 @@ export const stagesApi = {
     userId: string,
     projectId: string,
     stageId: string,
-    opts?: { qualityScore?: number | null; comment?: string },
+    opts?: { qualityScore?: number | null; comment?: string; checklist?: string[] },
   ) => {
     const acceptance = await activeAcceptance(userId, projectId, stageId);
     if (!acceptance) throw new ApiError(409, 'Нет активной приёмки по этапу', 'acceptance_not_requested');
-    const body = acceptanceDecisionBody({
-      qualityScore: opts?.qualityScore,
-      comment: opts?.comment ?? 'Работы приняты',
-    });
+    const body = {
+      ...acceptanceDecisionBody({
+        qualityScore: opts?.qualityScore,
+        comment: opts?.comment ?? 'Работы приняты',
+      }),
+      mode: 'full' as const,
+      ...(opts?.checklist?.length ? { checklist: opts.checklist } : {}),
+    };
     try {
       return await req(
         `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/accept`,

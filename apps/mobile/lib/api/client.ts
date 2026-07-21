@@ -141,23 +141,55 @@ export async function invalidateProjectsCache(userId: string): Promise<void> {
   }
 }
 
+/** P1.14: last cachedGet outcome — UI can show «данные могут быть устаревшими» */
+export type CachedGetMeta = {
+  path: string;
+  fromCache: boolean;
+  stale: boolean;
+  cachedAt?: number;
+  errorStatus?: number;
+};
+let _lastCachedGetMeta: CachedGetMeta | null = null;
+export function getLastCachedGetMeta(): CachedGetMeta | null {
+  return _lastCachedGetMeta;
+}
+
 export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
   const k = cacheKey(path, userId);
   const hit = _cache.get(k);
-  if (hit && Date.now() - hit.t < CACHE_TTL) return hit.v as T;
+  if (hit && Date.now() - hit.t < CACHE_TTL) {
+    _lastCachedGetMeta = { path, fromCache: true, stale: false, cachedAt: hit.t };
+    return hit.v as T;
+  }
   try {
     const v = await req<T>(path, {}, userId);
-    _cache.set(k, { t: Date.now(), v });
+    const now = Date.now();
+    _cache.set(k, { t: now, v });
     await saveDurableCache(path, userId, v);
+    _lastCachedGetMeta = { path, fromCache: false, stale: false, cachedAt: now };
     return v;
   } catch (error) {
     if (canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) {
+        const status = error instanceof ApiError ? error.status : undefined;
+        // Do not silently swallow — mark stale for UI + report
+        try {
+          const { reportError } = await import('@/lib/reportError');
+          reportError('api.cachedGet.staleFallback', error, { path, status });
+        } catch { /* report best-effort */ }
         _cache.set(k, { t: Date.now(), v: fallback });
+        _lastCachedGetMeta = {
+          path,
+          fromCache: true,
+          stale: true,
+          cachedAt: Date.now(),
+          errorStatus: status,
+        };
         return fallback;
       }
     }
+    _lastCachedGetMeta = { path, fromCache: false, stale: false };
     throw error;
   }
 }

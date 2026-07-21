@@ -34,6 +34,8 @@ class AcceptanceCreateIn(BaseModel):
 
 
 class AcceptanceDecisionIn(BaseModel):
+    # inline = hub list (quick only); full = stage fold with checklist
+    mode: str | None = None  # "inline" | "full" | None
     checklist: list[str] | None = None
     quality_score: float | None = Field(default=None, ge=0, le=10)
     comment: str | None = None
@@ -211,7 +213,7 @@ async def accept_work(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.accept_orchestrator import emit_acceptance_side_effects, finalize_work_acceptance
+    from app.services.accept_orchestrator import finalize_work_acceptance
 
     project = await require_project(db, project_id, user, write=True)
     require_acceptance_decider(project, user)
@@ -221,7 +223,16 @@ async def accept_work(
     require_pending_decision(row)
     stage = await require_stage(db, project_id, row.stage_id)
 
+    from app.services.acceptance_policy import assert_accept_policy, policy_dict
+    from app.services import outbox_service as outbox
+
+    source_mode = (getattr(body, "mode", None) or "full").strip().lower()
     try:
+        assert_accept_policy(
+            stage,
+            checklist=body.checklist,
+            source="inline" if source_mode == "inline" else "api",
+        )
         result = await finalize_work_acceptance(
             db,
             project=project,
@@ -234,7 +245,8 @@ async def accept_work(
             checklist=body.checklist,
         )
     except ValueError as exc:
-        if str(exc) == "photos_required":
+        code = str(exc)
+        if code == "photos_required":
             raise HTTPException(
                 409,
                 detail={
@@ -242,20 +254,41 @@ async def accept_work(
                     "message": "Добавьте хотя бы одно фото результата этапа перед приёмкой",
                 },
             ) from exc
+        if code in ("checklist_required", "checklist_incomplete"):
+            pol = policy_dict(stage)
+            raise HTTPException(
+                409,
+                detail={
+                    "code": code,
+                    "message": "Откройте этап и отметьте чек-лист перед приёмкой",
+                    "policy": pol,
+                },
+            ) from exc
         raise
+
+    # P1.16: side effects via transactional outbox (same tx as acceptance)
+    await outbox.enqueue(
+        db,
+        aggregate_type="work_acceptance",
+        aggregate_id=result.acceptance.id,
+        event_type="acceptance.side_effects",
+        payload={
+            "project_id": project.id,
+            "stage_id": result.stage.id,
+            "accepted_by": user.id,
+            "comment": body.comment,
+            "payment_id": result.payment.id if result.payment else None,
+            "next_stage_id": result.next_stage.id if result.next_stage else None,
+            "source": "app",
+        },
+    )
     await db.commit()
     await db.refresh(result.acceptance)
-
-    await emit_acceptance_side_effects(
-        db,
-        project=project,
-        stage=result.stage,
-        accepted_by=user.id,
-        comment=body.comment,
-        payment=result.payment,
-        next_stage=result.next_stage,
-        source="app",
-    )
+    # Best-effort dispatch; failures stay in outbox for retry
+    try:
+        await outbox.dispatch_pending(db, limit=10)
+    except Exception:
+        pass
     return acceptance_dict(result.acceptance)
 
 
