@@ -270,3 +270,8 @@ Tags после каждого slice: `v0.3.<n>-security` и т.д.
 **Начать Фазу A1–A3** в отдельной ветке `fix/chat-acl-payment-confirm` от `origin/develop`, без новых product-фич.
 
 Критерий готовности шага: `pytest tests/test_chat_acl.py tests/test_chat_payment_confirm.py -q` зелёный + mobile deep-link на PaymentDetailSheet.
+
+## Progress log
+
+- 2026-07-21: SecureStore web crash fixed (`isAvailableAsync` + Platform.OS web → AsyncStorage).
+- 2026-07-21: Phase A started — `require_chat_access` on send/read/participants/react/pin/invite/task/invoice/confirm; chat payment confirm no longer calls `confirm_payment`; schedule `submitted` freeze + manage ACL.

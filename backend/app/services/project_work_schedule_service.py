@@ -223,8 +223,14 @@ async def create_schedule(db: AsyncSession, project: Project, user: User, body: 
 
 
 async def update_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User, body: WorkScheduleUpdateIn) -> ProjectWorkSchedule:
+    # P0: submitted/confirmed frozen until reject→draft
     if schedule.status == WorkScheduleStatus.confirmed:
         raise HTTPException(status_code=409, detail="confirmed_schedule_cannot_be_edited")
+    if schedule.status == WorkScheduleStatus.submitted:
+        raise HTTPException(status_code=409, detail="submitted_schedule_cannot_be_edited")
+    project = await db.get(Project, schedule.project_id)
+    if project and not await can_manage_schedule(db, user, project):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_edit_schedule")
     if body.title is not None:
         schedule.title = body.title
     if body.description is not None:

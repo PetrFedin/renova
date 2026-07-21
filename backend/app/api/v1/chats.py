@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project, require_project_dep
+from app.services.chat_acl import require_chat_access, require_chat_message
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import chat_service as chat_svc
@@ -88,16 +89,14 @@ async def patch_thread_state(project_id: str, thread_id: str, body: ThreadState,
 
 @router.post("/{project_id}/chats/{thread_id}/read")
 async def mark_read(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_chat_access(db, project_id, thread_id, user, write=False)
     await chat_svc.mark_thread_read(db, thread_id, user.id)
     return {"ok": True}
 
 
 @router.get("/{project_id}/chats/{thread_id}")
 async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=False)
     # Открытие треда = прочтение: иначе badge остаётся, если POST /read не дошёл с клиента.
     await chat_svc.mark_thread_read(db, thread_id, user.id)
     st = await chat_svc._get_or_create_read(db, thread_id, user.id)
@@ -110,27 +109,22 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
 
 @router.get("/{project_id}/chats/{thread_id}/participants")
 async def get_participants(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
+    await require_chat_access(db, project_id, thread_id, user, write=False)
     return await chat_svc.list_participants(db, thread_id)
 
 
 @router.post("/{project_id}/chats/{thread_id}/invite")
 async def invite_to_chat(project_id: str, thread_id: str, body: InviteBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     if not body.phone and not body.profile_code:
         raise HTTPException(400, "Укажите телефон или номер профиля")
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
     chat_svc.ensure_profile_code(user)
     return await chat_svc.invite_participant(db, t, user, phone=body.phone, profile_code=body.profile_code)
 
 
 @router.post("/{project_id}/chats/{thread_id}/messages")
 async def _post_message(project_id: str, thread_id: str, body: MessageCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
+    _project, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     msg = await chat_svc.send_message(
         db, t, user.id, user.role.value, body.text, body.message_type, body.image_data, body.reply_to_id,
     )
@@ -139,16 +133,17 @@ async def _post_message(project_id: str, thread_id: str, body: MessageCreate, us
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/confirm")
 async def _confirm_message(project_id: str, thread_id: str, message_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # P0: подтверждение оплаты только заказчиком проекта (не любой customer JWT)
-    project = await require_project(db, project_id, user, write=True)
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
-    msg = next((m for m in t.messages if m.id == message_id), None)
-    if not msg or msg.message_type.value not in ("confirm", "payment"):
+    """Подтверждение сообщения в чате.
+
+    P0: проверки ДО любых commit.
+    Payment-сообщения НЕ меняют финансовый статус — только deep-link в PaymentDetailSheet
+    (канон: POST /payments/{id}/confirm с transfer_ack/receipt).
+    """
+    project, t = await require_chat_access(db, project_id, thread_id, user, write=True)
+    msg = await require_chat_message(db, t, message_id)
+    if msg.message_type.value not in ("confirm", "payment"):
         raise HTTPException(400, "Не запрос подтверждения")
-    msg.confirmed = True
-    await db.commit()
+
     if msg.message_type.value == "payment":
         if user.id != project.customer_id:
             raise HTTPException(403, "only_customer_can_confirm_payment")
@@ -158,24 +153,31 @@ async def _confirm_message(project_id: str, thread_id: str, message_id: str, use
             meta_project = meta.get("project_id")
             if meta_project and str(meta_project) != str(project_id):
                 raise HTTPException(409, "payment_project_mismatch")
-            from app.services import payment_service as pay_svc
-            # transfer_ack только после membership+customer check; канон UX — PaymentDetailSheet
-            confirmed = await pay_svc.confirm_payment(db, pid, project_id=project_id, transfer_ack=True)
-            if not confirmed:
-                raise HTTPException(404, "payment_not_found_or_not_pending")
+        # Honesty: не вызываем confirm_payment — клиент открывает карточку оплаты
+        out = chat_svc.msg_dict(msg)
+        out["finance_action"] = "open_payment_sheet"
+        out["payment_id"] = pid
+        return out
+
+    # Обычный confirm (не платёж) — только после ACL
+    msg.confirmed = True
+    await db.commit()
+    await db.refresh(msg)
     return chat_svc.msg_dict(msg)
 
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/react")
 async def react_message(project_id: str, thread_id: str, message_id: str, body: ReactionBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=False)
+    await require_chat_message(db, t, message_id)
     reactions = await chat_svc.toggle_reaction(db, message_id, user.id, body.emoji)
     return {"reactions": reactions}
 
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/pin")
 async def pin_msg(project_id: str, thread_id: str, message_id: str, pin: bool = True, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
+    await require_chat_message(db, t, message_id)
     msg = await chat_svc.pin_message(db, message_id, pin)
     if not msg:
         raise HTTPException(404)
@@ -184,10 +186,8 @@ async def pin_msg(project_id: str, thread_id: str, message_id: str, pin: bool = 
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/task")
 async def task_from_message(project_id: str, thread_id: str, message_id: str, body: TaskFromMessage, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
+    await require_chat_message(db, t, message_id)
     msg = await chat_svc.create_task_from_message(
         db, t, user.id, user.role.value, message_id,
         title=body.title, assignee_id=body.assignee_id, due_at=body.due_at, work_type=body.work_type,
@@ -197,12 +197,9 @@ async def task_from_message(project_id: str, thread_id: str, message_id: str, bo
 
 @router.post("/{project_id}/chats/{thread_id}/invoice")
 async def invoice_from_chat(project_id: str, thread_id: str, body: PaymentFromChat, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     if user.role.value != "contractor":
         raise HTTPException(403, "only_contractor_can_invoice_from_chat")
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
     msg = await chat_svc.create_payment_message(
         db, t, user.id, user.role.value, title=body.title, amount=body.amount, payment_type=body.payment_type,
     )

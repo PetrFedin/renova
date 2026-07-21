@@ -256,8 +256,16 @@ export function ChatThreadView({
 
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
-  const openPaymentFlow = () => {
-    pushOsNav(budgetTabRoute(role, 'payments', { openPayment: '1' }), returnTo || pathname, role);
+  const openPaymentFlow = (paymentId?: string | null) => {
+    // Канон: финансы только через Budget → PaymentDetailSheet, не через chat confirm
+    pushOsNav(
+      budgetTabRoute(role, 'payments', {
+        openPayment: '1',
+        ...(paymentId ? { paymentId } : {}),
+      }),
+      returnTo || pathname,
+      role,
+    );
   };
 
   if (!chat || !user) {
@@ -357,7 +365,10 @@ export function ChatThreadView({
                 throw e;
               }
             } : undefined}
-            onPay={m.message_type === 'payment' ? openPaymentFlow : undefined}
+            onPay={m.message_type === 'payment' ? () => {
+              const meta = (m as { meta?: { payment_id?: string }; payment_id?: string });
+              openPaymentFlow(meta.meta?.payment_id || meta.payment_id);
+            } : undefined}
           />
         ))}
       </ScrollView>
