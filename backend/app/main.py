@@ -160,7 +160,7 @@ if settings.sentry_dsn:
     except Exception:
         pass
 
-app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.3.6", lifespan=lifespan)
 
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(AuditMiddleware)
@@ -204,6 +204,6 @@ async def health():
     return {
         "status": "ok",
         "service": "renova-api",
-        "version": "0.2.0",
+        "version": "0.3.6",
         "environment": settings.normalized_environment,
     }

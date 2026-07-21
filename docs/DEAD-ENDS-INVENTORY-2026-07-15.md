@@ -24,7 +24,7 @@
 |---|---------|-----|
 | H0.1–8 | Staging HTTPS, YuKassa live, Postgres, Pro accounts | **ops** |
 | H0.23 | Kontur live smoke | **ops** |
-| Offline | deeper docs/issues/schedule item status | **P2 field** |
+| Offline | schedule item status UI | **done W148** (SchedulePlanItems) |
 | Portal | нет чата / CO write (by design lite) | **P2** |
 
 ## Дубли входов (aliases OK)
