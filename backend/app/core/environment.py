@@ -56,7 +56,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         require_public_base_url=True,
         forbid_localhost_public_url=True,
         require_non_default_secret=True,
-        require_https_public_url=False,
+        require_https_public_url=True,  # P1: staging = реальный пилот / TestFlight
         allow_header_user_id=False,
     ),
     "production": EnvironmentPolicy(
@@ -187,6 +187,7 @@ def collect_warnings(
     yookassa_shop_id: str | None = None,
     yookassa_secret: str | None = None,
     esign_webhook_secret: str | None = None,
+    yookassa_webhook_secret: str | None = None,
 ) -> list[str]:
     """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
@@ -209,5 +210,9 @@ def collect_warnings(
         if not ((yookassa_shop_id or "").strip() and (yookassa_secret or "").strip()):
             warnings.append(
                 f"{name}: YOOKASSA_SHOP_ID/YOOKASSA_SECRET missing — card checkout returns 503 (demo disabled)"
+            )
+        if (yookassa_shop_id or "").strip() and not (yookassa_webhook_secret or "").strip():
+            warnings.append(
+                f"{name}: YOOKASSA_WEBHOOK_SECRET empty — webhook endpoint will 503"
             )
     return warnings

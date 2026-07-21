@@ -275,3 +275,7 @@ Tags после каждого slice: `v0.3.<n>-security` и т.д.
 
 - 2026-07-21: SecureStore web crash fixed (`isAvailableAsync` + Platform.OS web → AsyncStorage).
 - 2026-07-21: Phase A started — `require_chat_access` on send/read/participants/react/pin/invite/task/invoice/confirm; chat payment confirm no longer calls `confirm_payment`; schedule `submitted` freeze + manage ACL.
+
+- 2026-07-21: Phase B — webhook FOR UPDATE + amount/currency/yookassa_id verify; staging/prod webhook secret required.
+- 2026-07-21: Phase C — item transition matrix (`schedule_item_transitions`).
+- 2026-07-21: Phase D — staging HTTPS required; CORS allowlist; CI e2e without `|| true`; OTP secrets + 60s resend cooldown.

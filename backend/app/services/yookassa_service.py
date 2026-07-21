@@ -162,6 +162,8 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
 
     if kind == "project_payment":
         from app.services import payment_service as pay_svc
+        from sqlalchemy import select
+        from app.models.entities import Payment
 
         payment_id = metadata.get("payment_id")
         project_id = metadata.get("project_id")
@@ -169,11 +171,31 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         if not payment_id or not project_id:
             return {"ok": True, "handled": False, "reason": "missing_metadata"}
 
-        existing = await pay_svc.get_payment(db, payment_id)
+        # P0: lock row (PG); SQLite ignores / best-effort
+        q = select(Payment).where(Payment.id == payment_id)
+        try:
+            q = q.with_for_update()
+        except Exception:
+            pass
+        existing = (await db.execute(q)).scalar_one_or_none()
         if not existing or existing.project_id != project_id:
             return {"ok": True, "handled": False, "reason": "payment_not_found"}
         if existing.status.value not in ("pending", "processing", "paid_unverified"):
             return {"ok": True, "handled": True, "duplicate": True}
+
+        # Verify amount / currency against provider payload
+        amount_obj = obj.get("amount") or {}
+        try:
+            remote_amount = float(amount_obj.get("value") or 0)
+        except (TypeError, ValueError):
+            remote_amount = 0.0
+        remote_currency = str(amount_obj.get("currency") or "RUB").upper()
+        if remote_currency != "RUB":
+            return {"ok": True, "handled": False, "reason": "currency_mismatch"}
+        if abs(remote_amount - float(existing.amount)) > 0.01:
+            return {"ok": True, "handled": False, "reason": "amount_mismatch", "expected": existing.amount, "got": remote_amount}
+        if existing.yookassa_payment_id and yk_id and existing.yookassa_payment_id != yk_id:
+            return {"ok": True, "handled": False, "reason": "yookassa_id_mismatch"}
 
         if yk_id:
             await pay_svc.attach_yookassa_id(db, payment_id, yk_id)

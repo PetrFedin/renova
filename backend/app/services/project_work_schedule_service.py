@@ -464,6 +464,11 @@ async def update_item_status(
     P0: status=accepted — только заказчик и только после единой приёмки (customer_accepted_at).
     Исполнитель сдаёт работу через submitted → stage.review → work-acceptances.
     """
+    from app.services.schedule_item_transitions import assert_item_transition
+
+    await assert_item_transition(
+        db, user=user, project=project, from_status=item.status, to_status=body_status,
+    )
     if body_status == WorkScheduleItemStatus.accepted:
         if not is_project_customer(user, project):
             raise HTTPException(status_code=403, detail="only_customer_can_set_schedule_item_accepted")

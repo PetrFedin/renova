@@ -77,3 +77,8 @@ Pinned SHA: `9c86b5d`.
 - Full silent `.catch(()=>{})` → reportCatch sweep
 - List-load failures → reportError
 - Closure matrix: `docs/AUDIT-CLOSURE-MATRIX-2026-07-21.md`
+
+## Wave-7 audit embed (2026-07-21)
+
+- Webhook harden + schedule transitions + staging HTTPS + CORS + CI e2e fail-closed + OTP secrets
+- Doc: `docs/AUDIT-WAVE7-IMPLEMENTATION-2026-07-21.md`

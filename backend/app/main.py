@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
         yookassa_shop_id=settings.yookassa_shop_id,
         yookassa_secret=settings.yookassa_secret,
         esign_webhook_secret=settings.esign_webhook_secret,
+        yookassa_webhook_secret=settings.yookassa_webhook_secret,
     ):
         logger.warning(warning)
 
@@ -148,10 +149,26 @@ app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware)
+def _cors_origins() -> tuple[list[str], bool]:
+    raw = (settings.cors_allowed_origins or "").strip()
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    env = settings.normalized_environment
+    if not origins:
+        if env in ("development", "test"):
+            return ["*"], False  # * + credentials=True запрещено браузерами
+        # staging/prod: только public_base_url если список пуст
+        base = (settings.public_base_url or "").rstrip("/")
+        return ([base] if base else []), True
+    if origins == ["*"]:
+        return ["*"], False
+    return origins, True
+
+
+_cors_origin_list, _cors_credentials = _cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origin_list,
+    allow_credentials=_cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -65,11 +65,19 @@ async def checkout(user: User = Depends(get_current_user), db: AsyncSession = De
 
 @router.post("/webhook")
 async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """ЮKassa: payment.succeeded → activate Pro."""
+    """ЮKassa: payment.succeeded → activate Pro / project payment."""
     ip = request.client.host if request.client else None
     if not check_webhook_ip(ip):
         raise HTTPException(403, "ip denied")
-    if settings.yookassa_webhook_secret and request.headers.get("X-Webhook-Secret") != settings.yookassa_webhook_secret:
+    env = settings.normalized_environment
+    secret = (settings.yookassa_webhook_secret or "").strip()
+    # P0: staging/production — secret обязателен (нельзя skip)
+    if env in ("staging", "production"):
+        if not secret:
+            raise HTTPException(503, "yookassa_webhook_secret_not_configured")
+        if request.headers.get("X-Webhook-Secret") != secret:
+            raise HTTPException(401, "invalid webhook")
+    elif secret and request.headers.get("X-Webhook-Secret") != secret:
         raise HTTPException(401, "invalid webhook")
     body = await request.json()
     eid = body.get('object', {}).get('id') or body.get('event', '')
