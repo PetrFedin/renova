@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Platform, View, StyleSheet, Pressable } from 'react-native';
 import { useState, useEffect } from 'react';
-import { usePathname, router } from 'expo-router';
+import { usePathname } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { tabBarScreenOptions } from '@/constants/tabBar';
@@ -21,6 +21,7 @@ import { OsReturnBar } from '@/components/renova/os/OsReturnBar';
 import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { projectPickRoute } from '@/lib/osEntry';
+import { replaceOsNav } from '@/lib/pushOsNav';
 
 /** Шапка: лого + иконки в ряду; путь — отдельный контейнер под линией */
 export function OsTabsHeaderBar({ role }: { role: OsRole }) {
@@ -96,7 +97,7 @@ export function OsTabsShell({ role, children }: { role: OsRole; children: ReactN
   useEffect(() => {
     if (!user || activeProject || !pendingPick) return;
     if (pathname.includes('/onboarding/')) return;
-    router.replace(projectPickRoute() as any);
+    replaceOsNav(projectPickRoute());
   }, [user?.id, activeProject?.id, pendingPick, pathname]);
 
   return (

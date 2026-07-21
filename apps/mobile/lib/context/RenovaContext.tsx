@@ -2,7 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PaywallModal } from '@/components/renova/PaywallModal';
-import { router } from 'expo-router';
+import { replaceOsNav } from '@/lib/pushOsNav';
 import { flushOfflineOutbox } from '@/lib/offline';
 import { reloadInboxSync } from "@/lib/inboxSyncStore";
 import { notifyProjectDataChanged, syncProjectSideEffects } from "@/lib/projectDataBus";
@@ -611,7 +611,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           onUpgrade={async () => {
             await api.checkoutPro(user.id);
             setPaywallVisible(false);
-            router.replace('/(contractor)/subscription');
+            replaceOsNav('/(contractor)/subscription', undefined, 'contractor');
           }}
         />
       )}

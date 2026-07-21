@@ -1,7 +1,7 @@
 /** Пустое состояние — нет активного проекта; список с группами «В работе» / «Завершённые» */
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -17,7 +17,7 @@ import { useProjectBuckets } from '@/lib/hooks/useProjectBuckets';
 import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActions';
 import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
-import { pushOsNav } from '@/lib/pushOsNav';
+import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 
 type Props = {
   role: OsRole;
@@ -305,7 +305,7 @@ export function ProjectEmptyState({
         <PrimaryButton
           title="На главную"
           variant="outline"
-          onPress={() => router.replace(tabsRoute(role, 'index') as any)}
+          onPress={() => replaceOsNav(tabsRoute(role, 'index'), undefined, role)}
         />
       )}
     </ScrollView>

@@ -1,8 +1,8 @@
 /** Деталь материала — подбор / закупка */
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Linking, Pressable } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { pushOsNav } from '@/lib/pushOsNav';
+import { useLocalSearchParams } from 'expo-router';
+import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -10,7 +10,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, MaterialPick, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
-import { repairTabHref } from '@/constants/osSections';
+import { repairTabRoute } from '@/constants/osSections';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
 import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
 
@@ -106,7 +106,7 @@ export default function MaterialDetailScreen() {
         {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
           <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); }} />
         )}
-        <PrimaryButton title="Все материалы" variant="outline" onPress={() => router.replace(repairTabHref(role, 'materials') as any)} />
+        <PrimaryButton title="Все материалы" variant="outline" onPress={() => replaceOsNav(repairTabRoute(role, 'materials'), undefined, role)} />
       </ScrollView>
     </>
   );

@@ -1,6 +1,6 @@
 /** Возврат на экран «Заказчик / Исполнитель» */
 import { Pressable, Text, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { replaceOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { UserRole } from '@/lib/api';
@@ -15,7 +15,7 @@ export function RoleSwitchButton({ compact }: { compact?: boolean }) {
 
   async function onPress() {
     await logout();
-    router.replace('/onboarding/role');
+    replaceOsNav('/onboarding/role');
   }
 
   if (compact) {

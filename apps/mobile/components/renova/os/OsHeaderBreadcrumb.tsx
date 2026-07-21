@@ -3,10 +3,11 @@
  * Путь (Главная › …) — отдельный компактный контейнер под линией шапки.
  */
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { router, usePathname, useLocalSearchParams } from 'expo-router';
+import { usePathname, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { buildBreadcrumb, crumbHref, hubCrumbRoute } from '@/lib/breadcrumb';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
+import { replaceOsNav } from '@/lib/pushOsNav';
 import { OsRenovaLogo } from '@/components/renova/os/OsRenovaLogo';
 
 function routeSegment(pathname: string): string {
@@ -33,19 +34,20 @@ function goCrumb(
   routeName: string,
   ctx: { sub?: string; filter?: string },
 ) {
+  // W120: крошки → replaceOsNav SoT
   if (routeName === 'index') {
-    router.replace(crumbHref(role, 'index') as any);
+    replaceOsNav(crumbHref(role, 'index'), undefined, role);
     return;
   }
   if (routeName.includes(':')) {
-    router.replace(hubCrumbRoute(role, routeName, ctx) as any);
+    replaceOsNav(hubCrumbRoute(role, routeName, ctx), undefined, role);
     return;
   }
   if (routeName === 'object' || routeName === 'repair' || routeName === 'budget') {
-    router.replace(tabsRoute(role, routeName) as any);
+    replaceOsNav(tabsRoute(role, routeName), undefined, role);
     return;
   }
-  router.replace(crumbHref(role, routeName) as any);
+  replaceOsNav(crumbHref(role, routeName), undefined, role);
 }
 
 /** Только лого в верхнем ряду (между лого и иконками путь больше не рисуем). */

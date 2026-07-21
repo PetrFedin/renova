@@ -11,7 +11,7 @@ import {
   tabsRoute,
   type OsRole,
 } from '@/constants/osSections';
-import { pushOsNav } from '@/lib/pushOsNav';
+import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { useTopInset } from '@/lib/useTopInset';
 import { useInboxTasks } from '@/lib/useChatUnread';
@@ -56,7 +56,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
 
   const go = (sec: (typeof sections)[0]) => {
     setOpen(false);
-    router.replace(tabsRoute(menuRole, sec.routeName, sec.hubTab) as any);
+    replaceOsNav(tabsRoute(menuRole, sec.routeName, sec.hubTab), undefined, menuRole);
   };
 
   return (

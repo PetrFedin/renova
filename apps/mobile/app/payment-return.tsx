@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
+import { budgetTabRoute } from '@/constants/osSections';
+import { replaceOsNav } from '@/lib/pushOsNav';
 
 /** Deep link renova://payment-return?projectId=&paymentId= после ЮKassa redirect. */
 export default function PaymentReturnScreen() {
@@ -12,9 +14,14 @@ export default function PaymentReturnScreen() {
   const { user, loadProject, refreshProjects } = useRenova();
   const [note, setNote] = useState('Проверяем статус оплаты…');
 
+  /** W120: возврат всегда во вкладку «Оплаты» через SoT (не голый /budget) */
+  const goBudgetPayments = () => {
+    replaceOsNav(budgetTabRoute('customer', 'payments'), undefined, 'customer');
+  };
+
   useEffect(() => {
     if (!user?.id || !projectId || !paymentId) {
-      Alert.alert('Оплата', 'Неверная ссылка возврата', [{ text: 'OK', onPress: () => router.replace('/(customer)/(tabs)/budget') }]);
+      Alert.alert('Оплата', 'Неверная ссылка возврата', [{ text: 'OK', onPress: goBudgetPayments }]);
       return;
     }
     let cancelled = false;
@@ -30,18 +37,18 @@ export default function PaymentReturnScreen() {
         if (pay?.status === 'confirmed') {
           setNote('Оплата подтверждена');
           Alert.alert('Готово', 'Оплата через ЮKassa зафиксирована.', [
-            { text: 'В бюджет', onPress: () => router.replace('/(customer)/(tabs)/budget') },
+            { text: 'К оплатам', onPress: goBudgetPayments },
           ]);
         } else {
           setNote('Ожидаем подтверждение от ЮKassa…');
           Alert.alert(
             'Оплата',
-            'Если оплата прошла, статус обновится через несколько секунд. Проверьте раздел «Бюджет».',
-            [{ text: 'В бюджет', onPress: () => router.replace('/(customer)/(tabs)/budget') }],
+            'Если оплата прошла, статус обновится через несколько секунд. Проверьте раздел «Оплаты».',
+            [{ text: 'К оплатам', onPress: goBudgetPayments }],
           );
         }
       } catch {
-        if (!cancelled) router.replace('/(customer)/(tabs)/budget');
+        if (!cancelled) goBudgetPayments();
       }
     })();
     return () => { cancelled = true; };

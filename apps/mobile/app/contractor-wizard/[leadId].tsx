@@ -1,7 +1,9 @@
 /** Исполнитель: заявка → комнаты → проект с сметой */
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { replaceOsNav } from '@/lib/pushOsNav';
+import { tabsRoute } from '@/constants/osSections';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomTypePicker, FloorLevelPicker } from '@/components/renova/RoomTypePicker';
@@ -49,7 +51,7 @@ export default function ContractorLeadWizard() {
         await loadProject(r.project_id);
         await syncProjectSideEffects({ user, project: { id: r.project_id } as any });
       }
-      router.replace('/(contractor)/(tabs)/');
+      replaceOsNav(tabsRoute('contractor', 'index'), undefined, 'contractor');
     } catch {
       Alert.alert('Ошибка', 'Не удалось создать проект');
     } finally {

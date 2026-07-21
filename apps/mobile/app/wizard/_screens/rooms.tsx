@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { router } from 'expo-router';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ROOM_PRESETS, type RoomTypeId } from '@/constants/roomTypes';
@@ -125,7 +125,7 @@ export default function WizardRooms() {
       >
         <Text style={styles.link}>+ Пустая комната</Text>
       </Pressable>
-      <PrimaryButton title="Рассчитать смету" onPress={() => router.push('/wizard/confirm')} />
+      <PrimaryButton title="Рассчитать смету" onPress={() => pushOsNav('/wizard/confirm')} />
     </ScrollView>
   );
 }

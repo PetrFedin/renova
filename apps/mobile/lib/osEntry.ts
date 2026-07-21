@@ -1,6 +1,5 @@
 /** Прямой переход в OS после онбординга — без лишних redirect */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router, type Href } from 'expo-router';
 import type { UserRole } from '@/lib/api';
 import { tabsRoute, type OsTabRoute } from '@/constants/osSections';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
@@ -25,12 +24,13 @@ export async function navigateAfterLogin(role: UserRole): Promise<void> {
   await AsyncStorage.setItem('renova_user_role', role);
   const done = await AsyncStorage.getItem('renova_detail_quiz_done');
   if (!done) {
-    router.replace('/onboarding/detail-quiz');
+    // W120: онбординг через SoT
+    replaceOsNav('/onboarding/detail-quiz');
     return;
   }
   const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
   if (pending === '1') {
-    router.replace(projectPickRoute() as Href);
+    replaceOsNav(projectPickRoute());
     return;
   }
   replaceOsNav(osEntryRoute(role));

@@ -1,7 +1,7 @@
 /** Hub «Ремонт»: Этапы · Материалы · Приёмка */
 import { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
 import { OsWorksScreen } from '@/components/screens/OsWorksScreen';
 import { OsMaterialsScreen } from '@/components/screens/OsMaterialsScreen';
@@ -13,6 +13,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { api } from '@/lib/api';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
+import { replaceOsNav } from '@/lib/pushOsNav';
 
 const TAB_IDS = ['works', 'materials', 'selections', 'control'] as const;
 
@@ -26,7 +27,7 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
   /** Календарь — отдельный раздел dock/меню, не вкладка «Ремонт» */
   useEffect(() => {
     if (tabParam === 'calendar') {
-      router.replace(tabsRoute(role, 'calendar') as any);
+      replaceOsNav(tabsRoute(role, 'calendar'), undefined, role);
     }
   }, [tabParam, role]);
 
