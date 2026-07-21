@@ -6,6 +6,7 @@ from app.db.session import init_db
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
+from tests.helpers_flow import complete_stage_checklist
 
 pytestmark = pytest.mark.asyncio
 
@@ -51,6 +52,7 @@ async def test_bank_confirm_pending_after_acceptance():
             json={"stage_id": active["id"]},
         )
         assert acc.status_code == 200
+        await complete_stage_checklist(client, pid, active["id"], h_cont)
         await client.post(
             f"/api/v1/projects/{pid}/work-acceptances/{acc.json()['id']}/accept",
             headers=h_cust,

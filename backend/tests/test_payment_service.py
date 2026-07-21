@@ -108,7 +108,8 @@ async def test_confirm_requires_settlement_proof(monkeypatch):
         session, payment.id, project_id="project-a", transfer_ack=True
     )
     assert ok is not None
-    assert ok.status == PaymentStatus.confirmed
+    # W143: ack без чека/выписки → paid_unverified (не budget fact)
+    assert ok.status == PaymentStatus.paid_unverified
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ Post split-release hardening on `main` after `v0.3.6-ia-portal`.
 - **Schedule:** plan-item status CTAs in calendar hub (#21)
 - **QC:** `IssueFixed` activity + notify customer on mark-fixed / contractor on confirm (#22)
 - **Hygiene:** `utc_now()` replaces deprecated `datetime.utcnow()` across backend (DB-compatible naive UTC)
+- **Tests / honesty:** W57 propose→customer lock helpers; full-checklist before accept; W143 notify for `paid_unverified`; schedule submit UnboundLocalError fix
 
 ## Versions
 

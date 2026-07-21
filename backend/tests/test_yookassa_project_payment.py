@@ -66,6 +66,7 @@ async def test_webhook_confirms_project_payment(db, monkeypatch):
         "object": {
             "id": "yk-test-123",
             "status": "succeeded",
+            "amount": {"value": "5000.00", "currency": "RUB"},
             "metadata": {
                 "kind": "project_payment",
                 "payment_id": payment.id,
@@ -121,6 +122,7 @@ async def test_webhook_idempotent_duplicate_event(db, monkeypatch):
         "object": {
             "id": "yk-dup-456",
             "status": "succeeded",
+            "amount": {"value": "3000.00", "currency": "RUB"},
             "metadata": {
                 "kind": "project_payment",
                 "payment_id": payment.id,

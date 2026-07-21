@@ -297,8 +297,8 @@ async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
 
     from app.services import activity_service as act
     from app.services import notification_service as notif
-    from app.models.entities import Project
 
+    # Project already imported at module level — local import would UnboundLocalError above.
     project = await db.get(Project, schedule.project_id)
     await act.log_event(
         db,

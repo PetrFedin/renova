@@ -18,6 +18,7 @@ from app.models.entities import (
 from app.services import estimate_service as est
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
+from tests.helpers_flow import complete_stage_checklist
 
 pytestmark = pytest.mark.asyncio
 
@@ -98,6 +99,7 @@ async def test_accept_requires_photos():
         from app.models.entities import StagePhoto
         from sqlalchemy import delete, select
 
+        await complete_stage_checklist(client, pid, open_acc["stage_id"], h_cont)
         async with sess.SessionLocal() as db:
             await db.execute(delete(StagePhoto).where(StagePhoto.stage_id == open_acc["stage_id"]))
             await db.commit()

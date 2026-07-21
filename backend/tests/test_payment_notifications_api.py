@@ -109,13 +109,13 @@ async def test_manual_create_and_confirm_use_honest_notification_types(monkeypat
         )
         assert confirm_resp.status_code == 200
         confirmed = confirm_resp.json()
-        assert confirmed["status"] == "confirmed"
+        assert confirmed["status"] == "paid_unverified"
         assert captured[1:] == [
             {
                 "user_id": "cont-w56",
                 "project_id": "proj-w56",
-                "notification_type": "payment_confirmed",
-                "title": "Оплата подтверждена: Оплата этапа",
+                "notification_type": "payment_pending",
+                "title": "Перевод отмечен (без чека): Оплата этапа",
                 "body": "5000.0",
                 "link_path": "/(contractor)/(tabs)/budget",
                 "return_to": "/(contractor)/(tabs)/home",

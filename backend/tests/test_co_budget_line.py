@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import select
 
-from app.models.entities import BudgetLine, ChangeOrderStatus, Project, User, UserRole
+from app.models.entities import BudgetLine, ChangeOrderStatus, EstimateLine, LineType, Project, User, UserRole
 from app.services import change_order_service as co_svc
 
 
@@ -21,6 +21,17 @@ async def test_co_approve_adds_budget_line(db):
         budget_spent=0,
     )
     db.add(project)
+    # W45 SoT: budget_planned = Σ estimate + Σ approved CO (не seed budget_planned)
+    db.add(
+        EstimateLine(
+            project_id=project.id,
+            line_type=LineType.work,
+            name="База",
+            unit="шт",
+            quantity_planned=1,
+            unit_price=100000,
+        )
+    )
     await db.commit()
 
     co = await co_svc.create_order(db, project.id, contractor.id, "Перенос розеток", 15000.0, "Доп. работы")

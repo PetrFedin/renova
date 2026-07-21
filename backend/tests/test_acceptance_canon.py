@@ -6,6 +6,7 @@ from app.db.session import init_db
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
+from tests.helpers_flow import complete_stage_checklist
 
 pytestmark = pytest.mark.asyncio
 
@@ -85,6 +86,7 @@ async def test_work_acceptance_canon_accept():
         )
         assert created.status_code == 200, created.text
         acc_id = created.json()["id"]
+        await complete_stage_checklist(client, pid, open_st["id"], h_cont)
         accepted = await client.post(
             f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
             headers=h_cust,
@@ -107,6 +109,7 @@ async def test_os_acceptance_proxy_uses_canon():
         )
         assert created.status_code == 200, created.text
         acc_id = created.json()["id"]
+        await complete_stage_checklist(client, pid, open_st["id"], h_cont)
         r = await client.post(
             f"/api/v1/projects/{pid}/acceptances/{acc_id}/accept",
             headers=h_cust,
@@ -142,6 +145,7 @@ async def test_w139_accept_without_score_clears_stale():
             row.quality_score = 8.0
             await db.commit()
 
+        await complete_stage_checklist(client, pid, open_st["id"], h_cont)
         accepted = await client.post(
             f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
             headers=h_cust,
@@ -175,6 +179,7 @@ async def test_w139_os_proxy_and_return_without_fake_scores():
             row.quality_score = 5.0
             await db.commit()
 
+        await complete_stage_checklist(client, pid, open_st["id"], h_cont)
         r = await client.post(
             f"/api/v1/projects/{pid}/acceptances/{acc_id}/accept",
             headers=h_cust,
@@ -227,6 +232,7 @@ async def test_accept_emits_acceptance_passed_with_stage_context():
         assert created.status_code == 200, created.text
         acc_id = created.json()["id"]
 
+        await complete_stage_checklist(client, pid, open_st["id"], h_cont)
         with patch("app.services.automation_engine.process_event", new_callable=AsyncMock) as pe:
             accepted = await client.post(
                 f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
@@ -292,6 +298,7 @@ async def test_schedule_item_accepted_does_not_bypass_work_acceptance():
             json={"stage_id": stage_id, "comment": "готов"},
         )
         assert wa.status_code == 200, wa.text
+        await complete_stage_checklist(client, pid, stage_id, h_cont)
         accepted = await client.post(
             f"/api/v1/projects/{pid}/work-acceptances/{wa.json()['id']}/accept",
             headers=h_cust,
