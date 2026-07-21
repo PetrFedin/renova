@@ -12,6 +12,8 @@ import { calcRoomMetrics } from '@/lib/calc-engine';
 import { api, Room, isRateLimitError } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertWorkCreated } from '@/lib/fieldCreateNav';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   visible: boolean;
@@ -168,6 +170,9 @@ export function CreateWorkSheet({
       setCustomTitle('');
       setNotes('');
       setBudget('');
+      // W133: работа → график / карточка
+      const role = (isCustomer ? 'customer' : 'contractor') as OsRole;
+      alertWorkCreated(role, wo?.id);
     } catch (e) {
       if (isRateLimitError(e)) {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');

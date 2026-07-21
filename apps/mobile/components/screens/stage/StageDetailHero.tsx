@@ -8,6 +8,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { alertStageStarted } from '@/lib/jobLeadNav';
+import { alertStageSubmittedForAcceptance } from '@/lib/fieldCreateNav';
 
 type Props = {
   stage: StageDetail;
@@ -133,6 +134,8 @@ export function StageDetailHero({
               await onSubmitStage(stage.id);
               await onReload();
               await onProjectReload();
+              // W133: сдача → приёмка / inbox
+              alertStageSubmittedForAcceptance(role);
             } catch (e: unknown) {
               if (e instanceof Error && e.message === 'offline_queued') {
                 Alert.alert('Офлайн', 'Сдача отправится при подключении');

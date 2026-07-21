@@ -12,6 +12,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { CalendarEvent, WorkOrder } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
+import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -100,6 +101,8 @@ export function ScheduleDayDetail({
       await api.transitionWorkOrder(userId, projectId, wo.id, next);
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
+      // W133: день календаря → те же CTA, что WO detail
+      alertWorkOrderAdvanced(role === 'contractor' ? 'contractor' : 'customer', next);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'offline_queued') {
         Alert.alert('Офлайн', 'Смена статуса отправится при подключении');

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Alert, ScrollView, View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -12,8 +12,10 @@ import { RenovaTheme } from '@/constants/Theme';
 import { APPROVAL_TYPE_LABEL, approvalSourceLabel, resolveApprovalHref } from '@/lib/approvalLinks';
 import { navigateApproval } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
-import { budgetTabRoute, objectTabRoute, type OsRole } from '@/constants/osSections';
+import { objectTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertChangeOrderApproved } from '@/lib/procurementNav';
+import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -40,16 +42,11 @@ export default function ApprovalsScreen() {
       await api.approveApproval(userId, pid, it.id, it.type);
       await syncProjectSideEffects({ user, project: activeProject });
       load();
+      // W133: hub approve → SoT по типу
       if (it.type === 'change_order') {
-        const budget = budgetTabRoute('customer', 'summary');
-        Alert.alert(
-          'Доп. работы одобрены',
-          'План бюджета обновлён. Проверьте plan-fact во вкладке «Бюджет».',
-          [
-            { text: 'OK', style: 'cancel' },
-            { text: 'Открыть бюджет', onPress: () => pushOsNav(budget, undefined, 'customer') },
-          ],
-        );
+        alertChangeOrderApproved('customer', it.subtitle?.trim() || 'Доп. работы', undefined);
+      } else {
+        alertApprovalApproved('customer', it.type);
       }
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Согласование');
@@ -91,6 +88,8 @@ export default function ApprovalsScreen() {
                       await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
                       await syncProjectSideEffects({ user, project: activeProject });
                       load();
+                      // W133: reject → материалы / смета / inbox
+                      alertApprovalRejected('customer', it.type);
                     } catch (e) {
                       if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение');
                     }

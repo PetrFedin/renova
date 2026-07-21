@@ -16,6 +16,9 @@ import {
   RoomEngineeringSection,
   applyRoomTypePreset,
 } from '@/components/renova/room/RoomSetupFields';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { alertRoomCreated } from '@/lib/fieldCreateNav';
+import type { OsRole } from '@/constants/osSections';
 
 export function CreateRoomSheet({
   visible,
@@ -48,6 +51,8 @@ export function CreateRoomSheet({
   const [switches, setSwitches] = useState('2');
   const [plumbing, setPlumbing] = useState('0');
   const [busy, setBusy] = useState(false);
+  const { user } = useRenova();
+  const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
   const [nameTouched, setNameTouched] = useState(false);
 
   const dimValues = { length, width, height, outlets, switches, plumbing };
@@ -112,6 +117,8 @@ export function CreateRoomSheet({
       });
       resetForm();
       onClose();
+      // W133: комната → план / смета
+      alertRoomCreated(role);
     } catch (e) {
       if (isRateLimitError(e)) {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');

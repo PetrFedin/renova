@@ -14,6 +14,7 @@ import { isIsoDate } from '@/lib/validateDate';
 import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
 import { formMetaText } from '@/constants/formTypography';
+import { alertProjectProfileSaved } from '@/lib/fieldCreateNav';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
@@ -94,6 +95,9 @@ export function OsProjectProfileScreen({
     }
     setBusy(true);
     try {
+      const datesChanged =
+        (start || null) !== (activeProject?.planned_start_date || null)
+        || (end || null) !== (activeProject?.planned_end_date || null);
       await updateProjectProfile({
         name: values.name.trim(),
         address: values.address.trim() || undefined,
@@ -108,7 +112,8 @@ export function OsProjectProfileScreen({
       });
       if (budgetDirty) setBudgetDirty(false);
       setDirty(false);
-      Alert.alert('Сохранено', 'Профиль объекта обновлён');
+      // W133: сроки → график
+      alertProjectProfileSaved(role, datesChanged);
     } catch {
       Alert.alert('Ошибка', 'Не удалось сохранить. Проверьте подключение к серверу.');
     } finally {
