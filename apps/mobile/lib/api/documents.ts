@@ -1,4 +1,5 @@
 /** API: Document Center (+ OCR / e-sign Wave 3d) */
+import type { ServiceCapability } from './types/capabilities';
 import { req, ApiError } from './client';
 import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
 import type { ProjectDocumentsResponse } from './types';
@@ -165,6 +166,12 @@ export const documentsApi = {
       method: 'DELETE',
     }, userId),
 
+  getOcrHealth: (userId: string) =>
+    req<ServiceCapability & { environment?: string; document_ocr_mode?: string }>(
+      '/api/v1/ocr/health',
+      {},
+      userId,
+    ),
   tickOcrWorker: (userId: string) =>
     req('/api/v1/ocr/worker/tick', { method: 'POST', body: '{}' }, userId),
 };

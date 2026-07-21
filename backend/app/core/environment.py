@@ -138,6 +138,7 @@ def validate_runtime_settings(
     public_base_url: str,
     secret_key: str,
     auth_allow_header_user_id: bool | None = None,
+    moy_nalog_dev_bypass_enabled: bool | None = None,
 ) -> EnvironmentPolicy:
     """Raise ValueError if settings violate profile policy."""
     policy = policy_for(environment)
@@ -169,6 +170,12 @@ def validate_runtime_settings(
     if policy.require_non_default_secret and _is_default_secret(secret_key or ""):
         errors.append(
             f"{policy.name}: SECRET_KEY должен быть уникальным (≥16 символов, не default)"
+        )
+
+    # Dev bypass «Мой налог» нельзя оставлять включённым в staging/production
+    if not policy.allow_demo_seed and moy_nalog_dev_bypass_enabled is True:
+        errors.append(
+            f"{policy.name}: MY_NALOG_DEV_BYPASS_ENABLED=true запрещён — только development/test"
         )
 
     if errors:

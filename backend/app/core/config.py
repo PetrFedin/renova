@@ -1,4 +1,5 @@
 """Конфигурация backend Renova."""
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.environment import normalize_environment
@@ -30,6 +31,16 @@ class Settings(BaseSettings):
     moy_nalog_redirect_uri: str | None = None
     moy_nalog_authorize_url: str = "https://lknpd.nalog.ru/api/v1/auth/login"
     moy_nalog_token_url: str | None = None
+    # Dev-only: POST /moy-nalog/link without OAuth. NEVER honored in staging/production.
+    # Env: MY_NALOG_DEV_BYPASS_ENABLED (preferred) or MOY_NALOG_DEV_BYPASS_ENABLED.
+    moy_nalog_dev_bypass_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "MY_NALOG_DEV_BYPASS_ENABLED",
+            "MOY_NALOG_DEV_BYPASS_ENABLED",
+            "moy_nalog_dev_bypass_enabled",
+        ),
+    )
     s3_endpoint: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
@@ -67,6 +78,9 @@ class Settings(BaseSettings):
     # sync = classify in upload request; async = enqueue + worker tick/loop
     document_ocr_mode: str = "sync"
     document_ocr_worker_interval_sec: float = 5.0
+    # OCR provider: heuristic (local) | demo | none/off. Cloud live — later.
+    document_ocr_enabled: bool = True
+    document_ocr_provider: str = "heuristic"
     # Periodic reminders: materials, overdue stages, waste pickup (dev default 15 min)
     automation_reminders_enabled: bool = True
     automation_reminders_interval_sec: float = 900.0
