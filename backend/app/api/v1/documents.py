@@ -550,6 +550,7 @@ async def run_document_ocr(
         raise HTTPException(400, "document_has_no_version")
     from app.services import document_ocr_service as ocr_svc
 
+    ocr_svc.assert_ocr_run_allowed()
     await ocr_svc.enqueue_and_run(db, doc, version, apply_type=body.apply_type)
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
