@@ -57,6 +57,7 @@
     "typecheck:mobile": "bash scripts/typecheck-mobile.sh",
     "typecheck:mobile:raw": "cd apps/mobile && npx tsc --noEmit -p .",
     "test:chat-read-visible": "npx tsx apps/mobile/lib/domain/canMarkChatRead.test.ts",
+    "test:async-honesty": "npx tsx apps/mobile/lib/async/asyncResource.test.ts && npx tsx apps/mobile/lib/async/asyncHonesty.smoke.test.ts",
     "test:chat-read-foreground": "npx tsx apps/mobile/lib/domain/screenVisibility.test.ts && npx tsx apps/mobile/lib/domain/canMarkChatRead.test.ts && npx tsx apps/mobile/lib/domain/activeThreadUnread.test.ts",
     "test:chat-read-idempotency": "npx tsx apps/mobile/lib/domain/canMarkChatRead.test.ts && npx tsx apps/mobile/lib/domain/markThreadReadPolicy.test.ts && npx tsx apps/mobile/lib/markThreadRead.idempotency.test.ts",
     "test:chat-unread-consistency": "npx tsx apps/mobile/lib/domain/chatUnreadSnapshot.test.ts",

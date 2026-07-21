@@ -18,26 +18,49 @@ import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { useAsyncResource, asyncShowError, asyncShowStale, asyncIsRefreshing, asyncIsLoading } from '@/lib/async';
+import { InlineError, StaleDataBanner, LoadingSkeleton } from '@/components/async';
 
 export function ContractorControlView() {
   const pathname = usePathname();
   const nav = useNavFromHere();
   const { user, activeProject, readOnly } = useRenova();
-  const [issues, setIssues] = useState<ProjectIssue[]>([]);
-  const [acceptances, setAcceptances] = useState<WorkAcceptance[]>([]);
+  const projectId = activeProject?.id;
+  const {
+    resource: issuesRes,
+    data: issuesData,
+    reload: reloadIssues,
+  } = useAsyncResource<ProjectIssue[]>({
+    contextKey: `control-issues:${projectId || ''}`,
+    enabled: Boolean(user?.id && projectId),
+    scope: 'control.issues',
+    fetcher: async () => {
+      if (!user || !activeProject) return [];
+      return api.listIssues(user.id, activeProject.id);
+    },
+    isEmpty: (d) => d.length === 0,
+  });
+  const {
+    resource: acceptRes,
+    data: acceptData,
+    reload: reloadAccept,
+  } = useAsyncResource<WorkAcceptance[]>({
+    contextKey: `control-accept:${projectId || ''}`,
+    enabled: Boolean(user?.id && projectId),
+    scope: 'control.acceptances',
+    fetcher: async () => {
+      if (!user || !activeProject) return [];
+      return api.listWorkAcceptances(user.id, activeProject.id);
+    },
+    isEmpty: (d) => d.length === 0,
+  });
+  const issues = issuesData ?? [];
+  const acceptances = acceptData ?? [];
 
   const reload = useCallback(() => {
-    if (user && activeProject) {
-      api.listIssues(user.id, activeProject.id).then(setIssues).catch((e) => {
-        reportError('control.issues', e);
-        setIssues([]);
-      });
-      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch((e) => {
-        reportError('control.acceptances', e);
-        setAcceptances([]);
-      });
-    }
-  }, [user?.id, activeProject?.id]);
+    void reloadIssues({ soft: true });
+    void reloadAccept({ soft: true });
+  }, [reloadIssues, reloadAccept]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   // W89: после приёмки/QC в другом экране — обновить список без remount
@@ -51,6 +74,23 @@ export function ContractorControlView() {
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       <ReadOnlyBanner />
+      {asyncShowStale(issuesRes) || asyncShowStale(acceptRes) ? (
+        <StaleDataBanner
+          error={issuesRes.error || acceptRes.error}
+          onRetry={reload}
+          busy={asyncIsRefreshing(issuesRes) || asyncIsRefreshing(acceptRes)}
+        />
+      ) : null}
+      {asyncShowError(issuesRes) || asyncShowError(acceptRes) ? (
+        <InlineError
+          error={issuesRes.error || acceptRes.error}
+          title="Не удалось загрузить контроль"
+          onRetry={() => { void reloadIssues({ soft: false }); void reloadAccept({ soft: false }); }}
+          busy={asyncIsRefreshing(issuesRes) || asyncIsRefreshing(acceptRes)}
+        />
+      ) : null}
+      {asyncIsLoading(issuesRes) && asyncIsLoading(acceptRes) ? <LoadingSkeleton rows={2} /> : null}
+
       <View style={s.summary}>
         <View style={s.cell}><Text style={s.n}>{pendingCount}</Text><Text style={s.l}>Приёмка</Text></View>
         <View style={s.cell}><Text style={s.n}>{issues.filter(i => i.status !== 'closed').length || rework.length}</Text><Text style={s.l}>Замечания</Text></View>
@@ -61,8 +101,8 @@ export function ContractorControlView() {
       <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} role="contractor" />
 
       <Text style={s.section}>Замечания</Text>
-      {!issues.filter(i => i.status !== 'closed').length && <Text style={s.empty}>Нет открытых замечаний</Text>}
-      {issues.filter(i => i.status !== 'closed').slice(0, 5).map((iss) => (
+      {!asyncShowError(issuesRes) && !issues.filter(i => i.status !== 'closed').length && <Text style={s.empty}>Нет открытых замечаний</Text>}
+      {!asyncShowError(issuesRes) && issues.filter(i => i.status !== 'closed').slice(0, 5).map((iss) => (
         <Pressable
           key={iss.id}
           style={s.row}

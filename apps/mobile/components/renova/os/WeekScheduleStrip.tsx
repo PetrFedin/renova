@@ -1,5 +1,5 @@
 /** Превью плана на неделю — одна строка-сводка + детали по ▼ */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { homeRowStyles, homeTypography } from '@/constants/homeTypography';
@@ -8,10 +8,18 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { calendarEventInRange, filterCalendarEventsForRole } from '@/lib/domain/calendarEvents';
 import { useOsNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
-import { reportError } from '@/lib/reportError';
 import { formatCount, RU_NOUN } from '@/lib/i18n';
+import {
+  useAsyncResource,
+  asyncShowError,
+  asyncShowStale,
+  asyncIsLoading,
+  asyncIsRefreshing,
+} from '@/lib/async';
+import { InlineError, StaleDataBanner, LoadingSkeleton } from '@/components/async';
 
 type DayGroup = { date: string; label: string; count: number; sample: string };
+type WeekEvent = { date: string; title: string };
 
 function formatDayLabel(iso: string): string {
   const d = new Date(iso + 'T12:00:00');
@@ -32,20 +40,29 @@ type Props = {
 
 export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) {
   const { pushTab } = useOsNavFromHere(role);
-  const [events, setEvents] = useState<{ date: string; title: string }[]>([]);
   const [expanded, setExpanded] = useState(false);
 
-  const reload = useCallback(() => {
-    api.getCalendar(userId, projectId).then((c: CalendarData) => {
+  const { resource, data, reload } = useAsyncResource<WeekEvent[]>({
+    contextKey: `week-strip:${projectId}:${role}`,
+    enabled: Boolean(userId && projectId),
+    scope: 'weekScheduleStrip',
+    fetcher: async () => {
+      const c: CalendarData = await api.getCalendar(userId, projectId);
       const from = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
       const to = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-      const week = filterCalendarEventsForRole(c.events, role).filter((e) => calendarEventInRange(e, from, to));
-      setEvents(week);
-    }).catch((e) => { reportError('components.renova.os.WeekScheduleStrip.Events', e); setEvents([]); });
-  }, [userId, projectId, role]);
-  useEffect(() => { reload(); }, [reload]);
-  useProjectDataReload(reload);
+      return filterCalendarEventsForRole(c.events, role)
+        .filter((e) => calendarEventInRange(e, from, to))
+        .map((e) => ({ date: e.date, title: e.title }));
+    },
+    isEmpty: (d) => d.length === 0,
+  });
 
+  const softReload = useCallback(() => {
+    void reload({ soft: true });
+  }, [reload]);
+  useProjectDataReload(softReload);
+
+  const events = data ?? [];
   const groups = useMemo(() => {
     const map = new Map<string, DayGroup>();
     for (const e of events) {
@@ -61,17 +78,51 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
     pushTab('calendar', undefined, date ? { date } : undefined);
 
   const wrapStyle = embedded ? undefined : homeRowStyles.zone;
+  const head = !embedded ? (
+    <View style={homeRowStyles.zoneHead}>
+      <Text style={homeTypography.zoneLabel}>План на неделю</Text>
+      <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button">
+        <Text style={homeTypography.link}>Календарь →</Text>
+      </Pressable>
+    </View>
+  ) : null;
+
+  if (asyncIsLoading(resource)) {
+    const loading = (
+      <>
+        {head}
+        <LoadingSkeleton rows={1} height={36} />
+      </>
+    );
+    return embedded ? <View>{loading}</View> : <View style={wrapStyle}>{loading}</View>;
+  }
+
+  if (asyncShowError(resource)) {
+    const err = (
+      <>
+        {head}
+        <InlineError
+          error={resource.error}
+          title="Не удалось загрузить план"
+          onRetry={() => void reload({ soft: false })}
+          busy={asyncIsRefreshing(resource)}
+        />
+      </>
+    );
+    return embedded ? <View>{err}</View> : <View style={wrapStyle}>{err}</View>;
+  }
 
   if (!groups.length) {
     const empty = (
       <>
-        {!embedded ? (
-          <View style={homeRowStyles.zoneHead}>
-            <Text style={homeTypography.zoneLabel}>План на неделю</Text>
-            <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button">
-              <Text style={homeTypography.link}>Календарь →</Text>
-            </Pressable>
-          </View>
+        {head}
+        {asyncShowStale(resource) ? (
+          <StaleDataBanner
+            error={resource.error}
+            offline={resource.status === 'offline'}
+            onRetry={softReload}
+            busy={asyncIsRefreshing(resource)}
+          />
         ) : null}
         <Pressable style={homeRowStyles.linkRow} onPress={() => openCalendar()} accessibilityRole="button">
           <Text style={[homeTypography.emptyState, homeRowStyles.linkRowLeading]} numberOfLines={1}>
@@ -91,13 +142,14 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
 
   const body = (
     <>
-      {!embedded ? (
-        <View style={homeRowStyles.zoneHead}>
-          <Text style={homeTypography.zoneLabel}>План на неделю</Text>
-          <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button">
-            <Text style={homeTypography.link}>Календарь →</Text>
-          </Pressable>
-        </View>
+      {head}
+      {asyncShowStale(resource) ? (
+        <StaleDataBanner
+          error={resource.error}
+          offline={resource.status === 'offline'}
+          onRetry={softReload}
+          busy={asyncIsRefreshing(resource)}
+        />
       ) : null}
 
       <View style={s.summaryRow}>

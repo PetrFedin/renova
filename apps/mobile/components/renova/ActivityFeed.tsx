@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -8,7 +8,8 @@ import { GlobalFilterBar } from '@/components/renova/GlobalFilterBar';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
-import { reportError } from '@/lib/reportError';
+import { useAsyncResource, asyncShowError, asyncShowStale, asyncIsRefreshing, asyncIsLoading } from '@/lib/async';
+import { InlineError, StaleDataBanner, EmptyState, LoadingSkeleton } from '@/components/async';
 
 const KINDS = [{ k: '', l: 'Все' }, { k: 'material', l: 'Материалы' }, { k: 'approval', l: 'Согласования' }, { k: 'room_change', l: 'Комнаты' }];
 
@@ -26,26 +27,27 @@ export function ActivityFeed({
   /** Путь «назад» — с главной передаётся текущий pathname */
   returnTo?: string;
 }) {
-  const [items, setItems] = useState<ActivityItem[]>([]);
   const [kind, setKind] = useState('');
   const [wt, setWt] = useState<string | undefined>();
   const { user } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const back = returnTo || '/';
 
-  const reload = useCallback(() => {
-    api.activityFeed(userId, projectId, kind || undefined, wt)
-      .then((r) => {
-        let list = compact ? r.slice(0, 3) : r;
-        if (hidePaymentDupes) {
-          list = list.filter((it) => !/оплат/i.test(it.title));
-        }
-        setItems(list);
-      })
-      .catch((e) => { reportError('components.renova.ActivityFeed.Items', e); setItems([]); });
-  }, [userId, projectId, kind, wt, compact, hidePaymentDupes]);
+  const { resource, data, reload: reloadRes } = useAsyncResource<ActivityItem[]>({
+    contextKey: `activity:${projectId}:${kind}:${wt || ''}:${compact ? 'c' : 'f'}`,
+    enabled: Boolean(userId && projectId),
+    scope: 'activity.feed',
+    fetcher: async () => {
+      let list = await api.activityFeed(userId, projectId, kind || undefined, wt);
+      if (compact) list = list.slice(0, 3);
+      if (hidePaymentDupes) list = list.filter((it) => !/оплат/i.test(it.title));
+      return list;
+    },
+    isEmpty: (d) => d.length === 0,
+  });
+  const items = data ?? [];
 
-  useEffect(() => { reload(); }, [reload]);
+  const reload = useCallback(() => { void reloadRes({ soft: true }); }, [reloadRes]);
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   useProjectDataReload(reload);
 
@@ -58,6 +60,13 @@ export function ActivityFeed({
   return (
     <View style={s.box}>
       <Text style={s.head}>{compact ? 'Недавнее' : 'Архив действий'}</Text>
+      {asyncShowStale(resource) ? (
+        <StaleDataBanner error={resource.error} onRetry={() => void reloadRes({ soft: true })} busy={asyncIsRefreshing(resource)} />
+      ) : null}
+      {asyncShowError(resource) ? (
+        <InlineError error={resource.error} title="Не удалось загрузить ленту" onRetry={() => void reloadRes({ soft: false })} busy={asyncIsRefreshing(resource)} />
+      ) : null}
+      {asyncIsLoading(resource) ? <LoadingSkeleton rows={2} height={40} /> : null}
       {!compact && <ScrollView horizontal style={{ marginBottom: 6 }}>{KINDS.map((x) => <Pressable key={x.k} style={[s.ch, kind === x.k && s.on]} onPress={() => setKind(x.k)}><Text style={s.ct}>{x.l}</Text></Pressable>)}</ScrollView>}
       {!compact && <GlobalFilterBar kind={kind} workType={wt} onKind={setKind} onWorkType={setWt} />}
       {items.map((it) => (
@@ -67,6 +76,9 @@ export function ActivityFeed({
           <Text style={s.d}>{it.at.slice(0, 16).replace('T', ' ')}</Text>
         </Pressable>
       ))}
+      {!asyncShowError(resource) && !asyncIsLoading(resource) && !items.length ? (
+        <EmptyState title={compact ? 'Пока нет событий' : 'Лента пуста'} />
+      ) : null}
       {compact && (
         <Pressable onPress={() => pushOsNav('/activity', back, role)}>
           <Text style={s.more}>Весь архив →</Text>

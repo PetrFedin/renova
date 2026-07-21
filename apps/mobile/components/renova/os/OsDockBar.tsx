@@ -36,7 +36,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
   /** Dock: только global scope — не зависит от фильтра списка чатов */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
-  const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
+  const { count: todayTasks, reliable: todayTasksReliable } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
   const section = resolveSectionId(pathname);
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
@@ -124,8 +124,8 @@ export function OsDockBar({ role }: { role: OsRole }) {
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
               {id === 'chat' && <ChatBadge count={chatUnread} />}
-              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} />}
-              {id === 'home' && !items.includes('calendar') && todayTasks > 0 && (
+              {id === 'calendar' && todayTasksReliable && todayTasks > 0 && <ChatBadge count={todayTasks} />}
+              {id === 'home' && !items.includes('calendar') && todayTasksReliable && todayTasks > 0 && (
                 <ChatBadge count={todayTasks} />
               )}
             </View>
