@@ -58,7 +58,15 @@ export type MarkReadDiagEvent = {
   threadId: string;
   throughMessageId: string | null;
   source: MarkThreadReadSource;
-  outcome: 'sent' | 'deduplicated' | 'skipped_same' | 'skipped_stale' | 'error' | 'patched';
+  outcome:
+    | 'sent'
+    | 'deduplicated'
+    | 'skipped_same'
+    | 'skipped_stale'
+    | 'skipped_background'
+    | 'skipped_not_visible'
+    | 'error'
+    | 'patched';
 };
 
 const MAX_DIAG = 40;

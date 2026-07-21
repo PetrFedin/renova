@@ -14,7 +14,7 @@ export type ActiveThreadContext = {
   userId: string | null;
   projectId: string | null;
   screenFocused: boolean;
-  /** AppState === 'active' */
+  /** AppState === 'active' (+ web document visible). inactive/background = false */
   appForeground: boolean;
   /**
    * Variant A: лента сообщений отрисована (rAF после load).

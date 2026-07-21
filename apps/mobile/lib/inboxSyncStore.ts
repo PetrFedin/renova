@@ -28,6 +28,11 @@ import {
   type ActiveThreadContext,
 } from '@/lib/domain/activeThreadContext';
 import {
+  getAppForeground,
+  onAppForegroundChange,
+  ensureScreenVisibilityListening,
+} from '@/lib/screenVisibilityService';
+import {
   clearIncomingMessageDedupe,
   clampSnapshotForActiveRead,
   decideIncomingChatMessage,
@@ -86,7 +91,14 @@ export type MarkThreadReadArgs = {
 };
 
 export type MarkThreadReadResult = {
-  status: 'sent' | 'deduplicated' | 'skipped_same' | 'skipped_stale' | 'error';
+  status:
+    | 'sent'
+    | 'deduplicated'
+    | 'skipped_same'
+    | 'skipped_stale'
+    | 'skipped_background'
+    | 'skipped_not_visible'
+    | 'error';
   threadId: string;
   throughMessageId: string | null;
   source: MarkThreadReadSource;
@@ -178,7 +190,14 @@ function applyLocalThreadUnread(threadId: string, unread = 0) {
  * Вызывает ChatThreadView при изменении gate.
  */
 export function setActiveThreadContext(next: ActiveThreadContext): void {
-  activeThreadContext = { ...next };
+  // Синхронный foreground перекрывает устаревший React state
+  const fg = getAppForeground();
+  activeThreadContext = {
+    ...next,
+    appForeground: next.appForeground && fg,
+    // Background → лента не видна (не обнуляем unread — только флаг видимости)
+    messagesVisible: next.messagesVisible && fg,
+  };
 }
 
 export function clearActiveThreadContext(): void {
@@ -188,6 +207,29 @@ export function clearActiveThreadContext(): void {
 export function getActiveThreadContextSnapshot(): ActiveThreadContext {
   return { ...activeThreadContext };
 }
+
+/**
+ * Немедленный сброс visibility при background (до React re-render).
+ * Unread локально НЕ обнуляем — только запрещаем mark-read / suppress.
+ */
+export function patchActiveThreadForeground(appForeground: boolean): void {
+  if (!activeThreadContext.threadId) return;
+  if (activeThreadContext.appForeground === appForeground
+    && (appForeground || !activeThreadContext.messagesVisible)) {
+    return;
+  }
+  activeThreadContext = {
+    ...activeThreadContext,
+    appForeground,
+    messagesVisible: appForeground ? activeThreadContext.messagesVisible : false,
+  };
+}
+
+// Синхронный bridge: AppState/document → activeThreadContext
+ensureScreenVisibilityListening();
+onAppForegroundChange((fg) => {
+  patchActiveThreadForeground(fg);
+});
 
 export type IngestIncomingMessageResult = {
   accept: boolean;
@@ -473,6 +515,20 @@ export async function markThreadRead(args: MarkThreadReadArgs): Promise<MarkThre
     throughMessageId,
     source,
   };
+
+  // Автоматические источники: только реальный просмотр (не background / push delivery)
+  const autoSources: MarkThreadReadSource[] = ['thread_visible', 'thread_ws'];
+  if (!force && autoSources.includes(source)) {
+    if (!getAppForeground()) {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_background' });
+      return { status: 'skipped_background', ...base };
+    }
+    // WS / snapshot reconcile: тред должен быть активно читаем
+    if (source === 'thread_ws' && !isActivelyReadingThread(activeThreadContext, threadId)) {
+      recordMarkReadDiag({ ...base, outcome: 'skipped_not_visible' });
+      return { status: 'skipped_not_visible', ...base };
+    }
+  }
 
   const evalDecision = (hasInflight: boolean) =>
     decideMarkReadAction({

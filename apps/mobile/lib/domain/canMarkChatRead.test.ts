@@ -48,10 +48,22 @@ assert(!evaluateCanMarkChatRead({
 // 5. экран в фоне
 assert(!evaluateCanMarkChatRead({ ...ready, appForeground: false }), 'background');
 
+// 5b. inactive / lock screen
+assert(!evaluateCanMarkChatRead({ ...ready, appForeground: false }), 'inactive');
+
+// 5c. modal overlay
+assert(!evaluateCanMarkChatRead({ ...ready, overlayBlocking: true }), 'modal');
+
+// 5d. logout
+assert(!evaluateCanMarkChatRead({ ...ready, loggedIn: false }), 'logout');
+
 // 6. foreground + всё готово
 assert(evaluateCanMarkChatRead(ready), 'foreground ready');
 assert(shouldFireMarkRead(false, true), 'edge fire');
 assert(!shouldFireMarkRead(true, true), 'no re-fire while true');
+
+// 6b. background → foreground: снова false→true
+assert(shouldFireMarkRead(false, true), 'bg to fg re-fire');
 
 // 7. новое сообщение во время загрузки — ещё не rendered
 assert(!evaluateCanMarkChatRead({

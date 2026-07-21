@@ -1,8 +1,7 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal, AppState,
-  type AppStateStatus,
+  ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -30,13 +29,17 @@ import {
 } from '@/lib/chatSync';
 import {
   clearActiveThreadContext,
+  getActiveThreadContextSnapshot,
   ingestIncomingChatMessage,
   setActiveThreadContext,
 } from '@/lib/inboxSyncStore';
+import { isActivelyReadingThread } from '@/lib/domain/activeThreadContext';
 import {
   evaluateCanMarkChatRead,
   shouldFireMarkRead,
 } from '@/lib/domain/canMarkChatRead';
+import { useScreenVisibility } from '@/lib/hooks/useScreenVisibility';
+import { getAppForeground } from '@/lib/screenVisibilityService';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -161,7 +164,6 @@ export function ChatThreadView({
   const loadedThreadRef = useRef<string | null>(null);
   const canMarkPrevRef = useRef(false);
   const [screenFocused, setScreenFocused] = useState(false);
-  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const [threadLoaded, setThreadLoaded] = useState(false);
   const [accessConfirmed, setAccessConfirmed] = useState(false);
   const [latestMessagesRendered, setLatestMessagesRendered] = useState(false);
@@ -176,11 +178,6 @@ export function ChatThreadView({
   const [taskMsg, setTaskMsg] = useState<ChatMessage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => setAppState(next));
-    return () => sub.remove();
-  }, []);
 
   const resolveProjectId = useCallback(async (): Promise<string | null> => {
     if (projectIdProp) return projectIdProp;
@@ -262,15 +259,19 @@ export function ChatThreadView({
 
   const markThreadReadLocal = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
+    // Синхронный guard: background transition не шлёт receipt
+    if (!getAppForeground()) return;
     if (loadedThreadRef.current !== threadId) return;
     const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
+    // После await — ещё раз (пользователь мог свернуть app)
+    if (!getAppForeground()) return;
 
     const last = chat?.messages?.length
       ? [...chat.messages].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-1)[0]
       : null;
 
-    // Единый store action — dedupe / skip_same / skip_stale внутри
+    // Единый store action — dedupe / skip_same / skip_stale / background внутри
     await syncAfterRead(
       projectId,
       threadId,
@@ -325,19 +326,32 @@ export function ChatThreadView({
     };
   }, [threadLoaded, accessConfirmed, chat, threadId]);
 
+  // Overlay/modal поверх ленты → messagesVisible false (не suppress unread)
+  const overlayBlocking = inviteOpen || settingsOpen || !!taskMsg;
+  const threadContentReady = threadLoaded && accessConfirmed && latestMessagesRendered && !loadFailed;
+
+  const { appForeground, canMarkRead: visibilityCanMark } = useScreenVisibility({
+    screenFocused,
+    routeThreadId: threadId,
+    activeThreadId: threadId,
+    threadContentReady,
+    overlayBlocking,
+    loggedIn: Boolean(user?.id),
+  });
+
   const canMarkRead = evaluateCanMarkChatRead({
     screenFocused,
-    appForeground: appState === 'active',
+    appForeground,
     threadLoaded,
     accessConfirmed,
     latestMessagesRendered,
     loadFailed,
     threadMatches: loadedThreadRef.current === threadId,
-  });
+    overlayBlocking,
+    loggedIn: Boolean(user?.id),
+  }) && visibilityCanMark;
 
-  // Overlay/modal поверх ленты → messagesVisible false (не suppress unread)
-  const overlayBlocking = inviteOpen || settingsOpen || !!taskMsg;
-  const messagesVisible = latestMessagesRendered && !overlayBlocking && !loadFailed;
+  const messagesVisible = latestMessagesRendered && !overlayBlocking && !loadFailed && appForeground;
 
   // Публикуем activeThreadContext в store — inbox snapshot clamp / ingest
   useEffect(() => {
@@ -350,7 +364,7 @@ export function ChatThreadView({
       userId: user.id,
       projectId: chatProjectId ?? activeProject?.id ?? null,
       screenFocused,
-      appForeground: appState === 'active',
+      appForeground,
       messagesVisible,
       threadLoaded,
       accessConfirmed,
@@ -362,7 +376,7 @@ export function ChatThreadView({
     chatProjectId,
     activeProject?.id,
     screenFocused,
-    appState,
+    appForeground,
     messagesVisible,
     threadLoaded,
     accessConfirmed,
@@ -379,6 +393,21 @@ export function ChatThreadView({
     if (!shouldFireMarkRead(prev, canMarkRead)) return;
     markThreadReadRef.current().catch(reportCatch('chat.markRead'));
   }, [canMarkRead, threadId]);
+
+  // Background → foreground: reconcile thread; mark-read только после повторного visible (edge canMark)
+  const wasForegroundRef = useRef(appForeground);
+  useEffect(() => {
+    const was = wasForegroundRef.current;
+    wasForegroundRef.current = appForeground;
+    if (was || !appForeground || !screenFocused || !threadId || !user) return;
+    canMarkPrevRef.current = false;
+    void requestChatSync({
+      scope: 'thread',
+      threadId,
+      reason: 'focus',
+      priority: 'high',
+    });
+  }, [appForeground, screenFocused, threadId, user]);
 
   useEffect(() => {
     if (highlightId && chat?.messages.length) {
@@ -446,8 +475,13 @@ export function ChatThreadView({
         reason: 'websocket',
         priority: 'normal',
       }).then(() => {
-        // После sync ленты — подтвердить read cursor если всё ещё видимы
-        if (canMarkPrevRef.current) {
+        // После sync — mark-read только если всё ещё реально видим (не stale canMarkPrev)
+        const ctx = getActiveThreadContextSnapshot();
+        if (
+          getAppForeground()
+          && isActivelyReadingThread(ctx, threadId)
+          && canMarkPrevRef.current
+        ) {
           markThreadReadRef.current().catch(reportCatch('chat.markRead.afterSync'));
         }
       });
