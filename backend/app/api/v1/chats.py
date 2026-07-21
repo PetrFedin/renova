@@ -87,21 +87,49 @@ async def patch_thread_state(project_id: str, thread_id: str, body: ThreadState,
     return await chat_svc.set_thread_state(db, thread_id, user.id, is_pinned=body.is_pinned, is_archived=body.is_archived)
 
 
+class ReadBody(BaseModel):
+    read_through_message_id: str | None = None
+
+
 @router.post("/{project_id}/chats/{thread_id}/read")
-async def mark_read(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def mark_read(
+    project_id: str,
+    thread_id: str,
+    body: ReadBody | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     await require_chat_access(db, project_id, thread_id, user, write=False)
-    await chat_svc.mark_thread_read(db, thread_id, user.id)
-    return {"ok": True}
+    payload = body or ReadBody()
+    result = await chat_svc.mark_thread_read(
+        db,
+        thread_id,
+        user.id,
+        read_through_message_id=payload.read_through_message_id,
+    )
+    # total по доступным проектам пользователя — для badge sync
+    from app.models.entities import Project
+    from sqlalchemy import select, or_
+    pr = await db.execute(
+        select(Project.id).where(or_(Project.customer_id == user.id, Project.contractor_id == user.id))
+    )
+    project_ids = list(pr.scalars().all())
+    total = await chat_svc.count_unread_all(db, user.id, project_ids)
+    result["total_unread_count"] = total
+    return result
 
 
 @router.get("/{project_id}/chats/{thread_id}")
 async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Загрузка треда БЕЗ mark-read.
+
+    Прочтение только через POST /read после видимости на клиенте.
+    """
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=False)
-    # Открытие треда = прочтение: иначе badge остаётся, если POST /read не дошёл с клиента.
-    await chat_svc.mark_thread_read(db, thread_id, user.id)
     st = await chat_svc._get_or_create_read(db, thread_id, user.id)
+    unread = await chat_svc.count_unread_in_thread(db, thread_id, user.id)
     return {
-        **chat_svc.thread_dict(t, unread=0, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
+        **chat_svc.thread_dict(t, unread=unread, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
         "messages": await _msgs_with_read(db, thread_id, t.messages),
         "participants": await chat_svc.list_participants(db, thread_id),
     }

@@ -18,6 +18,7 @@ import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
+import { formatDockChatA11y } from '@/lib/domain/unreadScope';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
@@ -33,9 +34,13 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
-  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
+  /** Dock: только global scope — не зависит от фильтра списка чатов */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
-  const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
+  const { count: todayTasks, reliable: todayTasksReliable, overdue: overdueTasks } = useTodayTaskCount(
+    user?.id,
+    activeProject?.id,
+    role,
+  );
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
   const section = resolveSectionId(pathname);
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
@@ -115,7 +120,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
             accessibilityRole="button"
             accessibilityLabel={
               id === 'chat' && chatUnread > 0
-                ? `${label}, ${chatUnread > 99 ? '99+' : chatUnread} непрочитанных`
+                ? formatDockChatA11y(chatUnread)
                 : label
             }
             accessibilityState={active ? { selected: true } : {}}
@@ -123,9 +128,13 @@ export function OsDockBar({ role }: { role: OsRole }) {
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
               {id === 'chat' && <ChatBadge count={chatUnread} />}
-              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} />}
-              {id === 'home' && !items.includes('calendar') && todayTasks > 0 && (
-                <ChatBadge count={todayTasks} />
+              {/* Calendar badge = dueToday only; не переносим на home при отсутствии calendar в dock */}
+              {id === 'calendar' && todayTasksReliable && todayTasks > 0 && <ChatBadge count={todayTasks} />}
+              {id === 'calendar' && todayTasksReliable && overdueTasks > 0 && (
+                <View
+                  style={s.overdueDot}
+                  accessibilityLabel={`Просрочено: ${overdueTasks}`}
+                />
               )}
             </View>
             <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{label}</Text>
@@ -161,6 +170,18 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
+  },
+  /** Отдельный визуальный сигнал overdue (не смешивать с dueToday badge) */
+  overdueDot: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: RenovaTheme.colors.warning,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.surface,
   },
   label: {
     fontSize: 10,

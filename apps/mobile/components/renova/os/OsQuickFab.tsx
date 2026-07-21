@@ -10,6 +10,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { createProjectChat } from '@/lib/createProjectChat';
+import { threadsFromChatInbox } from '@/lib/domain/chatUnreadSnapshot';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
 import { tabsPrefix, budgetTabHref, objectTabHref, repairTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -185,9 +186,9 @@ export function OsQuickFab({ role }: { role: OsRole }) {
             <Pressable style={s.row} onPress={async () => {
               setChatOpen(false);
               try {
-                let existing: Awaited<ReturnType<typeof api.chatInbox>>;
+                let existing: ReturnType<typeof threadsFromChatInbox>;
                 try {
-                  existing = await api.chatInbox(user.id);
+                  existing = threadsFromChatInbox(await api.chatInbox(user.id));
                 } catch (e) {
                   reportError('quickFab.chatInbox', e);
                   Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть.');

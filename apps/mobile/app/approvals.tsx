@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { ScrollView, View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -16,19 +16,30 @@ import { objectTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChangeOrderApproved } from '@/lib/procurementNav';
 import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
-import { reportCatch } from '@/lib/reportError';
+import { useAsyncResource, asyncShowError, asyncShowStale, asyncIsRefreshing, asyncIsLoading } from '@/lib/async';
+import { InlineError, StaleDataBanner, EmptyState, LoadingSkeleton } from '@/components/async';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { user, activeProject, readOnly } = useRenova();
   const [reasons, setReasons] = useState<Record<string, string>>({});
-  const [items, setItems] = useState<ApprovalItem[]>([]);
   const isCustomer = user?.role === 'customer';
+  const projectId = activeProject?.id;
 
-  const load = useCallback(() => {
-    if (user && activeProject) api.approvalHub(user.id, activeProject.id).then(r => setItems(r.items)).catch(reportCatch('app.approvals.1'));
-  }, [user?.id, activeProject?.id]);
-  useEffect(() => { load(); }, [load]);
+  const { resource, data, reload: reloadRes } = useAsyncResource<ApprovalItem[]>({
+    contextKey: `approvals:${projectId || ''}`,
+    enabled: Boolean(user?.id && projectId),
+    scope: 'approvals.hub',
+    fetcher: async () => {
+      if (!user || !activeProject) return [];
+      const r = await api.approvalHub(user.id, activeProject.id);
+      return r.items;
+    },
+    isEmpty: (d) => d.length === 0,
+  });
+  const items = data ?? [];
+
+  const load = useCallback(() => { void reloadRes({ soft: true }); }, [reloadRes]);
   useProjectDataReload(load);
 
   const key = (it: ApprovalItem) => `${it.type}-${it.id}`;
@@ -102,10 +113,27 @@ export default function ApprovalsScreen() {
             )}
           </View>
         ))}
-        {!items.length && (
-          <View style={s.emptyBox}>
-            <Text style={s.empty}>Нет ожидающих согласований</Text>
-            {isCustomer ? (
+        {asyncShowStale(resource) ? (
+          <StaleDataBanner
+            error={resource.error}
+            offline={resource.status === 'offline'}
+            onRetry={() => void reloadRes({ soft: true })}
+            busy={asyncIsRefreshing(resource)}
+          />
+        ) : null}
+        {asyncIsLoading(resource) ? <LoadingSkeleton rows={2} /> : null}
+        {asyncShowError(resource) ? (
+          <InlineError
+            error={resource.error}
+            title="Не удалось загрузить согласования"
+            onRetry={() => void reloadRes({ soft: false })}
+            busy={asyncIsRefreshing(resource)}
+          />
+        ) : null}
+        {!asyncShowError(resource) && !asyncIsLoading(resource) && !items.length ? (
+          <EmptyState
+            title="Нет ожидающих согласований"
+            action={isCustomer ? (
               <PrimaryButton
                 title="Открыть доп. работы в смете"
                 variant="outline"
@@ -114,9 +142,9 @@ export default function ApprovalsScreen() {
                   pushOsNav({ pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } }, undefined, 'customer');
                 }}
               />
-            ) : null}
-          </View>
-        )}
+            ) : undefined}
+          />
+        ) : null}
       </ScrollView>
     </>
   );
