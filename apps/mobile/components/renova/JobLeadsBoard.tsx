@@ -1,9 +1,10 @@
-/** Заявки marketplace — КП → проект (W119 SoT + W130 CTAs) */
+/** Заявки marketplace — КП → проект (W119 SoT + W130 CTAs + W140 форма) */
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 import { LeadChat } from '@/components/renova/LeadChat';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { CreateJobLeadSheet, type JobLeadCreateBody } from '@/components/renova/CreateJobLeadSheet';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -31,6 +32,8 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
   const { user, activeProject, loadProject, refreshProjects } = useRenova();
   const [items, setItems] = useState<L[]>([]);
   const [quote, setQuote] = useState<Record<string, string>>({});
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
   const sync = () =>
     syncProjectSideEffects({
@@ -45,6 +48,21 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
     load();
   }, [load]);
   useProjectDataReload(load);
+
+  const onCreateLead = async (body: JobLeadCreateBody) => {
+    setCreating(true);
+    try {
+      await api.createJobLead(userId, body);
+      await sync();
+      load();
+      alertJobLeadCreated(osRole);
+    } catch (e: unknown) {
+      // ошибку показывает CreateJobLeadSheet
+      throw e;
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <View style={s.box}>
@@ -63,7 +81,9 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
             {l.title} · {l.status}
           </Text>
           <Text style={s.sub}>
-            {l.address} · {l.area_sqm} м² · {formatRub(l.budget_hint || 0)}
+            {[l.address, l.area_sqm != null ? `${l.area_sqm} м²` : null, formatRub(l.budget_hint || 0)]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
           {l.pre_estimate ? <Text style={s.q}>Оценка: {formatRub(l.pre_estimate)}</Text> : null}
           <LeadChat userId={userId} leadId={l.id} />
@@ -126,21 +146,19 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
         </View>
       ))}
       {role === 'customer' ? (
-        <PrimaryButton
-          title="+ Заявка"
-          variant="outline"
-          onPress={async () => {
-            await api.createJobLead(userId, {
-              title: 'Ремонт квартиры',
-              area_sqm: 55,
-              renovation_type: 'capital',
-              budget_hint: 800000,
-            });
-            await sync();
-            load();
-            alertJobLeadCreated(osRole);
-          }}
-        />
+        <>
+          <PrimaryButton
+            title="+ Заявка"
+            variant="outline"
+            disabled={creating}
+            onPress={() => setCreateOpen(true)}
+          />
+          <CreateJobLeadSheet
+            visible={createOpen}
+            onClose={() => setCreateOpen(false)}
+            onCreate={onCreateLead}
+          />
+        </>
       ) : null}
     </View>
   );

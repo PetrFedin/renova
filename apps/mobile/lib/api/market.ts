@@ -17,7 +17,17 @@ export const marketApi = {
   matchContractors: (userId: string, renovationType?: string, specialty?: string) => { const q = new URLSearchParams(); if (renovationType) q.set('renovation_type', renovationType); if (specialty) q.set('specialty', specialty); return req<{ id: string; name: string; company?: string; score: number; rating: number }[]>(`/api/v1/contractors/match?${q}`, {}, userId); },
   contractorPortfolio: (userId: string, profileId: string) => req<{ id: string; image_url: string; caption?: string }[]>(`/api/v1/contractors/${profileId}/portfolio`, {}, userId),
   listJobLeads: (userId: string, status?: string) => req<{ id: string; title: string; address?: string; area_sqm?: number; renovation_type: string; budget_hint?: number; pre_estimate?: number; status: string }[]>(`/api/v1/job-leads${status ? `?status=${status}` : ''}`, {}, userId),
-  createJobLead: (userId: string, body: object) => req('/api/v1/job-leads', { method: 'POST', body: JSON.stringify(body) }, userId),
+  createJobLead: (
+    userId: string,
+    body: {
+      title: string;
+      address?: string;
+      area_sqm?: number;
+      renovation_type?: string;
+      budget_hint?: number;
+      description?: string;
+    },
+  ) => req('/api/v1/job-leads', { method: 'POST', body: JSON.stringify(body) }, userId),
   quoteJobLead: (userId: string, leadId: string, pre_estimate: number) => req(`/api/v1/job-leads/${leadId}/quote`, { method: 'POST', body: JSON.stringify({ pre_estimate }) }, userId),
   convertJobLead: (userId: string, leadId: string, body?: { property_type?: string; rooms?: object[] }) =>
     req<{ project_id: string; name: string }>(`/api/v1/job-leads/${leadId}/convert`, { method: 'POST', body: JSON.stringify(body || {}) }, userId),
