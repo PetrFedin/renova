@@ -1,6 +1,6 @@
 import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество (исполнитель) */
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { Alert, ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
@@ -17,6 +17,7 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 export function ContractorControlView() {
   const pathname = usePathname();
@@ -76,9 +77,20 @@ export function ContractorControlView() {
               compact
               variant="outline"
               onPress={async () => {
-                await api.closeIssue(user!.id, activeProject!.id, iss.id);
-                await syncProjectSideEffects({ user, project: activeProject });
-                reload();
+                try {
+                  const updated = await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                  await syncProjectSideEffects({ user, project: activeProject });
+                  reload();
+                  if (updated?.status === 'fixed') {
+                    Alert.alert('QC', 'Отмечено как исправлено — заказчик получит уведомление для подтверждения');
+                  }
+                } catch (e) {
+                  if (isOfflineQueued(e)) notifyOfflineQueued('Исправление замечания');
+                  else {
+                    reportError('control.markFixed', e);
+                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отметить');
+                  }
+                }
               }}
             />
           ) : null}
