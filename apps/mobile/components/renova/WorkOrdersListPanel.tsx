@@ -9,7 +9,8 @@ import { WorkOrderCard } from '@/components/renova/WorkOrderCard';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { useNavFromHere } from '@/lib/navigation';
 import { calendarTabHref, type OsRole } from '@/constants/osSections';
-import { reportError } from '@/lib/reportError';
+import { useAsyncResource, asyncShowError, asyncShowStale, asyncIsRefreshing, asyncIsLoading } from '@/lib/async';
+import { InlineError, StaleDataBanner, EmptyState, LoadingSkeleton } from '@/components/async';
 
 const FILTERS = [
   { key: 'active', label: 'Активные' },
@@ -31,12 +32,17 @@ export function WorkOrdersListPanel({
   role: OsRole;
 }) {
   const nav = useNavFromHere();
-  const [items, setItems] = useState<WorkOrder[]>([]);
   const [filter, setFilter] = useState<WorkFilter>('active');
+  const { resource, data, reload: reloadRes } = useAsyncResource<WorkOrder[]>({
+    contextKey: `work-orders:${projectId}`,
+    enabled: Boolean(userId && projectId),
+    scope: 'workOrders.list',
+    fetcher: () => api.listWorkOrders(userId, projectId),
+    isEmpty: (d) => d.length === 0,
+  });
+  const items = data ?? [];
 
-  const reload = useCallback(() => {
-    api.listWorkOrders(userId, projectId).then(setItems).catch((e) => { reportError('components.renova.WorkOrdersListPanel.Items', e); setItems([]); });
-  }, [userId, projectId]);
+  const reload = useCallback(() => { void reloadRes({ soft: true }); }, [reloadRes]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   useProjectDataReload(reload);
@@ -56,23 +62,43 @@ export function WorkOrdersListPanel({
           <Text style={s.calLink}>Календарь →</Text>
         </Pressable>
       </View>
-      <View style={s.filters}>
-        {FILTERS.map((f) => (
-          <Pressable
-            key={f.key}
-            style={[s.chip, filter === f.key && s.chipOn]}
-            onPress={() => setFilter(f.key)}
-          >
-            <Text style={[s.chipT, filter === f.key && s.chipTOn]}>{f.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {filtered.map((wo) => (
-        <WorkOrderCard key={wo.id} wo={wo} rooms={rooms} />
-      ))}
-      {!filtered.length && (
-        <Text style={s.empty}>Нет работ по фильтру</Text>
-      )}
+      {asyncShowStale(resource) ? (
+        <StaleDataBanner
+          error={resource.error}
+          onRetry={() => void reloadRes({ soft: true })}
+          busy={asyncIsRefreshing(resource)}
+        />
+      ) : null}
+      {asyncShowError(resource) ? (
+        <InlineError
+          error={resource.error}
+          title="Не удалось загрузить работы"
+          onRetry={() => void reloadRes({ soft: false })}
+          busy={asyncIsRefreshing(resource)}
+        />
+      ) : null}
+      {asyncIsLoading(resource) ? <LoadingSkeleton rows={2} /> : null}
+      {!asyncShowError(resource) && !asyncIsLoading(resource) ? (
+        <>
+          <View style={s.filters}>
+            {FILTERS.map((f) => (
+              <Pressable
+                key={f.key}
+                style={[s.chip, filter === f.key && s.chipOn]}
+                onPress={() => setFilter(f.key)}
+              >
+                <Text style={[s.chipT, filter === f.key && s.chipTOn]}>{f.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {filtered.map((wo) => (
+            <WorkOrderCard key={wo.id} wo={wo} rooms={rooms} />
+          ))}
+          {!filtered.length ? (
+            <EmptyState title="Нет работ по фильтру" />
+          ) : null}
+        </>
+      ) : null}
     </View>
   );
 }

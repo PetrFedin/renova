@@ -11,6 +11,8 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
+import { reportError } from '@/lib/reportError';
+import { InlineError } from '@/components/async';
 
 function filterStageRows(rows: ExpenseDetailRow[], stageId: string, roomIds?: string[]): ExpenseDetailRow[] {
   const rooms = new Set(roomIds || []);
@@ -39,19 +41,26 @@ export function StageExpensePanel({
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [detailTarget, setDetailTarget] = useState<ExpenseDetailTarget | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const initialRoomId = roomIds?.[0] ?? null;
 
   const reload = useCallback(() => {
+    setLoadError(false);
     Promise.all([
-      api.listReceipts(userId, projectId).catch(() => [] as ReceiptItem[]),
-      api.osExpenses(userId, projectId).catch(() => [] as OsExpense[]),
-      api.listMaterialPicks(userId, projectId).catch(() => [] as MaterialPick[]),
-      api.listPurchases(userId, projectId).catch(() => [] as Purchase[]),
+      api.listReceipts(userId, projectId),
+      api.osExpenses(userId, projectId),
+      api.listMaterialPicks(userId, projectId),
+      api.listPurchases(userId, projectId),
     ]).then(([rc, ex, pk, pur]) => {
       setReceipts(rc);
       setExpenses(ex);
       setPicks(pk);
       setPurchases(pur);
+      setLoadError(false);
+    }).catch((e) => {
+      // Не затираем предыдущие данные пустыми списками
+      reportError('stageExpense.reload', e);
+      setLoadError(true);
     });
   }, [userId, projectId]);
 
@@ -79,9 +88,12 @@ export function StageExpensePanel({
       <View style={s.box}>
         <Text style={s.head}>{stageName ? `${stageName} · ` : ''}Траты этапа · {formatRub(sum)}</Text>
         <Text style={s.hintTop}>Чеки, материалы и ручные расходы по этапу и его комнатам — без двойного учёта.</Text>
-        {rows.length === 0 ? (
+        {loadError ? (
+          <InlineError title="Не удалось обновить траты" onRetry={reload} />
+        ) : null}
+        {!loadError && rows.length === 0 ? (
           <Text style={s.empty}>Пока нет учтённых трат по этому этапу.</Text>
-        ) : (
+        ) : !loadError ? (
           rows.map((row) => (
             <Pressable key={row.id} style={s.row} onPress={() => onRowPress(row)}>
               <Text style={s.amt}>{formatRub(row.amount)}</Text>
@@ -93,7 +105,7 @@ export function StageExpensePanel({
               </Text>
             </Pressable>
           ))
-        )}
+        ) : null}
         {stagePicks.length > 0 && (
           <View style={s.picksBlock}>
             <Text style={s.picksHead}>Материалы ({stagePicks.length})</Text>

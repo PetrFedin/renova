@@ -2,6 +2,7 @@
 import type { BudgetAlert } from '@/components/renova/BudgetAlerts';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import type { MaterialPick, ProjectDetail, ReceiptItem } from '@/lib/api';
+import { formatCount, RU_NOUN } from '../i18n';
 import { buildProjectSites } from './projectSites';
 import type { ProjectOsSnapshot } from './osTypes';
 
@@ -16,11 +17,7 @@ type Args = {
 
 /** Склонение «N риск/риска/рисков» */
 export function formatRiskCount(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${n} риск`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return `${n} риска`;
-  return `${n} рисков`;
+  return formatCount(n, RU_NOUN.risk);
 }
 
 export function buildHomeMoreSummary({ snap, project, budgetAlerts, receipts, picks, isVisible }: Args): string {

@@ -14,7 +14,16 @@ import { screenLayout } from '@/constants/screenLayout';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertSelectionApproved, alertSelectionProposed } from '@/lib/procurementNav';
-import { reportError } from '@/lib/reportError';
+import { useAsyncResource } from '@/lib/async';
+import {
+  InlineError,
+  StaleDataBanner,
+} from '@/components/async';
+import {
+  asyncShowError,
+  asyncShowStale,
+  asyncIsRefreshing,
+} from '@/lib/async';
 
 const CATEGORIES: { key: string; label: string }[] = [
   { key: 'all', label: 'Все' },
@@ -37,7 +46,6 @@ const STATUS_LABEL: Record<string, string> = {
 export function OsSelectionsScreen({ role }: { role: OsRole }) {
   const pathname = usePathname();
   const { user, activeProject, readOnly } = useRenova();
-  const [items, setItems] = useState<SelectionItem[]>([]);
   const [filter, setFilter] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
@@ -47,11 +55,28 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
   const isCustomer = role === 'customer';
   const canWrite = !readOnly && !isCustomer;
+  const projectId = activeProject?.id;
+
+  const {
+    resource: selectionsRes,
+    data: itemsRaw,
+    reload: reloadSelections,
+  } = useAsyncResource<SelectionItem[]>({
+    contextKey: `selections:${projectId || ''}`,
+    enabled: Boolean(user?.id && projectId),
+    scope: 'selections.list',
+    fetcher: async () => {
+      if (!user || !activeProject) return [];
+      return api.listSelections(user.id, activeProject.id);
+    },
+    isEmpty: (d) => d.length === 0,
+  });
+
+  const items = itemsRaw ?? [];
 
   const reload = useCallback(() => {
-    if (!user || !activeProject) return;
-    api.listSelections(user.id, activeProject.id).then(setItems).catch((e) => { reportError('components.screens.OsSelectionsScreen.Items', e); setItems([]); });
-  }, [user?.id, activeProject?.id]);
+    void reloadSelections({ soft: true });
+  }, [reloadSelections]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   useProjectDataReload(reload);
@@ -138,14 +163,32 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
         )
       )}
 
-      {!filtered.length ? (
+      {asyncShowStale(selectionsRes) ? (
+        <StaleDataBanner
+          error={selectionsRes.error}
+          offline={selectionsRes.status === 'offline'}
+          onRetry={() => void reloadSelections({ soft: true })}
+          busy={asyncIsRefreshing(selectionsRes)}
+        />
+      ) : null}
+
+      {asyncShowError(selectionsRes) ? (
+        <InlineError
+          error={selectionsRes.error}
+          title="Не удалось загрузить подбор"
+          onRetry={() => void reloadSelections({ soft: false })}
+          busy={asyncIsRefreshing(selectionsRes)}
+        />
+      ) : null}
+
+      {!asyncShowError(selectionsRes) && !filtered.length && selectionsRes.status === 'empty' ? (
         <View style={s.empty}>
           <Text style={s.emptyT}>Подбор пуст</Text>
           <Text style={s.emptyM}>Исполнитель добавляет варианты плитки, сантехники, света и т.д.</Text>
         </View>
       ) : null}
 
-      {filtered.map((item) => (
+      {!asyncShowError(selectionsRes) && filtered.map((item) => (
         <View key={item.id} style={s.card}>
           <Text style={s.cardTitle}>{item.title}</Text>
           <Text style={s.meta}>{roomName(item.room_id)} · {CATEGORIES.find((c) => c.key === item.category)?.label || item.category}</Text>

@@ -3,6 +3,8 @@ import { api, type ApprovalItem, type ProjectDetail, type Stage } from '@/lib/ap
 import { formatRub } from '@/constants/Theme';
 import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 import { buildCloseoutInboxItem } from './closeoutHome';
+import { formatUnreadCount, RU_NOUN } from '../i18n/ruCountLabels';
+import { formatCount } from '../i18n/ruPlural';
 
 export type InboxItem =
   | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
@@ -35,7 +37,7 @@ export async function buildInboxItems(opts: {
       id: 'chat',
       kind: 'chat',
       title: 'Непрочитанные сообщения',
-      sub: `${chatUnread} непрочитанных`,
+      sub: `${formatUnreadCount(chatUnread)} во всех чатах`,
       href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
       priority: 90,
     });
@@ -252,7 +254,7 @@ export async function buildInboxItems(opts: {
           next.push({
             id: 'docs-sign',
             kind: 'document',
-            title: drafts.length === 1 ? 'Подписать документ' : `Подписать ${drafts.length} док.`,
+            title: `Подписать ${formatCount(drafts.length, RU_NOUN.document)}`,
             sub: drafts[0]?.title || 'Черновики в Документах',
             href: '/documents',
             priority: 76,

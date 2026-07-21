@@ -282,7 +282,14 @@ ${(res.body || '').slice(0, 220)}`,
         format: isArchived ? 'Post-closeout' : 'Заявка',
         run: async () => {
           const role = (isContractor ? 'contractor' : 'customer') as OsRole;
-          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
+          let open: { open: number; items: { id: string; title?: string; status?: string }[] };
+          try {
+            open = await api.listWarrantyClaims(userId, projectId);
+          } catch (e) {
+            reportError('documents.warranty.list', e);
+            Alert.alert('Гарантия', 'Не удалось загрузить обращения. Повторите позже.');
+            return;
+          }
           const openItems = (open.items || []).filter((i) => i.status !== 'closed');
           // W64/W126: заказчик закрывает гарантию — иначе closeout тупик; обе роли → QC
           if (!isContractor && openItems.length > 0) {

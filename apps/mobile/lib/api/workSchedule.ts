@@ -60,8 +60,38 @@ export const workScheduleApi = {
   listWorkSchedules: (userId: string, projectId: string) =>
     req<WorkSchedule[]>(`/api/v1/projects/${projectId}/work-schedules`, {}, userId),
 
-  getActiveWorkSchedule: (userId: string, projectId: string) =>
-    req<WorkSchedule | null>(`/api/v1/projects/${projectId}/work-schedules/active`, {}, userId),
+  getActiveWorkSchedule: (userId: string, projectId: string, opts?: { signal?: AbortSignal }) =>
+    req<WorkSchedule | null>(
+      `/api/v1/projects/${projectId}/work-schedules/active`,
+      // false: network/500 не превращаются в cached null («план не создан»)
+      { signal: opts?.signal, cacheFallback: false },
+      userId,
+    ),
+
+  /**
+   * Явный результат active plan: absent только при 200 null / 404.
+   * Network/500/403 — throw (caller → error | forbidden | stale).
+   */
+  fetchActiveSchedulePlan: async (
+    userId: string,
+    projectId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<{ kind: 'absent' } | { kind: 'plan'; plan: WorkSchedule }> => {
+    try {
+      const data = await req<WorkSchedule | null>(
+        `/api/v1/projects/${projectId}/work-schedules/active`,
+        { signal: opts?.signal, cacheFallback: false },
+        userId,
+      );
+      if (data == null) return { kind: 'absent' };
+      return { kind: 'plan', plan: data };
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        return { kind: 'absent' };
+      }
+      throw e;
+    }
+  },
 
   createWorkSchedule: async (userId: string, projectId: string, body: Partial<WorkSchedule> = {}) => {
     const payload = JSON.stringify(body);
