@@ -23,6 +23,7 @@ import { profileScreenStyles as ps } from './profileScreenStyles';
 import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
 import * as WebBrowser from 'expo-web-browser';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { normalizeCapability, type ServiceCapability } from '@/lib/api/types/capabilities';
 
 /** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
@@ -108,6 +109,8 @@ export function ContractorProfileScreen() {
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
   const [payReq, setPayReq] = useState('');
   const [company, setCompany] = useState('');
+  /** Capability «Мой налог» с backend — SoT для OAuth / connection / dev bypass. */
+  const [moyNalogCap, setMoyNalogCap] = useState<ServiceCapability | null>(null);
   const reloadProfile = useCallback(() => {
     if (!user) return;
     api.getMyContractorProfile(user.id).then((p) => {
@@ -117,6 +120,30 @@ export function ContractorProfileScreen() {
   }, [user?.id]);
   useEffect(() => { reloadProfile(); }, [reloadProfile]);
   useProjectDataReload(reloadProfile);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    api.getFnsHealth(user.id)
+      .then((h) => {
+        if (!alive) return;
+        setMoyNalogCap(normalizeCapability(h.moy_nalog as Partial<ServiceCapability> | undefined));
+      })
+      .catch((e) => {
+        reportError('profile.fnsHealth', e);
+        if (alive) {
+          setMoyNalogCap(normalizeCapability({
+            available: false,
+            mode: 'error',
+            configured: false,
+            healthy: false,
+            message: 'Не удалось проверить «Мой налог»',
+            dev_bypass_available: false,
+          }));
+        }
+      });
+    return () => { alive = false; };
+  }, [user?.id]);
   const roleLabel = roleDisplayLabel(user?.role);
 
   return (
@@ -247,13 +274,18 @@ export function ContractorProfileScreen() {
                     'Мой налог',
                     'После входа в ЛК НПД вернитесь в приложение. Если code не пришёл автоматически — статус останется authorization_started.',
                   );
-                } else if (start.state) {
-                  // Dev: demo complete без CLIENT_ID
+                } else if (start.state && moyNalogCap?.dev_bypass_available) {
+                  // Только когда backend явно разрешил dev bypass (non-prod + flag).
                   const done = await api.moyNalogOAuthCallback(user.id, {
                     state: start.state,
                     demo_complete: true,
                   });
                   setMsg(done.message);
+                } else if (start.state && !start.auth_url) {
+                  Alert.alert(
+                    'Мой налог',
+                    'OAuth URL не получен. Настройте credentials «Мой налог» на сервере.',
+                  );
                 }
                 await refreshMe();
               } catch (e: any) {
@@ -261,24 +293,30 @@ export function ContractorProfileScreen() {
               }
             }}
           />
-          <PrimaryButton
-            title="Включить флаг (без OAuth)"
-            variant="outline"
-            onPress={async () => {
-              if (!user) return;
-              try {
-                const r = await api.linkMoyNalog(user.id) as { message?: string; mode?: string; linked?: boolean; status?: string };
-                setMsg(r.message || `Статус: ${r.status || 'updated'}`);
-                await refreshMe();
-              } catch (e: any) {
-                Alert.alert('Мой налог', e?.message || 'Интеграция недоступна (нужен OAuth или MOY_NALOG_ENABLED)');
-              }
-            }}
-          />
+          {moyNalogCap?.dev_bypass_available ? (
+            <PrimaryButton
+              title="Включить флаг (без OAuth)"
+              variant="outline"
+              onPress={async () => {
+                if (!user) return;
+                try {
+                  const r = await api.linkMoyNalog(user.id) as { message?: string; mode?: string; linked?: boolean; status?: string };
+                  setMsg(r.message || `Статус: ${r.status || 'updated'}`);
+                  await refreshMe();
+                } catch (e: any) {
+                  Alert.alert('Мой налог', e?.message || 'Dev bypass недоступен');
+                }
+              }}
+            />
+          ) : null}
           {user?.moy_nalog_linked || (user?.moy_nalog_status && user.moy_nalog_status !== 'not_connected') ? (
             <Text style={ps.msg}>
-              «Мой налог»: {user?.moy_nalog_status || 'linked'} — без OAuth ФНС это не live-подключение.
+              «Мой налог»: {user?.moy_nalog_status || 'linked'}
+              {moyNalogCap?.oauth_configured ? '' : ' — подключение без полного OAuth'}
             </Text>
+          ) : null}
+          {moyNalogCap && !moyNalogCap.oauth_configured && !moyNalogCap.dev_bypass_available ? (
+            <Text style={ps.msg}>«Мой налог»: OAuth не настроен</Text>
           ) : null}
           {user?.moy_nalog_linked ? (
             <PrimaryButton

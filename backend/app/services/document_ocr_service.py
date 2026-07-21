@@ -117,3 +117,122 @@ async def enqueue_and_run(
 ) -> DocumentVersion:
     await enqueue_ocr(db, version)
     return await run_ocr_stub(db, doc, version, apply_type=apply_type)
+
+
+def ocr_provider_name() -> str:
+    """Имя провайдера без секретов."""
+    from app.core.config import settings
+    raw = (getattr(settings, "document_ocr_provider", None) or "heuristic").strip().lower()
+    return raw or "heuristic"
+
+
+def ocr_enabled() -> bool:
+    from app.core.config import settings
+    return bool(getattr(settings, "document_ocr_enabled", True))
+
+
+def ocr_capability() -> dict:
+    """Единственный SoT для UI: mode/available/configured/healthy.
+
+    heuristic → mode=local (не DEMO).
+    provider=demo → mode=demo только если явно задано.
+    enabled=false / provider=none|off → mode=off.
+    """
+    from app.core.config import settings
+    from app.services.service_capability import service_capability
+
+    enabled = ocr_enabled()
+    provider = ocr_provider_name()
+    worker_mode = (settings.document_ocr_mode or "sync").strip().lower()
+
+    if not enabled or provider in ("none", "off", ""):
+        return service_capability(
+            available=False,
+            mode="off",
+            configured=False,
+            healthy=False,
+            provider=provider if provider not in ("",) else None,
+            message="OCR не настроен",
+            extra={"run_allowed": False, "worker_mode": worker_mode},
+        )
+
+    if provider == "demo":
+        return service_capability(
+            available=True,
+            mode="demo",
+            configured=True,
+            healthy=True,
+            provider="demo",
+            message="OCR в demo-режиме (эвристики без ML)",
+            extra={"run_allowed": True, "worker_mode": worker_mode},
+        )
+
+    # Явный live/sandbox — только если ops выставил provider (будущий cloud OCR).
+    # Не путать с HTTP 200 health: available следует из configured+healthy.
+    if provider == "live":
+        return service_capability(
+            available=True,
+            mode="live",
+            configured=True,
+            healthy=True,
+            provider="live",
+            message="OCR live provider",
+            extra={"run_allowed": True, "worker_mode": worker_mode},
+        )
+
+    if provider == "sandbox":
+        return service_capability(
+            available=True,
+            mode="sandbox",
+            configured=True,
+            healthy=True,
+            provider="sandbox",
+            message="OCR sandbox provider",
+            extra={"run_allowed": True, "worker_mode": worker_mode},
+        )
+
+    if provider in ("heuristic", "local", "stub"):
+        # Локальная эвристика — честный local, не demo
+        return service_capability(
+            available=True,
+            mode="local",
+            configured=True,
+            healthy=True,
+            provider="heuristic",
+            message="Локальная эвристическая классификация (не cloud OCR)",
+            extra={"run_allowed": True, "worker_mode": worker_mode},
+        )
+
+    # Зарезервировано под будущий cloud provider без credentials → error/off
+    return service_capability(
+        available=False,
+        mode="error",
+        configured=False,
+        healthy=False,
+        provider=provider,
+        message=f"OCR provider «{provider}» не сконфигурирован",
+        extra={"run_allowed": False, "worker_mode": worker_mode},
+    )
+
+
+def assert_ocr_run_allowed() -> dict:
+    """Для POST /documents/.../ocr — 503 если capability недоступна."""
+    from fastapi import HTTPException
+
+    cap = ocr_capability()
+    if not cap.get("available") or not cap.get("run_allowed", False):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ocr_unavailable",
+                "message": cap.get("message") or "OCR недоступен",
+                "capability": {
+                    "available": cap.get("available"),
+                    "mode": cap.get("mode"),
+                    "configured": cap.get("configured"),
+                    "healthy": cap.get("healthy"),
+                },
+            },
+        )
+    return cap
+
