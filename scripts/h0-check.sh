@@ -102,6 +102,28 @@ else
 fi
 
 echo ""
+echo "--- 5b) Credentials probe + e2e Bearer assert ---"
+if bash scripts/assert-e2e-bearer.sh; then
+  pass "assert-e2e-bearer"
+else
+  fail "assert-e2e-bearer"
+fi
+# In --strict / staging env, credentials probe is fail-closed; otherwise warn-only.
+if [[ "$STRICT" -eq 1 || "$ENV_NAME" == "staging" || "$ENV_NAME" == "production" ]]; then
+  if bash scripts/staging-credentials-probe.sh; then
+    pass "staging-credentials-probe"
+  else
+    fail "staging-credentials-probe"
+  fi
+else
+  if bash scripts/staging-credentials-probe.sh; then
+    pass "staging-credentials-probe (dev warn-ok)"
+  else
+    warn "staging-credentials-probe reported fails (ok in development)"
+  fi
+fi
+
+echo ""
 echo "--- 6) Live H0 readiness (optional) ---"
 if [[ "$LIVE" -eq 1 || -n "${API_BASE:-}" ]]; then
   if [[ -z "${API_BASE:-}" ]]; then
@@ -113,16 +135,28 @@ if [[ "$LIVE" -eq 1 || -n "${API_BASE:-}" ]]; then
     else
       fail "health unreachable"
     fi
-    DEMO_ID=""
+    # Prefer JWT Bearer (staging forbids X-User-Id). Fallback: H0_TOKEN / H0_USER_ID legacy.
+    AUTH_HDR=()
     DEMO_JSON="$(curl -sf -X POST "$API_BASE/api/v1/auth/demo" -H "Content-Type: application/json" -d "{\"role\":\"contractor\"}" || true)"
-    if [[ -z "$DEMO_JSON" ]]; then
-      warn "demo auth disabled on staging (expected) — use H0_USER_ID"
-      DEMO_ID="${H0_USER_ID:-}"
+    if [[ -n "$DEMO_JSON" ]]; then
+      DEMO_TOKEN="$(python3 -c "import json,sys; d=json.load(sys.stdin); print((d.get('access_token') or '').strip())" <<< "$DEMO_JSON")"
+      DEMO_ID="$(python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" <<< "$DEMO_JSON")"
+      if [[ -n "$DEMO_TOKEN" ]]; then
+        AUTH_HDR=(-H "Authorization: Bearer $DEMO_TOKEN")
+      elif [[ -n "$DEMO_ID" ]]; then
+        warn "demo returned id without access_token — falling back to X-User-Id (dev only)"
+        AUTH_HDR=(-H "X-User-Id: $DEMO_ID")
+      fi
+    elif [[ -n "${H0_TOKEN:-}" ]]; then
+      AUTH_HDR=(-H "Authorization: Bearer $H0_TOKEN")
+    elif [[ -n "${H0_USER_ID:-}" ]]; then
+      warn "using H0_USER_ID without token — staging will reject if header auth forbidden"
+      AUTH_HDR=(-H "X-User-Id: $H0_USER_ID")
     else
-      DEMO_ID="$(python3 -c "import json,sys; print(json.load(sys.stdin)[\"id\"])" <<< "$DEMO_JSON")"
+      warn "demo auth disabled — set H0_TOKEN=... (Bearer) to query /admin/h0-readiness"
     fi
-    if [[ -n "${DEMO_ID:-}" ]]; then
-      if curl -sf "$API_BASE/api/v1/admin/h0-readiness" -H "X-User-Id: $DEMO_ID" -o /tmp/renova-h0-readiness.json; then
+    if [[ ${#AUTH_HDR[@]} -gt 0 ]]; then
+      if curl -sf "$API_BASE/api/v1/admin/h0-readiness" "${AUTH_HDR[@]}" -o /tmp/renova-h0-readiness.json; then
         set +e
         python3 -c '
 import json, sys
@@ -148,7 +182,7 @@ if blockers:
         fail "h0-readiness request failed"
       fi
     else
-      warn "set H0_USER_ID=... to query /admin/h0-readiness"
+      warn "set H0_TOKEN=... (Bearer JWT) to query /admin/h0-readiness"
     fi
   fi
 else
