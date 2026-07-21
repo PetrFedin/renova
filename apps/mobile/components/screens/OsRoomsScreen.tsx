@@ -21,7 +21,7 @@ import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomChangeStatusLabel } from '@/constants/labels';
 import { ROOM_FORM_HINTS } from '@/constants/roomFormHints';
 import { InfoBanner } from '@/components/ui/InfoBanner';
-import { budgetTabRoute, objectTabHref, repairTabRoute } from '@/constants/osSections';
+import { budgetTabRoute, customerProfileTabHref, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import {
   alertRoomChangeRequested,
@@ -94,8 +94,10 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
           <PrimaryButton
             title="→ Подключить исполнителя"
             variant="outline"
-           
-            onPress={() => pushOsNav(objectTabHref('customer', 'profile'), nav.from, 'customer')}
+            onPress={() =>
+              // SoT: форма в профиле аккаунта (блок «Исполнитель»), не Объект → Профиль
+              pushOsNav(customerProfileTabHref('customer', 'contractor'), nav.from, 'customer')
+            }
           />
         ) : (
           <PrimaryButton

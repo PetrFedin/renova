@@ -50,7 +50,9 @@ export function resolvePushLink(
   // W101: /profile → таб профиля роли (нет корневого app/profile)
   if (canonicalPath === '/profile') {
     const tab = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
-    return { pathname: tab, params: { returnTo: rt } };
+    const q = new URLSearchParams(canonicalQuery || '');
+    const focus = q.get('focus') || undefined;
+    return { pathname: tab, params: { ...(focus ? { focus } : {}), returnTo: rt } };
   }
 
   // W101: /design → объект/план (design packages)

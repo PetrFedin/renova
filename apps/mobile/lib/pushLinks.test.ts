@@ -58,6 +58,7 @@ console.assert(resolveLegacyTabHref('/(contractor)/(tabs)/control').params?.tab 
 
 console.assert(resolvePushLink('/profile', '/home', 'customer')?.pathname.includes('profile'), 'profile customer');
 console.assert(resolvePushLink('/profile', '/home', 'contractor')?.pathname.includes('(contractor)'), 'profile contractor');
+console.assert(resolvePushLink('/profile?focus=contractor', '/home', 'customer')?.params?.focus === 'contractor', 'profile focus');
 console.assert(resolvePushLink('/design', '/home', 'customer')?.pathname.includes('object'), 'design → object plan');
 console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.params?.tab === 'control', 'qc customer → control');
 console.assert(resolveNotificationLink('room_updated', 'customer')?.pathname.includes('object'), 'room notify');
