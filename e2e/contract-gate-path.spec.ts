@@ -3,16 +3,16 @@
  * Использует fresh project (planned stage), не demo-квартиру с active этапом.
  */
 import { test, expect } from '@playwright/test';
-import { API, apiReachable, prepareContractGateScenario, cleanupE2eGateProject } from './helpers';
+import { API, apiReachable, prepareContractGateScenario, cleanupE2eGateProject, authHeaders } from './helpers';
 
 test.describe('P3-W11 Contract gate golden path', () => {
   test('lock → sign → start stage', async ({ request }) => {
     test.skip(!(await apiReachable()), 'Need API :8100');
 
-    const { contractorId, customerId, projectId, stageId, documentId } =
+    const { contractor, customer, projectId, stageId, documentId } =
       await prepareContractGateScenario(request);
-    const hCont = { 'X-User-Id': contractorId };
-    const hCust = { 'X-User-Id': customerId };
+    const hCont = authHeaders(contractor);
+    const hCust = authHeaders(customer);
 
     try {
       const blocked = await request.post(`${API}/api/v1/projects/${projectId}/stages/${stageId}/start`, {
@@ -37,7 +37,7 @@ test.describe('P3-W11 Contract gate golden path', () => {
       expect(started.ok()).toBeTruthy();
       expect((await started.json()).status).toBe('active');
     } finally {
-      await cleanupE2eGateProject(request, customerId, projectId);
+      await cleanupE2eGateProject(request, customer, projectId);
     }
   });
 });

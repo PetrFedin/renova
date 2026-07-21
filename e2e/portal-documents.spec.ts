@@ -2,12 +2,12 @@
  * P3-W13 — portal magic link, documents list, daily report smoke (API E2E).
  */
 import { test, expect } from '@playwright/test';
-import { API, pickPrimaryDemoProject, type DemoProject } from './helpers';
+import { API, pickPrimaryDemoProject, type DemoProject, authHeaders, DemoUser } from './helpers';
 
 test.describe('P3-W13 Portal + documents + reports', () => {
   test('portal-link → session + documents + daily report', async ({ request }) => {
     const cust = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json();
-    const hCust = { 'X-User-Id': cust.id as string };
+    const hCust = authHeaders(cust as DemoUser);
 
     const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: hCust })).json()) as DemoProject[];
     expect(projects.length).toBeGreaterThan(0);
