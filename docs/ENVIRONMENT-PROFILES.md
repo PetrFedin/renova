@@ -57,3 +57,13 @@ cd backend && python -m pytest tests/test_environment_guards.py -q
 - `MY_NALOG_DEV_BYPASS_ENABLED` — только development/test. В staging/production `validate_runtime_settings` hard-fail при `true`; runtime guard всё равно возвращает Forbidden.
 - OCR: `DOCUMENT_OCR_ENABLED`, `DOCUMENT_OCR_PROVIDER` (`heuristic`→local, `demo`→demo). См. `SERVICE-CAPABILITIES.md`.
 
+## Sentry (production)
+
+- `SENTRY_DSN` required in **production**, or explicit `SENTRY_APPROVED_WITHOUT_DSN=true`.
+- Mobile: `EXPO_PUBLIC_SENTRY_DSN` or `EXPO_PUBLIC_SENTRY_APPROVED_WITHOUT_DSN=true`.
+- Events pass through `before_send` / `sanitizeSentryEvent` (no tokens, auth headers, document/message bodies).
+
+## Capability validation (provider-specific env)
+
+See `validate_capability_settings` in `backend/app/core/environment.py` and `apps/mobile/lib/envSchema.ts`.
+Provider-specific vars are required only when the capability is enabled / partially configured.

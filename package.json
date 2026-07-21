@@ -61,7 +61,9 @@
     "staging:readiness-report": "bash scripts/staging-readiness-report.sh",
     "staging:credentials-probe": "bash scripts/staging-credentials-probe.sh",
     "split:status": "bash scripts/split-release-status.sh",
-    "assert:e2e-bearer": "bash scripts/assert-e2e-bearer.sh"
+    "assert:e2e-bearer": "bash scripts/assert-e2e-bearer.sh",
+    "verify:ci": "bash scripts/verify-ci.sh",
+    "secret:scan": "bash scripts/secret-scan.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

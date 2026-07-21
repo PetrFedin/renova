@@ -1,22 +1,45 @@
-# Ops
+# Ops remaining (after split on `main`)
 
-Split + mobile parity on `main`. E2E JWT (#18). Ops probe/assert (#19).
+**Baseline:** `main` @ 0.3.7 (post #23). Split slices #5–#15 + ops #16–#23 **merged**.
 
-## Staging secrets (human)
+## Code-complete vs production-ready
 
-`ENVIRONMENT=staging npm run staging:credentials-probe`
-`npm run h0:check:strict` — включает probe + assert-e2e-bearer
-`API_BASE=https://… npm run h0:check:live` — H0 readiness по **Bearer JWT** (не X-User-Id)
+| | |
+|--|--|
+| **Code-complete** | Slices + Bearer E2E + H0 checks + QC/schedule в репозитории |
+| **Production-ready** | Staging/prod **host** secrets, signing, Sentry, backup drill — см. `docs/PRODUCTION-READINESS-2026-07.md` |
 
-H0 API check `auth_bearer`: на staging/production identity только JWT.
+## Staging secrets (human — вне Git)
 
-Synthetic probe: `ENV_FILE=/dev/null ENVIRONMENT=staging … bash scripts/staging-credentials-probe.sh`
+```bash
+ENVIRONMENT=staging npm run staging:credentials-probe
+npm run h0:check:strict
+API_BASE=https://… npm run h0:check:live
+```
+
+Synthetic (без локального `.env`):
+
+```bash
+ENV_FILE=/dev/null ENVIRONMENT=staging … bash scripts/staging-credentials-probe.sh
+```
 
 ## E2E auth (on main)
 
 `authHeaders(DemoUser)` + CI `npm run assert:e2e-bearer`.
 
-## Product (W148)
+## Open product Drafts (не ops-complete)
 
-Schedule plan item status CTAs on calendar hub (`SchedulePlanItems`) — API W109 was unused in UI.
-App/API version aligned to **0.3.6** (tags v0.3.1…v0.3.6).
+| PR | Тема |
+|----|------|
+| #24 | data honesty |
+| #25 | capability truth / My Nalog |
+| #26 | warranty fail-closed |
+| #27 | portal payment evidence |
+
+## Local CI mirror
+
+```bash
+npm run verify:ci
+```
+
+Не утверждать «CI исправлен» без зелёного GitHub Actions run / локального `verify:ci` evidence.

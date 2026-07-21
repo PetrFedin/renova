@@ -13,9 +13,11 @@ import { flushOfflineOutbox } from '@/lib/offline';
 import { initLang } from '@/lib/i18n';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { initSentry } from '@/lib/sentryInit';
+import { assertMobileEnvOrThrow } from '@/lib/envSchema';
 import { reportCatch } from '@/lib/reportError';
 
 SplashScreen.preventAutoHideAsync();
+assertMobileEnvOrThrow();
 initSentry();
 
 function SplashGate({ children }: { children: ReactNode }) {
