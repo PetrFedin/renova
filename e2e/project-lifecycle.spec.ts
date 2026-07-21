@@ -2,14 +2,14 @@
  * P3-W12 — archive/trash lifecycle + documents list smoke (API E2E).
  */
 import { test, expect } from '@playwright/test';
-import { API } from './helpers';
+import { API, authHeaders, DemoUser } from './helpers';
 
 test.describe('P3-W12 Project lifecycle', () => {
   test('archive → trash → restore + guest forbidden + documents list', async ({ request }) => {
     const cust = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json();
     const guest = await (await request.post(`${API}/api/v1/auth/demo/guest`, { data: {} })).json();
-    const hCust = { 'X-User-Id': cust.id as string };
-    const hGuest = { 'X-User-Id': guest.id as string };
+    const hCust = authHeaders(cust as DemoUser);
+    const hGuest = authHeaders(guest as DemoUser);
 
     const guestProjects = (await (await request.get(`${API}/api/v1/projects`, { headers: hGuest })).json()) as {
       id: string;
