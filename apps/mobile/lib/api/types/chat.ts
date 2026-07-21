@@ -42,3 +42,18 @@ export type ChatParticipant = {
 };
 
 export type ChatDetail = ChatThread & { messages: ChatMessage[]; participants?: ChatParticipant[] };
+
+/**
+ * Контракт структурированных inbox-счётчиков (API v1).
+ * Сообщения и action-категории никогда не складываются в одно UI-число.
+ */
+export type InboxCountersResponseV1 = {
+  unread_messages: number;
+  active_tasks: number;
+  pending_approvals: number;
+  payment_actions: number;
+  quality_actions: number;
+  total_action_groups: number;
+  /** @deprecated сумма разных единиц — не использовать на клиенте */
+  count?: number;
+};

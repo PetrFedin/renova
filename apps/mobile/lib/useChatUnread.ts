@@ -7,6 +7,7 @@ import {
   getChatFailedSnapshot,
   getChatInboxThreadsSnapshot,
   getChatUnreadCountSnapshot,
+  getInboxCountersSnapshot,
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
   reloadInboxSync,
@@ -14,7 +15,7 @@ import {
   subscribeInboxSync,
   subscribeInboxWs,
 } from '@/lib/inboxSyncStore';
-import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
+import { inboxActionItemTotal, type InboxCounters } from '@/lib/domain/inboxCounters';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { subscribeOfflineFlush } from '@/lib/offline';
@@ -39,6 +40,10 @@ function useInboxWsConnected() {
 
 function useInboxItems() {
   return useSyncExternalStore(subscribeInboxSync, getInboxItemsSnapshot, getInboxItemsSnapshot);
+}
+
+function useInboxCounters(): InboxCounters {
+  return useSyncExternalStore(subscribeInboxSync, getInboxCountersSnapshot, getInboxCountersSnapshot);
 }
 
 export function useChatUnread(userId?: string, userRole?: UserRole) {
@@ -76,13 +81,19 @@ export function useChatReadSync(userId?: string, userRole?: UserRole) {
   );
 }
 
-/** Задачи «Входящие» + единый badge (задачи + непрочитанные сообщения) */
+/** Задачи «Входящие» + структурированные InboxCounters (без смешивания единиц) */
 export function useInboxTasks(role: OsRole) {
   const { user, activeProject } = useRenova();
   const items = useInboxItems();
-  const chatUnread = useChatUnreadCount();
-  const taskBadge = inboxTaskBadge(items);
-  const badge = inboxAttentionBadge(items, chatUnread);
+  const counters = useInboxCounters();
+  const chatUnread = counters.unreadMessages;
+  /** Action-единицы без сообщений */
+  const taskBadge = inboxActionItemTotal(counters);
+  /**
+   * @deprecated не использовать как «всего дел»: это число категорий с активностью.
+   * Для UI предпочитайте `counters`.
+   */
+  const badge = counters.totalActionGroups;
   const projectId = activeProject?.id;
   const projectRef = useRef(activeProject);
   projectRef.current = activeProject;
@@ -116,22 +127,19 @@ export function useInboxTasks(role: OsRole) {
     });
   }, [user?.id, reload]);
 
-  // W79: после flush offline — пересобрать inbox (в т.ч. offline-строку)
   useEffect(() => subscribeOfflineFlush(() => {
     reload().catch(reportCatch('chatUnread.reload'));
   }), [reload]);
 
-  // W88: projectDataBus (мутации golden path) → badges «Входящие»/«Ещё» без focus
   useEffect(() => subscribeProjectDataChanged(() => {
     reload().catch(reportCatch('chatUnread.reload'));
   }), [reload]);
 
-  // W81: смена объекта → inbox/задачи текущего projectId (не ждать blur/focus)
   useEffect(() => {
     reload().catch(reportCatch('chatUnread.reload'));
   }, [reload]);
 
-  return { items, badge, taskBadge, chatUnread, reload };
+  return { items, badge, taskBadge, chatUnread, counters, reload };
 }
 
 function useChatInboxThreadsSnapshot() {

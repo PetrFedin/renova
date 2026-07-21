@@ -5,8 +5,25 @@ import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRo
 import { buildCloseoutInboxItem } from './closeoutHome';
 
 export type InboxItem =
-  | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
-  | { id: string; title: string; sub?: string; kind: 'approval'; approval: ApprovalItem; priority: number };
+  | {
+      id: string;
+      title: string;
+      sub?: string;
+      href: string;
+      kind: string;
+      priority: number;
+      /** Единицы действия в строке (по умолчанию 1) — для InboxCounters */
+      unitCount?: number;
+    }
+  | {
+      id: string;
+      title: string;
+      sub?: string;
+      kind: 'approval';
+      approval: ApprovalItem;
+      priority: number;
+      unitCount?: number;
+    };
 
 function overdueStages(stages: Stage[]) {
   const today = new Date().toISOString().slice(0, 10);
@@ -67,6 +84,7 @@ export async function buildInboxItems(opts: {
           sub: it.subtitle || 'Согласование',
           approval: it,
           priority: 80,
+          unitCount: 1,
         });
       });
     } catch { /* noop */ }
@@ -88,6 +106,7 @@ export async function buildInboxItems(opts: {
           : `${pendingAcceptance} ожидает`,
         href: reviewStage ? `/stage/${reviewStage.id}` : repairTabHref(role, 'control'),
         priority: 88,
+        unitCount: pendingAcceptance,
       });
     }
 
@@ -173,6 +192,7 @@ export async function buildInboxItems(opts: {
           sub: `${fixed.length} · ${first?.title || ''}`,
           href: first?.stage_id ? `/stage/${first.stage_id}` : '/control',
           priority: 79,
+          unitCount: fixed.length,
         });
       }
     } catch { /* noop */ }
@@ -191,6 +211,7 @@ export async function buildInboxItems(opts: {
             ? `/material/${pendingMat[0].id}`
             : repairTabHref(role, 'materials'),
           priority: 77,
+          unitCount: pendingMat.length,
         });
       }
     } catch { /* noop */ }
@@ -206,6 +227,7 @@ export async function buildInboxItems(opts: {
           sub: `${sel.count} поз.`,
           href: repairTabHref(role, 'selections'),
           priority: 76,
+          unitCount: sel.count ?? 0,
         });
       }
     } catch { /* noop */ }
@@ -224,6 +246,7 @@ export async function buildInboxItems(opts: {
             sub: pendingCo[0]?.title || 'Изменение сметы',
             href: `${objectTabHref(role, 'estimate')}&estimateLayer=changes`,
             priority: 83,
+            unitCount: pendingCo.length,
           });
         }
       } catch { /* noop */ }
@@ -240,6 +263,7 @@ export async function buildInboxItems(opts: {
           // W111: QC/control (не только документы) — закрытие и список замечаний
           href: '/quality-control',
           priority: 78,
+          unitCount: w.open ?? 0,
         });
       }
     } catch { /* noop */ }
@@ -256,6 +280,7 @@ export async function buildInboxItems(opts: {
             sub: drafts[0]?.title || 'Черновики в Документах',
             href: '/documents',
             priority: 76,
+            unitCount: drafts.length,
           });
         }
       } catch { /* noop */ }
@@ -465,17 +490,20 @@ export function inboxTotal(items: InboxItem[], chatUnread: number): number {
   return rows + chatUnread;
 }
 
-/** Badge задач «Входящие» — без чата (оплаты, приёмка и т.д.) */
+/** Число action-строк без чата (не смешивать с unreadMessages в UI) */
 export function inboxTaskBadge(items: InboxItem[]): number {
   return items.filter((i) => i.kind !== 'chat').length;
 }
 
-/** Badge «Входящие» — задачи + каждое непрочитанное сообщение */
+/**
+ * @deprecated Складывает сообщения и задачи — запрещено для badge.
+ * Используйте computeInboxCounters / InboxCounters.
+ */
 export function inboxAttentionBadge(items: InboxItem[], chatUnread: number): number {
   return inboxTaskBadge(items) + Math.max(0, chatUnread);
 }
 
-/** @deprecated используйте inboxAttentionBadge */
+/** @deprecated используйте computeInboxCounters */
 export function inboxMenuBadge(items: InboxItem[]): number {
   return items.length;
 }

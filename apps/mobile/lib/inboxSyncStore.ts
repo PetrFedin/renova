@@ -1,6 +1,11 @@
-/** Единый store: chat threads, unread, inbox задачи — один reload и одно WS */
+/** Единый store: chat threads, unread, inbox — структурированные InboxCounters */
 import { api, type ChatThread, type ProjectDetail, type UserRole } from '@/lib/api';
 import { buildInboxItems, type InboxItem } from '@/lib/domain/buildInboxItems';
+import {
+  computeInboxCounters,
+  emptyInboxCounters,
+  type InboxCounters,
+} from '@/lib/domain/inboxCounters';
 import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
 import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
@@ -8,7 +13,13 @@ import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
 
 type Listener = () => void;
-type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
+type InboxWsPayload = {
+  type?: string;
+  event?: string;
+  event_id?: string;
+  thread_id?: string;
+  project_id?: string;
+};
 
 const POLL_MS = 25_000;
 const listeners = new Set<Listener>();
@@ -18,8 +29,13 @@ let chatFailed = false;
 let inboxWsConnected = false;
 let chatThreads: ChatThread[] = [];
 let inboxItems: InboxItem[] = [];
+/** Структурированные счётчики — SoT вместо смешанного inboxBadge */
+let inboxCounters: InboxCounters = emptyInboxCounters();
+/** @deprecated совместимость: = totalActionGroups (число категорий, не сумма сущностей) */
 let inboxBadge = 0;
 
+let syncGeneration = 0;
+let seenWsEventIds = new Set<string>();
 let wsUserId: string | undefined;
 let wsRefCount = 0;
 let wsCleanup: (() => void) | null = null;
@@ -50,6 +66,11 @@ function sumChatUnread(threads: ChatThread[]): number {
     .reduce((sum, t) => sum + (t.unread_count || 0), 0);
 }
 
+function applyCountersFromItems(items: InboxItem[], unread: number) {
+  inboxCounters = computeInboxCounters(items, unread);
+  inboxBadge = inboxCounters.totalActionGroups;
+}
+
 function applyLocalThreadUnread(threadId: string, unread = 0) {
   chatThreads = chatThreads.map((t) =>
     t.id === threadId ? { ...t, unread_count: unread } : t,
@@ -78,11 +99,16 @@ export function getChatInboxThreadsSnapshot(): ChatThread[] {
 }
 
 export function getInboxTasksSnapshot() {
-  return { items: inboxItems, badge: inboxBadge };
+  return { items: inboxItems, badge: inboxBadge, counters: inboxCounters };
 }
 
+/** @deprecated используйте getInboxCountersSnapshot */
 export function getInboxBadgeSnapshot() {
   return inboxBadge;
+}
+
+export function getInboxCountersSnapshot(): InboxCounters {
+  return inboxCounters;
 }
 
 export function getInboxItemsSnapshot() {
@@ -93,6 +119,7 @@ function notifyIfChanged(prev: {
   chatCount: number;
   chatFailed: boolean;
   inboxBadge: number;
+  inboxCounters: InboxCounters;
   inboxItems: InboxItem[];
   inboxWsConnected: boolean;
 }) {
@@ -100,6 +127,7 @@ function notifyIfChanged(prev: {
     prev.chatCount === chatCount
     && prev.chatFailed === chatFailed
     && prev.inboxBadge === inboxBadge
+    && prev.inboxCounters === inboxCounters
     && prev.inboxItems === inboxItems
     && prev.inboxWsConnected === inboxWsConnected
   ) {
@@ -114,7 +142,8 @@ async function loadChatState(userId: string): Promise<{ threads: ChatThread[]; u
     return { threads, unread: sumChatUnread(threads), ok: true };
   } catch {
     try {
-      const { count } = await api.chatUnreadTotal(userId);
+      const res = await api.chatUnreadTotal(userId);
+      const count = res.unread_messages ?? res.count;
       return { threads: chatThreads, unread: count, ok: true };
     } catch {
       return { threads: chatThreads, unread: chatCount, ok: false };
@@ -158,7 +187,7 @@ function mergeReloadOpts(opts: {
   };
 }
 
-/** После markChatRead / partial reload — синхронизировать строку чата и inboxBadge с chatCount */
+/** После markChatRead / partial reload — синхронизировать строку чата и counters */
 function refreshInboxChatRow(nextChat: number) {
   const n = Math.max(0, nextChat || 0);
   if (n <= 0) {
@@ -168,7 +197,6 @@ function refreshInboxChatRow(nextChat: number) {
       i.kind === 'chat' ? { ...i, sub: `${n} непрочитанных` } : i,
     );
   } else {
-    // Upsert: иначе dock уже показывает N, а «Входящие» без строки чата / со старым sub.
     const role = cachedFullSync?.osRole ?? 'customer';
     inboxItems = [
       {
@@ -182,22 +210,21 @@ function refreshInboxChatRow(nextChat: number) {
       ...inboxItems,
     ];
   }
-  const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
-  inboxBadge = taskRows + n;
+  applyCountersFromItems(inboxItems, n);
 }
 
-/** Прочитать тред: optimistic local + API + полный resync */
 export async function markChatReadAndSync(
   userId: string,
   projectId: string,
   threadId: string,
   userRole?: UserRole,
-  knownUnread = 0,
+  _knownUnread = 0,
 ): Promise<void> {
   const prev = {
     chatCount,
     chatFailed,
     inboxBadge,
+    inboxCounters,
     inboxItems,
     inboxWsConnected,
   };
@@ -246,11 +273,14 @@ export async function reloadInboxSync(
   if (!force && reloadInflight && lastReloadKey === key) return reloadInflight;
 
   lastReloadKey = key;
+  const generation = ++syncGeneration;
+
   reloadInflight = (async () => {
     const prev = {
       chatCount,
       chatFailed,
       inboxBadge,
+      inboxCounters,
       inboxItems,
       inboxWsConnected,
     };
@@ -260,13 +290,17 @@ export async function reloadInboxSync(
       chatFailed = false;
       chatThreads = [];
       inboxItems = [];
+      inboxCounters = emptyInboxCounters();
       inboxBadge = 0;
       cachedFullSync = null;
+      seenWsEventIds = new Set();
       notifyIfChanged(prev);
       return;
     }
 
     const chatState = await loadChatState(merged.userId);
+    if (generation !== syncGeneration) return;
+
     if (chatState.ok) {
       chatThreads = chatState.threads;
       chatCount = chatState.unread;
@@ -281,30 +315,30 @@ export async function reloadInboxSync(
 
     if (syncProjectId && syncOsRole) {
       try {
-        inboxItems = await buildInboxItems({
+        const built = await buildInboxItems({
           userId: merged.userId,
           projectId: syncProjectId,
           role: syncOsRole,
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
-        // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
+        if (generation !== syncGeneration) return;
+        inboxItems = built;
         try {
           const off = await getOfflineOutboxStatus();
           inboxItems = mergeOfflineInboxItem(inboxItems, off);
         } catch { /* noop */ }
-        const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
-        inboxBadge = taskRows + chatCount;
+        applyCountersFromItems(inboxItems, chatCount);
       } catch {
         if (!inboxItems.length) {
-          inboxBadge = chatCount;
+          applyCountersFromItems([], chatCount);
         }
       }
     } else {
-      // Нет projectId в этом вызове — не затираем задачи: только выравниваем чат с chatCount.
       refreshInboxChatRow(chatCount);
     }
 
+    if (generation !== syncGeneration) return;
     notifyIfChanged(prev);
   })();
 
@@ -371,7 +405,15 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
         ws.onmessage = (e) => {
           if (e.data === 'ping' || e.data === 'pong') return;
           try {
-            JSON.parse(e.data) as InboxWsPayload;
+            const payload = JSON.parse(e.data) as InboxWsPayload;
+            const eid = payload.event_id;
+            if (eid) {
+              if (seenWsEventIds.has(eid)) return;
+              seenWsEventIds.add(eid);
+              if (seenWsEventIds.size > 200) {
+                seenWsEventIds = new Set([...seenWsEventIds].slice(-100));
+              }
+            }
           } catch {
             /* noop */
           }

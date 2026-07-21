@@ -5,7 +5,17 @@ export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
     req<ChatThread[]>(`/api/v1/projects/${projectId}/chats?archived=${archived ? 'true' : 'false'}`, {}, userId),
   chatInbox: (userId: string) => req<ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
-  chatUnreadTotal: (userId: string) => req<{ count: number }>(`/api/v1/chats/unread-total`, {}, userId),
+  chatUnreadTotal: (userId: string) =>
+    req<{
+      /** @deprecated используйте unread_messages */
+      count: number;
+      unread_messages?: number;
+      active_tasks?: number;
+      pending_approvals?: number;
+      payment_actions?: number;
+      quality_actions?: number;
+      total_action_groups?: number;
+    }>(`/api/v1/chats/unread-total`, {}, userId),
   createChat: async (userId: string, projectId: string, title: string, topic?: string) => {
     const body = JSON.stringify({ title, topic });
     try {

@@ -12,9 +12,10 @@ const items: InboxItem[] = [
 ];
 
 assert(inboxTotal(items, 0) === 3, 'total counts inbox rows');
-assert(inboxAttentionBadge(items, 2) === 4, 'attention badge = tasks + unread messages');
+/** @deprecated attention badge — документируем старое поведение, UI не использует */
+assert(inboxAttentionBadge(items, 2) === 4, 'deprecated attention = tasks + messages');
 assert(inboxTaskBadge(items) === 2, 'task badge excludes chat row');
-assert(inboxAttentionBadge([{ id: 'chat', kind: 'chat', title: 'Чат', href: '/chat', priority: 90 }], 3) === 3, 'chat-only attention');
+assert(inboxAttentionBadge([{ id: 'chat', kind: 'chat', title: 'Чат', href: '/chat', priority: 90 }], 3) === 3, 'deprecated chat-only');
 assert(inboxLinkItems(items, 'payment').length === 1, 'payment hero hides payment rows from link');
 assert(inboxLinkItems(items, 'work').length === 3, 'non-payment hero keeps all rows');
 assert(inboxTotal([], 4) === 4, 'chat unread when no chat item');
