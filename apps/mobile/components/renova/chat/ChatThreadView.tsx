@@ -22,7 +22,12 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
 import { useChatReadSync } from '@/lib/useChatUnread';
-import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
+import { useChatWebSocket } from '@/lib/useChatWebSocket';
+import {
+  registerThreadSyncLoader,
+  requestChatSync,
+  patchChatSyncContext,
+} from '@/lib/chatSync';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -196,11 +201,11 @@ export function ChatThreadView({
     }
   }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
 
-  const loadMessages = useCallback(async () => {
+  const loadMessages = useCallback(async (signal?: AbortSignal) => {
     if (!user || !threadId) return;
     const gen = ++loadGenRef.current;
     const projectId = await resolveProjectId();
-    if (gen !== loadGenRef.current) return;
+    if (signal?.aborted || gen !== loadGenRef.current) return;
     if (!projectId) {
       setLoadFailed(true);
       setAccessConfirmed(false);
@@ -211,10 +216,10 @@ export function ChatThreadView({
     if (activeProject?.id !== projectId) {
       await loadProject(projectId).catch((e) => reportError('chat.loadProject', e, { projectId }));
     }
-    if (gen !== loadGenRef.current) return;
+    if (signal?.aborted || gen !== loadGenRef.current) return;
     try {
       const detail = await api.getChat(user.id, projectId, threadId);
-      if (gen !== loadGenRef.current) return;
+      if (signal?.aborted || gen !== loadGenRef.current) return;
       loadedThreadRef.current = threadId;
       setChat(detail);
       setAccessConfirmed(true);
@@ -222,7 +227,7 @@ export function ChatThreadView({
       setLoadFailed(false);
       setLatestMessagesRendered(false);
     } catch (e) {
-      if (gen !== loadGenRef.current) return;
+      if (signal?.aborted || gen !== loadGenRef.current) return;
       setLoadFailed(true);
       setAccessConfirmed(false);
       setThreadLoaded(false);
@@ -236,6 +241,19 @@ export function ChatThreadView({
       throw e;
     }
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
+
+  // Регистрация в orchestrator: thread WS/poll идут через requestChatSync(scope:thread)
+  useEffect(() => {
+    if (!threadId || !user?.id) return undefined;
+    patchChatSyncContext({
+      userId: user.id,
+      role: user.role ?? null,
+      projectId: chatProjectId ?? activeProject?.id ?? null,
+    });
+    return registerThreadSyncLoader(threadId, async ({ signal }) => {
+      await loadMessages(signal);
+    });
+  }, [threadId, user?.id, user?.role, chatProjectId, activeProject?.id, loadMessages]);
 
   const markThreadReadLocal = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
@@ -326,8 +344,16 @@ export function ChatThreadView({
     }
   }, [highlightId, chat?.messages.length]);
 
-  const reload = useCallback(() => loadMessages().catch(reportCatch('chat.reload')), [loadMessages]);
-  useProjectDataReload(reload);
+  const reload = useCallback(() => {
+    if (!threadId) return Promise.resolve();
+    return requestChatSync({
+      scope: 'thread',
+      threadId,
+      reason: 'manual',
+      priority: 'high',
+    }).then(() => undefined);
+  }, [threadId]);
+  useProjectDataReload(() => { void reload(); });
 
   const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
     if (payload.type === 'typing') {
@@ -335,13 +361,32 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    // Новое сообщение: перезагрузка; mark-read через canMarkRead → store.markThreadRead
+    // Новое сообщение: через orchestrator (debounce/coalesce), не прямой reload
     canMarkPrevRef.current = false;
     setLatestMessagesRendered(false);
-    reload();
+    if (threadId) {
+      void requestChatSync({
+        scope: 'thread',
+        threadId,
+        reason: 'websocket',
+        priority: 'normal',
+      });
+    }
   });
 
-  useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
+  // Fallback poll при обрыве thread WS — через orchestrator (не параллельный setInterval)
+  useEffect(() => {
+    if (wsConnected || !threadId || !user) return undefined;
+    const id = setInterval(() => {
+      void requestChatSync({
+        scope: 'thread',
+        threadId,
+        reason: 'poll',
+        priority: 'low',
+      });
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [wsConnected, threadId, user]);
 
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 

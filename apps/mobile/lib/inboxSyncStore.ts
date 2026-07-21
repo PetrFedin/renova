@@ -25,7 +25,6 @@ import {
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
 
-const POLL_MS = 25_000;
 const listeners = new Set<Listener>();
 
 /** SoT unread: атомарный snapshot (threads + total + revision) */
@@ -184,20 +183,16 @@ function notifyIfChanged(prev: {
 }
 
 /**
- * Загрузка unread: только атомарный inbox snapshot.
- * Нельзя подменять total через unread-total без threads.
+ * Загрузка unread snapshot без apply — apply только после guards (abort/context).
  */
-async function loadChatState(userId: string): Promise<{ ok: boolean }> {
+async function fetchChatSnapshot(userId: string): Promise<
+  | { ok: true; snapshot: ChatUnreadSnapshot }
+  | { ok: false }
+> {
   try {
     const raw = await api.chatInbox(userId);
-    const incoming = parseChatUnreadSnapshotApi(raw, Date.now());
-    // Сеть — SoT; out-of-order отсекает loadGeneration в reloadInboxSync
-    applyIncomingSnapshot(incoming, { force: true });
-    return { ok: true };
+    return { ok: true, snapshot: parseChatUnreadSnapshotApi(raw, Date.now()) };
   } catch {
-    // Ошибка списка: не трогаем total отдельно — помечаем stale/failed
-    chatFailed = chatThreads.length === 0 && chatCount === 0;
-    chatUnreadStale = true;
     return { ok: false };
   }
 }
@@ -421,16 +416,26 @@ export async function markThreadRead(args: MarkThreadReadArgs): Promise<MarkThre
       return ok;
     } catch {
       recordMarkReadDiag({ ...base, outcome: 'error' });
-      await reloadInboxSync(
-        {
+      try {
+        const { requestChatSync, patchChatSyncContext } = await import('@/lib/chatSync');
+        patchChatSyncContext({
           userId,
-          userRole,
-          projectId,
-          project: cachedFullSync?.project,
-          osRole: cachedFullSync?.osRole,
-        },
-        true,
-      );
+          role: userRole ?? null,
+          projectId: projectId ?? cachedFullSync?.projectId ?? null,
+        });
+        await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
+      } catch {
+        await reloadInboxSync(
+          {
+            userId,
+            userRole,
+            projectId,
+            project: cachedFullSync?.project,
+            osRole: cachedFullSync?.osRole,
+          },
+          true,
+        );
+      }
       const err: MarkThreadReadResult = { status: 'error', ...base };
       resolveClaim(err);
       return err;
@@ -472,10 +477,39 @@ export function getConfirmedReadCursor(threadId: string): ConfirmedReadCursor | 
 }
 
 export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: UserRole): Promise<void> {
-  await reloadInboxSync({ userId, userRole }, true);
+  try {
+    const { requestChatSync, patchChatSyncContext } = await import('@/lib/chatSync');
+    patchChatSyncContext({ userId, role: userRole ?? null });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
+  } catch {
+    await reloadInboxSync({ userId, userRole }, true);
+  }
   emitInboxWs();
 }
 
+export type ReloadInboxSyncGuards = {
+  signal?: AbortSignal;
+  /** Ключ на старте запроса — сверить перед apply */
+  contextKey?: string;
+  getContextKey?: () => string;
+};
+
+function guardsAborted(guards?: ReloadInboxSyncGuards): boolean {
+  if (guards?.signal?.aborted) return true;
+  if (
+    guards?.contextKey != null
+    && guards.getContextKey
+    && guards.contextKey !== guards.getContextKey()
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Низкоуровневый reload. Предпочтительный вход — `requestChatSync` (оркестратор).
+ * guards: AbortSignal + context key — не применять ответ чужого/старого контекста.
+ */
 export async function reloadInboxSync(
   opts: {
     userId?: string;
@@ -485,6 +519,7 @@ export async function reloadInboxSync(
     osRole?: OsRole;
   },
   force = false,
+  guards?: ReloadInboxSyncGuards,
 ): Promise<void> {
   const merged = mergeReloadOpts(opts);
   const key = [merged.userId, merged.userRole, merged.projectId, merged.osRole].join(':');
@@ -529,10 +564,19 @@ export async function reloadInboxSync(
     }
     lastChatUserId = merged.userId;
 
-    const chatState = await loadChatState(merged.userId);
-    if (generation !== loadGeneration) return;
-    if (!chatState.ok && chatThreads.length === 0) {
-      chatFailed = true;
+    if (guardsAborted(guards)) return;
+
+    const chatState = await fetchChatSnapshot(merged.userId);
+    if (generation !== loadGeneration || guardsAborted(guards)) return;
+    if (chatState.ok) {
+      applyIncomingSnapshot(chatState.snapshot, { force: true });
+    } else {
+      // Ошибка списка: не трогаем total отдельно — помечаем stale/failed
+      chatFailed = chatThreads.length === 0 && chatCount === 0;
+      chatUnreadStale = true;
+      if (chatThreads.length === 0) {
+        chatFailed = true;
+      }
     }
 
     const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
@@ -547,7 +591,7 @@ export async function reloadInboxSync(
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
-        if (generation !== loadGeneration) return;
+        if (generation !== loadGeneration || guardsAborted(guards)) return;
         // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
         try {
           const off = await getOfflineOutboxStatus();
@@ -565,7 +609,7 @@ export async function reloadInboxSync(
       refreshInboxChatRow(chatCount);
     }
 
-    if (generation !== loadGeneration) return;
+    if (generation !== loadGeneration || guardsAborted(guards)) return;
     notifyIfChanged(prev);
   })();
 
@@ -574,14 +618,6 @@ export async function reloadInboxSync(
   } finally {
     reloadInflight = null;
   }
-}
-
-function ensurePoll(userId: string, reload: () => void) {
-  if (pollTimer) clearInterval(pollTimer);
-  const ms = inboxWsConnected ? 60_000 : POLL_MS;
-  pollTimer = setInterval(() => {
-    reload();
-  }, ms);
 }
 
 function stopPoll() {
@@ -598,9 +634,12 @@ function stopInboxWebSocket() {
   wsRefCount = 0;
   inboxWsConnected = false;
   stopPoll();
+  void import('@/lib/chatSync').then((m) => {
+    m.setChatInboxWsConnected(false);
+  }).catch(() => { /* test env */ });
 }
 
-function startInboxWebSocket(userId: string, onReload: () => void) {
+function startInboxWebSocket(userId: string, _onReload: () => void) {
   let alive = true;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
@@ -620,6 +659,9 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
             const prev = inboxWsConnected;
             inboxWsConnected = true;
             if (!prev) notify();
+            void import('@/lib/chatSync').then((m) => {
+              m.setChatInboxWsConnected(true);
+            }).catch(() => { /* test env */ });
           }
           pingTimer = setInterval(() => {
             try {
@@ -636,7 +678,10 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
           } catch {
             /* noop */
           }
-          onReload();
+          // Нормализованное событие → orchestrator (debounce + coalesce), не прямой reload
+          void import('@/lib/chatSync').then((m) => {
+            m.onChatInboxWsEvent();
+          }).catch(() => { /* test env */ });
           emitInboxWs();
         };
         ws.onerror = () => {
@@ -649,6 +694,9 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
             const prev = inboxWsConnected;
             inboxWsConnected = false;
             if (prev) notify();
+            void import('@/lib/chatSync').then((m) => {
+              m.setChatInboxWsConnected(false);
+            }).catch(() => { /* test env */ });
           }
           if (!alive) return;
           attempt += 1;
@@ -660,6 +708,9 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
           const prev = inboxWsConnected;
           inboxWsConnected = false;
           if (prev) notify();
+          void import('@/lib/chatSync').then((m) => {
+            m.setChatInboxWsConnected(false);
+          }).catch(() => { /* test env */ });
         }
         attempt += 1;
         timer = setTimeout(connect, 4000);
@@ -668,7 +719,6 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
   };
 
   connect();
-  ensurePoll(userId, onReload);
 
   return () => {
     alive = false;
@@ -678,8 +728,8 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
   };
 }
 
-/** Одно WS на пользователя — ref-counted */
-export function ensureInboxWebSocket(userId: string | undefined, onReload: () => void) {
+/** Одно WS на пользователя — ref-counted. Sync через chatSync, не через onReload. */
+export function ensureInboxWebSocket(userId: string | undefined, _onReload?: () => void) {
   if (!userId) {
     stopInboxWebSocket();
     return () => {};
@@ -691,7 +741,7 @@ export function ensureInboxWebSocket(userId: string | undefined, onReload: () =>
 
   if (!wsCleanup || wsUserId !== userId) {
     wsUserId = userId;
-    wsCleanup = startInboxWebSocket(userId, onReload);
+    wsCleanup = startInboxWebSocket(userId, () => {});
   }
 
   wsRefCount += 1;

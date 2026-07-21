@@ -13,7 +13,6 @@ import { api, ChatThread } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { useChatUnread, useChatInboxThreads } from '@/lib/useChatUnread';
-import { useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
 import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
@@ -75,7 +74,6 @@ export function ChatListView() {
   const { user, activeProject, projects, loadProject } = useRenova();
   const {
     reload: reloadUnread,
-    inboxWsConnected,
     count: globalUnread,
     failed: unreadFailed,
     stale: unreadStale,
@@ -148,9 +146,7 @@ export function ChatListView() {
     if (prefsLoaded) void reload();
   }, [prefsLoaded, reload]);
   useProjectDataReload(onBusReload);
-  // WS → ensureInboxWebSocket внутри useChatUnread → один reloadInboxSync + notify подписчиков.
-  // Не дублируем через useInboxWsListener(reload).
-  useChatFallbackPoll(!!user && !inboxWsConnected, 12_000, () => { reload().catch(reportCatch('components.renova.chat.ChatListView.4')); });
+  // Fallback poll + WS debounce — chatSync orchestrator (не дублируем useChatFallbackPoll)
 
   const displayThreads = useMemo(
     () => filterChatThreads(threads, projectFilter),

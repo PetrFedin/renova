@@ -8,7 +8,7 @@ import { RenovaTheme, card } from '@/constants/Theme';
 import { flushOfflineOutbox, getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
 import { getQueue } from '@/lib/offlineQueue';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { reloadInboxSync } from '@/lib/inboxSyncStore';
+import { reconcileChatAfterOfflineFlush } from '@/lib/chatSync';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 /** Статус канонической offline-очереди (тот же storage, что layout flush). */
 export function OfflineSyncStatus({
@@ -74,11 +74,11 @@ export function OfflineSyncStatus({
         setLastMessage('Все доступные изменения отправлены');
       }
       await refresh();
-      // W112: после flush — inbox + home через канон bus (не только badge)
+      // Один reconciliation через orchestrator (не несколько reload)
       if (result.synced > 0) {
         await syncProjectSideEffects({ user, project: activeProject }).catch((e) => reportError('offline.sideEffects', e));
       } else if (user?.id) {
-        await reloadInboxSync({ userId: user.id, userRole: user.role }).catch((e) => reportError('offline.inboxSync', e));
+        await reconcileChatAfterOfflineFlush().catch((e) => reportError('offline.inboxSync', e));
       }
     } finally {
       setSyncing(false);

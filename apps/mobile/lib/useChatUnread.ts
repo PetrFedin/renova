@@ -1,4 +1,4 @@
-/** Хуки unread/inbox — единый inboxSyncStore */
+/** Хуки unread/inbox — единый chatSync orchestrator → inboxSyncStore */
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useFocusEffect } from 'expo-router';
 import type { UserRole } from '@/lib/api';
@@ -10,11 +10,15 @@ import {
   getChatUnreadStaleSnapshot,
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
-  reloadInboxSync,
   markThreadRead,
   subscribeInboxSync,
   subscribeInboxWs,
 } from '@/lib/inboxSyncStore';
+import {
+  requestChatSync,
+  patchChatSyncContext,
+  logoutChatSync,
+} from '@/lib/chatSync';
 import { inboxAttentionBadge, inboxTaskBadge } from '@/lib/domain/buildInboxItems';
 import type { MarkThreadReadSource } from '@/lib/domain/markThreadReadPolicy';
 import type { OsRole } from '@/constants/osSections';
@@ -53,22 +57,36 @@ export function useChatUnread(userId?: string, userRole?: UserRole) {
   const stale = useChatUnreadStale();
   const inboxWsConnected = useInboxWsConnected();
 
+  useEffect(() => {
+    if (!userId) {
+      logoutChatSync();
+      return;
+    }
+    patchChatSyncContext({
+      userId,
+      role: userRole ?? null,
+    });
+  }, [userId, userRole]);
+
   const reload = useCallback(async () => {
-    await reloadInboxSync({ userId, userRole });
+    if (!userId) return;
+    patchChatSyncContext({ userId, role: userRole ?? null });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
   }, [userId, userRole]);
 
   useFocusEffect(
     useCallback(() => {
-      reload().catch(reportCatch('chatUnread.reload'));
-    }, [reload]),
+      if (!userId) return;
+      patchChatSyncContext({ userId, role: userRole ?? null });
+      void requestChatSync({ scope: 'all', reason: 'focus' }).catch(reportCatch('chatUnread.reload'));
+    }, [userId, userRole]),
   );
 
   useEffect(() => {
     if (!userId) return undefined;
-    return ensureInboxWebSocket(userId, () => {
-      reload().catch(reportCatch('chatUnread.reload'));
-    });
-  }, [userId, reload]);
+    // WS → onChatInboxWsEvent внутри store; onReload больше не нужен
+    return ensureInboxWebSocket(userId);
+  }, [userId]);
 
   return { count, reload, inboxWsConnected, failed, stale };
 }
@@ -109,49 +127,77 @@ export function useInboxTasks(role: OsRole) {
   const projectRef = useRef(activeProject);
   projectRef.current = activeProject;
 
-  const reload = useCallback(async () => {
-    await reloadInboxSync({
-      userId: user?.id,
-      userRole: user?.role,
-      projectId,
-      project: projectRef.current,
-      osRole: role,
+  useEffect(() => {
+    if (!user?.id) {
+      logoutChatSync();
+      return;
+    }
+    patchChatSyncContext({
+      userId: user.id,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
     });
+  }, [user?.id, user?.role, role, projectId]);
+
+  const reload = useCallback(async () => {
+    if (!user?.id) return;
+    patchChatSyncContext({
+      userId: user.id,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
+    });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
   }, [user?.id, user?.role, projectId, role]);
 
   useFocusEffect(
     useCallback(() => {
-      reload().catch(reportCatch('chatUnread.reload'));
-    }, [reload]),
+      if (!user?.id) return;
+      patchChatSyncContext({
+        userId: user.id,
+        role: role ?? user.role ?? null,
+        projectId: projectId ?? null,
+      });
+      void requestChatSync({ scope: 'all', reason: 'focus' }).catch(reportCatch('chatUnread.reload'));
+    }, [user?.id, user?.role, projectId, role]),
   );
 
-  useInboxWsListener(
-    useCallback(() => {
-      reload().catch(reportCatch('chatUnread.reload'));
-    }, [reload]),
-  );
+  // WS bus: sync уже в orchestrator через onChatInboxWsEvent — не дублируем reload.
 
   useEffect(() => {
     if (!user?.id) return undefined;
-    return ensureInboxWebSocket(user.id, () => {
-      reload().catch(reportCatch('chatUnread.reload'));
-    });
-  }, [user?.id, reload]);
+    return ensureInboxWebSocket(user.id);
+  }, [user?.id]);
 
-  // W79: после flush offline — пересобрать inbox (в т.ч. offline-строку)
+  // W79: после flush — один reconciliation через orchestrator
   useEffect(() => subscribeOfflineFlush(() => {
-    reload().catch(reportCatch('chatUnread.reload'));
-  }), [reload]);
+    if (!user?.id) return;
+    patchChatSyncContext({
+      userId: user.id,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
+    });
+    void requestChatSync({ scope: 'all', reason: 'offline_flush', priority: 'high' })
+      .catch(reportCatch('chatUnread.reload'));
+  }), [user?.id, user?.role, projectId, role]);
 
-  // W88: projectDataBus (мутации golden path) → badges «Входящие»/«Ещё» без focus
+  // W88: projectDataBus → один sync (coalesce), не независимая цепочка
   useEffect(() => subscribeProjectDataChanged(() => {
-    reload().catch(reportCatch('chatUnread.reload'));
-  }), [reload]);
+    if (!user?.id) return;
+    void requestChatSync({ scope: 'all', reason: 'project_change', priority: 'high' })
+      .catch(reportCatch('chatUnread.reload'));
+  }), [user?.id]);
 
-  // W81: смена объекта → inbox/задачи текущего projectId (не ждать blur/focus)
+  // W81: смена объекта → context + sync
   useEffect(() => {
-    reload().catch(reportCatch('chatUnread.reload'));
-  }, [reload]);
+    if (!user?.id) return;
+    patchChatSyncContext({
+      userId: user.id,
+      role: role ?? user.role ?? null,
+      projectId: projectId ?? null,
+    });
+    void requestChatSync({ scope: 'all', reason: 'project_change', priority: 'high' })
+      .catch(reportCatch('chatUnread.reload'));
+  }, [user?.id, user?.role, projectId, role]);
 
   return { items, badge, taskBadge, chatUnread, reload };
 }
@@ -164,7 +210,9 @@ function useChatInboxThreadsSnapshot() {
 export function useChatInboxThreads(userId?: string, userRole?: UserRole) {
   const threads = useChatInboxThreadsSnapshot();
   const reload = useCallback(async () => {
-    await reloadInboxSync({ userId, userRole });
+    if (!userId) return;
+    patchChatSyncContext({ userId, role: userRole ?? null });
+    await requestChatSync({ scope: 'all', reason: 'manual', priority: 'high' });
   }, [userId, userRole]);
   return { threads, reload };
 }
