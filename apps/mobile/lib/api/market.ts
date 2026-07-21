@@ -34,18 +34,25 @@ export const marketApi = {
         id: string;
         title: string;
         address?: string;
+        location_public?: string;
+        address_precision?: 'full' | 'public';
         area_sqm?: number;
         renovation_type: string;
         budget_hint?: number;
         pre_estimate?: number;
         description?: string | null;
         status: string;
+        assigned_contractor_id?: string | null;
+        quotes_count?: number;
+        quotes?: { id: string; contractor_id: string; pre_estimate: number; note?: string | null }[];
       }[]
     >(`/api/v1/job-leads${status ? `?status=${status}` : ''}`, {}, userId),
   createJobLead: (userId: string, body: JobLeadCreateBody) =>
     req('/api/v1/job-leads', { method: 'POST', body: JSON.stringify(body) }, userId),
   quoteJobLead: (userId: string, leadId: string, pre_estimate: number) =>
     req(`/api/v1/job-leads/${leadId}/quote`, { method: 'POST', body: JSON.stringify({ pre_estimate }) }, userId),
+  acceptJobLeadQuote: (userId: string, leadId: string, quoteId: string) =>
+    req(`/api/v1/job-leads/${leadId}/quotes/${quoteId}/accept`, { method: 'POST' }, userId),
   convertJobLead: (userId: string, leadId: string, body?: { property_type?: string; rooms?: object[] }) =>
     req<{ project_id: string; name: string }>(`/api/v1/job-leads/${leadId}/convert`, { method: 'POST', body: JSON.stringify(body || {}) }, userId),
   leadMessages: (userId: string, leadId: string) => req<{ id: string; user_id: string; text: string; at: string }[]>(`/api/v1/job-leads/${leadId}/messages`, {}, userId),

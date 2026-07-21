@@ -23,12 +23,22 @@ _WS_FORBIDDEN = 4403
 
 
 async def _authenticate_ws(websocket: WebSocket) -> str | None:
+    # Prefer short-lived ticket over long JWT in query (P2.20)
+    ticket = websocket.query_params.get("ticket")
+    if ticket:
+        from app.services.ws_ticket_service import consume_ws_ticket
+
+        uid = consume_ws_ticket(ticket)
+        if uid:
+            return uid
     token = websocket.query_params.get("token")
     if not token:
         # Also accept Authorization via first protocol header if clients send it
         auth = websocket.headers.get("authorization")
         if auth and auth.lower().startswith("bearer "):
             token = auth.split(" ", 1)[1].strip()
+    if not token:
+        return None
     try:
         return user_id_from_access_token(token)
     except JWTError:

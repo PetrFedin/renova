@@ -279,3 +279,5 @@ Tags после каждого slice: `v0.3.<n>-security` и т.д.
 - 2026-07-21: Phase B — webhook FOR UPDATE + amount/currency/yookassa_id verify; staging/prod webhook secret required.
 - 2026-07-21: Phase C — item transition matrix (`schedule_item_transitions`).
 - 2026-07-21: Phase D — staging HTTPS required; CORS allowlist; CI e2e without `|| true`; OTP secrets + 60s resend cooldown.
+- 2026-07-21: Hotfix MaterialPickList + UnifiedScheduleView broken imports (SyntaxError).
+- 2026-07-21: Phase E — lead address privacy, job_lead_quotes+accept, soft DELETE /me, WS tickets + mobile buildWsAuthQuery.

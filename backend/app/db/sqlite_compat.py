@@ -473,6 +473,36 @@ def ensure_os_schema() -> None:
                 pass
 
     # Trust: честные реквизиты перевода в профиле исполнителя
+
+    # Soft-delete users + multi-quote leads (wave-8 / Phase E)
+    if "users" in tables:
+        ucols = cols("users")
+        for col, typ in (
+            ("deletion_requested_at", "TEXT"),
+            ("deleted_at", "TEXT"),
+        ):
+            if col not in ucols:
+                try:
+                    c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+    if "job_lead_quotes" not in tables:
+        try:
+            c.executescript("""
+                CREATE TABLE IF NOT EXISTS job_lead_quotes (
+                  id TEXT PRIMARY KEY,
+                  lead_id TEXT NOT NULL,
+                  contractor_id TEXT NOT NULL,
+                  pre_estimate REAL NOT NULL,
+                  note TEXT,
+                  created_at TEXT,
+                  UNIQUE(lead_id, contractor_id)
+                );
+                CREATE INDEX IF NOT EXISTS ix_job_lead_quotes_lead ON job_lead_quotes(lead_id);
+            """)
+        except Exception:
+            pass
+
     if "contractor_profiles" in tables:
         cp = cols("contractor_profiles")
         if "payment_requisites" not in cp:

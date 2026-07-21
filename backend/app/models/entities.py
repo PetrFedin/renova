@@ -65,6 +65,9 @@ class User(Base):
     profile_code: Mapped[str | None] = mapped_column(String(8), unique=True, nullable=True, index=True)
     npd_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Soft-delete / GDPR retention (P2.21)
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
 
 class Project(Base):
@@ -837,6 +840,20 @@ class LeadMessage(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class JobLeadQuote(Base):
+    """Multiple contractor quotes per lead — customer picks (P2.18)."""
+    __tablename__ = "job_lead_quotes"
+    __table_args__ = (UniqueConstraint("lead_id", "contractor_id", name="uq_lead_contractor_quote"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    lead_id: Mapped[str] = mapped_column(String(36), ForeignKey("job_leads.id"), index=True)
+    contractor_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    pre_estimate: Mapped[float] = mapped_column(Float)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 class IssueSeverity(str, enum.Enum):
     low = "low"

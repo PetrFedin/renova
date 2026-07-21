@@ -63,17 +63,34 @@ async def anonymize_me(user: User = Depends(get_current_user), db: AsyncSession 
 
 @router.delete("/me")
 async def delete_me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import delete
-    from app.models.entities import Project
-    if user.role.value == "customer":
-        await db.execute(delete(Project).where(Project.customer_id == user.id))
-    else:
-        r = await db.execute(select(Project).where(Project.contractor_id == user.id))
-        for p in r.scalars().all():
-            p.contractor_id = None
-    await db.delete(user)
+    """Soft-delete + anonymize + revoke sessions (P2.21). Hard purge = retention job later."""
+    from datetime import datetime, timedelta
+    from app.services import session_service as sess_svc
+
+    now = datetime.utcnow()
+    user.deletion_requested_at = now
+    user.deleted_at = now
+    user.phone = f"deleted-{user.id[:8]}"
+    user.full_name = "Deleted"
+    user.inn = None
+    user.moy_nalog_linked = False
+    user.moy_nalog_status = "revoked"
+    await sess_svc.revoke_all_user_sessions(db, user.id)
     await db.commit()
-    return {"ok": True}
+    return {
+        "ok": True,
+        "soft_deleted": True,
+        "retention_until": (now + timedelta(days=30)).isoformat() + "Z",
+    }
+
+
+@router.post("/ws-ticket")
+async def mint_ws_ticket(user: User = Depends(get_current_user)):
+    """Short-lived WS ticket — prefer over long JWT in query string (P2.20)."""
+    from app.services.ws_ticket_service import issue_ws_ticket
+
+    ticket, ttl = issue_ws_ticket(user.id)
+    return {"ticket": ticket, "expires_in": ttl, "token_type": "ws_ticket"}
 
 
 
@@ -97,6 +114,8 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
         raise HTTPException(400, "Неверный или просроченный код")
     result = await db.execute(select(User).where(User.phone == body.phone))
     user = result.scalar_one_or_none()
+    if user and getattr(user, "deleted_at", None):
+        raise HTTPException(403, "account_deleted")
     if not user:
         npd_verified = False
         if body.role == "contractor" and body.inn and len(body.inn) == 12:
@@ -201,6 +220,8 @@ async def refresh_tokens(body: RefreshRequest, db: AsyncSession = Depends(get_db
     user = await db.get(User, sess.user_id)
     if not user:
         raise HTTPException(401, "user_not_found")
+    if getattr(user, "deleted_at", None):
+        raise HTTPException(401, "account_deleted")
     out = UserOut.model_validate(user, from_attributes=True)
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
     out.access_token = create_access_token(user.id, {"role": role})

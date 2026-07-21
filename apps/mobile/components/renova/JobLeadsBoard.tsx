@@ -30,12 +30,15 @@ type L = {
   id: string;
   title: string;
   address?: string;
+  location_public?: string;
+  address_precision?: 'full' | 'public';
   area_sqm?: number;
   renovation_type: string;
   budget_hint?: number;
   pre_estimate?: number;
   description?: string | null;
   status: string;
+  quotes?: { id: string; contractor_id: string; pre_estimate: number }[];
 };
 
 export function JobLeadsBoard({ userId, role }: { userId: string; role: string }) {
@@ -104,7 +107,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
           <Text style={s.sub}>
             {[
               RENOVATION_LABEL[l.renovation_type] || l.renovation_type,
-              l.address,
+              l.address || l.location_public,
               l.area_sqm != null ? `${l.area_sqm} м²` : null,
               l.budget_hint != null ? formatRub(l.budget_hint) : null,
             ]
@@ -118,6 +121,23 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
           ) : null}
           {l.pre_estimate ? <Text style={s.q}>Оценка: {formatRub(l.pre_estimate)}</Text> : null}
           <LeadChat userId={userId} leadId={l.id} />
+          {role === 'customer' && l.status === 'open' && (l.quotes?.length ?? 0) > 0 ? (
+            <View style={{ gap: 6, marginTop: 6 }}>
+              <Text style={s.sub}>Выберите КП:</Text>
+              {l.quotes!.map((q) => (
+                <PrimaryButton
+                  key={q.id}
+                  title={`Принять · ${formatRub(q.pre_estimate)}`}
+                  onPress={async () => {
+                    await api.acceptJobLeadQuote(userId, l.id, q.id);
+                    await sync();
+                    load();
+                    alertJobLeadAssigned(osRole);
+                  }}
+                />
+              ))}
+            </View>
+          ) : null}
           {role === 'customer' && l.status === 'open' ? (
             <PrimaryButton
               title="Авто-исполнитель"

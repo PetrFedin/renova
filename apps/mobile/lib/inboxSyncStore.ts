@@ -5,7 +5,7 @@ import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
 import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
-import { getAccessToken } from '@/lib/api/client';
+import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -348,60 +348,62 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
   const connect = () => {
     if (!alive || !userId) return;
     const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
-    try {
-      const tok = getAccessToken();
-      const qs = tok ? `?token=${encodeURIComponent(tok)}` : '';
-      const ws = new WebSocket(`${base}/ws/inbox/${userId}${qs}`);
-      ws.onopen = () => {
-        attempt = 0;
-        if (alive) {
-          const prev = inboxWsConnected;
-          inboxWsConnected = true;
-          if (!prev) notify();
-        }
-        pingTimer = setInterval(() => {
+    void (async () => {
+      try {
+        const qs = await buildWsAuthQuery();
+        if (!alive) return;
+        const ws = new WebSocket(`${base}/ws/inbox/${userId}${qs}`);
+        ws.onopen = () => {
+          attempt = 0;
+          if (alive) {
+            const prev = inboxWsConnected;
+            inboxWsConnected = true;
+            if (!prev) notify();
+          }
+          pingTimer = setInterval(() => {
+            try {
+              if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+            } catch {
+              /* noop */
+            }
+          }, 25_000);
+        };
+        ws.onmessage = (e) => {
+          if (e.data === 'ping' || e.data === 'pong') return;
           try {
-            if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+            JSON.parse(e.data) as InboxWsPayload;
           } catch {
             /* noop */
           }
-        }, 25_000);
-      };
-      ws.onmessage = (e) => {
-        if (e.data === 'ping' || e.data === 'pong') return;
-        try {
-          JSON.parse(e.data) as InboxWsPayload;
-        } catch {
-          /* noop */
-        }
-        onReload();
-        emitInboxWs();
-      };
-      ws.onerror = () => {
-        ws.close();
-      };
-      ws.onclose = () => {
-        if (pingTimer) clearInterval(pingTimer);
-        pingTimer = null;
+          onReload();
+          emitInboxWs();
+        };
+        ws.onerror = () => {
+          ws.close();
+        };
+        ws.onclose = () => {
+          if (pingTimer) clearInterval(pingTimer);
+          pingTimer = null;
+          if (alive) {
+            const prev = inboxWsConnected;
+            inboxWsConnected = false;
+            if (prev) notify();
+          }
+          if (!alive) return;
+          attempt += 1;
+          const delay = Math.min(30_000, 2000 * 2 ** Math.min(attempt - 1, 4));
+          timer = setTimeout(connect, delay);
+        };
+      } catch {
         if (alive) {
           const prev = inboxWsConnected;
           inboxWsConnected = false;
           if (prev) notify();
         }
-        if (!alive) return;
         attempt += 1;
-        const delay = Math.min(30_000, 2000 * 2 ** Math.min(attempt - 1, 4));
-        timer = setTimeout(connect, delay);
-      };
-    } catch {
-      if (alive) {
-        const prev = inboxWsConnected;
-        inboxWsConnected = false;
-        if (prev) notify();
+        timer = setTimeout(connect, 4000);
       }
-      attempt += 1;
-      timer = setTimeout(connect, 4000);
-    }
+    })();
   };
 
   connect();

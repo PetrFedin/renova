@@ -9,11 +9,13 @@ from app.models.entities import (
     ContractorPortfolioPhoto,
     ContractorProfile,
     JobLead,
+    JobLeadQuote,
     JobLeadStatus,
     LeadMessage,
     User,
     UserRole,
 )
+import re
 
 router = APIRouter(tags=["marketplace"])
 
@@ -49,18 +51,64 @@ class LeadMsgIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
-def _lead_dict(lead: JobLead) -> dict:
-    return {
+def _location_public(address: str | None) -> str | None:
+    """City/district only — full street hidden until contractor assigned (P2.17)."""
+    if not address:
+        return None
+    parts = [p.strip() for p in re.split(r"[,\n]", address) if p.strip()]
+    if not parts:
+        return None
+    return ", ".join(parts[:2])
+
+
+def _can_see_full_address(lead: JobLead, user: User) -> bool:
+    return user.id == lead.customer_id or (
+        lead.assigned_contractor_id is not None and user.id == lead.assigned_contractor_id
+    )
+
+
+def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = None) -> dict:
+    pub = _location_public(lead.address)
+    full = _can_see_full_address(lead, viewer)
+    out = {
         "id": lead.id,
         "title": lead.title,
-        "address": lead.address,
+        "address": lead.address if full else pub,
+        "location_public": pub,
+        "address_precision": "full" if full else "public",
         "area_sqm": lead.area_sqm,
         "renovation_type": lead.renovation_type,
         "budget_hint": lead.budget_hint,
         "description": lead.description,
         "status": lead.status.value,
         "pre_estimate": lead.pre_estimate,
+        "assigned_contractor_id": lead.assigned_contractor_id,
+        "quotes_count": len(quotes) if quotes is not None else 0,
     }
+    if quotes is not None and (viewer.id == lead.customer_id or viewer.role == UserRole.customer):
+        out["quotes"] = [
+            {
+                "id": q.id,
+                "contractor_id": q.contractor_id,
+                "pre_estimate": q.pre_estimate,
+                "note": q.note,
+                "created_at": q.created_at.isoformat() if q.created_at else None,
+            }
+            for q in quotes
+        ]
+    elif quotes is not None and viewer.role == UserRole.contractor:
+        mine = [q for q in quotes if q.contractor_id == viewer.id]
+        out["quotes"] = [
+            {
+                "id": q.id,
+                "contractor_id": q.contractor_id,
+                "pre_estimate": q.pre_estimate,
+                "note": q.note,
+                "created_at": q.created_at.isoformat() if q.created_at else None,
+            }
+            for q in mine
+        ]
+    return out
 
 
 def _can_access_lead(lead: JobLead, user: User) -> bool:
@@ -186,7 +234,15 @@ async def list_leads(
         except ValueError as exc:
             raise HTTPException(422, "invalid_lead_status") from exc
     rows = list((await db.execute(q.limit(50))).scalars().all())
-    return [_lead_dict(lead) for lead in rows]
+    lead_ids = [lead.id for lead in rows]
+    quotes_by: dict[str, list[JobLeadQuote]] = {lid: [] for lid in lead_ids}
+    if lead_ids:
+        qrows = list(
+            (await db.execute(select(JobLeadQuote).where(JobLeadQuote.lead_id.in_(lead_ids)))).scalars().all()
+        )
+        for qq in qrows:
+            quotes_by.setdefault(qq.lead_id, []).append(qq)
+    return [_lead_dict(lead, user, quotes_by.get(lead.id, [])) for lead in rows]
 
 
 @router.post("/job-leads")
@@ -211,16 +267,69 @@ async def quote_lead(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Add/update contractor quote without auto-assign (P2.18 — customer picks)."""
     if user.role != UserRole.contractor:
         raise HTTPException(403, "contractor_only")
     lead = await db.get(JobLead, lead_id)
-    if not lead or lead.status != JobLeadStatus.open:
+    if not lead or lead.status not in {JobLeadStatus.open, JobLeadStatus.quoted}:
         raise HTTPException(404, "lead_not_open")
+    if lead.assigned_contractor_id and lead.assigned_contractor_id != user.id:
+        raise HTTPException(409, "lead_already_assigned")
+    existing = (
+        await db.execute(
+            select(JobLeadQuote).where(
+                JobLeadQuote.lead_id == lead_id,
+                JobLeadQuote.contractor_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        existing.pre_estimate = body.pre_estimate
+        quote = existing
+    else:
+        quote = JobLeadQuote(
+            lead_id=lead_id,
+            contractor_id=user.id,
+            pre_estimate=body.pre_estimate,
+        )
+        db.add(quote)
+    # Keep lead open until customer accepts a quote; mirror latest for board display
     lead.pre_estimate = body.pre_estimate
-    lead.status = JobLeadStatus.quoted
-    lead.assigned_contractor_id = user.id
+    if lead.status == JobLeadStatus.open:
+        pass  # stay open — multiple quotes allowed
     await db.commit()
-    return {"ok": True, "pre_estimate": lead.pre_estimate}
+    await db.refresh(quote)
+    return {"ok": True, "quote_id": quote.id, "pre_estimate": quote.pre_estimate, "awaiting_customer_pick": True}
+
+
+@router.post("/job-leads/{lead_id}/quotes/{quote_id}/accept")
+async def accept_quote(
+    lead_id: str,
+    quote_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Customer selects one contractor quote → assign + quoted status."""
+    if user.role != UserRole.customer:
+        raise HTTPException(403, "customer_only")
+    lead = await db.get(JobLead, lead_id)
+    if not lead or lead.customer_id != user.id:
+        raise HTTPException(404, "lead_not_found")
+    if lead.assigned_contractor_id:
+        raise HTTPException(409, "lead_already_assigned")
+    quote = await db.get(JobLeadQuote, quote_id)
+    if not quote or quote.lead_id != lead_id:
+        raise HTTPException(404, "quote_not_found")
+    lead.assigned_contractor_id = quote.contractor_id
+    lead.pre_estimate = quote.pre_estimate
+    lead.status = JobLeadStatus.quoted
+    await db.commit()
+    return {
+        "ok": True,
+        "assigned_contractor_id": lead.assigned_contractor_id,
+        "pre_estimate": lead.pre_estimate,
+        "status": lead.status.value,
+    }
 
 
 @router.get("/contractors/match")
