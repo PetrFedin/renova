@@ -61,3 +61,11 @@ Before merge also verify Document Center upload/archive/restore + foreign 404 in
 - [x] Kontur/Goskey env scaffold + webhooks
 - [x] Release prep docs (`RELEASE-v0.2-PREP.md`)
 - [ ] Human: merge PR #2 + tag v0.2.0
+
+## Capability truth (OCR / Мой налог)
+
+- [ ] OCR health отдаёт реальный mode (local/demo/off/error), UI без hardcoded DEMO
+- [ ] Production: нет UI/API bypass «Мой налог» без OAuth
+- [ ] `MY_NALOG_DEV_BYPASS_ENABLED` не true на staging/prod
+- [ ] Audit на запрещённый bypass; secrets не в response
+

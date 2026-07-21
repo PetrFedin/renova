@@ -51,3 +51,9 @@ cd backend && python -m pytest tests/test_environment_guards.py -q
 ## Health
 
 `GET /health` → `{ "status": "ok", "environment": "development", ... }`
+
+## Capability / bypass guards
+
+- `MY_NALOG_DEV_BYPASS_ENABLED` — только development/test. В staging/production `validate_runtime_settings` hard-fail при `true`; runtime guard всё равно возвращает Forbidden.
+- OCR: `DOCUMENT_OCR_ENABLED`, `DOCUMENT_OCR_PROVIDER` (`heuristic`→local, `demo`→demo). См. `SERVICE-CAPABILITIES.md`.
+

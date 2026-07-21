@@ -40,6 +40,16 @@ export const adminApi = {
   getFnsHealth: (userId: string) => req<{
     receipt_auth_configured: boolean; live_verify_ready: boolean; demo_verify_allowed: boolean;
     hint: string | null; environment: string;
+    moy_nalog?: {
+      available: boolean;
+      mode: string;
+      configured: boolean;
+      healthy: boolean;
+      message?: string | null;
+      oauth_configured?: boolean;
+      connection_available?: boolean;
+      dev_bypass_available?: boolean;
+    };
   }>('/api/v1/fns/health', {}, userId),
   getYookassaHealth: (userId: string) => req<{
     configured: boolean; live_checkout_ready: boolean; demo_allowed: boolean;

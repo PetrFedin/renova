@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
         public_base_url=settings.public_base_url,
         secret_key=settings.secret_key,
         auth_allow_header_user_id=settings.auth_allow_header_user_id,
+        moy_nalog_dev_bypass_enabled=settings.moy_nalog_dev_bypass_enabled,
     )
     for warning in collect_warnings(
         environment=settings.environment,

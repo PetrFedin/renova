@@ -13,10 +13,13 @@ router = APIRouter(prefix="/fns", tags=["fns"])
 
 @router.get("/health")
 async def fns_health(_user: User = Depends(get_current_user)):
-    """P4: staging probe ФНС чеки / НПД (без секретов)."""
+    """P4: staging probe ФНС чеки / НПД + capability «Мой налог» (без секретов)."""
     from app.services.fns.receipt_verify import fns_receipt_health
+    from app.services.moy_nalog_capability import moy_nalog_capability
     _ = _user
-    return fns_receipt_health()
+    base = fns_receipt_health()
+    base["moy_nalog"] = moy_nalog_capability()
+    return base
 
 
 
@@ -68,31 +71,47 @@ async def verify_me(body: CheckNpdRequest, user: User = Depends(get_current_user
 
 @router.post("/moy-nalog/link", response_model=MoyNalogLinkResponse)
 async def link_moy_nalog(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """OAuth «Мой налог»: demo только development/test или MOY_NALOG_ENABLED."""
-    from app.core.config import settings
-    from app.core.environment import normalize_environment
+    """Dev-only bypass: флаг без OAuth.
 
-    env = normalize_environment(settings.environment)
-    demo_ok = env in ("development", "test")
-    if not settings.moy_nalog_enabled and not demo_ok:
-        raise HTTPException(
-            501,
-            "«Мой налог» OAuth ещё не подключён. Задайте MOY_NALOG_ENABLED=true после интеграции или используйте demo в development.",
+    Требует MY_NALOG_DEV_BYPASS_ENABLED=true и non-production.
+    В staging/production всегда 403 (даже при ошибочно выставленном флаге).
+    Admin role сам по себе bypass не открывает.
+    """
+    from app.services.auth_audit import log_auth_event
+    from app.services.moy_nalog_capability import moy_nalog_dev_bypass_allowed
+
+    if not moy_nalog_dev_bypass_allowed():
+        # Без PII/токенов — только факт запрета
+        await log_auth_event(
+            db,
+            user_id=user.id,
+            path="/fns/moy-nalog/link",
+            status_code=403,
+            note="moy_nalog_bypass_denied",
         )
-    # Не OAuth: статус admin_enabled / demo — UI не должен писать «подключён»
-    mode = "demo" if demo_ok and not settings.moy_nalog_enabled else "enabled"
-    user.moy_nalog_linked = True  # legacy flag
-    user.moy_nalog_status = "admin_enabled" if mode == "enabled" else "authorization_started"
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "moy_nalog_bypass_forbidden",
+                "message": "Ручное включение «Мой налог» без OAuth запрещено. Используйте OAuth или MY_NALOG_DEV_BYPASS_ENABLED в development.",
+            },
+        )
+
+    user.moy_nalog_linked = True
+    user.moy_nalog_status = "authorization_started"
     await db.commit()
+    await log_auth_event(
+        db,
+        user_id=user.id,
+        path="/fns/moy-nalog/link",
+        status_code=200,
+        note="moy_nalog_dev_bypass_ok",
+    )
     return MoyNalogLinkResponse(
         linked=True,
-        mode=mode,
+        mode="demo",
         status=user.moy_nalog_status,
-        message=(
-            "Demo: интеграция включена без OAuth ФНС. Чеки live недоступны."
-            if mode == "demo"
-            else "Интеграция включена администратором — аккаунт ФНС ещё не авторизован через OAuth."
-        ),
+        message="Dev bypass: флаг включён без OAuth ФНС. Чеки live недоступны.",
     )
 
 
@@ -163,8 +182,6 @@ async def moy_nalog_oauth_callback(
     db: AsyncSession = Depends(get_db),
 ):
     """Завершить OAuth. connected — только после успешного token exchange."""
-    from app.core.config import settings
-    from app.core.environment import normalize_environment
     from app.services import moy_nalog_oauth as oauth
 
     if not oauth.consume_oauth_state(body.state, user.id):
@@ -172,10 +189,26 @@ async def moy_nalog_oauth_callback(
         await db.commit()
         raise HTTPException(400, "invalid_or_expired_oauth_state")
 
-    env = normalize_environment(settings.environment)
-    demo_ok = env in ("development", "test")
+    from app.services.moy_nalog_capability import moy_nalog_dev_bypass_allowed
+    from app.services.auth_audit import log_auth_event
 
-    if body.demo_complete and demo_ok and not oauth.oauth_ready():
+    if body.demo_complete and not moy_nalog_dev_bypass_allowed():
+        await log_auth_event(
+            db,
+            user_id=user.id,
+            path="/fns/moy-nalog/oauth/callback",
+            status_code=403,
+            note="moy_nalog_demo_complete_denied",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "moy_nalog_bypass_forbidden",
+                "message": "demo_complete запрещён вне development bypass.",
+            },
+        )
+
+    if body.demo_complete and moy_nalog_dev_bypass_allowed() and not oauth.oauth_ready():
         user.moy_nalog_linked = True
         user.moy_nalog_status = "authorization_started"
         await db.commit()
