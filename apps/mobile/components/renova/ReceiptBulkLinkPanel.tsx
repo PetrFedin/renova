@@ -7,6 +7,8 @@ import { StagePickerChips } from '@/components/renova/StagePickerChips';
 import { api, type ProjectDetail, type ReceiptItem } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertReceiptsBulkLinked } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   userId: string;
@@ -45,7 +47,7 @@ export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDo
         user: user ?? ({ id: userId } as any),
         project: activeProject ?? project,
       });
-      Alert.alert('Готово', `Привязано чеков: ${unlinked.length}`);
+      alertReceiptsBulkLinked((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, unlinked.length);
       onDone();
     } catch {
       Alert.alert('Ошибка', 'Не удалось привязать все чеки. Проверьте сервер.');

@@ -8,6 +8,8 @@ import { expenseCategoryLabel } from '@/constants/labels';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertReceiptsBulkCategorized } from '@/lib/receiptNav';
+import type { OsRole } from '@/constants/osSections';
 
 type Props = {
   userId: string;
@@ -37,7 +39,7 @@ export function ReceiptBulkCategoryPanel({
         user: user ?? ({ id: userId } as any),
         project: activeProject ?? ({ id: projectId } as any),
       });
-      Alert.alert('Готово', `Категория «${expenseCategoryLabel(category)}» — ${receiptIds.length} чек(ов)`);
+      alertReceiptsBulkCategorized((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, expenseCategoryLabel(category), receiptIds.length);
       onDone();
     } catch {
       Alert.alert('Ошибка', 'Не удалось обновить категории. Проверьте сервер.');

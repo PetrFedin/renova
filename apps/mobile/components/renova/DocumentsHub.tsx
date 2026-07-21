@@ -29,6 +29,7 @@ import { alertIcalExported } from '@/lib/calendarIcsNav';
 import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
 import { openQcIssue } from '@/lib/qcNav';
 import { alertCloseoutDone, alertDocumentSigned } from '@/lib/scheduleCloseoutNav';
+import { alertDocumentOcrDone } from '@/lib/fieldCommsNav';
 
 type DocRow = {
   id: string;
@@ -609,7 +610,7 @@ ${(res.body || '').slice(0, 220)}`,
           await api.runDocumentOcr(userId, projectId, doc.id, true);
           await reloadIndex();
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-          Alert.alert('OCR', 'Классификация обновлена.');
+          alertDocumentOcrDone((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
         }),
       },
       {

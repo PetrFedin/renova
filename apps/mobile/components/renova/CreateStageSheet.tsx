@@ -5,6 +5,9 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
 import type { ProjectDetail } from '@/lib/api';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { alertStageCreated } from '@/lib/fieldCommsNav';
+import type { OsRole } from '@/constants/osSections';
 
 export function CreateStageSheet({
   visible,
@@ -21,6 +24,8 @@ export function CreateStageSheet({
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [roomId, setRoomId] = useState<string | null>(null);
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'customer' ? 'customer' : 'contractor';
   const [busy, setBusy] = useState(false);
 
   async function submit() {
@@ -38,6 +43,8 @@ export function CreateStageSheet({
       setEnd('');
       setRoomId(null);
       onClose();
+      // W134: этап → график / работы
+      alertStageCreated(role);
     } catch (e: unknown) {
       // W113: offline из createStage
       if (e instanceof Error && e.message === 'offline_queued') {

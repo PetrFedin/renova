@@ -23,6 +23,7 @@ import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { router } from 'expo-router';
 
@@ -476,7 +477,7 @@ export function ChatThreadView({
               setInvitePhone('');
               setInviteCode('');
               await reload();
-              Alert.alert('Готово', 'Приглашение отправлено');
+              alertChatInviteSent((user.role === 'contractor' ? 'contractor' : 'customer'));
             }} />
             <PrimaryButton title="Закрыть" variant="outline" onPress={() => setInviteOpen(false)} />
           </View>

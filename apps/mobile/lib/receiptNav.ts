@@ -78,3 +78,37 @@ export function alertManualExpenseSaved(role: OsRole, amount: number) {
     ],
   );
 }
+
+/** W134: массовая привязка чеков к этапу */
+export function alertReceiptsBulkLinked(role: OsRole, count: number) {
+  Alert.alert(
+    'Чеки привязаны',
+    `Привязано: ${count}. Сверьте fact в расходах и на этапе.`,
+    [
+      { text: 'OK' },
+      {
+        text: 'Расходы',
+        onPress: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
+      },
+      {
+        text: 'Материалы',
+        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+      },
+    ],
+  );
+}
+
+/** W134: массовая категория чеков */
+export function alertReceiptsBulkCategorized(role: OsRole, label: string, count: number) {
+  Alert.alert(
+    'Категория обновлена',
+    `«${label}» — ${count} чек(ов).`,
+    [
+      { text: 'OK' },
+      {
+        text: 'Расходы',
+        onPress: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
+      },
+    ],
+  );
+}

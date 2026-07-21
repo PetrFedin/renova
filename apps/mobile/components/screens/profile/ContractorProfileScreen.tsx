@@ -20,6 +20,7 @@ import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
+import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
 
 /** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
@@ -70,7 +71,7 @@ function TeamSection() {
                 await syncProjectSideEffects({ user, project: activeProject });
                 setTeam(await api.getTeam(user.id));
                 setPhone('');
-                Alert.alert('Готово', 'Приглашение отправлено');
+                alertTeamInviteSent('contractor');
               } catch (e: unknown) {
                 Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось пригласить');
               }
@@ -86,7 +87,7 @@ function TeamSection() {
               await api.createTeam(user.id, 'Моя бригада');
               await syncProjectSideEffects({ user, project: activeProject });
               setTeam(await api.getTeam(user.id));
-              Alert.alert('Готово', 'Бригада создана');
+              alertTeamCreated('contractor');
             } catch (e: unknown) {
               setTeam(null);
               Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать бригаду');
@@ -156,7 +157,7 @@ export function ContractorProfileScreen() {
                 company_name: company || null,
                 payment_requisites: payReq || null,
               });
-              Alert.alert('Сохранено', 'Реквизиты будут показаны заказчику при оплате.');
+              alertRequisitesSaved('contractor');
             } catch {
               Alert.alert('Ошибка', 'Не удалось сохранить реквизиты');
             }
