@@ -16,6 +16,7 @@ import { objectTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChangeOrderApproved } from '@/lib/procurementNav';
 import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
+import { reportCatch } from '@/lib/reportError';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -25,7 +26,7 @@ export default function ApprovalsScreen() {
   const isCustomer = user?.role === 'customer';
 
   const load = useCallback(() => {
-    if (user && activeProject) api.approvalHub(user.id, activeProject.id).then(r => setItems(r.items)).catch(() => {});
+    if (user && activeProject) api.approvalHub(user.id, activeProject.id).then(r => setItems(r.items)).catch(reportCatch('app.approvals.1'));
   }, [user?.id, activeProject?.id]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);

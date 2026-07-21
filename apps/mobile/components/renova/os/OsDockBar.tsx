@@ -22,6 +22,7 @@ import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
 import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/resolveDynamicDock';
+import { reportCatch } from '@/lib/reportError';
 
 const REPAIR_SEGMENTS = new Set(['repair', 'works', 'materials', 'control', 'stages']);
 const OBJECT_SEGMENTS = new Set(['object', 'rooms', 'estimate', 'plan']);
@@ -50,7 +51,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
   }, [activeProject, role, detailLevel]);
 
   const reloadPrefs = useCallback(() => {
-    getDockBar(role).then(setItems).catch(() => {});
+    getDockBar(role).then(setItems).catch(reportCatch('components.renova.os.OsDockBar.1'));
   }, [role]);
 
   useFocusEffect(useCallback(() => {

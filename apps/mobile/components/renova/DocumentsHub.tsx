@@ -145,7 +145,7 @@ export function DocumentsHub({
     setIndexLoading(true);
     return api.listProjectDocuments(userId, projectId)
       .then((result) => setDocIndex(result))
-      .catch(() => setDocIndex(null))
+      .catch((e) => { reportError('components.renova.DocumentsHub.DocIndex', e); setDocIndex(null); })
       .finally(() => setIndexLoading(false));
   }, [userId, projectId]);
 

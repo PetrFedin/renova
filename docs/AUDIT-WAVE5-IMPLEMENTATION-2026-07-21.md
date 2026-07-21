@@ -31,9 +31,10 @@ npx tsx apps/mobile/lib/failClosed.w144.test.ts
 npx tsx apps/mobile/lib/oauthScaffold.w145.test.ts
 ```
 
-## Осталось (только ops / credentials)
+## Осталось (только ops / credentials) — см. wave-6 matrix
 
-1. Split PR slices develop→main (исполнение плана)
-2. Live `h0:check:live` против реального staging HTTPS
-3. Реальные ФНС OAuth credentials + token_url (тогда status=`connected`)
-4. `npm i @sentry/react-native` в mobile при включении DSN (native build)
+1. Split PR slices develop→main
+2. Live `h0:check:live` / staging HTTPS
+3. Реальные ФНС OAuth credentials
+4. Native Sentry SDK при DSN
+5. ~~silent catch sweep~~ → wave-6

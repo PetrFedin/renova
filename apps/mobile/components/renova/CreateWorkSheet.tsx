@@ -14,6 +14,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertWorkCreated } from '@/lib/fieldCreateNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 type Props = {
   visible: boolean;

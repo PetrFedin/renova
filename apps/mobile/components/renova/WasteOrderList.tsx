@@ -9,6 +9,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { alertWasteOrderAdvanced } from '@/lib/siteOpsNav';
 import type { OsRole } from '@/constants/osSections';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { reportCatch } from '@/lib/reportError';
 
 /** W114: UI офлайн для вывоза мусора (API уже в offlineQueue) */
 async function runWasteAction(
@@ -34,7 +35,7 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
   const syncAfter = () => syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
   const [items, setItems] = useState<WasteOrder[]>([]);
   const load = useCallback(() => {
-    api.listWasteOrders(userId, projectId).then(setItems).catch(() => {});
+    api.listWasteOrders(userId, projectId).then(setItems).catch(reportCatch('components.renova.WasteOrderList.1'));
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);

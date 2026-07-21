@@ -7,6 +7,7 @@ import { apiErrorMessage } from '@/lib/formatPhone';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportCatch } from '@/lib/reportError';
 
 type C = {
   id: string;
@@ -55,7 +56,7 @@ export function ContractorDirectory({
     api
       .matchContractors(userId, 'capital', 'tiling')
       .then(setItems)
-      .catch(() => api.listContractors(userId).then(setItems).catch(() => {}));
+      .catch(() => api.listContractors(userId).then(setItems).catch(reportCatch('components.renova.ContractorDirectory.1')));
   }, [userId]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);
@@ -65,7 +66,7 @@ export function ContractorDirectory({
     setBusyId(contractorId);
     try {
       await api.linkContractor(userId, projectId, contractorId);
-      await loadProject(projectId).catch(() => {});
+      await loadProject(projectId).catch(reportCatch('components.renova.ContractorDirectory.2'));
       // W97: home/inbox/смета после подключения исполнителя
       await syncProjectSideEffects({
         user: user ?? ({ id: userId } as any),

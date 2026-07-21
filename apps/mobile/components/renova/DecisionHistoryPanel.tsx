@@ -14,6 +14,7 @@ import {
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 type Props = {
   userId: string;
@@ -42,7 +43,7 @@ export function DecisionHistoryPanel({
     api
       .activityFeed(userId, projectId)
       .then((items) => setRaw(buildDecisionHistory(items, { stageId, limit: 100 })))
-      .catch(() => setRaw([]));
+      .catch((e) => { reportError('components.renova.DecisionHistoryPanel.Raw', e); setRaw([]); });
   }, [userId, projectId, stageId]);
 
   useEffect(() => {

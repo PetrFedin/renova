@@ -12,6 +12,7 @@ import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { flushOfflineOutbox } from '@/lib/offline';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 function inboxSubtitle(badge: number, chatUnread: number): string {
   const chat = Math.max(0, chatUnread || 0);
@@ -57,8 +58,8 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
   const open = async (it: InboxItem) => {
     // W78: offline-строка → flush той же очереди, что OfflineSyncStatus
     if (it.kind === 'offline') {
-      await flushOfflineOutbox().catch(() => {});
-      await reload().catch(() => {});
+      await flushOfflineOutbox().catch(reportCatch('components.screens.UnifiedInboxScreen.1'));
+      await reload().catch(reportCatch('components.screens.UnifiedInboxScreen.2'));
       return;
     }
     if (it.kind === 'approval') navigateApproval(it.approval, role, returnTo);
@@ -80,7 +81,7 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
           <Text style={s.empty}>Нет активных задач — всё под контролем</Text>
         )}
         {visible.map((it) => (
-          <InboxRow key={it.id} item={it} onPress={() => { open(it).catch(() => {}); }} />
+          <InboxRow key={it.id} item={it} onPress={() => { open(it).catch(reportCatch('components.screens.UnifiedInboxScreen.3')); }} />
         ))}
       </ScrollView>
     </>

@@ -285,7 +285,7 @@ export function PaymentDetailSheet({
         // Клиентский gate уже проверил перевод/чек; сервер принимает ack или receipt_id
         transfer_ack: Boolean(transferAck || receiptAttached),
       });
-      await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(() => {});
+      await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(reportCatch('components.renova.PaymentDetailSheet.1'));
       await syncProjectSideEffects({
         user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
         project: activeProject ?? ({ id: projectId } as any),

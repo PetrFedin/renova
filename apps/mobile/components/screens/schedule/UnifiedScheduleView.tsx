@@ -25,7 +25,7 @@ import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats
 import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
-import {
+import { reportError } from '@/lib/reportError';
   alertScheduleConfirmed,
   alertScheduleRejected,
   alertScheduleSubmitted,
@@ -86,9 +86,9 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api.getCalendar(user.id, activeProject.id).then(setCal).catch(() => setCal(null));
-    api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch(() => setWorkOrders([]));
-    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => setPurchases([]));
+    api.getCalendar(user.id, activeProject.id).then(setCal).catch((e) => { reportError('components.screens.schedule.UnifiedSched.Cal', e); setCal(null); });
+    api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch((e) => { reportError('components.screens.schedule.UnifiedSched.WorkOrders', e); setWorkOrders([]); });
+    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch((e) => { reportError('components.screens.schedule.UnifiedSched.Purchases', e); setPurchases([]); });
     api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => {
       setSchedule(s);
       setPlanHint(s ? `План: ${s.status}` : null);

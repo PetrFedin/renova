@@ -18,6 +18,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { openQcIssue } from '@/lib/qcNav';
 import { alertFloorPlanUploaded, alertFloorPunchCreated } from '@/lib/shareAccessNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 const MAP_H = 180;
@@ -56,7 +57,7 @@ export function FloorPlanPanel({
   const [addingPunch, setAddingPunch] = useState(false);
   const planRef = useRef<FloorPlan | null>(null);
   const load = useCallback(() => {
-    api.listFloorPlans(userId, projectId).then(setPlans).catch(() => {});
+    api.listFloorPlans(userId, projectId).then(setPlans).catch(reportCatch('components.renova.FloorPlanPanel.1'));
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);

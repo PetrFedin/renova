@@ -10,6 +10,7 @@ import { useNavFromHere } from '@/lib/navigation';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 export function OfflineSyncBanner() {
   const nav = useNavFromHere();
@@ -26,7 +27,7 @@ export function OfflineSyncBanner() {
     setOnline(!!st.isConnected);
   }, []);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('components.renova.OfflineSyncBanner.1')); }, [reload]));
   // W92: после flush (layout / статус / конфликты) — счётчик без remount
   useEffect(() => subscribeOfflineFlush(() => { void reload(); }), [reload]);
 

@@ -5,6 +5,7 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportError } from '@/lib/reportError';
 
 const DUE_PRESETS = [
   { label: 'Завтра', days: 1 },
@@ -35,7 +36,7 @@ export function ChatTaskSheet({
   useEffect(() => { if (visible) setTitle(defaultTitle); }, [visible, defaultTitle]);
   const reloadMembers = useCallback(() => {
     if (!visible) return;
-    api.getTeam(userId).then((t) => setMembers(t?.members || [])).catch(() => setMembers([]));
+    api.getTeam(userId).then((t) => setMembers(t?.members || [])).catch((e) => { reportError('components.renova.chat.ChatTaskSheet.Members', e); setMembers([]); });
   }, [visible, userId]);
   useEffect(() => { reloadMembers(); }, [reloadMembers]);
   useProjectDataReload(reloadMembers);

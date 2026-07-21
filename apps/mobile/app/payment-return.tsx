@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
 import { budgetTabRoute } from '@/constants/osSections';
 import { replaceOsNav } from '@/lib/pushOsNav';
+import { reportCatch } from '@/lib/reportError';
 
 /** Deep link renova://payment-return?projectId=&paymentId= после ЮKassa redirect. */
 export default function PaymentReturnScreen() {
@@ -30,7 +31,7 @@ export default function PaymentReturnScreen() {
         const items = await api.listPayments(user.id, projectId);
         const pay = items.find((p) => p.id === paymentId);
         await refreshProjects();
-        await loadProject(projectId).catch(() => {});
+        await loadProject(projectId).catch(reportCatch('app.paymentreturn.1'));
         // W94: бюджет/inbox после YuKassa return (loadProject → void)
         await syncProjectSideEffects({ user, project: { id: projectId } as any });
         if (cancelled) return;

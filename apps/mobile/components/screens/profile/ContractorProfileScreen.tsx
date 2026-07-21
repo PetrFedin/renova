@@ -22,6 +22,7 @@ import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
 import * as WebBrowser from 'expo-web-browser';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 /** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
@@ -37,7 +38,7 @@ function TeamSection() {
 
   const reloadTeam = useCallback(() => {
     if (!user) return;
-    api.getTeam(user.id).then(setTeam).catch(() => setTeam(null));
+    api.getTeam(user.id).then(setTeam).catch((e) => { reportError('components.screens.profile.ContractorPro.Team', e); setTeam(null); });
   }, [user?.id]);
   useEffect(() => { reloadTeam(); }, [reloadTeam]);
   useProjectDataReload(reloadTeam);
@@ -112,7 +113,7 @@ export function ContractorProfileScreen() {
     api.getMyContractorProfile(user.id).then((p) => {
       setPayReq(p.payment_requisites || '');
       setCompany(p.company_name || '');
-    }).catch(() => {});
+    }).catch(reportCatch('components.screens.profile.ContractorProfileScre.1'));
   }, [user?.id]);
   useEffect(() => { reloadProfile(); }, [reloadProfile]);
   useProjectDataReload(reloadProfile);

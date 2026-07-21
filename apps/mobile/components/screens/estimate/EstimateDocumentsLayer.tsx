@@ -11,6 +11,7 @@ import { documentsHref } from '@/lib/documentsNav';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 type DocRow = {
   id: string;
@@ -72,7 +73,7 @@ export function EstimateDocumentsLayer({
     try {
       const res = await api.importEstimateCsv(userId, projectId, csvText);
       setImportOpen(false);
-      await loadProject(projectId).catch(() => {});
+      await loadProject(projectId).catch(reportCatch('components.screens.estimate.EstimateDocumentsLay.1'));
       // W99: смета/бюджет/inbox после CSV import
       await syncProjectSideEffects({
         user: user ?? ({ id: userId } as any),

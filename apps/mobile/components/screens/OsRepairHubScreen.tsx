@@ -14,6 +14,7 @@ import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { api } from '@/lib/api';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { replaceOsNav } from '@/lib/pushOsNav';
+import { reportError } from '@/lib/reportError';
 
 const TAB_IDS = ['works', 'materials', 'selections', 'control'] as const;
 
@@ -46,8 +47,8 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
 
   const reloadBadge = useCallback(() => {
     if (!user || !activeProject) return;
-    api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)).catch(() => setPendingAcceptance(0));
-    api.selectionsPendingCount(user.id, activeProject.id).then((r) => setPendingSelections(r.count)).catch(() => setPendingSelections(0));
+    api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)).catch((e) => { reportError('components.screens.OsRepairHubScreen.PendingAcceptance', e); setPendingAcceptance(0); });
+    api.selectionsPendingCount(user.id, activeProject.id).then((r) => setPendingSelections(r.count)).catch((e) => { reportError('components.screens.OsRepairHubScreen.PendingSelections', e); setPendingSelections(0); });
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reloadBadge(); }, [reloadBadge]));

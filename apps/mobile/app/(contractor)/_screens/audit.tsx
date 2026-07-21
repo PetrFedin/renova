@@ -6,6 +6,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportError } from '@/lib/reportError';
 
 export default function AuditScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -13,7 +14,7 @@ export default function AuditScreen() {
   const [logs, setLogs] = useState<any[]>([]);
   const reload = useCallback(() => {
     if (!user) return;
-    api.getAuditLogs(user.id).then(setLogs).catch(() => setLogs([]));
+    api.getAuditLogs(user.id).then(setLogs).catch((e) => { reportError('app.(contractor)._screens.audit.Logs', e); setLogs([]); });
   }, [user?.id]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);

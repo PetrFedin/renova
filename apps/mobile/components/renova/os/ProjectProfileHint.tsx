@@ -9,6 +9,7 @@ import type { ProjectDetail } from '@/lib/api';
 import { formatProfileGapLabel, getProjectProfileGaps } from '@/lib/domain/projectProfileGaps';
 import type { OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
+import { reportCatch } from '@/lib/reportError';
 
 const dismissKey = (projectId: string) => `renova_profile_hint_dismiss_${projectId}`;
 
@@ -40,7 +41,7 @@ export function ProjectProfileHint({ project, role }: { project: ProjectDetail; 
       <Pressable
         hitSlop={8}
         onPress={() => {
-          AsyncStorage.setItem(dismissKey(project.id), '1').catch(() => {});
+          AsyncStorage.setItem(dismissKey(project.id), '1').catch(reportCatch('components.renova.os.ProjectProfileHint.1'));
           setDismissed(true);
         }}
         accessibilityRole="button"

@@ -103,14 +103,14 @@ export function StageDetailScreen() {
     if (!user || !activeProject || !id) return;
     const st = await api.getStage(user.id, activeProject.id, id);
     setStage(st);
-    api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch(() => setWfChecks([]));
+    api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch((e) => { reportError('components.screens.StageDetailScreen.WfChecks', e); setWfChecks([]); });
     api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch((e) => {
       reportError('stage.blocked', e, { stageId: id });
       // Fail-closed: неизвестный статус deps → блокируем действия
       setBlocked({ blocked: true, depends_on: 'load_error' });
     });
-    api.getContractGate(user.id, activeProject.id).then(setContractGate).catch(() => setContractGate(null));
-    api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch(() => setWorkSnap(null));
+    api.getContractGate(user.id, activeProject.id).then(setContractGate).catch((e) => { reportError('components.screens.StageDetailScreen.ContractGate', e); setContractGate(null); });
+    api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch((e) => { reportError('components.screens.StageDetailScreen.WorkSnap', e); setWorkSnap(null); });
     getCustomChecks(id).then(setCustomChecks).catch(reportCatch('stage.customChecks'));
   }, [user?.id, activeProject?.id, id]);
   useProjectDataReload(reload);

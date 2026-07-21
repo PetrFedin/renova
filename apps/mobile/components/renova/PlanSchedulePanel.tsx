@@ -9,6 +9,7 @@ import { useNavFromHere } from '@/lib/navigation';
 import { api, type ProjectPlan } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { formatScheduleRange, formatScheduleWorkSpan } from '@/lib/formatScheduleDate';
+import { reportCatch } from '@/lib/reportError';
 
 export function PlanSchedulePanel({
   userId,
@@ -27,7 +28,7 @@ export function PlanSchedulePanel({
   const [plan, setPlan] = useState<ProjectPlan | null>(null);
 
   const reload = useCallback(() => {
-    api.getPlan(userId, projectId).then(setPlan).catch(() => {});
+    api.getPlan(userId, projectId).then(setPlan).catch(reportCatch('components.renova.PlanSchedulePanel.1'));
   }, [userId, projectId]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);

@@ -22,6 +22,7 @@ import {
   type FinalReportSectionId,
 } from '@/lib/reports/reportSections';
 import type { DailyReport, FinalReport, WeeklyReport } from '@/lib/reports/reportTypes';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 function toggleId<T extends string>(list: T[], id: T, min = 1): T[] {
   if (list.includes(id)) {
@@ -44,12 +45,12 @@ export default function ReportsScreen() {
 
   const reload = useCallback(async () => {
     if (!user || !activeProject) return;
-    api.reportDaily(user.id, activeProject.id).then((d) => setDaily(d as DailyReport)).catch(() => setDaily(null));
-    api.reportWeekly(user.id, activeProject.id).then((d) => setWeekly(d as WeeklyReport)).catch(() => setWeekly(null));
-    api.reportFinal(user.id, activeProject.id).then((d) => setFinalReport(d as FinalReport)).catch(() => setFinalReport(null));
+    api.reportDaily(user.id, activeProject.id).then((d) => setDaily(d as DailyReport)).catch((e) => { reportError('app._stack.reports.Daily', e); setDaily(null); });
+    api.reportWeekly(user.id, activeProject.id).then((d) => setWeekly(d as WeeklyReport)).catch((e) => { reportError('app._stack.reports.Weekly', e); setWeekly(null); });
+    api.reportFinal(user.id, activeProject.id).then((d) => setFinalReport(d as FinalReport)).catch((e) => { reportError('app._stack.reports.FinalReport', e); setFinalReport(null); });
   }, [user?.id, activeProject?.id]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('app._stack.reports.1')); }, [reload]));
   useProjectDataReload(reload);
 
   const onPdfError = () => Alert.alert('Ошибка', 'Не удалось сформировать PDF. Проверьте сервер.');

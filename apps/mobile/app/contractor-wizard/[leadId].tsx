@@ -13,6 +13,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { BackHeader } from '@/components/renova/BackHeader';
+import { reportCatch } from '@/lib/reportError';
 
 export default function ContractorLeadWizard() {
   const { leadId, returnTo } = useLocalSearchParams<{ leadId: string; returnTo?: string }>();
@@ -26,7 +27,7 @@ export default function ContractorLeadWizard() {
 
   useEffect(() => {
     if (!user || !leadId) return;
-    api.listJobLeads(user.id).then((items) => setLead(items.find((x) => x.id === leadId) || null)).catch(() => {});
+    api.listJobLeads(user.id).then((items) => setLead(items.find((x) => x.id === leadId) || null)).catch(reportCatch('app.contractorwizard.leadId.1'));
   }, [user?.id, leadId]);
 
   const total = useMemo(() => {

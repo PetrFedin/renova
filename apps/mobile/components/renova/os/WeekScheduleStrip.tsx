@@ -8,6 +8,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { calendarEventInRange, filterCalendarEventsForRole } from '@/lib/domain/calendarEvents';
 import { useOsNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 type DayGroup = { date: string; label: string; count: number; sample: string };
 
@@ -43,7 +44,7 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
       const to = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
       const week = filterCalendarEventsForRole(c.events, role).filter((e) => calendarEventInRange(e, from, to));
       setEvents(week);
-    }).catch(() => setEvents([]));
+    }).catch((e) => { reportError('components.renova.os.WeekScheduleStrip.Events', e); setEvents([]); });
   }, [userId, projectId, role]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);

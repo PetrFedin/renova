@@ -25,6 +25,7 @@ import { showEstimateCategoryFilters } from '@/lib/detailLevelPolicy';
 import { alertEstimateLocked, alertEstimateLockRejected } from '@/lib/estimatePayNav';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => void }) {
   const pathname = usePathname();
@@ -44,10 +45,10 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   /** W95: CO от исполнителя / lock — обновить без remount вкладки сметы */
   const reloadEstimateSurface = useCallback(() => {
     if (!user || !activeProject) return;
-    api.materialStats(user.id, activeProject.id).then(setStats).catch(() => {});
-    api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(() => {});
+    api.materialStats(user.id, activeProject.id).then(setStats).catch(reportCatch('components.screens.estimate.CustomerEstimateView.1'));
+    api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(reportCatch('components.screens.estimate.CustomerEstimateView.2'));
     if (activeProject.estimate_lock_proposed_at && !activeProject.estimate_locked_at) {
-      api.getEstimateLockDiff(user.id, activeProject.id).then(setLockDiff).catch(() => setLockDiff(null));
+      api.getEstimateLockDiff(user.id, activeProject.id).then(setLockDiff).catch((e) => { reportError('components.screens.estimate.CustomerEsti.LockDiff', e); setLockDiff(null); });
     } else {
       setLockDiff(null);
     }

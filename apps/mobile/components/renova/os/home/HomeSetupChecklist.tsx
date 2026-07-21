@@ -17,6 +17,7 @@ import {
 } from '@/lib/domain/buildSetupChecklist';
 import type { OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
+import { reportCatch } from '@/lib/reportError';
 
 const dismissKey = (projectId: string) => `renova_setup_checklist_dismiss_${projectId}`;
 
@@ -53,7 +54,7 @@ export function HomeSetupChecklist({
         <Pressable
           hitSlop={8}
           onPress={() => {
-            AsyncStorage.setItem(dismissKey(project.id), '1').catch(() => {});
+            AsyncStorage.setItem(dismissKey(project.id), '1').catch(reportCatch('components.renova.os.home.HomeSetupChecklist.1'));
             setDismissed(true);
           }}
           accessibilityRole="button"

@@ -14,6 +14,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ProjectDetail } from '@/lib/api';
 import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export default function ActivityScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -48,7 +49,7 @@ export default function ActivityScreen() {
     }
     api.getProject(user.id, selectedProjectId)
       .then((p) => setViewProject(p))
-      .catch(() => setViewProject(null));
+      .catch((e) => { reportError('app.activity.ViewProject', e); setViewProject(null); });
   }, [user?.id, selectedProjectId, activeProject]);
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function ActivityScreen() {
   const openDocuments = useCallback(async () => {
     if (!selectedProjectId) return;
     if (activeProject?.id !== selectedProjectId) {
-      await loadProject(selectedProjectId).catch(() => {});
+      await loadProject(selectedProjectId).catch(reportCatch('app.activity.1'));
     }
     pushOsNav('/documents', '/activity');
   }, [selectedProjectId, activeProject?.id, loadProject]);
@@ -100,7 +101,7 @@ export default function ActivityScreen() {
             title="Все документы (PDF)"
             variant="outline"
             disabled={!selectedProjectId}
-            onPress={() => { openDocuments().catch(() => {}); }}
+            onPress={() => { openDocuments().catch(reportCatch('app.activity.2')); }}
           />
         </View>
 

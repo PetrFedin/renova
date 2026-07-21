@@ -10,6 +10,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { alertViewerGuestAdded } from '@/lib/shareAccessNav';
+import { reportError } from '@/lib/reportError';
 
 type V = { user_id: string; phone: string; full_name?: string; role: string };
 
@@ -33,7 +34,7 @@ export function ViewerSharePanel({
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    api.listViewers(userId, projectId).then(setItems).catch(() => setItems([]));
+    api.listViewers(userId, projectId).then(setItems).catch((e) => { reportError('components.renova.ViewerSharePanel.Items', e); setItems([]); });
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);

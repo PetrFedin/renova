@@ -8,6 +8,7 @@ import { searchChats } from '@/lib/chatSearchCache';
 import { api, ProjectDetail } from '@/lib/api';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 function openSearchHit(
   h: { href: string; type?: string; msgId?: string },
@@ -55,7 +56,7 @@ export function GlobalSearchBar({
   useEffect(() => {
     if (!q.trim()) { setChatHits([]); return; }
     searchChats(q).then(setChatHits);
-    if (userId) api.searchChatMessages(userId, project.id, q).then(ms => setChatHits(h => [...h, ...ms.map(m => ({ id: m.thread_id, title: 'Чат', text: m.text, href: `/chat/${m.thread_id}`, msgId: m.id }))])).catch(() => {});
+    if (userId) api.searchChatMessages(userId, project.id, q).then(ms => setChatHits(h => [...h, ...ms.map(m => ({ id: m.thread_id, title: 'Чат', text: m.text, href: `/chat/${m.thread_id}`, msgId: m.id }))])).catch(reportCatch('components.renova.GlobalSearchBar.1'));
   }, [q, userId, project.id]);
   const hits = [...searchProject(project, q, chatTitles), ...chatHits.map(c => ({ id: c.id, type: 'chat' as const, title: c.title, sub: c.text, href: `/chat/${c.id}`, msgId: c.msgId }))];
   const onSearch = (s: string) => { setQ(s); pushSearch(s).then(() => getSearchHistory().then(setHist)); };

@@ -11,6 +11,7 @@ import { getQueue, removeJob, writeQueue, type OfflineJob } from '@/lib/offlineQ
 import { flushOfflineOutbox, subscribeOfflineFlush } from '@/lib/offline';
 import { RenovaTheme } from '@/constants/Theme';
 import { offlineJobLabel, offlineJobPreview } from '@/lib/offlineJobLabel';
+import { reportCatch } from '@/lib/reportError';
 
 export default function ConflictsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -20,7 +21,7 @@ export default function ConflictsScreen() {
     setJobs(await getQueue());
   }, []);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('app._stack.conflicts.1')); }, [reload]));
   useEffect(() => subscribeOfflineFlush(() => { void reload(); }), [reload]);
 
   return (

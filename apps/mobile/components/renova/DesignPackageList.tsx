@@ -9,6 +9,7 @@ import { pickDocumentForUpload } from '@/lib/documentUploadPick';
 import { designPackageStatusLabel } from '@/constants/labels';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportCatch } from '@/lib/reportError';
 
 type DP = { id: string; title: string; version: number; file_url?: string | null; status: string };
 
@@ -27,7 +28,7 @@ export function DesignPackageList({
   const [items, setItems] = useState<DP[]>([]);
   const [uploading, setUploading] = useState(false);
   const load = useCallback(() => {
-    api.listDesignPackages(userId, projectId).then(setItems).catch(() => {});
+    api.listDesignPackages(userId, projectId).then(setItems).catch(reportCatch('components.renova.DesignPackageList.1'));
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);

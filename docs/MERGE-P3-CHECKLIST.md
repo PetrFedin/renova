@@ -69,3 +69,9 @@ Pinned SHA: `a44cf22`.
 - Moy nalog OAuth start/callback scaffold (connected only after tokens)
 - `scripts/split-release-status.sh`
 - Doc: `docs/AUDIT-WAVE5-IMPLEMENTATION-2026-07-21.md`
+
+## Wave-6 audit embed (2026-07-21)
+
+- Full silent `.catch(()=>{})` → reportCatch sweep
+- List-load failures → reportError
+- Closure matrix: `docs/AUDIT-CLOSURE-MATRIX-2026-07-21.md`

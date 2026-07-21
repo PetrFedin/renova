@@ -16,6 +16,7 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { budgetTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
+import { reportError } from '@/lib/reportError';
 
 export function WorkOrderDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
@@ -26,7 +27,7 @@ export function WorkOrderDetailScreen() {
 
   const reload = useCallback(() => {
     if (!user || !activeProject || !id) return;
-    api.getWorkOrder(user.id, activeProject.id, id).then(setWo).catch(() => setWo(null));
+    api.getWorkOrder(user.id, activeProject.id, id).then(setWo).catch((e) => { reportError('components.screens.WorkOrderDetailScreen.Wo', e); setWo(null); });
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);

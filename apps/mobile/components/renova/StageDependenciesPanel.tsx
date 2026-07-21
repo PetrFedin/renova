@@ -12,6 +12,7 @@ import type { OsRole } from '@/constants/osSections';
 import { STAGE_DEPENDENCY_TYPE_LABEL } from '@/constants/labels';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { reportCatch } from '@/lib/reportError';
 
 type Dep = {
   id: string;
@@ -53,7 +54,7 @@ export function StageDependenciesPanel({
     }
   }, [userId, projectId]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('components.renova.StageDependenciesPanel.1')); }, [reload]));
   useProjectDataReload(reload);
 
   const blocked = items.filter((d) => d.status === 'blocked' || d.status === 'pending');

@@ -6,12 +6,13 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, FurnitureItem } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { reportCatch } from '@/lib/reportError';
 
 export function FurnitureLayer({ userId, projectId, planId, role }: { userId: string; projectId: string; planId?: string; role: string }) {
   const { user, activeProject } = useRenova();
   const [items, setItems] = useState<FurnitureItem[]>([]);
   const load = useCallback(() => {
-    api.listFurniture(userId, projectId).then(setItems).catch(() => {});
+    api.listFurniture(userId, projectId).then(setItems).catch(reportCatch('components.renova.FurnitureLayer.1'));
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);

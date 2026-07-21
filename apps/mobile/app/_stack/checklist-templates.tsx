@@ -8,6 +8,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
+import { reportError } from '@/lib/reportError';
 
 type Tpl = { id: string; name: string; items: string[] };
 
@@ -20,7 +21,7 @@ export default function ChecklistTemplatesScreen() {
 
   const reload = useCallback(() => {
     if (!user) return;
-    api.listChecklistTemplates(user.id).then(setItems).catch(() => setItems([]));
+    api.listChecklistTemplates(user.id).then(setItems).catch((e) => { reportError('app._stack.checklist-templates.Items', e); setItems([]); });
   }, [user?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));

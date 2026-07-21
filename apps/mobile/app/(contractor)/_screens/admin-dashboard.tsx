@@ -6,6 +6,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';
+import { reportCatch } from '@/lib/reportError';
 
 function Bar({ label, value, max }: { label: string; value: number; max: number }) {
   const w = max ? Math.round((value / max) * 100) : 0;
@@ -33,14 +34,14 @@ export default function AdminDashboardScreen() {
 
   const reload = useCallback(() => {
     if (!user) return;
-    api.getAdminStats(user.id).then(setS).catch(() => {});
-    api.getReleaseHealth(user.id).then(setHealth).catch(() => {});
-    api.getYookassaHealth(user.id).then(setYk).catch(() => {});
-    api.getFnsHealth(user.id).then(setFns).catch(() => {});
-    api.getH0Readiness(user.id).then(setH0).catch(() => {});
+    api.getAdminStats(user.id).then(setS).catch(reportCatch('app.contractor._screens.admindashboard.1'));
+    api.getReleaseHealth(user.id).then(setHealth).catch(reportCatch('app.contractor._screens.admindashboard.2'));
+    api.getYookassaHealth(user.id).then(setYk).catch(reportCatch('app.contractor._screens.admindashboard.3'));
+    api.getFnsHealth(user.id).then(setFns).catch(reportCatch('app.contractor._screens.admindashboard.4'));
+    api.getH0Readiness(user.id).then(setH0).catch(reportCatch('app.contractor._screens.admindashboard.5'));
     if (Platform.OS === 'web') {
-      api.getProjectsChart(user.id).then(setChart).catch(() => {});
-      api.getRevenueChart(user.id).then(setRev).catch(() => {});
+      api.getProjectsChart(user.id).then(setChart).catch(reportCatch('app.contractor._screens.admindashboard.6'));
+      api.getRevenueChart(user.id).then(setRev).catch(reportCatch('app.contractor._screens.admindashboard.7'));
     }
   }, [user?.id]);
   useEffect(() => { reload(); }, [reload]);

@@ -13,6 +13,7 @@ import { formatScheduleRange } from '@/lib/formatScheduleDate';
 import type { ProjectDetail } from '@/lib/api';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportCatch } from '@/lib/reportError';
 
 type Props = {
   role: OsRole;
@@ -27,14 +28,14 @@ export function PlanTabOverview({ role, project, userId }: Props) {
   const [designPending, setDesignPending] = useState(0);
 
   const reload = useCallback(() => {
-    api.listFloorPlans(userId, project.id).then((plans) => setFloorCount(plans.length)).catch(() => {});
+    api.listFloorPlans(userId, project.id).then((plans) => setFloorCount(plans.length)).catch(reportCatch('components.screens.object.PlanTabOverview.1'));
     api
       .listDesignPackages(userId, project.id)
       .then((items) => {
         setDesignCount(items.length);
         setDesignPending(items.filter((d) => d.status === 'pending').length);
       })
-      .catch(() => {});
+      .catch(reportCatch('components.screens.object.PlanTabOverview.2'));
   }, [userId, project.id]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);

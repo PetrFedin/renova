@@ -12,6 +12,7 @@ import {
 } from '@/constants/homeWidgets';
 import { applyHomeWidgetPreset, getHomeWidgets, toggleHomeWidget, resetHomeWidgets } from '@/lib/homeWidgetPrefs';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 const GROUPS = ['main', 'kpi', 'lists'] as const;
 
@@ -28,7 +29,7 @@ export function HomeWidgetSettings({ role, embedded }: { role: OsRole; embedded?
         return ids.length === preset.size && ids.every((id) => preset.has(id));
       });
       setActivePreset(match || null);
-    }).catch(() => {});
+    }).catch(reportCatch('components.renova.os.HomeWidgetSettings.1'));
   }, [role]);
 
   const onToggle = async (id: HomeWidgetId) => {

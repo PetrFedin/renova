@@ -8,6 +8,7 @@ import { GlobalFilterBar } from '@/components/renova/GlobalFilterBar';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 const KINDS = [{ k: '', l: 'Все' }, { k: 'material', l: 'Материалы' }, { k: 'approval', l: 'Согласования' }, { k: 'room_change', l: 'Комнаты' }];
 
@@ -41,7 +42,7 @@ export function ActivityFeed({
         }
         setItems(list);
       })
-      .catch(() => setItems([]));
+      .catch((e) => { reportError('components.renova.ActivityFeed.Items', e); setItems([]); });
   }, [userId, projectId, kind, wt, compact, hidePaymentDupes]);
 
   useEffect(() => { reload(); }, [reload]);

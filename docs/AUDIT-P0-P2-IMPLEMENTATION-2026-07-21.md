@@ -21,10 +21,12 @@ Pin: see `git rev-parse HEAD` after merge.
 
 ## Still ops / follow-up
 
-- #1 split PR develop→main + tags
+- #1 split PR develop→main + tags (`scripts/split-release-status.sh`)
 - #3 live `h0:check:live` against real staging HTTPS
-- Full OAuth Мой налог; Redis WS pub/sub; portal chat/CO
-- Sentry DSN on staging mobile+backend
+- Live Мой налог OAuth credentials (scaffold DONE in wave-5)
+- Sentry DSN + optional `@sentry/react-native` install (wiring DONE in wave-5/6)
+
+Code-embed backlog closed — see `docs/AUDIT-CLOSURE-MATRIX-2026-07-21.md` (wave-6).
 
 ## Migration
 

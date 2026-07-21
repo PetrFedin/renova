@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { View, Text, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
+import { reportCatch } from '@/lib/reportError';
 
 export function ChecklistVersionDiff({ userId, projectId, tplId }: { userId: string; projectId: string; tplId: string }) {
   const [diff, setDiff] = useState<{ added: string[]; removed: string[] } | null>(null);
-  useEffect(() => { api.checklistDiff(userId, projectId, tplId).then(setDiff).catch(() => {}); }, [tplId]);
+  useEffect(() => { api.checklistDiff(userId, projectId, tplId).then(setDiff).catch(reportCatch('components.renova.ChecklistVersionDiff.1')); }, [tplId]);
   if (!diff) return null;
   return (
     <View style={s.row}>

@@ -17,6 +17,7 @@ import {
 import { pushOsNav } from '@/lib/pushOsNav';
 import { findStageChatThread } from '@/lib/domain/findStageChatThread';
 import { createProjectChat } from '@/lib/createProjectChat';
+import { reportCatch } from '@/lib/reportError';
 
 type Props = {
   role: OsRole;
@@ -105,7 +106,7 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
       <Pressable onPress={() => pushOsNav(tabsRoute(role, 'budget'), stageReturn)}>
         <Text style={s.link}>→ Бюджет</Text>
       </Pressable>
-      <Pressable onPress={() => { openStageChat().catch(() => {}); }} disabled={openingChat}>
+      <Pressable onPress={() => { openStageChat().catch(reportCatch('components.screens.stage.StageDetailLinks.1')); }} disabled={openingChat}>
         <Text style={[s.link, openingChat && s.linkBusy]}>
           {openingChat ? '→ Связь…' : '→ Связь'}
         </Text>

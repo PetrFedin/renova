@@ -10,6 +10,7 @@ import {
   type EstimateLineTypeFilter,
 } from '@/lib/domain/estimateFilters';
 import { WORK_TYPES_FALLBACK, type WorkTypeOption } from '@/constants/workCatalog';
+import { reportError } from '@/lib/reportError';
 
 const TYPE_FILTERS: { key: EstimateLineTypeFilter; label: string }[] = [
   { key: 'all', label: 'Все' },

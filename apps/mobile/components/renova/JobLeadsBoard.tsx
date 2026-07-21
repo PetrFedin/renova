@@ -17,6 +17,7 @@ import {
   alertJobLeadQuoted,
 } from '@/lib/jobLeadNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 const RENOVATION_LABEL: Record<string, string> = {
   cosmetic: 'Косметический',

@@ -21,6 +21,7 @@ import { DEFAULT_QUICK_AREA } from '@/lib/wizard/wizardMode';
 import { WizardHint } from '@/components/renova/wizard/WizardHint';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { tabsHref } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 function formatCreateError(e: unknown): string {
   if (e && typeof e === 'object') {
@@ -131,7 +132,7 @@ export default function WizardConfirm() {
     } catch (e) {
       const msg = formatCreateError(e);
       Alert.alert('Ошибка создания', msg, [
-        { text: 'Повторить', onPress: () => { onCreate().catch(() => {}); } },
+        { text: 'Повторить', onPress: () => { onCreate().catch(reportCatch('app.wizard._screens.confirm.1')); } },
         { text: 'OK', style: 'cancel' },
       ]);
     } finally {
@@ -232,7 +233,7 @@ export default function WizardConfirm() {
             setInviteOpen(false);
             replaceOsNav(tabsHref('customer', 'index'));
           }}
-          onLinked={() => loadProject(createdProjectId).catch(() => {})}
+          onLinked={() => loadProject(createdProjectId).catch(reportCatch('app.wizard._screens.confirm.2'))}
         />
       ) : null}
     </>

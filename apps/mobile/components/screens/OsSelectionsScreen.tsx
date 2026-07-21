@@ -14,6 +14,7 @@ import { screenLayout } from '@/constants/screenLayout';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertSelectionApproved, alertSelectionProposed } from '@/lib/procurementNav';
+import { reportError } from '@/lib/reportError';
 
 const CATEGORIES: { key: string; label: string }[] = [
   { key: 'all', label: 'Все' },
@@ -49,7 +50,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api.listSelections(user.id, activeProject.id).then(setItems).catch(() => setItems([]));
+    api.listSelections(user.id, activeProject.id).then(setItems).catch((e) => { reportError('components.screens.OsSelectionsScreen.Items', e); setItems([]); });
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));

@@ -9,6 +9,7 @@ import { WorkOrderCard } from '@/components/renova/WorkOrderCard';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { useNavFromHere } from '@/lib/navigation';
 import { calendarTabHref, type OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 const FILTERS = [
   { key: 'active', label: 'Активные' },
@@ -34,7 +35,7 @@ export function WorkOrdersListPanel({
   const [filter, setFilter] = useState<WorkFilter>('active');
 
   const reload = useCallback(() => {
-    api.listWorkOrders(userId, projectId).then(setItems).catch(() => setItems([]));
+    api.listWorkOrders(userId, projectId).then(setItems).catch((e) => { reportError('components.renova.WorkOrdersListPanel.Items', e); setItems([]); });
   }, [userId, projectId]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));

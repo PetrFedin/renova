@@ -9,6 +9,7 @@ import { resolveNotificationLink, changeOrderEstimateRoute } from '@/lib/pushLin
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { SnoozeUntilPicker } from '@/components/renova/SnoozeUntilPicker';
+import { reportCatch } from '@/lib/reportError';
 
 export function NotificationCenter({
   userId,
@@ -26,7 +27,7 @@ export function NotificationCenter({
   const [items, setItems] = useState<AppNotification[]>([]);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const reload = useCallback(() => {
-    api.listNotifications(userId).then(setItems).catch(() => {});
+    api.listNotifications(userId).then(setItems).catch(reportCatch('components.renova.NotificationCenter.1'));
   }, [userId]);
   useEffect(() => { reload(); }, [reload]);
   // W95: CO/оплата/приёмка → список уведомлений без remount профиля

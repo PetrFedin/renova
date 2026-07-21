@@ -14,6 +14,7 @@ import { budgetTabRoute, calendarTabRoute, repairTabRoute } from '@/constants/os
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel } from '@/lib/domain/purchaseLifecycle';
 import { alertPurchaseAdvanced } from '@/lib/procurementNav';
+import { reportError } from '@/lib/reportError';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', approved: 'Согласовано', ordered: 'Заказано', paid: 'Оплачено',
@@ -31,7 +32,7 @@ export default function PurchaseDetailScreen() {
     if (!user || !activeProject || !id) return;
     api.listPurchases(user.id, activeProject.id).then((items) => {
       setPurchase(items.find((p) => p.id === id) || null);
-    }).catch(() => setPurchase(null));
+    }).catch((e) => { reportError('app.purchase.[id].Purchase', e); setPurchase(null); });
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);

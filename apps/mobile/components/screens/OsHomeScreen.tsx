@@ -25,6 +25,7 @@ import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyB
 import { getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
 import { mergeDigestInsight } from '@/lib/domain/digestHomeInsight';
 import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
+import { reportCatch } from '@/lib/reportError';
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
   const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading } = useRenova();
@@ -160,7 +161,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     }
   }
 
-  useEffect(() => { load(); refreshProjects().catch(() => {}); }, [user?.id, activeProject?.id]);
+  useEffect(() => { load(); refreshProjects().catch(reportCatch('components.screens.OsHomeScreen.1')); }, [user?.id, activeProject?.id]);
 
   // W79: после sync offline — обновить счётчики hero без полного reload проекта
   useEffect(() => subscribeOfflineFlush(() => {
@@ -169,12 +170,12 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         setOfflinePending(st.pending || 0);
         setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
       })
-      .catch(() => {});
+      .catch(reportCatch('components.screens.OsHomeScreen.2'));
   }), []);
 
   // W81: график/объект изменились → обновить nextAction (submitted → confirmed)
   useEffect(() => subscribeProjectDataChanged(() => {
-    load().catch(() => {});
+    load().catch(reportCatch('components.screens.OsHomeScreen.3'));
   }), [user?.id, activeProject?.id]);
 
   const snap = useMemo(() => {
@@ -258,7 +259,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       <ScrollView style={s.container} contentContainerStyle={s.content}>
         <Text style={s.emptyTitle}>Не удалось загрузить главную</Text>
         {loadError ? <Text style={s.hint}>{loadError}</Text> : null}
-        <PrimaryButton title="Повторить" onPress={() => load().catch(() => {})} />
+        <PrimaryButton title="Повторить" onPress={() => load().catch(reportCatch('components.screens.OsHomeScreen.4'))} />
       </ScrollView>
     );
   }

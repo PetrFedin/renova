@@ -17,6 +17,7 @@ import { ProfileSection } from './ProfileSection';
 import { ProfileNotifications } from './ProfileNotifications';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { reportCatch } from '@/lib/reportError';
 
 const EXTRA_BASIC = [
   { label: 'Помощь', href: '/guide' },
@@ -75,7 +76,7 @@ export function CustomerProfileScreen() {
                   projectId={activeProject!.id}
                   linkedContractorId={activeProject!.contractor_id}
                   embedded
-                  onLinked={() => loadProject(activeProject!.id).catch(() => {})}
+                  onLinked={() => loadProject(activeProject!.id).catch(reportCatch('components.screens.profile.CustomerProfileScreen.1'))}
                 />
               ) : null}
             </ProfileSection>

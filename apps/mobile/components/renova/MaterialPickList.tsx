@@ -12,7 +12,7 @@ import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
-import {
+import { reportCatch } from '@/lib/reportError';
   alertMaterialPickApproved,
   alertMaterialPickSubmitted,
 } from '@/lib/procurementNav';
@@ -43,7 +43,7 @@ export function MaterialPickList({
   const [roomId, setRoomId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const load = useCallback(() => {
-    api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(() => {});
+    api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(reportCatch('components.renova.MaterialPickList.1'));
   }, [userId, projectId, wt]);
   const syncAfter = async () => {
     await syncProjectSideEffects({

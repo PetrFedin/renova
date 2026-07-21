@@ -18,6 +18,7 @@ import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActio
 import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
+import { reportCatch } from '@/lib/reportError';
 
 type Props = {
   role: OsRole;
@@ -169,7 +170,7 @@ export function ProjectEmptyState({
   );
 
   useEffect(() => {
-    if (autoPick && bucket === 'active' && projects.length) ensureActiveProject().catch(() => {});
+    if (autoPick && bucket === 'active' && projects.length) ensureActiveProject().catch(reportCatch('components.renova.ProjectEmptyState.1'));
   }, [autoPick, bucket, projects.length, ensureActiveProject]);
 
   useEffect(() => {
@@ -305,10 +306,10 @@ export function ProjectEmptyState({
               }}
             />
           ))}
-          <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(() => {})} />
+          <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(reportCatch('components.renova.ProjectEmptyState.2'))} />
         </View>
       ) : !projects.length ? (
-        <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(() => {})} />
+        <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(reportCatch('components.renova.ProjectEmptyState.3'))} />
       ) : null}
       {!hideHomeButton && (
         <PrimaryButton

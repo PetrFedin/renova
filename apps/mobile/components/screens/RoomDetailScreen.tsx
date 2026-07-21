@@ -23,6 +23,7 @@ import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase } from '@/lib/api';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export function RoomDetailScreen() {
   const { id, returnTo, overrun } = useLocalSearchParams<{ id: string; returnTo?: string; overrun?: string }>();
@@ -52,19 +53,19 @@ export function RoomDetailScreen() {
     const r = rs.find(x => x.id === id) || null;
     setRoom(r);
     if (r) {
-      api.roomSnapshot(user.id, activeProject.id, r.id).then(setRoomSnap).catch(() => setRoomSnap(null));
-      if (user && activeProject) api.roomChangeLog(user.id, activeProject.id, r.id).then(setHistory).catch(()=>{});
-      api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(() => {});
-      api.osExpenses(user.id, activeProject.id).then(setExpenses).catch(() => {});
-      api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(() => {});
-      api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(() => {});
+      api.roomSnapshot(user.id, activeProject.id, r.id).then(setRoomSnap).catch((e) => { reportError('components.screens.RoomDetailScreen.RoomSnap', e); setRoomSnap(null); });
+      if (user && activeProject) api.roomChangeLog(user.id, activeProject.id, r.id).then(setHistory).catch(reportCatch('components.screens.RoomDetailScreen.1'));
+      api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(reportCatch('components.screens.RoomDetailScreen.2'));
+      api.osExpenses(user.id, activeProject.id).then(setExpenses).catch(reportCatch('components.screens.RoomDetailScreen.3'));
+      api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(reportCatch('components.screens.RoomDetailScreen.4'));
+      api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(reportCatch('components.screens.RoomDetailScreen.5'));
       setLen(String(r.length_m)); setWid(String(r.width_m)); setHei(String(r.height_m));
       setOutlets(String(r.outlets_count)); setPlumbing(String(r.plumbing_points)); setSwitches(String(r.switches_count));
     }
   }, [user?.id, activeProject?.id, id]);
-  useEffect(() => { if (room) snapshotRoom(room).catch(()=>{}); }, [room?.id, room?.outlets_count]);
-  useEffect(() => { if (overrun === '1' && user && activeProject && id) api.budgetRoomLines(user.id, activeProject.id, id).then(setOverrunLines).catch(() => {}); }, [overrun, id, user?.id, activeProject?.id]);
-  useEffect(() => { load().catch(()=>{}); }, [load]);
+  useEffect(() => { if (room) snapshotRoom(room).catch(reportCatch('components.screens.RoomDetailScreen.6')); }, [room?.id, room?.outlets_count]);
+  useEffect(() => { if (overrun === '1' && user && activeProject && id) api.budgetRoomLines(user.id, activeProject.id, id).then(setOverrunLines).catch(reportCatch('components.screens.RoomDetailScreen.7')); }, [overrun, id, user?.id, activeProject?.id]);
+  useEffect(() => { load().catch(reportCatch('components.screens.RoomDetailScreen.8')); }, [load]);
   useProjectDataReload(load);
 
   const lines = (activeProject?.estimate_lines || []).filter(l => (l.room_id && l.room_id === room?.id) || l.room_name === room?.name);

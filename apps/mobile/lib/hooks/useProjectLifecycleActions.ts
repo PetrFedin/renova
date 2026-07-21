@@ -4,6 +4,7 @@ import { ApiError, api, invalidateProjectsCache } from '@/lib/api';
 import { dropJobsForProject } from '@/lib/offlineQueue';
 import { notifyProjectDataChanged } from '@/lib/projectDataBus';
 import { alertMessage, confirmDestructive } from '@/lib/confirmAlert';
+import { reportCatch } from '@/lib/reportError';
 
 /** Archive/trash/restore handlers shared by project pickers. */
 export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) {
@@ -12,7 +13,7 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
   const afterMutation = useCallback(
     async (projectId: string) => {
       if (user) await invalidateProjectsCache(user.id);
-      await dropJobsForProject(projectId).catch(() => {});
+      await dropJobsForProject(projectId).catch(reportCatch('lib.hooks.useProjectLifecycleActions.1'));
       await refreshProjects();
       await reloadBuckets?.();
       if (activeProject?.id === projectId) {

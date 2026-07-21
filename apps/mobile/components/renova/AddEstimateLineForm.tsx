@@ -11,6 +11,7 @@ import { EXPENSE_CATEGORIES } from '@/constants/expenseCategories';
 import { WORK_TYPES_FALLBACK, type WorkTypeOption } from '@/constants/workCatalog';
 import { alertEstimateLineAdded } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportError } from '@/lib/reportError';
 
 const UNITS = ['pcs', 'm2', 'm', 'kg', 'l', 'компл'];
 

@@ -8,13 +8,14 @@ import { api, AppNotification } from '@/lib/api';
 import { resolvePushLink, resolveNotificationLink } from '@/lib/pushLinks';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 /** W118: уведомления → pushOsNav SoT (не сырой router) */
 export function NotificationsList({ userId, defaultReturn }: { userId: string; defaultReturn?: string }) {
   const { user, activeProject } = useRenova();
   const [items, setItems] = useState<AppNotification[]>([]);
   const reload = useCallback(() => {
-    api.listNotifications(userId).then(setItems).catch(() => {});
+    api.listNotifications(userId).then(setItems).catch(reportCatch('components.renova.NotificationsList.1'));
   }, [userId]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);
