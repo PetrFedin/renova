@@ -109,3 +109,103 @@ async def unlink_moy_nalog(user: User = Depends(get_current_user), db: AsyncSess
         status="revoked",
         message="Связь «Мой налог» снята. Для реального отзыва в ФНС нужен OAuth revoke.",
     )
+
+
+class MoyNalogOAuthStartResponse(BaseModel):
+    status: str
+    oauth_ready: bool
+    state: str | None = None
+    auth_url: str | None = None
+    message: str
+
+
+class MoyNalogOAuthCallbackRequest(BaseModel):
+    code: str | None = None
+    state: str
+    """demo_complete=true только development/test — не ставит connected."""
+    demo_complete: bool = False
+
+
+@router.post("/moy-nalog/oauth/start", response_model=MoyNalogOAuthStartResponse)
+async def moy_nalog_oauth_start(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Начать OAuth: status=authorization_started. auth_url только при CLIENT_ID."""
+    from app.services import moy_nalog_oauth as oauth
+
+    state = oauth.create_oauth_state(user.id)
+    auth_url = oauth.build_authorize_url(state)
+    ready = oauth.oauth_ready()
+    user.moy_nalog_status = "authorization_started"
+    # linked остаётся legacy; не ставим True до callback
+    await db.commit()
+    if ready and auth_url:
+        msg = "Откройте auth_url в браузере и завершите вход в ЛК НПД."
+    elif ready:
+        msg = "CLIENT_ID задан, но authorize URL пуст — проверьте MOY_NALOG_AUTHORIZE_URL."
+    else:
+        msg = (
+            "OAuth credentials не заданы (MOY_NALOG_CLIENT_ID). "
+            "Статус authorization_started без live-подключения. "
+            "Для demo: POST oauth/callback с demo_complete=true (только development)."
+        )
+    return MoyNalogOAuthStartResponse(
+        status=user.moy_nalog_status,
+        oauth_ready=ready,
+        state=state,
+        auth_url=auth_url,
+        message=msg,
+    )
+
+
+@router.post("/moy-nalog/oauth/callback", response_model=MoyNalogLinkResponse)
+async def moy_nalog_oauth_callback(
+    body: MoyNalogOAuthCallbackRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Завершить OAuth. connected — только после успешного token exchange."""
+    from app.core.config import settings
+    from app.core.environment import normalize_environment
+    from app.services import moy_nalog_oauth as oauth
+
+    if not oauth.consume_oauth_state(body.state, user.id):
+        user.moy_nalog_status = "error"
+        await db.commit()
+        raise HTTPException(400, "invalid_or_expired_oauth_state")
+
+    env = normalize_environment(settings.environment)
+    demo_ok = env in ("development", "test")
+
+    if body.demo_complete and demo_ok and not oauth.oauth_ready():
+        user.moy_nalog_linked = True
+        user.moy_nalog_status = "authorization_started"
+        await db.commit()
+        return MoyNalogLinkResponse(
+            linked=True,
+            mode="demo",
+            status=user.moy_nalog_status,
+            message="Demo OAuth complete: флаг linked, status=authorization_started (не connected — чеки live недоступны).",
+        )
+
+    tokens = await oauth.exchange_code_for_tokens(body.code or "")
+    if tokens:
+        user.moy_nalog_linked = True
+        user.moy_nalog_status = "connected"
+        await db.commit()
+        return MoyNalogLinkResponse(
+            linked=True,
+            mode="enabled",
+            status="connected",
+            message="OAuth успешен — «Мой налог» подключён.",
+        )
+
+    user.moy_nalog_status = "error"
+    await db.commit()
+    return MoyNalogLinkResponse(
+        linked=False,
+        mode="enabled" if oauth.oauth_ready() else "demo",
+        status="error",
+        message=(
+            "Не удалось обменять code на token. Задайте MOY_NALOG_TOKEN_URL + SECRET "
+            "или завершите demo через demo_complete в development."
+        ),
+    )

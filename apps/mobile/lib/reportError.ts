@@ -6,7 +6,6 @@ function captureSentry(error: unknown, message: string, scope: string, payload: 
   if (!dsn) return;
   const err = error instanceof Error ? error : new Error(message);
   try {
-    // Prefer RN SDK when installed
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const SentryRN = require('@sentry/react-native');
     if (SentryRN?.captureException) {
@@ -32,4 +31,9 @@ export function reportError(scope: string, error: unknown, extra?: Extra): void 
     console.warn(`[reportError] ${scope}`, error, extra || '');
   }
   captureSentry(error, message, scope, payload);
+}
+
+/** Для `.catch(reportCatch('scope'))` вместо silent `.catch(() => {})`. */
+export function reportCatch(scope: string, extra?: Extra): (error: unknown) => void {
+  return (error: unknown) => reportError(scope, error, extra);
 }

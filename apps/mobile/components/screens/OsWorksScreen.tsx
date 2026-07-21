@@ -30,6 +30,7 @@ import { WorkOrdersListPanel } from '@/components/renova/WorkOrdersListPanel';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 const FILTERS = [
   { key: 'all', label: WORKS_FILTER_LABEL.all },
@@ -93,7 +94,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     if (activeProject) void loadProject(activeProject.id);
     void reloadBlocked();
     if (isContractor && user && activeProject) {
-      api.reworkSlaCheck(user.id, activeProject.id).catch(() => {});
+      api.reworkSlaCheck(user.id, activeProject.id).catch(reportCatch('works.reworkSla'));
     }
   }, [activeProject, loadProject, reloadBlocked, isContractor, user]);
 

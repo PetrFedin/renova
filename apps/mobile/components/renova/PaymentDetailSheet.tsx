@@ -24,6 +24,7 @@ import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL, PAYMENT_BLOCKED_ACCEPTANCE_MS
 import { buildPaymentHistory, formatPaymentEventDate } from '@/lib/domain/paymentHistory';
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { alertPaymentConfirmed } from '@/lib/estimatePayNav';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
@@ -81,13 +82,13 @@ export function PaymentDetailSheet({
     setStep('info');
     setTransferAck(false);
     setReceiptAttached(false);
-    reloadReceiptFlag().catch(() => {});
+    reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
   }, [payment?.id, reloadReceiptFlag]);
 
   useEffect(() => {
     if (!payment) return;
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') reloadReceiptFlag().catch(() => {});
+      if (state === 'active') reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
     });
     return () => sub.remove();
   }, [payment?.id, reloadReceiptFlag]);
@@ -375,7 +376,7 @@ export function PaymentDetailSheet({
               ))}
               <PrimaryButton title="Скопировать сумму" variant="outline" onPress={() => { copySbpAmount().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать сумму')); }} />
               <PrimaryButton title="Скопировать реквизиты" variant="outline" onPress={() => { copyRequisites().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать реквизиты')); }} />
-              <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={() => { openSbp().catch(() => {}); }} />
+              <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={() => { openSbp().catch(reportCatch('payment.openSbp')); }} />
               <PrimaryButton
                 title="Я перевёл — дальше"
                 onPress={() => { setTransferAck(true); setStep('confirm'); }}

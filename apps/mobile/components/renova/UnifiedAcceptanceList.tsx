@@ -14,6 +14,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { alertStageAccepted } from '@/lib/acceptanceNav';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export function UnifiedAcceptanceList({
   stages,
@@ -116,10 +117,10 @@ export function UnifiedAcceptanceList({
           onScoreChange={(v) => setScores((prev) => ({ ...prev, [it.id]: v }))}
           onOpen={() => pushStageDetail(it.stageId, returnTo)}
           onAccept={() => {
-            decide(it, 'accept').catch(() => {});
+            decide(it, 'accept').catch(reportCatch('acceptance.accept'));
           }}
           onReturn={() => {
-            decide(it, 'return').catch(() => {});
+            decide(it, 'return').catch(reportCatch('acceptance.return'));
           }}
         />
       ))}

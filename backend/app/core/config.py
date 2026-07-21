@@ -23,6 +23,12 @@ class Settings(BaseSettings):
         "https://statusnpd.nalog.ru/api/v1/tracker/taxpayer_status"
     )
     moy_nalog_enabled: bool = False
+    # OAuth «Мой налог» (empty = start returns oauth_ready=false; no fake connected)
+    moy_nalog_client_id: str | None = None
+    moy_nalog_client_secret: str | None = None
+    moy_nalog_redirect_uri: str | None = None
+    moy_nalog_authorize_url: str = "https://lknpd.nalog.ru/api/v1/auth/login"
+    moy_nalog_token_url: str | None = None
     s3_endpoint: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None

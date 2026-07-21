@@ -1,5 +1,6 @@
 /** Глобальное состояние: пользователь, роль, активный проект */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { reportCatch } from '@/lib/reportError';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PaywallModal } from '@/components/renova/PaywallModal';
 import { replaceOsNav } from '@/lib/pushOsNav';
@@ -230,7 +231,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           projectId: id,
           project: p,
           osRole: user.role === 'contractor' ? 'contractor' : 'customer',
-        }).catch(() => {});
+        }).catch(reportCatch('renovaContext'));
       } catch (e) {
         // Duck-typed rate_limit (HMR) — не роняем UI, оставляем текущий activeProject
         if (isRateLimitError(e)) return;
@@ -588,7 +589,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     if (loading || !user || activeProject || !projects.length) return;
     AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick).then((pending) => {
       if (pending === '1') return;
-      ensureActiveProject().catch(() => {});
+      ensureActiveProject().catch(reportCatch('renovaContext'));
     });
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 

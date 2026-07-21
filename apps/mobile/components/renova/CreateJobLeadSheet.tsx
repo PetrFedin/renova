@@ -17,6 +17,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { metaCaptionStyle } from '@/constants/formTypography';
 import { isOfflineBlocked, notifyOfflineBlocked } from '@/lib/offlineUi';
 import type { JobLeadCreateBody } from '@/lib/api/market';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 const RENOVATION_TYPES = [
   { id: 'cosmetic', label: 'Косметический' },
@@ -214,7 +215,7 @@ export function CreateJobLeadSheet({
               <PrimaryButton
                 title={busy ? 'Создание…' : 'Создать заявку'}
                 onPress={() => {
-                  submit().catch(() => {});
+                  submit().catch(reportCatch('jobLead.submit'));
                 }}
                 disabled={!canSubmit}
               />

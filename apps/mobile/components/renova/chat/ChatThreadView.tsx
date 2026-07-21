@@ -11,7 +11,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
-import { reportError } from '@/lib/reportError';
+import { reportError, reportCatch } from '@/lib/reportError';
 import { api, ChatDetail, ChatMessage } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
@@ -219,8 +219,8 @@ export function ChatThreadView({
       markedReadRef.current = null;
       let cancelled = false;
       (async () => {
-        await loadMessagesRef.current().catch(() => {});
-        if (!cancelled) await markThreadReadRef.current().catch(() => {});
+        await loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
+        if (!cancelled) await markThreadReadRef.current().catch(reportCatch('chat.markRead'));
       })();
       return () => { cancelled = true; };
     }, [threadId, projectIdProp]),
@@ -237,7 +237,7 @@ export function ChatThreadView({
     }
   }, [highlightId, chat?.messages.length]);
 
-  const reload = useCallback(() => loadMessages().catch(() => {}), [loadMessages]);
+  const reload = useCallback(() => loadMessages().catch(reportCatch('chat.reload')), [loadMessages]);
   useProjectDataReload(reload);
 
   const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
@@ -249,7 +249,7 @@ export function ChatThreadView({
     // Новое сообщение в открытом треде — снова прочитать и сбросить badge.
     markedReadRef.current = null;
     reload();
-    markThreadRead().catch(() => {});
+    markThreadRead().catch(reportCatch('chat.markRead.focus'));
   });
 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
@@ -431,9 +431,9 @@ export function ChatThreadView({
                 };
                 Alert.alert('Счёт в бюджете', 'Быстрая сумма или полная форма (сумма / этап / тип). Заказчик увидит счёт в «Деньги → Оплаты».', [
                   { text: 'Отмена', style: 'cancel' },
-                  { text: '5 000 ₽', onPress: () => { createInvoice(5000).catch(() => {}); } },
-                  { text: '10 000 ₽', onPress: () => { createInvoice(10000).catch(() => {}); } },
-                  { text: '25 000 ₽', onPress: () => { createInvoice(25000).catch(() => {}); } },
+                  { text: '5 000 ₽', onPress: () => { createInvoice(5000).catch(reportCatch('chat.invoice')); } },
+                  { text: '10 000 ₽', onPress: () => { createInvoice(10000).catch(reportCatch('chat.invoice')); } },
+                  { text: '25 000 ₽', onPress: () => { createInvoice(25000).catch(reportCatch('chat.invoice')); } },
                   { text: 'Другая сумма…', onPress: openPaymentForm },
                   { text: 'Открыть оплаты', onPress: openPaymentForm },
                 ]);

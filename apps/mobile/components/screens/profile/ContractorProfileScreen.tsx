@@ -21,6 +21,7 @@ import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
+import * as WebBrowser from 'expo-web-browser';
 
 /** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
@@ -232,18 +233,41 @@ export function ContractorProfileScreen() {
             }}
           />
           <PrimaryButton
-            title="Подключить «Мой налог»"
+            title="Авторизовать «Мой налог» (OAuth)"
             variant="outline"
             onPress={async () => {
               if (!user) return;
               try {
-                const r = await api.linkMoyNalog(user.id) as { message?: string; mode?: string; linked?: boolean };
-                // Honesty: admin-enabled ≠ OAuth-авторизованный аккаунт ФНС
-                if (r.mode === 'enabled' || r.mode === 'demo') {
-                  setMsg(r.message || 'Интеграция включена администратором — аккаунт ФНС ещё не авторизован через OAuth');
-                } else {
-                  setMsg(r.message || 'Статус обновлён');
+                const start = await api.moyNalogOAuthStart(user.id);
+                setMsg(start.message);
+                if (start.auth_url) {
+                  await WebBrowser.openBrowserAsync(start.auth_url);
+                  Alert.alert(
+                    'Мой налог',
+                    'После входа в ЛК НПД вернитесь в приложение. Если code не пришёл автоматически — статус останется authorization_started.',
+                  );
+                } else if (start.state) {
+                  // Dev: demo complete без CLIENT_ID
+                  const done = await api.moyNalogOAuthCallback(user.id, {
+                    state: start.state,
+                    demo_complete: true,
+                  });
+                  setMsg(done.message);
                 }
+                await refreshMe();
+              } catch (e: any) {
+                Alert.alert('Мой налог', e?.message || 'OAuth недоступен');
+              }
+            }}
+          />
+          <PrimaryButton
+            title="Включить флаг (без OAuth)"
+            variant="outline"
+            onPress={async () => {
+              if (!user) return;
+              try {
+                const r = await api.linkMoyNalog(user.id) as { message?: string; mode?: string; linked?: boolean; status?: string };
+                setMsg(r.message || `Статус: ${r.status || 'updated'}`);
                 await refreshMe();
               } catch (e: any) {
                 Alert.alert('Мой налог', e?.message || 'Интеграция недоступна (нужен OAuth или MOY_NALOG_ENABLED)');

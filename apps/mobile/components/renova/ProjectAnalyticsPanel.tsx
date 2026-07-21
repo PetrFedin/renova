@@ -23,6 +23,7 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 import { buildUnifiedBudgetExpenses, unifiedExpenseTotal } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { budgetTabHref } from '@/constants/osSections';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 function budgetAnalyticsReturnTo(role: 'customer' | 'contractor') {
   return budgetTabHref(role, 'deviations');
@@ -85,7 +86,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     }
   }, [user?.id, activeProject?.id]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('analytics.reload')); }, [reload]));
   useProjectDataReload(reload);
 
   if (!user || !activeProject) {
@@ -164,7 +165,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
       projectId={activeProject?.id}
       editable={canWrite && !readOnly}
       onClose={() => setExpenseDetail(null)}
-      onChanged={() => { reload().catch(() => {}); }}
+      onChanged={() => { reload().catch(reportCatch('analytics.reload')); }}
     />
     </>
   );

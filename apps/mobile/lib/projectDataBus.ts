@@ -1,6 +1,7 @@
 /** W81/W82: смена данных объекта → home/inbox без полного remount. */
 import type { ProjectDetail, User, UserRole } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 type Listener = () => void;
 
@@ -51,7 +52,7 @@ export async function syncProjectSideEffects(opts: SyncOpts): Promise<void> {
       projectId: project.id,
       project,
       osRole,
-    }).catch(() => {});
+    }).catch(reportCatch('projectDataBus.inboxSync'));
   } catch {
     /* offline / test env без inboxSyncStore */
   }

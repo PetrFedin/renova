@@ -33,10 +33,10 @@ cd backend && .venv/bin/pytest tests/test_ws_redis_bridge.py -q --noconftest
 # или PYTHONPATH=. .venv/bin/python -c "from app.services.ws_redis_bridge import pack_message; print(pack_message({'a':1}))"
 ```
 
-## Не закрыто (ops)
+## Не закрыто (ops) — см. wave-5
 
-1. Split PR develop→main
-2. Live staging readiness / h0:check:live
-3. Полный OAuth «Мой налог»
-4. Установка `@sentry/react-native` + init в App root при наличии DSN
-5. Массовый sweep остальных `.catch(()=>{})` в UI (focus reload и т.п. — низкий риск)
+1. Split PR develop→main (исполнение) — `scripts/split-release-status.sh`
+2. Live staging / h0:check:live
+3. ~~OAuth scaffold~~ → wave-5; live credentials отдельно
+4. ~~Sentry init wiring~~ → wave-5; native SDK install при DSN
+5. ~~reportCatch sweep критичных~~ → wave-5

@@ -3,6 +3,21 @@ import { req, cachedGet, API_BASE } from './client';
 export const adminApi = {
   linkMoyNalog: (userId: string) => req<{ linked: boolean; message: string; mode?: string; status?: string }>('/api/v1/fns/moy-nalog/link', { method: 'POST' }, userId),
   unlinkMoyNalog: (userId: string) => req<{ linked: boolean; message: string; mode?: string; status?: string }>('/api/v1/fns/moy-nalog/unlink', { method: 'POST' }, userId),
+  moyNalogOAuthStart: (userId: string) =>
+    req<{ status: string; oauth_ready: boolean; state?: string | null; auth_url?: string | null; message: string }>(
+      '/api/v1/fns/moy-nalog/oauth/start',
+      { method: 'POST' },
+      userId,
+    ),
+  moyNalogOAuthCallback: (
+    userId: string,
+    body: { state: string; code?: string | null; demo_complete?: boolean },
+  ) =>
+    req<{ linked: boolean; message: string; mode?: string; status?: string }>(
+      '/api/v1/fns/moy-nalog/oauth/callback',
+      { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
   checkNpd: (inn: string) => req('/api/v1/fns/check-npd', { method: 'POST', body: JSON.stringify({ inn }) }),
   verifyNpdMe: (userId: string, inn: string) => req<{ is_npd: boolean; message: string; badge: string }>('/api/v1/fns/verify-me', { method: 'POST', body: JSON.stringify({ inn }) }, userId),
   setMemberRole: (userId: string, memberId: string, role: string) => req('/api/v1/teams/member-role', { method: 'PATCH', body: JSON.stringify({ user_id: memberId, role }) }, userId),

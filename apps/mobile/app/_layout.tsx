@@ -12,22 +12,25 @@ import { NavTracker } from '@/components/renova/NavTracker';
 import { flushOfflineOutbox } from '@/lib/offline';
 import { initLang } from '@/lib/i18n';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { initSentry } from '@/lib/sentryInit';
+import { reportCatch } from '@/lib/reportError';
 
 SplashScreen.preventAutoHideAsync();
+initSentry();
 
 function SplashGate({ children }: { children: ReactNode }) {
   const { loading } = useRenova();
   useEffect(() => {
-    if (!loading) SplashScreen.hideAsync().catch(() => {});
+    if (!loading) SplashScreen.hideAsync().catch(reportCatch('splash.hide'));
   }, [loading]);
   return children;
 }
 
 export default function RootLayout() {
-  useEffect(() => { initLang().catch(() => {}); }, []);
+  useEffect(() => { initLang().catch(reportCatch('i18n.init')); }, []);
 
   useEffect(() => {
-    Notifications.setNotificationCategoryAsync('STAGE', [{ identifier: 'OPEN', buttonTitle: 'Открыть', options: { opensAppToForeground: true } }]).catch(() => {});
+    Notifications.setNotificationCategoryAsync('STAGE', [{ identifier: 'OPEN', buttonTitle: 'Открыть', options: { opensAppToForeground: true } }]).catch(reportCatch('notifications.category'));
     const sub = Notifications.addNotificationResponseReceivedListener((r) => {
       const link = r.notification.request.content.data?.link_path as string | undefined;
       const returnTo = r.notification.request.content.data?.return_to as string | undefined;
@@ -42,9 +45,9 @@ export default function RootLayout() {
         import('expo-notifications').then((N) => N.scheduleNotificationAsync({
           content: { title: 'Конфликт синхронизации', body: `${r.conflicts} изменений требуют решения`, data: { link_path: '/conflicts', return_to: '/' } },
           trigger: null,
-        })).catch(() => {});
+        })).catch(reportCatch('notifications.conflict'));
       }
-    }).catch(() => {});
+    }).catch(reportCatch('offline.flushOnline'));
     const unsubNet = NetInfo.addEventListener((st) => { if (st.isConnected) onOnline(); });
     if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
     return () => { sub.remove(); unsubNet(); if (typeof window !== 'undefined') window.removeEventListener('online', onOnline); };

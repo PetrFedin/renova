@@ -60,3 +60,10 @@ Pinned SHA: `428de3e` (+ Alert import fix).
 - Redis WS subscribe (`ws_redis_bridge`) + fail-closed chat/offline/stage blocked
 - `reportError` → Sentry SDKs optional
 - Doc: `docs/AUDIT-WAVE4-IMPLEMENTATION-2026-07-21.md`
+
+## Wave-5 audit embed (2026-07-21)
+
+- Sentry init + reportCatch sweep
+- Moy nalog OAuth start/callback scaffold (connected only after tokens)
+- `scripts/split-release-status.sh`
+- Doc: `docs/AUDIT-WAVE5-IMPLEMENTATION-2026-07-21.md`

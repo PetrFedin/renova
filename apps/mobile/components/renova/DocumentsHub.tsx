@@ -1,4 +1,4 @@
-import { reportError } from '@/lib/reportError';
+import { reportError, reportCatch } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -135,7 +135,7 @@ export function DocumentsHub({
         const km = h?.kontur_mode || h?.integrations?.esign?.kontur_mode;
         if (km) setKonturMode(String(km));
       })
-      .catch(() => {});
+      .catch(reportCatch('docs.esignHealth'));
     // OCR в DC — heuristic/local, не ML live
     setOcrModeLabel('DEMO');
     return () => { alive = false; };

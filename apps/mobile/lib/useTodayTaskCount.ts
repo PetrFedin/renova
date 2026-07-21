@@ -4,6 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { api } from '@/lib/api';
 import { dayTaskCount, filterCalendarEventsForRole } from '@/lib/domain/calendarEvents';
 import type { OsRole } from '@/constants/osSections';
+import { reportCatch } from '@/lib/reportError';
 
 export function useTodayTaskCount(userId?: string, projectId?: string, role: OsRole = 'customer') {
   const [count, setCount] = useState(0);
@@ -25,7 +26,7 @@ export function useTodayTaskCount(userId?: string, projectId?: string, role: OsR
     }
   }, [userId, projectId, role]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('todayTasks.reload')); }, [reload]));
 
   return { count, reload };
 }

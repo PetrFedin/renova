@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type ProjectSummary } from '@/lib/api';
 import type { ProjectBucket } from '@/components/renova/ProjectBucketToolbar';
+import { reportCatch } from '@/lib/reportError';
 
 export function useProjectBuckets(userId: string | undefined, canManage: boolean) {
   const [bucket, setBucket] = useState<ProjectBucket>('active');
@@ -47,7 +48,7 @@ export function useProjectBuckets(userId: string | undefined, canManage: boolean
   }, [userId, canManage]);
 
   useEffect(() => {
-    reload().catch(() => {});
+    reload().catch(reportCatch('projectBuckets.reload'));
   }, [reload]);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function useProjectBuckets(userId: string | undefined, canManage: boolean
     }
     countsLoadedRef.current = false;
     const t = setTimeout(() => {
-      reloadCounts().catch(() => {});
+      reloadCounts().catch(reportCatch('projectBuckets.counts'));
     }, 0);
     return () => clearTimeout(t);
   }, [userId, canManage, reloadCounts]);

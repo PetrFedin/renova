@@ -1,6 +1,8 @@
 # Split release: develop → main (pin SHA)
 
-**Pin SHA:** `a2865dd` (pre wave-2) / update to HEAD after this commit.
+**Pin SHA:** update to `git rev-parse origin/develop` before each slice PR (wave-5+ on develop).
+
+Helper: `bash scripts/split-release-status.sh` — prints HEAD, ahead-of-main count, suggested next slice.
 
 ## Почему не один PR на 200+ коммитов
 
@@ -24,3 +26,10 @@ git rev-parse HEAD
 npm run merge:check:live   # когда API_BASE=https://staging…
 npm run h0:check:live
 ```
+
+## Already on develop (do not re-land in slice PRs)
+
+- Wave-1…5 audit embeds: JWT/refresh, paid_unverified, portal CO, OTP lockout, moy_nalog_status + OAuth scaffold,
+  Redis WS bridge, Sentry init wiring, fail-closed UI + reportCatch sweep.
+
+Slice PRs cherry-pick or merge-range from tags — see `scripts/split-release-status.sh`.

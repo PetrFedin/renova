@@ -31,7 +31,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { alertStageAccepted } from '@/lib/acceptanceNav';
 import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
-import { reportError } from '@/lib/reportError';
+import { reportError, reportCatch } from '@/lib/reportError';
 
 const TEMPLATES = ['@заказчик готово к приёмке', 'Работы выполнены по смете', 'Нужен доступ на объект', 'Задержка из-за материалов', 'Готово к приёмке'];
 
@@ -111,7 +111,7 @@ export function StageDetailScreen() {
     });
     api.getContractGate(user.id, activeProject.id).then(setContractGate).catch(() => setContractGate(null));
     api.workSnapshot(user.id, activeProject.id, id).then(setWorkSnap).catch(() => setWorkSnap(null));
-    getCustomChecks(id).then(setCustomChecks).catch(() => {});
+    getCustomChecks(id).then(setCustomChecks).catch(reportCatch('stage.customChecks'));
   }, [user?.id, activeProject?.id, id]);
   useProjectDataReload(reload);
 
@@ -119,7 +119,7 @@ export function StageDetailScreen() {
     reload().catch((e) => reportError('stage.reload', e, { stageId: id }));
     if (id) getCustomChecks(id).then(setCustomChecks);
     if (user && activeProject && id) {
-      api.reactionCounts(user.id, activeProject.id, id).then(setReactCounts).catch(() => {});
+      api.reactionCounts(user.id, activeProject.id, id).then(setReactCounts).catch(reportCatch('stage.reactions'));
     }
   }, [user?.id, activeProject?.id, id]);
 
@@ -168,12 +168,12 @@ export function StageDetailScreen() {
         'Список проверок пуст. Принять этап без отметки пунктов?',
         [
           { text: 'Отмена', style: 'cancel' },
-          { text: 'Принять', onPress: () => { runAcceptStage(qualityScore).catch(() => {}); } },
+          { text: 'Принять', onPress: () => { runAcceptStage(qualityScore).catch(reportCatch('stage.accept')); } },
         ],
       );
       return;
     }
-    runAcceptStage(qualityScore).catch(() => {});
+    runAcceptStage(qualityScore).catch(reportCatch('stage.accept'));
   };
 
   if (!activeProject || !stage || !user) {
@@ -289,7 +289,7 @@ export function StageDetailScreen() {
               setRejectQualityScore(qualityScore);
               setRejectOpen(true);
             }}
-            onExportAcceptance={() => { onExportAcceptance().catch(() => {}); }}
+            onExportAcceptance={() => { onExportAcceptance().catch(reportCatch('stage.exportAcceptance')); }}
             onReload={reload}
           />
         ) : null}
@@ -305,7 +305,7 @@ export function StageDetailScreen() {
           stages={activeProject.stages || []}
           onChanged={() => {
             reload().catch((e) => reportError('stage.reload', e, { stageId: id }));
-            loadProject(activeProject.id).catch(() => {});
+            loadProject(activeProject.id).catch(reportCatch('stage.loadProject'));
           }}
         />
 

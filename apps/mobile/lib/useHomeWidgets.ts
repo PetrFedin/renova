@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { getHomeWidgets, subscribeHomeWidgets } from '@/lib/homeWidgetPrefs';
 import type { HomeWidgetId, HomeWidgetRole } from '@/constants/homeWidgets';
+import { reportCatch } from '@/lib/reportError';
 
 export function useHomeWidgets(role: HomeWidgetRole) {
   const [visible, setVisible] = useState<Set<HomeWidgetId>>(new Set());
@@ -12,7 +13,7 @@ export function useHomeWidgets(role: HomeWidgetRole) {
     setVisible(new Set(ids));
   }, [role]);
 
-  useFocusEffect(useCallback(() => { reload().catch(() => {}); }, [reload]));
+  useFocusEffect(useCallback(() => { reload().catch(reportCatch('homeWidgets.reload')); }, [reload]));
 
   useEffect(() => subscribeHomeWidgets(reload), [reload]);
 
