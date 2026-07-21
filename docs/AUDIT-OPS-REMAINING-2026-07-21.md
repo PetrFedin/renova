@@ -1,17 +1,17 @@
 # Ops
 
-Split + mobile parity on `main`. E2E JWT Bearer landed (#18).
+Split + mobile parity on `main`. E2E JWT (#18). Ops probe/assert (#19).
 
 ## Staging secrets (human)
 
 `ENVIRONMENT=staging npm run staging:credentials-probe`
+`npm run h0:check:strict` — включает probe + assert-e2e-bearer
+`API_BASE=https://… npm run h0:check:live` — H0 readiness по **Bearer JWT** (не X-User-Id)
 
-Probe now also fails closed on: `AUTH_ALLOW_HEADER_USER_ID=true`, SQLite `DATABASE_URL`, default/short `SECRET_KEY`, localhost `PUBLIC_BASE_URL`, `CORS=*`, `ALLOW_DEMO_SEED`.
+H0 API check `auth_bearer`: на staging/production identity только JWT.
 
-Synthetic check without local `.env`:
-
-`ENV_FILE=/dev/null ENVIRONMENT=staging … bash scripts/staging-credentials-probe.sh`
+Synthetic probe: `ENV_FILE=/dev/null ENVIRONMENT=staging … bash scripts/staging-credentials-probe.sh`
 
 ## E2E auth (on main)
 
-API Playwright specs use `authHeaders(DemoUser)`. CI gate: `npm run assert:e2e-bearer` (no raw `'X-User-Id'` in `e2e/*.spec.ts`).
+`authHeaders(DemoUser)` + CI `npm run assert:e2e-bearer`.

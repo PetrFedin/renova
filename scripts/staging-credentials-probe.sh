@@ -30,9 +30,10 @@ warn=0
 report=()
 
 need() {
-  # Indirect expand: ${!k-} is NOT valid for "default if unset" on nameref.
+  # set -u safe: printenv returns empty if unset (avoids ${!k} unbound).
   local k="$1"
-  local v="${!k}"
+  local v
+  v="$(printenv "$k" 2>/dev/null || true)"
   if [[ -z "${v}" ]]; then
     if [[ "$strict" -eq 1 ]]; then
       report+=("FAIL required $k empty")
