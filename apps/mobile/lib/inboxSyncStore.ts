@@ -18,9 +18,21 @@ import {
   patchThreadUnreadInSnapshot,
   setThreadArchivedInSnapshot,
   snapshotFromThreads,
+  sumActiveThreadUnread,
   warnUnreadInvariantIfBroken,
   type ChatUnreadSnapshot,
 } from '@/lib/domain/chatUnreadSnapshot';
+import {
+  EMPTY_ACTIVE_THREAD_CONTEXT,
+  isActivelyReadingThread,
+  type ActiveThreadContext,
+} from '@/lib/domain/activeThreadContext';
+import {
+  clearIncomingMessageDedupe,
+  clampSnapshotForActiveRead,
+  decideIncomingChatMessage,
+  type IncomingChatMessageEvent,
+} from '@/lib/domain/incomingChatMessage';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -29,6 +41,8 @@ const listeners = new Set<Listener>();
 
 /** SoT unread: атомарный snapshot (threads + total + revision) */
 let unreadSnapshot: ChatUnreadSnapshot | null = null;
+/** Открытый видимый тред — для suppress unread flicker */
+let activeThreadContext: ActiveThreadContext = { ...EMPTY_ACTIVE_THREAD_CONTEXT };
 let chatCount = 0;
 let chatFailed = false;
 /** Список не загрузился / устарел — total не подменяем отдельно */
@@ -109,14 +123,127 @@ function applyIncomingSnapshot(
     warnUnreadInvariantIfBroken(result.snapshot, undefined, 'stale_revision_rejected');
     return false;
   }
-  commitUnreadSnapshot(result.snapshot, { failed: false, stale: false });
+  const tid = activeThreadContext.threadId;
+  const reading = tid ? isActivelyReadingThread(activeThreadContext, tid) : false;
+  const serverUnread = reading && tid
+    ? (result.snapshot.threads.find((t) => t.id === tid)?.unread_count ?? 0)
+    : 0;
+
+  // Одна транзакция: snapshot + clamp unread активного читаемого треда (нет 0→N→0)
+  const clamped = clampSnapshotForActiveRead(
+    result.snapshot,
+    activeThreadContext,
+    sumActiveThreadUnread,
+  );
+  commitUnreadSnapshot(
+    snapshotFromThreads(clamped.threads, result.snapshot.revision, result.snapshot.updatedAt),
+    { failed: false, stale: false },
+  );
+
+  // Сервер ещё считает unread — подтвердить cursor без визуального bump
+  if (reading && tid && serverUnread > 0) {
+    const ctx = { ...activeThreadContext };
+    queueMicrotask(() => {
+      if (!ctx.userId || !ctx.projectId || !ctx.threadId) return;
+      if (!isActivelyReadingThread(activeThreadContext, ctx.threadId)) return;
+      void markThreadRead({
+        userId: ctx.userId,
+        projectId: ctx.projectId,
+        threadId: ctx.threadId,
+        source: 'thread_ws',
+      });
+    });
+  }
   return true;
 }
 
 function applyLocalThreadUnread(threadId: string, unread = 0) {
   const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
-  const next = patchThreadUnreadInSnapshot(base, threadId, unread);
+  // Не поднимаем unread активного читаемого треда локальным patch
+  const nextUnread = isActivelyReadingThread(activeThreadContext, threadId)
+    ? 0
+    : unread;
+  const next = patchThreadUnreadInSnapshot(base, threadId, nextUnread);
   commitUnreadSnapshot(next, { failed: false, stale: false });
+}
+
+/**
+ * Зафиксировать, какой тред сейчас реально виден (Variant A policy).
+ * Вызывает ChatThreadView при изменении gate.
+ */
+export function setActiveThreadContext(next: ActiveThreadContext): void {
+  activeThreadContext = { ...next };
+}
+
+export function clearActiveThreadContext(): void {
+  activeThreadContext = { ...EMPTY_ACTIVE_THREAD_CONTEXT };
+}
+
+export function getActiveThreadContextSnapshot(): ActiveThreadContext {
+  return { ...activeThreadContext };
+}
+
+export type IngestIncomingMessageResult = {
+  accept: boolean;
+  bumpUnread: boolean;
+  shouldMarkRead: boolean;
+  reason: string;
+};
+
+/**
+ * Атомарно: dedupe messageId + unread bump/suppress.
+ * Сообщения в UI добавляет caller; mark-read — если shouldMarkRead.
+ */
+export function ingestIncomingChatMessage(
+  event: IncomingChatMessageEvent,
+): IngestIncomingMessageResult {
+  const decision = decideIncomingChatMessage({
+    event,
+    active: activeThreadContext,
+  });
+  if (!decision.accept) {
+    return {
+      accept: false,
+      bumpUnread: false,
+      shouldMarkRead: false,
+      reason: decision.reason,
+    };
+  }
+
+  const prev = {
+    chatCount,
+    chatFailed,
+    chatUnreadStale,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+    revision: unreadSnapshot?.revision ?? 0,
+  };
+
+  const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
+  if (decision.bumpUnread) {
+    const cur = base.threads.find((t) => t.id === event.threadId)?.unread_count ?? 0;
+    commitUnreadSnapshot(
+      patchThreadUnreadInSnapshot(base, event.threadId, cur + 1),
+      { failed: false, stale: false },
+    );
+    refreshInboxChatRow(chatCount);
+  } else if (decision.shouldMarkRead || decision.reason === 'applied_suppress') {
+    // Явно держим 0 в той же транзакции (сервер мог уже успеть отдать +1)
+    commitUnreadSnapshot(
+      patchThreadUnreadInSnapshot(base, event.threadId, 0),
+      { failed: false, stale: false },
+    );
+    refreshInboxChatRow(chatCount);
+  }
+
+  notifyIfChanged(prev);
+  return {
+    accept: true,
+    bumpUnread: decision.bumpUnread,
+    shouldMarkRead: decision.shouldMarkRead,
+    reason: decision.reason,
+  };
 }
 
 export function getChatUnreadSnapshot() {
@@ -548,6 +675,8 @@ export async function reloadInboxSync(
       inboxBadge = 0;
       cachedFullSync = null;
       lastChatUserId = undefined;
+      clearActiveThreadContext();
+      clearIncomingMessageDedupe();
       clearMarkReadCursors();
       notifyIfChanged(prev);
       return;
@@ -560,6 +689,8 @@ export async function reloadInboxSync(
       chatUnreadStale = false;
       chatThreads = [];
       unreadSnapshot = null;
+      clearActiveThreadContext();
+      clearIncomingMessageDedupe();
       clearMarkReadCursors();
     }
     lastChatUserId = merged.userId;

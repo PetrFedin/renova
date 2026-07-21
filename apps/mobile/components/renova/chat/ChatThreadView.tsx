@@ -28,16 +28,21 @@ import {
   requestChatSync,
   patchChatSyncContext,
 } from '@/lib/chatSync';
+import {
+  clearActiveThreadContext,
+  ingestIncomingChatMessage,
+  setActiveThreadContext,
+} from '@/lib/inboxSyncStore';
+import {
+  evaluateCanMarkChatRead,
+  shouldFireMarkRead,
+} from '@/lib/domain/canMarkChatRead';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { router } from 'expo-router';
-import {
-  evaluateCanMarkChatRead,
-  shouldFireMarkRead,
-} from '@/lib/domain/canMarkChatRead';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -330,6 +335,44 @@ export function ChatThreadView({
     threadMatches: loadedThreadRef.current === threadId,
   });
 
+  // Overlay/modal поверх ленты → messagesVisible false (не suppress unread)
+  const overlayBlocking = inviteOpen || settingsOpen || !!taskMsg;
+  const messagesVisible = latestMessagesRendered && !overlayBlocking && !loadFailed;
+
+  // Публикуем activeThreadContext в store — inbox snapshot clamp / ingest
+  useEffect(() => {
+    if (!user?.id || !threadId) {
+      clearActiveThreadContext();
+      return undefined;
+    }
+    setActiveThreadContext({
+      threadId,
+      userId: user.id,
+      projectId: chatProjectId ?? activeProject?.id ?? null,
+      screenFocused,
+      appForeground: appState === 'active',
+      messagesVisible,
+      threadLoaded,
+      accessConfirmed,
+    });
+    return undefined;
+  }, [
+    user?.id,
+    threadId,
+    chatProjectId,
+    activeProject?.id,
+    screenFocused,
+    appState,
+    messagesVisible,
+    threadLoaded,
+    accessConfirmed,
+  ]);
+
+  // Сброс контекста только при уходе с треда / logout (не на каждом tick visibility)
+  useEffect(() => () => {
+    clearActiveThreadContext();
+  }, [threadId, user?.id]);
+
   useEffect(() => {
     const prev = canMarkPrevRef.current;
     canMarkPrevRef.current = canMarkRead;
@@ -361,15 +404,52 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    // Новое сообщение: через orchestrator (debounce/coalesce), не прямой reload
-    canMarkPrevRef.current = false;
-    setLatestMessagesRendered(false);
+
+    const rawMsg = (payload as { message?: ChatMessage; message_id?: string }).message;
+    const messageId = rawMsg?.id
+      || (payload as { message_id?: string }).message_id
+      || '';
+    const fromSelf = Boolean((payload as { from_self?: boolean }).from_self);
+
+    const ingest = messageId
+      ? ingestIncomingChatMessage({
+        messageId,
+        threadId,
+        fromSelf,
+        createdAt: rawMsg?.created_at ?? null,
+      })
+      : null;
+
+    // Локально добавить сообщение без полного reload (нет сброса canMark → меньше flicker)
+    if (ingest?.accept && rawMsg?.id) {
+      setChat((prev) => {
+        if (!prev) return prev;
+        if (prev.messages.some((m) => m.id === rawMsg.id)) return prev;
+        return { ...prev, messages: [...prev.messages, rawMsg], updated_at: rawMsg.created_at || prev.updated_at };
+      });
+      if (ingest.shouldMarkRead) {
+        markThreadReadRef.current().catch(reportCatch('chat.markRead.ws'));
+      }
+      return;
+    }
+
+    if (ingest && !ingest.accept) {
+      // duplicate reconnect — не трогаем unread / не reload
+      return;
+    }
+
+    // Нет payload message — soft sync треда, НЕ сбрасываем canMark/rendered (Variant A)
     if (threadId) {
       void requestChatSync({
         scope: 'thread',
         threadId,
         reason: 'websocket',
         priority: 'normal',
+      }).then(() => {
+        // После sync ленты — подтвердить read cursor если всё ещё видимы
+        if (canMarkPrevRef.current) {
+          markThreadReadRef.current().catch(reportCatch('chat.markRead.afterSync'));
+        }
       });
     }
   });
