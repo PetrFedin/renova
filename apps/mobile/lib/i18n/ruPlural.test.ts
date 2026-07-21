@@ -14,10 +14,13 @@ import {
   formatDays,
   formatDocuments,
   formatFiles,
+  formatInvoices,
   formatIssues,
   formatParticipants,
   formatPayments,
+  formatPaymentsDue,
   formatProjects,
+  formatRooms,
   formatTasks,
   formatUnreadCount,
   formatUnreadMessages,
@@ -100,6 +103,15 @@ assert(formatIssues(3) === '3 замечания', 'issue3');
 assert(formatIssues(12) === '12 замечаний', 'issue12');
 assert(formatPayments(1) === '1 платёж', 'pay1');
 assert(formatPayments(2) === '2 платежа', 'pay2');
+assert(formatPaymentsDue(1) === '1 оплата', 'due1');
+assert(formatPaymentsDue(11) === '11 оплат', 'due11');
+assert(formatPaymentsDue(21) === '21 оплата', 'due21');
+assert(formatInvoices(1) === '1 счёт', 'inv1');
+assert(formatInvoices(11) === '11 счетов', 'inv11');
+assert(formatInvoices(22) === '22 счёта', 'inv22');
+assert(formatRooms(1) === '1 комната', 'room1');
+assert(formatRooms(4) === '4 комнаты', 'room4');
+assert(formatRooms(11) === '11 комнат', 'room11');
 assert(formatDays(1) === '1 день', 'day1');
 assert(formatDays(11) === '11 дней', 'day11');
 assert(formatFiles(4) === '4 файла', 'file4');

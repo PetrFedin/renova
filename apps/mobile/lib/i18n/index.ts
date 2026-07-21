@@ -16,11 +16,13 @@ export {
   formatDocuments,
   formatIssues,
   formatPayments,
+  formatPaymentsDue,
   formatInvoices,
   formatDays,
   formatFiles,
   formatParticipants,
   formatProjects,
+  formatRooms,
   formatDialogs,
   nounRu,
 } from './ruCountLabels';

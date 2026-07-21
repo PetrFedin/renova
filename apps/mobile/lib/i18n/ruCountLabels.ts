@@ -23,12 +23,15 @@ export const RU_NOUN = {
   document: ['документ', 'документа', 'документов'] as const,
   issue: ['замечание', 'замечания', 'замечаний'] as const,
   payment: ['платёж', 'платежа', 'платежей'] as const,
+  /** «1 оплата / 2 оплаты / 5 оплат» — фаза закрытия, pending payments */
+  paymentDue: ['оплата', 'оплаты', 'оплат'] as const,
   /** Счета (оплаты) — «1 счёт / 2 счёта / 5 счетов» */
   invoice: ['счёт', 'счёта', 'счетов'] as const,
   day: ['день', 'дня', 'дней'] as const,
   file: ['файл', 'файла', 'файлов'] as const,
   participant: ['участник', 'участника', 'участников'] as const,
   project: ['объект', 'объекта', 'объектов'] as const,
+  room: ['комната', 'комнаты', 'комнат'] as const,
   dialog: ['диалог', 'диалога', 'диалогов'] as const,
   event: ['событие', 'события', 'событий'] as const,
   risk: ['риск', 'риска', 'рисков'] as const,
@@ -58,8 +61,16 @@ export function formatPayments(count: unknown): string {
   return formatCount(count, RU_NOUN.payment);
 }
 
+export function formatPaymentsDue(count: unknown): string {
+  return formatCount(count, RU_NOUN.paymentDue);
+}
+
 export function formatInvoices(count: unknown): string {
   return formatCount(count, RU_NOUN.invoice);
+}
+
+export function formatRooms(count: unknown): string {
+  return formatCount(count, RU_NOUN.room);
 }
 
 export function formatDays(count: unknown): string {
