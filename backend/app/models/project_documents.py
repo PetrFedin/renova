@@ -1,6 +1,7 @@
 """Canonical project documents (D-01…D-03)."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import enum
 import uuid
 from datetime import datetime
@@ -53,7 +54,7 @@ class ProjectDocument(Base):
     status: Mapped[str] = mapped_column(String(16), index=True, default=DocumentStatus.active.value)
     current_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Wave 3: legal hold блокирует soft-delete; retention_until — дата снятия холда (ISO day)
     legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -76,7 +77,7 @@ class DocumentVersion(Base):
     href: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     # Wave 3b: OCR classify stub (async-ready flags; sync runner in MVP)
     ocr_status: Mapped[str] = mapped_column(String(16), default="none")  # none|queued|processing|done|failed
     ocr_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

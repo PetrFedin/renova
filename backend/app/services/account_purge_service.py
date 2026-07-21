@@ -1,6 +1,7 @@
 """Hard-purge soft-deleted users after retention (P2.21)."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import logging
 from datetime import datetime, timedelta
 
@@ -15,7 +16,7 @@ RETENTION_DAYS = 30
 
 
 async def purge_deleted_users(db: AsyncSession, *, older_than_days: int = RETENTION_DAYS) -> int:
-    cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+    cutoff = utc_now() - timedelta(days=older_than_days)
     rows = list(
         (
             await db.execute(

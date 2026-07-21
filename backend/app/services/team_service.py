@@ -1,3 +1,4 @@
+from app.core.timeutil import utc_now
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import Team, TeamMember, User, Project, ProjectViewer
@@ -161,14 +162,14 @@ async def require_capability(
 
 async def create_invite_link(db: AsyncSession, team_id: str, role: str = "member", hours: int = 72) -> dict:
     token = secrets.token_urlsafe(16)
-    inv = TeamInvite(team_id=team_id, token=token, role=role, expires_at=datetime.utcnow() + timedelta(hours=hours))
+    inv = TeamInvite(team_id=team_id, token=token, role=role, expires_at=utc_now() + timedelta(hours=hours))
     db.add(inv); await db.commit()
     return {"token": token, "link": f"renova://team/join/{token}"}
 
 async def join_by_token(db: AsyncSession, user_id: str, token: str) -> dict:
     r = await db.execute(select(TeamInvite).where(TeamInvite.token == token, TeamInvite.used.is_(False)))
     inv = r.scalar_one_or_none()
-    if not inv or inv.expires_at < datetime.utcnow():
+    if not inv or inv.expires_at < utc_now():
         return {"ok": False, "message": "Ссылка недействительна"}
     ex = await db.execute(select(TeamMember).where(TeamMember.team_id == inv.team_id, TeamMember.user_id == user_id))
     if not ex.scalar_one_or_none():

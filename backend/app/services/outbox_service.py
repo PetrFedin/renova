@@ -1,6 +1,7 @@
 """Transactional outbox enqueue + best-effort dispatch (P1.16)."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import json
 import logging
 from datetime import datetime
@@ -27,7 +28,7 @@ async def enqueue(
         aggregate_id=aggregate_id,
         event_type=event_type,
         payload_json=json.dumps(payload, ensure_ascii=False),
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     db.add(row)
     await db.flush()
@@ -50,7 +51,7 @@ async def dispatch_pending(db: AsyncSession, *, limit: int = 20) -> int:
     for row in rows:
         try:
             await _handle(db, row)
-            row.processed_at = datetime.utcnow()
+            row.processed_at = utc_now()
             row.attempts = (row.attempts or 0) + 1
             done += 1
         except Exception as exc:  # noqa: BLE001 — isolate per row

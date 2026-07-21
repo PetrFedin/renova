@@ -1,6 +1,7 @@
 """P2.5 / W51: weekly digest lite — rule-based RU summary + optional Ollama (fail-open)."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import datetime
 from typing import Any
 
@@ -87,7 +88,7 @@ async def compose_weekly_digest(
         "rule_body": rule,
         "source": source,
         "mode": mode,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": utc_now().isoformat() + "Z",
         "weekly": {
             "progress_percent": (weekly or {}).get("progress_percent"),
             "stages_done": (weekly or {}).get("stages_done"),

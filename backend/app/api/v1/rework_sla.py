@@ -1,4 +1,5 @@
 """Напоминания SLA доработки за 24ч."""
+from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/projects", tags=["rework-sla"])
 async def check_rework_sla(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.api.deps import require_project
     p = await require_project(db, project_id, user, write=False)
-    now = datetime.utcnow()
+    now = utc_now()
     soon = now + timedelta(hours=24)
     r = await db.execute(select(Stage).where(Stage.project_id == project_id, Stage.needs_rework == True, Stage.rework_deadline != None, Stage.rework_deadline <= soon, Stage.rework_deadline > now))
     sent = 0
@@ -34,6 +35,6 @@ async def extend_rework_sla(project_id: str, stage_id: str, days: int = 1, user:
     if not st or st.project_id != project_id:
         from fastapi import HTTPException
         raise HTTPException(404)
-    st.rework_deadline = (st.rework_deadline or datetime.utcnow()) + timedelta(days=max(1, min(7, days)))
+    st.rework_deadline = (st.rework_deadline or utc_now()) + timedelta(days=max(1, min(7, days)))
     await db.commit()
     return {"ok": True, "rework_deadline": st.rework_deadline.isoformat()}

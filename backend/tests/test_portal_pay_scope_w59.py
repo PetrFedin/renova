@@ -45,4 +45,4 @@ async def test_confirm_payment_rejects_cross_project(db):
 
     out_ok = await pay_svc.confirm_payment(db, pay.id, project_id=pb.id, transfer_ack=True)
     assert out_ok is not None
-    assert out_ok.status == PaymentStatus.confirmed
+    assert out_ok.status == PaymentStatus.paid_unverified

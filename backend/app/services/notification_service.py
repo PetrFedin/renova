@@ -1,6 +1,7 @@
 """In-app уведомления + push с returnTo для навигации назад."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -59,7 +60,7 @@ async def notify(
 
 async def list_for_user(db: AsyncSession, user_id: str, unread_only: bool = False) -> list[AppNotification]:
     q = select(AppNotification).where(AppNotification.user_id == user_id)
-    q = q.where((AppNotification.snoozed_until.is_(None)) | (AppNotification.snoozed_until < datetime.utcnow()))
+    q = q.where((AppNotification.snoozed_until.is_(None)) | (AppNotification.snoozed_until < utc_now()))
     if unread_only:
         q = q.where(AppNotification.read.is_(False))
     r = await db.execute(q.order_by(AppNotification.created_at.desc()).limit(50))
@@ -91,7 +92,7 @@ async def snooze(db: AsyncSession, notification_id: str, user_id: str, hours: in
     n = r.scalar_one_or_none()
     if not n:
         return False
-    n.snoozed_until = datetime.utcnow() + timedelta(hours=hours)
+    n.snoozed_until = utc_now() + timedelta(hours=hours)
     await db.commit()
     return True
 

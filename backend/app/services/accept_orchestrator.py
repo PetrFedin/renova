@@ -7,6 +7,7 @@ Schedule item status=accepted НЕ должен обходить этот пут
 """
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import json
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -161,7 +162,7 @@ async def finalize_work_acceptance(
     with_remarks: bool = False,
 ) -> AcceptResult:
     """Мутации БД до commit. Не пишет events/notify — см. emit_acceptance_side_effects."""
-    now = datetime.utcnow()
+    now = utc_now()
     status = (
         AcceptanceStatus.accepted_with_remarks.value
         if (create_issue or with_remarks)

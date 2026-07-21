@@ -1,3 +1,4 @@
+from app.core.timeutil import utc_now
 """Web client portal — magic link + read-only snapshot (P2.1)."""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -205,7 +206,7 @@ async def portal_snapshot(
         stage = await db.get(Stage, row.stage_id)
         hours_waiting = None
         if row.requested_at:
-            hours_waiting = round((_dt.utcnow() - row.requested_at).total_seconds() / 3600, 1)
+            hours_waiting = round((utc_now() - row.requested_at).total_seconds() / 3600, 1)
         pending_acceptances.append({
             "id": row.id,
             "stage_id": row.stage_id,

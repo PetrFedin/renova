@@ -7,6 +7,7 @@ Demo login (EXPO_PUBLIC_DEMO=1 in dev):
 """
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
@@ -294,10 +295,10 @@ async def _ensure_demo_acceptance_queue(db: AsyncSession, project_id: str, contr
             project_id=project_id,
             stage_id=active.id,
             requested_by=contractor_id,
-            requested_at=datetime.utcnow(),
+            requested_at=utc_now(),
             status=AcceptanceStatus.requested.value,
             comment="Демо: этап готов к приёмке",
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
     )
     active.status = StageStatus.review

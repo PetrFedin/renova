@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import re
 import uuid
 from datetime import datetime
@@ -90,7 +91,7 @@ async def run_ocr_stub(
         version.ocr_suggested_type = suggested
         version.ocr_confidence = conf
         version.ocr_status = "done"
-        version.ocr_completed_at = datetime.utcnow()
+        version.ocr_completed_at = utc_now()
         version.ocr_error = None
         if (
             apply_type

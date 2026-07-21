@@ -7,6 +7,7 @@ from app.db.session import init_db, SessionLocal
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
+from tests.helpers_flow import complete_stage_checklist
 
 pytestmark = pytest.mark.asyncio
 
@@ -71,6 +72,7 @@ async def test_payment_confirm_notifies_contractor():
         )
         accs = (await client.get(f"/api/v1/projects/{pid}/work-acceptances", headers=h_cust)).json()
         acc_id = next(a["id"] for a in accs if a["stage_id"] == active["id"])
+        await complete_stage_checklist(client, pid, active["id"], h_cont)
         await client.post(
             f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
             headers=h_cust,

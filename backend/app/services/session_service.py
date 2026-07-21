@@ -1,6 +1,7 @@
 """User sessions + refresh token rotation."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -24,7 +25,7 @@ async def create_session(
     user_agent: str | None = None,
 ) -> tuple[UserSession, str]:
     raw = mint_refresh_token()
-    now = datetime.utcnow()
+    now = utc_now()
     row = UserSession(
         id=_uuid(),
         user_id=user_id,
@@ -49,11 +50,11 @@ async def rotate_session(db: AsyncSession, refresh_token: str) -> tuple[UserSess
     sess = result.scalar_one_or_none()
     if not sess or sess.revoked_at is not None:
         return None
-    if sess.expires_at < datetime.utcnow():
-        sess.revoked_at = datetime.utcnow()
+    if sess.expires_at < utc_now():
+        sess.revoked_at = utc_now()
         await db.commit()
         return None
-    sess.revoked_at = datetime.utcnow()
+    sess.revoked_at = utc_now()
     await db.commit()
     return await create_session(
         db,
@@ -70,7 +71,7 @@ async def revoke_session(db: AsyncSession, refresh_token: str) -> bool:
     sess = result.scalar_one_or_none()
     if not sess or sess.revoked_at:
         return False
-    sess.revoked_at = datetime.utcnow()
+    sess.revoked_at = utc_now()
     await db.commit()
     return True
 
@@ -80,7 +81,7 @@ async def revoke_all_user_sessions(db: AsyncSession, user_id: str) -> int:
         select(UserSession).where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
     )
     n = 0
-    now = datetime.utcnow()
+    now = utc_now()
     for sess in result.scalars().all():
         sess.revoked_at = now
         n += 1

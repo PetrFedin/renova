@@ -1,6 +1,7 @@
 """Periodic automation tick — project reminders + waste pickup + health metrics."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
@@ -65,7 +66,7 @@ async def _maybe_ops_alert() -> None:
 def _record_ok(result: dict) -> None:
     global _ops_alert_sent_for_streak
     _ops_alert_sent_for_streak = False
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = utc_now().isoformat(timespec="seconds") + "Z"
     _METRICS["last_tick_at"] = now
     _METRICS["last_ok_at"] = now
     _METRICS["last_error"] = None
@@ -76,7 +77,7 @@ def _record_ok(result: dict) -> None:
 
 
 def _record_fail(exc: BaseException) -> None:
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = utc_now().isoformat(timespec="seconds") + "Z"
     _METRICS["last_tick_at"] = now
     _METRICS["last_error"] = f"{type(exc).__name__}: {exc}"[:500]
     _METRICS["consecutive_failures"] = int(_METRICS["consecutive_failures"]) + 1

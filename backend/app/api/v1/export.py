@@ -1,4 +1,5 @@
 """PDF и экспорт проекта — fpdf2 с транслитерацией кириллицы."""
+from app.core.timeutil import utc_now
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from fastapi.responses import Response
@@ -176,7 +177,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
     from app.models.entities import MarginSnapshot
 
     p = await require_project(db, project_id, user, write=False)
-    since = datetime.utcnow() - timedelta(days=7)
+    since = utc_now() - timedelta(days=7)
     r = await db.execute(select(MarginSnapshot).where(MarginSnapshot.project_id == project_id, MarginSnapshot.recorded_at >= since))
     snaps = list(r.scalars().all())
     pdf = new_pdf()
@@ -398,7 +399,7 @@ async def create_warranty_claim(
         description=body.description,
         severity="high",
         status="open",
-        due_at=datetime.utcnow() + timedelta(days=14),
+        due_at=utc_now() + timedelta(days=14),
     )
     db.add(issue)
     await db.flush()
@@ -461,7 +462,7 @@ async def list_warranty_claims(
     items = await iss.list_issues(db, project_id, status=None)
     from datetime import datetime
     warranty = [iss.issue_dict(i) for i in items if (i.title or "").startswith("[Гарантия]")]
-    now = datetime.utcnow()
+    now = utc_now()
     open_items = [i for i in warranty if i.get("status") != "closed"]
     overdue = 0
     for raw, d in zip(
@@ -501,7 +502,7 @@ async def close_warranty_claim(
     if not (issue.title or "").startswith("[Гарантия]"):
         raise HTTPException(400, "not_a_warranty_claim")
     issue.status = "closed"
-    issue.closed_at = datetime.utcnow()
+    issue.closed_at = utc_now()
     # W46: архивируем связанный warranty-документ
     try:
         from sqlalchemy import select
@@ -590,7 +591,7 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
     else:
         next_action = "Закройте гарантийные обращения"
     from datetime import datetime as _dt
-    _now = _dt.utcnow()
+    _now = utc_now()
     warranty_overdue = sum(1 for w in warranty_open if w.due_at and w.due_at < _now)
     archived = bool(getattr(project, "is_archived", False))
     return {

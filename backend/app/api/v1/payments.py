@@ -234,6 +234,15 @@ async def confirm_payment(
         body=str(payment.amount),
         link_path="/(customer)/(tabs)/budget",
     )
+    # W143/W56: transfer_ack alone → paid_unverified — не врать «подтверждена».
+    status_val = payment.status.value if hasattr(payment.status, "value") else str(payment.status)
+    unverified = status_val == "paid_unverified"
+    n_type = "payment_pending" if unverified else "payment_confirmed"
+    n_title = (
+        f"Перевод отмечен (без чека): {payment.title}"
+        if unverified
+        else f"Оплата подтверждена: {payment.title}"
+    )
     for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
         if not member_id or member_id == user.id:
             continue
@@ -241,8 +250,8 @@ async def confirm_payment(
             db,
             user_id=member_id,
             project_id=project_id,
-            notification_type="payment_confirmed",
-            title=f"Оплата подтверждена: {payment.title}",
+            notification_type=n_type,
+            title=n_title,
             body=str(payment.amount),
             link_path="/(customer)/(tabs)/budget" if member_id == project.customer_id else "/(contractor)/(tabs)/budget",
             return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home",

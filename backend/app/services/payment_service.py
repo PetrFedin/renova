@@ -1,4 +1,5 @@
 """Платежи: авансы, этапы, закупка материалов."""
+from app.core.timeutil import utc_now
 from datetime import datetime
 
 from sqlalchemy import select
@@ -104,7 +105,7 @@ async def confirm_payment(
         return payment
 
     payment.status = PaymentStatus.confirmed
-    payment.confirmed_at = datetime.utcnow()
+    payment.confirmed_at = utc_now()
     if allow_without_settlement:
         payment.payment_method = payment.payment_method or "yookassa"
         evidence_type, evidence_ref, source = "yookassa", payment.yookassa_payment_id, "webhook"

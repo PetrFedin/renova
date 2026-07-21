@@ -1,4 +1,5 @@
 """Закупки Renova OS: потребность → заказ → доставка → разблокировка работ."""
+from app.core.timeutil import utc_now
 from datetime import datetime
 from uuid import uuid4
 
@@ -119,7 +120,7 @@ async def set_status(db: AsyncSession, purchase_id: str, status: PurchaseStatus)
     p = await db.get(Purchase, purchase_id, options=[selectinload(Purchase.items)])
     if not p:
         return None
-    now = datetime.utcnow()
+    now = utc_now()
     p.status = status
     if status == PurchaseStatus.ordered:
         p.ordered_at = now

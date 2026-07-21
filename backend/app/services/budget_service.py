@@ -1,6 +1,7 @@
 """Бюджет Renova OS: BudgetLine, Expense, прогноз и отклонения."""
 from __future__ import annotations
 
+from app.core.timeutil import utc_now
 from datetime import datetime
 
 from sqlalchemy import select
@@ -207,7 +208,7 @@ async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | N
         amount=rec.amount,
         status="confirmed" if rec.fns_verified else "pending_receipt",
         payment_method="card",
-        expense_date=rec.created_at or datetime.utcnow(),
+        expense_date=rec.created_at or utc_now(),
     )
     db.add(exp)
     await db.flush()
@@ -233,7 +234,7 @@ async def expense_from_bank_row(
         status="confirmed",
         payment_method="bank_transfer",
         comment=(comment or "bank_statement_unmatched")[:500],
-        expense_date=expense_date or datetime.utcnow(),
+        expense_date=expense_date or utc_now(),
     )
     db.add(exp)
     await db.flush()
@@ -345,7 +346,7 @@ async def expense_from_purchase(db: AsyncSession, purchase: Purchase) -> Expense
             amount=amount,
             status="confirmed",
             payment_method="transfer",
-            expense_date=purchase.paid_at or purchase.delivered_at or purchase.created_at or datetime.utcnow(),
+            expense_date=purchase.paid_at or purchase.delivered_at or purchase.created_at or utc_now(),
         )
         db.add(exp)
 
@@ -361,7 +362,7 @@ async def expense_from_purchase(db: AsyncSession, purchase: Purchase) -> Expense
     exp.status = "confirmed"
     exp.payment_method = exp.payment_method or "transfer"
     exp.supplier_name = purchase.supplier_name
-    exp.expense_date = purchase.paid_at or purchase.delivered_at or exp.expense_date or purchase.created_at or datetime.utcnow()
+    exp.expense_date = purchase.paid_at or purchase.delivered_at or exp.expense_date or purchase.created_at or utc_now()
     await db.flush()
     return exp
 

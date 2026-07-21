@@ -1,3 +1,4 @@
+from app.core.timeutil import utc_now
 import json
 from datetime import date, datetime
 from sqlalchemy import select
@@ -85,7 +86,7 @@ async def set_contractor_ready(db: AsyncSession, stage_id: str, *, skip_gate: bo
             await db.commit()
             return None, {"code": "completion_gate", "completion": comp}
     stage.contractor_ready = True
-    stage.contractor_ready_at = datetime.utcnow()
+    stage.contractor_ready_at = utc_now()
     stage.percent_complete = float(prog)
     stage.status = StageStatus.review
     if not getattr(stage, "actual_end", None):

@@ -9,6 +9,7 @@ from app.models.entities import AcceptanceStatus, Project, Stage, StageStatus, U
 from app.services import portal_token_service as portal_tok
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
+from tests.helpers_flow import complete_stage_checklist
 
 pytestmark = pytest.mark.asyncio
 
@@ -65,6 +66,9 @@ async def test_portal_accept_stage_via_token():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, cust_id, acc_id, stage_id = await _seed_acceptance(client)
+        # Portal accept has no checklist body — mark items done first (full → quick).
+        cont = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
+        await complete_stage_checklist(client, pid, stage_id, {"X-User-Id": cont["id"]})
         token = portal_tok.create_portal_token(
             project_id=pid, user_id=cust_id, ttl_hours=1, scopes=["read", "accept_stage"]
         )

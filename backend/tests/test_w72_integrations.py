@@ -7,6 +7,7 @@ from app.db.session import init_db
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
+from tests.helpers_flow import complete_stage_checklist
 
 pytestmark = pytest.mark.asyncio
 
@@ -95,6 +96,7 @@ async def test_acceptance_marks_floor_pin_label():
                 break
         if not acc_id:
             pytest.skip("no work-acceptance in demo seed")
+        await complete_stage_checklist(client, pid, stage["id"], h_k)
         acc = await client.post(
             f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
             headers=h_c,

@@ -1,4 +1,5 @@
 """P2.2 Selections tracker — чистовые материалы (room × category × approve)."""
+from app.core.timeutil import utc_now
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -177,7 +178,7 @@ async def approve_selection(
     if row.status != SelectionStatus.proposed:
         raise HTTPException(409, "not_proposed")
     row.status = SelectionStatus.approved
-    row.approved_at = datetime.utcnow()
+    row.approved_at = utc_now()
     from app.services.selection_service import material_pick_from_selection
 
     pick = await material_pick_from_selection(db, row)

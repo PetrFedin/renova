@@ -1,4 +1,5 @@
 """Запросы заказчика на изменение комнат."""
+from app.core.timeutil import utc_now
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -79,7 +80,7 @@ async def approve_request(project_id: str, req_id: str, user: User = Depends(get
         patch = json.loads(r.payload_json)
         await room_svc.update_room(db, r.room_id, patch)
     r.status = RoomChangeStatus.approved
-    r.resolved_at = datetime.utcnow()
+    r.resolved_at = utc_now()
     await db.commit()
     return {"ok": True}
 
@@ -92,6 +93,6 @@ async def reject_request(project_id: str, req_id: str, user: User = Depends(get_
     if not r or r.project_id != project_id:
         raise HTTPException(404)
     r.status = RoomChangeStatus.rejected
-    r.resolved_at = datetime.utcnow()
+    r.resolved_at = utc_now()
     await db.commit()
     return {"ok": True}

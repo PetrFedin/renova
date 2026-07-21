@@ -6,6 +6,7 @@ from app.db.session import init_db
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
+from tests.helpers_flow import lock_estimate_w57
 
 pytestmark = pytest.mark.asyncio
 
@@ -43,8 +44,7 @@ async def test_golden_path_lock_sign_start_stage():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, stage_id, h_cont, h_cust, cust_id = await _setup_project(client)
-        locked = await client.post(f"/api/v1/projects/{pid}/estimate/lock", headers=h_cont)
-        assert locked.status_code == 200
+        locked = await lock_estimate_w57(client, pid, h_cont, h_cust)
         doc_id = locked.json()["contract"]["document_id"]
         blocked = await client.post(f"/api/v1/projects/{pid}/stages/{stage_id}/start", headers=h_cont)
         assert blocked.status_code == 403

@@ -34,7 +34,7 @@ async def test_portal_checkout_return_url_contains_paid():
         cust = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
         h = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h)).json()[0]["id"]
-        token = portal_tok.create_portal_token(project_id=pid, user_id=cust["id"], scopes=["read"])
+        token = portal_tok.create_portal_token(project_id=pid, user_id=cust["id"], scopes=["read", "pay"])
         payments = (await client.get(f"/api/v1/projects/{pid}/payments", headers=h)).json()
         pending = next((p for p in payments if p["status"] == "pending"), None)
         assert pending, "expected pending payment in demo"

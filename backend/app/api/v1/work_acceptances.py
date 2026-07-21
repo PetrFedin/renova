@@ -1,4 +1,5 @@
 """API приёмки работ: запрос → проверка → принять / вернуть."""
+from app.core.timeutil import utc_now
 import json
 from datetime import date, datetime
 
@@ -166,15 +167,15 @@ async def request_acceptance(
         room_id=None,
         stage_id=stage.id,
         requested_by=user.id,
-        requested_at=datetime.utcnow(),
+        requested_at=utc_now(),
         status=AcceptanceStatus.requested.value,
         checklist_json=json.dumps(body.checklist or []),
         comment=body.comment,
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     stage.status = StageStatus.review
     stage.contractor_ready = True
-    stage.contractor_ready_at = stage.contractor_ready_at or datetime.utcnow()
+    stage.contractor_ready_at = stage.contractor_ready_at or utc_now()
     stage.percent_complete = max(stage.percent_complete or 0, 90)
     db.add(row)
     await db.commit()
@@ -332,7 +333,7 @@ async def return_work(
             description=body.comment,
             severity="medium",
             status="open",
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         ))
     await db.commit()
     await db.refresh(row)
