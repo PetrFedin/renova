@@ -18,7 +18,7 @@ import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { alertChangeOrderSubmitted } from '@/lib/procurementNav';
-import { alertEstimateProposed } from '@/lib/estimatePayNav';
+import { alertEstimateProposed, alertEstimateProposalRevoked } from '@/lib/estimatePayNav';
 import { screenLayout } from '@/constants/screenLayout';
 import {
   estimateTotals,
@@ -139,7 +139,7 @@ export function ContractorEstimateView() {
                     await api.withdrawEstimateLock(user.id, activeProject.id);
                     await loadProject(activeProject.id);
                     await syncProjectSideEffects({ user, project: activeProject });
-                    Alert.alert('Отозвано', 'Можно править смету и отправить снова.');
+                    alertEstimateProposalRevoked('contractor');
                   } catch (e: unknown) {
                     Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');
                   }

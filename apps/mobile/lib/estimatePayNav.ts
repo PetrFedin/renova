@@ -57,6 +57,21 @@ export function alertEstimateLockRejected(role: OsRole) {
   );
 }
 
+/** W136: исполнитель отозвал предложение фиксации */
+export function alertEstimateProposalRevoked(role: OsRole = 'contractor') {
+  Alert.alert(
+    'Отозвано',
+    'Можно править смету и отправить снова.',
+    [
+      { text: 'OK' },
+      {
+        text: 'К смете',
+        onPress: () => pushOsNav(objectTabRoute(role, 'estimate'), undefined, role),
+      },
+    ],
+  );
+}
+
 /** Подтверждение оплаты заказчиком */
 export function alertPaymentConfirmed(role: OsRole) {
   Alert.alert(

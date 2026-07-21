@@ -23,6 +23,11 @@ import { ROOM_FORM_HINTS } from '@/constants/roomFormHints';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { budgetTabRoute, objectTabHref, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import {
+  alertRoomChangeRequested,
+  alertRoomArchived,
+} from '@/lib/siteOpsNav';
+import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
 import type { OsRole } from '@/constants/osSections';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
@@ -121,6 +126,8 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
                   try {
                     await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
                     setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
+                    // W136: запрос → inbox / approvals
+                    alertRoomChangeRequested('customer');
                   } catch (e) {
                     if (isOfflineQueued(e)) notifyOfflineQueued('Запрос на изменение');
                     else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
@@ -224,6 +231,8 @@ function ContractorRoomsBody() {
                   await reloadRequests();
                   await loadProject(activeProject.id);
                   await reloadRooms();
+                  // W136: room_change approve → plan
+                  alertApprovalApproved('contractor', 'room_change');
                 } catch (e) {
                   if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
                   else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
@@ -233,6 +242,8 @@ function ContractorRoomsBody() {
                 try {
                   await api.rejectRoomChange(user.id, activeProject.id, r.id);
                   await reloadRequests();
+                  // W136: reject → inbox
+                  alertApprovalRejected('contractor', 'room_change');
                 } catch (e) {
                   if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение запроса');
                   else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
@@ -261,7 +272,7 @@ function ContractorRoomsBody() {
                     await loadProject(activeProject.id);
                     await reloadRooms();
                     if (archived && roomFilter === 'active') {
-                      Alert.alert('В архиве', `«${room.name}» скрыта из активных. Смотрите вкладку «Архив».`);
+                      alertRoomArchived('contractor', room.name);
                     }
                   } catch (e: unknown) {
                     if (isOfflineQueued(e)) notifyOfflineQueued(archived ? 'Архивирование' : 'Восстановление');

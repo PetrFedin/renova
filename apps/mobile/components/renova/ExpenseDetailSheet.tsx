@@ -8,6 +8,8 @@ import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers
 import { api, type OsExpense, type ProjectDetail, type ReceiptItem, type Room, type Stage } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertExpenseUpdated, alertExpenseDeleted } from '@/lib/siteOpsNav';
+import type { OsRole } from '@/constants/osSections';
 import { EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -116,6 +118,8 @@ export function ExpenseDetailSheet({
       });
       onChanged?.();
       onClose();
+      // W136: правка → расходы / сводка
+      alertExpenseUpdated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'offline_queued') {
         Alert.alert('Офлайн', 'Изменения траты отправятся при подключении');
@@ -150,6 +154,7 @@ export function ExpenseDetailSheet({
             });
             onChanged?.();
             onClose();
+            alertExpenseDeleted((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
           } catch (e: unknown) {
             if (e instanceof Error && e.message === 'offline_queued') {
               Alert.alert('Офлайн', 'Удаление отправится при подключении');

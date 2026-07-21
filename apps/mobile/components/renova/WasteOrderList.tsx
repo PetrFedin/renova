@@ -6,6 +6,8 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { alertWasteOrderAdvanced } from '@/lib/siteOpsNav';
+import type { OsRole } from '@/constants/osSections';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 
 /** W114: UI офлайн для вывоза мусора (API уже в offlineQueue) */
@@ -47,19 +49,19 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
             <PrimaryButton
               title="Заказать"
               variant="outline"
-              onPress={() => runWasteAction('Заказ вывоза', () => api.requestWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); })}
+              onPress={() => runWasteAction('Заказ вывоза', () => api.requestWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); alertWasteOrderAdvanced(role as OsRole, 'requested'); })}
             />
           )}
           {role === 'customer' && w.status === 'requested' && (
             <PrimaryButton
               title="Согласовать"
-              onPress={() => runWasteAction('Согласование вывоза', () => api.approveWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); })}
+              onPress={() => runWasteAction('Согласование вывоза', () => api.approveWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); alertWasteOrderAdvanced(role as OsRole, 'approved'); })}
             />
           )}
           {role === 'contractor' && w.status === 'approved' && (
             <PrimaryButton
               title="Вывезено"
-              onPress={() => runWasteAction('Завершение вывоза', () => api.completeWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); })}
+              onPress={() => runWasteAction('Завершение вывоза', () => api.completeWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); alertWasteOrderAdvanced(role as OsRole, 'completed'); })}
             />
           )}
         </View>
@@ -71,7 +73,7 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
           onPress={() => runWasteAction(
             'Заявка на контейнер',
             () => api.createWasteOrder(userId, projectId, { volume_m3: 8, price: 4500, waste_type: 'construction', notes: 'Строительный мусор' }),
-            async () => { await syncAfter(); load(); },
+            async () => { await syncAfter(); load(); alertWasteOrderAdvanced(role as OsRole, 'created'); },
           )}
         />
       )}
