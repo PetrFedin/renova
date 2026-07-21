@@ -40,7 +40,7 @@ npm run release:notes:v0.3
 
 ## Wave-3 audit embed (2026-07-21)
 
-Pinned SHA: set after push of wave-3 commit on `develop`.
+Pinned SHA: `c555748` (wave-3 on `develop`, 2026-07-21).
 
 Влито в develop (не всё в main):
 - OTP rate-limit / verify lockout + auth_audit
