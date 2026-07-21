@@ -37,8 +37,8 @@
 | P0.7 | item status transition matrix | **DONE** — `schedule_item_transitions` (wave-7) | **P0** | — |
 | P1.8 | no sessions | **DONE** — sessions + revoke-all + jti + tokens_invalid_before (wave-10) | **P1** | — |
 | P1.9 | OTP not prod | **DONE** — secrets + cooldown + Redis when `REDIS_URL` | **P1** | — |
-| P1.10 | CI `e2e:web \|\| true` | **LOCAL FIX** — ci.yml готов; push blocked без scope `workflow` → `scripts/push-ci-workflow.sh` | **P1** | user: `gh auth refresh -s workflow` |
-| P1.11 | PR #3 too big | **OPS** | **P1** | split release slices (уже план) |
+| P1.10 | CI `e2e:web \|\| true` | **DONE** — `971ecad` (SSH push, fail-closed) | **P1** | — |
+| P1.11 | PR #3 too big | **OPS IN PROGRESS** — pin `971ecad`; comment on PR #3; slices in SPLIT plan; do not merge mega-PR | **P1** | open slice PRs |
 | P1.12 | staging HTTPS soft | **DONE** (wave-7) | **P1** | — |
 | P1.13 | CORS `*` | **DONE** (wave-7) | **P1** | — |
 | P1.14 | cache masks errors | **DONE** — meta + `StaleCacheBanner` (wave-10) | **P1** | — |
@@ -284,3 +284,4 @@ Tags после каждого slice: `v0.3.<n>-security` и т.д.
 - 2026-07-21: Wave-9 P1 — acceptance_policy, domain_outbox, Redis OTP, revoke-all, cachedGet stale meta.
 
 - 2026-07-21: Wave-10 — jti + tokens_invalid_before; StaleCacheBanner; outbox worker; schedule_version; hard-purge endpoint; plan matrix sync; CI push helper (`scripts/push-ci-workflow.sh`); split-release next script.
+- 2026-07-21: P1.10 CI fail-closed pushed (`971ecad`, SSH). Staging credentials probe script + split pin.

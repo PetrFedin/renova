@@ -34,3 +34,6 @@ echo "CORS_ALLOWED_ORIGINS allowlist (not *)"
 echo "REDIS_URL for OTP + WS multi-instance"
 echo "SENTRY_DSN (optional but recommended)"
 echo "ALLOW_ACCOUNT_PURGE=false unless ops purge"
+
+echo "=== credentials probe ==="
+bash scripts/staging-credentials-probe.sh || true

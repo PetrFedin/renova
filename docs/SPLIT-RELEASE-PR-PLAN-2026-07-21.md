@@ -1,8 +1,18 @@
 # Split release: develop → main (pin SHA)
 
-**Pin SHA:** update to `git rev-parse origin/develop` before each slice PR (wave-5+ on develop).
+**Pin SHA:** `971ecad` (2026-07-21, includes P1.10 CI fail-closed + wave-10).  
+Update: `git rev-parse origin/develop` before each slice PR.
 
-Helper: `bash scripts/split-release-status.sh` — prints HEAD, ahead-of-main count, suggested next slice.
+Helper: `npm run split:status` / `bash scripts/split-release-status.sh`
+
+## PR #3 status
+
+Open mega-PR https://github.com/PetrFedin/renova/pull/3 (~200+ commits) — **do not merge as one blob**.
+
+Supersede strategy:
+1. Keep #3 as tracker / close when first slice lands
+2. Open slice PRs in order below (each from `release/<slice>` or path-focused branch)
+3. After each merge: `git tag v0.3.<n>-<slice>` + `npm run staging:readiness-report` + `npm run staging:credentials-probe`
 
 ## Почему не один PR на 200+ коммитов
 

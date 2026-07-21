@@ -55,7 +55,9 @@
     "demo:investor": "bash scripts/demo-investor-15.sh",
     "typecheck:mobile": "bash scripts/typecheck-mobile.sh",
     "typecheck:mobile:raw": "cd apps/mobile && npx tsc --noEmit -p .",
-    "staging:readiness-report": "bash scripts/staging-readiness-report.sh"
+    "staging:readiness-report": "bash scripts/staging-readiness-report.sh",
+    "staging:credentials-probe": "bash scripts/staging-credentials-probe.sh",
+    "split:status": "bash scripts/split-release-status.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
