@@ -488,7 +488,7 @@ def ensure_os_schema() -> None:
             except Exception:
                 pass
 
-if "domain_outbox" not in tables:
+    if "domain_outbox" not in tables:
         try:
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS domain_outbox (
