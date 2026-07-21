@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     # SQLite только development/test; staging/production — PostgreSQL (см. environment.py)
     database_url: str = "sqlite+aiosqlite:///./renova.db"
     secret_key: str = "dev-secret-change-me"
+    # JWT (HS256). Staging/production: только Bearer, без X-User-Id.
+    access_token_expire_minutes: int = 60 * 24 * 14  # 14 дней — mobile session
+    # None = по policy профиля; True/False = явный override
+    auth_allow_header_user_id: bool | None = None
     fns_npd_status_url: str = (
         "https://statusnpd.nalog.ru/api/v1/tracker/taxpayer_status"
     )
@@ -78,6 +82,15 @@ class Settings(BaseSettings):
     @property
     def normalized_environment(self) -> str:
         return normalize_environment(self.environment)
+
+    @property
+    def allow_header_user_id(self) -> bool:
+        """Legacy X-User-Id: only when policy/override allows (dev/test)."""
+        if self.auth_allow_header_user_id is not None:
+            return bool(self.auth_allow_header_user_id)
+        from app.core.environment import policy_for
+
+        return policy_for(self.normalized_environment).allow_header_user_id
 
 
 settings = Settings()

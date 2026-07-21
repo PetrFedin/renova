@@ -1,5 +1,5 @@
 /** API: chats */
-import { req, cachedGet, API_BASE, ApiError } from './client';
+import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
@@ -159,7 +159,7 @@ export const chatsApi = {
   },
   exportChatPdf: async (userId: string, projectId: string, threadId: string) => {
     const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/chats/${threadId}.pdf`, { headers: { 'X-User-Id': userId } });
+    const r = await fetch(`${base}/api/v1/projects/${projectId}/chats/${threadId}.pdf`, { headers: authHeaders(userId) });
     if (!r.ok) throw new Error('PDF error');
     const blob = await r.blob();
     if (typeof window !== 'undefined') {

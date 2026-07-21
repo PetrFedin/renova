@@ -175,6 +175,25 @@ if (_apiGuard.blocked) {
 export const API_BASE = _apiGuard.apiBase;
 export const API_BASE_GUARD = _apiGuard;
 
+/** In-memory JWT (persisted via RenovaContext / AsyncStorage). */
+let _accessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  _accessToken = token && token.trim() ? token.trim() : null;
+}
+
+export function getAccessToken(): string | null {
+  return _accessToken;
+}
+
+/** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
+export function authHeaders(userId?: string | null): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (_accessToken) h.Authorization = `Bearer ${_accessToken}`;
+  // Legacy fallback: still send X-User-Id in dev when token missing (backend allow_header)
+  if (userId) h['X-User-Id'] = userId;
+  return h;
+}
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -184,7 +203,7 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(opts.headers as object),
   };
-  if (userId) headers['X-User-Id'] = userId;
+  Object.assign(headers, authHeaders(userId));
   // FormData must manage its own multipart boundary — drop forced JSON content-type
   if (isFormData) delete headers['Content-Type'];
 

@@ -2,11 +2,12 @@
 import { Platform, Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { authHeaders } from '@/lib/api/client';
 
 export async function exportIcalFile(userId: string, projectId: string, filename = 'renova.ics') {
   const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
   const r = await fetch(`${base}/api/v1/projects/${projectId}/calendar.ics`, {
-    headers: { 'X-User-Id': userId },
+    headers: authHeaders(userId),
   });
   if (!r.ok) throw new Error('ical');
 

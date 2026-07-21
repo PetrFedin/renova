@@ -17,6 +17,9 @@ class UserOut(BaseModel):
     npd_verified: bool
     moy_nalog_linked: bool = False
     profile_code: str | None = None
+    # Выдаётся на login/register/demo/sms; /me может не включать
+    access_token: str | None = None
+    token_type: str | None = None
 
 
 class DemoLoginRequest(BaseModel):

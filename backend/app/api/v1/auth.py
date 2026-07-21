@@ -7,8 +7,18 @@ from app.models.entities import User, UserRole
 from app.schemas.auth import DemoLoginRequest, RegisterRequest, UserOut, SmsSendRequest, SmsVerifyRequest
 from app.services.seed_demo import DEMO_PHONES
 from app.services.fns.status_npd import check_taxpayer_npd_status
+from app.core.security import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+def user_out_with_token(user: User) -> UserOut:
+    """UserOut + JWT access_token (login/register/demo/sms)."""
+    out = UserOut.model_validate(user, from_attributes=True)
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    out.access_token = create_access_token(user.id, {"role": role})
+    out.token_type = "bearer"
+    return out
+
 
 @router.get("/export")
 async def export_my_data(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -74,14 +84,14 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
         chat_svc.ensure_profile_code(user)
         await db.commit()
         await db.refresh(user)
-    return UserOut.model_validate(user, from_attributes=True)
+    return user_out_with_token(user)
 
 @router.post("/register", response_model=UserOut)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
     result = await db.execute(select(User).where(User.phone == body.phone))
     existing = result.scalar_one_or_none()
     if existing:
-        return UserOut.model_validate(existing, from_attributes=True)
+        return user_out_with_token(existing)
 
     npd_verified = False
     if body.role == "contractor" and body.inn and len(body.inn) == 12:
@@ -101,7 +111,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return UserOut.model_validate(user, from_attributes=True)
+    return user_out_with_token(user)
 
 
 @router.get("/me", response_model=UserOut)
@@ -111,7 +121,8 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
         chat_svc.ensure_profile_code(user)
         await db.commit()
         await db.refresh(user)
-    return UserOut.model_validate(user, from_attributes=True)
+    # Fresh token: mobile can persist after cold start with only userId (dev) or refresh session
+    return user_out_with_token(user)
 
 
 @router.post("/demo", response_model=UserOut)
@@ -123,7 +134,7 @@ async def demo_login(body: DemoLoginRequest, db: AsyncSession = Depends(get_db))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "Запустите backend — демо-данные создаются при старте")
-    return UserOut.model_validate(user, from_attributes=True)
+    return user_out_with_token(user)
 
 
 @router.post("/demo/guest", response_model=UserOut)
@@ -134,4 +145,4 @@ async def demo_guest(db: AsyncSession = Depends(get_db)) -> UserOut:
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "Запустите backend — демо-данные создаются при старте")
-    return UserOut.model_validate(user, from_attributes=True)
+    return user_out_with_token(user)

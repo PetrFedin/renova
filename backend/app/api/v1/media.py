@@ -1,12 +1,11 @@
 """Media download / upload-url. Nested document keys + membership ACL (Wave 3)."""
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse, Response
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import mimetypes
 import uuid
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, resolve_user_id
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User
@@ -15,14 +14,19 @@ from app.services.document_media_acl import (
     assert_document_media_access,
     parse_document_media_key,
 )
+from sqlalchemy import select
 
 router = APIRouter(prefix="/media", tags=["media"])
 
 
-async def _resolve_user(db: AsyncSession, x_user_id: str | None) -> User:
-    if not x_user_id:
-        raise HTTPException(401, "Требуется X-User-Id для документов")
-    result = await db.execute(select(User).where(User.id == x_user_id))
+async def _user_from_auth(
+    db: AsyncSession,
+    authorization: str | None,
+    x_user_id: str | None,
+) -> User:
+    """Same policy as get_current_user (JWT / optional X-User-Id)."""
+    uid = await resolve_user_id(authorization=authorization, x_user_id=x_user_id)
+    result = await db.execute(select(User).where(User.id == uid))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(401, "Пользователь не найден")
@@ -40,13 +44,14 @@ async def upload_url(user: User = Depends(get_current_user)):
 @router.get("/presign/{file_path:path}")
 async def presign_media(
     file_path: str,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Presign redirect. documents/* — membership; photos — без ACL (как раньше)."""
+    """Presign redirect. documents/* — membership ACL; photos — без ACL (как раньше)."""
     key = file_path.lstrip("/")
     if parse_document_media_key(key) is not None:
-        user = await _resolve_user(db, x_user_id)
+        user = await _user_from_auth(db, authorization, x_user_id)
         await assert_document_media_access(db, user, key, write=False)
     url = storage_svc.presigned_url(key)
     if not url:
@@ -57,19 +62,20 @@ async def presign_media(
 @router.get("/{file_path:path}")
 async def get_media(
     file_path: str,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     db: AsyncSession = Depends(get_db),
 ):
     """Serve local/S3 media.
 
-    Wave 3 ACL для documents/{project_id}/…:
-    - нет X-User-Id → 401
-    - нет membership → 404 (privacy, как Document Center)
-    photos/* остаются без project ACL (upload-url уже требует auth).
+    Wave 3 ACL for documents/{project_id}/…:
+    - no auth → 401 (Bearer JWT; X-User-Id only if allow_header_user_id)
+    - no membership → 404 (privacy)
+    photos/* remain without project ACL (upload-url already requires auth).
     """
     key = file_path.lstrip("/")
     if parse_document_media_key(key) is not None:
-        user = await _resolve_user(db, x_user_id)
+        user = await _user_from_auth(db, authorization, x_user_id)
         await assert_document_media_access(db, user, key, write=False)
 
     url = storage_svc.presigned_url(key)

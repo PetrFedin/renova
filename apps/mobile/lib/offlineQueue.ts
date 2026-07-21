@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { decideFlushOutcome } from '@/lib/offline/flushPolicy';
 import { filterJobsExceptProject } from '@/lib/offline/projectQueueFilter';
+import { authHeaders } from '@/lib/api/client';
 
 const KEY = 'renova_offline_queue';
 /** Legacy keys from parallel outbox stacks — migrate once into KEY. */
@@ -228,7 +229,7 @@ export async function flush(apiBase: string): Promise<OfflineFlushResult> {
         method: j.method,
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Id': j.userId,
+          ...authHeaders(j.userId),
           'X-Offline-Id': j.id,
         },
         body: j.body,

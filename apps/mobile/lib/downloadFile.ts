@@ -3,6 +3,7 @@ import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { fetchPdfBlob, openPdfBlob } from '@/lib/pdfOpen';
+import { authHeaders } from '@/lib/api/client';
 
 export async function downloadFromApi(userId: string, url: string, filename: string) {
   const isPdf = filename.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf');
@@ -12,7 +13,7 @@ export async function downloadFromApi(userId: string, url: string, filename: str
     return;
   }
 
-  const r = await fetch(url, { headers: { 'X-User-Id': userId } });
+  const r = await fetch(url, { headers: authHeaders(userId) });
   if (!r.ok) throw new Error('download failed');
   const blob = await r.blob();
 

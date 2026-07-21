@@ -25,6 +25,7 @@ def test_development_allows_sqlite():
     assert policy.allow_sqlite is True
     assert policy.allow_demo_seed is True
     assert policy.allow_create_all is True
+    assert policy.allow_header_user_id is True
 
 
 def test_production_forbids_sqlite():
@@ -73,6 +74,11 @@ def test_staging_ok():
     )
     assert policy.allow_demo_seed is False
     assert policy.allow_create_all is False
+    assert policy.allow_header_user_id is False
+
+
+def test_production_forbids_header_user_id():
+    assert policy_for("production").allow_header_user_id is False
 
 
 def test_unknown_environment():

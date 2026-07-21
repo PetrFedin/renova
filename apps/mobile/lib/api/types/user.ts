@@ -10,4 +10,7 @@ export type User = {
   npd_verified: boolean;
   moy_nalog_linked?: boolean;
   profile_code?: string | null;
+  /** JWT from login/demo/sms/me — persist via setAccessToken */
+  access_token?: string | null;
+  token_type?: string | null;
 };

@@ -14,6 +14,7 @@ function signalPreviewReady() {
 }
 
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
+import { setAccessToken } from '@/lib/api/client';
 import {
   bootstrapPreviewDemo,
   inferDemoRole,
@@ -59,7 +60,21 @@ function deferPushRegistration(userId: string) {
 import { syncCustomerBudgetOnLoad } from '@/lib/customerBudgetMigrate';
 import { buildProjectCreatePayload } from '@/lib/wizard/buildProjectCreatePayload';
 
-const KEYS = { userId: 'renova_user_id', projectId: 'renova_project_id' };
+const KEYS = { userId: 'renova_user_id', projectId: 'renova_project_id', accessToken: 'renova_access_token' };
+
+async function persistAccessToken(user: { access_token?: string | null }) {
+  const tok = user.access_token?.trim();
+  if (tok) {
+    setAccessToken(tok);
+    await AsyncStorage.setItem(KEYS.accessToken, tok);
+  }
+}
+
+async function clearAccessToken() {
+  setAccessToken(null);
+  await AsyncStorage.removeItem(KEYS.accessToken);
+}
+
 
 import type { WizardRoomDraft } from '@/constants/roomTypes';
 
@@ -244,6 +259,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   /** Применить пользователя + проекты + активный объект после bootstrap/recovery */
   const applySession = useCallback(async (u: User, list: ProjectSummary[]) => {
+    await persistAccessToken(u);
     setUser(u);
     const enriched = await enrichProjectsPendingPayments(u.id, list, u.role);
     setProjects(enriched);
@@ -322,6 +338,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
         const uid = await AsyncStorage.getItem(KEYS.userId);
         const storedRole = await AsyncStorage.getItem('renova_user_role');
+        const storedTok = await AsyncStorage.getItem(KEYS.accessToken);
+        if (storedTok) setAccessToken(storedTok);
 
         // Preview iframe: автодемо без ручного онбординга
         if (!uid && isPreviewFrame() && reachable) {
@@ -337,8 +355,10 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         let u: User;
         try {
           u = await api.me(uid);
+          await persistAccessToken(u);
         } catch {
-          await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId]);
+          await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken]);
+          await clearAccessToken();
           if (reachable) {
             const recovered = await recoverDemoSession(inferDemoRole(null, storedRole));
             if (recovered) await applySession(recovered.user, recovered.projects);
@@ -385,6 +405,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const demoLogin = useCallback(async (role: UserRole) => {
     const u = await withTimeout(api.demoLogin(role), LOGIN_TIMEOUT_MS, 'Превышено время ожидания сервера');
+    await persistAccessToken(u);
     setUser(u);
     try {
       const team = await api.getTeam(u.id);
@@ -411,6 +432,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const u = await api.verifySmsCode(phone, code, role, extra);
+    await persistAccessToken(u);
     await AsyncStorage.setItem(KEYS.userId, u.id);
     setUser(u);
     const raw = await api.listProjects(u.id);
@@ -436,6 +458,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(async (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const u = await api.register({ phone, role, ...extra });
+    await persistAccessToken(u);
     setUser(u);
         try {
           const team = await api.getTeam(u.id);
@@ -554,7 +577,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
   const logout = useCallback(async () => {
-    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, SESSION_KEYS.pendingProjectPick, SESSION_KEYS.projectExplicitlyPicked]);
+    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, SESSION_KEYS.pendingProjectPick, SESSION_KEYS.projectExplicitlyPicked]);
+    await clearAccessToken();
     setUser(null);
     setProjects([]);
     setActiveProject(null);

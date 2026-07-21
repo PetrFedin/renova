@@ -21,6 +21,8 @@ class EnvironmentPolicy:
     forbid_localhost_public_url: bool
     require_non_default_secret: bool
     require_https_public_url: bool
+    # P0 auth: X-User-Id без JWT только local/test
+    allow_header_user_id: bool
 
 
 POLICIES: dict[str, EnvironmentPolicy] = {
@@ -33,6 +35,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         forbid_localhost_public_url=False,
         require_non_default_secret=False,
         require_https_public_url=False,
+        allow_header_user_id=True,
     ),
     "test": EnvironmentPolicy(
         name="test",
@@ -43,6 +46,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         forbid_localhost_public_url=False,
         require_non_default_secret=False,
         require_https_public_url=False,
+        allow_header_user_id=True,
     ),
     "staging": EnvironmentPolicy(
         name="staging",
@@ -53,6 +57,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         forbid_localhost_public_url=True,
         require_non_default_secret=True,
         require_https_public_url=False,
+        allow_header_user_id=False,
     ),
     "production": EnvironmentPolicy(
         name="production",
@@ -63,6 +68,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         forbid_localhost_public_url=True,
         require_non_default_secret=True,
         require_https_public_url=True,
+        allow_header_user_id=False,
     ),
 }
 
