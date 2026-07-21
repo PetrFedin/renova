@@ -146,7 +146,6 @@ export function ChatThreadView({
   const syncAfterRead = useChatReadSync(user?.id, user?.role);
   const [chat, setChat] = useState<ChatDetail | null>(null);
   const [chatProjectId, setChatProjectId] = useState<string | null>(projectIdProp ?? null);
-  const markedReadRef = useRef<string | null>(null);
   const loadGenRef = useRef(0);
   const loadedThreadRef = useRef<string | null>(null);
   const canMarkPrevRef = useRef(false);
@@ -235,43 +234,35 @@ export function ChatThreadView({
     }
   }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
 
-  const markThreadRead = useCallback(async (forcedProjectId?: string | null) => {
+  const markThreadReadLocal = useCallback(async (forcedProjectId?: string | null) => {
     if (!user || !threadId) return;
     if (loadedThreadRef.current !== threadId) return;
     const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
     if (!projectId) return;
-    const markKey = `${threadId}:${projectId}`;
-    if (markedReadRef.current === markKey) return;
 
-    const readThrough = chat?.messages?.length
-      ? [...chat.messages].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-1)[0]?.id ?? null
+    const last = chat?.messages?.length
+      ? [...chat.messages].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-1)[0]
       : null;
 
-    let knownUnread = 0;
-    try {
-      const inbox = await api.chatInbox(user.id);
-      knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
-    } catch (e) {
-      reportError('chat.markRead.inbox', e, { threadId });
-    }
-    try {
-      await syncAfterRead(projectId, threadId, knownUnread, readThrough);
-      markedReadRef.current = markKey;
-    } catch {
-      /* resync в store; не фиксируем ref — можно повторить при следующем gate */
-      markedReadRef.current = null;
-    }
+    // Единый store action — dedupe / skip_same / skip_stale внутри
+    await syncAfterRead(
+      projectId,
+      threadId,
+      0,
+      last?.id ?? null,
+      last?.created_at ?? null,
+      'thread_visible',
+    );
   }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead, chat]);
 
   const loadMessagesRef = useRef(loadMessages);
-  const markThreadReadRef = useRef(markThreadRead);
+  const markThreadReadRef = useRef(markThreadReadLocal);
   loadMessagesRef.current = loadMessages;
-  markThreadReadRef.current = markThreadRead;
+  markThreadReadRef.current = markThreadReadLocal;
 
   useFocusEffect(
     useCallback(() => {
       setScreenFocused(true);
-      markedReadRef.current = null;
       canMarkPrevRef.current = false;
       setThreadLoaded(false);
       setAccessConfirmed(false);
@@ -286,7 +277,6 @@ export function ChatThreadView({
   );
 
   useEffect(() => {
-    markedReadRef.current = null;
     canMarkPrevRef.current = false;
     loadedThreadRef.current = null;
     setChat(null);
@@ -342,8 +332,7 @@ export function ChatThreadView({
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    // Новое сообщение: перезагрузка; mark-read только через canMarkRead false→true
-    markedReadRef.current = null;
+    // Новое сообщение: перезагрузка; mark-read через canMarkRead → store.markThreadRead
     canMarkPrevRef.current = false;
     setLatestMessagesRendered(false);
     reload();
