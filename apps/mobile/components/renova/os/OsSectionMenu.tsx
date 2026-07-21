@@ -1,4 +1,4 @@
-/** Панель «Ещё» в шапке — только жёлтый taskBadge; сообщения на OsHeaderChatButton / dock */
+/** Панель «Ещё» в шапке — только жёлтый taskBadge; сообщения на dock «Сообщения» */
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,7 +58,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
     );
   }
 
-  /** Только задачи — сообщения на отдельной иконке в шапке */
+  /** Только задачи — сообщения на dock «Сообщения», не на «Ещё» */
   const headerBadge = resolveHeaderMoreBadge(taskBadge, chatUnread);
   const inboxBadges = resolveInboxMenuBadges(taskBadge, chatUnread);
 

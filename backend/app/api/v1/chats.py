@@ -103,13 +103,14 @@ async def mark_read(project_id: str, thread_id: str, user: User = Depends(get_cu
     total_unread = await chat_svc.count_unread_all(db, user.id, project_ids)
     from app.core.timeutil import utc_now
     from app.api.v1.ws import broadcast_inbox
+    import uuid
     payload = {
         "type": "chat_read",
         "thread_id": thread_id,
         "project_id": project_id,
         "thread_unread_count": thread_unread,
         "total_unread_count": total_unread,
-        "event_id": f"read:{thread_id}:{user.id}:{int(utc_now().timestamp())}",
+        "event_id": str(uuid.uuid4()),
         "occurred_at": utc_now().isoformat(),
     }
     await broadcast_inbox(user.id, payload)
@@ -124,12 +125,12 @@ async def mark_read(project_id: str, thread_id: str, user: User = Depends(get_cu
 
 @router.get("/{project_id}/chats/{thread_id}")
 async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Чистый GET: без side-effect mark-read. Прочтение только через POST .../read."""
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=False)
-    # Открытие треда = прочтение: иначе badge остаётся, если POST /read не дошёл с клиента.
-    await chat_svc.mark_thread_read(db, thread_id, user.id)
     st = await chat_svc._get_or_create_read(db, thread_id, user.id)
+    unread = await chat_svc.count_unread_in_thread(db, thread_id, user.id)
     return {
-        **chat_svc.thread_dict(t, unread=0, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
+        **chat_svc.thread_dict(t, unread=unread, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
         "messages": await _msgs_with_read(db, thread_id, t.messages),
         "participants": await chat_svc.list_participants(db, thread_id),
     }

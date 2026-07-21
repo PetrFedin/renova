@@ -1,119 +1,113 @@
 # Chat unread synchronization
 
 **Дата:** 2026-07-21  
-**Ветка:** `agent/chat-unread-synchronization`
+**Ветка:** `agent/chat-unread-synchronization`  
+**PR:** Draft #29
 
 ## Источник истины
 
 Мобильный store: `apps/mobile/lib/inboxSyncStore.ts`
 
 ```
-totalUnread = sum(thread.unread_count) по всем неархивным чатам пользователя
+totalUnread = sum(thread.unread_count) по неархивным чатам
 ```
 
-Backend SoT при resync: `GET /api/v1/chats/inbox` + `ChatThreadRead.last_read_at` per (user, thread).
+Backend SoT: `GET /api/v1/chats/inbox` + `ChatThreadRead.last_read_at`.  
+После успешного `POST .../read` authoritative: `thread_unread_count` + `total_unread_count` из ответа (локальная сумма не откатывает серверный total).
 
-Не создаём параллельный unread context.
+## Sync orchestrator
 
-## Что входит / не входит
+Один orchestrator в `inboxSyncStore`:
 
-| Входит в totalUnread | Не входит |
-|----------------------|-----------|
-| Неархивные чаты всех доступных проектов пользователя | Архивные чаты |
-| Сообщения других участников после last_read_at | Свои сообщения, system |
+| Механизм | Правило |
+|----------|---------|
+| Inbox WebSocket | одно соединение на user (ref-count) |
+| Fallback poll | один timer: 25s без WS / 60s при WS |
+| Inflight reload | один на user scope; join только если тот же `localMutationRevision` + `reloadRequestSequence` |
 
-Смена **объекта** не сбрасывает totalUnread.  
-Смена **пользователя** очищает threads/total сразу.
+Компоненты (`useChatUnread`, `useInboxTasks`, `ChatListView`) только:
 
-## Цвета
+- подписываются на store;
+- вызывают `requestInboxSync({ reason })`;
+- **не** создают собственные WS/polling.
 
-| Цвет | Значение |
-|------|----------|
-| Красный | только непрочитанные сообщения |
-| Жёлтый / янтарный | только задачи «Входящие» |
+Reasons: `initial | focus | manual | websocket_reconcile | offline_flush | foreground | mark_read_failure | project_change | invariant_reconcile`.
 
-Запрещено: один badge-слот, который сначала показывает чат, а после прочтения — задачи.
+### Invalidation старых запросов
+
+При начале mark-read:
+
+1. `invalidateUnreadReloads()` → `localMutationRevision++`, `reloadRequestSequence++`;
+2. optimistic `unread=0` для треда;
+3. старые in-flight reload **не применяются** (`canApplyReload`);
+4. **не** присоединяемся к pre-read inflight;
+5. при успешных counters из POST — **без** полного reload.
+
+Каждый reload помнит `{ requestSequence, userId, startedAtMutationRevision }`.
 
 ## Read lifecycle
 
-Чат считается прочитанным только когда:
+Единственный backend endpoint изменения read-state:
 
-1. экран треда в focus;
-2. `getChat` / загрузка сообщений успешна;
-3. сообщения отображены;
-4. приложение в **foreground** (`AppState === 'active'`).
+`POST /api/v1/projects/{project_id}/chats/{thread_id}/read`
 
-`ChatListView.openThread` **не** вызывает mark-read.
+`GET .../chats/{thread_id}` — **чистый**: не вызывает `mark_thread_read`.
 
-Единственный клиентский путь: `ChatThreadView` → `markChatReadAndSync`.
+Клиент:
 
-Backend: `POST .../read` идемпотентен; `GET .../chats/{id}` также обновляет cursor (совместимость).
+1. `loadMessages` только загружает и `setChat`;
+2. `useFocusEffect` + `AppState`;
+3. после render commit `useEffect` (gate `shouldMarkThreadReadAfterCommit`) → `markThreadRead`;
+4. project id: route params → `inboxSyncStore.threads` → inbox API (не GET chat).
 
-## Optimistic update
+Mark-read **не** выполняется при ошибке загрузки, до commit, в background, на unfocused, на stale thread.
 
-1. `thread.unread_count = 0` в store  
-2. `totalUnread = sum(threads)`  
-3. notify подписчиков (header + dock + list)  
-4. `POST /read`  
-5. при ошибке — force `reloadInboxSync`  
-6. не вычитаем `total -= knownUnread` вручную  
+Открытый focused+foreground тред: входящее сообщение не поднимает badge; после reload сообщений — mark-read. Background / unfocused — unread растёт.
 
-## WebSocket
+## Event dedup
 
-`/ws/inbox/{userId}` — одно соединение (ref-count).
+`event_id` = UUID (не timestamp). Store хранит LRU последних ID. Дубликат: без unread bump, без второго reload/mark-read.
 
-Payload (предпочтительно):
+`chat_message_created` предпочтительно с counters; иначе один deduped reconcile.
 
-```json
-{
-  "type": "chat_read" | "chat_message_created",
-  "thread_id": "...",
-  "project_id": "...",
-  "thread_unread_count": 0,
-  "total_unread_count": 2,
-  "event_id": "...",
-  "occurred_at": "..."
-}
-```
+## Цвета и UI
 
-`chat_read` с счётчиками применяется локально без лишнего reload.  
-Иначе — один deduplicated `reloadInboxSync`.
+| Цвет | Значение |
+|------|----------|
+| Красный `ChatBadge` | только непрочитанные сообщения |
+| Жёлтый `TaskBadge` | только задачи |
 
-Polling: 25s без WS, 60s при WS.
+### UI locations
 
-## Фильтры и архив
+| Место | Что показывает | Цвет |
+|-------|----------------|------|
+| Нижняя «Сообщения» | global `totalUnread` | Красный |
+| Кнопка «Ещё» | только `taskBadge` | Жёлтый |
+| Строка «Входящие» в «Ещё» | Сообщения: N · Задачи: N | Красный / жёлтый |
+| Список чатов | одна строка «N непрочитанных» / «В фильтре: X из Y» | Текст |
+| Карточка чата | unread треда (+ a11y label) | Красный |
 
-Глобальные header/dock **не** зависят от фильтра объектов.  
-На экране чатов при фильтре: `В фильтре: X из Y`.
+**Нет** отдельной верхней иконки сообщений (`OsHeaderChatButton` удалён).  
+Сообщения **не** возвращаются на badge кнопки «Ещё».
 
-Архив: thread badge локально допустим; в global — нет.
+## Error recovery
 
-## API
-
-`POST /api/v1/projects/{pid}/chats/{tid}/read` →
-
-```json
-{
-  "ok": true,
-  "thread_id": "...",
-  "thread_unread_count": 0,
-  "total_unread_count": 2,
-  "read_at": "..."
-}
-```
-
-## UI locations
-
-| Место | Что показывает | Цвет | Источник |
-|-------|----------------|------|----------|
-| Верхняя иконка сообщений | Все непрочитанные | Красный | `inboxSyncStore` totalUnread |
-| Нижняя «Сообщения» | Все непрочитанные | Красный | то же |
-| Экран чатов | Все / в фильтре | Текст | то же + filter sum |
-| Карточка чата | unread треда | Красный | `thread.unread_count` |
-| Кнопка «Ещё» | Задачи | Жёлтый | `taskBadge` |
-| Строка «Входящие» | Сообщения и задачи раздельно | Красный / жёлтый | selectors |
+`markThreadRead` → `MarkReadResult`: `confirmed | reconciled | failed`.  
+При ошибке: один force sync; если и он упал — флаг `markReadSyncFailed` и текст «Не удалось синхронизировать прочтение» (без Alert). Retry на focus/foreground.
 
 ## Тесты
 
-- `npm run test:chat-unread`
-- `pytest backend/tests/test_chat_mark_read_contract.py`
+```bash
+npm run test:chat-unread
+# включает store + gate + lifecycle contract
+
+cd backend && .venv/bin/python -m pytest \
+  tests/test_chat_mark_read_contract.py \
+  tests/test_chat_mark_read_http.py -q
+```
+
+HTTP-тест покрывает: auth/ACL, unread до read, POST counters, GET без side-effect, идемпотентность, архив.
+
+## Ручная приёмка (обязательна до Ready)
+
+Двухсессионный smoke + evidence. PR остаётся **Draft**, пока не подтверждены критерии из PR description.

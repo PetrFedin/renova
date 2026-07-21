@@ -1,8 +1,8 @@
-/** Красный badge непрочитанных сообщений (не для задач — см. TaskBadge). */
+/** Жёлтый/янтарный badge задач — не путать с красным ChatBadge (сообщения). */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
-export function ChatBadge({
+export function TaskBadge({
   count,
   size = 18,
   inline,
@@ -30,7 +30,7 @@ export function ChatBadge({
 
 const s = StyleSheet.create({
   badge: {
-    backgroundColor: RenovaTheme.colors.danger,
+    backgroundColor: RenovaTheme.colors.warning,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,

@@ -1,6 +1,7 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
-import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
+import type { ChatDetail, ChatMessage, ChatThread, MarkChatReadResponse, User } from './types';
+export type { MarkChatReadResponse };
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
     req<ChatThread[]>(`/api/v1/projects/${projectId}/chats?archived=${archived ? 'true' : 'false'}`, {}, userId),
@@ -146,10 +147,14 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  /** W114: прочтение чата — очередь офлайн (inbox badge) */
-  markChatRead: async (userId: string, projectId: string, threadId: string) => {
+  /** Прочтение чата — authoritative counters; offline queue при сети */
+  markChatRead: async (userId: string, projectId: string, threadId: string): Promise<MarkChatReadResponse> => {
     try {
-      return await req(`/api/v1/projects/${projectId}/chats/${threadId}/read`, { method: 'POST' }, userId);
+      return await req<MarkChatReadResponse>(
+        `/api/v1/projects/${projectId}/chats/${threadId}/read`,
+        { method: 'POST' },
+        userId,
+      );
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');

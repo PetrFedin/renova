@@ -42,3 +42,12 @@ export type ChatParticipant = {
 };
 
 export type ChatDetail = ChatThread & { messages: ChatMessage[]; participants?: ChatParticipant[] };
+
+/** Authoritative counters after POST .../read */
+export type MarkChatReadResponse = {
+  ok: true;
+  thread_id: string;
+  thread_unread_count: number;
+  total_unread_count: number;
+  read_at: string;
+};

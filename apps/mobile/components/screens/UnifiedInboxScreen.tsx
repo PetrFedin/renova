@@ -14,17 +14,17 @@ import { flushOfflineOutbox } from '@/lib/offline';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
 
-function inboxSubtitle(badge: number, chatUnread: number): string {
+function inboxSubtitle(taskBadge: number, chatUnread: number): string {
   const chat = Math.max(0, chatUnread || 0);
-  const tasks = Math.max(0, badge - chat);
+  const tasks = Math.max(0, taskBadge || 0);
   if (chat > 0 && tasks > 0) {
     return `${chat} непрочитанных · ${tasks} ${tasks === 1 ? 'задача' : tasks < 5 ? 'задачи' : 'задач'}`;
   }
   if (chat > 0) {
     return chat === 1 ? '1 непрочитанное' : `${chat} непрочитанных`;
   }
-  if (badge <= 0) return 'Все задачи проекта';
-  return `${badge} ${badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач'}`;
+  if (tasks <= 0) return 'Все задачи проекта';
+  return `${tasks} ${tasks === 1 ? 'задача' : tasks < 5 ? 'задачи' : 'задач'}`;
 }
 
 function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
@@ -41,7 +41,7 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
 
 export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: { role: OsRole; returnTo?: string; heroKind?: string }) {
   const { user, activeProject, readOnly } = useRenova();
-  const { items, badge, chatUnread, reload } = useInboxTasks(role);
+  const { items, taskBadge, chatUnread, reload } = useInboxTasks(role);
 
   if (!user || !activeProject) {
     return (
@@ -71,7 +71,7 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
     <>
       <BackHeader
         title="Входящие"
-        subtitle={readOnly ? 'Только просмотр — действия недоступны' : inboxSubtitle(badge, chatUnread)}
+        subtitle={readOnly ? 'Только просмотр — действия недоступны' : inboxSubtitle(taskBadge, chatUnread)}
         returnTo={returnTo}
       />
       <ReadOnlyBanner />

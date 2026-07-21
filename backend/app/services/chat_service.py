@@ -78,7 +78,7 @@ async def _get_or_create_read(db: AsyncSession, thread_id: str, user_id: str) ->
     if row:
         return row
     # Не ставим utcnow(): иначе первое появление строки (inbox/pin) ложно «прочитывает» историю.
-    # Прочтение — только mark_thread_read / открытие треда (GET chat).
+    # Прочтение — только mark_thread_read (POST .../read). GET chat side-effect не делает.
     row = ChatThreadRead(thread_id=thread_id, user_id=user_id, last_read_at=datetime(1970, 1, 1))
     db.add(row)
     await db.flush()
@@ -252,13 +252,30 @@ async def send_message(
                     return_to="/(customer)/(tabs)/chat",
                 )
     from app.api.v1.ws import broadcast, broadcast_inbox
+    import uuid
 
     await broadcast(thread.id, {"type": "message", "message": msg_dict(msg)})
     if proj:
-        payload = {"type": "inbox", "event": "message", "thread_id": thread.id, "project_id": thread.project_id}
+        # Уникальный event_id (UUID), не timestamp; counters — authoritative для клиента
         for uid in {proj.customer_id, proj.contractor_id}:
-            if uid:
-                await broadcast_inbox(uid, payload)
+            if not uid:
+                continue
+            pr = await db.execute(
+                select(Project).where((Project.customer_id == uid) | (Project.contractor_id == uid))
+            )
+            project_ids = [p.id for p in pr.scalars().all()]
+            thread_unread = await count_unread_in_thread(db, thread.id, uid)
+            total_unread = await count_unread_all(db, uid, project_ids)
+            payload = {
+                "type": "chat_message_created",
+                "event_id": str(uuid.uuid4()),
+                "thread_id": thread.id,
+                "project_id": thread.project_id,
+                "thread_unread_count": thread_unread,
+                "total_unread_count": total_unread,
+                "occurred_at": utc_now().isoformat(),
+            }
+            await broadcast_inbox(uid, payload)
     return msg
 
 

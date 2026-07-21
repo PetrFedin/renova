@@ -1,4 +1,4 @@
-/** A11y шапки «Ещё» — только задачи; сообщения на отдельной иконке / dock. */
+/** A11y шапки «Ещё» — только задачи; сообщения на dock «Сообщения». */
 import { pluralRu } from '../formatUnreadMessagesRu';
 
 export function moreMenuA11yLabel(taskBadge: number, _chatUnread = 0): string {
@@ -8,7 +8,7 @@ export function moreMenuA11yLabel(taskBadge: number, _chatUnread = 0): string {
   return `Ещё, ${tasks} ${noun} внимания`;
 }
 
-/** A11y верхней иконки сообщений / dock. */
+/** A11y dock «Сообщения». */
 export function chatMessagesA11yLabel(chatUnread: number): string {
   const n = Math.max(0, chatUnread || 0);
   if (n <= 0) return 'Сообщения';

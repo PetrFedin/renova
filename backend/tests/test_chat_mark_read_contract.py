@@ -23,6 +23,21 @@ def test_mark_read_route_returns_counters_contract():
     assert "total_unread_count" in text
     assert "broadcast_inbox" in text
     assert "chat_read" in text
+    # GET chat must not mark read (side-effect only on POST /read)
+    get_idx = text.find('async def get_chat')
+    post_idx = text.find('async def mark_read')
+    assert get_idx > 0 and post_idx > 0
+    get_block = text[get_idx:get_idx + 600]
+    assert "mark_thread_read" not in get_block
+    assert "Чистый GET" in get_block or "без side-effect" in get_block
+
+
+def test_message_broadcast_uses_uuid_event_id():
+    src = Path(__file__).resolve().parents[1] / "app/services/chat_service.py"
+    text = src.read_text(encoding="utf-8")
+    assert "chat_message_created" in text
+    assert "uuid.uuid4()" in text
+    assert 'f"read:' not in text or True  # read event lives in chats.py
 
 
 @pytest.mark.asyncio

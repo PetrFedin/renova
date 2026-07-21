@@ -5,6 +5,7 @@ import { router, usePathname, useFocusEffect } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { ChatBadge } from '@/components/renova/chat/ChatBadge';
+import { TaskBadge } from '@/components/renova/chat/TaskBadge';
 import { DOCK_BY_ID, type DockItemId } from '@/constants/dockBar';
 import { getDockBar, subscribeDockBar } from '@/lib/dockBarPrefs';
 import {
@@ -34,7 +35,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
-  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
+  /** Dock «Сообщения» = global totalUnread */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
@@ -121,10 +122,10 @@ export function OsDockBar({ role }: { role: OsRole }) {
           >
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
-              {id === 'chat' && <ChatBadge count={chatUnread} />}
-              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} />}
+              {id === 'chat' && <ChatBadge count={chatUnread} accessibilityHidden />}
+              {id === 'calendar' && todayTasks > 0 && <TaskBadge count={todayTasks} accessibilityHidden />}
               {id === 'home' && !items.includes('calendar') && todayTasks > 0 && (
-                <ChatBadge count={todayTasks} />
+                <TaskBadge count={todayTasks} accessibilityHidden />
               )}
             </View>
             <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{label}</Text>

@@ -12,8 +12,8 @@ import { indexChats } from '@/lib/chatSearchCache';
 import { api, ChatThread } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
-import { useChatUnread, useChatInboxThreads, useInboxWsListener } from '@/lib/useChatUnread';
-import { useChatFallbackPoll } from '@/lib/useChatWebSocket';
+import { useChatUnread, useChatInboxThreads } from '@/lib/useChatUnread';
+import { requestInboxSync } from '@/lib/inboxSyncStore';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
 import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
@@ -21,7 +21,7 @@ import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttent
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { reportCatch } from '@/lib/reportError';
-import { formatUnreadMessagesRu } from '@/lib/formatUnreadMessagesRu';
+import { formatUnreadMessagesRu, pluralRu } from '@/lib/formatUnreadMessagesRu';
 
 type Folder = 'active' | 'archive';
 
@@ -42,11 +42,16 @@ function ThreadCard({
 }) {
   const unread = thread.unread_count || 0;
   const awaiting = !unread && threadAwaitingReply(thread, viewerRole);
+  const a11yUnread = unread > 0
+    ? `, ${unread} ${pluralRu(unread, 'непрочитанное сообщение', 'непрочитанных сообщения', 'непрочитанных сообщений')}`
+    : '';
   return (
     <Pressable
       style={[s.card, thread.is_pinned && s.cardPinned]}
       onPress={onOpen}
       onLongPress={onLongPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Чат «${thread.title}»${a11yUnread}`}
     >
       <View style={s.cardHead}>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -62,7 +67,7 @@ function ThreadCard({
         </View>
         <View style={s.rightCol}>
           <Text style={s.meta}>{thread.updated_at.slice(0, 16).replace('T', ' ')}</Text>
-          {unread > 0 ? <ChatBadge count={unread} inline size={20} /> : awaiting ? <View style={s.awaitDot} /> : null}
+          {unread > 0 ? <ChatBadge count={unread} inline size={20} accessibilityHidden /> : awaiting ? <View style={s.awaitDot} /> : null}
         </View>
       </View>
     </Pressable>
@@ -72,8 +77,8 @@ function ThreadCard({
 export function ChatListView() {
   const nav = useNavFromHere();
   const { user, activeProject, projects, loadProject } = useRenova();
-  const { reload: reloadUnread, inboxWsConnected, count: globalUnread, failed: unreadFailed } = useChatUnread(user?.id, user?.role);
-  const { threads: storeThreads, reload: reloadStore } = useChatInboxThreads(user?.id, user?.role);
+  const { reload: reloadUnread, count: globalUnread, failed: unreadFailed, markReadSyncFailed } = useChatUnread(user?.id, user?.role);
+  const { threads: storeThreads } = useChatInboxThreads(user?.id, user?.role);
   const [folder, setFolder] = useState<Folder>('active');
   const [projectFilter, setProjectFilterState] = useState<ChatProjectFilter>(CHAT_FILTER_ALL);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
@@ -113,17 +118,23 @@ export function ChatListView() {
     setLoadError(false);
     try {
       if (projects.length > 0) {
-        await reloadStore();
+        // Один sync через store (не reloadStore + reloadUnread)
+        await requestInboxSync({
+          reason: 'manual',
+          userId: user.id,
+          userRole: user.role,
+          projectId: activeProject?.id,
+        });
       } else if (activeProject) {
         const list = await api.listChats(user.id, activeProject.id, folder === 'archive');
         setLocalThreads(sortChatThreads(list));
         indexChats(list);
+        await reloadUnread();
       }
-      await reloadUnread();
     } catch {
       setLoadError(true);
     }
-  }, [user?.id, activeProject?.id, folder, projects.length, reloadUnread, reloadStore]);
+  }, [user?.id, user?.role, activeProject?.id, folder, projects.length, reloadUnread]);
 
   const sourceThreads = projects.length > 0 ? storeThreads : localThreads;
   const threads = useMemo(
@@ -140,12 +151,6 @@ export function ChatListView() {
     if (prefsLoaded) void reload();
   }, [prefsLoaded, reload]);
   useProjectDataReload(onBusReload);
-  useInboxWsListener(useCallback(() => {
-    reload().catch(reportCatch('components.renova.chat.ChatListView.2'));
-    reloadUnread().catch(reportCatch('components.renova.chat.ChatListView.3'));
-  }, [reload, reloadUnread]));
-  useChatFallbackPoll(!!user && !inboxWsConnected, 12_000, () => { reload().catch(reportCatch('components.renova.chat.ChatListView.4')); });
-
   const displayThreads = useMemo(
     () => filterChatThreads(threads, projectFilter),
     [threads, projectFilter],
@@ -236,12 +241,9 @@ export function ChatListView() {
         <View style={s.unreadBanner}>
           <Text style={s.unreadBannerT}>
             {!filterIsAll && filterUnread !== globalUnread
-              ? `В фильтре: ${filterUnread} из ${globalUnread}`
-              : `Непрочитанные сообщения: ${globalUnread}`}
+              ? `В фильтре: ${filterUnread} из ${globalUnread} непрочитанных`
+              : formatUnreadMessagesRu(globalUnread)}
           </Text>
-          {filterIsAll ? (
-            <Text style={s.unreadBannerSub}>{formatUnreadMessagesRu(globalUnread)}</Text>
-          ) : null}
         </View>
       ) : null}
       {folder === 'active' && globalUnread === 0 && awaitingCount > 0 ? (
@@ -250,6 +252,9 @@ export function ChatListView() {
             {awaitingCount === 1 ? '1 диалог ждёт ответа' : `${awaitingCount} диалогов ждут ответа`}
           </Text>
         </View>
+      ) : null}
+      {folder === 'active' && markReadSyncFailed ? (
+        <Text style={s.unreadWarn}>Не удалось синхронизировать прочтение</Text>
       ) : null}
       {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 ? (
         <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.7'))}>
