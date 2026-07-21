@@ -1,5 +1,5 @@
-# Ops status
+# Ops
 
-Split release **COMPLETE** (v0.3.1…v0.3.6). Mega-PR #3 closed.
+Split + mobile parity on `main`. Only staging secrets left:
 
-Only remaining: live staging secrets — `ENVIRONMENT=staging npm run staging:credentials-probe` on staging host.
+`ENVIRONMENT=staging npm run staging:credentials-probe`
