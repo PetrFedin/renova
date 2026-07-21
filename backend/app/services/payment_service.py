@@ -43,11 +43,11 @@ async def confirm_payment(
 ) -> Payment | None:
     """Confirm pending payment.
 
-    Settlement proof (manual customer confirm):
-    - linked receipt, OR
-    - YuKassa payment id, OR
-    - transfer_ack=True (клиент: «я перевёл»), OR
-    - allow_without_settlement (bank match / trusted machine paths)
+    Manual customer settlement proof (W138):
+    - linked receipt_id, OR
+    - transfer_ack=True (клиент: «я перевёл»).
+    YuKassa checkout id НЕ считается proof — только webhook с allow_without_settlement.
+    Machine paths (webhook / bank match): allow_without_settlement=True.
     """
     payment = await db.get(Payment, payment_id)
     if not payment or payment.status != PaymentStatus.pending:

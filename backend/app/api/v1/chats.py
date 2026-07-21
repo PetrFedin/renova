@@ -139,6 +139,8 @@ async def _post_message(project_id: str, thread_id: str, body: MessageCreate, us
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/confirm")
 async def _confirm_message(project_id: str, thread_id: str, message_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # P0: подтверждение оплаты только заказчиком проекта (не любой customer JWT)
+    project = await require_project(db, project_id, user, write=True)
     t = await chat_svc.get_thread(db, thread_id)
     if not t or t.project_id != project_id:
         raise HTTPException(404)
@@ -148,14 +150,16 @@ async def _confirm_message(project_id: str, thread_id: str, message_id: str, use
     msg.confirmed = True
     await db.commit()
     if msg.message_type.value == "payment":
+        if user.id != project.customer_id:
+            raise HTTPException(403, "only_customer_can_confirm_payment")
         meta = chat_svc._parse_meta(msg.meta_json)
         pid = meta.get("payment_id")
-        if pid and user.role.value == "customer":
-            # Привязка к project_id маршрута — нельзя подтвердить чужой платёж из чата A
+        if pid:
             meta_project = meta.get("project_id")
             if meta_project and str(meta_project) != str(project_id):
                 raise HTTPException(409, "payment_project_mismatch")
             from app.services import payment_service as pay_svc
+            # transfer_ack только после membership+customer check; канон UX — PaymentDetailSheet
             confirmed = await pay_svc.confirm_payment(db, pid, project_id=project_id, transfer_ack=True)
             if not confirmed:
                 raise HTTPException(404, "payment_not_found_or_not_pending")
