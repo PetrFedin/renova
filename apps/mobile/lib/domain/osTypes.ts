@@ -9,7 +9,7 @@ export type OsRiskKind = 'budget' | 'schedule' | 'materials' | 'quality' | 'paym
 export type OsEventType =
   | 'ProjectCreated' | 'RoomAdded' | 'WorkStarted' | 'WorkCompleted'
   | 'MaterialOrdered' | 'MaterialDelivered' | 'ExpenseAdded' | 'ReceiptAdded'
-  | 'PaymentApproved' | 'InspectionRequested' | 'IssueCreated' | 'IssueClosed'
+  | 'PaymentApproved' | 'InspectionRequested' | 'IssueCreated' | 'IssueFixed' | 'IssueClosed'
   | 'AcceptancePassed' | 'DocumentUploaded';
 
 /** W55: expense = смета/бюджет; work = график/работы */
