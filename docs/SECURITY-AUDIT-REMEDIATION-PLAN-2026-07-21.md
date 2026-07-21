@@ -18,7 +18,7 @@
 | WS JWT + reconnect/poll honesty | DONE (см. P2 #19–20) |
 | Job lead форма без 55 м² / 800k | DONE (см. P2 #17–18 address/quotes) |
 | Env guards + Alembic PG в CI | DONE |
-| Sessions/refresh/SecureStore/OTP rate-limit | **PARTIAL → P1** (ниже) |
+| Sessions/refresh/SecureStore/OTP rate-limit | **DONE** (waves 1–10: sessions, revoke-all, jti, Redis OTP) |
 | Redis WS bridge | DONE opt-in |
 | Silent catch / reportError | DONE wave-6 |
 
@@ -28,22 +28,22 @@
 
 | # | Утверждение ревью | Факт на develop | Приоритет | Действие |
 |---|-------------------|-----------------|-----------|----------|
-| P0.1 | REST chat ACL дыры | **OPEN** — `POST …/messages` без `require_project`; `mark_read` без ACL; participants/react/pin без bind thread↔project / message↔thread | **P0** | `require_chat_access` + apply all |
-| P0.2 | confirm: commit до проверок | **OPEN** — `msg.confirmed=True; commit` до customer/payment checks | **P0** | reverse order, one commit |
-| P0.3 | chat confirm = transfer_ack | **OPEN** — `confirm_payment(..., transfer_ack=True)` из чата | **P0** | chat → deep-link only; finance only via payments API |
-| P0.4 | webhook idempotency | **PARTIAL** — есть `payment_webhook_events` + `_seen_keys`; нет `SELECT FOR UPDATE` | **P0** | durable INSERT + FOR UPDATE в одной tx |
-| P0.5 | webhook amount/secret weak | **OPEN** — secret optional; no amount/currency verify | **P0** | require secret staging+; verify amount |
-| P0.6 | schedule edit after submitted | **OPEN** — `update_schedule` блокирует только `confirmed` | **P0** | freeze submitted; ACL `can_manage_schedule` |
-| P0.7 | item status transition matrix | **PARTIAL** — жёстко только `accepted` | **P0** | matrix + role gates |
-| P1.8 | no sessions | **DONE** — refresh + sessions + `POST /sessions/revoke-all` + profile CTA | **P1** | jti optional later |
+| P0.1 | REST chat ACL дыры | **DONE** — `require_chat_access` / `require_chat_message` (wave A/`58bfa2a`) | **P0** | — |
+| P0.2 | confirm: commit до проверок | **DONE** (wave A) | **P0** | — |
+| P0.3 | chat confirm = transfer_ack | **DONE** — finance_action / deep-link only (wave A) | **P0** | — |
+| P0.4 | webhook idempotency | **DONE** — durable + FOR UPDATE (wave-7) | **P0** | — |
+| P0.5 | webhook amount/secret weak | **DONE** — secret required staging/prod + amount/currency (wave-7) | **P0** | — |
+| P0.6 | schedule edit after submitted | **DONE** — submitted freeze + manage ACL (wave A) | **P0** | — |
+| P0.7 | item status transition matrix | **DONE** — `schedule_item_transitions` (wave-7) | **P0** | — |
+| P1.8 | no sessions | **DONE** — sessions + revoke-all + jti + tokens_invalid_before (wave-10) | **P1** | — |
 | P1.9 | OTP not prod | **DONE** — secrets + cooldown + Redis when `REDIS_URL` | **P1** | — |
-| P1.10 | CI `e2e:web \|\| true` | **OPEN** | **P1** | fail CI on e2e; add security jobs |
+| P1.10 | CI `e2e:web \|\| true` | **LOCAL FIX** — ci.yml готов; push blocked без scope `workflow` → `scripts/push-ci-workflow.sh` | **P1** | user: `gh auth refresh -s workflow` |
 | P1.11 | PR #3 too big | **OPS** | **P1** | split release slices (уже план) |
 | P1.12 | staging HTTPS soft | **DONE** (wave-7) | **P1** | — |
 | P1.13 | CORS `*` | **DONE** (wave-7) | **P1** | — |
-| P1.14 | cache masks errors | **DONE** — `getLastCachedGetMeta` + reportError on stale | **P1** | optional banner UI |
+| P1.14 | cache masks errors | **DONE** — meta + `StaleCacheBanner` (wave-10) | **P1** | — |
 | P1.15 | inline accept без checklist | **DONE** — quick/full + inline 409 | **P1** | — |
-| P1.16 | accept commit before side-effects | **DONE** — `domain_outbox` | **P1** | worker cron optional |
+| P1.16 | accept commit before side-effects | **DONE** — outbox + background worker (wave-10) | **P1** | — |
 | P2.17 | lead address public | **DONE** (wave-8) | **P2** | — |
 | P2.18 | first quote wins | **DONE** (wave-8) | **P2** | — |
 | P2.19 | WS single-process | **DONE opt-in** Redis bridge | **P2** | document REDIS_URL for multi |
@@ -282,3 +282,5 @@ Tags после каждого slice: `v0.3.<n>-security` и т.д.
 - 2026-07-21: Hotfix MaterialPickList + UnifiedScheduleView broken imports (SyntaxError).
 - 2026-07-21: Phase E — lead address privacy, job_lead_quotes+accept, soft DELETE /me, WS tickets + mobile buildWsAuthQuery.
 - 2026-07-21: Wave-9 P1 — acceptance_policy, domain_outbox, Redis OTP, revoke-all, cachedGet stale meta.
+
+- 2026-07-21: Wave-10 — jti + tokens_invalid_before; StaleCacheBanner; outbox worker; schedule_version; hard-purge endpoint; plan matrix sync; CI push helper (`scripts/push-ci-workflow.sh`); split-release next script.

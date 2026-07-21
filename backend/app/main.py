@@ -75,6 +75,8 @@ async def lifespan(app: FastAPI):
     reminder_task: asyncio.Task | None = None
     redis_stop: asyncio.Event | None = None
     redis_task: asyncio.Task | None = None
+    outbox_stop: asyncio.Event | None = None
+    outbox_task: asyncio.Task | None = None
     if (settings.document_ocr_mode or "sync").strip().lower() == "async":
         from app.services.document_ocr_worker import ocr_worker_loop
 
@@ -99,6 +101,13 @@ async def lifespan(app: FastAPI):
             settings.automation_reminders_interval_sec,
         )
 
+    # P1.16: always run outbox poller (cheap; no-op when empty)
+    from app.services.outbox_worker import outbox_worker_loop
+
+    outbox_stop = asyncio.Event()
+    outbox_task = asyncio.create_task(outbox_worker_loop(outbox_stop, interval_sec=15.0))
+    logger.info("domain outbox worker enabled")
+
     # Multi-instance WS: subscribe when REDIS_URL set (publish already in ws.broadcast)
     if (settings.redis_url or "").strip():
         from app.services.ws_redis_bridge import redis_subscriber_loop
@@ -113,6 +122,8 @@ async def lifespan(app: FastAPI):
         ocr_stop.set()
     if reminder_stop is not None:
         reminder_stop.set()
+    if outbox_stop is not None:
+        outbox_stop.set()
     if redis_stop is not None:
         redis_stop.set()
     if reminder_task is not None:
@@ -125,6 +136,11 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(ocr_task, timeout=5)
         except Exception:
             ocr_task.cancel()
+    if outbox_task is not None:
+        try:
+            await asyncio.wait_for(outbox_task, timeout=5)
+        except Exception:
+            outbox_task.cancel()
     if redis_task is not None:
         try:
             await asyncio.wait_for(redis_task, timeout=5)

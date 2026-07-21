@@ -32,6 +32,7 @@ def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> st
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
         "typ": "access",
+        "jti": secrets.token_urlsafe(16),  # P1.8 — unique access id
     }
     if extra:
         payload.update(extra)

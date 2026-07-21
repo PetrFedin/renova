@@ -279,6 +279,14 @@ async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
     items = await load_items(db, schedule.id)
     if not items:
         raise HTTPException(status_code=409, detail="schedule_items_required")
+    # E5: each submit after draft/reject bumps version (first submit stays v1)
+    prev = int(getattr(schedule, "schedule_version", None) or 1)
+    if schedule.status == WorkScheduleStatus.rejected or (
+        schedule.submitted_at is not None and schedule.status == WorkScheduleStatus.draft
+    ):
+        schedule.schedule_version = prev + 1
+    elif not getattr(schedule, "schedule_version", None):
+        schedule.schedule_version = 1
     schedule.status = WorkScheduleStatus.submitted
     schedule.submitted_by = user.id
     schedule.submitted_at = datetime.utcnow()

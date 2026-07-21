@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./renova.db"
     # Optional: REDIS_URL for multi-instance WS pub/sub (empty = in-process only)
     redis_url: str | None = None
+    allow_account_purge: bool = False  # hard-purge soft-deleted users
     secret_key: str = "dev-secret-change-me"
     # JWT (HS256). Staging/production: только Bearer, без X-User-Id.
     access_token_expire_minutes: int = 60 * 24 * 14  # local default; staging/prod capped to 20m in security.py

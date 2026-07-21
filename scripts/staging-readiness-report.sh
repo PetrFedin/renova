@@ -26,3 +26,11 @@ BODY="$(curl -fsS "${API_BASE}/api/v1/admin/h0-readiness" -H "Authorization: Bea
 } > "$OUT"
 
 echo "Wrote $OUT"
+
+echo "=== Pilot credentials checklist (manual) ==="
+echo "PUBLIC_BASE_URL must be https://…"
+echo "YOOKASSA_WEBHOOK_SECRET set on staging"
+echo "CORS_ALLOWED_ORIGINS allowlist (not *)"
+echo "REDIS_URL for OTP + WS multi-instance"
+echo "SENTRY_DSN (optional but recommended)"
+echo "ALLOW_ACCOUNT_PURGE=false unless ops purge"

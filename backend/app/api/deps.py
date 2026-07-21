@@ -43,6 +43,7 @@ async def resolve_user_id(
 
 async def get_current_user(
     user_id: str = Depends(resolve_user_id),
+    authorization: str | None = Header(default=None, alias="Authorization"),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     result = await db.execute(select(User).where(User.id == user_id))
@@ -51,6 +52,27 @@ async def get_current_user(
         raise HTTPException(401, "Пользователь не найден")
     if getattr(user, "deleted_at", None):
         raise HTTPException(401, "account_deleted")
+    # P1.8: revoke-all invalidates access JWT issued before tokens_invalid_before
+    cutoff = getattr(user, "tokens_invalid_before", None)
+    if cutoff is not None and authorization:
+        try:
+            from app.core.security import decode_access_token
+            from jose import JWTError
+
+            parts = authorization.strip().split(None, 1)
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                payload = decode_access_token(parts[1].strip())
+                iat = payload.get("iat")
+                if iat is not None:
+                    from datetime import datetime, timezone
+
+                    iat_dt = datetime.fromtimestamp(int(iat), tz=timezone.utc).replace(tzinfo=None)
+                    if iat_dt < cutoff:
+                        raise HTTPException(401, "session_revoked")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     return user
 
 

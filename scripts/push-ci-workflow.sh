@@ -1,20 +1,35 @@
 #!/usr/bin/env bash
-# Commit + push .github/workflows/ci.yml (requires gh OAuth scope: workflow).
+# P1.10: push .github/workflows/* requires GitHub token scope `workflow`.
+# Cursor OAuth (gho_) usually lacks it — use PAT or refresh gh scopes.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+cd "$(dirname "$0")/.."
 
-if ! gh auth status 2>&1 | grep -q "'workflow'"; then
-  echo "ERROR: gh token missing scope 'workflow'."
-  echo "Run: gh auth refresh -h github.com -s workflow"
-  echo "Then: bash scripts/push-ci-workflow.sh"
+echo "Checking gh scopes…"
+scopes="$(gh api -i user 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-oauth-scopes"{print $2}')"
+echo "scopes: ${scopes:-unknown}"
+if [[ "${scopes}" != *workflow* ]]; then
+  cat <<'EOF'
+❌ Нет scope workflow.
+
+Сделайте один раз (откроется браузер):
+  gh auth refresh -h github.com -s workflow,repo,read:org,gist
+
+Или создайте PAT (classic) с repo + workflow и:
+  GH_TOKEN=ghp_xxx git push origin develop
+
+Затем:
+  git add .github/workflows/ci.yml
+  git commit -m "ci: fail closed on e2e:web"
+  git push origin HEAD
+EOF
   exit 1
 fi
 
-if ! git diff --quiet .github/workflows/ci.yml; then
-  git add .github/workflows/ci.yml
-  git commit -m "ci: test-priority + ci-playwright jobs (P3-W20 workflow)"
+git add .github/workflows/ci.yml
+if git diff --cached --quiet; then
+  echo "ci.yml already staged/committed or unchanged vs index"
+else
+  git commit -m "ci: fail closed on e2e:web (P1.10)"
 fi
-
-git push origin develop
-echo "push-ci-workflow: OK"
+git push -u origin HEAD
+echo "✅ CI workflow pushed"

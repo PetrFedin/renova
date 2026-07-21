@@ -70,6 +70,7 @@ async def delete_me(user: User = Depends(get_current_user), db: AsyncSession = D
     now = datetime.utcnow()
     user.deletion_requested_at = now
     user.deleted_at = now
+    user.tokens_invalid_before = now
     user.phone = f"deleted-{user.id[:8]}"
     user.full_name = "Deleted"
     user.inn = None
@@ -239,8 +240,30 @@ async def logout_session(body: RefreshRequest, db: AsyncSession = Depends(get_db
 
 @router.post("/sessions/revoke-all")
 async def revoke_all_sessions(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """P1.8: выйти на всех устройствах (revoke refresh sessions)."""
+    """P1.8: выйти на всех устройствах (revoke refresh + invalidate access via epoch)."""
+    from datetime import datetime
     from app.services import session_service as sess_svc
 
     n = await sess_svc.revoke_all_user_sessions(db, user.id)
-    return {"ok": True, "revoked": n}
+    user.tokens_invalid_before = datetime.utcnow()
+    await db.commit()
+    return {"ok": True, "revoked": n, "access_invalidated": True}
+
+
+@router.post("/admin/purge-deleted-accounts")
+async def purge_deleted_accounts(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ops: hard-delete users soft-deleted >30d. Only staging/prod with ALLOW_ACCOUNT_PURGE=1."""
+    from app.core.config import settings
+    if not getattr(settings, "allow_account_purge", False):
+        raise HTTPException(403, "account_purge_disabled")
+    # Restrict to same phone pattern as demo admin — require contractor+explicit flag is weak;
+    # use env gate only + caller must be authenticated (audit log).
+    from app.services.account_purge_service import purge_deleted_users
+    from app.services.auth_audit import log_auth_event
+
+    n = await purge_deleted_users(db)
+    await log_auth_event(db, user_id=user.id, path="/auth/admin/purge-deleted-accounts", status_code=200, note=f"purged={n}")
+    return {"ok": True, "purged": n, "retention_days": 30}

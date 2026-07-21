@@ -17,6 +17,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { OsSearchModal } from '@/components/renova/os/OsSearchModal';
 import { OsQuickFab } from '@/components/renova/os/OsQuickFab';
 import { ApiStatusBanner } from '@/components/renova/ApiStatusBanner';
+import { StaleCacheBanner } from '@/components/renova/StaleCacheBanner';
 import { OsReturnBar } from '@/components/renova/os/OsReturnBar';
 import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
@@ -105,6 +106,7 @@ export function OsTabsShell({ role, children }: { role: OsRole; children: ReactN
       <ActiveProjectSync />
       <OsTabsHeaderBar role={role} />
       <ApiStatusBanner showEmpty />
+      <StaleCacheBanner />
       <OsReturnBar role={role} />
       <View style={shell.body}>{children}</View>
       <OsQuickFab role={role} />

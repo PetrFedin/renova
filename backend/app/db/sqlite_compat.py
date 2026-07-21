@@ -474,7 +474,21 @@ def ensure_os_schema() -> None:
 
     # Trust: честные реквизиты перевода в профиле исполнителя
 
-    if "domain_outbox" not in tables:
+    
+    if "project_work_schedules" in tables:
+        pws = cols("project_work_schedules")
+        if "schedule_version" not in pws:
+            try:
+                c.execute("ALTER TABLE project_work_schedules ADD COLUMN schedule_version INTEGER DEFAULT 1")
+            except Exception:
+                pass
+        if "supersedes_id" not in pws:
+            try:
+                c.execute("ALTER TABLE project_work_schedules ADD COLUMN supersedes_id TEXT")
+            except Exception:
+                pass
+
+if "domain_outbox" not in tables:
         try:
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS domain_outbox (
@@ -499,6 +513,7 @@ def ensure_os_schema() -> None:
         for col, typ in (
             ("deletion_requested_at", "TEXT"),
             ("deleted_at", "TEXT"),
+            ("tokens_invalid_before", "TEXT"),
         ):
             if col not in ucols:
                 try:

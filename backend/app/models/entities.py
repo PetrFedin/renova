@@ -68,6 +68,8 @@ class User(Base):
     # Soft-delete / GDPR retention (P2.21)
     deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # Access JWT iat must be >= this (set on revoke-all) — kills live access without denylist
+    tokens_invalid_before: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Project(Base):
