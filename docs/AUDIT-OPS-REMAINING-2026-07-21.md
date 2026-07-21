@@ -1,3 +1,5 @@
-# Ops status
+# Ops
 
-Slices 1–5 on main. Slice-6 ia-portal next (remaining mobile IA/portal). Staging ENV-only.
+Split + mobile parity on `main`. Only staging secrets left:
+
+`ENVIRONMENT=staging npm run staging:credentials-probe`
