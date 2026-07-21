@@ -1,4 +1,5 @@
-import { ScrollView, View, Text } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { ScrollView, View, Text, type LayoutChangeEvent } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
@@ -32,9 +33,24 @@ export function CustomerProfileScreen() {
   const hasContractor = Boolean(activeProject?.contractor_id);
   const extraItems = hasContractor ? [...EXTRA_BASIC, ...EXTRA_WITH_CONTRACTOR] : EXTRA_BASIC;
   const roleLabel = roleDisplayLabel(user?.role);
+  const scrollRef = useRef<ScrollView>(null);
+  const contractorY = useRef(0);
+  const focusContractor = focus === 'contractor';
+
+  useEffect(() => {
+    if (!focusContractor || !showAccess) return;
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, contractorY.current - 12), animated: true });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [focusContractor, showAccess, activeProject?.id]);
+
+  const onContractorLayout = (e: LayoutChangeEvent) => {
+    contractorY.current = e.nativeEvent.layout.y;
+  };
 
   return (
-    <ScrollView style={ps.scroll} contentContainerStyle={ps.content}>
+    <ScrollView ref={scrollRef} style={ps.scroll} contentContainerStyle={ps.content}>
       <RoleSwitchButton />
 
       <ProfileHeader
@@ -51,17 +67,19 @@ export function CustomerProfileScreen() {
         <>
           <Text style={ps.accessObject} numberOfLines={2}>{activeProject!.name}</Text>
 
-          <ProfileSection title="Исполнитель" highlight={focus === 'contractor'}>
-            {user ? (
-              <ContractorInvitePanel
-                userId={user.id}
-                projectId={activeProject!.id}
-                linkedContractorId={activeProject!.contractor_id}
-                embedded
-                onLinked={() => loadProject(activeProject!.id).catch(() => {})}
-              />
-            ) : null}
-          </ProfileSection>
+          <View onLayout={onContractorLayout}>
+            <ProfileSection title="Исполнитель" highlight={focusContractor}>
+              {user ? (
+                <ContractorInvitePanel
+                  userId={user.id}
+                  projectId={activeProject!.id}
+                  linkedContractorId={activeProject!.contractor_id}
+                  embedded
+                  onLinked={() => loadProject(activeProject!.id).catch(() => {})}
+                />
+              ) : null}
+            </ProfileSection>
+          </View>
 
           <ProfileSection title="Клиентский портал">
             <PortalSharePanel userId={user!.id} projectId={activeProject!.id} role="customer" embedded />
