@@ -34,7 +34,7 @@ type SyncOpts = {
 /**
  * W82: единый side-effect после мутаций golden path
  * (приёмка, ДО, подпись, гарантия, closeout, график).
- * reloadInboxSync — dynamic import, чтобы bus не тянул RN в unit-тестах.
+ * requestChatSync — dynamic import, чтобы bus не тянул RN в unit-тестах.
  */
 export async function syncProjectSideEffects(opts: SyncOpts): Promise<void> {
   const { user, project } = opts;
@@ -45,16 +45,19 @@ export async function syncProjectSideEffects(opts: SyncOpts): Promise<void> {
   const raw = opts.role ?? user.role;
   const osRole: OsRole = String(raw) === 'contractor' ? 'contractor' : 'customer';
   try {
-    const { reloadInboxSync } = await import('@/lib/inboxSyncStore');
-    await reloadInboxSync({
+    const { requestChatSync, patchChatSyncContext } = await import('@/lib/chatSync');
+    patchChatSyncContext({
       userId: user.id,
-      userRole: user.role,
+      role: osRole,
       projectId: project.id,
-      project,
-      osRole,
+    });
+    await requestChatSync({
+      scope: 'all',
+      reason: 'project_change',
+      priority: 'high',
     }).catch(reportCatch('projectDataBus.inboxSync'));
   } catch {
-    /* offline / test env без inboxSyncStore */
+    /* offline / test env без chatSync */
   }
   notifyProjectDataChanged();
 }

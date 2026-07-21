@@ -5,7 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { PaywallModal } from '@/components/renova/PaywallModal';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { flushOfflineOutbox } from '@/lib/offline';
-import { reloadInboxSync } from "@/lib/inboxSyncStore";
+import { requestChatSync, patchChatSyncContext } from '@/lib/chatSync';
 import { notifyProjectDataChanged, syncProjectSideEffects } from "@/lib/projectDataBus";
 
 function signalPreviewReady() {
@@ -224,13 +224,16 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
         await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
         notifyProjectDataChanged();
-        // Inbox/чат — не блокируем вход в объект (раньше ждал buildInboxItems → «Выберите объект» висел)
-        void reloadInboxSync({
+        // Inbox/чат — один sync через orchestrator (не блокируем вход)
+        patchChatSyncContext({
           userId: user.id,
-          userRole: user.role,
+          role: user.role === 'contractor' ? 'contractor' : 'customer',
           projectId: id,
-          project: p,
-          osRole: user.role === 'contractor' ? 'contractor' : 'customer',
+        });
+        void requestChatSync({
+          scope: 'all',
+          reason: 'project_change',
+          priority: 'high',
         }).catch(reportCatch('renovaContext'));
       } catch (e) {
         // Duck-typed rate_limit (HMR) — не роняем UI, оставляем текущий activeProject
