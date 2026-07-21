@@ -15,7 +15,7 @@ export type WorkSnapshot = {
   planned_end?: string | null;
   next_action: { title: string; button: string; kind: string; href: string };
   completion: { ok: boolean; checks: WorkCompletionCheck[]; failed: WorkCompletionCheck[] };
-  checklist_progress: { done: number; total: number; percent: number };
+  checklist_progress?: { done: number; total: number; percent: number };
   photos_count: number;
   materials_count: number;
   issues_open: number;
@@ -59,6 +59,7 @@ export type WorkAcceptance = {
   requested_at?: string | null;
   accepted_at?: string | null;
   comment?: string | null;
-  checklist: StageChecklistItem[];
-  checklist_progress: { done: number; total: number };
+  checklist?: StageChecklistItem[];
+  /** API иногда не отдаёт progress на pending — UI обязан быть defensive */
+  checklist_progress?: { done: number; total: number };
 };

@@ -22,6 +22,7 @@ def _parse_checklist(raw: str | None) -> list[dict]:
 
 
 def compute_quality_score(stage: Stage, open_issues: int = 0, returned_before: bool = False) -> float:
+    """DEPRECATED W139: readiness 0–100, не оценка заказчика 0–10. Не писать в WorkAcceptance.quality_score."""
     items = _parse_checklist(stage.checklist_json)
     if items:
         done = sum(1 for i in items if i.get("done"))
@@ -112,7 +113,8 @@ async def accept(db: AsyncSession, acceptance_id: str, *, accepted_by: str, with
     acc.accepted_by = accepted_by
     acc.accepted_at = datetime.utcnow()
     acc.comment = comment
-    acc.quality_score = compute_quality_score(stage, open_issues=open_issues, returned_before=returned_before)
+    # W139: не подставляем эвристику как оценку заказчика — только явный score с API
+    acc.quality_score = None
     await db.flush()
     return acc
 

@@ -76,7 +76,9 @@ async def _get_or_create_read(db: AsyncSession, thread_id: str, user_id: str) ->
     row = r.scalar_one_or_none()
     if row:
         return row
-    row = ChatThreadRead(thread_id=thread_id, user_id=user_id, last_read_at=datetime.utcnow())
+    # Не ставим utcnow(): иначе первое появление строки (inbox/pin) ложно «прочитывает» историю.
+    # Прочтение — только mark_thread_read / открытие треда (GET chat).
+    row = ChatThreadRead(thread_id=thread_id, user_id=user_id, last_read_at=datetime(1970, 1, 1))
     db.add(row)
     await db.flush()
     return row
@@ -296,7 +298,7 @@ def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
         "is_pinned": m.is_pinned,
         "reply_to_id": m.reply_to_id,
         "reactions": meta.get("reactions", {}),
-        "work_order_id": meta.get("work_order_id"),
+        "work_order_id": meta.get("work_order_id") or meta.get("linked_task_id"),
         "payment_id": meta.get("payment_id"),
         "file_name": meta.get("file_name"),
         "assignee_id": meta.get("assignee_id"),

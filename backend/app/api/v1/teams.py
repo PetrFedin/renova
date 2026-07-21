@@ -18,6 +18,10 @@ class InviteIn(BaseModel):
 class JoinIn(BaseModel):
     token: str
 
+class InviteLinkIn(BaseModel):
+    """Роли field: member (работы) · viewer (только смотреть) · foreman (прораб)."""
+    role: str = "member"
+
 @router.get("/me")
 async def my_team(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
@@ -57,13 +61,20 @@ async def invite(body: InviteIn, user: User = Depends(get_current_user), db: Asy
     return await team_svc.invite_phone(db, t.id, body.phone, body.role)
 
 @router.post("/invite-link")
-async def invite_link(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def invite_link(body: InviteLinkIn = InviteLinkIn(), user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
     t = await team_svc.my_team(db, user.id)
-    if not t or t.owner_id != user.id:
-        raise HTTPException(403)
-    return await team_svc.create_invite_link(db, t.id)
+    if not t:
+        # H1.5: первый QR создаёт бригаду — иначе тупик на демо
+        t = await team_svc.create_team(db, user.id, "Бригада")
+    if t.owner_id != user.id:
+        raise HTTPException(403, "Только владелец бригады выдаёт invite")
+    role = body.role or "member"
+    if role not in ("member", "viewer", "foreman"):
+        raise HTTPException(400, "role: member | viewer | foreman")
+    out = await team_svc.create_invite_link(db, t.id, role=role)
+    return {**out, "role": role, "team_id": t.id}
 
 class RoleIn(BaseModel):
     user_id: str

@@ -22,6 +22,15 @@ export type ProjectSummary = {
   pending_payments?: number | null;
   /** Подключённый исполнитель */
   contractor_id?: string | null;
+  is_archived?: boolean;
+  trashed_at?: string | null;
+  estimate_locked_at?: string | null;
+  vat_rate?: number;
+  /** W57: исполнитель предложил фиксацию — ждёт заказчика */
+  estimate_lock_proposed_at?: string | null;
+  estimate_lock_proposed_by?: string | null;
+  /** owner — можно archive/trash; guest — только просмотр в списке active */
+  access_mode?: 'owner' | 'contractor' | 'guest' | 'none';
 };
 
 export type EstimateLine = {
@@ -73,4 +82,10 @@ export type Dashboard = {
   alerts: string[];
   planned_start_date?: string | null;
   planned_end_date?: string | null;
+  /** W76: очередь с бэкенда (согласовано с home nextAction) */
+  pending_acceptances?: number;
+  pending_change_orders?: number;
+  warranty_open?: number;
+  warranty_overdue?: number;
+  pending_sign_docs?: number;
 };

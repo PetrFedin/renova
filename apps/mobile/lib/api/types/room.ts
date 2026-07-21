@@ -16,6 +16,7 @@ export type Room = {
   wall_sq_m: number;
   perimeter_m: number;
   is_archived?: boolean;
+  budget_alert_pct?: number | null;
 };
 
 export type RoomStageCard = {

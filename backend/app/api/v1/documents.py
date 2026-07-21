@@ -1,5 +1,6 @@
 """Document Center: index + canonical ProjectDocument API (D-01…D-07)."""
 import hashlib
+import json
 from datetime import datetime
 import mimetypes
 
@@ -13,6 +14,8 @@ from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage,
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn, LegalHoldIn, OcrRunIn
 from app.services import project_document_service as docs_svc
+from app.services import notification_service as notif
+from app.models.entities import Project
 from app.services import storage_service as storage_svc
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
@@ -290,13 +293,64 @@ async def sign_project_document(
     except ValueError as e:
         msg = str(e)
         if msg.startswith("provider_unavailable:"):
-            raise HTTPException(501, msg) from e
+            # W67 #28: честный текст вместо сырого кода для UI
+            provider = msg.split(":", 1)[-1]
+            raise HTTPException(
+                501,
+                detail={
+                    "code": "esign_provider_unavailable",
+                    "provider": provider,
+                    "message": (
+                        f"Электронная подпись «{provider}» не подключена на этом стенде. "
+                        "Используйте подпись в приложении или запросите настройку Kontur/Госключ."
+                    ),
+                },
+            ) from e
         if msg.startswith("unknown_esign_provider:"):
             raise HTTPException(400, msg) from e
         raise HTTPException(400, msg) from e
+    from app.services import activity_service as act
+
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="DocumentSigned",
+        title=f"Подписан документ: {doc.title}",
+        body=getattr(user.role, "value", str(user.role)),
+        link_path="/documents",
+    )
+    proj = await db.get(Project, project_id)
+    if proj:
+        for recipient_id in {proj.customer_id, proj.contractor_id, proj.foreman_id}:
+            if not recipient_id or recipient_id == user.id:
+                continue
+            await notif.notify(
+                db,
+                user_id=recipient_id,
+                project_id=project_id,
+                notification_type="document",
+                title=f"Документ подписан: {doc.title}",
+                body=getattr(user.role, "value", str(user.role)),
+                link_path="/documents",
+                return_to="/(customer)/(tabs)/home" if recipient_id == proj.customer_id else "/(contractor)/(tabs)/home",
+            )
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
-    return {"signature_id": sig.id, "document": docs_svc.document_dict(doc, version, [sig])}
+    meta = {}
+    if getattr(sig, "meta_json", None):
+        try:
+            meta = json.loads(sig.meta_json)
+        except Exception:
+            meta = {}
+    return {
+        "signature_id": sig.id,
+        "status": sig.status,
+        "external_id": sig.provider_external_id,
+        "signing_url": meta.get("signing_url"),
+        "provider": sig.provider_name or sig.signature_type,
+        "document": docs_svc.document_dict(doc, version, [sig]),
+    }
 
 
 @router.post("/{project_id}/documents/{document_id}/archive")
@@ -309,6 +363,29 @@ async def archive_project_document(
     await require_project_docs(db, project_id, user, write=True)
     doc = await _get_project_document(db, project_id, document_id)
     await docs_svc.archive_document(db, doc)
+    from app.services import activity_service as act
+
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="DocumentArchived",
+        title=f"В архив: {doc.title}",
+        body=doc.document_type or doc.kind,
+        link_path="/documents",
+    )
+    proj = await db.get(Project, project_id)
+    if proj and proj.customer_id and proj.customer_id != user.id:
+        await notif.notify(
+            db,
+            user_id=proj.customer_id,
+            project_id=project_id,
+            notification_type="document",
+            title=f"Документ в архиве: {doc.title}",
+            body=doc.document_type or doc.kind or "",
+            link_path="/documents",
+            return_to="/(customer)/(tabs)/home",
+        )
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
     return docs_svc.document_dict(doc, version)

@@ -77,10 +77,26 @@ def ensure_os_schema() -> None:
             CREATE TABLE IF NOT EXISTS project_issues (
               id TEXT PRIMARY KEY, project_id TEXT NOT NULL, room_id TEXT, stage_id TEXT,
               title TEXT NOT NULL, description TEXT, severity TEXT DEFAULT 'medium',
-              status TEXT DEFAULT 'open', assignee_id TEXT, due_at TEXT, created_at TEXT, closed_at TEXT
+              status TEXT DEFAULT 'open', assignee_id TEXT, due_at TEXT,
+              floor_plan_id TEXT, x_pct REAL, y_pct REAL, photo_key TEXT,
+              created_at TEXT, closed_at TEXT
             );
             """
         )
+    if "project_issues" in tables:
+        pi = cols("project_issues")
+        for col, typ in [
+            ("floor_plan_id", "TEXT"),
+            ("x_pct", "REAL"),
+            ("y_pct", "REAL"),
+            ("photo_key", "TEXT"),
+        ]:
+            if col not in pi:
+                try:
+                    c.execute(f"ALTER TABLE project_issues ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
     if "stages" in tables:
         st = cols("stages") if "stages" in tables else set()
         if "checklist_json" not in st:
@@ -218,6 +234,20 @@ def ensure_os_schema() -> None:
         """)
 
     # Renova OS: поля работ (исполнитель, фактические даты)
+    if "project_issues" in tables:
+        pi = cols("project_issues")
+        for col, typ in [
+            ("floor_plan_id", "TEXT"),
+            ("x_pct", "REAL"),
+            ("y_pct", "REAL"),
+            ("photo_key", "TEXT"),
+        ]:
+            if col not in pi:
+                try:
+                    c.execute(f"ALTER TABLE project_issues ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
     if "stages" in tables:
         st = cols("stages")
         for col, ddl in [
@@ -240,10 +270,54 @@ def ensure_os_schema() -> None:
               SELECT MIN(id) FROM expenses WHERE receipt_id IS NOT NULL GROUP BY receipt_id
             ) AND receipt_id IS NOT NULL
         """)
-        conn.commit()
     except Exception:
         pass
 
+    if "user_sessions" not in tables:
+        c.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS user_sessions (
+              id TEXT PRIMARY KEY, user_id TEXT NOT NULL, refresh_token_hash TEXT NOT NULL UNIQUE,
+              device_id TEXT, created_at TEXT, expires_at TEXT, revoked_at TEXT, last_used_at TEXT,
+              ip TEXT, user_agent TEXT
+            );
+            CREATE TABLE IF NOT EXISTS payment_webhook_events (
+              event_id TEXT PRIMARY KEY, provider TEXT DEFAULT 'yookassa', created_at TEXT, payload_kind TEXT
+            );
+            CREATE TABLE IF NOT EXISTS payment_events (
+              id TEXT PRIMARY KEY, payment_id TEXT NOT NULL, actor_user_id TEXT, source TEXT NOT NULL,
+              old_status TEXT, new_status TEXT NOT NULL, evidence_type TEXT, evidence_ref TEXT,
+              idempotency_key TEXT, created_at TEXT, note TEXT
+            );
+            """
+        )
+    if "receipts" in tables:
+        rc = cols("receipts")
+        if "verification_status" not in rc:
+            try:
+                c.execute("ALTER TABLE receipts ADD COLUMN verification_status TEXT DEFAULT 'saved_unverified'")
+            except Exception:
+                pass
+    if "payments" in tables:
+        pc = cols("payments")
+        if "payment_method" not in pc:
+            try:
+                c.execute("ALTER TABLE payments ADD COLUMN payment_method TEXT")
+            except Exception:
+                pass
+
+    if "users" in tables:
+        uc = cols("users")
+        if "moy_nalog_status" not in uc:
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN moy_nalog_status TEXT DEFAULT 'not_connected'")
+            except Exception:
+                pass
+
+    try:
+        conn.commit()
+    except Exception:
+        pass
 
     # Очистка «сирот» и E2E-мусора — завышенный budget_spent (164k+)
     try:
@@ -383,6 +457,130 @@ def ensure_os_schema() -> None:
         if "retention_until" not in pd:
             try:
                 c.execute("ALTER TABLE project_documents ADD COLUMN retention_until TEXT")
+            except Exception:
+                pass
+
+
+    if "payments" in tables:
+        pay = cols("payments")
+        if "yookassa_payment_id" not in pay:
+            try:
+                c.execute("ALTER TABLE payments ADD COLUMN yookassa_payment_id TEXT")
+                c.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_payments_yookassa_payment_id ON payments(yookassa_payment_id)"
+                )
+            except Exception:
+                pass
+
+    # Trust: честные реквизиты перевода в профиле исполнителя
+
+    
+    if "project_work_schedules" in tables:
+        pws = cols("project_work_schedules")
+        if "schedule_version" not in pws:
+            try:
+                c.execute("ALTER TABLE project_work_schedules ADD COLUMN schedule_version INTEGER DEFAULT 1")
+            except Exception:
+                pass
+        if "supersedes_id" not in pws:
+            try:
+                c.execute("ALTER TABLE project_work_schedules ADD COLUMN supersedes_id TEXT")
+            except Exception:
+                pass
+
+    if "domain_outbox" not in tables:
+        try:
+            c.executescript("""
+                CREATE TABLE IF NOT EXISTS domain_outbox (
+                  id TEXT PRIMARY KEY,
+                  aggregate_type TEXT NOT NULL,
+                  aggregate_id TEXT NOT NULL,
+                  event_type TEXT NOT NULL,
+                  payload_json TEXT DEFAULT '{}',
+                  created_at TEXT,
+                  processed_at TEXT,
+                  attempts INTEGER DEFAULT 0,
+                  last_error TEXT
+                );
+                CREATE INDEX IF NOT EXISTS ix_domain_outbox_pending ON domain_outbox(processed_at, created_at);
+            """)
+        except Exception:
+            pass
+
+    # Soft-delete users + multi-quote leads (wave-8 / Phase E)
+    if "users" in tables:
+        ucols = cols("users")
+        for col, typ in (
+            ("deletion_requested_at", "TEXT"),
+            ("deleted_at", "TEXT"),
+            ("tokens_invalid_before", "TEXT"),
+        ):
+            if col not in ucols:
+                try:
+                    c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+    if "job_lead_quotes" not in tables:
+        try:
+            c.executescript("""
+                CREATE TABLE IF NOT EXISTS job_lead_quotes (
+                  id TEXT PRIMARY KEY,
+                  lead_id TEXT NOT NULL,
+                  contractor_id TEXT NOT NULL,
+                  pre_estimate REAL NOT NULL,
+                  note TEXT,
+                  created_at TEXT,
+                  UNIQUE(lead_id, contractor_id)
+                );
+                CREATE INDEX IF NOT EXISTS ix_job_lead_quotes_lead ON job_lead_quotes(lead_id);
+            """)
+        except Exception:
+            pass
+
+    if "contractor_profiles" in tables:
+        cp = cols("contractor_profiles")
+        if "payment_requisites" not in cp:
+            try:
+                c.execute("ALTER TABLE contractor_profiles ADD COLUMN payment_requisites TEXT")
+            except Exception:
+                pass
+
+
+    if "projects" in tables:
+        pr = cols("projects")
+        if "is_archived" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN is_archived INTEGER DEFAULT 0")
+            except Exception:
+                pass
+        if "trashed_at" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN trashed_at TEXT")
+            except Exception:
+                pass
+        if "estimate_locked_at" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN estimate_locked_at TEXT")
+            except Exception:
+                pass
+        if "estimate_lock_proposed_at" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN estimate_lock_proposed_at TEXT")
+            except Exception:
+                pass
+        if "estimate_lock_proposed_by" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN estimate_lock_proposed_by TEXT")
+            except Exception:
+                pass
+        if "estimate_propose_snapshot_json" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN estimate_propose_snapshot_json TEXT")
+            except Exception:
+                pass
+        if "vat_rate" not in pr:
+            try:
+                c.execute("ALTER TABLE projects ADD COLUMN vat_rate REAL DEFAULT 0")
             except Exception:
                 pass
 

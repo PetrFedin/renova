@@ -98,7 +98,7 @@ async def set_contractor_ready(db: AsyncSession, stage_id: str, *, skip_gate: bo
     from app.models.entities import Project
     proj = await db.get(Project, stage.project_id)
     if proj and proj.customer_id:
-        await notif_svc.notify(db, user_id=proj.customer_id, project_id=proj.id, notification_type="stage_review", title="Этап на приёмке", body=stage.name, link_path=f"/stage/{stage.id}", return_to="/(customer)/(tabs)/control")
+        await notif_svc.notify(db, user_id=proj.customer_id, project_id=proj.id, notification_type="stage_review", title="Этап на приёмке", body=stage.name, link_path=f"/stage/{stage.id}", return_to="/(customer)/(tabs)/repair?tab=control")
     from app.services import acceptance_service as acc_svc
     from app.services.stage_service import parse_room_ids
     room_ids = parse_room_ids(stage)
@@ -106,7 +106,7 @@ async def set_contractor_ready(db: AsyncSession, stage_id: str, *, skip_gate: bo
     await acc_svc.request_acceptance(db, stage, room_id=room_id)
     from app.services import activity_service as act
     await act.log_event(db, project_id=stage.project_id, user_id=None, kind="WorkCompleted", title=f"Завершено: {stage.name}", link_path=f"/stage/{stage.id}", stage_id=stage.id)
-    await act.log_event(db, project_id=stage.project_id, user_id=None, kind="InspectionRequested", title=f"Запрошена приёмка: {stage.name}", link_path=f"/(customer)/(tabs)/control", stage_id=stage.id)
+    await act.log_event(db, project_id=stage.project_id, user_id=None, kind="InspectionRequested", title=f"Запрошена приёмка: {stage.name}", link_path=f"/(customer)/(tabs)/repair?tab=control", stage_id=stage.id)
     return stage, None
 
 
@@ -120,12 +120,32 @@ async def start_stage(db: AsyncSession, stage_id: str) -> tuple[Stage | None, di
     if stage.status != StageStatus.planned:
         return None, {"code": "invalid_status", "message": "Этап уже начат или завершён"}
     from app.services import dependency_service as dep_svc
+    from app.services import project_document_service as docs_svc
+    gate = await docs_svc.project_contract_gate(db, stage.project_id)
+    if not gate.get("ok"):
+        from app.models.entities import Project
+        proj = await db.get(Project, stage.project_id)
+        if proj and proj.customer_id:
+            await notif_svc.notify(
+                db,
+                user_id=proj.customer_id,
+                project_id=proj.id,
+                notification_type="document",
+                title="Нужна подпись договора",
+                body=gate.get("message") or "Исполнитель не может начать этап без подписанного договора",
+                link_path="/documents",
+                return_to="/(customer)/(tabs)/repair?tab=control",
+            )
+            await db.commit()
+        return None, {"code": gate.get("code", "contract_not_signed"), "message": gate.get("message"), "pending_titles": gate.get("pending_titles", [])}
     blocked = await dep_svc.evaluate_stage(db, stage)
     if blocked.get("blocked"):
         return None, {"code": "blocked", "reasons": blocked.get("reasons", [])}
     stage.status = StageStatus.active
     if not getattr(stage, "actual_start", None):
         stage.actual_start = date.today()
+    if not getattr(stage, "ical_uid", None):
+        stage.ical_uid = f"renova-{stage.id}@app"
     from app.models.entities import Project
     proj = await db.get(Project, stage.project_id)
     if proj and proj.contractor_id:
@@ -133,7 +153,7 @@ async def start_stage(db: AsyncSession, stage_id: str) -> tuple[Stage | None, di
             db, user_id=proj.contractor_id, project_id=proj.id,
             notification_type="stage_start", title=f"Начат этап: {stage.name}",
             body="Приступайте к работам", link_path=f"/stage/{stage.id}",
-            return_to="/(contractor)/(tabs)/works",
+            return_to="/(contractor)/(tabs)/repair?tab=works",
         )
     await db.commit()
     await db.refresh(stage)

@@ -63,7 +63,7 @@ async def create_request(project_id: str, body: RoomChangeCreate, user: User = D
             notification_type="room_change",
             title="Запрос на изменение комнаты",
             body=body.message[:200],
-            link_path="/(contractor)/(tabs)/rooms", return_to="/(contractor)/(tabs)/objects",
+            link_path="/(contractor)/(tabs)/object?tab=rooms", return_to="/(contractor)/(tabs)/",
         )
     return {"id": req.id, "status": req.status.value}
 

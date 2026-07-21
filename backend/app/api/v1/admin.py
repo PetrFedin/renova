@@ -48,4 +48,57 @@ async def revenue_chart(user: User = Depends(get_current_user), db: AsyncSession
 async def release_health(user: User = Depends(get_current_user)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
-    return {"version": "1.0.0", "crash_free_rate": 99.2, "sessions": 1200, "source": "sentry-stub"}
+    from app.core.config import settings
+    from app.services.yookassa_service import yookassa_health
+    from app.services.fns.receipt_verify import fns_receipt_health
+    from app.services.automation_reminders_worker import automation_worker_metrics
+    from app.services.esign import list_providers
+
+    yk = yookassa_health()
+    fns = fns_receipt_health()
+    worker = automation_worker_metrics()
+    kontur_mode = (settings.kontur_mode or "off").strip().lower()
+    esign = {
+        "kontur_mode": kontur_mode,
+        "kontur_configured": bool(settings.kontur_api_key) and kontur_mode in ("sandbox", "live"),
+        "webhook_secret_set": bool(settings.esign_webhook_secret),
+        "providers": list_providers(),
+    }
+    return {
+        "version": "1.0.0",
+        "crash_free_rate": 99.2,
+        "sessions": 1200,
+        "source": "sentry-stub",
+        "environment": settings.normalized_environment,
+        "integrations": {
+            "yookassa": {
+                "configured": yk["configured"],
+                "live_checkout_ready": yk["live_checkout_ready"],
+                "demo_allowed": yk["demo_allowed"],
+            },
+            "fns": {
+                "receipt_auth_configured": fns["receipt_auth_configured"],
+                "live_verify_ready": fns["live_verify_ready"],
+                "demo_verify_allowed": fns["demo_verify_allowed"],
+            },
+            "esign": esign,
+            "smtp": {"configured": bool(settings.smtp_host)},
+            "ollama_digest": {
+                "enabled": bool(settings.ollama_digest_enabled),
+                "base_url_set": bool(settings.ollama_base_url),
+            },
+            "automation_worker": {
+                "healthy": int(worker.get("consecutive_failures") or 0) < 3,
+                "consecutive_failures": worker.get("consecutive_failures"),
+            },
+        },
+    }
+
+
+@router.get("/h0-readiness")
+async def h0_readiness(user: User = Depends(get_current_user)):
+    """W53: H0 staging checklist для пилота/инвестора (без секретов)."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403)
+    from app.services.staging_readiness import build_h0_readiness
+    return build_h0_readiness()

@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import Receipt, User
 from app.services.fns.receipt_verify import parse_receipt_qr, verify_receipt, receipt_meta
@@ -65,9 +65,7 @@ class ReceiptPatch(BaseModel):
 
 @router.post("/scan")
 async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    await require_project(db, project_id, user, write=True)
     cat = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
     payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
     stage_id = body.stage_id
@@ -85,6 +83,12 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
         fn=parsed.get("fn"),
         fd=parsed.get("fd"),
         fns_verified=check["verified"],
+        verification_status=(
+            "verified_live" if check.get("verified") and check.get("mode") == "live"
+            else "demo_verified" if check.get("verified") and check.get("mode") == "demo"
+            else "verification_failed" if check.get("mode") == "live" and not check.get("verified")
+            else "saved_unverified"
+        ),
         expense_category=cat,
         room_id=body.room_id,
         stage_id=stage_id,
@@ -98,7 +102,22 @@ async def scan_receipt(project_id: str, body: ReceiptScan, user: User = Depends(
     await bud.refresh_budget_facts(db, project_id)
     await db.commit()
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="ExpenseAdded", title=exp.title, body=str(exp.amount), link_path="/(customer)/(tabs)/budget")
-    return {"id": rec.id, "amount": rec.amount, "verified": rec.fns_verified, "message": check["message"], "expense_category": cat, "room_id": rec.room_id, "stage_id": rec.stage_id, "payment_id": rec.payment_id}
+    from app.services.fns.receipt_verify import fns_receipt_health
+    health = fns_receipt_health()
+    verify_mode = "live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "off")
+    return {
+        "id": rec.id,
+        "amount": rec.amount,
+        "verified": rec.fns_verified,
+        "verification_status": getattr(rec, "verification_status", None) or ("verified_live" if rec.fns_verified else "saved_unverified"),
+        "message": check["message"],
+        "expense_category": cat,
+        "room_id": rec.room_id,
+        "stage_id": rec.stage_id,
+        "payment_id": rec.payment_id,
+        "verify_mode": verify_mode,
+        "live_verify_ready": bool(health.get("live_verify_ready")),
+    }
 
 
 
@@ -108,9 +127,7 @@ async def manual_receipt(project_id: str, body: ReceiptManual, user: User = Depe
     """Расход без QR: наличные, перевод, доставка."""
     if body.amount <= 0:
         raise HTTPException(400, "Сумма должна быть больше 0")
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    await require_project(db, project_id, user, write=True)
     cat = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
     payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
     stage_id = body.stage_id
@@ -144,6 +161,7 @@ async def manual_receipt(project_id: str, body: ReceiptManual, user: User = Depe
 
 @router.patch("/{receipt_id}")
 async def patch_receipt(project_id: str, receipt_id: str, body: ReceiptPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    p = await require_project(db, project_id, user, write=True)
     rec = await db.get(Receipt, receipt_id)
     if not rec or rec.project_id != project_id:
         raise HTTPException(404)
@@ -156,8 +174,7 @@ async def patch_receipt(project_id: str, receipt_id: str, body: ReceiptPatch, us
             raise HTTPException(400, detail="Сумма должна быть больше 0")
         old_amt = rec.amount
         rec.amount = round(body.amount, 2)
-        p = await proj_svc.get_project(db, project_id)
-        if p and rec.fns_verified:
+        if rec.fns_verified:
             p.budget_spent = round(max(0, (p.budget_spent or 0) - old_amt + rec.amount), 2)
     if body.description is not None and rec.fn == "MANUAL":
         rec.qr_raw = (body.description or "Ручной расход")[:500]
@@ -174,11 +191,9 @@ async def patch_receipt(project_id: str, receipt_id: str, body: ReceiptPatch, us
 @router.delete("/{receipt_id}")
 async def delete_receipt(project_id: str, receipt_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Удалить чек и связанные расходы, пересчитать факт бюджета."""
+    await require_project(db, project_id, user, write=True)
     rec = await db.get(Receipt, receipt_id)
     if not rec or rec.project_id != project_id:
-        raise HTTPException(404)
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
         raise HTTPException(404)
     from app.services import budget_service as bud
     removed = await bud.delete_receipt_expenses(db, receipt_id, rec=rec)
@@ -192,9 +207,7 @@ async def delete_receipt(project_id: str, receipt_id: str, user: User = Depends(
 
 @router.get("")
 async def list_receipts(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
+    p = await require_project(db, project_id, user, write=False)
     out = []
     for r in p.receipts:
         meta = receipt_meta(r.qr_raw)
@@ -202,6 +215,7 @@ async def list_receipts(project_id: str, user: User = Depends(get_current_user),
             "id": r.id,
             "amount": r.amount,
             "verified": r.fns_verified,
+            "verification_status": getattr(r, "verification_status", None) or ("verified_live" if r.fns_verified else "saved_unverified"),
             "created_at": r.created_at.isoformat(),
             "receipt_at": meta.get("receipt_at"),
             "fn": r.fn,
@@ -213,3 +227,44 @@ async def list_receipts(project_id: str, user: User = Depends(get_current_user),
             "payment_id": getattr(r, "payment_id", None),
         })
     return out
+
+
+@router.post("/{receipt_id}/reverify")
+async def reverify_receipt(
+    project_id: str,
+    receipt_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """P4: повторная live-проверка сохранённого чека по QR."""
+    await require_project(db, project_id, user, write=True)
+    rec = await db.get(Receipt, receipt_id)
+    if not rec or rec.project_id != project_id:
+        raise HTTPException(404, "receipt_not_found")
+    if not rec.qr_raw:
+        raise HTTPException(400, "no_qr_raw")
+    parsed = parse_receipt_qr(rec.qr_raw)
+    check = await verify_receipt(parsed)
+    from app.services.fns.receipt_verify import fns_receipt_health
+    health = fns_receipt_health()
+    rec.fns_verified = bool(check.get("verified"))
+    mode = check.get("mode") or ("live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "offline"))
+    if rec.fns_verified and mode == "live":
+        rec.verification_status = "verified_live"
+    elif rec.fns_verified and mode == "demo":
+        rec.verification_status = "demo_verified"
+    elif mode == "live" and not rec.fns_verified:
+        rec.verification_status = "verification_failed"
+    else:
+        rec.verification_status = "saved_unverified"
+    verify_mode = "live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "off")
+    await db.commit()
+    return {
+        "id": rec.id,
+        "verified": rec.fns_verified,
+        "verification_status": getattr(rec, "verification_status", None) or ("verified_live" if rec.fns_verified else "saved_unverified"),
+        "message": check.get("message"),
+        "mode": check.get("mode"),
+        "verify_mode": verify_mode,
+        "live_verify_ready": bool(health.get("live_verify_ready")),
+    }

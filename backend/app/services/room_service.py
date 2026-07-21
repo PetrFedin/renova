@@ -34,9 +34,9 @@ async def update_room(db: AsyncSession, room_id: str, data: dict, user_id: str |
     plan = sum(l.quantity_planned * l.unit_price for l in lines)
     fact = sum(l.quantity_actual * l.unit_price for l in lines)
     if proj and proj.customer_id:
-        await ns.notify(db, user_id=proj.customer_id, project_id=proj.id, notification_type="room_updated", title="Обновлена комната", body=room.name, link_path=f"/room/{room.id}", return_to="/(customer)/(tabs)/rooms")
+        await ns.notify(db, user_id=proj.customer_id, project_id=proj.id, notification_type="room_updated", title="Обновлена комната", body=room.name, link_path=f"/room/{room.id}", return_to="/(customer)/(tabs)/object?tab=rooms")
     if proj and proj.customer_id and fact > plan and plan > 0:
-        await ns.notify(db, user_id=proj.customer_id, project_id=proj.id, notification_type="change_order", title="Превышение бюджета комнаты", body=f"{room.name}: +{fact-plan:.0f} RUB", link_path=f"/room/{room.id}", return_to="/(customer)/(tabs)/rooms")
+        await ns.notify(db, user_id=proj.customer_id, project_id=proj.id, notification_type="change_order", title="Превышение бюджета комнаты", body=f"{room.name}: +{fact-plan:.0f} RUB", link_path=f"/room/{room.id}", return_to="/(customer)/(tabs)/object?tab=rooms")
     return room
 
 
@@ -200,6 +200,6 @@ async def create_room(db: AsyncSession, project_id: str, data: dict, user_id: st
             title="Новая комната",
             body=room.name,
             link_path=f"/room/{room.id}",
-            return_to="/(customer)/(tabs)/objects",
+            return_to="/(customer)/(tabs)/",
         )
     return room

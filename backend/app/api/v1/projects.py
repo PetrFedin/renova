@@ -10,6 +10,7 @@ from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectDetail, Pro
 from app.services import project_service as svc
 from app.services.stage_service import parse_room_ids
 from app.services import room_service as room_svc
+from app.services import project_document_service as docs_svc
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -27,7 +28,7 @@ def _filter_stages_for_user(p, user: User):
 
 
 
-def _project_out(p) -> ProjectOut:
+def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
     payments = getattr(p, "payments", None) or []
     pending = sum(1 for pay in payments if pay.status == PaymentStatus.pending)
     return ProjectOut(
@@ -39,12 +40,37 @@ def _project_out(p) -> ProjectOut:
         budget_planned=p.budget_planned,
         budget_spent=p.budget_spent,
         progress_percent=p.progress_percent,
+        vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
         stages_count=len(p.stages) if p.stages else 0,
         planned_start_date=p.planned_start_date.isoformat() if p.planned_start_date else None,
         planned_end_date=p.planned_end_date.isoformat() if p.planned_end_date else None,
         pending_payments=pending or None,
+        is_archived=bool(getattr(p, "is_archived", False)),
+        trashed_at=p.trashed_at.isoformat() if getattr(p, "trashed_at", None) else None,
+        estimate_locked_at=p.estimate_locked_at.isoformat() if getattr(p, "estimate_locked_at", None) else None,
+        estimate_lock_proposed_at=p.estimate_lock_proposed_at.isoformat() if getattr(p, "estimate_lock_proposed_at", None) else None,
+        estimate_lock_proposed_by=getattr(p, "estimate_lock_proposed_by", None),
+        access_mode=access_mode,
     )
+
+
+async def _project_out_for_user(db, user: User, p) -> ProjectOut:
+    from app.services import team_service as team_svc
+
+    access_mode, _read_only = await team_svc.project_access_mode(db, user, p)
+    return _project_out(p, access_mode=access_mode)
+
+
+def _lifecycle_http_error(e: ValueError) -> HTTPException:
+    code = str(e)
+    if code == "forbidden":
+        return HTTPException(403, "Только владелец объекта может выполнить это действие")
+    if code == "trashed":
+        return HTTPException(409, "Объект в корзине — восстановите или удалите навсегда")
+    if code == "not_found":
+        return HTTPException(404, "Проект не найден")
+    return HTTPException(404, "Проект не найден")
 
 
 async def _detail(db, p, user: User | None = None) -> ProjectDetail:
@@ -93,13 +119,25 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
     if user:
         from app.services import team_service as team_svc
         access_mode, read_only = await team_svc.project_access_mode(db, user, p)
-    return ProjectDetail(**_project_out(p).model_dump(), estimate_lines=lines, stages=stages, rooms=rooms, read_only=read_only, access_mode=access_mode)
+    return ProjectDetail(
+        **_project_out(p, access_mode=access_mode).model_dump(),
+        estimate_lines=lines,
+        stages=stages,
+        rooms=rooms,
+        read_only=read_only,
+    )
 
 
 @router.get("", response_model=list[ProjectOut])
-async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    projects = await svc.list_projects_for_user(db, user)
-    return [_project_out(p) for p in projects]
+async def list_projects(
+    bucket: str = "active",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if bucket not in ("active", "archived", "trashed"):
+        bucket = "active"
+    projects = await svc.list_projects_for_user(db, user, bucket=bucket)
+    return [await _project_out_for_user(db, user, p) for p in projects]
 
 
 @router.post("", response_model=ProjectDetail)
@@ -123,6 +161,97 @@ async def create_project(body: ProjectCreate, user: User = Depends(get_current_u
 
 
 
+
+
+
+
+class ProjectFromTemplateIn(BaseModel):
+    template_id: str
+    name: str | None = None
+
+
+@router.get("/templates")
+async def list_templates(_user: User = Depends(get_current_user)):
+    """W69 #42: каталог шаблонов объектов."""
+    return {"items": svc.list_project_templates()}
+
+
+@router.post("/from-template", response_model=ProjectDetail)
+async def create_from_template(
+    body: ProjectFromTemplateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """W69 #42: создать объект из шаблона комнат + черновик сметы."""
+    if user.role != UserRole.customer:
+        raise HTTPException(403, "Создавать проект может только заказчик")
+    try:
+        p = await svc.create_project_from_template(
+            db, customer_id=user.id, template_id=body.template_id, name=body.name,
+        )
+    except ValueError as exc:
+        if str(exc) == "unknown_template":
+            raise HTTPException(404, detail={"code": "unknown_template", "message": "Неизвестный шаблон"}) from exc
+        raise
+    return await _detail(db, p, user)
+
+
+@router.post("/{project_id}/archive")
+async def archive_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.archive_project(db, project_id, user)
+    except ValueError as e:
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
+
+
+@router.post("/{project_id}/unarchive")
+async def unarchive_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.unarchive_project(db, project_id, user)
+    except ValueError as e:
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
+
+
+@router.post("/{project_id}/trash")
+async def trash_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.trash_project(db, project_id, user)
+    except ValueError as e:
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
+
+
+@router.post("/{project_id}/restore")
+async def restore_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        p = await svc.restore_project(db, project_id, user)
+    except ValueError as e:
+        raise _lifecycle_http_error(e)
+    return await _project_out_for_user(db, user, p)
+
+
+@router.delete("/trash/empty")
+async def empty_trash(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user.role != UserRole.customer:
+        raise HTTPException(403)
+    if not await svc.user_owns_any_project(db, user.id):
+        raise HTTPException(403, "Только владелец объекта может выполнить это действие")
+    n = await svc.empty_trash(db, user)
+    return {"deleted": n}
+
+
+@router.delete("/{project_id}")
+async def purge_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    try:
+        await svc.purge_project(db, project_id, user)
+    except ValueError as e:
+        if str(e) == "not_trashed":
+            raise HTTPException(400, "Сначала переместите объект в корзину")
+        raise _lifecycle_http_error(e)
+    return {"ok": True}
+
 @router.patch("/{project_id}", response_model=ProjectDetail)
 async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
@@ -145,6 +274,11 @@ async def dashboard(project_id: str, user: User = Depends(get_current_user), db:
         p.stages = _filter_stages_for_user(p, user)
     from app.models.entities import MarginSnapshot
     dash = svc.build_dashboard(p)
+    try:
+        role = getattr(getattr(user, "role", None), "value", None) or str(getattr(user, "role", "") or "")
+        dash = await svc.enrich_dashboard_actions(db, project_id, dash, role=role)
+    except Exception:
+        pass
     try:
         margin = p.budget_planned - p.budget_spent
         db.add(MarginSnapshot(project_id=project_id, margin_estimated=margin))
@@ -179,22 +313,28 @@ async def reject_stage(project_id: str, stage_id: str, body: dict, user: User = 
 
 @router.post("/{project_id}/stages/{stage_id}/accept")
 async def accept_stage(project_id: str, stage_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Deprecated: use POST /projects/{id}/work-acceptances/{acceptance_id}/accept."""
     await require_project(db, project_id, user, write=True)
-    if user.role != UserRole.customer:
-        raise HTTPException(403, "Только заказчик принимает этап")
-    stage = await svc.accept_stage(db, stage_id)
-    if not stage or stage.project_id != project_id:
-        raise HTTPException(404, "Этап не на приёмке")
-    return {"ok": True, "status": stage.status.value}
+    raise HTTPException(
+        410,
+        "Deprecated: use work-acceptances API",
+        headers={"X-Deprecated-Use": "work-acceptances"},
+    )
 
 
 @router.post("/{project_id}/assign")
 async def assign_contractor(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """W55: 404/409/402 раздельно — не маскировать «уже занят» под paywall."""
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель")
+    existing = await svc.get_project(db, project_id)
+    if not existing:
+        raise HTTPException(404, "Объект не найден")
+    if existing.contractor_id and existing.contractor_id != user.id:
+        raise HTTPException(409, detail={"code": "already_assigned", "message": "На объекте уже другой исполнитель"})
     p = await svc.assign_contractor(db, project_id, user.id)
     if not p:
-        raise HTTPException(402, detail={"code": "subscription_required", "message": "Нужен Pro"})
+        raise HTTPException(402, detail={"code": "subscription_required", "message": "Нужен Pro для нового объекта"})
     return await _detail(db, p, user)
 
 class ViewerShareIn(BaseModel):
@@ -262,6 +402,13 @@ async def share_viewer(project_id: str, body: ViewerShareIn, user: User = Depend
     await db.commit()
     return {"ok": True, "user_id": target.id, "full_name": target.full_name}
 
+
+
+@router.get("/{project_id}/contract-gate")
+async def get_contract_gate(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """P3-W9: статус договора до start_stage — для баннера на экране этапа."""
+    await require_project(db, project_id, user, write=False)
+    return await docs_svc.project_contract_gate(db, project_id)
 
 @router.delete("/{project_id}/viewers/{viewer_user_id}")
 async def remove_viewer(project_id: str, viewer_user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

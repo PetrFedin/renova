@@ -37,7 +37,7 @@ async def invite_phone(db: AsyncSession, team_id: str, phone: str, role: str = "
     await db.commit()
     try:
         from app.services import notification_service as ns
-        await ns.notify(db, user_id=u.id, project_id=None, notification_type="chat_message", title="Приглашение в бригаду", body="Вас добавили в бригаду Renova", link_path="/(contractor)/(tabs)/profile", return_to="/(contractor)/(tabs)/objects")
+        await ns.notify(db, user_id=u.id, project_id=None, notification_type="chat_message", title="Приглашение в бригаду", body="Вас добавили в бригаду Renova", link_path="/(contractor)/(tabs)/profile", return_to="/(contractor)/(tabs)/")
     except Exception:
         pass
     return {"ok": True, "user_id": u.id}
@@ -66,15 +66,38 @@ async def project_access_mode(db: AsyncSession, user: User, project: Project) ->
         owners = await team_owner_ids(db, user.id)
         if project.contractor_id in owners:
             mem = await my_membership(db, user.id)
+            # viewer — read-only; foreman/member — write на объекте (не финансы/lock)
             ro = mem is not None and mem.role == "viewer"
             return "contractor", ro
         if project.contractor_id is None:
             mem = await my_membership(db, user.id)
+            # viewer — read-only; foreman/member — write на объекте (не финансы/lock)
             ro = mem is not None and mem.role == "viewer"
             return "contractor", ro
     if await is_project_guest(db, user.id, project.id):
         return "guest", True
     return "none", True
+
+
+
+async def is_contractor_owner(db: AsyncSession, user: User, project: Project) -> bool:
+    """W68 #43: владелец бригады / назначенный contractor_id — не member/foreman."""
+    if project.contractor_id == user.id:
+        return True
+    return False
+
+
+async def team_role_for_project(db: AsyncSession, user: User, project: Project) -> str | None:
+    """Роль в бригаде исполнителя проекта: owner|foreman|member|viewer|None."""
+    if project.contractor_id == user.id:
+        return "owner"
+    if user.role.value != "contractor":
+        return None
+    owners = await team_owner_ids(db, user.id)
+    if project.contractor_id not in owners and project.contractor_id is not None:
+        return None
+    mem = await my_membership(db, user.id)
+    return mem.role if mem else None
 
 
 async def can_access_project(db: AsyncSession, user: User, project: Project, write: bool = False) -> bool:
@@ -88,6 +111,53 @@ async def can_access_project(db: AsyncSession, user: User, project: Project, wri
 import secrets
 from datetime import datetime, timedelta
 from app.models.entities import TeamInvite
+
+
+
+async def require_capability(
+    db: AsyncSession,
+    user: User,
+    project: Project,
+    capability: str,
+) -> str | None:
+    """W73: матрица прав бригады на объекте.
+
+    capability:
+      field_write — замечания/punch (owner|foreman|member|customer)
+      escalate — спор (owner|foreman|customer)
+      schedule — план-график (owner|foreman; customer отдельно)
+      estimate_lock — lock/propose сметы (только contractor owner)
+    Возвращает team_role или "customer".
+    """
+    from fastapi import HTTPException
+
+    if project.customer_id == user.id:
+        if capability == "estimate_lock":
+            raise HTTPException(403, "estimate_lock_contractor_owner_only")
+        return "customer"
+
+    role = await team_role_for_project(db, user, project)
+    if role is None and user.id != project.contractor_id:
+        raise HTTPException(403, "project_forbidden")
+
+    effective = role or ("owner" if user.id == project.contractor_id else None)
+    if capability == "field_write":
+        if effective in ("owner", "foreman", "member"):
+            return effective
+        raise HTTPException(403, "field_write_forbidden")
+    if capability == "escalate":
+        if effective in ("owner", "foreman"):
+            return effective
+        raise HTTPException(403, "escalate_foreman_or_owner_only")
+    if capability == "schedule":
+        if effective in ("owner", "foreman"):
+            return effective
+        raise HTTPException(403, "schedule_foreman_or_owner_only")
+    if capability == "estimate_lock":
+        if effective == "owner":
+            return effective
+        raise HTTPException(403, "estimate_lock_contractor_owner_only")
+    raise HTTPException(400, f"unknown_capability:{capability}")
 
 async def create_invite_link(db: AsyncSession, team_id: str, role: str = "member", hours: int = 72) -> dict:
     token = secrets.token_urlsafe(16)

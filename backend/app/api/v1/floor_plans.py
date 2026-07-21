@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import User, FloorPlan, FloorPlanPin, FurnitureItem, Room
+from app.models.entities import User, FloorPlan, FloorPlanPin, FurnitureItem, Room, ProjectIssue
 from app.services import activity_service as act
 
 router = APIRouter(prefix="/projects", tags=["floor-plans"])
@@ -37,8 +37,32 @@ class FurnitureIn(BaseModel):
     y_pct: float | None = None
     notes: str | None = None
 
-def _plan(p: FloorPlan, pins: list) -> dict:
-    return {"id": p.id, "name": p.name, "image_key": p.image_key, "image_url": f"/api/v1/media/{p.image_key}", "width_px": p.width_px, "height_px": p.height_px, "floor_level": getattr(p, "floor_level", 1), "pins": pins, "created_at": p.created_at.isoformat()}
+def _punch_item(i: ProjectIssue) -> dict:
+    return {
+        "id": i.id,
+        "title": i.title,
+        "severity": i.severity,
+        "status": i.status,
+        "x_pct": i.x_pct,
+        "y_pct": i.y_pct,
+        "photo_key": i.photo_key,
+        "photo_url": f"/api/v1/media/{i.photo_key}" if i.photo_key else None,
+    }
+
+
+def _plan(p: FloorPlan, pins: list, punch: list | None = None) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "image_key": p.image_key,
+        "image_url": f"/api/v1/media/{p.image_key}",
+        "width_px": p.width_px,
+        "height_px": p.height_px,
+        "floor_level": getattr(p, "floor_level", 1),
+        "pins": pins,
+        "punch": punch or [],
+        "created_at": p.created_at.isoformat(),
+    }
 
 @router.get("/{project_id}/floor-plans")
 async def list_plans(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -48,7 +72,15 @@ async def list_plans(project_id: str, user: User = Depends(get_current_user), db
     for p in r.scalars().all():
         pr = await db.execute(select(FloorPlanPin).where(FloorPlanPin.floor_plan_id == p.id))
         pins = [{"id": x.id, "room_id": x.room_id, "x_pct": x.x_pct, "y_pct": x.y_pct, "label": x.label} for x in pr.scalars().all()]
-        out.append(_plan(p, pins))
+        ir = await db.execute(
+            select(ProjectIssue).where(
+                ProjectIssue.floor_plan_id == p.id,
+                ProjectIssue.x_pct.isnot(None),
+                ProjectIssue.y_pct.isnot(None),
+            ).order_by(ProjectIssue.created_at.desc())
+        )
+        punch = [_punch_item(i) for i in ir.scalars().all()]
+        out.append(_plan(p, pins, punch))
     return out
 
 @router.post("/{project_id}/floor-plans")
@@ -57,7 +89,7 @@ async def create_plan(project_id: str, body: PlanIn, user: User = Depends(get_cu
     p = FloorPlan(project_id=project_id, **body.model_dump())
     db.add(p); await db.commit(); await db.refresh(p)
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="plan", title=f"Планировка: {p.name}", link_path="/approvals")
-    return _plan(p, [])
+    return _plan(p, [], [])
 
 @router.post("/{project_id}/floor-plans/{plan_id}/pins")
 async def upsert_pin(project_id: str, plan_id: str, body: PinIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
