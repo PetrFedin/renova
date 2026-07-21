@@ -13,6 +13,10 @@ import { pushRoomDetail, pushStageDetail } from '@/lib/navigation';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
 import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
 import type { Purchase } from '@/lib/api';
+import {
+  alertMaterialPickApproved,
+  alertMaterialPickSubmitted,
+} from '@/lib/procurementNav';
 
 export function MaterialPickDetailSheet({
   pick,
@@ -102,13 +106,20 @@ export function MaterialPickDetailSheet({
               });
               onChanged?.();
               onClose();
+              alertMaterialPickApproved(role);
             }} />
           )}
           {!readOnly && isContractor && pick.status === 'draft' && (
             <PrimaryButton title="На согласование" variant="outline" onPress={async () => {
               await api.submitMaterialPick(userId, projectId, pick.id);
+              await syncProjectSideEffects({
+                user: user ?? ({ id: userId } as any),
+                project: activeProject ?? ({ id: projectId } as any),
+                role,
+              });
               onChanged?.();
               onClose();
+              alertMaterialPickSubmitted(role);
             }} />
           )}
           {!readOnly && cancelStatus && deliveredPurchase && (

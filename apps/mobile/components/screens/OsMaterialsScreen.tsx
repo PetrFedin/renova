@@ -17,6 +17,7 @@ import { screenLayout } from '@/constants/screenLayout';
 import { procurementNextAction, readyPickIds } from '@/lib/domain/procurementNextAction';
 import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertPurchaseCreated } from '@/lib/procurementNav';
 
 const PICK_FILTERS = [
   { key: 'all', label: 'Все' },
@@ -109,6 +110,8 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
       await syncProjectSideEffects({ user, project: activeProject });
       reload();
       setMaterialSubtab('purchases');
+      // W127: закупка → расходы / чек SoT
+      alertPurchaseCreated(role, ids.length);
     } finally {
       setBusy(false);
     }

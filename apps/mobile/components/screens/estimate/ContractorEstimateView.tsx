@@ -17,6 +17,7 @@ import { api } from '@/lib/api';
 import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
+import { alertChangeOrderSubmitted } from '@/lib/procurementNav';
 import { screenLayout } from '@/constants/screenLayout';
 import {
   estimateTotals,
@@ -66,7 +67,8 @@ export function ContractorEstimateView() {
       await api.createChangeOrder(user.id, activeProject.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
       await loadProject(activeProject.id);
       await syncProjectSideEffects({ user, project: activeProject });
-      Alert.alert('Изменение сметы', 'Отправлен заказчику на согласование');
+      // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
+      alertChangeOrderSubmitted('contractor');
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'offline_queued') {
         Alert.alert('Офлайн', 'Допсоглашение отправится при подключении');

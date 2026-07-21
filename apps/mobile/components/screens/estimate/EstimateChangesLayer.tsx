@@ -1,5 +1,5 @@
 /** Слой «Изменения» — доп. работы и согласование заказчиком */
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
@@ -10,6 +10,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { budgetTabRoute } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { alertChangeOrderApproved } from '@/lib/procurementNav';
 
 type Props = {
   userId: string;
@@ -32,26 +33,7 @@ export function EstimateChangesLayer({
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   const notifyBudgetDelta = (order: ChangeOrder, documentId?: string) => {
-    const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [
-      { text: 'OK', style: 'cancel' },
-      {
-        text: 'Открыть бюджет',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
-      },
-    ];
-    if (documentId) {
-      buttons.push({
-        text: 'Подписать',
-        onPress: () => pushOsNav('/documents', '/(customer)/(tabs)/object', role),
-      });
-    }
-    Alert.alert(
-      'Доп. работы одобрены',
-      documentId
-        ? `${formatRub(order.amount)} в плане бюджета. Подпишите черновик в Документах.`
-        : `${formatRub(order.amount)} добавлено к плану бюджета.`,
-      buttons,
-    );
+    alertChangeOrderApproved(role, formatRub(order.amount), documentId);
   };
   const pending = orders.filter((o) => o.status === 'pending');
   const decided = orders.filter((o) => o.status !== 'pending');

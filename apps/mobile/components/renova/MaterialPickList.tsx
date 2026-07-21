@@ -12,6 +12,10 @@ import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import {
+  alertMaterialPickApproved,
+  alertMaterialPickSubmitted,
+} from '@/lib/procurementNav';
 
 export function MaterialPickList({
   userId,
@@ -71,10 +75,20 @@ export function MaterialPickList({
             </Pressable>
           )}
           {!readOnly && role === 'customer' && p.status === 'pending' && (
-            <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(userId, projectId, p.id); await syncAfter(); load(); }} />
+            <PrimaryButton title="Согласовать" onPress={async () => {
+              await api.approveMaterialPick(userId, projectId, p.id);
+              await syncAfter();
+              load();
+              alertMaterialPickApproved(role);
+            }} />
           )}
           {!readOnly && role === 'contractor' && p.status === 'draft' && (
-            <PrimaryButton title="На согласование" variant="outline" onPress={async () => { await api.submitMaterialPick(userId, projectId, p.id); await syncAfter(); load(); }} />
+            <PrimaryButton title="На согласование" variant="outline" onPress={async () => {
+              await api.submitMaterialPick(userId, projectId, p.id);
+              await syncAfter();
+              load();
+              alertMaterialPickSubmitted(role);
+            }} />
           )}
         </Pressable>
       ))}

@@ -7,6 +7,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, MaterialPick, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -101,10 +102,10 @@ export default function MaterialDetailScreen() {
           }} />
         )}
         {role === 'customer' && pick.status === 'pending' && user && activeProject && (
-          <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); }} />
+          <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); alertMaterialPickApproved(role); }} />
         )}
         {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
-          <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); }} />
+          <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); alertMaterialPickSubmitted(role); }} />
         )}
         <PrimaryButton title="Все материалы" variant="outline" onPress={() => replaceOsNav(repairTabRoute(role, 'materials'), undefined, role)} />
       </ScrollView>
