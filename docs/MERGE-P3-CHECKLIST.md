@@ -55,6 +55,8 @@ Release still OPEN: split PR develop→main per `docs/SPLIT-RELEASE-PR-PLAN-2026
 
 ## Wave-4 audit embed (2026-07-21)
 
+Pinned SHA: `428de3e` (+ Alert import fix).
+
 - Redis WS subscribe (`ws_redis_bridge`) + fail-closed chat/offline/stage blocked
 - `reportError` → Sentry SDKs optional
 - Doc: `docs/AUDIT-WAVE4-IMPLEMENTATION-2026-07-21.md`
