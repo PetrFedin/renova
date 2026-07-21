@@ -75,3 +75,12 @@ Idempotency: `Idempotency-Key` header or `client_request_id` form field. Scope `
 - No antivirus pipeline.
 - Portal review UI is customer-first; contractor review via same sheet / budget API.
 - YuKassa live checkout remains the card path — evidence is for requisites/SBP only.
+
+
+## Alembic / merge order
+
+- Migration: `w6payev01` (payment_evidence, lock_version, status `rejected`).
+- On main alone: `down_revision = w4jtipurge01`.
+- **After** warranty PR (#26 / `w5warranty01`) is on the integration line: rechain
+  `w6payev01.down_revision → w5warranty01` before merging this PR (otherwise two heads).
+- Recommended merge order: #24 → #25 → #26 → **#27 (rechain)** → #28.

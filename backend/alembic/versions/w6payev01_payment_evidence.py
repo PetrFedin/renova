@@ -4,6 +4,11 @@ Revision ID: w6payev01
 Revises: w4jtipurge01
 Create Date: 2026-07-21
 
+PRE-MERGE (after #26 warranty is on main): change down_revision to "w5warranty01"
+or apply alembic merge revision — otherwise dual heads with w5warranty01.
+See docs/INTEGRATION-QA-2026-07.md.
+
+
 Backward compatible:
 - ADD COLUMN lock_version DEFAULT 0
 - ADD ENUM value rejected (Postgres)
