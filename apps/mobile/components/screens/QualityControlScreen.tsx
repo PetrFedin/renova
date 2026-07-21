@@ -13,7 +13,9 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { objectTabRoute, type OsRole } from '@/constants/osSections';
-import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { alertWarrantyClosed, alertWarrantyCreated, alertWarrantyConflict } from '@/lib/warrantyNav';
+import { beginWarrantyCreate, clearWarrantyCreateSession, warrantyCreateKeyForRetry } from '@/lib/warrantyCreateSession';
+import { ApiError } from '@/lib/api';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -144,12 +146,26 @@ export function QualityControlScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [staleWarning, setStaleWarning] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { refresh?: boolean }) => {
     if (!user || !activeProject) return;
     try {
       const result = await api.listIssues(user.id, activeProject.id);
       setItems(result);
+      setLoadError(null);
+      setStaleWarning(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Не удалось загрузить замечания';
+      setItems((prev) => {
+        if (prev.length > 0) {
+          setStaleWarning(msg);
+          return prev; // stale list
+        }
+        setLoadError(msg);
+        return prev;
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -167,20 +183,46 @@ export function QualityControlScreen() {
   const closedIssues = useMemo(() => items.filter((item) => item.status === 'closed'), [items]);
   const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
 
-  const createWarranty = async () => {
+  const createWarranty = async (reuseKey = false) => {
     if (!user || !activeProject || readOnly || !isCustomer) return;
+    if (actingId === 'warranty-new') return; // double-tap guard
     setActingId('warranty-new');
+    const key = reuseKey ? warrantyCreateKeyForRetry() : beginWarrantyCreate();
     try {
-      const wRes = await api.createWarrantyClaim(user.id, activeProject.id, {
-        title: 'Гарантийное обращение',
-        description: 'Создано из Контроля качества',
-      });
+      const wRes = await api.createWarrantyClaim(
+        user.id,
+        activeProject.id,
+        {
+          title: 'Гарантийное обращение',
+          description: 'Создано из Контроля качества',
+          client_request_id: key,
+        },
+        { idempotencyKey: key },
+      );
+      clearWarrantyCreateSession();
       await load();
       await syncProjectSideEffects({ user, project: activeProject });
+      if (wRes.duplicate_hint) Alert.alert('Внимание', wRes.duplicate_hint);
       alertWarrantyCreated(isCustomer ? 'customer' : 'contractor', wRes);
     } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Гарантийный тикет');
-      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать');
+      if (isOfflineQueued(e)) {
+        // offline queue хранит тот же client_request_id
+        notifyOfflineQueued('Гарантийный тикет');
+        return;
+      }
+      if (e instanceof ApiError && (e.status === 409 || e.code === 'warranty_claim_idempotency_conflict')) {
+        alertWarrantyConflict(e.message);
+        clearWarrantyCreateSession();
+        return;
+      }
+      Alert.alert(
+        'Не удалось создать',
+        e instanceof Error ? e.message : 'Ошибка сети',
+        [
+          { text: 'Отмена', style: 'cancel', onPress: () => clearWarrantyCreateSession() },
+          { text: 'Повторить', onPress: () => { void createWarranty(true); } },
+        ],
+      );
     } finally {
       setActingId(null);
     }
@@ -240,17 +282,30 @@ export function QualityControlScreen() {
     );
   }
 
+  if (loadError && items.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.stateTitle}>Не удалось загрузить</Text>
+        <Text style={styles.stateText}>{loadError}</Text>
+        <PrimaryButton title="Повторить" onPress={() => { setLoading(true); void load(); }} />
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load({ refresh: true }); }} />}
     >
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}><Text style={styles.back}>‹ Назад</Text></Pressable>
         <Text style={styles.title}>Контроль качества</Text>
         <Text style={styles.subtitle}>Замечания, дефекты и контроль устранения по проекту.</Text>
         <OfflineSyncStatus compact />
+        {staleWarning ? (
+          <Text style={styles.noteText}>Список мог устареть: {staleWarning}</Text>
+        ) : null}
       </View>
 
       {readOnly ? (
@@ -273,6 +328,16 @@ export function QualityControlScreen() {
           <Text style={styles.summaryLabel}>закрыто</Text>
         </View>
       </View>
+
+      {isCustomer && !readOnly ? (
+        <PrimaryButton
+          title="Гарантийное обращение"
+          variant="outline"
+          onPress={() => { void createWarranty(false); }}
+          loading={actingId === 'warranty-new'}
+          disabled={Boolean(actingId) || Boolean(loadError)}
+        />
+      ) : null}
 
       <View style={styles.cardBlock}>
         <Text style={styles.sectionTitle}>Требуют внимания</Text>

@@ -22,4 +22,9 @@ const bridge = readFileSync(join(root, '../../backend/app/services/ws_redis_brid
 must(bridge.includes('INSTANCE_ID'), 'ws redis bridge has instance id');
 must(bridge.includes('redis_subscriber_loop'), 'ws redis bridge has subscriber loop');
 
+const docsHub = readFileSync(join(root, 'components/renova/DocumentsHub.tsx'), 'utf8');
+must(!docsHub.includes('.catch(() => ({ open: 0, items: []'), 'DocumentsHub: warranty list fail-closed');
+must(docsHub.includes('Не удалось загрузить гарантии'), 'DocumentsHub shows warranty load error');
+
 console.log('failClosed.w144.test OK');
+
