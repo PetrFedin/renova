@@ -58,7 +58,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 24 }
       - name: API Playwright (ci-playwright api)
         run: |
           set -euo pipefail
@@ -76,13 +76,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 24 }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Install JavaScript dependencies
         run: npm ci
-      - name: Mobile unread contracts
-        run: npm run test:chat-unread
+      - name: Visibility contract
+        run: npx tsx apps/mobile/lib/domain/screenVisibility.test.ts
+      - name: Mark-read visibility contract
+        run: npx tsx apps/mobile/lib/domain/canMarkChatRead.test.ts
+      - name: Active-thread unread contract
+        run: npx tsx apps/mobile/lib/domain/activeThreadUnread.test.ts
+      - name: Mark-read policy contract
+        run: npx tsx apps/mobile/lib/domain/markThreadReadPolicy.test.ts
+      - name: Mark-read idempotency contract
+        run: npx tsx apps/mobile/lib/markThreadRead.idempotency.test.ts
+      - name: Atomic unread snapshot contract
+        run: npx tsx apps/mobile/lib/domain/chatUnreadSnapshot.test.ts
+      - name: Chat sync orchestrator contract
+        run: npx tsx apps/mobile/lib/chatSync/chatSync.test.ts
+      - name: Unread scope contract
+        run: npx tsx apps/mobile/lib/domain/unreadScope.test.ts
+      - name: Russian pluralization contract
+        run: npx tsx apps/mobile/lib/i18n/ruPlural.test.ts
+      - name: Navigation badge semantics contract
+        run: npx tsx apps/mobile/lib/domain/moreMenuA11y.w77.test.ts
       - name: Backend unread contracts
         working-directory: backend
         run: |
