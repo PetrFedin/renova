@@ -62,8 +62,8 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'hidden',
     status: 'beta',
     entryPoints: ['deeplink'],
-    redirectTo: '/quality-control',
-    descriptionRu: 'Legacy tab → quality-control (P3.4)',
+    redirectTo: '/repair?tab=control',
+    descriptionRu: 'Legacy tab → Ремонт → Приёмка (единый hub, W58/W139)',
   },
   {
     id: 'quality-control',

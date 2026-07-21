@@ -78,4 +78,5 @@ export const KNOWN_LEGACY_SLUGS = [
   'project-analytics',
   'design',
   'control',
+  'work-acceptance',
 ] as const;

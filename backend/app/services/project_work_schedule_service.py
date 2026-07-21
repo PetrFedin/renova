@@ -433,8 +433,8 @@ async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkSchedul
         stage.status = StageStatus.review
         stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 90)
     elif status == WorkScheduleItemStatus.accepted:
-        # P0: accepted только после WA. Если заказчик уже принял — держим done; иначе не повышаем дальше review.
-        if stage.customer_accepted_at or stage.status == StageStatus.done:
+        # P0: done только при реальной приёмке заказчика (не по одному статусу этапа)
+        if stage.customer_accepted_at:
             stage.status = StageStatus.done
             stage.percent_complete = 100
         else:
@@ -461,9 +461,12 @@ async def update_item_status(
     if body_status == WorkScheduleItemStatus.accepted:
         if not is_project_customer(user, project):
             raise HTTPException(status_code=403, detail="only_customer_can_set_schedule_item_accepted")
+        # P0 harden: accepted в графике только после единой приёмки (или без привязки к этапу)
         if item.stage_id:
             stage = await db.get(Stage, item.stage_id)
-            if stage and stage.project_id == project.id and not stage.customer_accepted_at:
+            if not stage or stage.project_id != project.id:
+                raise HTTPException(status_code=409, detail="schedule_item_stage_missing")
+            if not stage.customer_accepted_at:
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -471,6 +474,14 @@ async def update_item_status(
                         "message": "Приёмка этапа — только через «Приёмка» (фото и чеклист), не из графика",
                     },
                 )
+        elif getattr(item, "requires_customer_acceptance", False):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "use_work_acceptance_first",
+                    "message": "Строка требует приёмку заказчика — сначала завершите приёмку этапа",
+                },
+            )
 
     item.status = body_status
     item.blocking_reason = blocking_reason
