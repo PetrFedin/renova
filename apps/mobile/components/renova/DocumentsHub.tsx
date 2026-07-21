@@ -1,7 +1,7 @@
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput,
+  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -24,6 +24,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
 import { shareRenovaLink } from '@/lib/messengerShare';
+import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 
 type DocRow = {
   id: string;
@@ -90,7 +91,6 @@ export function DocumentsHub({
   const isArchived = Boolean(activeProject?.is_archived);
   const [busy, setBusy] = useState<string | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
-  const [bankCsvText, setBankCsvText] = useState('');
 
   const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
@@ -187,10 +187,9 @@ export function DocumentsHub({
       bankImport: {
         id: 'bank-import',
         label: 'Импорт выписки',
-        desc: 'CSV банка → матч к счетам',
+        desc: 'CSV банка → матч → confirm оплат (gate приёмки)',
         format: 'CSV',
         run: async () => {
-          setBankCsvText('');
           setBankImportOpen(true);
         },
       },
@@ -683,118 +682,22 @@ ${(res.body || '').slice(0, 220)}`,
     }
   }
 
-  const submitBankImport = async () => {
-    const text = bankCsvText.trim();
-    if (!text) {
-      Alert.alert('Импорт выписки', 'Вставьте CSV: дата;сумма;назначение');
-      return;
-    }
-    setBusy('bank-import');
-    try {
-      const res = await api.importBankStatement(userId, projectId, text);
-      setBankImportOpen(false);
-      setBankCsvText('');
-      const pendingIds = (res.matches || [])
-        .filter((m) => m.payment_status === 'pending')
-        .map((m) => m.payment_id);
-      const unmatched = res.unmatched_rows || 0;
-      const summary = `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${unmatched}`;
-
-      const askExpenses = () => {
-        if (unmatched <= 0) return;
-        Alert.alert(
-          'Расходы из выписки',
-          `${unmatched} строк без счёта. Создать расходы в бюджете?`,
-          [
-            { text: 'Нет', style: 'cancel' },
-            {
-              text: 'Создать расходы',
-              onPress: () => {
-                setBusy('bank-expenses');
-                api.importBankStatement(userId, projectId, text, { create_expenses: true })
-                  .then((r2) => {
-                    Alert.alert(
-                      'Бюджет',
-                      `Создано расходов: ${r2.expenses_created ?? 0}. Сверка факта без эквайринга.`,
-                    );
-                  })
-                  .catch((e: unknown) => {
-                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать расходы');
-                  })
-                  .finally(() => setBusy(null));
-              },
-            },
-          ],
-        );
-      };
-
-      if (!pendingIds.length) {
-        Alert.alert('Импорт выписки', summary, [
-          { text: 'OK', onPress: askExpenses },
-        ]);
-        return;
-      }
-      Alert.alert(
-        'Импорт выписки',
-        `${summary}\n\nПодтвердить ${pendingIds.length} pending-оплат(ы)? (gate: приёмка этапа)`,
-        [
-          { text: 'Только матч', style: 'cancel', onPress: askExpenses },
-          {
-            text: 'Подтвердить',
-            onPress: () => {
-              setBusy('bank-confirm');
-              api.confirmBankStatementMatches(userId, projectId, pendingIds)
-                .then((r) => {
-                  Alert.alert(
-                    'Выписка → оплаты',
-                    `Подтверждено: ${r.confirmed_count} · заблокировано gate: ${r.blocked_count}`,
-                    [{ text: 'OK', onPress: askExpenses }],
-                  );
-                })
-                .catch((e: unknown) => {
-                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось подтвердить');
-                })
-                .finally(() => setBusy(null));
-            },
-          },
-        ],
-      );
-    } catch (e: unknown) {
-      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось импортировать');
-    } finally {
-      setBusy(null);
-    }
-  };
-
 
   return (
     <>
-      <Modal visible={bankImportOpen} animationType="slide" transparent onRequestClose={() => setBankImportOpen(false)}>
-        <View style={s.bankModalBackdrop}>
-          <View style={s.bankModalCard}>
-            <Text style={s.bankModalTitle}>Импорт банковской выписки</Text>
-            <Text style={s.bankModalHint}>Формат: дата;сумма;назначение (или CSV с заголовками)</Text>
-            <TextInput
-              style={s.bankModalInput}
-              multiline
-              placeholder={"01.07.2026;150000;Оплата по счёту"}
-              placeholderTextColor={RenovaTheme.colors.textMuted}
-              value={bankCsvText}
-              onChangeText={setBankCsvText}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <View style={s.bankModalActions}>
-              <Pressable onPress={() => setBankImportOpen(false)} style={s.bankModalBtnGhost}>
-                <Text style={s.bankModalBtnGhostText}>Отмена</Text>
-              </Pressable>
-              <Pressable onPress={submitBankImport} style={s.bankModalBtn} disabled={busy === 'bank-import'}>
-                <Text style={s.bankModalBtnText}>{busy === 'bank-import' ? '…' : 'Импортировать'}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <BankStatementImportSheet
+        visible={bankImportOpen}
+        onClose={() => setBankImportOpen(false)}
+        userId={userId}
+        projectId={projectId}
+        role={user?.role === 'contractor' ? 'contractor' : 'customer'}
+        onDone={() => {
+          void syncProjectSideEffects({
+            user: user ?? ({ id: userId } as any),
+            project: activeProject ?? ({ id: projectId } as any),
+          });
+        }}
+      />
     <View style={s.wrap}>
       <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
       <OfflineSyncStatus compact />
@@ -941,39 +844,5 @@ const s = StyleSheet.create({
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },
   rowTail: { alignItems: 'flex-end', gap: 4, minWidth: 56 },
   format: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.primary, textTransform: 'uppercase' },
-  bankModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  bankModalCard: {
-    backgroundColor: RenovaTheme.colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    gap: 10,
-  },
-  bankModalTitle: { fontSize: 17, fontWeight: '700', color: RenovaTheme.colors.text },
-  bankModalHint: { fontSize: 13, color: RenovaTheme.colors.textMuted },
-  bankModalInput: {
-    minHeight: 140,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    borderRadius: 8,
-    padding: 10,
-    textAlignVertical: 'top',
-    color: RenovaTheme.colors.text,
-    fontSize: 13,
-  },
-  bankModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 4 },
-  bankModalBtnGhost: { paddingVertical: 10, paddingHorizontal: 12 },
-  bankModalBtnGhostText: { color: RenovaTheme.colors.textMuted, fontSize: 15 },
-  bankModalBtn: {
-    backgroundColor: RenovaTheme.colors.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  bankModalBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
 });

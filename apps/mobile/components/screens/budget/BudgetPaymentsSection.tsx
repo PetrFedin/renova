@@ -1,8 +1,10 @@
 /** Вкладка «Бюджет → Оплаты» — create, фильтры, история */
+import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { CreatePaymentForm } from '@/components/renova/CreatePaymentForm';
+import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 import type { Payment, ProjectDetail } from '@/lib/api';
 import type { PaymentFilter } from '@/lib/hooks/useOsBudgetScreen';
@@ -25,6 +27,8 @@ type Props = {
 export function BudgetPaymentsSection({
   role, userId, project, readOnly, canWrite, payFilter, setPayFilter, filteredPayments, onPaymentPress, onSaved,
 }: Props) {
+  const [bankOpen, setBankOpen] = useState(false);
+
   return (
     <>
       {role === 'contractor' && canWrite && !readOnly && (
@@ -33,6 +37,14 @@ export function BudgetPaymentsSection({
       <Text style={s.dataHint}>
         Счета подрядчикам — это оплата работ, не закупка материалов. Расходы на чеки и материалы — вкладка «Расходы».
       </Text>
+      {/* W123: выписка → confirm рядом с оплатами (Smetter/Gectaro) */}
+      {canWrite && !readOnly ? (
+        <PrimaryButton
+          title="Импорт выписки банка"
+          variant="outline"
+          onPress={() => setBankOpen(true)}
+        />
+      ) : null}
       <Text style={s.section}>Счета и история</Text>
       <View style={s.filterRow}>
         {(['all', 'pending', 'confirmed'] as PaymentFilter[]).map((f) => (
@@ -64,6 +76,17 @@ export function BudgetPaymentsSection({
           </Text>
         </Pressable>
       ))}
+      <BankStatementImportSheet
+        visible={bankOpen}
+        onClose={() => setBankOpen(false)}
+        userId={userId}
+        projectId={project.id}
+        role={role}
+        onDone={() => {
+          setBankOpen(false);
+          onSaved();
+        }}
+      />
     </>
   );
 }

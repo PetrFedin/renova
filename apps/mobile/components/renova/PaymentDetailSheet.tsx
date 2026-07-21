@@ -327,6 +327,15 @@ export function PaymentDetailSheet({
               <Text style={formMetaText.caption}>
                 Подтверждение — фиксация факта оплаты. Сначала переведите сумму исполнителю или прикрепите чек.
               </Text>
+              {/* W123: пакетное подтверждение из выписки (1С/банк) */}
+              <PrimaryButton
+                title="Импорт выписки (пакетно)"
+                variant="outline"
+                onPress={() => {
+                  onClose();
+                  pushOsNav('/documents', pathname, role);
+                }}
+              />
               {stageNeedsAcceptance ? (
                 <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} />
               ) : (
