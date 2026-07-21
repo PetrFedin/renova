@@ -2,6 +2,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import type { PortfolioSummary } from '@/lib/domain/summarizePortfolio';
+import { pluralizeRu } from '@/lib/i18n';
 
 type Props = {
   summary: PortfolioSummary;
@@ -59,11 +60,8 @@ export function PortfolioSummaryHero({ summary, selectedCount, totalCount }: Pro
 }
 
 function objectsLabel(n: number) {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'объекта';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'объектов';
-  return 'объектов';
+  // Родительный после «из N …»
+  return pluralizeRu(n, ['объекта', 'объектов', 'объектов'] as const);
 }
 
 const s = StyleSheet.create({

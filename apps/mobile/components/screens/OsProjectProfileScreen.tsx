@@ -15,6 +15,7 @@ import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
 import { formMetaText } from '@/constants/formTypography';
 import { alertProjectProfileSaved } from '@/lib/fieldCreateNav';
+import { formatRooms } from '@/lib/i18n/ruCountLabels';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
@@ -149,7 +150,7 @@ export function OsProjectProfileScreen({
           disabled={!onNextTab}
         >
           <Text style={s.roomsLinkT}>
-            {roomsCount} {roomsCount === 1 ? 'комната' : roomsCount < 5 ? 'комнаты' : 'комнат'} → Комнаты
+            {formatRooms(roomsCount)} → Комнаты
           </Text>
         </Pressable>
         {!hasChanges && !busy ? (
