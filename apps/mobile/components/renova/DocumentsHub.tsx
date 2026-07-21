@@ -23,6 +23,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
+import { shareRenovaLink } from '@/lib/messengerShare';
 
 type DocRow = {
   id: string;
@@ -220,6 +221,25 @@ ${(res.body || '').slice(0, 220)}`,
           );
         },
       },
+      // W122: Houzz/BT client portal share
+      portalShare: {
+        id: 'portal',
+        label: isContractor ? 'Портал заказчику' : 'Мой клиентский портал',
+        desc: 'Magic-link: приёмка · подпись · оплата',
+        format: 'Link',
+        run: async () => {
+          const link = await api.createCustomerPortalLink(userId, projectId, {
+            allow_accept_stage: true,
+            allow_pay: true,
+          });
+          await syncProjectSideEffects({
+            user: user ?? ({ id: userId } as any),
+            project: { id: projectId } as any,
+            role: isContractor ? 'contractor' : 'customer',
+          });
+          await shareRenovaLink(link.url, 'портал Renova (приёмка · подпись · оплата)');
+        },
+      },
       warrantyClaim: {
         id: 'warranty',
         label: isArchived ? 'Гарантия после сдачи' : 'Гарантийное обращение',
@@ -414,7 +434,7 @@ ${(res.body || '').slice(0, 220)}`,
       {
         title: 'Главное',
         hint: 'То, что чаще всего нужно заказчику',
-        rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv],
+        rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv, rows.portalShare],
       },
       {
         title: 'Учёт RU',

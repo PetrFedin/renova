@@ -1,5 +1,5 @@
 /** W72: branded client portal (magic link) — решения без обязательной оплаты */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Linking, Platform, AppState, Share } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,17 +19,36 @@ export default function PortalScreen() {
   const [session, setSession] = useState<{ user_id: string; project_id: string; project_name: string; scopes?: string[]; read_only?: boolean } | null>(null);
   const [portalToken, setPortalToken] = useState('');
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof api.portalSnapshot>> | null>(null);
+  const [focusSection, setFocusSection] = useState<'payments' | 'docs' | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const paymentsY = useRef(0);
+  const docsY = useRef(0);
 
   /** W85: snapshot + inbox/home side-effects (если заказчик открыл портал и приложение) */
   const refreshPortalSnapshot = async (userId: string, projectId: string) => {
+    let snap: Awaited<ReturnType<typeof api.portalSnapshot>> | null = null;
     try {
-      const snap = await api.portalSnapshot(userId, projectId);
+      snap = await api.portalSnapshot(userId, projectId);
       setSnapshot(snap);
     } catch { /* best-effort */ }
     await syncProjectSideEffects({
       user: { id: userId, role: 'customer' } as any,
       project: { id: projectId } as any,
       role: 'customer',
+    });
+    return snap;
+  };
+
+  const goPayments = () => {
+    setFocusSection('payments');
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, paymentsY.current - 12), animated: true });
+    });
+  };
+  const goDocs = () => {
+    setFocusSection('docs');
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, docsY.current - 12), animated: true });
     });
   };
 
@@ -108,7 +127,7 @@ export default function PortalScreen() {
   ].filter(Boolean);
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={s.content}>
+    <ScrollView ref={scrollRef} style={s.wrap} contentContainerStyle={s.content}>
       <View style={s.hero}>
         <Text style={s.brand}>RENOVA</Text>
         <Text style={s.brandSub}>Портал заказчика</Text>
@@ -226,14 +245,22 @@ export default function PortalScreen() {
                   onPress={async () => {
                     try {
                       await api.portalAcceptStage(session.project_id, acc.id, portalToken);
-                      await refreshPortalSnapshot(session.user_id, session.project_id);
-                      const payN = snap.pending_payments?.length ?? 0;
+                      // W122: после приёмки — актуальный snapshot + CTA к оплате (BT chain)
+                      const next = await refreshPortalSnapshot(session.user_id, session.project_id);
+                      const payN = next?.pending_payments?.length ?? 0;
+                      const docN = next?.pending_draft_documents?.length ?? next?.documents?.filter((d) => d.status === 'draft')?.length ?? 0;
                       Alert.alert(
                         'Этап принят',
                         payN
-                          ? `«${acc.stage_name || 'работы'}» принят. Ниже — ${payN} счёт(а) к оплате.`
-                          : `«${acc.stage_name || 'работы'}» принят.`,
-                        [{ text: 'OK' }],
+                          ? `«${acc.stage_name || 'работы'}» принят. Доступно счетов: ${payN}.`
+                          : docN
+                            ? `«${acc.stage_name || 'работы'}» принят. Есть документы на подпись.`
+                            : `«${acc.stage_name || 'работы'}» принят.`,
+                        [
+                          { text: 'OK', style: 'cancel' },
+                          ...(payN && canPayPortal ? [{ text: 'К оплате', onPress: goPayments }] : []),
+                          ...(!payN && docN && canSignPortal ? [{ text: 'К подписи', onPress: goDocs }] : []),
+                        ],
                       );
                     } catch {
                       Alert.alert('Ошибка', 'Не удалось принять этап');
@@ -321,7 +348,10 @@ export default function PortalScreen() {
         {sched.planned_end ? <Text style={s.line}>План окончания: {sched.planned_end}</Text> : null}
       </View>
 
-      <View style={s.card}>
+      <View
+        style={[s.card, focusSection === 'payments' && s.focusCard]}
+        onLayout={(e) => { paymentsY.current = e.nativeEvent.layout.y; }}
+      >
         <Text style={s.cardHead}>Ожидают оплаты ({snapshot.pending_payments.length})</Text>
         <Text style={s.muted}>
           {snapshot.payments_mode === 'live'
@@ -418,7 +448,10 @@ export default function PortalScreen() {
         )}
       </View>
 
-      <View style={s.card}>
+      <View
+        style={[s.card, focusSection === 'docs' && s.focusCard]}
+        onLayout={(e) => { docsY.current = e.nativeEvent.layout.y; }}
+      >
         <Text style={s.cardHead}>Документы ({snapshot.documents_total})</Text>
         {snapshot.documents.filter((d) => d.status === 'draft').length > 0 ? (
           <View style={s.draftBlock}>
@@ -431,9 +464,17 @@ export default function PortalScreen() {
                     style={s.acceptBtn}
                     onPress={async () => {
                       try {
-                        const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 'in_app');
-                        await refreshPortalSnapshot(session.user_id, session.project_id);
-                        Alert.alert('Подписано', res.status === 'signed' ? d.title : 'Запрос на подпись создан');
+const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 'in_app');
+                        const next = await refreshPortalSnapshot(session.user_id, session.project_id);
+                        const payN = next?.pending_payments?.length ?? 0;
+                        Alert.alert(
+                          'Подписано',
+                          res.status === 'signed' ? d.title : 'Запрос на подпись создан',
+                          [
+                            { text: 'OK', style: 'cancel' },
+                            ...(payN && canPayPortal ? [{ text: 'К оплате', onPress: goPayments }] : []),
+                          ],
+                        );
                       } catch (e) {
                         Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось подписать документ'));
                       }
@@ -494,6 +535,7 @@ const s = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '800', color: RenovaTheme.colors.text },
   muted: { fontSize: 14, color: RenovaTheme.colors.textMuted },
   ro: { fontSize: 12, color: RenovaTheme.colors.warning, fontWeight: '600', marginBottom: 8 },
+  focusCard: { borderWidth: 2, borderColor: RenovaTheme.colors.primary },
   card: { ...card, gap: 6 },
   cardHead: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
   line: { fontSize: 14, color: RenovaTheme.colors.text },

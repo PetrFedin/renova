@@ -7,6 +7,7 @@ import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
 import { BudgetThresholdPicker } from '@/components/renova/BudgetThresholdPicker';
 import { ContractorInvitePanel } from '@/components/renova/ContractorInvitePanel';
 import { ViewerSharePanel } from '@/components/renova/ViewerSharePanel';
+import { PortalSharePanel } from '@/components/renova/PortalSharePanel';
 import { RoleSwitchButton, roleDisplayLabel } from '@/components/renova/RoleSwitchButton';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -60,6 +61,10 @@ export function CustomerProfileScreen() {
                 onLinked={() => loadProject(activeProject!.id).catch(() => {})}
               />
             ) : null}
+          </ProfileSection>
+
+          <ProfileSection title="Клиентский портал">
+            <PortalSharePanel userId={user!.id} projectId={activeProject!.id} role="customer" embedded />
           </ProfileSection>
 
           <ProfileSection title="Гости">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { PortalSharePanel } from '@/components/renova/PortalSharePanel';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
 import { BudgetWidgetSettings } from '@/components/renova/os/BudgetWidgetSettings';
 import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
@@ -99,7 +100,7 @@ function TeamSection() {
 
 export function ContractorProfileScreen() {
   const nav = useNavFromHere();
-  const { user, refreshMe } = useRenova();
+  const { user, refreshMe, activeProject } = useRenova();
   const [inn, setInn] = useState(user?.inn || '');
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
   const [payReq, setPayReq] = useState('');
@@ -172,6 +173,12 @@ export function ContractorProfileScreen() {
       {user ? (
         <ProfileSection title="Уведомления">
           <NotificationsList userId={user.id} defaultReturn="/(contractor)/(tabs)/profile" />
+        </ProfileSection>
+      ) : null}
+
+      {user && activeProject ? (
+        <ProfileSection title="Портал заказчика">
+          <PortalSharePanel userId={user.id} projectId={activeProject.id} role="contractor" embedded />
         </ProfileSection>
       ) : null}
 

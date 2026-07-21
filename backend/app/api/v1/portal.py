@@ -116,16 +116,27 @@ async def create_customer_portal_link(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Заказчик: magic link для себя (web portal, опционально приёмка этапа)."""
-    p = await require_project(db, project_id, user, write=True)
-    if user.id != p.customer_id:
-        raise HTTPException(403, "Только заказчик")
+    """W122: magic link клиентского портала (Houzz/BT).
+
+    Заказчик — для себя; исполнитель объекта — для customer_id (шаринг ЛК).
+    """
+    proj = await require_project(db, project_id, user, write=True)
+    if user.id == proj.customer_id:
+        target_user_id = user.id
+    elif proj.contractor_id and user.id == proj.contractor_id:
+        if not proj.customer_id:
+            raise HTTPException(400, "no_customer_on_project")
+        target_user_id = proj.customer_id
+    else:
+        raise HTTPException(403, "portal_link_customer_or_contractor_only")
     scopes = ["read"]
     if body.allow_accept_stage:
         scopes.extend(["accept_stage", "sign_document"])
     if body.allow_pay and "pay" not in scopes:
         scopes.append("pay")
-    token = portal_tok.create_portal_token(project_id=project_id, user_id=user.id, scopes=scopes)
+    token = portal_tok.create_portal_token(
+        project_id=project_id, user_id=target_user_id, scopes=scopes
+    )
     return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
 
 
