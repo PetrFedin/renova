@@ -13,6 +13,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { CalendarEvent, WorkOrder } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
+import { formatTasks } from '@/lib/i18n';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -161,7 +162,7 @@ export function ScheduleDayDetail({
           <Text style={s.backT}>Календарь</Text>
         </Pressable>
         <Text style={s.title}>{label}</Text>
-        {tasks > 0 ? <Text style={s.sub}>{tasks} {tasks === 1 ? 'задача' : tasks < 5 ? 'задачи' : 'задач'} на этот день</Text> : null}
+        {tasks > 0 ? <Text style={s.sub}>{formatTasks(tasks)} на этот день</Text> : null}
       </View>
       <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 8 }}>
         {!events.length ? (

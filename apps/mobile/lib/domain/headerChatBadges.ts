@@ -1,35 +1,23 @@
-/**
- * Единый SoT непрочитанных сообщений: inboxSyncStore.chatCount.
- * Dock «Сообщения», бейдж «Ещё» и пункт «Входящие» показывают одно и то же число.
- */
+/** Стабильная семантика navigation badges: chat и tasks никогда не смешиваются. */
 
 export type HeaderMoreBadge = {
   count: number;
-  /** danger = чат (как dock); warning = задачи inbox */
-  tone: 'danger' | 'warning';
-  kind: 'chat' | 'tasks';
+  tone: 'warning';
+  kind: 'tasks';
 };
 
-/**
- * Приоритет: непрочитанные сообщения (синхрон с dock) → иначе задачи «Входящие».
- */
-export function resolveHeaderMoreBadge(taskBadge: number, chatUnread: number): HeaderMoreBadge | null {
-  const chat = Math.max(0, chatUnread || 0);
+/** Кнопка «Ещё» показывает только taskBadge. chatUnread намеренно игнорируется. */
+export function resolveHeaderMoreBadge(taskBadge: number, _chatUnread = 0): HeaderMoreBadge | null {
   const tasks = Math.max(0, taskBadge || 0);
-  if (chat > 0) return { count: chat, tone: 'danger', kind: 'chat' };
-  if (tasks > 0) return { count: tasks, tone: 'warning', kind: 'tasks' };
-  return null;
+  return tasks > 0 ? { count: tasks, tone: 'warning', kind: 'tasks' } : null;
 }
 
-/** Число непрочитанных на dock «Сообщения» и красном бейдже «Входящие»/«Ещё». */
+/** Dock «Сообщения» показывает только global unread сообщений. */
 export function dockChatBadgeCount(chatUnread: number): number {
   return Math.max(0, chatUnread || 0);
 }
 
-/**
- * Бейджи строки «Входящие» в панели «Ещё»:
- * red = то же, что dock «Сообщения»; amber = задачи без чата.
- */
+/** Строка «Входящие» содержит два явно подписанных независимых счётчика. */
 export function resolveInboxMenuBadges(taskBadge: number, chatUnread: number): {
   chat: number;
   tasks: number;

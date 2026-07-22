@@ -1,14 +1,13 @@
-/** W77: a11y шапки «Ещё» — задачи inbox ≠ непрочитанный чат (чат в dock). */
-export function moreMenuA11yLabel(taskBadge: number, chatUnread = 0): string {
-  if (taskBadge <= 0 && chatUnread <= 0) return 'Ещё';
-  const parts: string[] = ['Ещё'];
-  if (taskBadge > 0) {
-    parts.push(taskBadge === 1 ? '1 задача во входящих' : `${taskBadge} задач во входящих`);
-  }
-  if (chatUnread > 0) {
-    parts.push(
-      chatUnread === 1 ? '1 непрочитанное в сообщениях' : `${chatUnread} непрочитанных в сообщениях`,
-    );
-  }
-  return parts.join(', ');
+/** A11y кнопки «Ещё»: её собственный badge относится только к задачам. */
+import { formatTasks } from '../i18n/ruCountLabels';
+
+/**
+ * Chat unread намеренно не входит в label кнопки «Ещё».
+ * Невалидные и отрицательные task counters трактуются как 0,
+ * чтобы a11y не озвучивал «0 задач» или отрицательные значения.
+ */
+export function moreMenuA11yLabel(taskBadge: number, _chatUnread = 0): string {
+  const tasks = Number.isFinite(taskBadge) ? Math.max(0, taskBadge) : 0;
+  if (tasks <= 0) return 'Ещё';
+  return `Ещё, ${formatTasks(tasks)} во входящих`;
 }

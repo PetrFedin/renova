@@ -42,3 +42,16 @@ export type ChatParticipant = {
 };
 
 export type ChatDetail = ChatThread & { messages: ChatMessage[]; participants?: ChatParticipant[] };
+
+/** Атомарный snapshot unread (GET /chats/inbox) */
+export type ChatInboxSnapshot = {
+  revision: number;
+  total_unread_messages: number;
+  threads: ChatThread[];
+  scope?: {
+    include_archived?: boolean;
+    include_muted?: boolean;
+    unit?: string;
+  };
+  updated_at?: string;
+};

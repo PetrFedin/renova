@@ -13,23 +13,20 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { flushOfflineOutbox } from '@/lib/offline';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { formatTasks, formatUnreadCount } from '@/lib/i18n';
 
-function inboxSubtitle(badge: number, chatUnread: number): string {
+function inboxSubtitle(taskBadge: number, chatUnread: number): string {
   const chat = Math.max(0, chatUnread || 0);
-  const tasks = Math.max(0, badge - chat);
-  if (chat > 0 && tasks > 0) {
-    return `${chat} непрочитанных · ${tasks} ${tasks === 1 ? 'задача' : tasks < 5 ? 'задачи' : 'задач'}`;
-  }
-  if (chat > 0) {
-    return chat === 1 ? '1 непрочитанное' : `${chat} непрочитанных`;
-  }
-  if (badge <= 0) return 'Все задачи проекта';
-  return `${badge} ${badge === 1 ? 'задача' : badge < 5 ? 'задачи' : 'задач'}`;
+  const tasks = Math.max(0, taskBadge || 0);
+  if (chat > 0 && tasks > 0) return `${formatUnreadCount(chat)} во всех чатах · ${formatTasks(tasks)}`;
+  if (chat > 0) return `${formatUnreadCount(chat)} во всех чатах`;
+  if (tasks > 0) return formatTasks(tasks);
+  return 'Все задачи проекта';
 }
 
 function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
   return (
-    <Pressable style={s.row} onPress={onPress}>
+    <Pressable style={s.row} onPress={onPress} accessibilityRole="button">
       <View style={{ flex: 1 }}>
         <Text style={s.title}>{item.title}</Text>
         {item.sub ? <Text style={s.sub}>{item.sub}</Text> : null}
@@ -41,7 +38,7 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
 
 export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: { role: OsRole; returnTo?: string; heroKind?: string }) {
   const { user, activeProject, readOnly } = useRenova();
-  const { items, badge, chatUnread, reload } = useInboxTasks(role);
+  const { items, taskBadge, chatUnread, reload } = useInboxTasks(role);
 
   if (!user || !activeProject) {
     return (
@@ -52,36 +49,35 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
     );
   }
 
-  /** Из меню — все строки; с главной — без дубля hero CTA */
   const visible = heroKindProp ? filterInboxForHero(items, heroKindProp) : items;
 
-  const open = async (it: InboxItem) => {
-    // W78: offline-строка → flush той же очереди, что OfflineSyncStatus
-    if (it.kind === 'offline') {
+  const open = async (item: InboxItem) => {
+    if (item.kind === 'offline') {
       await flushOfflineOutbox().catch(reportCatch('components.screens.UnifiedInboxScreen.1'));
       await reload().catch(reportCatch('components.screens.UnifiedInboxScreen.2'));
       return;
     }
-    if (it.kind === 'approval') navigateApproval(it.approval, role, returnTo);
-    // W111: role → /control и short aliases через resolvePushLink SoT
-    else pushOsNav(it.href, returnTo, role);
+    if (item.kind === 'approval') navigateApproval(item.approval, role, returnTo);
+    else pushOsNav(item.href, returnTo, role);
   };
 
   return (
     <>
       <BackHeader
         title="Входящие"
-        subtitle={readOnly ? 'Только просмотр — действия недоступны' : inboxSubtitle(badge, chatUnread)}
+        subtitle={readOnly ? 'Только просмотр — действия недоступны' : inboxSubtitle(taskBadge, chatUnread)}
         returnTo={returnTo}
       />
       <ReadOnlyBanner />
       <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <OfflineSyncStatus />
-        {!visible.length && (
-          <Text style={s.empty}>Нет активных задач — всё под контролем</Text>
-        )}
-        {visible.map((it) => (
-          <InboxRow key={it.id} item={it} onPress={() => { open(it).catch(reportCatch('components.screens.UnifiedInboxScreen.3')); }} />
+        {!visible.length && <Text style={s.empty}>Нет активных задач — всё под контролем</Text>}
+        {visible.map((item) => (
+          <InboxRow
+            key={item.id}
+            item={item}
+            onPress={() => { open(item).catch(reportCatch('components.screens.UnifiedInboxScreen.3')); }}
+          />
         ))}
       </ScrollView>
     </>
