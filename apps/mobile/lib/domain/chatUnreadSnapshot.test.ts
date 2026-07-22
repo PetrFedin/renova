@@ -15,11 +15,6 @@ import {
   sumThreadUnread,
   threadsFromChatInbox,
 } from './chatUnreadSnapshot';
-import {
-  clearMarkReadAuthoritativeTotals,
-  consumeMarkReadAuthoritativeTotal,
-  stageMarkReadAuthoritativeTotal,
-} from './markReadAuthoritativeTotal';
 
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error(msg);
@@ -40,8 +35,6 @@ const t = (
   unread_count: unread,
   is_archived: archived,
 });
-
-clearMarkReadAuthoritativeTotals();
 
 // локальный полный snapshot без server total
 {
@@ -162,7 +155,7 @@ clearMarkReadAuthoritativeTotals();
   assert(patched.threads.find((x) => x.id === 'a')?.unread_count === 0, 'delta thread');
 }
 
-// mark-read response может передать новый authoritative total явно
+// mark-read response передаёт authoritative total явно в тот же store action
 {
   const parsed = parseChatUnreadSnapshotApi({
     revision: 7,
@@ -171,66 +164,35 @@ clearMarkReadAuthoritativeTotals();
   });
   const patched = patchThreadUnreadInSnapshot(parsed, 'a', 0, 8, 7);
   assert(patched.totalUnreadMessages === 7, 'explicit authoritative total');
+  assert(patched.threads.find((x) => x.id === 'a')?.unread_count === 0, 'explicit thread value');
 }
 
-// staged mark-read total привязан к threadId и не поглощается чужим patch
+// explicit total относится только к конкретному patch; следующий patch снова использует delta
 {
-  clearMarkReadAuthoritativeTotals();
-  stageMarkReadAuthoritativeTotal('a', 7);
-  const parsed = parseChatUnreadSnapshotApi({
-    revision: 10,
-    total_unread_messages: 20,
-    threads: [t('a', 4), t('b', 3)],
-  });
-  const otherPatched = patchThreadUnreadInSnapshot(parsed, 'b', 0, 11);
-  assert(otherPatched.totalUnreadMessages === 17, 'other thread still uses delta');
-  const targetPatched = patchThreadUnreadInSnapshot(otherPatched, 'a', 0, 12);
-  assert(targetPatched.totalUnreadMessages === 7, 'target consumes staged total');
-}
-
-// staged total применяется один раз; повторный patch снова использует дельту
-{
-  clearMarkReadAuthoritativeTotals();
-  stageMarkReadAuthoritativeTotal('a', 6);
   const parsed = parseChatUnreadSnapshotApi({
     revision: 20,
     total_unread_messages: 15,
     threads: [t('a', 4), t('b', 2)],
   });
-  const confirmed = patchThreadUnreadInSnapshot(parsed, 'a', 0, 21);
-  assert(confirmed.totalUnreadMessages === 6, 'staged total applied once');
+  const confirmed = patchThreadUnreadInSnapshot(parsed, 'a', 0, 21, 6);
+  assert(confirmed.totalUnreadMessages === 6, 'explicit total applied once');
   const later = patchThreadUnreadInSnapshot(confirmed, 'a', 2, 22);
-  assert(later.totalUnreadMessages === 8, 'second patch uses delta');
+  assert(later.totalUnreadMessages === 8, 'later patch uses delta');
 }
 
-// явный authoritative total приоритетнее staged и очищает handoff
+// invalid authoritative total не подменяет delta, finite значения нормализуются
 {
-  clearMarkReadAuthoritativeTotals();
-  stageMarkReadAuthoritativeTotal('a', 9);
   const parsed = parseChatUnreadSnapshotApi({
     revision: 30,
-    total_unread_messages: 20,
-    threads: [t('a', 4), t('b', 1)],
+    total_unread_messages: 10,
+    threads: [t('a', 4), t('b', 2)],
   });
-  const patched = patchThreadUnreadInSnapshot(parsed, 'a', 0, 31, 5);
-  assert(patched.totalUnreadMessages === 5, 'explicit total wins over staged');
-  assert(consumeMarkReadAuthoritativeTotal('a') === undefined, 'explicit patch clears staged');
-}
-
-// просроченный handoff не применяется
-{
-  clearMarkReadAuthoritativeTotals();
-  stageMarkReadAuthoritativeTotal('a', 9, 1_000);
-  assert(consumeMarkReadAuthoritativeTotal('a', 31_001) === undefined, 'expired staged total');
-}
-
-// invalid total не создаёт handoff, валидный total нормализуется
-{
-  clearMarkReadAuthoritativeTotals();
-  stageMarkReadAuthoritativeTotal('a', Number.NaN);
-  assert(consumeMarkReadAuthoritativeTotal('a') === undefined, 'invalid total ignored');
-  stageMarkReadAuthoritativeTotal('a', 4.9);
-  assert(consumeMarkReadAuthoritativeTotal('a') === 4, 'staged total normalized');
+  const invalid = patchThreadUnreadInSnapshot(parsed, 'a', 0, 31, Number.NaN);
+  assert(invalid.totalUnreadMessages === 6, 'invalid total falls back to delta');
+  const normalized = patchThreadUnreadInSnapshot(parsed, 'a', 0, 32, 4.9);
+  assert(normalized.totalUnreadMessages === 4, 'explicit total normalized');
+  const clamped = patchThreadUnreadInSnapshot(parsed, 'a', 0, 33, -5);
+  assert(clamped.totalUnreadMessages === 0, 'negative total clamped');
 }
 
 // смена проекта — visible <= total
@@ -261,5 +223,4 @@ clearMarkReadAuthoritativeTotals();
   assert(snap.revision === 7 && snap.totalUnreadMessages === 3, 'legacy array');
 }
 
-clearMarkReadAuthoritativeTotals();
 console.log('chatUnreadSnapshot.test OK');
