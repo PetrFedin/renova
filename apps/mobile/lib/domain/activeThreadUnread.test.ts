@@ -166,6 +166,59 @@ clearIncomingMessageDedupe();
   assert(clamped.totalUnreadMessages === 2, 'clamp total');
 }
 
+// server total может включать unread вне текущего массива: вычитаем только active thread
+{
+  const threads = [
+    {
+      id: 't1',
+      project_id: 'p1',
+      title: 'a',
+      topic: null,
+      updated_at: 'x',
+      last_message: null,
+      unread_count: 3,
+    },
+    {
+      id: 't2',
+      project_id: 'p1',
+      title: 'b',
+      topic: null,
+      updated_at: 'x',
+      last_message: null,
+      unread_count: 2,
+    },
+  ] as ChatThread[];
+  const clamped = clampSnapshotForActiveRead(
+    { threads, totalUnreadMessages: 11 },
+    reading,
+    sumActiveThreadUnread,
+  );
+  assert(clamped.totalUnreadMessages === 8, 'clamp preserves authoritative remainder');
+  assert(clamped.threads.find((t) => t.id === 't2')?.unread_count === 2, 'other thread unchanged');
+}
+
+// архивный активный тред не уменьшает global total
+{
+  const threads = [
+    {
+      id: 't1',
+      project_id: 'p1',
+      title: 'a',
+      topic: null,
+      updated_at: 'x',
+      last_message: null,
+      unread_count: 3,
+      is_archived: true,
+    },
+  ] as ChatThread[];
+  const clamped = clampSnapshotForActiveRead(
+    { threads, totalUnreadMessages: 7 },
+    reading,
+    sumActiveThreadUnread,
+  );
+  assert(clamped.totalUnreadMessages === 7, 'archived clamp keeps global total');
+}
+
 // threadId alone insufficient
 {
   assert(!isActivelyReadingThread({
