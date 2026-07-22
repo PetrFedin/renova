@@ -8,6 +8,7 @@
 import type { Room, Stage } from '@/lib/api';
 
 export type ConstructionLocationResolution = 'resolved' | 'partial' | 'unlocated';
+export type ConstructionLocationReference = 'room' | 'stage';
 
 export type ConstructionLocation = {
   label: string;
@@ -18,6 +19,7 @@ export type ConstructionLocation = {
   planLabel?: string;
   hasPlanPin: boolean;
   resolution: ConstructionLocationResolution;
+  unresolvedReferences: ConstructionLocationReference[];
 };
 
 type LocationRoom = Pick<Room, 'id' | 'name' | 'floor_level'>;
@@ -33,10 +35,11 @@ export type ResolveConstructionLocationInput = {
   stages?: readonly LocationStage[];
 };
 
-function floorLabel(level: number | undefined): string | undefined {
+function formatFloorLabel(level: number | undefined): string | undefined {
   if (!Number.isFinite(level)) return undefined;
   if (level === 0) return 'Уровень 0';
-  return `${level} этаж`;
+  if ((level as number) < 0) return `Подземный уровень ${Math.abs(level as number)}`;
+  return `Этаж ${level}`;
 }
 
 function cleanName(value: string | null | undefined): string | undefined {
@@ -52,13 +55,17 @@ export function resolveConstructionLocation(
 
   const resolvedRoom = cleanName(room?.name);
   const resolvedStage = cleanName(stage?.name);
-  const resolvedFloor = floorLabel(room?.floor_level);
+  const resolvedFloor = formatFloorLabel(room?.floor_level);
   const hasPlanPin = Boolean(
     input.floorPlanId
       && Number.isFinite(input.xPct)
       && Number.isFinite(input.yPct),
   );
   const hasPlanReference = Boolean(input.floorPlanId);
+
+  const unresolvedReferences: ConstructionLocationReference[] = [];
+  if (input.roomId && !resolvedRoom) unresolvedReferences.push('room');
+  if (input.stageId && !resolvedStage) unresolvedReferences.push('stage');
 
   const parts = [
     resolvedFloor,
@@ -67,13 +74,12 @@ export function resolveConstructionLocation(
     hasPlanPin ? 'Точка на плане' : hasPlanReference ? 'План привязан' : undefined,
   ].filter((part): part is string => Boolean(part));
 
-  const hasResolvedEntity = Boolean(resolvedRoom || resolvedStage || resolvedFloor || hasPlanPin);
   const hasAnyReference = Boolean(input.roomId || input.stageId || input.floorPlanId);
   const resolution: ConstructionLocationResolution = !hasAnyReference
     ? 'unlocated'
-    : hasResolvedEntity
-      ? 'resolved'
-      : 'partial';
+    : unresolvedReferences.length
+      ? 'partial'
+      : 'resolved';
 
   return {
     label: parts.length ? parts.join(' · ') : 'Локация не указана',
@@ -84,5 +90,6 @@ export function resolveConstructionLocation(
     planLabel: hasPlanPin ? 'Точка на плане' : hasPlanReference ? 'План привязан' : undefined,
     hasPlanPin,
     resolution,
+    unresolvedReferences,
   };
 }
