@@ -11,6 +11,7 @@ export type ChatSyncReason =
   | 'project_change'
   | 'app_foreground'
   | 'reconnect'
+  | 'broadcast'
   | 'poll';
 
 export type ChatSyncPriority = 'high' | 'normal' | 'low';
@@ -66,7 +67,7 @@ export type ChatSyncMetrics = {
 
 /**
  * Финальное состояние запроса синхронизации.
- * Промежуточные внутренние этапы (started/debounced) наружу не возвращаются:
+ * Промежуточные внутренние этапы наружу не возвращаются:
  * вызывающий получает только фактический итог применения, пропуска или отмены.
  */
 export type ChatSyncOutcome =
