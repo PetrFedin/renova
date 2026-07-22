@@ -176,7 +176,7 @@ clearMarkReadAuthoritativeTotals();
 // staged mark-read total привязан к threadId и не поглощается чужим patch
 {
   clearMarkReadAuthoritativeTotals();
-  stageMarkReadAuthoritativeTotal('a', 7, 1_000);
+  stageMarkReadAuthoritativeTotal('a', 7);
   const parsed = parseChatUnreadSnapshotApi({
     revision: 10,
     total_unread_messages: 20,
