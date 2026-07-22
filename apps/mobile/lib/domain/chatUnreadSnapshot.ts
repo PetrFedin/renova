@@ -47,11 +47,25 @@ export type ChatUnreadSnapshotApi = {
   updated_at?: string;
 };
 
+/**
+ * Совместимость со старыми call sites, которые передают дальше только массив threads.
+ * WeakMap не сериализуется, не мутирует API-объекты и не удерживает массивы в памяти.
+ */
+const authoritativeTotalByThreads = new WeakMap<object, number>();
+
 function normalizeUnreadCount(value: unknown, fallback = 0): number {
   const candidate = typeof value === 'number' && Number.isFinite(value)
     ? value
     : fallback;
   return Math.max(0, Math.trunc(candidate));
+}
+
+export function rememberAuthoritativeUnreadTotal(threads: object, total: number): void {
+  authoritativeTotalByThreads.set(threads, normalizeUnreadCount(total));
+}
+
+function rememberedTotal(threads: object): number | undefined {
+  return authoritativeTotalByThreads.get(threads);
 }
 
 function threadUnread(thread: ChatThread | undefined): number {
@@ -74,19 +88,25 @@ export function sumThreadUnread(threads: ChatThread[]): number {
   return threads.reduce((sum, t) => sum + threadUnread(t), 0);
 }
 
-/** Локальный snapshot без server total: total выводится из полного набора тредов. */
+/**
+ * Локальный snapshot без server total выводит total из полного набора тредов.
+ * Если массив пришёл из authoritative snapshot, сохраняется remembered server total.
+ */
 export function snapshotFromThreads(
   threads: ChatThread[],
   revision: number,
   updatedAt?: string,
 ): ChatUnreadSnapshot {
-  return {
+  const totalUnreadMessages = rememberedTotal(threads) ?? sumActiveThreadUnread(threads);
+  const snapshot = {
     revision,
-    totalUnreadMessages: sumActiveThreadUnread(threads),
+    totalUnreadMessages,
     threads,
     scope: CHAT_UNREAD_SCOPE,
     updatedAt,
   };
+  rememberAuthoritativeUnreadTotal(threads, totalUnreadMessages);
+  return snapshot;
 }
 
 export function parseChatUnreadSnapshotApi(
@@ -100,12 +120,17 @@ export function parseChatUnreadSnapshotApi(
 
   const threads = Array.isArray(raw.threads) ? raw.threads : [];
   const computedFallback = sumActiveThreadUnread(threads);
+  const totalUnreadMessages = normalizeUnreadCount(
+    raw.total_unread_messages,
+    computedFallback,
+  );
+  rememberAuthoritativeUnreadTotal(threads, totalUnreadMessages);
   return {
     revision: typeof raw.revision === 'number' && Number.isFinite(raw.revision)
       ? raw.revision
       : fallbackRevision,
     // Для нового API серверный total authoritative. Сумма тредов — только fallback/invariant.
-    totalUnreadMessages: normalizeUnreadCount(raw.total_unread_messages, computedFallback),
+    totalUnreadMessages,
     threads,
     scope: CHAT_UNREAD_SCOPE,
     updatedAt: raw.updated_at,
@@ -130,14 +155,16 @@ export function applyChatUnreadSnapshot(
   }
 
   const threads = Array.isArray(incoming.threads) ? incoming.threads : [];
+  const totalUnreadMessages = normalizeUnreadCount(
+    incoming.totalUnreadMessages,
+    sumActiveThreadUnread(threads),
+  );
+  rememberAuthoritativeUnreadTotal(threads, totalUnreadMessages);
   const normalized: ChatUnreadSnapshot = {
     revision: opts?.force && current
       ? Math.max(incoming.revision, current.revision)
       : incoming.revision,
-    totalUnreadMessages: normalizeUnreadCount(
-      incoming.totalUnreadMessages,
-      sumActiveThreadUnread(threads),
-    ),
+    totalUnreadMessages,
     threads,
     scope: CHAT_UNREAD_SCOPE,
     updatedAt: incoming.updatedAt,
@@ -174,6 +201,7 @@ export function patchThreadUnreadInSnapshot(
   const nextTotal = authoritativeTotal == null
     ? normalizeUnreadCount(current.totalUnreadMessages + delta)
     : normalizeUnreadCount(authoritativeTotal);
+  rememberAuthoritativeUnreadTotal(threads, nextTotal);
 
   return {
     revision: Math.max(localRevision, current.revision + 1),
@@ -190,12 +218,15 @@ export function removeThreadFromSnapshot(
   localRevision = Date.now(),
 ): ChatUnreadSnapshot {
   const removed = current.threads.find((t) => t.id === threadId);
+  const threads = current.threads.filter((t) => t.id !== threadId);
+  const totalUnreadMessages = normalizeUnreadCount(
+    current.totalUnreadMessages - threadContribution(removed),
+  );
+  rememberAuthoritativeUnreadTotal(threads, totalUnreadMessages);
   return {
     revision: Math.max(localRevision, current.revision + 1),
-    totalUnreadMessages: normalizeUnreadCount(
-      current.totalUnreadMessages - threadContribution(removed),
-    ),
-    threads: current.threads.filter((t) => t.id !== threadId),
+    totalUnreadMessages,
+    threads,
     scope: CHAT_UNREAD_SCOPE,
     updatedAt: new Date().toISOString(),
   };
@@ -212,11 +243,13 @@ export function setThreadArchivedInSnapshot(
     t.id === threadId ? { ...t, is_archived: isArchived } : t,
   );
   const after = threads.find((t) => t.id === threadId);
+  const totalUnreadMessages = normalizeUnreadCount(
+    current.totalUnreadMessages + threadContribution(after) - threadContribution(before),
+  );
+  rememberAuthoritativeUnreadTotal(threads, totalUnreadMessages);
   return {
     revision: Math.max(localRevision, current.revision + 1),
-    totalUnreadMessages: normalizeUnreadCount(
-      current.totalUnreadMessages + threadContribution(after) - threadContribution(before),
-    ),
+    totalUnreadMessages,
     threads,
     scope: CHAT_UNREAD_SCOPE,
     updatedAt: new Date().toISOString(),
