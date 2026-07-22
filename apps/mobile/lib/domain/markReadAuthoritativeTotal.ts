@@ -21,17 +21,21 @@ function normalizeTotal(value: unknown): number | null {
   return Math.max(0, Math.trunc(value));
 }
 
+function trimStagedTotalsToMax(): void {
+  while (stagedTotals.size > STAGED_TOTAL_MAX) {
+    const first = stagedTotals.keys().next().value;
+    if (first == null) break;
+    stagedTotals.delete(first);
+  }
+}
+
 function pruneStagedTotals(now: number): void {
   for (const [threadId, entry] of stagedTotals) {
     if (now - entry.stagedAt > STAGED_TOTAL_TTL_MS) {
       stagedTotals.delete(threadId);
     }
   }
-  while (stagedTotals.size > STAGED_TOTAL_MAX) {
-    const first = stagedTotals.keys().next().value;
-    if (first == null) break;
-    stagedTotals.delete(first);
-  }
+  trimStagedTotalsToMax();
 }
 
 export function stageMarkReadAuthoritativeTotal(
@@ -40,10 +44,21 @@ export function stageMarkReadAuthoritativeTotal(
   now = Date.now(),
 ): void {
   const id = threadId.trim();
-  const normalized = normalizeTotal(total);
-  if (!id || normalized == null) return;
+  if (!id) return;
+
   pruneStagedTotals(now);
+  const normalized = normalizeTotal(total);
+  if (normalized == null) {
+    // Новый POST /read без authoritative total не должен переиспользовать
+    // значение, оставшееся от предыдущего запроса того же треда.
+    stagedTotals.delete(id);
+    return;
+  }
+
+  // Refresh insertion order so eviction removes the oldest staged request.
+  stagedTotals.delete(id);
   stagedTotals.set(id, { total: normalized, stagedAt: now });
+  trimStagedTotalsToMax();
 }
 
 /** Возвращает и удаляет staged total: один POST /read → один patch. */
