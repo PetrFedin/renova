@@ -10,7 +10,7 @@
  */
 
 import type { ChatThread } from '@/lib/api';
-import { consumeMarkReadAuthoritativeTotal } from '@/lib/domain/markReadAuthoritativeTotal';
+import { consumeMarkReadAuthoritativeTotal } from './markReadAuthoritativeTotal';
 
 export type ChatUnreadScope = {
   /** Архивные чаты не входят в total_unread_messages */
