@@ -10,7 +10,6 @@
  */
 
 import type { ChatThread } from '@/lib/api';
-import { consumeMarkReadAuthoritativeTotal } from './markReadAuthoritativeTotal';
 
 export type ChatUnreadScope = {
   /** Архивные чаты не входят в total_unread_messages */
@@ -184,8 +183,7 @@ export function threadsFromChatInbox(
  * Частичное локальное обновление одного треда.
  * Authoritative global total меняется только на дельту этого треда — так локальный
  * patch не уничтожает серверную информацию о тредах, отсутствующих в текущем массиве.
- * После успешного POST /read staged server total применяется ровно к следующему patch
- * того же threadId. Явный authoritativeTotal имеет приоритет и всё равно очищает handoff.
+ * После успешного POST /read вызывающий store передаёт server total явно.
  */
 export function patchThreadUnreadInSnapshot(
   current: ChatUnreadSnapshot,
@@ -201,11 +199,11 @@ export function patchThreadUnreadInSnapshot(
   );
   const after = threads.find((t) => t.id === threadId);
   const delta = threadContribution(after) - threadContribution(before);
-  const stagedAuthoritativeTotal = consumeMarkReadAuthoritativeTotal(threadId);
-  const resolvedAuthoritativeTotal = authoritativeTotal ?? stagedAuthoritativeTotal;
-  const nextTotal = resolvedAuthoritativeTotal == null
-    ? normalizeUnreadCount(current.totalUnreadMessages + delta)
-    : normalizeUnreadCount(resolvedAuthoritativeTotal);
+  const hasAuthoritativeTotal = typeof authoritativeTotal === 'number'
+    && Number.isFinite(authoritativeTotal);
+  const nextTotal = hasAuthoritativeTotal
+    ? normalizeUnreadCount(authoritativeTotal)
+    : normalizeUnreadCount(current.totalUnreadMessages + delta);
   rememberAuthoritativeUnreadTotal(threads, nextTotal);
 
   return {
