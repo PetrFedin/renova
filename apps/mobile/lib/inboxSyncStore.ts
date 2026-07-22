@@ -175,13 +175,23 @@ function applyIncomingSnapshot(
   return true;
 }
 
-function applyLocalThreadUnread(threadId: string, unread = 0) {
+function applyLocalThreadUnread(
+  threadId: string,
+  unread = 0,
+  authoritativeTotal?: number,
+) {
   const base = unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now());
   // Не поднимаем unread активного читаемого треда локальным patch
   const nextUnread = isActivelyReadingThread(activeThreadContext, threadId)
     ? 0
     : unread;
-  const next = patchThreadUnreadInSnapshot(base, threadId, nextUnread);
+  const next = patchThreadUnreadInSnapshot(
+    base,
+    threadId,
+    nextUnread,
+    Date.now(),
+    authoritativeTotal,
+  );
   commitUnreadSnapshot(next, { failed: false, stale: false });
 }
 
@@ -456,8 +466,12 @@ function refreshInboxChatRow(nextChat: number) {
   inboxBadge = taskRows + n;
 }
 
-/** Точечное обновление unread треда — total пересчитывается в том же action */
-function patchThreadReadLocal(threadId: string, threadUnread = 0) {
+/** Точечное обновление unread треда и authoritative total в одном action */
+function patchThreadReadLocal(
+  threadId: string,
+  threadUnread = 0,
+  authoritativeTotal?: number,
+) {
   const prev = {
     chatCount,
     chatFailed,
@@ -467,7 +481,7 @@ function patchThreadReadLocal(threadId: string, threadUnread = 0) {
     inboxWsConnected,
     revision: unreadSnapshot?.revision ?? 0,
   };
-  applyLocalThreadUnread(threadId, threadUnread);
+  applyLocalThreadUnread(threadId, threadUnread, authoritativeTotal);
   refreshInboxChatRow(chatCount);
   notifyIfChanged(prev);
 }
@@ -601,24 +615,16 @@ export async function markThreadRead(args: MarkThreadReadArgs): Promise<MarkThre
       const res = await api.markChatRead(userId, projectId, threadId, throughMessageId);
       chatFailed = false;
       const serverUnread = typeof res?.thread_unread_count === 'number' ? res.thread_unread_count : 0;
+      const serverTotal = typeof res?.total_unread_count === 'number'
+        ? res.total_unread_count
+        : undefined;
       const confirmedId = res?.read_through_message_id ?? throughMessageId;
       confirmedRead.set(threadId, {
         messageId: confirmedId ?? null,
         createdAt: throughCreatedAt,
       });
-      // Total только из суммы тредов — не подставляем независимый server total
-      patchThreadReadLocal(threadId, serverUnread);
-      if (
-        typeof res?.total_unread_count === 'number'
-        && res.total_unread_count !== chatCount
-        && (typeof __DEV__ === 'undefined' || __DEV__)
-      ) {
-        warnUnreadInvariantIfBroken(
-          unreadSnapshot ?? snapshotFromThreads(chatThreads, Date.now()),
-          undefined,
-          'mark_read_server_total_mismatch',
-        );
-      }
+      // Один явный store action применяет thread unread и authoritative server total.
+      patchThreadReadLocal(threadId, serverUnread, serverTotal);
       const ok: MarkThreadReadResult = { status: 'sent', ...base };
       recordMarkReadDiag({ ...base, outcome: 'sent' });
       resolveClaim(ok);
