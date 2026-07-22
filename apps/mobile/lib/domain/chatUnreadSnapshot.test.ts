@@ -36,14 +36,14 @@ const t = (
   is_archived: archived,
 });
 
-// полный snapshot
+// локальный полный snapshot без server total
 {
   const snap = snapshotFromThreads([t('a', 3), t('b', 5), t('c', 0)], 100);
   assert(snap.totalUnreadMessages === 8, 'full total');
   assert(checkUnreadInvariant(snap).ok, 'full invariant');
 }
 
-// частичное WS-обновление
+// частичное WS-обновление меняет total на дельту треда
 {
   let snap = snapshotFromThreads([t('a', 3), t('b', 5)], 10);
   snap = patchThreadUnreadInSnapshot(snap, 'a', 0, 11);
@@ -98,12 +98,16 @@ const t = (
   assert(r.snapshot.totalUnreadMessages === 9, 'kept current');
 }
 
-// network force: старый revision всё равно применяется (SoT GET)
+// network force: серверный total authoritative, revision остаётся monotonic
 {
   const cur = snapshotFromThreads([t('a', 9)], 50);
-  const net = snapshotFromThreads([t('a', 2), t('b', 1)], 40);
+  const net = parseChatUnreadSnapshotApi({
+    revision: 40,
+    total_unread_messages: 12,
+    threads: [t('a', 2), t('b', 1)],
+  });
   const r = applyChatUnreadSnapshot(cur, net, { force: true });
-  assert(r.ok && r.snapshot.totalUnreadMessages === 3, 'force network');
+  assert(r.ok && r.snapshot.totalUnreadMessages === 12, 'force authoritative total');
   assert(r.snapshot.revision >= 50, 'force keeps monotonic');
 }
 
@@ -117,14 +121,49 @@ const t = (
   assert(list.length === 1 && list[0].id === 'a', 'threadsFromChatInbox');
 }
 
-// offline cache / dirty parse
+// новый API: reported total authoritative даже при расхождении с суммой тредов
 {
   const snap = parseChatUnreadSnapshotApi({
     revision: 3,
-    total_unread_messages: 99, // лживый total — пересчитаем из threads
+    total_unread_messages: 99,
     threads: [t('a', 2), t('b', 3)],
   });
-  assert(snap.totalUnreadMessages === 5, 'recompute over reported');
+  assert(snap.totalUnreadMessages === 99, 'trust reported total');
+  assert(!checkUnreadInvariant(snap).ok, 'mismatch is diagnostic only');
+}
+
+// переходный adapter не должен терять authoritative total
+{
+  const parsed = parseChatUnreadSnapshotApi({
+    revision: 4,
+    total_unread_messages: 11,
+    threads: [t('a', 2), t('b', 3)],
+  });
+  const rebuilt = snapshotFromThreads(parsed.threads, parsed.revision, parsed.updatedAt);
+  assert(rebuilt.totalUnreadMessages === 11, 'adapter preserves authoritative total');
+}
+
+// optimistic mark-read уменьшает server total только на unread затронутого треда
+{
+  const parsed = parseChatUnreadSnapshotApi({
+    revision: 5,
+    total_unread_messages: 20,
+    threads: [t('a', 4), t('b', 1)],
+  });
+  const patched = patchThreadUnreadInSnapshot(parsed, 'a', 0, 6);
+  assert(patched.totalUnreadMessages === 16, 'delta over authoritative total');
+  assert(patched.threads.find((x) => x.id === 'a')?.unread_count === 0, 'delta thread');
+}
+
+// mark-read response может передать новый authoritative total явно
+{
+  const parsed = parseChatUnreadSnapshotApi({
+    revision: 7,
+    total_unread_messages: 20,
+    threads: [t('a', 4), t('b', 1)],
+  });
+  const patched = patchThreadUnreadInSnapshot(parsed, 'a', 0, 8, 7);
+  assert(patched.totalUnreadMessages === 7, 'explicit authoritative total');
 }
 
 // смена проекта — visible <= total
@@ -149,7 +188,7 @@ const t = (
   assert(checkUnreadInvariant(full, page).ok, 'page invariant');
 }
 
-// legacy array
+// legacy array: total выводится из threads, потому что server total отсутствует
 {
   const snap = parseChatUnreadSnapshotApi([t('a', 1), t('b', 2)], 7);
   assert(snap.revision === 7 && snap.totalUnreadMessages === 3, 'legacy array');
