@@ -1,7 +1,6 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
 import type { ChatDetail, ChatInboxSnapshot, ChatMessage, ChatThread, User } from './types';
-import { stageMarkReadAuthoritativeTotal } from '@/lib/domain/markReadAuthoritativeTotal';
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
     req<ChatThread[]>(`/api/v1/projects/${projectId}/chats?archived=${archived ? 'true' : 'false'}`, {}, userId),
@@ -168,7 +167,7 @@ export const chatsApi = {
       readThroughMessageId ? { read_through_message_id: readThroughMessageId } : {},
     );
     try {
-      const response = await req<{
+      return await req<{
         ok: boolean;
         thread_id: string;
         read_through_message_id?: string | null;
@@ -180,8 +179,6 @@ export const chatsApi = {
         { method: 'POST', body },
         userId,
       );
-      stageMarkReadAuthoritativeTotal(threadId, response.total_unread_count);
-      return response;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
