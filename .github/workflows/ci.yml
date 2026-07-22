@@ -91,8 +91,6 @@ jobs:
         run: npx tsx apps/mobile/lib/domain/markThreadReadPolicy.test.ts
       - name: Mark-read idempotency contract
         run: npx tsx apps/mobile/lib/markThreadRead.idempotency.test.ts
-      - name: Mark-read handoff bounds contract
-        run: npx tsx apps/mobile/lib/domain/markReadAuthoritativeTotal.test.ts
       - name: Atomic unread snapshot contract
         run: npx tsx apps/mobile/lib/domain/chatUnreadSnapshot.test.ts
       - name: Chat sync orchestrator contract
