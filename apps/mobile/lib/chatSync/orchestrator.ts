@@ -55,7 +55,11 @@ export type ChatSyncOrchestratorOptions = {
   pollMaxMs?: number;
   /** Две вкладки web: BroadcastChannel */
   enableBroadcast?: boolean;
-  broadcastFactory?: () => { postMessage: (data: unknown) => void; onmessage: ((ev: { data: unknown }) => void) | null; close: () => void } | null;
+  broadcastFactory?: () => {
+    postMessage: (data: unknown) => void;
+    onmessage: ((ev: { data: unknown }) => void) | null;
+    close: () => void;
+  } | null;
 };
 
 function defaultClock(): ChatSyncClock {
@@ -114,7 +118,7 @@ export class ChatSyncOrchestrator {
           if (data.contextKey && data.contextKey !== this.contextKey) return;
           void this.requestSync({
             scope: 'all',
-            reason: 'manual',
+            reason: 'broadcast',
             priority: 'low',
           });
         };
@@ -267,7 +271,7 @@ export class ChatSyncOrchestrator {
     const prev = this.pending.get(key);
     if (prev) {
       this.metrics.coalescedRequests += 1;
-      prev.request.priority = maxPriority(prev.request.priority, req.priority);
+      mergePendingRequest(prev, req);
       const prevResolve = prev.resolve;
       prev.resolve = (o) => {
         prevResolve(o);
@@ -316,10 +320,7 @@ export class ChatSyncOrchestrator {
     const pending = this.pending.get(key);
     if (pending) {
       this.metrics.coalescedRequests += 1;
-      pending.request.priority = maxPriority(pending.request.priority, req.priority);
-      if (PRIORITY_RANK[req.priority] >= PRIORITY_RANK[pending.request.priority]) {
-        pending.request.reason = req.reason;
-      }
+      mergePendingRequest(pending, req);
       return pending.promise;
     }
 
@@ -332,7 +333,7 @@ export class ChatSyncOrchestrator {
   ): Promise<ChatSyncOutcome> {
     const existing = this.pending.get(key);
     if (existing) {
-      existing.request.priority = maxPriority(existing.request.priority, req.priority);
+      mergePendingRequest(existing, req);
       return existing.promise;
     }
     let resolve!: (o: ChatSyncOutcome) => void;
@@ -435,7 +436,10 @@ export class ChatSyncOrchestrator {
         if (!this.inboxWsConnected) {
           this.pollIntervalMs = this.pollBaseMs;
         }
-        this.broadcastInvalidate();
+        // Входящее межвкладочное событие не должно порождать ответное событие.
+        if (req.reason !== 'broadcast') {
+          this.broadcastInvalidate();
+        }
         return 'applied';
       } catch (e) {
         if (controller.signal.aborted) {
@@ -531,6 +535,7 @@ function defaultPriority(reason: ChatSyncReason): ChatSyncPriority {
     case 'reconnect':
     case 'project_change':
       return 'high';
+    case 'broadcast':
     case 'poll':
       return 'low';
     default:
@@ -540,6 +545,17 @@ function defaultPriority(reason: ChatSyncReason): ChatSyncPriority {
 
 function maxPriority(a: ChatSyncPriority, b: ChatSyncPriority): ChatSyncPriority {
   return PRIORITY_RANK[a] >= PRIORITY_RANK[b] ? a : b;
+}
+
+function mergePendingRequest(
+  pending: PendingEntry,
+  req: ChatSyncRequest & { priority: ChatSyncPriority },
+): void {
+  const previousPriority = pending.request.priority;
+  if (PRIORITY_RANK[req.priority] >= PRIORITY_RANK[previousPriority]) {
+    pending.request.reason = req.reason;
+  }
+  pending.request.priority = maxPriority(previousPriority, req.priority);
 }
 
 function defaultBroadcastFactory(): {
