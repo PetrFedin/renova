@@ -64,10 +64,13 @@ export type ChatSyncMetrics = {
   droppedStaleResponses: number;
 };
 
+/**
+ * Финальное состояние запроса синхронизации.
+ * Промежуточные внутренние этапы (started/debounced) наружу не возвращаются:
+ * вызывающий получает только фактический итог применения, пропуска или отмены.
+ */
 export type ChatSyncOutcome =
-  | 'started'
   | 'coalesced'
-  | 'debounced'
   | 'skipped_no_user'
   | 'skipped_unmounted'
   | 'applied'
