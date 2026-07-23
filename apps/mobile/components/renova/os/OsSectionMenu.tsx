@@ -1,5 +1,6 @@
 /** Панель «Ещё» в шапке — без дубля dock (столпы + чат уже внизу) */
 import { useEffect, useState } from 'react';
+import type { ComponentProps } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
@@ -19,10 +20,18 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { getDockBar } from '@/lib/dockBarPrefs';
 import { DOCK_DEFAULT, type DockItemId } from '@/constants/dockBar';
 import { buildSecondaryNavigation, getRouteLabel } from '@/lib/navigation/navigationPolicy';
+import { reportCatch } from '@/lib/reportError';
 
 export { moreMenuA11yLabel };
 
 type Props = { role: OsRole; iconOnly?: boolean };
+
+const UTILITY_ICONS: Record<string, ComponentProps<typeof Ionicons>['name']> = {
+  inbox: 'mail-unread-outline',
+  approvals: 'checkmark-done-outline',
+  activity: 'time-outline',
+  documents: 'document-text-outline',
+};
 
 function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' | 'warning' }) {
   if (count <= 0) return null;
@@ -41,7 +50,9 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const { user, readOnly } = useRenova();
   const [dockItems, setDockItems] = useState<DockItemId[]>(DOCK_DEFAULT);
   const pathname = usePathname() ?? '';
-  useEffect(() => { void getDockBar(menuRole).then(setDockItems); }, [menuRole]);
+  useEffect(() => {
+    void getDockBar(menuRole).then(setDockItems).catch(reportCatch('components.renova.os.OsSectionMenu.dock'));
+  }, [menuRole]);
   const links = buildSecondaryNavigation({
     role: menuRole,
     readOnly,
@@ -120,7 +131,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                     pushOsNav(link.path, pathname, role);
                   }}
                 >
-                  <Ionicons name={link.id === 'inbox' ? 'mail-unread-outline' : link.id === 'approvals' ? 'checkmark-done-outline' : link.id === 'activity' ? 'time-outline' : 'document-text-outline'} size={18} color={RenovaTheme.colors.textMuted} />
+                  <Ionicons name={UTILITY_ICONS[link.id] || 'ellipse-outline'} size={18} color={RenovaTheme.colors.textMuted} />
                   <Text style={s.itemT}>{getRouteLabel(link, menuRole)}</Text>
                   {link.id === 'inbox' ? (
                     <View style={s.inboxBadges}>

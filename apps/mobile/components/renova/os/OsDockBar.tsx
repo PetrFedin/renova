@@ -78,10 +78,10 @@ export function OsDockBar({ role }: { role: OsRole }) {
     const item = DOCK_BY_ID[id];
     if (!item) return;
     if (id === 'contractor') {
-      router.navigate(parseOsHref(customerProfileTabHref(role, 'contractor')) as any);
+      router.navigate(parseOsHref(customerProfileTabHref(role, 'contractor')) as never);
       return;
     }
-    router.navigate(tabsRoute(role, item.routeName, item.hubTab) as any);
+    router.navigate(tabsRoute(role, item.routeName, item.hubTab) as never);
   };
 
   return (

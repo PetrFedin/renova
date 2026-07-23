@@ -52,6 +52,9 @@ for (const role of ['customer', 'contractor'] as const) {
   assert(authenticatedHome.every((route) => !headerDefault.some((headerRoute) => headerRoute.id === route.id)), `${role}: no authenticated duplicate`);
   const discoverable = new Set([...headerDefault, ...authenticatedHome].map((route) => route.id));
   assert(discoverable.has('documents') && discoverable.has('inbox'), `${role}: utilities retain an alternative entry`);
+  if (role === 'contractor') {
+    assert(![...headerDefault, ...authenticatedHome].some((route) => route.id === 'approvals'), 'contractor does not receive Approvals');
+  }
 }
 
 const analyticsCustomer = resolveRegistryRedirect('project-analytics', 'customer');

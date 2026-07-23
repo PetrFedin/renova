@@ -6,6 +6,7 @@ import { RENOVA_ROUTES } from '../routeRegistry';
 import {
   activeDockItemId,
   buildSecondaryNavigation,
+  navigationTargetHref,
   resolveRegistryRedirect,
   warrantyRoute,
 } from './navigationPolicy';
@@ -41,6 +42,18 @@ for (const role of ['customer', 'contractor'] as const) {
     claimId: 'claim-1', issueId: 'issue-2', projectId: 'project-3', source: 'push', extra: 'kept', returnTo: '/inbox',
   })) assert(push?.params[key] === value, `${role}: warranty preserves ${key}`);
 }
+const customerInboxWarranty = resolvePushLink(
+  navigationTargetHref(warrantyRoute('customer', { projectId: 'project-3', source: 'inbox' })),
+  '/inbox',
+  'customer',
+);
+const contractorInboxWarranty = resolvePushLink(
+  navigationTargetHref(warrantyRoute('contractor', { projectId: 'project-3', source: 'inbox' })),
+  '/inbox',
+  'contractor',
+);
+assert(customerInboxWarranty?.pathname === '/documents' && customerInboxWarranty.params.tab === 'warranty', 'customer Inbox warranty -> Documents');
+assert(contractorInboxWarranty?.pathname === '/quality-control' && contractorInboxWarranty.params.filter === 'warranty', 'contractor Inbox warranty -> QC');
 assert(resolvePushLink('/quality-control?issueId=q1', '/origin', 'customer')?.params.tab === 'control', 'customer QC opens Repair Control');
 assert(resolvePushLink('/work-acceptance', '/origin', 'customer')?.params.tab === 'control', 'acceptance opens Repair Control');
 

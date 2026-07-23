@@ -572,13 +572,14 @@ ${(res.body || '').slice(0, 220)}`,
         );
         return;
       }
-      if (doc.href.toLowerCase().includes('.pdf') || doc.href.includes('/media/')) {
-        withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, doc.href!, indexedFilename(doc)));
+      const href = doc.href;
+      if (href.toLowerCase().includes('.pdf') || href.includes('/media/')) {
+        withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, href, indexedFilename(doc)));
         return;
       }
       Alert.alert(doc.title, formatDocMeta(doc), [
         { text: 'Отмена', style: 'cancel' },
-        { text: 'Открыть документ', onPress: () => { void WebBrowser.openBrowserAsync(doc.href!); } },
+        { text: 'Открыть документ', onPress: () => { void WebBrowser.openBrowserAsync(href); } },
       ]);
     };
 
