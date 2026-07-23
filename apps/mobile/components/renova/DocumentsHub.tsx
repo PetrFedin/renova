@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
 } from 'react-native';
+import type { PressableStateCallbackType } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -778,7 +779,7 @@ ${(res.body || '').slice(0, 220)}`,
               return (
                 <Pressable
                   key={doc.id}
-                  style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
+                  style={({ pressed }: PressableStateCallbackType) => [s.recentRow, pressed && s.rowPressed]}
                   onPress={() => openIndexedDocument(doc)}
                   disabled={Boolean(busy)}
                   accessibilityRole="button"
@@ -813,7 +814,7 @@ ${(res.body || '').slice(0, 220)}`,
             return (
               <Pressable
                 key={row.id}
-                style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+                style={({ pressed }: PressableStateCallbackType) => [s.row, pressed && s.rowPressed]}
                 onPress={() => onRowPress(row)}
                 disabled={!!busy}
                 accessibilityRole="button"

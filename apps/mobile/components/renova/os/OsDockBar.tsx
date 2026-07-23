@@ -1,6 +1,7 @@
 /** Нижняя панель — 5 кнопок, dynamic preset или настройки пользователя */
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import type { PressableStateCallbackType } from 'react-native';
 import { router, usePathname, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { TabIcon } from '@/components/renova/TabIcon';
@@ -95,7 +96,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
         return (
           <Pressable
             key={id}
-            style={({ pressed }) => [s.tab, pressed && s.pressed]}
+            style={({ pressed }: PressableStateCallbackType) => [s.tab, pressed && s.pressed]}
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={

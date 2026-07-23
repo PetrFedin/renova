@@ -76,7 +76,7 @@ export default function BudgetPlannerScreen() {
           regionCode={regionCode}
           onRegionChange={setRegionCode}
           metrics={metrics}
-          onMetricsChange={setMetrics}
+          onMetricsChange={(next) => setMetrics((previous) => ({ ...previous, ...next }))}
           complexity={complexity}
           onComplexityChange={setComplexity}
           laborShare={laborShare}

@@ -39,7 +39,7 @@ export default function WizardType() {
     const sqm = parseFloat(quickArea.replace(',', '.')) || DEFAULT_QUICK_AREA[wizard.property_type];
     const rooms = buildQuickWizardRooms(wizard.property_type, sqm);
     setWizard({ wizard_mode: 'quick', rooms });
-    router.navigate({ pathname: '/wizard/confirm', params: { quickSqm: String(sqm) } });
+    router.navigate({ pathname: '/wizard/[step]', params: { step: 'confirm', quickSqm: String(sqm) } });
   };
 
   const onPrimary = () => {
