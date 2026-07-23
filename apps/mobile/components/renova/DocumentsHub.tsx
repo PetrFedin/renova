@@ -575,7 +575,10 @@ ${(res.body || '').slice(0, 220)}`,
         withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, doc.href!, indexedFilename(doc)));
         return;
       }
-      Alert.alert(doc.title, `${formatDocMeta(doc)}\n\nФайл доступен в разделе проекта.`);
+      Alert.alert(doc.title, formatDocMeta(doc), [
+        { text: 'Отмена', style: 'cancel' },
+        { text: 'Открыть документ', onPress: () => { void WebBrowser.openBrowserAsync(doc.href!); } },
+      ]);
     };
 
     if (!isCanonicalDocument(doc)) {

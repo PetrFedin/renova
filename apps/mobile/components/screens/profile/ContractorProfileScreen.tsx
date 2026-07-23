@@ -9,7 +9,6 @@ import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
 import { RoleSwitchButton, roleDisplayLabel } from '@/components/renova/RoleSwitchButton';
 import { AdminHubLink } from '@/components/renova/AdminHubLink';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
-import { NotificationsList } from '@/components/renova/NotificationsList';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -175,7 +174,8 @@ export function ContractorProfileScreen() {
 
       {user ? (
         <ProfileSection title="Уведомления">
-          <NotificationsList userId={user.id} defaultReturn="/(contractor)/(tabs)/profile" />
+          <Text style={ps.userMeta}>Задачи, упоминания и уведомления собраны в едином Inbox.</Text>
+          <PrimaryButton title="Открыть входящие" variant="outline" onPress={() => pushOsNav('/inbox', nav.from, 'contractor')} />
         </ProfileSection>
       ) : null}
 
