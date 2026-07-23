@@ -1,8 +1,8 @@
 /** W126: гарантия post-closeout → QC / closeout SoT (Buildertrend heritage) */
 import { Alert } from 'react-native';
-import { openQcIssue } from '@/lib/qcNav';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { warrantyRoute } from '@/lib/navigation/navigationPolicy';
 
 export type WarrantyCreateInfo = {
   issue_id?: string;
@@ -20,7 +20,7 @@ export function warrantyCreatedMessage(info: WarrantyCreateInfo, openCount?: num
   return `Тикет создан${post}. SLA ${sla} дн.${open}${doc}`;
 }
 
-/** Создано → фокус в QC (заказчик и исполнитель) */
+/** Создано → Documents/Warranty для customer, action-oriented QC для contractor. */
 export function alertWarrantyCreated(
   role: OsRole,
   info: WarrantyCreateInfo,
@@ -29,8 +29,16 @@ export function alertWarrantyCreated(
   Alert.alert('Гарантия', warrantyCreatedMessage(info, opts?.openCount), [
     { text: 'OK' },
     {
-      text: 'Открыть QC',
-      onPress: () => openQcIssue(info.issue_id, opts?.returnTo, role),
+      text: role === 'contractor' ? 'Открыть контроль' : 'Открыть обращение',
+      onPress: () => pushOsNav(
+        warrantyRoute(role, {
+          ...(info.issue_id ? { issueId: info.issue_id } : {}),
+          ...(info.document_id ? { claimId: info.document_id } : {}),
+          source: 'document',
+        }),
+        opts?.returnTo,
+        role,
+      ),
     },
   ]);
 }

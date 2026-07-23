@@ -19,11 +19,11 @@ console.assert(resolvePushLink('/scratchpad', '/home')?.params?.returnTo === '/h
 console.assert(resolvePushLink(null) === null, 'null');
 
 const payCustomer = resolveNotificationLink('payment_pending', 'customer');
-console.assert(payCustomer?.pathname.includes('budget') && payCustomer.params.tab === 'payments', 'notify payment customer');
+console.assert(payCustomer?.pathname.includes('budget') && payCustomer.params?.tab === 'payments', 'notify payment customer');
 const payContractor = resolveNotificationLink('payment_pending', 'contractor');
 console.assert(payContractor?.pathname.includes('(contractor)'), 'notify payment contractor');
 const confirmedCustomer = resolveNotificationLink('payment_confirmed', 'customer');
-console.assert(confirmedCustomer?.pathname.includes('budget') && confirmedCustomer.params.tab === 'payments', 'notify payment confirmed customer');
+console.assert(confirmedCustomer?.pathname.includes('budget') && confirmedCustomer.params?.tab === 'payments', 'notify payment confirmed customer');
 const confirmedContractor = resolveNotificationLink('payment_confirmed', 'contractor');
 console.assert(confirmedContractor?.pathname.includes('(contractor)'), 'notify payment confirmed contractor');
 console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.tab === 'payments', 'finance-center redirect');
@@ -67,5 +67,32 @@ console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.params?
 console.assert(resolveNotificationLink('room_updated', 'customer')?.pathname.includes('object'), 'room notify');
 console.assert(resolveNotificationLink('schedule_confirmed', 'customer')?.pathname.includes('calendar'), 'schedule_confirmed');
 console.assert(resolveNotificationLink('estimate_lock', 'customer')?.pathname.includes('object'), 'estimate_lock notify');
+
+for (const role of ['customer', 'contractor'] as const) {
+  const cases = [
+    ['/repair?tab=materials', 'repair', { tab: 'materials' }],
+    ['/repair?tab=control&filter=warranty&issueId=123', 'repair', { tab: 'control', filter: 'warranty', issueId: '123' }],
+    ['/budget?tab=payments&openPayment=1', 'budget', { tab: 'payments', openPayment: '1' }],
+    ['/budget?tab=deviations', 'budget', { tab: 'deviations' }],
+    ['/object?tab=estimate', 'object', { tab: 'estimate' }],
+    ['/calendar?date=2026-07-23', 'calendar', { date: '2026-07-23' }],
+  ] as const;
+  for (const [link, segment, params] of cases) {
+    const target = resolvePushLink(link, '/origin', role)!;
+    console.assert(target.pathname.includes(`(${role})`) && target.pathname.includes(segment), `${role} ${link} role-aware`);
+    for (const [key, value] of Object.entries(params)) console.assert(target.params?.[key] === value, `${role} ${link} ${key}`);
+  }
+  const analytics = resolvePushLink('/project-analytics', '/origin', role)!;
+  console.assert(analytics.pathname.includes(`(${role})`) && analytics.params?.tab === 'deviations', `${role} analytics`);
+}
+
+const warrantyCustomer = resolvePushLink('/warranty-claim?claimId=abc&issueId=123&source=inbox', '/inbox', 'customer')!;
+console.assert(warrantyCustomer.pathname === '/documents' && warrantyCustomer.params?.tab === 'warranty', 'customer warranty Documents');
+console.assert(warrantyCustomer.params?.claimId === 'abc' && warrantyCustomer.params?.issueId === '123', 'customer warranty context');
+const warrantyContractor = resolvePushLink('/warranty?claimId=abc&projectId=p1', '/inbox', 'contractor')!;
+console.assert(warrantyContractor.pathname === '/quality-control' && warrantyContractor.params?.filter === 'warranty', 'contractor warranty QC');
+console.assert(warrantyContractor.params?.projectId === 'p1', 'contractor warranty project context');
+const docsWarranty = resolvePushLink('/documents?tab=warranty&claimId=abc', '/home', 'customer')!;
+console.assert(docsWarranty.params?.tab === 'warranty' && docsWarranty.params?.claimId === 'abc', 'documents query preserved');
 
 console.log('pushLinks.test OK');

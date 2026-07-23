@@ -3,6 +3,7 @@ import { api, type ApprovalItem, type ProjectDetail, type Stage } from '@/lib/ap
 import { formatRub } from '@/constants/Theme';
 import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 import { buildCloseoutInboxItem } from './closeoutHome';
+import { navigationTargetHref, warrantyRoute } from '@/lib/navigation/navigationPolicy';
 
 export type InboxItem =
   | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
@@ -237,8 +238,7 @@ export async function buildInboxItems(opts: {
           kind: 'warranty',
           title: (w.overdue ?? 0) > 0 ? `Гарантия: ${w.overdue} просрочено` : 'Открытые гарантии',
           sub: `${w.open} обращений`,
-          // W111: QC/control (не только документы) — закрытие и список замечаний
-          href: '/quality-control',
+          href: navigationTargetHref(warrantyRoute(role, { projectId, source: 'inbox' })),
           priority: 78,
         });
       }
