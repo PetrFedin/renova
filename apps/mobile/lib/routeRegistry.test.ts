@@ -1,6 +1,8 @@
 /** Smoke: menu invariants — npx tsx lib/routeRegistry.test.ts */
 import { assertRouteRegistryInvariants, menuRoutes, MAX_MORE_MENU_ITEMS, RENOVA_ROUTES, userFacingRouteIds } from './routeRegistry';
-import { OS_MENU_SECTIONS, OS_MORE_UTIL_LINKS, MAX_HEADER_MORE_ITEMS } from '../constants/osSections';
+import { MAX_HEADER_MORE_ITEMS } from '../constants/osSections';
+import { buildSecondaryNavigation } from './navigation/navigationPolicy';
+import { DOCK_DEFAULT } from '../constants/dockBar';
 
 assertRouteRegistryInvariants();
 
@@ -25,8 +27,7 @@ if (moreCustomer.length > MAX_MORE_MENU_ITEMS) {
   throw new Error(`Home more menu exceeds ${MAX_MORE_MENU_ITEMS}`);
 }
 
-const headerMoreCount =
-  OS_MENU_SECTIONS.customer.length + OS_MORE_UTIL_LINKS.length;
+const headerMoreCount = buildSecondaryNavigation({ role: 'customer', dockItems: DOCK_DEFAULT, surface: 'header' }).length;
 if (headerMoreCount > MAX_HEADER_MORE_ITEMS) {
   throw new Error(`Header «Ещё» exceeds ${MAX_HEADER_MORE_ITEMS}: ${headerMoreCount}`);
 }
