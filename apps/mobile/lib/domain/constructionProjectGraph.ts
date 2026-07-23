@@ -6,15 +6,22 @@
  * несовместимые индексы и могли открывать все связанные сущности из одного
  * помещения или этапа.
  */
-import type {
-  ActivityItem,
-  OsExpense,
-  ProjectIssue,
-  Room,
-  Stage,
-  WorkAcceptance,
-  WorkOrder,
-} from '@/lib/api';
+import type { Room } from '@/lib/api/types/room';
+import type { Stage } from '@/lib/api/types/stage';
+import type { WorkOrder } from '@/lib/api/types/work';
+import type { ActivityItem, OsExpense, ProjectIssue } from '@/lib/api/types/os';
+
+/**
+ * В API исторически существуют две модели WorkAcceptance. Граф использует
+ * только стабильный общий контракт и не зависит от конфликтующего barrel export.
+ */
+export type ConstructionGraphAcceptance = {
+  id: string;
+  stage_id: string;
+  room_id?: string | null;
+  stage_name?: string | null;
+  status?: string;
+};
 
 export type ConstructionGraphNodeKind =
   | 'room'
@@ -54,6 +61,16 @@ export type ConstructionProjectGraph = {
   edges: ConstructionGraphEdge[];
   byRoom: Record<string, string[]>;
   byStage: Record<string, string[]>;
+  duplicateKeys: string[];
+};
+
+export type ConstructionGraphIntegrity = {
+  nodeCount: number;
+  edgeCount: number;
+  duplicateKeys: string[];
+  unresolvedByNode: Record<string, string[]>;
+  unresolvedCount: number;
+  isHealthy: boolean;
 };
 
 export type BuildConstructionProjectGraphInput = {
@@ -61,7 +78,7 @@ export type BuildConstructionProjectGraphInput = {
   stages?: readonly Stage[];
   workOrders?: readonly WorkOrder[];
   issues?: readonly ProjectIssue[];
-  acceptances?: readonly WorkAcceptance[];
+  acceptances?: readonly ConstructionGraphAcceptance[];
   expenses?: readonly OsExpense[];
   activities?: readonly ActivityItem[];
 };
@@ -80,6 +97,7 @@ export function buildConstructionProjectGraph(
   const nodes: Record<string, ConstructionGraphNode> = {};
   const edges: ConstructionGraphEdge[] = [];
   const edgeKeys = new Set<string>();
+  const duplicateKeys = new Set<string>();
   const byRoom: Record<string, string[]> = {};
   const byStage: Record<string, string[]> = {};
 
@@ -91,6 +109,7 @@ export function buildConstructionProjectGraph(
     stageIds: readonly (string | null | undefined)[] = [],
   ) => {
     const key = constructionGraphNodeKey(kind, id);
+    if (nodes[key]) duplicateKeys.add(key);
     nodes[key] = {
       key,
       kind,
@@ -121,7 +140,7 @@ export function buildConstructionProjectGraph(
       'acceptance',
       acceptance.id,
       acceptance.stage_name?.trim() || `Приёмка этапа ${acceptance.stage_id}`,
-      [],
+      [acceptance.room_id],
       [acceptance.stage_id],
     );
   }
@@ -183,7 +202,35 @@ export function buildConstructionProjectGraph(
     node.unresolvedReferences = unique(node.unresolvedReferences);
   }
 
-  return { nodes, edges, byRoom, byStage };
+  return {
+    nodes,
+    edges,
+    byRoom,
+    byStage,
+    duplicateKeys: [...duplicateKeys].sort(),
+  };
+}
+
+export function inspectConstructionProjectGraph(
+  graph: ConstructionProjectGraph,
+): ConstructionGraphIntegrity {
+  const unresolvedByNode: Record<string, string[]> = {};
+  let unresolvedCount = 0;
+
+  for (const node of Object.values(graph.nodes)) {
+    if (!node.unresolvedReferences.length) continue;
+    unresolvedByNode[node.key] = [...node.unresolvedReferences];
+    unresolvedCount += node.unresolvedReferences.length;
+  }
+
+  return {
+    nodeCount: Object.keys(graph.nodes).length,
+    edgeCount: graph.edges.length,
+    duplicateKeys: [...graph.duplicateKeys],
+    unresolvedByNode,
+    unresolvedCount,
+    isHealthy: unresolvedCount === 0 && graph.duplicateKeys.length === 0,
+  };
 }
 
 export function getConstructionGraphNode(
