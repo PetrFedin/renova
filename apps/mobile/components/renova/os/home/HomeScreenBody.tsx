@@ -93,7 +93,8 @@ export function HomeScreenBody({
     phase,
     dockItems: DOCK_DEFAULT,
     surface: 'home',
-  }).filter((route) => readOnly || !headerIds.has(route.id));
+    excludeRouteIds: readOnly ? [] : [...headerIds],
+  });
   const moreSectionSummary = phase === 'complete'
     ? (moreSummary ? `отчёты · ${moreSummary}` : 'отчёты · экспорт')
     : moreSummary;

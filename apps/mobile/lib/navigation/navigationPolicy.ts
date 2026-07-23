@@ -61,6 +61,7 @@ export function buildSecondaryNavigation(input: {
   guest?: boolean;
   phase?: NavigationPhase;
   dockItems?: readonly DockItemId[];
+  excludeRouteIds?: readonly string[];
   surface: SecondarySurface;
 }): RenovaRoute[] {
   const dockIds = new Set((input.dockItems || []).map(canonicalRouteIdForDockItem));
@@ -68,13 +69,14 @@ export function buildSecondaryNavigation(input: {
     ? ['calendar', ...HEADER_UTILITY_IDS]
     : [...HOME_MORE_IDS];
   const allowed = input.readOnly || input.guest ? GUEST_IDS : null;
+  const excluded = new Set(input.excludeRouteIds || []);
   const routes = routesForAudience(input.role);
   const byId = new Map(routes.map((route) => [route.id, route]));
   const seen = new Set<string>();
   const result: RenovaRoute[] = [];
   for (const id of ordered) {
     const route = byId.get(id);
-    if (!route || seen.has(route.id) || dockIds.has(route.id)) continue;
+    if (!route || seen.has(route.id) || dockIds.has(route.id) || excluded.has(route.id)) continue;
     if (input.role === 'contractor' && route.id === 'approvals') continue;
     if (route.status === 'wip' || route.redirectTarget || route.visibility === 'hidden') continue;
     if (allowed && !allowed.has(route.id)) continue;

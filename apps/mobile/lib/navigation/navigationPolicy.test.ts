@@ -43,6 +43,15 @@ for (const role of ['customer', 'contractor'] as const) {
   assert(headerDefault.some((route) => route.id === 'calendar'), `${role}: Calendar in header when absent from dock`);
   const headerWithCalendar = buildSecondaryNavigation({ role, dockItems: [...DOCK_DEFAULT.slice(0, 4), 'calendar'], surface: 'header' });
   assert(!headerWithCalendar.some((route) => route.id === 'calendar'), `${role}: Calendar deduped by canonical id`);
+  const authenticatedHome = buildSecondaryNavigation({
+    role,
+    dockItems: DOCK_DEFAULT,
+    surface: 'home',
+    excludeRouteIds: headerDefault.map((route) => route.id),
+  });
+  assert(authenticatedHome.every((route) => !headerDefault.some((headerRoute) => headerRoute.id === route.id)), `${role}: no authenticated duplicate`);
+  const discoverable = new Set([...headerDefault, ...authenticatedHome].map((route) => route.id));
+  assert(discoverable.has('documents') && discoverable.has('inbox'), `${role}: utilities retain an alternative entry`);
 }
 
 const analyticsCustomer = resolveRegistryRedirect('project-analytics', 'customer');
