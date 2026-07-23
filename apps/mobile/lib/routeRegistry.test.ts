@@ -33,12 +33,12 @@ if (headerMoreCount > MAX_HEADER_MORE_ITEMS) {
 
 const wa = RENOVA_ROUTES.find((r) => r.id === 'work-acceptance');
 if (wa?.visibility !== 'deeplink') throw new Error('work-acceptance must be deeplink');
-if (wa?.redirectTo !== '/repair?tab=control') throw new Error('work-acceptance must redirect to repair control');
+if (wa?.redirectTarget?.routeId !== 'repair' || wa.redirectTarget.tab !== 'control') throw new Error('work-acceptance must redirect to repair control');
 const ctrl = RENOVA_ROUTES.find((r) => r.id === 'control');
-if (ctrl?.redirectTo !== '/repair?tab=control') throw new Error('control must redirect to repair hub');
+if (ctrl?.redirectTarget?.routeId !== 'repair' || ctrl.redirectTarget.tab !== 'control') throw new Error('control must redirect to repair hub');
 
 const notif = RENOVA_ROUTES.find((r) => r.id === 'notifications');
-if (notif?.redirectTo !== '/inbox') throw new Error('notifications must redirect to /inbox');
+if (notif?.redirectTarget?.routeId !== 'inbox') throw new Error('notifications must redirect to /inbox');
 
 const guestMore = menuRoutes('customer', 'more', { readOnly: true });
 const guestIds = new Set(guestMore.map((r) => r.id));
@@ -59,4 +59,3 @@ if (!uf.includes('approvals')) {
 }
 
 console.log('routeRegistry.test OK', { more: moreCustomer.map((r) => r.id), userFacing: uf.length });
-

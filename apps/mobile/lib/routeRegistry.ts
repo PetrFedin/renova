@@ -1,12 +1,20 @@
 /**
  * Typed route registry (A-04 / A-07).
- * Dock ≤ 4 tabs. Secondary centers живут в visibility: 'more'.
+ * Dock = 5 tabs: Home + 4 product pillars/shortcuts including mandatory Chat.
  * WIP не попадает в меню.
  */
 
 export type RouteAudience = 'customer' | 'contractor' | 'both';
 export type RouteVisibility = 'dock' | 'more' | 'hidden' | 'deeplink';
 export type RouteStatus = 'ga' | 'beta' | 'wip';
+export type CanonicalRouteId =
+  | 'home' | 'object' | 'repair' | 'budget' | 'calendar' | 'chat'
+  | 'documents' | 'inbox' | 'approvals' | 'activity' | string;
+export type RegistryRedirectTarget = {
+  routeId: 'object' | 'repair' | 'budget' | 'calendar' | 'documents' | 'inbox' | 'quality-control';
+  tab?: string;
+  params?: Record<string, string>;
+};
 
 export type RenovaRoute = {
   id: string;
@@ -20,7 +28,11 @@ export type RenovaRoute = {
   /** P0.2: tap on pending payment opens this sheet instead of direct confirm */
   opensSheet?: 'payment';
   /** Optional redirect when route is a thin wrapper over a tab */
-  redirectTo?: string;
+  redirectTarget?: RegistryRedirectTarget;
+  /** Explicit aliases remain compatible but never form another product area. */
+  legacyAliases?: string[];
+  /** Route is intentionally reachable only from an inbound link. */
+  deeplinkOnly?: boolean;
 };
 
 /** Canonical product routes — единый реестр для меню и аудита. */
@@ -30,6 +42,8 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
   { id: 'object', path: '/object', titleRu: 'Объект', audience: 'both', visibility: 'dock', status: 'ga', entryPoints: ['tabs'] },
   { id: 'repair', path: '/repair', titleRu: 'Ремонт', audience: 'both', visibility: 'dock', status: 'ga', entryPoints: ['tabs'] },
   { id: 'budget', path: '/budget', titleRu: 'Бюджет', audience: 'both', visibility: 'dock', status: 'ga', entryPoints: ['tabs'] },
+  { id: 'calendar', path: '/calendar', titleRu: 'Сроки', audience: 'both', visibility: 'deeplink', status: 'ga', entryPoints: ['dock.optional', 'home.schedule', 'header.more'] },
+  { id: 'chat', path: '/chat', titleRu: 'Сообщения', audience: 'both', visibility: 'dock', status: 'ga', entryPoints: ['tabs'] },
 
   // Secondary centers (More)
   {
@@ -51,7 +65,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     status: 'beta',
     entryPoints: ['deeplink'],
     opensSheet: 'payment',
-    redirectTo: '/budget?tab=payments&openPayment=1',
+    redirectTarget: { routeId: 'budget', tab: 'payments', params: { openPayment: '1' } },
     descriptionRu: 'Redirect → Бюджет/Оплаты + PaymentDetailSheet (внешний перевод/чек, не прямой confirm)',
   },
   {
@@ -62,7 +76,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'hidden',
     status: 'beta',
     entryPoints: ['deeplink'],
-    redirectTo: '/repair?tab=control',
+    redirectTarget: { routeId: 'repair', tab: 'control' },
     descriptionRu: 'Legacy tab → Ремонт → Приёмка (единый hub, W58/W139)',
   },
   {
@@ -83,7 +97,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'deeplink',
     status: 'ga',
     entryPoints: ['repair.control', 'stage', 'home.banner'],
-    redirectTo: '/repair?tab=control',
+    redirectTarget: { routeId: 'repair', tab: 'control' },
     descriptionRu: 'Redirect → Ремонт → Приёмка (единый hub). Карточка этапа — детальная проверка.',
   },
   {
@@ -94,7 +108,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'hidden',
     status: 'beta',
     entryPoints: ['deeplink'],
-    redirectTo: '/calendar',
+    redirectTarget: { routeId: 'calendar' },
     descriptionRu: 'Redirect → календарь (единый hub «Сроки»)',
   },
   {
@@ -124,7 +138,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'hidden',
     status: 'beta',
     entryPoints: ['deeplink'],
-    redirectTo: '/inbox',
+    redirectTarget: { routeId: 'inbox' },
     descriptionRu: 'Redirect → /inbox (единый attention channel). Не отдельный экран в меню.',
   },
 
@@ -164,7 +178,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'deeplink',
     status: 'ga',
     entryPoints: ['repair.materials', 'home.next', 'selections'],
-    redirectTo: '/repair?tab=materials&subtab=purchases',
+    redirectTarget: { routeId: 'repair', tab: 'materials', params: { subtab: 'purchases' } },
     descriptionRu: 'P2.4/W50 hub: потребность → закупка → чек. Не пункт «Ещё».',
   },
   {
@@ -175,21 +189,11 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'deeplink',
     status: 'ga',
     entryPoints: ['repair.selections', 'approvals'],
-    redirectTo: '/repair?tab=selections',
+    redirectTarget: { routeId: 'repair', tab: 'selections' },
     descriptionRu: 'P2.2: room × category × allowance × approve',
   },
 
   // Hidden / deeplink legacy tabs
-  {
-    id: 'calendar',
-    path: '/calendar',
-    titleRu: 'Сроки',
-    audience: 'both',
-    visibility: 'deeplink',
-    status: 'ga',
-    entryPoints: ['os.menu', 'home.schedule', 'dock.optional'],
-    descriptionRu: 'Единый hub сроков (календарь + план). Не дублировать work-schedule.',
-  },
   {
     id: 'warranty-claim',
     // W55: канон входа — Document Center; QC только для исполнителя (через DocumentsHub)
@@ -210,10 +214,16 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'hidden',
     status: 'ga',
     entryPoints: ['deeplink'],
-    redirectTo: '/object?tab=plan&sub=design',
+    redirectTarget: { routeId: 'object', tab: 'plan', params: { sub: 'design' } },
     descriptionRu: 'W52: catch-all → Object / plan',
   },
   { id: 'conflicts', path: '/conflicts', titleRu: 'Конфликты sync', audience: 'contractor', visibility: 'deeplink', status: 'ga', entryPoints: ['offline.banner'] },
+  { id: 'portfolio', path: '/portfolio', titleRu: 'Портфель объектов', audience: 'contractor', visibility: 'deeplink', status: 'beta', entryPoints: ['project.picker'] },
+  { id: 'scratchpad', path: '/scratchpad', titleRu: 'Черновик', audience: 'both', visibility: 'deeplink', status: 'beta', entryPoints: ['project.fab'] },
+  { id: 'budget-planner', path: '/budget-planner', titleRu: 'Планировщик бюджета', audience: 'both', visibility: 'deeplink', status: 'beta', entryPoints: ['budget.summary'] },
+  { id: 'checklist-templates', path: '/checklist-templates', titleRu: 'Шаблоны чек-листов', audience: 'contractor', visibility: 'deeplink', status: 'beta', entryPoints: ['profile.work', 'repair.control.settings'] },
+  { id: 'guide', path: '/guide', titleRu: 'Справка', audience: 'both', visibility: 'deeplink', status: 'ga', entryPoints: ['profile.help'] },
+  { id: 'activity', path: '/activity', titleRu: 'История проекта', audience: 'both', visibility: 'more', status: 'ga', entryPoints: ['home.summary', 'header.more'] },
   {
     id: 'portal',
     path: '/portal?token=',
@@ -242,7 +252,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'hidden',
     status: 'beta',
     entryPoints: ['deeplink'],
-    redirectTo: '/(customer)/(tabs)/budget?tab=deviations',
+    redirectTarget: { routeId: 'budget', tab: 'deviations' },
     descriptionRu: 'Legacy deeplink → бюджет / отклонения',
   },
 ];
@@ -279,12 +289,12 @@ const COMPLETION_PHASE_ONLY_IDS = new Set(['manager-dashboard', 'reports']);
 /** User-facing (dock + more + deeplink GA) — для аудита IA; redirect-only не считаем. */
 export function userFacingRouteIds(routes: RenovaRoute[] = RENOVA_ROUTES): string[] {
   return routes
-    .filter((r) => r.status !== 'wip' && !r.redirectTo && r.visibility !== 'hidden')
+    .filter((r) => r.status !== 'wip' && !r.redirectTarget && r.visibility !== 'hidden')
     .map((r) => r.id);
 }
 
-export function resolveRouteRedirect(path: string): string | undefined {
-  return RENOVA_ROUTES.find((r) => r.path === path)?.redirectTo;
+export function resolveRouteRedirect(path: string): RegistryRedirectTarget | undefined {
+  return RENOVA_ROUTES.find((r) => r.path === path)?.redirectTarget;
 }
 
 export function routesForAudience(audience: 'customer' | 'contractor'): RenovaRoute[] {
@@ -321,8 +331,8 @@ export function menuRoutes(
 
 export function assertRouteRegistryInvariants(routes: RenovaRoute[] = RENOVA_ROUTES): void {
   const dock = routes.filter((r) => r.visibility === 'dock');
-  if (dock.length > 4) {
-    throw new Error(`Dock exceeds 4 tabs: ${dock.length}`);
+  if (dock.length !== 5 || !dock.some((route) => route.id === 'chat')) {
+    throw new Error(`Registry dock contract must contain four product entries + mandatory Chat: ${dock.length}`);
   }
   for (const r of routes) {
     if (!r.id || !r.path || !r.titleRu) {
@@ -330,6 +340,12 @@ export function assertRouteRegistryInvariants(routes: RenovaRoute[] = RENOVA_ROU
     }
     if ((r.visibility === 'dock' || r.visibility === 'more') && r.status !== 'wip' && r.entryPoints.length === 0) {
       throw new Error(`Visible route ${r.id} has no entryPoints`);
+    }
+    if (r.status !== 'wip' && !r.redirectTarget && r.entryPoints.length === 0 && !r.deeplinkOnly) {
+      throw new Error(`Reachable ${r.status} route ${r.id} has no real entry point`);
+    }
+    if (r.redirectTarget && r.visibility === 'more') {
+      throw new Error(`Redirect-only route ${r.id} cannot appear in More`);
     }
   }
 }

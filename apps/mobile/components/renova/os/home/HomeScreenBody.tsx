@@ -27,7 +27,8 @@ import { roleScopeLabel } from '@/lib/domain/roleCapabilities';
 import { resolveProjectPhase, type ProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
 import { homeTypography } from '@/constants/homeTypography';
 import { useOsNavFromHere } from '@/lib/navigation';
-import { menuRoutes } from '@/lib/routeRegistry';
+import { buildSecondaryNavigation, getRouteLabel } from '@/lib/navigation/navigationPolicy';
+import { DOCK_DEFAULT } from '@/constants/dockBar';
 
 export type HomeScreenBodyProps = {
   role: OsRole;
@@ -76,7 +77,23 @@ export function HomeScreenBody({
   const showKpiHeaderLink = phase !== 'closing';
   const moneyZoneTitle = role === 'customer' ? 'Деньги' : 'Сводка';
 
-  const showMore = moreHasContent || phase === 'complete';
+  const showMore = readOnly || moreHasContent || phase === 'complete';
+  const headerIds = new Set(buildSecondaryNavigation({
+    role,
+    readOnly,
+    guest: readOnly,
+    phase,
+    dockItems: DOCK_DEFAULT,
+    surface: 'header',
+  }).map((route) => route.id));
+  const secondaryRoutes = buildSecondaryNavigation({
+    role,
+    readOnly,
+    guest: readOnly,
+    phase,
+    dockItems: DOCK_DEFAULT,
+    surface: 'home',
+  }).filter((route) => readOnly || !headerIds.has(route.id));
   const moreSectionSummary = phase === 'complete'
     ? (moreSummary ? `отчёты · ${moreSummary}` : 'отчёты · экспорт')
     : moreSummary;
@@ -160,14 +177,10 @@ export function HomeScreenBody({
       {/* Дополнительно — свёрнуто; приёмка/уведомления не дублируем (Ремонт / Входящие) */}
       {showMore && (
         <HomeMoreSection summary={moreSectionSummary}>
-          {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more', {
-            readOnly,
-            phase,
-            excludeIds: ['inbox'], // уже строка «Входящие» выше
-          }).map((route) => (
+          {secondaryRoutes.map((route) => (
             <HomeLinkRow
               key={route.id}
-              title={route.titleRu}
+              title={getRouteLabel(route, role)}
               onPress={() => pushScreen(route.path)}
             />
           ))}
