@@ -352,7 +352,7 @@ async function main() {
     orch.setContext({ userId: 'u1', role: 'customer', projectId: 'p1' });
     handler?.({ data: { type: 'invalidate', contextKey: orch.getContextKey() } });
     await flush();
-    assert(mock.calls.some((c) => c.reason === 'manual'), 'tab invalidate');
+    assert(mock.calls.some((c) => c.reason === 'broadcast'), 'tab invalidate must keep broadcast reason');
     orch.dispose();
   }
 
