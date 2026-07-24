@@ -6,6 +6,7 @@ import { warrantyRoute } from '@/lib/navigation/navigationPolicy';
 
 export type WarrantyCreateInfo = {
   issue_id?: string;
+  claim_id?: string;
   document_id?: string;
   post_closeout?: boolean;
   sla_days?: number;
@@ -33,7 +34,8 @@ export function alertWarrantyCreated(
       onPress: () => pushOsNav(
         warrantyRoute(role, {
           ...(info.issue_id ? { issueId: info.issue_id } : {}),
-          ...(info.document_id ? { claimId: info.document_id } : {}),
+          ...(info.claim_id ? { claimId: info.claim_id } : {}),
+          ...(info.document_id ? { documentId: info.document_id } : {}),
           source: 'document',
         }),
         opts?.returnTo,
