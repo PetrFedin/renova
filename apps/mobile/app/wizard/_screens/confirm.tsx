@@ -16,7 +16,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
 import { buildMarketEstimateInsights } from '@/lib/wizard/buildMarketEstimateInsights';
-import { buildQuickWizardRooms, quickWizardFloorSqM } from '@/lib/wizard/buildQuickWizardRooms';
+import { buildQuickWizardRooms } from '@/lib/wizard/buildQuickWizardRooms';
 import { WizardHint } from '@/components/renova/wizard/WizardHint';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { tabsHref } from '@/constants/osSections';
@@ -64,10 +64,12 @@ export default function WizardConfirm() {
   useEffect(() => {
     if (wizard.wizard_mode !== 'quick' || parsedQuickSqm === null) return;
     const rooms = buildQuickWizardRooms(wizard.property_type, parsedQuickSqm);
-    if (rooms.length !== wizard.rooms.length || quickWizardFloorSqM(wizard.rooms) !== quickWizardFloorSqM(rooms)) {
+    const currentFloor = wizard.rooms.reduce((sum, room) => sum + room.length_m * room.width_m, 0);
+    const nextFloor = rooms.reduce((sum, room) => sum + room.length_m * room.width_m, 0);
+    if (rooms.length !== wizard.rooms.length || Math.abs(currentFloor - nextFloor) > 0.01) {
       setWizard({ wizard_mode: 'quick', rooms });
     }
-  }, [parsedQuickSqm, wizard.property_type, wizard.wizard_mode, wizard.rooms.length, setWizard]);
+  }, [parsedQuickSqm, wizard.property_type, wizard.wizard_mode, wizard.rooms, setWizard]);
 
   const estimateRooms = useMemo(() => {
     if (wizard.wizard_mode === 'quick' && parsedQuickSqm !== null) {
@@ -76,27 +78,36 @@ export default function WizardConfirm() {
     return wizard.rooms;
   }, [wizard.wizard_mode, wizard.property_type, wizard.rooms, parsedQuickSqm]);
 
+  const roomMetrics = useMemo(
+    () => estimateRooms.map((room) => calcRoomMetrics({
+      lengthM: room.length_m,
+      widthM: room.width_m,
+      heightM: room.height_m,
+      openingsSqM: 2,
+    })),
+    [estimateRooms],
+  );
+
   const summary = useMemo(() => {
     let materials: any[] = [];
     let works: any[] = [];
     estimateRooms.forEach((room, i) => {
       const id = `tmp-${i}`;
-      const m = calcRoomMetrics({ lengthM: room.length_m, widthM: room.width_m, heightM: room.height_m, openingsSqM: 2 });
       const eff = resolveRenovationType(wizard.renovation_type, room.room_type) as any;
-      const lines = generateTemplateLines(eff, id, m);
+      const lines = generateTemplateLines(eff, id, roomMetrics[i]);
       materials = materials.concat(lines.materials);
       works = works.concat(lines.works);
     });
     return calcEstimateSummary(materials, works);
-  }, [estimateRooms, wizard.renovation_type]);
+  }, [estimateRooms, roomMetrics, wizard.renovation_type]);
 
   const plannerMetrics = useMemo(() => ({
-    floor_sq_m: quickWizardFloorSqM(estimateRooms) || 12,
-    wall_sq_m: estimateRooms.length * 24,
-    perimeter_m: 14,
-    outlets_count: estimateRooms.reduce((a, r) => a + (r.outlets_count || 0), 0),
-    plumbing_points: estimateRooms.reduce((a, r) => a + (r.plumbing_points || 0), 0),
-  }), [estimateRooms]);
+    floor_sq_m: roomMetrics.reduce((sum, metrics) => sum + metrics.floorSqM, 0),
+    wall_sq_m: roomMetrics.reduce((sum, metrics) => sum + metrics.wallSqM, 0),
+    perimeter_m: roomMetrics.reduce((sum, metrics) => sum + metrics.perimeterM, 0),
+    outlets_count: estimateRooms.reduce((sum, room) => sum + Math.max(0, room.outlets_count || 0), 0),
+    plumbing_points: estimateRooms.reduce((sum, room) => sum + Math.max(0, room.plumbing_points || 0), 0),
+  }), [estimateRooms, roomMetrics]);
 
   const marketInsights = useMemo(
     () => buildMarketEstimateInsights(summary.grandTotal, marketEstimate),
