@@ -28,6 +28,21 @@ console.assert(resolvePushLink('/material/material-1?projectId=project-1&roomId=
 console.assert(resolvePushLink('/purchase/purchase-1?projectId=project-1&source=approval', '/origin')?.params.source === 'approval', 'purchase source preserved');
 console.assert(resolvePushLink('/chat/thread-1?projectId=project-1&source=notification', '/origin')?.params.source === 'notification', 'chat source preserved');
 
+const legacyContextCases = [
+  ['/work-schedule?projectId=project-1&date=2026-07-24', 'calendar', { projectId: 'project-1', date: '2026-07-24' }],
+  ['/profile?focus=contractor&projectId=project-1&source=inbox', 'profile', { focus: 'contractor', projectId: 'project-1', source: 'inbox' }],
+  ['/design?projectId=project-1&roomId=room-1&source=document', 'object', { tab: 'plan', projectId: 'project-1', roomId: 'room-1', source: 'document' }],
+  ['/notifications?projectId=project-1&source=push', 'inbox', { projectId: 'project-1', source: 'push' }],
+] as const;
+for (const [link, segment, expected] of legacyContextCases) {
+  const target = resolvePushLink(link, '/origin', 'customer')!;
+  console.assert(target.pathname.includes(segment), `${link} canonical target`);
+  for (const [key, value] of Object.entries(expected)) {
+    console.assert(target.params[key] === value, `${link} preserves ${key}`);
+  }
+  console.assert(target.params.returnTo === '/origin', `${link} preserves returnTo`);
+}
+
 console.assert(resolvePushLink('/approvals', '/home')?.pathname === '/approvals', 'approvals');
 console.assert(resolvePushLink('/conflicts', '/home')?.pathname === '/conflicts', 'conflicts');
 console.assert(resolvePushLink('/(customer)/(tabs)/finance', '/home')?.pathname.includes('budget'), 'finance → budget');
@@ -62,7 +77,6 @@ console.assert(resolveNotificationLink('change_order')?.params?.estimateLayer ==
 console.assert(resolveNotificationLink('change_order', 'contractor')?.pathname.includes('object'), 'change_order contractor → object estimate');
 const unknownNotify = resolveNotificationLink('unknown_xyz');
 console.assert(unknownNotify?.pathname === '/inbox', 'notify unknown → inbox');
-// W66 #25: smoke deep-links for contract / QC / schedule notify
 console.assert(resolvePushLink('/documents', '/home', 'customer')?.pathname === '/documents', 'documents');
 console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.pathname === '/(customer)/(tabs)/repair', 'qc customer → repair');
 console.assert(resolvePushLink('/quality-control', '/home', 'contractor')?.pathname === '/quality-control', 'qc contractor');
