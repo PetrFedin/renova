@@ -79,7 +79,7 @@ export default function ApprovalsScreen() {
                   style={s.inp}
                   placeholder="Комментарий при отклонении"
                   value={reason(it)}
-                  onChangeText={(v) => setReasons(prev => ({ ...prev, [key(it)]: v }))}
+                  onChangeText={(v: string) => setReasons(prev => ({ ...prev, [key(it)]: v }))}
                 />
                 <View style={s.actions}>
                   <PrimaryButton title="Согласовать" onPress={() => approve(it)} />

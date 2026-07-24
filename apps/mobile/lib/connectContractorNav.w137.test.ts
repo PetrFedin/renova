@@ -16,7 +16,7 @@ console.assert(rooms.includes("customerProfileTabHref('customer', 'contractor')"
 console.assert(!rooms.includes("objectTabHref('customer', 'profile')"), 'rooms must not open object passport for invite');
 console.assert(postCreate.includes("customerProfileTabHref('customer', 'contractor')"), 'post-create SoT');
 console.assert(checklist.includes("customerProfileTabHref(role, 'contractor')"), 'setup checklist SoT');
-console.assert(pushLinks.includes("q.get('focus')"), 'profile alias keeps focus');
+console.assert(pushLinks.includes('incoming.focus'), 'profile alias keeps focus');
 console.assert(custProfile.includes('ContractorInvitePanel'), 'account profile has invite form');
 console.assert(custProfile.includes("focus === 'contractor'") || custProfile.includes('focusContractor'), 'focus highlights contractor');
 console.assert(custProfile.includes('scrollTo'), 'focus scrolls to contractor block');

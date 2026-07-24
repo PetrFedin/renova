@@ -7,6 +7,42 @@ console.assert(stage?.pathname === '/stage/[id]' && stage.params.id === 'abc-123
 const chat = resolvePushLink('/chat/thread-1', '/chat');
 console.assert(chat?.pathname === '/chat/[threadId]', 'chat');
 
+const dynamicContextCases = [
+  ['/stage/stage-1?projectId=project-1&source=inbox', '/stage/[id]', 'id', 'stage-1'],
+  ['/room/room-1?projectId=project-1&floorId=floor-2', '/room/[id]', 'id', 'room-1'],
+  ['/work-order/work-1?projectId=project-1&stageId=stage-1', '/work-order/[id]', 'id', 'work-1'],
+  ['/material/material-1?projectId=project-1&roomId=room-1', '/material/[id]', 'id', 'material-1'],
+  ['/purchase/purchase-1?projectId=project-1&source=approval', '/purchase/[id]', 'id', 'purchase-1'],
+  ['/chat/thread-1?projectId=project-1&source=notification', '/chat/[threadId]', 'threadId', 'thread-1'],
+] as const;
+for (const [link, pathname, idKey, idValue] of dynamicContextCases) {
+  const target = resolvePushLink(link, '/origin', 'customer')!;
+  console.assert(target.pathname === pathname, `${link} canonical pathname`);
+  console.assert(target.params[idKey] === idValue, `${link} canonical id`);
+  console.assert(target.params.projectId === 'project-1', `${link} project context preserved`);
+  console.assert(target.params.returnTo === '/origin', `${link} returnTo preserved`);
+}
+console.assert(resolvePushLink('/room/room-1?projectId=project-1&floorId=floor-2', '/origin')?.params.floorId === 'floor-2', 'room floor context preserved');
+console.assert(resolvePushLink('/work-order/work-1?projectId=project-1&stageId=stage-1', '/origin')?.params.stageId === 'stage-1', 'work-order stage context preserved');
+console.assert(resolvePushLink('/material/material-1?projectId=project-1&roomId=room-1', '/origin')?.params.roomId === 'room-1', 'material room context preserved');
+console.assert(resolvePushLink('/purchase/purchase-1?projectId=project-1&source=approval', '/origin')?.params.source === 'approval', 'purchase source preserved');
+console.assert(resolvePushLink('/chat/thread-1?projectId=project-1&source=notification', '/origin')?.params.source === 'notification', 'chat source preserved');
+
+const legacyContextCases = [
+  ['/work-schedule?projectId=project-1&date=2026-07-24', 'calendar', { projectId: 'project-1', date: '2026-07-24' }],
+  ['/profile?focus=contractor&projectId=project-1&source=inbox', 'profile', { focus: 'contractor', projectId: 'project-1', source: 'inbox' }],
+  ['/design?projectId=project-1&roomId=room-1&source=document', 'object', { tab: 'plan', projectId: 'project-1', roomId: 'room-1', source: 'document' }],
+  ['/notifications?projectId=project-1&source=push', 'inbox', { projectId: 'project-1', source: 'push' }],
+] as const;
+for (const [link, segment, expected] of legacyContextCases) {
+  const target = resolvePushLink(link, '/origin', 'customer')!;
+  console.assert(target.pathname.includes(segment), `${link} canonical target`);
+  for (const [key, value] of Object.entries(expected)) {
+    console.assert(target.params[key] === value, `${link} preserves ${key}`);
+  }
+  console.assert(target.params.returnTo === '/origin', `${link} preserves returnTo`);
+}
+
 console.assert(resolvePushLink('/approvals', '/home')?.pathname === '/approvals', 'approvals');
 console.assert(resolvePushLink('/conflicts', '/home')?.pathname === '/conflicts', 'conflicts');
 console.assert(resolvePushLink('/(customer)/(tabs)/finance', '/home')?.pathname.includes('budget'), 'finance → budget');
@@ -19,11 +55,11 @@ console.assert(resolvePushLink('/scratchpad', '/home')?.params?.returnTo === '/h
 console.assert(resolvePushLink(null) === null, 'null');
 
 const payCustomer = resolveNotificationLink('payment_pending', 'customer');
-console.assert(payCustomer?.pathname.includes('budget') && payCustomer.params.tab === 'payments', 'notify payment customer');
+console.assert(payCustomer?.pathname.includes('budget') && payCustomer.params?.tab === 'payments', 'notify payment customer');
 const payContractor = resolveNotificationLink('payment_pending', 'contractor');
 console.assert(payContractor?.pathname.includes('(contractor)'), 'notify payment contractor');
 const confirmedCustomer = resolveNotificationLink('payment_confirmed', 'customer');
-console.assert(confirmedCustomer?.pathname.includes('budget') && confirmedCustomer.params.tab === 'payments', 'notify payment confirmed customer');
+console.assert(confirmedCustomer?.pathname.includes('budget') && confirmedCustomer.params?.tab === 'payments', 'notify payment confirmed customer');
 const confirmedContractor = resolveNotificationLink('payment_confirmed', 'contractor');
 console.assert(confirmedContractor?.pathname.includes('(contractor)'), 'notify payment confirmed contractor');
 console.assert(resolvePushLink('/finance-center', '/home', 'customer')?.params?.tab === 'payments', 'finance-center redirect');
@@ -41,14 +77,12 @@ console.assert(resolveNotificationLink('change_order')?.params?.estimateLayer ==
 console.assert(resolveNotificationLink('change_order', 'contractor')?.pathname.includes('object'), 'change_order contractor → object estimate');
 const unknownNotify = resolveNotificationLink('unknown_xyz');
 console.assert(unknownNotify?.pathname === '/inbox', 'notify unknown → inbox');
-// W66 #25: smoke deep-links for contract / QC / schedule notify
 console.assert(resolvePushLink('/documents', '/home', 'customer')?.pathname === '/documents', 'documents');
 console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.pathname === '/(customer)/(tabs)/repair', 'qc customer → repair');
 console.assert(resolvePushLink('/quality-control', '/home', 'contractor')?.pathname === '/quality-control', 'qc contractor');
 console.assert(resolveNotificationLink('schedule_review', 'customer')?.pathname.includes('calendar'), 'schedule_review customer');
 console.assert(resolveNotificationLink('document', 'contractor')?.pathname === '/documents', 'document notify');
 console.log('pushLinks: OK');
-
 
 console.assert(resolveNotificationLink('issue', 'contractor')?.pathname === '/quality-control', 'issue notify');
 console.assert(resolveNotificationLink('payment_pending', 'contractor')?.pathname.includes('contractor'), 'contractor budget');
@@ -67,5 +101,32 @@ console.assert(resolvePushLink('/quality-control', '/home', 'customer')?.params?
 console.assert(resolveNotificationLink('room_updated', 'customer')?.pathname.includes('object'), 'room notify');
 console.assert(resolveNotificationLink('schedule_confirmed', 'customer')?.pathname.includes('calendar'), 'schedule_confirmed');
 console.assert(resolveNotificationLink('estimate_lock', 'customer')?.pathname.includes('object'), 'estimate_lock notify');
+
+for (const role of ['customer', 'contractor'] as const) {
+  const cases = [
+    ['/repair?tab=materials', 'repair', { tab: 'materials' }],
+    ['/repair?tab=control&filter=warranty&issueId=123', 'repair', { tab: 'control', filter: 'warranty', issueId: '123' }],
+    ['/budget?tab=payments&openPayment=1', 'budget', { tab: 'payments', openPayment: '1' }],
+    ['/budget?tab=deviations', 'budget', { tab: 'deviations' }],
+    ['/object?tab=estimate', 'object', { tab: 'estimate' }],
+    ['/calendar?date=2026-07-23', 'calendar', { date: '2026-07-23' }],
+  ] as const;
+  for (const [link, segment, params] of cases) {
+    const target = resolvePushLink(link, '/origin', role)!;
+    console.assert(target.pathname.includes(`(${role})`) && target.pathname.includes(segment), `${role} ${link} role-aware`);
+    for (const [key, value] of Object.entries(params)) console.assert(target.params?.[key] === value, `${role} ${link} ${key}`);
+  }
+  const analytics = resolvePushLink('/project-analytics', '/origin', role)!;
+  console.assert(analytics.pathname.includes(`(${role})`) && analytics.params?.tab === 'deviations', `${role} analytics`);
+}
+
+const warrantyCustomer = resolvePushLink('/warranty-claim?claimId=abc&issueId=123&source=inbox', '/inbox', 'customer')!;
+console.assert(warrantyCustomer.pathname === '/documents' && warrantyCustomer.params?.tab === 'warranty', 'customer warranty Documents');
+console.assert(warrantyCustomer.params?.claimId === 'abc' && warrantyCustomer.params?.issueId === '123', 'customer warranty context');
+const warrantyContractor = resolvePushLink('/warranty?claimId=abc&projectId=p1', '/inbox', 'contractor')!;
+console.assert(warrantyContractor.pathname === '/quality-control' && warrantyContractor.params?.filter === 'warranty', 'contractor warranty QC');
+console.assert(warrantyContractor.params?.projectId === 'p1', 'contractor warranty project context');
+const docsWarranty = resolvePushLink('/documents?tab=warranty&claimId=abc', '/home', 'customer')!;
+console.assert(docsWarranty.params?.tab === 'warranty' && docsWarranty.params?.claimId === 'abc', 'documents query preserved');
 
 console.log('pushLinks.test OK');

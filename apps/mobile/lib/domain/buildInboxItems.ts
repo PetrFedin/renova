@@ -3,6 +3,7 @@ import { api, type ApprovalItem, type ProjectDetail, type Stage } from '@/lib/ap
 import { formatRub } from '@/constants/Theme';
 import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 import { buildCloseoutInboxItem } from './closeoutHome';
+import { navigationTargetHref, warrantyRoute } from '@/lib/navigation/navigationPolicy';
 
 export type InboxItem =
   | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
@@ -180,7 +181,7 @@ export async function buildInboxItems(opts: {
     try {
       const picks = await api.listMaterialPicks(userId, projectId);
       const pendingMat = picks.filter((p) => p.status === 'pending');
-      const hasMaterialApproval = next.some((it) => it.kind === 'approval' && it.approval.type === 'material');
+      const hasMaterialApproval = next.some((it) => it.kind === 'approval' && 'approval' in it && it.approval.type === 'material');
       if (pendingMat.length > 0 && !hasMaterialApproval) {
         next.push({
           id: 'materials-pending',
@@ -211,7 +212,7 @@ export async function buildInboxItems(opts: {
     } catch { /* noop */ }
 
     // W77: ДО / гарантия / draft docs — те же очереди, что nextAction (W76)
-    const hasCoApproval = next.some((it) => it.kind === 'approval' && it.approval.type === 'change_order');
+    const hasCoApproval = next.some((it) => it.kind === 'approval' && 'approval' in it && it.approval.type === 'change_order');
     if (!hasCoApproval) {
       try {
         const orders = await api.listChangeOrders(userId, projectId);
@@ -237,8 +238,7 @@ export async function buildInboxItems(opts: {
           kind: 'warranty',
           title: (w.overdue ?? 0) > 0 ? `Гарантия: ${w.overdue} просрочено` : 'Открытые гарантии',
           sub: `${w.open} обращений`,
-          // W111: QC/control (не только документы) — закрытие и список замечаний
-          href: '/quality-control',
+          href: navigationTargetHref(warrantyRoute(role, { projectId, source: 'inbox' })),
           priority: 78,
         });
       }
@@ -426,7 +426,7 @@ export async function buildInboxItems(opts: {
 }
 
 /** Dedup inbox vs hero «Сделать сейчас» — главная, /inbox, «Все задачи». */
-export function filterInboxForHero(items: InboxItem[], heroKind: string): InboxItem[] {
+export function filterInboxForHero<T extends { kind: string; id: string; title: string }>(items: T[], heroKind: string): T[] {
   if (!heroKind || heroKind === 'idle') return items;
   return items.filter((it) => {
     if (heroKind === 'payment' && it.kind === 'payment') return false;
@@ -456,7 +456,7 @@ export function inboxLinkItems<T extends { kind: string; id: string; title: stri
   items: T[],
   heroKind: string,
 ): T[] {
-  return filterInboxForHero(items as InboxItem[], heroKind) as T[];
+  return filterInboxForHero(items, heroKind);
 }
 
 export function inboxTotal(items: InboxItem[], chatUnread: number): number {

@@ -26,30 +26,7 @@ const CONTRACTOR_CORE: OsSection[] = [
   { id: 'budget', label: 'Бюджет', routeName: 'budget', icon: 'budget' },
 ];
 
-/** Верхнее меню «Ещё»: только то, чего нет в dock (не дублировать 4 столпа + chat) */
-export const OS_MENU_SECTIONS: Record<OsRole, OsSection[]> = {
-  customer: [
-    { id: 'calendar', label: 'Сроки', routeName: 'calendar', icon: 'calendar' },
-  ],
-  contractor: [
-    { id: 'calendar', label: 'Сроки', routeName: 'calendar', icon: 'calendar' },
-  ],
-};
-
-/** Утилиты шапки «Ещё» — вместе с OS_MENU_SECTIONS ≤ MAX_HEADER_MORE_ITEMS */
 export const MAX_HEADER_MORE_ITEMS = 6;
-
-export const OS_MORE_UTIL_LINKS: {
-  id: string;
-  label: string;
-  href: string;
-  icon: 'time-outline' | 'document-text-outline' | 'mail-unread-outline' | 'checkmark-done-outline';
-}[] = [
-  { id: 'inbox', label: 'Входящие', href: '/inbox', icon: 'mail-unread-outline' },
-  { id: 'approvals', label: 'Согласования', href: '/approvals', icon: 'checkmark-done-outline' },
-  { id: 'documents', label: 'Документы', href: '/documents', icon: 'document-text-outline' },
-  { id: 'activity', label: 'Архив ремонта', href: '/activity', icon: 'time-outline' },
-];
 
 export const OS_SECTIONS: Record<OsRole, OsSection[]> = {
   customer: CUSTOMER_CORE,

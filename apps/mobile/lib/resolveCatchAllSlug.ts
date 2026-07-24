@@ -11,6 +11,7 @@ import {
 } from '@/constants/osSections';
 import { RENOVA_ROUTES } from '@/lib/routeRegistry';
 import { logLegacyRouteDeprecation } from '@/lib/legacyRoutes';
+import { resolveRegistryRedirect, warrantyRoute } from '@/lib/navigation/navigationPolicy';
 
 export type CatchAllResolution =
   | { kind: 'stack' }
@@ -39,16 +40,15 @@ export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | stri
       return { pathname: `/(${role})/(tabs)/repair`, params: { tab: 'control' } };
     case 'warranty-claim':
     case 'warranty':
-      // W126: обе роли → QC (заказчик закрывает тикеты; документы — closeout)
-      return '/quality-control';
+      return warrantyRoute(role, { source: 'deeplink' });
     default:
       break;
   }
   // Registry redirectTo by id or path suffix
-  const byId = RENOVA_ROUTES.find((r) => r.id === seg && r.redirectTo);
-  if (byId?.redirectTo) return byId.redirectTo;
-  const byPath = RENOVA_ROUTES.find((r) => r.path === `/${seg}` && r.redirectTo);
-  if (byPath?.redirectTo) return byPath.redirectTo;
+  const byId = RENOVA_ROUTES.find((r) => r.id === seg && r.redirectTarget);
+  if (byId?.redirectTarget) return resolveRegistryRedirect(byId.redirectTarget, role);
+  const byPath = RENOVA_ROUTES.find((r) => r.path === `/${seg}` && r.redirectTarget);
+  if (byPath?.redirectTarget) return resolveRegistryRedirect(byPath.redirectTarget, role);
   return null;
 }
 

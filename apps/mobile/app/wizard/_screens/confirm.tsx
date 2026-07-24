@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView, Pressable } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { calcRoomMetrics, generateTemplateLines, calcEstimateSummary } from '@/lib/calc-engine';
 import { resolveRenovationType, roomTypeLabel } from '@/constants/roomTypes';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -16,8 +16,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
 import { buildMarketEstimateInsights } from '@/lib/wizard/buildMarketEstimateInsights';
-import { buildQuickWizardRooms, quickWizardFloorSqM } from '@/lib/wizard/buildQuickWizardRooms';
-import { DEFAULT_QUICK_AREA } from '@/lib/wizard/wizardMode';
+import { buildQuickWizardRooms } from '@/lib/wizard/buildQuickWizardRooms';
 import { WizardHint } from '@/components/renova/wizard/WizardHint';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { tabsHref } from '@/constants/osSections';
@@ -36,10 +35,17 @@ function formatCreateError(e: unknown): string {
     : 'Не удалось создать объект. Проверьте интернет и попробуйте снова.';
 }
 
+function parseQuickArea(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(String(value).trim().replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default function WizardConfirm() {
   const { quickSqm } = useLocalSearchParams<{ quickSqm?: string }>();
   const { user, wizard, setWizard, createProjectFromWizard, loadProject, activeProject } = useRenova();
   const [busy, setBusy] = useState(false);
+  const createInFlightRef = useRef(false);
   const [regionCode, setRegionCode] = useState('moscow');
   const [planTypes, setPlanTypes] = useState<string[]>(['painting']);
   const [complexity, setComplexity] = useState(1);
@@ -53,46 +59,55 @@ export default function WizardConfirm() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [createdName, setCreatedName] = useState('');
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+  const parsedQuickSqm = useMemo(() => parseQuickArea(quickSqm), [quickSqm]);
 
-  // Быстрый wizard: комнаты из param, иначе setWizard в type.tsx может не успеть до первого рендера
   useEffect(() => {
-    if (wizard.wizard_mode !== 'quick' || !quickSqm) return;
-    const sqm = parseFloat(String(quickSqm).replace(',', '.')) || DEFAULT_QUICK_AREA[wizard.property_type];
-    const rooms = buildQuickWizardRooms(wizard.property_type, sqm);
-    if (rooms.length !== wizard.rooms.length || quickWizardFloorSqM(wizard.rooms) !== quickWizardFloorSqM(rooms)) {
+    if (wizard.wizard_mode !== 'quick' || parsedQuickSqm === null) return;
+    const rooms = buildQuickWizardRooms(wizard.property_type, parsedQuickSqm);
+    const currentFloor = wizard.rooms.reduce((sum, room) => sum + room.length_m * room.width_m, 0);
+    const nextFloor = rooms.reduce((sum, room) => sum + room.length_m * room.width_m, 0);
+    if (rooms.length !== wizard.rooms.length || Math.abs(currentFloor - nextFloor) > 0.01) {
       setWizard({ wizard_mode: 'quick', rooms });
     }
-  }, [quickSqm, wizard.property_type, wizard.wizard_mode, wizard.rooms.length, setWizard]);
+  }, [parsedQuickSqm, wizard.property_type, wizard.wizard_mode, wizard.rooms, setWizard]);
 
   const estimateRooms = useMemo(() => {
-    if (wizard.wizard_mode === 'quick' && quickSqm) {
-      const sqm = parseFloat(String(quickSqm).replace(',', '.')) || DEFAULT_QUICK_AREA[wizard.property_type];
-      return buildQuickWizardRooms(wizard.property_type, sqm);
+    if (wizard.wizard_mode === 'quick' && parsedQuickSqm !== null) {
+      return buildQuickWizardRooms(wizard.property_type, parsedQuickSqm);
     }
     return wizard.rooms;
-  }, [wizard.wizard_mode, wizard.property_type, wizard.rooms, quickSqm]);
+  }, [wizard.wizard_mode, wizard.property_type, wizard.rooms, parsedQuickSqm]);
+
+  const roomMetrics = useMemo(
+    () => estimateRooms.map((room) => calcRoomMetrics({
+      lengthM: room.length_m,
+      widthM: room.width_m,
+      heightM: room.height_m,
+      openingsSqM: 2,
+    })),
+    [estimateRooms],
+  );
 
   const summary = useMemo(() => {
     let materials: any[] = [];
     let works: any[] = [];
     estimateRooms.forEach((room, i) => {
       const id = `tmp-${i}`;
-      const m = calcRoomMetrics({ lengthM: room.length_m, widthM: room.width_m, heightM: room.height_m, openingsSqM: 2 });
       const eff = resolveRenovationType(wizard.renovation_type, room.room_type) as any;
-      const lines = generateTemplateLines(eff, id, m);
+      const lines = generateTemplateLines(eff, id, roomMetrics[i]);
       materials = materials.concat(lines.materials);
       works = works.concat(lines.works);
     });
     return calcEstimateSummary(materials, works);
-  }, [estimateRooms, wizard.renovation_type]);
+  }, [estimateRooms, roomMetrics, wizard.renovation_type]);
 
   const plannerMetrics = useMemo(() => ({
-    floor_sq_m: quickWizardFloorSqM(estimateRooms) || 12,
-    wall_sq_m: estimateRooms.length * 24,
-    perimeter_m: 14,
-    outlets_count: estimateRooms.reduce((a, r) => a + (r.outlets_count || 0), 0),
-    plumbing_points: estimateRooms.reduce((a, r) => a + (r.plumbing_points || 0), 0),
-  }), [estimateRooms]);
+    floor_sq_m: roomMetrics.reduce((sum, metrics) => sum + metrics.floorSqM, 0),
+    wall_sq_m: roomMetrics.reduce((sum, metrics) => sum + metrics.wallSqM, 0),
+    perimeter_m: roomMetrics.reduce((sum, metrics) => sum + metrics.perimeterM, 0),
+    outlets_count: estimateRooms.reduce((sum, room) => sum + Math.max(0, room.outlets_count || 0), 0),
+    plumbing_points: estimateRooms.reduce((sum, room) => sum + Math.max(0, room.plumbing_points || 0), 0),
+  }), [estimateRooms, roomMetrics]);
 
   const marketInsights = useMemo(
     () => buildMarketEstimateInsights(summary.grandTotal, marketEstimate),
@@ -100,27 +115,37 @@ export default function WizardConfirm() {
   );
 
   async function onCreate() {
+    if (createInFlightRef.current) return;
+    if (createdProjectId) {
+      setPostCreateOpen(true);
+      return;
+    }
     if (!wizard.name.trim()) {
       Alert.alert('Укажите название проекта');
       return;
     }
+    if (!estimateRooms.length) {
+      Alert.alert('Добавьте хотя бы одну комнату');
+      return;
+    }
+
     const budgetNum = parseInt(budgetInput.replace(/\s/g, ''), 10);
+    createInFlightRef.current = true;
     setBusy(true);
+
     try {
-      const draftExtra = wizard.wizard_mode === 'quick' && quickSqm
+      const draftExtra = wizard.wizard_mode === 'quick' && parsedQuickSqm !== null
         ? { rooms: estimateRooms }
         : undefined;
       const result = await createProjectFromWizard({
         ...draftExtra,
         customer_budget: budgetNum > 0 ? budgetNum : undefined,
       });
+
+      const projectName = wizard.name.trim();
       setCreatedProjectId(result.id);
-      if (applyMarketPlan && marketEstimate && user) {
-        await api.patchProject(user.id, result.id, { budget_planned: Math.round(marketEstimate.grand_total) });
-        await syncProjectSideEffects({ user, project: { id: result.id } as any });
-        await loadProject(result.id);
-      }
-      setCreatedName(wizard.name.trim());
+      setCreatedName(projectName);
+
       if (result.demoKeptPrimary && __DEV__) {
         const { createdName: cn, activeName } = result.demoKeptPrimary;
         Alert.alert(
@@ -128,6 +153,21 @@ export default function WizardConfirm() {
           `«${cn}» добавлен в список. На демо открыт «${activeName}» — переключите объект в шапке.`,
         );
       }
+
+      if (applyMarketPlan && marketEstimate && user) {
+        try {
+          await api.patchProject(user.id, result.id, { budget_planned: Math.round(marketEstimate.grand_total) });
+          await syncProjectSideEffects({ user, project: { id: result.id } as any });
+          await loadProject(result.id);
+        } catch (syncError) {
+          reportCatch('app.wizard._screens.confirm.market-plan-sync')(syncError);
+          Alert.alert(
+            'Проект создан',
+            'Проект сохранён, но рыночную оценку не удалось записать в план бюджета. Её можно добавить позже в разделе «Деньги».',
+          );
+        }
+      }
+
       setPostCreateOpen(true);
     } catch (e) {
       const msg = formatCreateError(e);
@@ -136,6 +176,7 @@ export default function WizardConfirm() {
         { text: 'OK', style: 'cancel' },
       ]);
     } finally {
+      createInFlightRef.current = false;
       setBusy(false);
     }
   }
@@ -149,10 +190,10 @@ export default function WizardConfirm() {
         <Text style={styles.total}>{formatRub(summary.grandTotal)}</Text>
         <Text style={styles.subLabel}>План из сметы (шаблон)</Text>
         <WizardHint
-        brief="Проверьте сумму и сроки — потом пригласите исполнителя."
-        detailed="Смета по шаблону — черновик. Уточните комнаты позже для точности. Рыночный диапазон ниже — ориентир, не договор."
-      />
-      <RenovationPlanBadge renovationType={wizard.renovation_type} propertyType={wizard.property_type} />
+          brief="Проверьте сумму и сроки — потом пригласите исполнителя."
+          detailed="Смета по шаблону — черновик. Уточните комнаты позже для точности. Рыночный диапазон ниже — ориентир, не договор."
+        />
+        <RenovationPlanBadge renovationType={wizard.renovation_type} propertyType={wizard.property_type} />
         <Text style={styles.sub}>
           {wizard.property_type === 'house' ? 'Дом' : 'Квартира'} · {estimateRooms.length} комн. · работы {formatRub(summary.worksTotal)} · материалы {formatRub(summary.materialsTotal)}
         </Text>
@@ -188,7 +229,7 @@ export default function WizardConfirm() {
         {marketInsights ? <MarketEstimateInsightCard insights={marketInsights} /> : null}
 
         {marketEstimate ? (
-          <Pressable style={styles.toggleRow} onPress={() => setApplyMarketPlan((v) => !v)}>
+          <Pressable style={styles.toggleRow} onPress={() => setApplyMarketPlan((v) => !v)} disabled={busy || Boolean(createdProjectId)}>
             <Text style={styles.toggleMark}>{applyMarketPlan ? '☑' : '☐'}</Text>
             <Text style={styles.toggleText}>
               Записать рыночную оценку {formatRub(marketEstimate.grand_total)} в план сметы (шаблон {formatRub(summary.grandTotal)})
@@ -197,7 +238,12 @@ export default function WizardConfirm() {
         ) : null}
 
         <Text style={styles.note}>После создания: контроль бюджета на главной и в «Деньги». Комнаты можно уточнить в «Квартира».</Text>
-        <PrimaryButton title={busy ? 'Создание…' : 'Создать проект'} onPress={onCreate} disabled={busy} loading={busy} />
+        <PrimaryButton
+          title={createdProjectId ? 'Продолжить' : busy ? 'Создание…' : 'Создать проект'}
+          onPress={onCreate}
+          disabled={busy || !estimateRooms.length}
+          loading={busy}
+        />
       </ScrollView>
 
       <PostCreateSheet

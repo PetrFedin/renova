@@ -8,18 +8,19 @@ function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error(msg);
 }
 
-assert(resolveHeaderMoreBadge(4, 0)?.kind === 'tasks', 'tasks when no chat');
-assert(resolveHeaderMoreBadge(4, 0)?.count === 4, 'task count');
-assert(resolveHeaderMoreBadge(4, 3)?.kind === 'chat', 'chat wins over tasks');
-assert(resolveHeaderMoreBadge(4, 3)?.count === 3, 'chat count on header');
-assert(resolveHeaderMoreBadge(4, 3)?.tone === 'danger', 'chat tone');
+assert(resolveHeaderMoreBadge(4, 0)[0]?.kind === 'tasks', 'tasks when no chat');
+assert(resolveHeaderMoreBadge(4, 0)[0]?.count === 4, 'task count');
+assert(resolveHeaderMoreBadge(4, 3)[0]?.kind === 'chat', 'chat indicator first');
+assert(resolveHeaderMoreBadge(4, 3)[0]?.count === 3, 'chat count on header');
+assert(resolveHeaderMoreBadge(4, 3)[0]?.tone === 'danger', 'chat tone');
+assert(resolveHeaderMoreBadge(4, 3)[1]?.kind === 'tasks', 'tasks remain visible');
 assert(dockChatBadgeCount(3) === 3, 'dock same as header chat');
 assert(dockChatBadgeCount(0) === 0, 'dock empty');
-assert(resolveHeaderMoreBadge(0, 0) === null, 'empty');
+assert(resolveHeaderMoreBadge(0, 0).length === 0, 'empty');
 
 for (const n of [1, 5, 12]) {
   const h = resolveHeaderMoreBadge(99, n);
-  assert(h!.count === dockChatBadgeCount(n), `sync header/dock ${n}`);
+  assert(h[0]!.count === dockChatBadgeCount(n), `sync header/dock ${n}`);
   const row = resolveInboxMenuBadges(99, n);
   assert(row.chat === dockChatBadgeCount(n), `sync inbox-row/dock ${n}`);
   assert(row.tasks === 99, `tasks preserved ${n}`);

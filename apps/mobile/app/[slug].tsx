@@ -67,14 +67,16 @@ export default function RootSlugCatchAll() {
     );
   }
 
+  const missingSlug = resolved.kind === 'not_found' ? resolved.slug : seg || '';
+
   return (
     <>
       <Stack.Screen options={{ title: 'Не найдено', headerShown: true, headerBackVisible: false }} />
       <View style={styles.container}>
         <Text style={styles.title}>Такого экрана нет</Text>
         <Text style={styles.sub}>
-          {resolved.slug
-            ? `Маршрут «/${resolved.slug}» устарел или не существует. Откройте главную или документы.`
+          {missingSlug
+            ? `Маршрут «/${missingSlug}» устарел или не существует. Откройте главную или документы.`
             : 'Проверьте ссылку или вернитесь на главную'}
         </Text>
         <View style={styles.actions}>

@@ -1,7 +1,8 @@
 /** Нижняя панель — 5 кнопок, dynamic preset или настройки пользователя */
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router, usePathname, useFocusEffect } from 'expo-router';
+import type { PressableStateCallbackType } from 'react-native';
+import { router, usePathname, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { ChatBadge } from '@/components/renova/chat/ChatBadge';
@@ -10,7 +11,6 @@ import { getDockBar, subscribeDockBar } from '@/lib/dockBarPrefs';
 import {
   customerProfileTabHref,
   parseOsHref,
-  resolveSectionId,
   tabsRoute,
   type OsRole,
 } from '@/constants/osSections';
@@ -23,12 +23,11 @@ import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
 import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/resolveDynamicDock';
 import { reportCatch } from '@/lib/reportError';
-
-const REPAIR_SEGMENTS = new Set(['repair', 'works', 'materials', 'control', 'stages']);
-const OBJECT_SEGMENTS = new Set(['object', 'rooms', 'estimate', 'plan']);
+import { activeDockItemId, getBudgetHubLabel } from '@/lib/navigation/navigationPolicy';
 
 export function OsDockBar({ role }: { role: OsRole }) {
   const pathname = usePathname();
+  const params = useLocalSearchParams<Record<string, string | string[]>>();
   const bottomPad = useBottomInset();
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
@@ -37,8 +36,6 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
-  const section = resolveSectionId(pathname);
-  const seg = pathname.split('/').filter(Boolean).pop() || 'index';
 
   const dynamicItems = useMemo(() => {
     if (!activeProject) return null;
@@ -75,28 +72,16 @@ export function OsDockBar({ role }: { role: OsRole }) {
     if (!dynamicItems) reloadPrefs();
   }), [dynamicItems, reloadPrefs]);
 
-  const isActive = (id: DockItemId) => {
-    const item = DOCK_BY_ID[id];
-    if (!item) return false;
-    if (item.routeName === 'index') return seg === 'index' || seg === '(tabs)' || section === 'home';
-    if (id === 'estimate') return OBJECT_SEGMENTS.has(seg) || section === 'object';
-    if (id === 'object') return OBJECT_SEGMENTS.has(seg) || section === 'object';
-    if (id === 'contractor' || id === 'more') return seg === 'profile';
-    if (id === 'calendar') return seg === 'calendar';
-    if (id === 'repair') return seg === 'repair' || REPAIR_SEGMENTS.has(seg);
-    if (id === 'budget') return seg === 'budget' || seg === 'finance' || seg === 'money' || section === 'budget';
-    if (id === 'chat') return seg === 'chat';
-    return seg === item.routeName || item.id === section;
-  };
+  const activeId = activeDockItemId(items, { pathname, params });
 
   const go = (id: DockItemId) => {
     const item = DOCK_BY_ID[id];
     if (!item) return;
     if (id === 'contractor') {
-      router.navigate(parseOsHref(customerProfileTabHref(role, 'contractor')) as any);
+      router.navigate(parseOsHref(customerProfileTabHref(role, 'contractor')) as never);
       return;
     }
-    router.navigate(tabsRoute(role, item.routeName, item.hubTab) as any);
+    router.navigate(tabsRoute(role, item.routeName, item.hubTab) as never);
   };
 
   return (
@@ -104,13 +89,14 @@ export function OsDockBar({ role }: { role: OsRole }) {
       {items.map((id) => {
         const item = DOCK_BY_ID[id];
         if (!item) return null;
-        const active = isActive(id);
+        const active = activeId === id;
         const color = active ? RenovaTheme.colors.tabActive : RenovaTheme.colors.tabInactive;
-        const label = dockItemLabel(id, role, item.label);
+        const canonicalLabel = id === 'budget' ? getBudgetHubLabel(role) : item.label;
+        const label = dockItemLabel(id, role, canonicalLabel);
         return (
           <Pressable
             key={id}
-            style={({ pressed }) => [s.tab, pressed && s.pressed]}
+            style={({ pressed }: PressableStateCallbackType) => [s.tab, pressed && s.pressed]}
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={

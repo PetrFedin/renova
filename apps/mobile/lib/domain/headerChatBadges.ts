@@ -13,12 +13,25 @@ export type HeaderMoreBadge = {
 /**
  * Приоритет: непрочитанные сообщения (синхрон с dock) → иначе задачи «Входящие».
  */
-export function resolveHeaderMoreBadge(taskBadge: number, chatUnread: number): HeaderMoreBadge | null {
+export function buildAttentionBadgeState(input: { chatUnread: number; taskUnread: number; todayTasks?: number }): {
+  chatUnread: number;
+  inboxTaskUnread: number;
+  calendarTodayTasks: number;
+} {
+  return {
+    chatUnread: Math.max(0, input.chatUnread || 0),
+    inboxTaskUnread: Math.max(0, input.taskUnread || 0),
+    calendarTodayTasks: Math.max(0, input.todayTasks || 0),
+  };
+}
+
+export function resolveHeaderMoreBadge(taskBadge: number, chatUnread: number): HeaderMoreBadge[] {
   const chat = Math.max(0, chatUnread || 0);
   const tasks = Math.max(0, taskBadge || 0);
-  if (chat > 0) return { count: chat, tone: 'danger', kind: 'chat' };
-  if (tasks > 0) return { count: tasks, tone: 'warning', kind: 'tasks' };
-  return null;
+  return [
+    ...(chat > 0 ? [{ count: chat, tone: 'danger' as const, kind: 'chat' as const }] : []),
+    ...(tasks > 0 ? [{ count: tasks, tone: 'warning' as const, kind: 'tasks' as const }] : []),
+  ];
 }
 
 /** Число непрочитанных на dock «Сообщения» и красном бейдже «Входящие»/«Ещё». */
