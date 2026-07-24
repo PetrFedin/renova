@@ -55,24 +55,22 @@ export function resolvePushLink(
   }
 
   if (canonicalPath === '/finance-center') {
-    // W138: legacy «Финансовый центр» → Бюджет/Оплаты + sheet (не прямой confirm)
     const target = budgetTabRoute(role, 'payments', { openPayment: '1' });
     return { pathname: target.pathname, params: { ...incoming, ...(target.params || {}), returnTo: rt } };
   }
 
   if (canonicalPath === '/control' || canonicalPath === '/work-acceptance') {
-    // W58 / W139: legacy control + отдельный центр → hub Ремонт → Приёмка
     const target = repairTabRoute(role, 'control');
     return { pathname: target.pathname, params: { ...incoming, ...(target.params || {}), returnTo: rt } };
   }
 
   if (canonicalPath === '/work-schedule') {
-    const target = calendarTabRoute(role);
+    const target = calendarTabRoute(role, incoming);
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
   if (canonicalPath === '/notifications') {
-    return { pathname: '/inbox', params: { returnTo: rt } };
+    return { pathname: '/inbox', params: { ...incoming, returnTo: rt } };
   }
 
   if (canonicalPath === '/warranty' || canonicalPath === '/warranty-claim') {
@@ -80,20 +78,16 @@ export function resolvePushLink(
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
-  // W101: /profile → таб профиля роли (нет корневого app/profile)
   if (canonicalPath === '/profile') {
     const tab = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
-    const focus = incoming.focus;
-    return { pathname: tab, params: { ...(focus ? { focus } : {}), returnTo: rt } };
+    return { pathname: tab, params: { ...incoming, returnTo: rt } };
   }
 
-  // W101: /design → объект/план (design packages)
   if (canonicalPath === '/design') {
-    const target = objectTabRoute(role, 'plan');
+    const target = objectTabRoute(role, 'plan', incoming);
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
-  // W101/W121: QC заказчика → hub Приёмка; с issueId — stack QC (Fieldwire focus)
   if (canonicalPath === '/quality-control' && role === 'customer') {
     const issueId = incoming.issueId;
     if (incoming.claimId) {
@@ -139,7 +133,6 @@ export function resolvePushLink(
   return { pathname: canonicalPath, params: { ...incoming, returnTo: rt } };
 }
 
-/** change_order → объект/смета, слой «Доп. работы» (согласовано с approvalLinks) */
 export function changeOrderEstimateRoute(role: OsRole, returnTo?: string): PushTarget {
   const route = objectTabRoute(role, 'estimate');
   return {
@@ -148,66 +141,35 @@ export function changeOrderEstimateRoute(role: OsRole, returnTo?: string): PushT
   };
 }
 
-/** Fallback router when push payload has no link_path */
 export function resolveNotificationLink(notificationType: string, role: OsRole = 'customer'): ReturnType<typeof tabsRoute> | null {
   switch (notificationType) {
-    case 'payment_pending':
-      return budgetTabRoute(role, 'payments', { openPayment: '1' });
-    case 'payment_confirmed':
-      return budgetTabRoute(role, 'payments');
+    case 'payment_pending': return budgetTabRoute(role, 'payments', { openPayment: '1' });
+    case 'payment_confirmed': return budgetTabRoute(role, 'payments');
     case 'stage_review':
     case 'stage_started':
-    case 'acceptance':
-      return {
-        pathname: role === 'contractor' ? '/(contractor)/(tabs)/repair' : '/(customer)/(tabs)/repair',
-        params: { tab: 'control' },
-      };
-    case 'change_order':
-      return changeOrderEstimateRoute(role);
-    case 'materials':
-      return repairTabRoute(role, 'materials');
-    case 'chat_message':
-      return tabsRoute(role, 'chat');
-    case 'budget_alert':
-      return budgetTabRoute(role, 'summary');
+    case 'acceptance': return repairTabRoute(role, 'control');
+    case 'change_order': return changeOrderEstimateRoute(role);
+    case 'materials': return repairTabRoute(role, 'materials');
+    case 'chat_message': return tabsRoute(role, 'chat');
+    case 'budget_alert': return budgetTabRoute(role, 'summary');
     case 'schedule_review':
     case 'schedule_confirmed':
-    case 'schedule_rejected':
-      return {
-        pathname: role === 'contractor' ? '/(contractor)/(tabs)/calendar' : '/(customer)/(tabs)/calendar',
-        params: {},
-      };
-    case 'document':
-      return { pathname: '/documents', params: {} };
-    case 'issue':
-      return role === 'customer'
-        ? { pathname: '/(customer)/(tabs)/repair', params: { tab: 'control' } }
-        : { pathname: '/quality-control', params: {} };
-    case 'approval':
-      return { pathname: '/approvals', params: {} };
+    case 'schedule_rejected': return calendarTabRoute(role);
+    case 'document': return { pathname: '/documents', params: {} };
+    case 'issue': return role === 'customer' ? repairTabRoute(role, 'control') : { pathname: '/quality-control', params: {} };
+    case 'approval': return { pathname: '/approvals', params: {} };
     case 'warranty':
-    case 'warranty_claim':
-      return warrantyRoute(role, { source: 'push' });
-    case 'deadline':
-      return tabsRoute(role, 'calendar');
-    case 'waste_reminder':
-      // W124: остатки/материалы — не общий календарь
-      return repairTabRoute(role, 'materials');
+    case 'warranty_claim': return warrantyRoute(role, { source: 'push' });
+    case 'deadline': return tabsRoute(role, 'calendar');
+    case 'waste_reminder': return repairTabRoute(role, 'materials');
     case 'room_updated':
-    case 'room_created':
-      return objectTabRoute(role, 'rooms');
-    case 'reaction':
-      return tabsRoute(role, 'chat');
-    case 'stage_start':
-      return repairTabRoute(role, 'works');
-    case 'budget':
-      return budgetTabRoute(role, 'summary');
-    case 'material':
-      return repairTabRoute(role, 'materials');
+    case 'room_created': return objectTabRoute(role, 'rooms');
+    case 'reaction': return tabsRoute(role, 'chat');
+    case 'stage_start': return repairTabRoute(role, 'works');
+    case 'budget': return budgetTabRoute(role, 'summary');
+    case 'material': return repairTabRoute(role, 'materials');
     case 'estimate_lock':
-    case 'estimate':
-      return objectTabRoute(role, 'estimate');
-    default:
-      return { pathname: '/inbox', params: {} };
+    case 'estimate': return objectTabRoute(role, 'estimate');
+    default: return { pathname: '/inbox', params: {} };
   }
 }
