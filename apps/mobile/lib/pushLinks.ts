@@ -106,27 +106,27 @@ export function resolvePushLink(
 
   if (canonicalPath.startsWith('/stage/')) {
     const id = canonicalPath.replace('/stage/', '').split('/')[0];
-    return { pathname: '/stage/[id]', params: { id, returnTo: rt } };
+    return { pathname: '/stage/[id]', params: { ...incoming, id, returnTo: rt } };
   }
   if (canonicalPath.startsWith('/chat/') && !canonicalPath.includes('(tabs)')) {
     const threadId = canonicalPath.replace('/chat/', '').split('/')[0];
-    return { pathname: '/chat/[threadId]', params: { threadId, returnTo: rt } };
+    return { pathname: '/chat/[threadId]', params: { ...incoming, threadId, returnTo: rt } };
   }
   if (canonicalPath.startsWith('/work-order/')) {
     const wid = canonicalPath.replace('/work-order/', '').split('/')[0];
-    return { pathname: '/work-order/[id]', params: { id: wid, returnTo: rt } };
+    return { pathname: '/work-order/[id]', params: { ...incoming, id: wid, returnTo: rt } };
   }
   if (canonicalPath.startsWith('/room/')) {
     const id = canonicalPath.replace('/room/', '').split('/')[0];
-    return { pathname: '/room/[id]', params: { id, returnTo: rt } };
+    return { pathname: '/room/[id]', params: { ...incoming, id, returnTo: rt } };
   }
   if (canonicalPath.startsWith('/material/')) {
     const id = canonicalPath.replace('/material/', '').split('/')[0];
-    return { pathname: '/material/[id]', params: { id, returnTo: rt } };
+    return { pathname: '/material/[id]', params: { ...incoming, id, returnTo: rt } };
   }
   if (canonicalPath.startsWith('/purchase/')) {
     const id = canonicalPath.replace('/purchase/', '').split('/')[0];
-    return { pathname: '/purchase/[id]', params: { id, returnTo: rt } };
+    return { pathname: '/purchase/[id]', params: { ...incoming, id, returnTo: rt } };
   }
   if (STACK_PATHS.has(canonicalPath)) {
     return { pathname: canonicalPath, params: { ...incoming, returnTo: rt } };
