@@ -1,6 +1,10 @@
 import type { RenovationType, RoomMetrics, WorkLine, MaterialLine } from './types';
 import { quantityWithWaste } from './estimate';
 
+const PAINT_COATS = 2;
+const PAINT_COVERAGE_SQ_M_PER_LITER = 8;
+const KITCHEN_BACKSPLASH_WALL_SHARE = 0.4;
+
 /** Шаблоны работ MVP — генерируют строки сметы из метрик комнаты */
 export function generateTemplateLines(
   type: RenovationType,
@@ -22,7 +26,12 @@ export function generateTemplateLines(
 }
 
 function cosmeticTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; materials: MaterialLine[] } {
-  const paintQty = quantityWithWaste(m.wallSqM, 'paint');
+  const paintCoverageSqM = m.wallSqM * PAINT_COATS;
+  const paintLiters = quantityWithWaste(
+    paintCoverageSqM / PAINT_COVERAGE_SQ_M_PER_LITER,
+    'paint',
+  );
+
   return {
     works: [
       { id: `${roomId}-w1`, name: 'Подготовка стен', unit: 'm2', quantity: m.wallSqM, ratePerUnit: 180, roomId },
@@ -30,7 +39,7 @@ function cosmeticTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; 
       { id: `${roomId}-w3`, name: 'Укладка ламината', unit: 'm2', quantity: m.floorSqM, ratePerUnit: 450, roomId },
     ],
     materials: [
-      { id: `${roomId}-m1`, name: 'Краска интерьерная', unit: 'l', quantity: round2(paintQty / 8), unitPrice: 890, roomId },
+      { id: `${roomId}-m1`, name: 'Краска интерьерная', unit: 'l', quantity: round2(paintLiters), unitPrice: 890, roomId },
       { id: `${roomId}-m2`, name: 'Ламинат', unit: 'm2', quantity: quantityWithWaste(m.floorSqM, 'default'), unitPrice: 1200, roomId },
     ],
   };
@@ -51,15 +60,17 @@ function bathroomTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; 
 }
 
 function kitchenTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; materials: MaterialLine[] } {
-  const tileQty = quantityWithWaste(m.wallSqM * 0.4 + m.floorSqM, 'tile');
+  const backsplashSqM = round2(m.wallSqM * KITCHEN_BACKSPLASH_WALL_SHARE);
+  const backsplashTileQty = quantityWithWaste(backsplashSqM, 'tile');
+
   return {
     works: [
-      { id: `${roomId}-w1`, name: 'Фартук плитка', unit: 'm2', quantity: round2(m.wallSqM * 0.4), ratePerUnit: 1200, roomId },
+      { id: `${roomId}-w1`, name: 'Фартук плитка', unit: 'm2', quantity: backsplashSqM, ratePerUnit: 1200, roomId },
       { id: `${roomId}-w2`, name: 'Укладка напольного покрытия', unit: 'm2', quantity: m.floorSqM, ratePerUnit: 450, roomId },
       { id: `${roomId}-w3`, name: 'Электромонтаж кухни', unit: 'точка', quantity: 8, ratePerUnit: 850, roomId },
     ],
     materials: [
-      { id: `${roomId}-m1`, name: 'Плитка фартук', unit: 'm2', quantity: tileQty, unitPrice: 950, roomId },
+      { id: `${roomId}-m1`, name: 'Плитка фартук', unit: 'm2', quantity: backsplashTileQty, unitPrice: 950, roomId },
       { id: `${roomId}-m2`, name: 'Ламинат/кварц-винил', unit: 'm2', quantity: quantityWithWaste(m.floorSqM, 'default'), unitPrice: 1400, roomId },
     ],
   };
@@ -72,7 +83,6 @@ function capitalTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; m
   c.materials.push({ id: `${roomId}-m3`, name: 'Штукатурная смесь', unit: 'kg', quantity: round2(m.wallSqM * 8), unitPrice: 18, roomId });
   return c;
 }
-
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
