@@ -6,6 +6,30 @@ import { DOCK_DEFAULT } from '../constants/dockBar';
 
 assertRouteRegistryInvariants();
 
+const ids = new Set<string>();
+const aliases = new Map<string, string>();
+const redirectableIds = new Set(RENOVA_ROUTES.map((route) => route.id));
+for (const route of RENOVA_ROUTES) {
+  if (ids.has(route.id)) throw new Error(`duplicate route id: ${route.id}`);
+  ids.add(route.id);
+
+  for (const alias of route.legacyAliases || []) {
+    const owner = aliases.get(alias);
+    if (owner && owner !== route.id) throw new Error(`legacy alias ${alias} is owned by both ${owner} and ${route.id}`);
+    if (RENOVA_ROUTES.some((candidate) => candidate.path === alias && candidate.id !== route.id)) {
+      throw new Error(`legacy alias ${alias} conflicts with canonical route path`);
+    }
+    aliases.set(alias, route.id);
+  }
+
+  if (route.redirectTarget && !redirectableIds.has(route.redirectTarget.routeId)) {
+    throw new Error(`route ${route.id} redirects to missing target ${route.redirectTarget.routeId}`);
+  }
+  if (route.redirectTarget?.routeId === route.id) {
+    throw new Error(`route ${route.id} redirects to itself`);
+  }
+}
+
 const moreCustomer = menuRoutes('customer', 'more');
 if (moreCustomer.some((r) => r.id === 'finance-center' || r.id === 'work-schedule' || r.id === 'notifications')) {
   throw new Error('redirect-only routes must not appear in more menu');
