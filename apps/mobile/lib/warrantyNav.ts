@@ -12,6 +12,23 @@ export type WarrantyCreateInfo = {
   sla_days?: number;
 };
 
+export type WarrantyNavigationParams = {
+  issueId?: string;
+  claimId?: string;
+  documentId?: string;
+  source: 'document';
+};
+
+/** Канонический контекст навигации без смешения идентификаторов сущностей. */
+export function warrantyNavigationParams(info: WarrantyCreateInfo): WarrantyNavigationParams {
+  return {
+    ...(info.issue_id ? { issueId: info.issue_id } : {}),
+    ...(info.claim_id ? { claimId: info.claim_id } : {}),
+    ...(info.document_id ? { documentId: info.document_id } : {}),
+    source: 'document',
+  };
+}
+
 /** Сообщение после создания тикета */
 export function warrantyCreatedMessage(info: WarrantyCreateInfo, openCount?: number): string {
   const sla = info.sla_days || 14;
@@ -32,12 +49,7 @@ export function alertWarrantyCreated(
     {
       text: role === 'contractor' ? 'Открыть контроль' : 'Открыть обращение',
       onPress: () => pushOsNav(
-        warrantyRoute(role, {
-          ...(info.issue_id ? { issueId: info.issue_id } : {}),
-          ...(info.claim_id ? { claimId: info.claim_id } : {}),
-          ...(info.document_id ? { documentId: info.document_id } : {}),
-          source: 'document',
-        }),
+        warrantyRoute(role, warrantyNavigationParams(info)),
         opts?.returnTo,
         role,
       ),
