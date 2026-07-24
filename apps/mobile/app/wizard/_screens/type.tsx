@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Text, TextInput, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,14 @@ import { DEFAULT_QUICK_AREA, WIZARD_MODE_LABEL, type WizardMode } from '@/lib/wi
 import { buildQuickWizardRooms, quickWizardFloorSqM } from '@/lib/wizard/buildQuickWizardRooms';
 import { WizardHint } from '@/components/renova/wizard/WizardHint';
 
+function parsePositiveArea(value: string): number | null {
+  const normalized = value.trim().replace(',', '.');
+  if (!normalized) return null;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default function WizardType() {
   const { wizard, setWizard } = useRenova();
   const insets = useSafeAreaInsets();
@@ -18,7 +26,17 @@ export default function WizardType() {
     String(DEFAULT_QUICK_AREA[wizard.property_type] || DEFAULT_QUICK_AREA.apartment),
   );
 
-  const canNext = Boolean(wizard.name?.trim());
+  const parsedQuickArea = useMemo(() => parsePositiveArea(quickArea), [quickArea]);
+  const hasName = Boolean(wizard.name?.trim());
+  const hasValidQuickArea = mode !== 'quick' || parsedQuickArea !== null;
+  const canNext = hasName && hasValidQuickArea;
+
+  const quickRooms = useMemo(
+    () => mode === 'quick' && parsedQuickArea !== null
+      ? buildQuickWizardRooms(wizard.property_type, parsedQuickArea)
+      : null,
+    [mode, parsedQuickArea, wizard.property_type],
+  );
 
   const goDetailedRooms = () => {
     const name = wizard.name?.trim();
@@ -36,10 +54,13 @@ export default function WizardType() {
       Alert.alert('Название объекта', 'Укажите название — например «Квартира на Ленина»');
       return;
     }
-    const sqm = parseFloat(quickArea.replace(',', '.')) || DEFAULT_QUICK_AREA[wizard.property_type];
-    const rooms = buildQuickWizardRooms(wizard.property_type, sqm);
-    setWizard({ wizard_mode: 'quick', rooms });
-    router.navigate({ pathname: '/wizard/[step]', params: { step: 'confirm', quickSqm: String(sqm) } });
+    if (parsedQuickArea === null || !quickRooms) {
+      Alert.alert('Площадь объекта', 'Укажите площадь больше 0 м²');
+      return;
+    }
+
+    setWizard({ wizard_mode: 'quick', rooms: quickRooms });
+    router.navigate({ pathname: '/wizard/[step]', params: { step: 'confirm', quickSqm: String(parsedQuickArea) } });
   };
 
   const onPrimary = () => {
@@ -47,9 +68,7 @@ export default function WizardType() {
     else goDetailedRooms();
   };
 
-  const previewSqm = mode === 'quick'
-    ? quickWizardFloorSqM(buildQuickWizardRooms(wizard.property_type, parseFloat(quickArea.replace(',', '.')) || DEFAULT_QUICK_AREA[wizard.property_type]))
-    : null;
+  const previewSqm = quickRooms ? quickWizardFloorSqM(quickRooms) : null;
 
   return (
     <KeyboardAvoidingView
@@ -97,13 +116,16 @@ export default function WizardType() {
             <View style={styles.quickBox}>
               <Text style={styles.quickLabel}>Общая площадь, м²</Text>
               <TextInput
-                style={styles.quickInput}
+                style={[styles.quickInput, parsedQuickArea === null && styles.quickInputError]}
                 keyboardType="decimal-pad"
                 value={quickArea}
                 onChangeText={setQuickArea}
                 placeholder={String(DEFAULT_QUICK_AREA.apartment)}
               />
-              {previewSqm ? (
+              {parsedQuickArea === null ? (
+                <Text style={styles.fieldError}>Введите площадь больше 0 м².</Text>
+              ) : null}
+              {previewSqm !== null ? (
                 <Text style={styles.quickPreview}>Шаблон: {Math.round(previewSqm)} м² · {wizard.property_type === 'house' ? 7 : 5} комнат</Text>
               ) : null}
               <Pressable onPress={() => { setMode('detailed'); setWizard({ wizard_mode: 'detailed' }); goDetailedRooms(); }}>
@@ -113,8 +135,10 @@ export default function WizardType() {
           ) : null}
         </ScrollView>
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          {!canNext ? (
+          {!hasName ? (
             <Text style={styles.validation}>Укажите название объекта — без него нельзя перейти дальше.</Text>
+          ) : mode === 'quick' && !hasValidQuickArea ? (
+            <Text style={styles.validation}>Укажите корректную площадь объекта.</Text>
           ) : null}
           <PrimaryButton
             title={mode === 'quick' ? 'К смете' : 'Далее: комнаты'}
@@ -156,6 +180,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: RenovaTheme.colors.surface,
   },
+  quickInputError: { borderColor: RenovaTheme.colors.warning },
+  fieldError: { fontSize: 12, color: RenovaTheme.colors.warning },
   quickPreview: { fontSize: 12, color: RenovaTheme.colors.textMuted },
   link: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.accent, marginTop: 4 },
   footer: {
