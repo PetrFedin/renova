@@ -4,25 +4,38 @@ import { quantityWithWaste } from './estimate';
 const PAINT_COATS = 2;
 const PAINT_COVERAGE_SQ_M_PER_LITER = 8;
 const KITCHEN_BACKSPLASH_WALL_SHARE = 0.4;
+const ELECTRICAL_POINT_RATE = 850;
+const PLUMBING_POINT_RATE = 2500;
+
+export interface EngineeringPoints {
+  outletsCount?: number;
+  plumbingPoints?: number;
+}
 
 /** Шаблоны работ MVP — генерируют строки сметы из метрик комнаты */
 export function generateTemplateLines(
   type: RenovationType,
   roomId: string,
   metrics: RoomMetrics,
+  engineering: EngineeringPoints = {},
 ): { works: WorkLine[]; materials: MaterialLine[] } {
-  switch (type) {
-    case 'cosmetic':
-      return cosmeticTemplate(roomId, metrics);
-    case 'bathroom':
-      return bathroomTemplate(roomId, metrics);
-    case 'kitchen':
-      return kitchenTemplate(roomId, metrics);
-    case 'capital':
-      return capitalTemplate(roomId, metrics);
-    default:
-      return cosmeticTemplate(roomId, metrics);
-  }
+  const base = (() => {
+    switch (type) {
+      case 'cosmetic':
+        return cosmeticTemplate(roomId, metrics);
+      case 'bathroom':
+        return bathroomTemplate(roomId, metrics);
+      case 'kitchen':
+        return kitchenTemplate(roomId, metrics);
+      case 'capital':
+        return capitalTemplate(roomId, metrics);
+      default:
+        return cosmeticTemplate(roomId, metrics);
+    }
+  })();
+
+  base.works.push(...engineeringWorkLines(roomId, engineering));
+  return base;
 }
 
 function cosmeticTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; materials: MaterialLine[] } {
@@ -67,7 +80,6 @@ function kitchenTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; m
     works: [
       { id: `${roomId}-w1`, name: 'Фартук плитка', unit: 'm2', quantity: backsplashSqM, ratePerUnit: 1200, roomId },
       { id: `${roomId}-w2`, name: 'Укладка напольного покрытия', unit: 'm2', quantity: m.floorSqM, ratePerUnit: 450, roomId },
-      { id: `${roomId}-w3`, name: 'Электромонтаж кухни', unit: 'точка', quantity: 8, ratePerUnit: 850, roomId },
     ],
     materials: [
       { id: `${roomId}-m1`, name: 'Плитка фартук', unit: 'm2', quantity: backsplashTileQty, unitPrice: 950, roomId },
@@ -84,6 +96,44 @@ function capitalTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; m
   return c;
 }
 
+function engineeringWorkLines(roomId: string, engineering: EngineeringPoints): WorkLine[] {
+  const outletsCount = normalizePointCount(engineering.outletsCount);
+  const plumbingPoints = normalizePointCount(engineering.plumbingPoints);
+  const lines: WorkLine[] = [];
+
+  if (outletsCount > 0) {
+    lines.push({
+      id: `${roomId}-w-electrical`,
+      name: 'Монтаж электрических точек',
+      unit: 'point',
+      quantity: outletsCount,
+      ratePerUnit: ELECTRICAL_POINT_RATE,
+      roomId,
+    });
+  }
+
+  if (plumbingPoints > 0) {
+    lines.push({
+      id: `${roomId}-w-plumbing`,
+      name: 'Монтаж сантехнических точек',
+      unit: 'point',
+      quantity: plumbingPoints,
+      ratePerUnit: PLUMBING_POINT_RATE,
+      roomId,
+    });
+  }
+
+  return lines;
+}
+
+function normalizePointCount(value: number | undefined): number {
+  if (value === undefined) return 0;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new RangeError('Engineering point count must be a finite non-negative number');
+  }
+  return Math.floor(value);
+}
+
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
