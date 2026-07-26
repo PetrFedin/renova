@@ -97,8 +97,8 @@ function capitalTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; m
 }
 
 function engineeringWorkLines(roomId: string, engineering: EngineeringPoints): WorkLine[] {
-  const outletsCount = normalizePointCount(engineering.outletsCount);
-  const plumbingPoints = normalizePointCount(engineering.plumbingPoints);
+  const outletsCount = validatePointCount(engineering.outletsCount);
+  const plumbingPoints = validatePointCount(engineering.plumbingPoints);
   const lines: WorkLine[] = [];
 
   if (outletsCount > 0) {
@@ -126,12 +126,12 @@ function engineeringWorkLines(roomId: string, engineering: EngineeringPoints): W
   return lines;
 }
 
-function normalizePointCount(value: number | undefined): number {
+function validatePointCount(value: number | undefined): number {
   if (value === undefined) return 0;
-  if (!Number.isFinite(value) || value < 0) {
-    throw new RangeError('Engineering point count must be a finite non-negative number');
+  if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+    throw new RangeError('Engineering point count must be a finite non-negative integer');
   }
-  return Math.floor(value);
+  return value;
 }
 
 function round2(n: number): number {
