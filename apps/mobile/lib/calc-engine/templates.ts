@@ -1,5 +1,7 @@
 import type { RenovationType, RoomMetrics, WorkLine, MaterialLine } from './types';
 import { quantityWithWaste } from './estimate';
+import { CALC_FORMULAS } from './formula-catalog';
+import { evaluateFormula, type FormulaContext } from './formula-engine';
 
 export interface CalcNormativeCatalog {
   paint: {
@@ -112,11 +114,12 @@ export function generateTemplateLines(
 }
 
 function cosmeticTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; materials: MaterialLine[] } {
-  const paintCoverageSqM = m.wallSqM * CALC_NORMATIVES.paint.coats;
-  const paintLiters = quantityWithWaste(
-    paintCoverageSqM / CALC_NORMATIVES.paint.coverageSqMPerLiter,
-    'paint',
-  );
+  const paintLiters = calculate('paintLiters', {
+    wallSqM: m.wallSqM,
+    coats: CALC_NORMATIVES.paint.coats,
+    coverage: CALC_NORMATIVES.paint.coverageSqMPerLiter,
+    wasteFactor: materialWasteFactor('paint'),
+  });
 
   return {
     works: [
@@ -150,7 +153,7 @@ function cosmeticTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; 
         id: `${roomId}-m1`,
         name: 'Краска интерьерная',
         unit: 'l',
-        quantity: round2(paintLiters),
+        quantity: paintLiters,
         unitPrice: CALC_NORMATIVES.paint.unitPrice,
         roomId,
       },
@@ -167,11 +170,15 @@ function cosmeticTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; 
 }
 
 function bathroomTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; materials: MaterialLine[] } {
-  const waterproofingSqM = round2(m.wallSqM + m.floorSqM);
+  const waterproofingSqM = calculate('waterproofingArea', {
+    wallSqM: m.wallSqM,
+    floorSqM: m.floorSqM,
+  });
   const tileQty = quantityWithWaste(waterproofingSqM, 'tile');
-  const waterproofingKg = round2(
-    waterproofingSqM * CALC_NORMATIVES.waterproofing.kgPerSqMTwoCoats,
-  );
+  const waterproofingKg = calculate('waterproofingKg', {
+    quantity: waterproofingSqM,
+    consumption: CALC_NORMATIVES.waterproofing.kgPerSqMTwoCoats,
+  });
 
   return {
     works: [
@@ -214,7 +221,10 @@ function bathroomTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; 
 }
 
 function kitchenTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; materials: MaterialLine[] } {
-  const backsplashSqM = round2(m.wallSqM * CALC_NORMATIVES.kitchen.backsplashWallShare);
+  const backsplashSqM = calculate('backsplashArea', {
+    wallSqM: m.wallSqM,
+    share: CALC_NORMATIVES.kitchen.backsplashWallShare,
+  });
   const backsplashTileQty = quantityWithWaste(backsplashSqM, 'tile');
 
   return {
@@ -279,7 +289,10 @@ function capitalTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; m
     id: `${roomId}-m3`,
     name: 'Штукатурная смесь',
     unit: 'kg',
-    quantity: round2(m.wallSqM * CALC_NORMATIVES.plaster.kgPerSqM),
+    quantity: calculate('plasterKg', {
+      wallSqM: m.wallSqM,
+      consumption: CALC_NORMATIVES.plaster.kgPerSqM,
+    }),
     unitPrice: CALC_NORMATIVES.plaster.unitPrice,
     roomId,
   });
@@ -316,14 +329,27 @@ function engineeringWorkLines(roomId: string, engineering: EngineeringPoints): W
   return lines;
 }
 
+function calculate(key: keyof typeof CALC_FORMULAS, context: FormulaContext): number {
+  return evaluateFormula(CALC_FORMULAS[key], context).value;
+}
+
+function materialWasteFactor(kind: 'tile' | 'wallpaper' | 'paint' | 'default'): number {
+  switch (kind) {
+    case 'tile':
+      return 1.1;
+    case 'wallpaper':
+      return 1.15;
+    case 'paint':
+      return 1.05;
+    default:
+      return 1.08;
+  }
+}
+
 function validatePointCount(value: number | undefined): number {
   if (value === undefined) return 0;
   if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
     throw new RangeError('Engineering point count must be a finite non-negative integer');
   }
   return value;
-}
-
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
