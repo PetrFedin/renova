@@ -4,6 +4,7 @@ import { quantityWithWaste } from './estimate';
 const PAINT_COATS = 2;
 const PAINT_COVERAGE_SQ_M_PER_LITER = 8;
 const KITCHEN_BACKSPLASH_WALL_SHARE = 0.4;
+const WATERPROOFING_KG_PER_SQ_M_TWO_COATS = 1.4;
 const ELECTRICAL_POINT_RATE = 850;
 const PLUMBING_POINT_RATE = 2500;
 
@@ -59,15 +60,18 @@ function cosmeticTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; 
 }
 
 function bathroomTemplate(roomId: string, m: RoomMetrics): { works: WorkLine[]; materials: MaterialLine[] } {
-  const tileQty = quantityWithWaste(m.wallSqM + m.floorSqM, 'tile');
+  const waterproofingSqM = round2(m.wallSqM + m.floorSqM);
+  const tileQty = quantityWithWaste(waterproofingSqM, 'tile');
+  const waterproofingKg = round2(waterproofingSqM * WATERPROOFING_KG_PER_SQ_M_TWO_COATS);
+
   return {
     works: [
-      { id: `${roomId}-w1`, name: 'Гидроизоляция', unit: 'm2', quantity: m.floorSqM + m.wallSqM, ratePerUnit: 650, roomId },
-      { id: `${roomId}-w2`, name: 'Укладка плитки', unit: 'm2', quantity: m.wallSqM + m.floorSqM, ratePerUnit: 1200, roomId },
+      { id: `${roomId}-w1`, name: 'Гидроизоляция в 2 слоя', unit: 'm2', quantity: waterproofingSqM, ratePerUnit: 650, roomId },
+      { id: `${roomId}-w2`, name: 'Укладка плитки', unit: 'm2', quantity: waterproofingSqM, ratePerUnit: 1200, roomId },
     ],
     materials: [
       { id: `${roomId}-m1`, name: 'Керамогранит', unit: 'm2', quantity: tileQty, unitPrice: 890, roomId },
-      { id: `${roomId}-m2`, name: 'Гидроизоляция Ceresit', unit: 'kg', quantity: round2(m.floorSqM * 2), unitPrice: 420, roomId },
+      { id: `${roomId}-m2`, name: 'Гидроизоляция Ceresit CL 51', unit: 'kg', quantity: waterproofingKg, unitPrice: 420, roomId },
     ],
   };
 }
