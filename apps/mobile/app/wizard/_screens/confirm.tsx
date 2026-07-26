@@ -94,7 +94,10 @@ export default function WizardConfirm() {
     estimateRooms.forEach((room, i) => {
       const id = `tmp-${i}`;
       const eff = resolveRenovationType(wizard.renovation_type, room.room_type) as any;
-      const lines = generateTemplateLines(eff, id, roomMetrics[i]);
+      const lines = generateTemplateLines(eff, id, roomMetrics[i], {
+        outletsCount: room.outlets_count,
+        plumbingPoints: room.plumbing_points,
+      });
       materials = materials.concat(lines.materials);
       works = works.concat(lines.works);
     });
