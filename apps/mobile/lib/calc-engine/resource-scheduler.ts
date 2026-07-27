@@ -5,6 +5,13 @@ import {
   type StageDurations,
 } from './cpm-scheduler';
 import type { TechnologyStage } from './technology-graph';
+import {
+  addWorkingDays,
+  DEFAULT_WORK_CALENDAR,
+  nextWorkingDay,
+  validateWorkCalendar,
+  type WorkCalendar,
+} from './work-calendar';
 
 export type CrewSkill =
   | 'survey'
@@ -42,7 +49,9 @@ export interface ResourceSchedule {
   durationDays: number;
   assignments: readonly ResourceAssignment[];
   unassignedStages: readonly TechnologyStage[];
+  blockedStages: readonly TechnologyStage[];
   resourceDelayDays: number;
+  isComplete: boolean;
 }
 
 const REQUIRED_SKILL: Readonly<Record<TechnologyStage, CrewSkill>> = Object.freeze({
@@ -64,44 +73,55 @@ const REQUIRED_SKILL: Readonly<Record<TechnologyStage, CrewSkill>> = Object.free
 
 /**
  * Строит ресурсно-ограниченный план поверх CPM.
- * Одна бригада не может выполнять две работы одновременно.
- * Приоритет получают работы с меньшим резервом времени, затем более ранние по CPM.
+ *
+ * Планирование выполняется в топологическом порядке CPM, поэтому работа никогда
+ * не начинается до завершения всех предшественников. Одна бригада не может быть
+ * назначена на пересекающиеся работы. Длительности считаются в рабочих днях.
  */
 export function buildResourceSchedule(
   renovationType: RenovationType,
   crews: readonly Crew[],
   durationOverrides: StageDurations = {},
+  calendar: WorkCalendar = DEFAULT_WORK_CALENDAR,
 ): ResourceSchedule {
   validateCrews(crews);
+  validateWorkCalendar(calendar);
 
   const baseline = buildCpmSchedule(renovationType, durationOverrides);
-  const byStage = new Map(baseline.tasks.map((task) => [task.stage, task]));
   const finishByStage = new Map<TechnologyStage, number>();
-  const crewAvailableAt = new Map(crews.map((crew) => [crew.id, crew.availableFromDay ?? 0]));
+  const unavailableStages = new Set<TechnologyStage>();
+  const crewAvailableAt = new Map(
+    crews.map((crew) => [crew.id, nextWorkingDay(crew.availableFromDay ?? 0, calendar)]),
+  );
   const assignments: ResourceAssignment[] = [];
   const unassignedStages: TechnologyStage[] = [];
+  const blockedStages: TechnologyStage[] = [];
 
-  const orderedTasks = [...baseline.tasks].sort((left, right) => {
-    if (left.totalFloat !== right.totalFloat) return left.totalFloat - right.totalFloat;
-    if (left.earlyStart !== right.earlyStart) return left.earlyStart - right.earlyStart;
-    return left.stage.localeCompare(right.stage);
-  });
-
-  for (const task of orderedTasks) {
-    const dependencyFinish = task.dependsOn.length
-      ? Math.max(...task.dependsOn.map((stage) => finishByStage.get(stage) ?? 0))
-      : 0;
-    const earliestStart = Math.max(task.earlyStart, dependencyFinish);
-    const crew = selectCrew(crews, task.stage, earliestStart, crewAvailableAt);
-
-    if (!crew) {
-      unassignedStages.push(task.stage);
-      finishByStage.set(task.stage, earliestStart + task.durationDays);
+  // buildCpmSchedule returns tasks in the technology graph's topological order.
+  for (const task of baseline.tasks) {
+    if (task.dependsOn.some((stage) => unavailableStages.has(stage))) {
+      blockedStages.push(task.stage);
+      unavailableStages.add(task.stage);
       continue;
     }
 
-    const startDay = Math.max(earliestStart, crewAvailableAt.get(crew.id) ?? 0);
-    const finishDay = startDay + task.durationDays;
+    const dependencyFinish = task.dependsOn.length
+      ? Math.max(...task.dependsOn.map((stage) => finishByStage.get(stage) ?? 0))
+      : 0;
+    const earliestStart = nextWorkingDay(dependencyFinish, calendar);
+    const crew = selectCrew(crews, task.stage, earliestStart, crewAvailableAt, calendar);
+
+    if (!crew) {
+      unassignedStages.push(task.stage);
+      unavailableStages.add(task.stage);
+      continue;
+    }
+
+    const startDay = nextWorkingDay(
+      Math.max(earliestStart, crewAvailableAt.get(crew.id) ?? 0),
+      calendar,
+    );
+    const finishDay = addWorkingDays(startDay, task.durationDays, calendar);
 
     assignments.push(
       Object.freeze({
@@ -120,7 +140,8 @@ export function buildResourceSchedule(
 
   const durationDays = assignments.length
     ? Math.max(...assignments.map((assignment) => assignment.finishDay))
-    : baseline.durationDays;
+    : 0;
+  const isComplete = unassignedStages.length === 0 && blockedStages.length === 0;
 
   return Object.freeze({
     renovationType,
@@ -128,7 +149,9 @@ export function buildResourceSchedule(
     durationDays,
     assignments: Object.freeze(assignments),
     unassignedStages: Object.freeze(unassignedStages),
+    blockedStages: Object.freeze(blockedStages),
     resourceDelayDays: Math.max(0, durationDays - baseline.durationDays),
+    isComplete,
   });
 }
 
@@ -137,14 +160,21 @@ function selectCrew(
   stage: TechnologyStage,
   earliestStart: number,
   crewAvailableAt: ReadonlyMap<string, number>,
+  calendar: WorkCalendar,
 ): Crew | undefined {
   const skill = REQUIRED_SKILL[stage];
 
   return crews
     .filter((crew) => crew.skills.includes(skill))
     .sort((left, right) => {
-      const leftStart = Math.max(earliestStart, crewAvailableAt.get(left.id) ?? 0);
-      const rightStart = Math.max(earliestStart, crewAvailableAt.get(right.id) ?? 0);
+      const leftStart = nextWorkingDay(
+        Math.max(earliestStart, crewAvailableAt.get(left.id) ?? 0),
+        calendar,
+      );
+      const rightStart = nextWorkingDay(
+        Math.max(earliestStart, crewAvailableAt.get(right.id) ?? 0),
+        calendar,
+      );
       if (leftStart !== rightStart) return leftStart - rightStart;
       return left.id.localeCompare(right.id);
     })[0];
@@ -166,8 +196,8 @@ function validateCrews(crews: readonly Crew[]): void {
     }
 
     const availableFromDay = crew.availableFromDay ?? 0;
-    if (!Number.isFinite(availableFromDay) || availableFromDay < 0) {
-      throw new Error(`Crew ${id} availableFromDay must be a finite non-negative number`);
+    if (!Number.isInteger(availableFromDay) || availableFromDay < 0) {
+      throw new Error(`Crew ${id} availableFromDay must be a non-negative integer`);
     }
   }
 }
@@ -190,6 +220,25 @@ export function assertNoCrewOverlaps(schedule: ResourceSchedule): void {
         throw new Error(
           `Crew ${crewId} is double-booked for ${previous.stage} and ${current.stage}`,
         );
+      }
+    }
+  }
+}
+
+export function assertDependenciesSatisfied(schedule: ResourceSchedule): void {
+  const byStage = new Map(schedule.assignments.map((assignment) => [assignment.stage, assignment]));
+
+  for (const task of schedule.baseline.tasks) {
+    const assignment = byStage.get(task.stage);
+    if (!assignment) continue;
+
+    for (const dependency of task.dependsOn) {
+      const predecessor = byStage.get(dependency);
+      if (!predecessor) {
+        throw new Error(`Stage ${task.stage} is scheduled without dependency ${dependency}`);
+      }
+      if (assignment.startDay < predecessor.finishDay) {
+        throw new Error(`Stage ${task.stage} starts before dependency ${dependency} finishes`);
       }
     }
   }
