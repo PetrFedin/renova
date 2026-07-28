@@ -1,6 +1,6 @@
 /**
- * Clarity B/M: bottom sheet вместо Alert для post-action CTA и multi-option меню.
- * Канон: slide Modal; primary/secondary ИЛИ actions[] (Clarity M).
+ * Clarity B/M + Polish P1: bottom sheet вместо Alert для decision flows.
+ * Canon: primary/secondary/actions with explicit destructive hierarchy.
  */
 import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
@@ -9,7 +9,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 export type ActionConfirmAction = {
   label: string;
   onPress: () => void;
-  /** outline по умолчанию; первый без destructive = primary fill */
+  /** destructive actions use dangerOutline, normal secondary actions use outline */
   destructive?: boolean;
 };
 
@@ -21,9 +21,7 @@ export type ActionConfirmSheetProps = {
   onPrimary?: () => void;
   secondaryLabel?: string;
   onSecondary?: () => void;
-  /** Clarity M: ≥3 пункта меню (PDF, счёт, long-press) */
   actions?: ActionConfirmAction[];
-  /** Clarity P: закрытие без выбора действия */
   onDismiss?: () => void;
   onClose: () => void;
 };
@@ -41,14 +39,12 @@ export function ActionConfirmSheet({
   onClose,
 }: ActionConfirmSheetProps) {
   const multi = actions && actions.length > 0;
-  /**
-   * Clarity U: сначала закрываем sheet, затем action.
-   * Иначе nested showActionConfirm из onPress мгновенно сбрасывается clearActionConfirm.
-   */
+
   const runThenClose = (fn?: () => void) => {
     onClose();
     if (fn) queueMicrotask(fn);
   };
+
   const closeDismiss = () => {
     onDismiss?.();
     onClose();
@@ -68,7 +64,7 @@ export function ActionConfirmSheet({
                     <PrimaryButton
                       key={`${a.label}-${i}`}
                       title={a.label}
-                      variant={a.destructive ? 'outline' : i === 0 ? 'primary' : 'outline'}
+                      variant={a.destructive ? 'dangerOutline' : i === 0 ? 'primary' : 'outline'}
                       onPress={() => runThenClose(a.onPress)}
                     />
                   ))
@@ -77,6 +73,7 @@ export function ActionConfirmSheet({
                     {primaryLabel && onPrimary ? (
                       <PrimaryButton
                         title={primaryLabel}
+                        variant="primary"
                         onPress={() => runThenClose(onPrimary)}
                       />
                     ) : null}
@@ -89,7 +86,7 @@ export function ActionConfirmSheet({
                     ) : null}
                   </>
                 )}
-              <Pressable onPress={closeDismiss} style={s.dismiss}>
+              <Pressable onPress={closeDismiss} style={s.dismiss} hitSlop={8}>
                 <Text style={s.dismissT}>Закрыть</Text>
               </Pressable>
             </View>
@@ -128,6 +125,6 @@ const s = StyleSheet.create({
   title: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },
   message: { fontSize: 14, color: RenovaTheme.colors.textMuted, lineHeight: 20 },
   actions: { gap: 8, marginTop: 8 },
-  dismiss: { alignItems: 'center', paddingVertical: 8 },
+  dismiss: { alignItems: 'center', minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
   dismissT: { fontSize: 14, fontWeight: '600', color: RenovaTheme.colors.textMuted },
 });
