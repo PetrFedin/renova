@@ -1,9 +1,9 @@
-/** Материалы — hub: Потребности · Закупки · Чеки (P1.7) */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+/** Материалы — hub: Потребности · Закупки · Чеки */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
-import { screenTypography, listRowStyles } from '@/constants/screenTypography';
+import { screenTypography, listRowStyles, filterChipStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { MaterialPickList } from '@/components/renova/MaterialPickList';
 import { MaterialReceiptReconcile } from '@/components/renova/MaterialReceiptReconcile';
@@ -12,7 +12,7 @@ import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
-import { api, MaterialPick, Purchase, ReceiptItem } from '@/lib/api';
+import { api, type MaterialPick, type Purchase, type ReceiptItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenLayout } from '@/constants/screenLayout';
@@ -30,11 +30,12 @@ const PICK_FILTERS = [
   { key: 'shortage', label: 'Не хватает' },
 ] as const;
 
+type PickFilter = (typeof PICK_FILTERS)[number]['key'];
 const SUBTAB_IDS = ['picks', 'purchases', 'receipts'] as const;
 type MaterialSubtab = (typeof SUBTAB_IDS)[number];
 
-function isMaterialSubtab(v: string | undefined): v is MaterialSubtab {
-  return !!v && (SUBTAB_IDS as readonly string[]).includes(v);
+function isMaterialSubtab(value: string | undefined): value is MaterialSubtab {
+  return Boolean(value && (SUBTAB_IDS as readonly string[]).includes(value));
 }
 
 export function OsMaterialsScreen({ role }: { role: import('@/constants/osSections').OsRole }) {
@@ -44,16 +45,16 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
-  const [filter, setFilter] = useState('all');
-  const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<PickFilter>('all');
+  const [mutationKey, setMutationKey] = useState<string | null>(null);
+  const mutationRef = useRef(false);
   const [subtab, setSubtab] = useState<MaterialSubtab>('picks');
-  /** loading | loaded | error — ошибка ≠ пустой список / 0 ₽ */
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const busy = mutationKey !== null;
 
   useEffect(() => {
-    if (isMaterialSubtab(typeof subtabParam === 'string' ? subtabParam : undefined)) {
-      setSubtab(subtabParam);
-    }
+    const incoming = typeof subtabParam === 'string' ? subtabParam : undefined;
+    if (isMaterialSubtab(incoming)) setSubtab(incoming);
   }, [subtabParam]);
 
   const setMaterialSubtab = useCallback((tab: MaterialSubtab) => {
@@ -61,38 +62,46 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     router.setParams({ tab: 'materials', subtab: tab });
   }, []);
 
-  const reload = useCallback(() => {
+  const reload = useCallback(async () => {
     if (!user || !activeProject) return;
     setLoadState('loading');
-    Promise.all([
-      api.listMaterialPicks(user.id, activeProject.id),
-      api.listPurchases(user.id, activeProject.id),
-      api.listReceipts(user.id, activeProject.id),
-    ])
-      .then(([p, pu, r]) => {
-        setPicks(p);
-        setPurchases(pu);
-        setReceipts(r);
-        setLoadState('loaded');
-      })
-      .catch(() => {
-        // Не затираем последними [] — иначе «нет закупок» при сбое API
-        setLoadState('error');
-      });
+    try {
+      const [pickRows, purchaseRows, receiptRows] = await Promise.all([
+        api.listMaterialPicks(user.id, activeProject.id),
+        api.listPurchases(user.id, activeProject.id),
+        api.listReceipts(user.id, activeProject.id),
+      ]);
+      setPicks(pickRows);
+      setPurchases(purchaseRows);
+      setReceipts(receiptRows);
+      setLoadState('loaded');
+    } catch {
+      setLoadState('error');
+    }
   }, [user?.id, activeProject?.id]);
 
-  useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  useFocusEffect(useCallback(() => { void reload(); }, [reload]));
   useProjectDataReload(reload);
 
-  const filteredPicks = useMemo(() => {
-    return picks.filter((p) => {
-      if (filter === 'buy') return p.status === 'draft' || p.status === 'pending';
-      if (filter === 'ordered') return p.status === 'approved';
-      if (filter === 'delivered') return p.status === 'purchased';
-      if (filter === 'shortage') return (p.qty_needed || p.qty) > (p.qty_delivered || 0);
-      return true;
-    });
-  }, [picks, filter]);
+  const runMutation = useCallback(async (key: string, task: () => Promise<void>) => {
+    if (mutationRef.current) return;
+    mutationRef.current = true;
+    setMutationKey(key);
+    try {
+      await task();
+    } finally {
+      mutationRef.current = false;
+      setMutationKey(null);
+    }
+  }, []);
+
+  const filteredPicks = useMemo(() => picks.filter((pick) => {
+    if (filter === 'buy') return pick.status === 'draft' || pick.status === 'pending';
+    if (filter === 'ordered') return pick.status === 'approved';
+    if (filter === 'delivered') return pick.status === 'purchased';
+    if (filter === 'shortage') return (pick.qty_needed || pick.qty) > (pick.qty_delivered || 0);
+    return true;
+  }), [picks, filter]);
 
   if (!activeProject || !user) return <ProjectEmptyState role={role} />;
 
@@ -102,148 +111,168 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
         <LoadErrorState
           title="Не удалось загрузить материалы"
           hint="Данные не загружены — это не «ноль закупок». Проверьте сеть и повторите."
-          onRetry={reload}
+          onRetry={() => { void reload(); }}
           role={role}
         />
       </View>
     );
   }
 
-  const needBuy = picks.filter((p) => p.status === 'draft' || p.status === 'pending').length;
-  const ordered = picks.filter((p) => p.status === 'approved').length;
-  const delivered = picks.filter((p) => p.status === 'purchased').length;
-  const shortage = picks.filter((p) => (p.qty_needed || p.qty) > (p.qty_delivered || 0) && p.status !== 'purchased').length;
-  const openPurchases = purchases.filter((p) => p.status !== 'delivered' && p.status !== 'cancelled').length;
-  const unlinkedReceipts = receipts.filter((r) => !r.verified).length;
+  const needBuy = picks.filter((pick) => pick.status === 'draft' || pick.status === 'pending').length;
+  const ordered = picks.filter((pick) => pick.status === 'approved').length;
+  const delivered = picks.filter((pick) => pick.status === 'purchased').length;
+  const shortage = picks.filter((pick) => (pick.qty_needed || pick.qty) > (pick.qty_delivered || 0) && pick.status !== 'purchased').length;
+  const openPurchases = purchases.filter((purchase) => purchase.status !== 'delivered' && purchase.status !== 'cancelled').length;
+  const unverifiedReceipts = receipts.filter((receipt) => !receipt.verified).length;
+  const readyCount = readyPickIds(picks, purchases).length;
+  const next = procurementNextAction(picks, purchases, receipts);
+  const nextNeedsWrite = next.id === 'generate' || next.id === 'create_purchase';
 
   const hubTabs: HubTab[] = [
     { id: 'picks', label: 'Потребности', badge: needBuy || undefined },
     { id: 'purchases', label: 'Закупки', badge: openPurchases || undefined },
-    { id: 'receipts', label: 'Чеки', badge: unlinkedReceipts || undefined },
+    { id: 'receipts', label: 'Чеки', badge: unverifiedReceipts || undefined },
   ];
 
   const generateFromEstimate = async () => {
-    setBusy(true);
-    try {
+    if (readOnly) return;
+    await runMutation('generate', async () => {
       await api.generateMaterialNeeds(user.id, activeProject.id);
-      reload();
-    } finally {
-      setBusy(false);
-    }
+      await reload();
+    });
   };
 
   const createPurchaseFromReady = async () => {
+    if (readOnly) return;
     const ids = readyPickIds(picks, purchases);
     if (!ids.length) return;
-    setBusy(true);
-    try {
+    await runMutation('create_purchase', async () => {
       await api.createPurchase(user.id, activeProject.id, ids);
       await syncProjectSideEffects({ user, project: activeProject });
-      reload();
+      await reload();
       setMaterialSubtab('purchases');
-      // W127: закупка → расходы / чек SoT
       alertPurchaseCreated(role, ids.length);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
-  const next = procurementNextAction(picks, purchases, receipts);
-  const readyCount = readyPickIds(picks, purchases).length;
-
   const runNextCta = async () => {
-    if (next.id === 'generate') {
-      await generateFromEstimate();
-      return;
-    }
-    if (next.id === 'create_purchase') {
-      await createPurchaseFromReady();
-      return;
-    }
+    if (next.id === 'generate') return generateFromEstimate();
+    if (next.id === 'create_purchase') return createPurchaseFromReady();
     if (next.id === 'scan_receipt') {
       pushOsNav('/scan-receipt', pathname, role);
+      return;
+    }
+    if (next.id === 'done') {
+      await reload();
       return;
     }
     setMaterialSubtab(next.subtab);
   };
 
   const advancePurchase = (id: string, status: string) => {
-    const run = async () => {
-      await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
-      await syncProjectSideEffects({ user, project: activeProject });
-      reload();
-      // W128: заказ → оплата → доставка → факт бюджета
-      alertPurchaseAdvanced(role, status);
-    };
-    // Clarity W: откат факта (cancelled) — pre-confirm (паритет sheet/page)
+    if (readOnly || mutationRef.current) return;
+    const key = `purchase:${id}:${status}`;
+    const run = () => runMutation(key, async () => {
+      try {
+        await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
+        await syncProjectSideEffects({ user, project: activeProject });
+        await reload();
+        alertPurchaseAdvanced(role, status);
+      } catch {
+        showActionConfirm({
+          title: 'Не удалось обновить закупку',
+          message: 'Статус не изменён. Проверьте сеть и повторите.',
+        });
+      }
+    });
+
     if (status === 'cancelled') {
       showActionConfirm({
         title: 'Убрать из факта?',
-        message: 'Сумма закупки выйдет из факта бюджета. Можно вернуть статус позже.',
+        message: 'Сумма закупки выйдет из факта бюджета. Позиции и история закупки сохранятся.',
         primaryLabel: 'Убрать',
-        onPrimary: () => { void run().catch(() => undefined); },
+        primaryDestructive: true,
+        onPrimary: () => { void run(); },
         secondaryLabel: 'Отмена',
         onSecondary: () => undefined,
       });
       return;
     }
-    void run().catch(() => undefined);
+    void run();
   };
 
   return (
     <View style={s.root}>
-      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView style={s.body} contentContainerStyle={screenLayout.contentStyle}>
         <View style={s.summary}>
-          <View style={s.cell}><Text style={s.n}>{needBuy}</Text><Text style={s.l}>Купить</Text></View>
-          <View style={s.cell}><Text style={s.n}>{ordered}</Text><Text style={s.l}>Согласовано</Text></View>
-          <View style={s.cell}><Text style={s.n}>{delivered}</Text><Text style={s.l}>В факте</Text></View>
-          <View style={[s.cell, shortage > 0 && s.cellWarn]}><Text style={s.n}>{shortage}</Text><Text style={s.l}>Не хватает</Text></View>
+          <View style={s.cell}>
+            <Text style={s.n}>{needBuy}</Text>
+            <Text style={s.l}>Нужно купить</Text>
+          </View>
+          <View style={s.cell}>
+            <Text style={s.n}>{delivered}</Text>
+            <Text style={s.l}>В факте</Text>
+          </View>
         </View>
-        <Text style={s.factHint}>
-          Цепочка: потребность → закупка → чек. В факт бюджета попадает только «В факте» (куплено).
+        <Text style={[s.factHint, shortage > 0 && { color: RenovaTheme.colors.warningText }]}>
+          {shortage > 0 ? `Не хватает: ${shortage} · ` : ''}Согласовано: {ordered} · открытых закупок: {openPurchases}
         </Text>
+
         <View style={s.nextBox}>
-          <Text style={s.nextLabel}>Сейчас</Text>
+          <Text style={s.nextLabel}>Следующий шаг</Text>
           <Text style={s.nextTitle}>{next.title}</Text>
-          {!readOnly || next.id === 'approve_picks' ? (
-            <PrimaryButton title={busy ? '…' : next.cta} disabled={busy} onPress={() => { void runNextCta(); }} />
-          ) : null}
-          {role === 'contractor' ? (
+          {!nextNeedsWrite || !readOnly ? (
             <PrimaryButton
-              title="Подбор чистовых →"
-              variant="outline"
-              compact
-              onPress={() => pushOsNav(repairTabRoute(role, 'selections'), pathname)}
+              title={next.cta}
+              loading={mutationKey === next.id}
+              disabled={busy && mutationKey !== next.id}
+              onPress={() => { void runNextCta(); }}
+              fullWidth
             />
           ) : null}
+          {role === 'contractor' ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Открыть подбор чистовых материалов"
+              style={s.secondaryLink}
+              disabled={busy}
+              onPress={() => pushOsNav(repairTabRoute(role, 'selections'), pathname)}
+            >
+              <Text style={s.secondaryLinkText}>Подбор чистовых →</Text>
+            </Pressable>
+          ) : null}
         </View>
-      </ScrollView>
 
-      <OsHubTabs tabs={hubTabs} value={subtab} onChange={(id) => setMaterialSubtab(id as MaterialSubtab)} />
+        <OsHubTabs tabs={hubTabs} value={subtab} onChange={(id) => setMaterialSubtab(id as MaterialSubtab)} />
 
-      <ScrollView style={s.body} contentContainerStyle={screenLayout.contentStyle}>
-        {subtab === 'picks' && (
+        {subtab === 'picks' ? (
           <>
-            {!readOnly && (
-              <View style={s.actions}>
-                {readyCount > 0 && <PrimaryButton title={`Создать закупку (${readyCount})`} onPress={createPurchaseFromReady} disabled={busy} />}
-                <PrimaryButton title="Из сметы" variant="outline" onPress={generateFromEstimate} disabled={busy} />
-              </View>
-            )}
-            {!picks.length && (
+            {!picks.length ? (
               <View style={s.empty}>
                 <Text style={s.emptyT}>Материалы ещё не рассчитаны</Text>
-                <Text style={s.emptyM}>Добавьте размеры комнат или сформируйте список из сметы</Text>
-                {!readOnly && <PrimaryButton title="Рассчитать из сметы" onPress={generateFromEstimate} />}
+                <Text style={s.emptyM}>Следующий шаг выше сформирует потребности из сметы.</Text>
               </View>
-            )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chips}>
-              {PICK_FILTERS.map((f) => (
-                <Pressable key={f.key} style={[s.chip, filter === f.key && s.chipOn]} onPress={() => setFilter(f.key)}>
-                  <Text style={[s.chipT, filter === f.key && s.chipTOn]}>{f.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            ) : null}
+            {picks.length ? (
+              <View style={filterChipStyles.row}>
+                {PICK_FILTERS.map((item) => {
+                  const selected = filter === item.key;
+                  return (
+                    <Pressable
+                      key={item.key}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Фильтр материалов: ${item.label}`}
+                      accessibilityState={{ selected, disabled: busy }}
+                      style={[filterChipStyles.chip, s.chipTouch, selected && filterChipStyles.chipOn]}
+                      disabled={busy}
+                      onPress={() => setFilter(item.key)}
+                    >
+                      <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>{item.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
             <MaterialPickList
               userId={user.id}
               projectId={activeProject.id}
@@ -251,33 +280,45 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
               rooms={activeProject.rooms || []}
               stages={activeProject.stages || []}
               picksOverride={filteredPicks}
-              readOnly={readOnly}
+              readOnly={readOnly || busy}
             />
           </>
-        )}
+        ) : null}
 
-        {subtab === 'purchases' && (
+        {subtab === 'purchases' ? (
           <>
-            {!readOnly && readyCount > 0 && (
-              <PrimaryButton title={`Создать закупку (${readyCount})`} onPress={createPurchaseFromReady} disabled={busy} />
-            )}
             {!purchases.length ? (
               <View style={s.empty}>
                 <Text style={s.emptyT}>Закупок пока нет</Text>
-                <Text style={s.emptyM}>Сформируйте закупку из потребностей или согласуйте позиции на вкладке «Потребности»</Text>
+                <Text style={s.emptyM}>
+                  {readyCount > 0
+                    ? `Следующий шаг выше создаст закупку из ${readyCount} согласованных позиций.`
+                    : 'Согласуйте материалы на вкладке «Потребности».'}
+                </Text>
               </View>
             ) : null}
-            <PurchaseList purchases={purchases} readOnly={readOnly} returnTo={pathname} onAdvance={advancePurchase} />
+            <PurchaseList
+              purchases={purchases}
+              readOnly={readOnly}
+              returnTo={pathname}
+              mutationKey={mutationKey}
+              onAdvance={advancePurchase}
+            />
           </>
-        )}
+        ) : null}
 
-        {subtab === 'receipts' && (
+        {subtab === 'receipts' ? (
           <>
-            <PrimaryButton title="Сканировать QR чека" onPress={() => pushOsNav('/scan-receipt', pathname, role)} />
-            <Text style={s.fabHint}>После скана сверка ниже. Факт бюджета — только по доставленным закупкам / верифицированным чекам.</Text>
+            <PrimaryButton
+              title="Сканировать QR чека"
+              variant="outline"
+              disabled={busy}
+              onPress={() => pushOsNav('/scan-receipt', pathname, role)}
+            />
+            <Text style={s.factHint}>После скана сверьте чек с закупкой. В факт попадают доставленные закупки и подтверждённые чеки.</Text>
             <MaterialReceiptReconcile rooms={activeProject.rooms || []} picks={picks} receipts={receipts} />
           </>
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -285,25 +326,25 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  wrap: { flexGrow: 0 },
   body: { flex: 1 },
-  summary: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
-  cell: { ...listRowStyles.metricCell, width: '47%', marginBottom: 0 },
-  cellWarn: { borderColor: '#D4A574', backgroundColor: '#FFFBF5' },
+  summary: { ...listRowStyles.summaryRow, marginBottom: 4 },
+  cell: { ...listRowStyles.metricCell, marginBottom: 0 },
   n: { ...screenTypography.metric },
   l: { ...screenTypography.metricLabel },
-  actions: { gap: 8, marginBottom: 12 },
-  fabHint: { ...screenTypography.listMeta, textAlign: 'center', marginBottom: 12 },
-  factHint: { ...screenTypography.listMeta, marginBottom: 4 },
-  nextBox: { ...listRowStyles.metricCell, alignItems: 'stretch', marginTop: 8, marginBottom: 4, gap: 8, paddingHorizontal: 12 },
+  factHint: { ...screenTypography.listMeta, marginBottom: 10 },
+  nextBox: {
+    ...listRowStyles.metricCell,
+    alignItems: 'stretch',
+    marginBottom: 12,
+    gap: 8,
+    paddingHorizontal: 12,
+  },
   nextLabel: { ...screenTypography.metricLabel },
   nextTitle: { ...screenTypography.listTitle, lineHeight: 20 },
+  secondaryLink: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', alignItems: 'center' },
+  secondaryLinkText: { ...screenTypography.listLink, marginTop: 0 },
   empty: { ...listRowStyles.row, marginBottom: 12 },
   emptyT: { ...screenTypography.listTitle },
   emptyM: { ...screenTypography.empty, marginVertical: 8 },
-  chips: { marginBottom: 8, maxHeight: 40 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: RenovaTheme.colors.border, marginRight: 8, backgroundColor: RenovaTheme.colors.surface },
-  chipOn: { borderColor: RenovaTheme.colors.text, backgroundColor: RenovaTheme.colors.borderLight },
-  chipT: { fontSize: 13, color: RenovaTheme.colors.textMuted },
-  chipTOn: { color: RenovaTheme.colors.text, fontWeight: '600' },
+  chipTouch: { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
 });
