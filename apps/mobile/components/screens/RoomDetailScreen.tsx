@@ -1,5 +1,5 @@
 /** Комната — Digital Twin: паспорт сверху, детали по запросу */
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { useLocalSearchParams, router, usePathname } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
@@ -27,6 +27,8 @@ import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
+type RoomMutation = 'archive' | 'save' | 'materials';
+
 export function RoomDetailScreen() {
   const { id, returnTo, overrun } = useLocalSearchParams<{ id: string; returnTo?: string; overrun?: string }>();
   const pathname = usePathname();
@@ -44,10 +46,25 @@ export function RoomDetailScreen() {
   const [overrunLines, setOverrunLines] = useState<{ name: string; over: number }[]>([]);
   const [calcItems, setCalcItems] = useState<{ name: string; qty: number; unit: string; note?: string }[]>([]);
   const [roomSnap, setRoomSnap] = useState<RoomSnapshot | null>(null);
+  const [mutation, setMutation] = useState<RoomMutation | null>(null);
+  const mutationRef = useRef(false);
   const isContractor = user?.role === 'contractor';
   const ownerCanEdit = !isContractor && !activeProject?.contractor_id && canWrite && !readOnly;
   const role = isContractor ? 'contractor' : 'customer';
+  const busy = mutation !== null;
   const preview = useMemo(() => calcRoomMetrics(+len || 0, +wid || 0, +hei || 2.7, room?.openings_sq_m ?? 2), [len, wid, hei, room?.openings_sq_m]);
+
+  const runMutation = useCallback(async <T,>(kind: RoomMutation, task: () => Promise<T>): Promise<T | undefined> => {
+    if (mutationRef.current) return undefined;
+    mutationRef.current = true;
+    setMutation(kind);
+    try {
+      return await task();
+    } finally {
+      mutationRef.current = false;
+      setMutation(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!user || !activeProject || !id) return;
@@ -72,25 +89,25 @@ export function RoomDetailScreen() {
 
   const lines = (activeProject?.estimate_lines || []).filter(l => (l.room_id && l.room_id === room?.id) || l.room_name === room?.name);
 
-  const toggleArchive = async () => {
-    if (!user || !activeProject || !room || !isContractor) return;
+  const toggleArchive = () => {
+    if (!user || !activeProject || !room || !isContractor || mutationRef.current) return;
     const nextArchived = !room.is_archived;
-    // Clarity R: архив комнаты — подтверждение (влияет на план/смету)
     showActionConfirm({
       title: nextArchived ? 'В архив?' : 'Восстановить комнату?',
       message: nextArchived
-        ? `«${room.name}» скрыть из активных. Смету и этапы можно будет вернуть позже.`
+        ? `«${room.name}» будет скрыта из активных комнат. Работы, смета, расходы и документы сохранятся и останутся доступны после восстановления.`
         : `«${room.name}» снова появится в активных комнатах.`,
       primaryLabel: nextArchived ? 'В архив' : 'Восстановить',
+      primaryDestructive: nextArchived,
       onPrimary: () => {
-        void (async () => {
+        void runMutation('archive', async () => {
           try {
             await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: nextArchived });
             await syncProjectSideEffects({ user, project: activeProject });
             await loadProject(activeProject.id);
             await load();
           } catch (e: unknown) {
-            if (isOfflineQueued(e)) notifyOfflineQueued('Архив комнаты');
+            if (isOfflineQueued(e)) notifyOfflineQueued(nextArchived ? 'Архивирование комнаты' : 'Восстановление комнаты');
             else {
               showActionConfirm({
                 title: 'Ошибка',
@@ -98,7 +115,7 @@ export function RoomDetailScreen() {
               });
             }
           }
-        })();
+        });
       },
       secondaryLabel: 'Отмена',
       onSecondary: () => undefined,
@@ -107,15 +124,17 @@ export function RoomDetailScreen() {
 
   const save = async (body: object) => {
     if (!user || !activeProject || !room) return;
-    try {
-      await api.updateRoom(user.id, activeProject.id, room.id, body);
-      await syncProjectSideEffects({ user, project: activeProject });
-      await loadProject(activeProject.id);
-      await load();
-    } catch (e: any) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Изменения комнаты');
-      else throw e;
-    }
+    await runMutation('save', async () => {
+      try {
+        await api.updateRoom(user.id, activeProject.id, room.id, body);
+        await syncProjectSideEffects({ user, project: activeProject });
+        await loadProject(activeProject.id);
+        await load();
+      } catch (e: unknown) {
+        if (isOfflineQueued(e)) notifyOfflineQueued('Изменения комнаты');
+        else throw e;
+      }
+    });
   };
 
   if (!room) return (<><BackHeader title="Комната" returnTo={returnTo} /><View style={s.center}><Text>Загрузка…</Text></View></>);
@@ -125,7 +144,14 @@ export function RoomDetailScreen() {
       <BackHeader title={room.name} subtitle={`${roomTypeLabel(room.room_type)}${room.floor_level && room.floor_level > 1 ? ` · ${room.floor_level} эт.` : ''}${room.is_archived ? ' · Архив' : ''}`} returnTo={returnTo} />
       <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
         {isContractor && canWrite && (
-          <PrimaryButton title={room.is_archived ? 'Восстановить из архива' : 'В архив'} variant="outline" compact onPress={toggleArchive} />
+          <PrimaryButton
+            title={room.is_archived ? 'Восстановить из архива' : 'В архив'}
+            variant={room.is_archived ? 'outline' : 'dangerOutline'}
+            compact
+            loading={mutation === 'archive'}
+            disabled={busy && mutation !== 'archive'}
+            onPress={toggleArchive}
+          />
         )}
         {roomSnap ? <RoomPassport snap={roomSnap} role={role} /> : (
           <View style={s.metrics}>
@@ -141,10 +167,19 @@ export function RoomDetailScreen() {
           {!calcItems.length && <Text style={s.line}>Плитка, краска, ламинат — по размерам комнаты</Text>}
           {calcItems.map((it) => <Text key={it.name} style={s.line}>{it.name}: {it.qty} {it.unit}{it.note ? ` · ${it.note}` : ''}</Text>)}
           {canWrite && user && activeProject && (
-            <PrimaryButton title="Рассчитать материалы" variant="outline" compact onPress={async () => {
-              const r = await api.calcRoomMaterials(user.id, activeProject.id, room.id);
-              setCalcItems(r.items);
-            }} />
+            <PrimaryButton
+              title="Рассчитать материалы"
+              variant="outline"
+              compact
+              loading={mutation === 'materials'}
+              disabled={busy && mutation !== 'materials'}
+              onPress={() => {
+                void runMutation('materials', async () => {
+                  const r = await api.calcRoomMaterials(user.id, activeProject.id, room.id);
+                  setCalcItems(r.items);
+                });
+              }}
+            />
           )}
         </View>
 
@@ -170,14 +205,14 @@ export function RoomDetailScreen() {
             <Text style={s.line}>План {formatRub(plan)} · Факт {formatRub(spent)}</Text>
             {plan > 0 && spent > plan && <Text style={s.over}>Перерасход {formatRub(spent - plan)}</Text>}
             <View style={s.row}>
-            <PrimaryButton title="Расходы" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute(role, 'expenses', { roomId: room.id }), pathname)} />
-            <PrimaryButton title="Расходы по комнате" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute(role, 'expenses', { roomId: room.id, view: 'rooms' }), pathname)} />
+            <PrimaryButton title="Расходы" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute(role, 'expenses', { roomId: room.id }), pathname)} disabled={busy} />
+            <PrimaryButton title="Расходы по комнате" variant="outline" compact onPress={() => pushOsNav(budgetTabRoute(role, 'expenses', { roomId: room.id, view: 'rooms' }), pathname)} disabled={busy} />
           </View>
             <Text style={s.fabHint}>Скан чека — кнопка + внизу экрана (с привязкой к комнате)</Text>
           </View>
         ); })()}
 
-        <Pressable style={s.toggle} onPress={() => setShowDetails(v => !v)}>
+        <Pressable style={s.toggle} disabled={busy} onPress={() => setShowDetails(v => !v)}>
           <Text style={s.toggleT}>{showDetails ? 'Скрыть детали' : 'Детали комнаты и журнал'}</Text>
           <Text style={s.chev}>{showDetails ? '▲' : '▼'}</Text>
         </Pressable>
@@ -191,17 +226,18 @@ export function RoomDetailScreen() {
             </View>)}
             {(isContractor || ownerCanEdit) && (<View style={s.card}><Text style={s.h}>Габариты</Text>
               <Field label="Длина" value={len} onChange={setLen} /><Field label="Ширина" value={wid} onChange={setWid} /><Field label="Высота" value={hei} onChange={setHei} />
-              <PrimaryButton disabled={!canWrite && !ownerCanEdit} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
+              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
             </View>)}
             <View style={s.card}><Text style={s.h}>Инженерия</Text>
               {(isContractor || ownerCanEdit) ? (<><Field label="Розетки" value={outlets} onChange={setOutlets} /><Field label="Сантехника" value={plumbing} onChange={setPlumbing} />
-              <PrimaryButton disabled={!canWrite && !ownerCanEdit} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
+              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
               : <Text style={s.line}>Розетки {room.outlets_count} · сантехника {room.plumbing_points}. Изменения — через запрос исполнителю.</Text>}
             </View>
             {lines.length > 0 && <View style={s.card}><Text style={s.h}>Смета</Text>
               {lines.map(l => (
                 <Pressable
                   key={l.id}
+                  disabled={busy}
                   onPress={() => pushOsNav(objectTabHref(role, 'estimate'), pathname)}
                 >
                   <Text style={s.line}>{l.name}: {formatRub(l.quantity_planned*l.unit_price)}</Text>
