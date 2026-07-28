@@ -422,6 +422,25 @@ export async function buildInboxItems(opts: {
     }
   } catch { /* noop */ }
 
+  // Discovery: при активном ремонте и загруженном плане предлагаем сразу
+  // открыть слой замечаний, не создавая отдельный attention-канал.
+  try {
+    const hasActiveStage = stages.some((s) => s.status !== 'done');
+    if (hasActiveStage) {
+      const plans = await api.listFloorPlans(userId, projectId);
+      if (plans.length > 0) {
+        next.push({
+          id: 'floor-punch',
+          kind: 'issue',
+          title: 'Сфоткать дефект на плане',
+          sub: 'Тап на чертёж → фото → QC',
+          href: objectTabHref(role, 'plan', 'floor') + '&punch=1',
+          priority: 48,
+        });
+      }
+    }
+  } catch { /* noop */ }
+
   return next.sort((a, b) => b.priority - a.priority);
 }
 

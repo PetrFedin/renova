@@ -16,7 +16,7 @@ const widgets = readFileSync(join(mobile, 'constants/homeWidgets.ts'), 'utf8');
 const i18n = readFileSync(join(mobile, 'lib/i18n.ts'), 'utf8');
 const design = readFileSync(join(mobile, 'components/renova/DesignPackageList.tsx'), 'utf8');
 
-console.assert(menu.includes('Меню') && moreMenuA11yLabel(0) === 'Меню', 'header Меню');
+console.assert(menu.includes('Ещё') && moreMenuA11yLabel(0) === 'Ещё', 'header Ещё');
 console.assert(home.includes("title=\"Сводка\"") && home.includes("moneyZoneTitle = 'Деньги'"), 'Сводка≠Деньги');
 console.assert(host.includes('ActionConfirmSheet') && ctx.includes('ActionConfirmHost'), 'host wired');
 console.assert(offline.includes('showActionConfirm') && !offline.includes('Alert.alert'), 'offline sheet');
@@ -28,7 +28,7 @@ console.assert(i18n.includes('Напишите владельцу в чат'), '
 console.assert(design.includes("'+ Загрузить PDF'"), 'design contractor CTA');
 
 const ok =
-  moreMenuA11yLabel(0) === 'Меню' &&
+  moreMenuA11yLabel(0) === 'Ещё' &&
   !HOME_WIDGET_STANDARD.includes('activity') &&
   offline.includes('showActionConfirm');
 if (!ok) process.exit(1);

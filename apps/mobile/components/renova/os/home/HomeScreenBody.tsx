@@ -17,7 +17,6 @@ import {
 import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
-import { WeekScheduleStrip } from '@/components/renova/os/WeekScheduleStrip';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
@@ -164,16 +163,9 @@ export function HomeScreenBody({
         </HomeZone>
       )}
 
-      {/* 5. Сроки — один preview → hub /calendar (без второго WorkSchedule card) */}
-      {isVisible('schedule') && (
-        <HomeZone
-          title="Сроки"
-          linkLabel="Открыть →"
-          onLinkPress={() => pushTab('calendar')}
-        >
-          <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
-        </HomeZone>
-      )}
+      {isVisible('schedule') ? (
+        <HomeLinkRow title="Сроки" onPress={() => pushTab('calendar')} />
+      ) : null}
 
       {/* Дополнительно — свёрнуто; приёмка/уведомления не дублируем (Ремонт / Входящие) */}
       {showMore && (

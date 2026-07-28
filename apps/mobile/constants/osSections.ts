@@ -171,6 +171,11 @@ export function objectTabRoute(role: OsRole, tab: string, sub?: string): OsTabRo
   return tabsRoute(role, 'object', tab, sub ? { sub } : undefined);
 }
 
+/** План этажа сразу в режиме фиксации замечания. */
+export function planPunchRoute(role: OsRole): OsTabRoute {
+  return tabsRoute(role, 'object', 'plan', { sub: 'floor', punch: '1' });
+}
+
 export type BudgetNavParams = {
   roomId?: string;
   stageId?: string;

@@ -33,7 +33,7 @@ const status = readFileSync(join(mobile, 'components/renova/OfflineSyncStatus.ts
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
-console.assert(sched.includes("calLoadState === 'error'") && sched.includes('Повторить'), 'calendar error UI');
+console.assert(sched.includes("calLoadState === 'error'") && sched.includes('LoadErrorState'), 'calendar error UI');
 console.assert(!planTab.includes("label: 'График'") && planTab.includes("subParam === 'schedule'"), 'schedule subtab removed');
 console.assert(hub.includes('secondary.reduce') && !hub.includes("badgeT}>·"), 'hub badge number');
 console.assert(status.includes('Открыть конфликты'), 'offline status CTA');

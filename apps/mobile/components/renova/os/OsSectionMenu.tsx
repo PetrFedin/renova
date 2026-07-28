@@ -5,6 +5,7 @@ import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import {
   MAX_HEADER_MORE_ITEMS,
   tabsRoute,
@@ -193,16 +194,16 @@ const s = StyleSheet.create({
     elevation: 8,
   },
   menuHead: {
+    ...screenTypography.section,
     fontSize: 11,
     fontWeight: '700',
     color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
   itemOn: { backgroundColor: RenovaTheme.colors.borderLight },
-  itemT: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
+  itemT: { ...screenTypography.listTitle, flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
   itemTOn: { color: RenovaTheme.colors.accent },
   check: { fontSize: 14, color: RenovaTheme.colors.accent, fontWeight: '700' },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
