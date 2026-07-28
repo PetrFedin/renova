@@ -1,7 +1,7 @@
 /** Auto-resolve: identical body duplicates in offline queue */
-export function dedupeQueue(jobs: { id: string; path: string; body: string }[]) {
+export function dedupeQueue<T extends { id: string; path: string; body: string }>(jobs: T[]): T[] {
   const seen = new Map<string, string>();
-  const keep: typeof jobs = [];
+  const keep: T[] = [];
   for (const j of jobs) {
     const k = `${j.path}:${j.body}`;
     if (seen.has(k)) continue;

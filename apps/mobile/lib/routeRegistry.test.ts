@@ -1,8 +1,34 @@
 /** Smoke: menu invariants — npx tsx lib/routeRegistry.test.ts */
 import { assertRouteRegistryInvariants, menuRoutes, MAX_MORE_MENU_ITEMS, RENOVA_ROUTES, userFacingRouteIds } from './routeRegistry';
-import { OS_MENU_SECTIONS, OS_MORE_UTIL_LINKS, MAX_HEADER_MORE_ITEMS } from '../constants/osSections';
+import { MAX_HEADER_MORE_ITEMS } from '../constants/osSections';
+import { buildSecondaryNavigation } from './navigation/navigationPolicy';
+import { DOCK_DEFAULT } from '../constants/dockBar';
 
 assertRouteRegistryInvariants();
+
+const ids = new Set<string>();
+const aliases = new Map<string, string>();
+const redirectableIds = new Set(RENOVA_ROUTES.map((route) => route.id));
+for (const route of RENOVA_ROUTES) {
+  if (ids.has(route.id)) throw new Error(`duplicate route id: ${route.id}`);
+  ids.add(route.id);
+
+  for (const alias of route.legacyAliases || []) {
+    const owner = aliases.get(alias);
+    if (owner && owner !== route.id) throw new Error(`legacy alias ${alias} is owned by both ${owner} and ${route.id}`);
+    if (RENOVA_ROUTES.some((candidate) => candidate.path === alias && candidate.id !== route.id)) {
+      throw new Error(`legacy alias ${alias} conflicts with canonical route path`);
+    }
+    aliases.set(alias, route.id);
+  }
+
+  if (route.redirectTarget && !redirectableIds.has(route.redirectTarget.routeId)) {
+    throw new Error(`route ${route.id} redirects to missing target ${route.redirectTarget.routeId}`);
+  }
+  if (route.redirectTarget?.routeId === route.id) {
+    throw new Error(`route ${route.id} redirects to itself`);
+  }
+}
 
 const moreCustomer = menuRoutes('customer', 'more');
 if (moreCustomer.some((r) => r.id === 'finance-center' || r.id === 'work-schedule' || r.id === 'notifications')) {
@@ -25,20 +51,19 @@ if (moreCustomer.length > MAX_MORE_MENU_ITEMS) {
   throw new Error(`Home more menu exceeds ${MAX_MORE_MENU_ITEMS}`);
 }
 
-const headerMoreCount =
-  OS_MENU_SECTIONS.customer.length + OS_MORE_UTIL_LINKS.length;
+const headerMoreCount = buildSecondaryNavigation({ role: 'customer', dockItems: DOCK_DEFAULT, surface: 'header' }).length;
 if (headerMoreCount > MAX_HEADER_MORE_ITEMS) {
   throw new Error(`Header «Ещё» exceeds ${MAX_HEADER_MORE_ITEMS}: ${headerMoreCount}`);
 }
 
 const wa = RENOVA_ROUTES.find((r) => r.id === 'work-acceptance');
 if (wa?.visibility !== 'deeplink') throw new Error('work-acceptance must be deeplink');
-if (wa?.redirectTo !== '/repair?tab=control') throw new Error('work-acceptance must redirect to repair control');
+if (wa?.redirectTarget?.routeId !== 'repair' || wa.redirectTarget.tab !== 'control') throw new Error('work-acceptance must redirect to repair control');
 const ctrl = RENOVA_ROUTES.find((r) => r.id === 'control');
-if (ctrl?.redirectTo !== '/repair?tab=control') throw new Error('control must redirect to repair hub');
+if (ctrl?.redirectTarget?.routeId !== 'repair' || ctrl.redirectTarget.tab !== 'control') throw new Error('control must redirect to repair hub');
 
 const notif = RENOVA_ROUTES.find((r) => r.id === 'notifications');
-if (notif?.redirectTo !== '/inbox') throw new Error('notifications must redirect to /inbox');
+if (notif?.redirectTarget?.routeId !== 'inbox') throw new Error('notifications must redirect to /inbox');
 
 const guestMore = menuRoutes('customer', 'more', { readOnly: true });
 const guestIds = new Set(guestMore.map((r) => r.id));
@@ -59,4 +84,3 @@ if (!uf.includes('approvals')) {
 }
 
 console.log('routeRegistry.test OK', { more: moreCustomer.map((r) => r.id), userFacing: uf.length });
-

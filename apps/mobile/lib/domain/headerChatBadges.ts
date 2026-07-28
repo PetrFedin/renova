@@ -1,36 +1,47 @@
 /**
  * Единый SoT непрочитанных сообщений: inboxSyncStore.chatCount.
- * Dock «Сообщения» — единственный красный chat-бейдж.
- * «Ещё» в шапке — только задачи (не XOR и не дубль dock chat).
+ * Dock «Сообщения», бейдж «Ещё» и пункт «Входящие» показывают одно и то же число.
  */
 
 export type HeaderMoreBadge = {
   count: number;
-  /** warning = задачи inbox (chat намеренно не дублируем с dock) */
+  /** danger = чат (как dock); warning = задачи inbox */
   tone: 'danger' | 'warning';
   kind: 'chat' | 'tasks';
 };
 
 /**
- * Investor P2: шапка «Ещё» = задачи. Chat остаётся на dock «Сообщения».
- * Раньше chat XOR tasks прятал задачи при unread>0 и дублировал dock.
+ * Приоритет: непрочитанные сообщения (синхрон с dock) → иначе задачи «Входящие».
  */
-export function resolveHeaderMoreBadge(taskBadge: number, chatUnread: number): HeaderMoreBadge | null {
-  const tasks = Math.max(0, taskBadge || 0);
-  // chatUnread оставлен в сигнатуре для совместимости вызовов / тестов inbox row
-  void chatUnread;
-  if (tasks > 0) return { count: tasks, tone: 'warning', kind: 'tasks' };
-  return null;
+export function buildAttentionBadgeState(input: { chatUnread: number; taskUnread: number; todayTasks?: number }): {
+  chatUnread: number;
+  inboxTaskUnread: number;
+  calendarTodayTasks: number;
+} {
+  return {
+    chatUnread: Math.max(0, input.chatUnread || 0),
+    inboxTaskUnread: Math.max(0, input.taskUnread || 0),
+    calendarTodayTasks: Math.max(0, input.todayTasks || 0),
+  };
 }
 
-/** Число непрочитанных на dock «Сообщения» и красном бейдже строки «Входящие». */
+export function resolveHeaderMoreBadge(taskBadge: number, chatUnread: number): HeaderMoreBadge[] {
+  const chat = Math.max(0, chatUnread || 0);
+  const tasks = Math.max(0, taskBadge || 0);
+  return [
+    ...(chat > 0 ? [{ count: chat, tone: 'danger' as const, kind: 'chat' as const }] : []),
+    ...(tasks > 0 ? [{ count: tasks, tone: 'warning' as const, kind: 'tasks' as const }] : []),
+  ];
+}
+
+/** Число непрочитанных на dock «Сообщения» и красном бейдже «Входящие»/«Ещё». */
 export function dockChatBadgeCount(chatUnread: number): number {
   return Math.max(0, chatUnread || 0);
 }
 
 /**
  * Бейджи строки «Входящие» в панели «Ещё»:
- * red = то же, что dock «Сообщения»; amber = задачи.
+ * red = то же, что dock «Сообщения»; amber = задачи без чата.
  */
 export function resolveInboxMenuBadges(taskBadge: number, chatUnread: number): {
   chat: number;

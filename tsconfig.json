@@ -1,0 +1,8 @@
+{
+  "extends": "./apps/mobile/tsconfig.json",
+  "include": [
+    "apps/mobile/**/*.ts",
+    "apps/mobile/**/*.tsx",
+    "apps/mobile/types/**/*.d.ts"
+  ]
+}

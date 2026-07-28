@@ -1,6 +1,7 @@
 /** Нижняя панель — 5 кнопок, dynamic preset или настройки пользователя */
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import type { PressableStateCallbackType } from 'react-native';
 import { router, usePathname, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { TabIcon } from '@/components/renova/TabIcon';
@@ -10,7 +11,6 @@ import { getDockBar, subscribeDockBar } from '@/lib/dockBarPrefs';
 import {
   customerProfileTabHref,
   parseOsHref,
-  resolveSectionId,
   tabsRoute,
   type OsRole,
 } from '@/constants/osSections';
@@ -18,27 +18,24 @@ import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
-import { resolveDockItemActive } from '@/lib/domain/dockActive';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
 import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/resolveDynamicDock';
 import { reportCatch } from '@/lib/reportError';
+import { activeDockItemId, getBudgetHubLabel } from '@/lib/navigation/navigationPolicy';
 
 export function OsDockBar({ role }: { role: OsRole }) {
   const pathname = usePathname();
-  const params = useLocalSearchParams<{ tab?: string }>();
-  const hubTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  const params = useLocalSearchParams<Record<string, string | string[]>>();
   const bottomPad = useBottomInset();
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
-  /** Chat badge только на dock «Сообщения»; «Ещё» показывает задачи (см. headerChatBadges) */
+  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
-  const section = resolveSectionId(pathname);
-  const seg = pathname.split('/').filter(Boolean).pop() || 'index';
 
   const dynamicItems = useMemo(() => {
     if (!activeProject) return null;
@@ -75,17 +72,16 @@ export function OsDockBar({ role }: { role: OsRole }) {
     if (!dynamicItems) reloadPrefs();
   }), [dynamicItems, reloadPrefs]);
 
-  const isActive = (id: DockItemId) =>
-    resolveDockItemActive({ id, seg, section, hubTab, items });
+  const activeId = activeDockItemId(items, { pathname, params });
 
   const go = (id: DockItemId) => {
     const item = DOCK_BY_ID[id];
     if (!item) return;
     if (id === 'contractor') {
-      router.navigate(parseOsHref(customerProfileTabHref(role, 'contractor')) as any);
+      router.navigate(parseOsHref(customerProfileTabHref(role, 'contractor')) as never);
       return;
     }
-    router.navigate(tabsRoute(role, item.routeName, item.hubTab) as any);
+    router.navigate(tabsRoute(role, item.routeName, item.hubTab) as never);
   };
 
   return (
@@ -93,13 +89,14 @@ export function OsDockBar({ role }: { role: OsRole }) {
       {items.map((id) => {
         const item = DOCK_BY_ID[id];
         if (!item) return null;
-        const active = isActive(id);
+        const active = activeId === id;
         const color = active ? RenovaTheme.colors.tabActive : RenovaTheme.colors.tabInactive;
-        const label = dockItemLabel(id, role, item.label);
+        const canonicalLabel = id === 'budget' ? getBudgetHubLabel(role) : item.label;
+        const label = dockItemLabel(id, role, canonicalLabel);
         return (
           <Pressable
             key={id}
-            style={({ pressed }) => [s.tab, pressed && s.pressed]}
+            style={({ pressed }: PressableStateCallbackType) => [s.tab, pressed && s.pressed]}
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={
@@ -112,9 +109,9 @@ export function OsDockBar({ role }: { role: OsRole }) {
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
               {id === 'chat' && <ChatBadge count={chatUnread} />}
-              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} tone="warning" />}
+              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} />}
               {id === 'home' && !items.includes('calendar') && todayTasks > 0 && (
-                <ChatBadge count={todayTasks} tone="warning" />
+                <ChatBadge count={todayTasks} />
               )}
             </View>
             <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{label}</Text>

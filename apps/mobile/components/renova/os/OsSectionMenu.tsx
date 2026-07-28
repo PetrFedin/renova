@@ -1,13 +1,12 @@
 /** Панель «Ещё» в шапке — без дубля dock (столпы + чат уже внизу) */
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
+import type { ComponentProps } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import {
-  OS_MENU_SECTIONS,
-  OS_MORE_UTIL_LINKS,
   MAX_HEADER_MORE_ITEMS,
   tabsRoute,
   type OsRole,
@@ -19,11 +18,21 @@ import { useInboxTasks } from '@/lib/useChatUnread';
 import { moreMenuA11yLabel } from '@/lib/domain/moreMenuA11y';
 import { resolveHeaderMoreBadge, resolveInboxMenuBadges } from '@/lib/domain/headerChatBadges';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { READ_ONLY_MORE_IDS } from '@/lib/routeRegistry';
+import { getDockBar } from '@/lib/dockBarPrefs';
+import { DOCK_DEFAULT, type DockItemId } from '@/constants/dockBar';
+import { buildSecondaryNavigation, getRouteLabel } from '@/lib/navigation/navigationPolicy';
+import { reportCatch } from '@/lib/reportError';
 
 export { moreMenuA11yLabel };
 
 type Props = { role: OsRole; iconOnly?: boolean };
+
+const UTILITY_ICONS: Record<string, ComponentProps<typeof Ionicons>['name']> = {
+  inbox: 'mail-unread-outline',
+  approvals: 'checkmark-done-outline',
+  activity: 'time-outline',
+  documents: 'document-text-outline',
+};
 
 function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' | 'warning' }) {
   if (count <= 0) return null;
@@ -36,26 +45,24 @@ function MenuBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger' 
 
 export function OsSectionMenu({ role, iconOnly = true }: Props) {
   const topInset = useTopInset();
-  const { readOnly } = useRenova();
   const menuRole: OsRole = role === 'contractor' ? 'contractor' : 'customer';
   const { taskBadge, chatUnread } = useInboxTasks(menuRole);
   const [open, setOpen] = useState(false);
+  const { user, readOnly } = useRenova();
+  const [dockItems, setDockItems] = useState<DockItemId[]>(DOCK_DEFAULT);
   const pathname = usePathname() ?? '';
-  /**
-   * Guest/readOnly: тот же SoT, что Home menuRoutes — только documents + inbox.
-   * Скрываем Сроки / Согласования / Архив (иначе гость обходит guest policy через шапку).
-   */
-  const sections = useMemo(
-    () => (readOnly ? [] : OS_MENU_SECTIONS[menuRole]),
-    [readOnly, menuRole],
-  );
-  const utilLinks = useMemo(
-    () =>
-      readOnly
-        ? OS_MORE_UTIL_LINKS.filter((l) => READ_ONLY_MORE_IDS.has(l.id))
-        : OS_MORE_UTIL_LINKS,
-    [readOnly],
-  );
+  useEffect(() => {
+    void getDockBar(menuRole).then(setDockItems).catch(reportCatch('components.renova.os.OsSectionMenu.dock'));
+  }, [menuRole]);
+  const links = buildSecondaryNavigation({
+    role: menuRole,
+    readOnly,
+    guest: !user,
+    dockItems,
+    surface: 'header',
+  });
+  const sections = links.filter((route) => route.id === 'calendar');
+  const utilLinks = links.filter((route) => route.id !== 'calendar');
   const seg = pathname.split('/').filter(Boolean).pop() || 'index';
 
   if (__DEV__ && sections.length + utilLinks.length > MAX_HEADER_MORE_ITEMS) {
@@ -65,13 +72,13 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
   }
 
   /**
-   * Непрочитанный чат: SoT → dock «Сообщения» + строка «Входящие».
-   * Бейдж кнопки «Ещё» — только задачи (не дубль chat).
+   * Непрочитанный чат: один SoT (inboxSyncStore) → «Ещё», «Входящие» и dock «Сообщения».
+   * Задачи — янтарный бейдж рядом, без подмены числа сообщений.
    */
-  const headerBadge = resolveHeaderMoreBadge(taskBadge, chatUnread);
+  const headerBadges = resolveHeaderMoreBadge(taskBadge, chatUnread);
   const inboxBadges = resolveInboxMenuBadges(taskBadge, chatUnread);
 
-  const go = (sec: (typeof sections)[0]) => {
+  const go = (sec: { routeName: string; hubTab?: string }) => {
     setOpen(false);
     replaceOsNav(tabsRoute(menuRole, sec.routeName, sec.hubTab), undefined, menuRole);
   };
@@ -86,33 +93,35 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
         hitSlop={8}
       >
         <Ionicons name="menu-outline" size={22} color={RenovaTheme.colors.text} />
-        {headerBadge ? (
-          <View style={[s.badge, headerBadge.tone === 'warning' ? s.badgeTasks : s.badgeChat]}>
-            <Text style={s.badgeT}>{headerBadge.count > 99 ? '99+' : headerBadge.count}</Text>
-          </View>
-        ) : null}
+        <View style={s.headerBadges}>
+          {headerBadges.map((badge) => (
+            <View key={badge.kind} style={[s.badge, badge.tone === 'warning' ? s.badgeTasks : s.badgeChat]}>
+              <Text style={s.badgeT}>{badge.count > 99 ? '99+' : badge.count}</Text>
+            </View>
+          ))}
+        </View>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
           <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
             <View style={s.menu}>
-              <Text style={s.menuHead}>Меню</Text>
+              <Text style={s.menuHead}>Ещё</Text>
               {sections.map((sec) => {
-                const active = seg === sec.routeName;
+                const active = seg === sec.id;
                 return (
-                  <Pressable key={sec.id} style={[s.item, active && s.itemOn]} onPress={() => go(sec)}>
+                  <Pressable key={sec.id} style={[s.item, active && s.itemOn]} onPress={() => go({ routeName: sec.id })}>
                     <TabIcon
-                      name={sec.icon}
+                      name="calendar"
                       color={active ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted}
                       size={18}
                     />
-                    <Text style={[s.itemT, active && s.itemTOn]}>{sec.label}</Text>
+                    <Text style={[s.itemT, active && s.itemTOn]}>{getRouteLabel(sec, menuRole)}</Text>
                     {active ? <Text style={s.check}>✓</Text> : null}
                   </Pressable>
                 );
               })}
-              {sections.length > 0 && utilLinks.length > 0 ? <View style={s.divider} /> : null}
+              <View style={s.divider} />
               {utilLinks.map((link) => (
                 <Pressable
                   key={link.id}
@@ -120,11 +129,11 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
                   onPress={() => {
                     setOpen(false);
                     // W118: util links (inbox/docs/…) через SoT
-                    pushOsNav(link.href, pathname, role);
+                    pushOsNav(link.path, pathname, role);
                   }}
                 >
-                  <Ionicons name={link.icon} size={18} color={RenovaTheme.colors.textMuted} />
-                  <Text style={s.itemT}>{link.label}</Text>
+                  <Ionicons name={UTILITY_ICONS[link.id] || 'ellipse-outline'} size={18} color={RenovaTheme.colors.textMuted} />
+                  <Text style={s.itemT}>{getRouteLabel(link, menuRole)}</Text>
                   {link.id === 'inbox' ? (
                     <View style={s.inboxBadges}>
                       {/* Красный = то же число, что на кнопке «Сообщения» внизу */}
@@ -158,9 +167,6 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.surface,
   },
   badge: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
     minWidth: 16,
     height: 16,
     borderRadius: 8,
@@ -168,6 +174,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 3,
   },
+  headerBadges: { position: 'absolute', top: 1, right: 1, flexDirection: 'row', gap: 2 },
   /** Янтарный = задачи; красный = непрочитанный чат (как dock «Сообщения») */
   badgeTasks: { backgroundColor: RenovaTheme.colors.warning },
   badgeChat: { backgroundColor: RenovaTheme.colors.danger },
@@ -188,14 +195,15 @@ const s = StyleSheet.create({
   },
   menuHead: {
     ...screenTypography.section,
+    fontSize: 11,
+    fontWeight: '700',
+    color: RenovaTheme.colors.textMuted,
     paddingHorizontal: 16,
     paddingBottom: 8,
-    marginTop: 0,
-    marginBottom: 0,
   },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
   itemOn: { backgroundColor: RenovaTheme.colors.borderLight },
-  itemT: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
+  itemT: { ...screenTypography.listTitle, flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
   itemTOn: { color: RenovaTheme.colors.accent },
   check: { fontSize: 14, color: RenovaTheme.colors.accent, fontWeight: '700' },
   divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },

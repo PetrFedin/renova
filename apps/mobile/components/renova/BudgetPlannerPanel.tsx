@@ -1,10 +1,10 @@
 /** Планировщик бюджета: работа / материалы / срок / рынок / Лемана ПРО */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Linking } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { WORK_TYPES_FALLBACK, WORK_CATEGORY_LABEL, groupWorkTypes } from '@/constants/workCatalog';
+import { WORK_TYPES_FALLBACK, groupWorkTypes } from '@/constants/workCatalog';
 import { REGIONS_FALLBACK, fallbackMarketEstimate, type MarketEstimate, type MarketConsumable } from '@/constants/regions';
 import { api } from '@/lib/api';
 import { reportCatch } from '@/lib/reportError';
@@ -43,8 +43,12 @@ export function BudgetPlannerPanel({
   const [est, setEst] = useState<MarketEstimate | null>(null);
   const [loading, setLoading] = useState(false);
   const [localMaterials, setLocalMaterials] = useState<MarketConsumable[]>(materials || []);
+  const requestVersion = useRef(0);
 
-  useEffect(() => { api.listMarketRegions().then(setRegions).catch(reportCatch('components.renova.BudgetPlannerPanel.1')); api.listWorkTypes().then(setTypes).catch(reportCatch('components.renova.BudgetPlannerPanel.2')); }, []);
+  useEffect(() => {
+    api.listMarketRegions().then(setRegions).catch(reportCatch('components.renova.BudgetPlannerPanel.1'));
+    api.listWorkTypes().then(setTypes).catch(reportCatch('components.renova.BudgetPlannerPanel.2'));
+  }, []);
   useEffect(() => { if (materials) setLocalMaterials(materials); }, [materials]);
 
   const payload = useMemo(() => ({
@@ -60,24 +64,42 @@ export function BudgetPlannerPanel({
   }), [regionCode, workTypes, metrics, complexity, laborShare]);
 
   const recalc = useCallback(async () => {
+    const version = ++requestVersion.current;
     setLoading(true);
     try {
       const r = await api.marketEstimate(payload);
+      if (version !== requestVersion.current) return;
       setEst(r);
-      const merged = [...(r.consumables || []), ...(localMaterials.filter((m) => !r.consumables?.some((c) => c.name === m.name)))];
+      const merged = [
+        ...(r.consumables || []),
+        ...localMaterials.filter((m) => !r.consumables?.some((c) => c.name === m.name)),
+      ];
       setLocalMaterials(merged);
       onMaterialsChange?.(merged);
       onEstimate?.(r);
     } catch {
+      if (version !== requestVersion.current) return;
       const fb = fallbackMarketEstimate(payload);
       setEst(fb);
       onEstimate?.(fb);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [payload, onEstimate, onMaterialsChange, localMaterials]);
 
-  useEffect(() => { if (workTypes.length) recalc(); }, [regionCode, workTypes.join(','), complexity, laborShare, metrics.floor_sq_m]);
+  useEffect(() => {
+    if (workTypes.length) void recalc();
+  }, [
+    regionCode,
+    workTypes.join(','),
+    complexity,
+    laborShare,
+    metrics.floor_sq_m,
+    metrics.wall_sq_m,
+    metrics.perimeter_m,
+    metrics.outlets_count,
+    metrics.plumbing_points,
+  ]);
 
   const groups = useMemo(() => groupWorkTypes(types), [types]);
 
@@ -87,7 +109,11 @@ export function BudgetPlannerPanel({
   };
 
   const updateMaterial = (idx: number, patch: Partial<MarketConsumable>) => {
-    const next = localMaterials.map((m, i) => (i === idx ? { ...m, ...patch, total: (patch.estimated_price ?? m.estimated_price) * (patch.qty ?? m.qty) } : m));
+    const next = localMaterials.map((m, i) => (
+      i === idx
+        ? { ...m, ...patch, total: (patch.estimated_price ?? m.estimated_price) * (patch.qty ?? m.qty) }
+        : m
+    ));
     setLocalMaterials(next);
     onMaterialsChange?.(next);
   };
@@ -130,8 +156,8 @@ export function BudgetPlannerPanel({
         <>
           <Text style={s.label}>Габариты (м² / м)</Text>
           <View style={s.row}>
-            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.floor_sq_m)} onChangeText={(v) => onMetricsChange({ ...metrics, floor_sq_m: +v || 0 })} placeholder="Пол" />
-            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.wall_sq_m)} onChangeText={(v) => onMetricsChange({ ...metrics, wall_sq_m: +v || 0 })} placeholder="Стены" />
+            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.floor_sq_m)} onChangeText={(v: string) => onMetricsChange({ ...metrics, floor_sq_m: +v || 0 })} placeholder="Пол" />
+            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.wall_sq_m)} onChangeText={(v: string) => onMetricsChange({ ...metrics, wall_sq_m: +v || 0 })} placeholder="Стены" />
           </View>
         </>
       )}
@@ -154,7 +180,7 @@ export function BudgetPlannerPanel({
         ))}
       </View>
 
-      <PrimaryButton title={loading ? 'Считаем…' : 'Пересчитать'} variant="outline" compact onPress={recalc} />
+      <PrimaryButton title={loading ? 'Считаем…' : 'Пересчитать'} variant="outline" compact onPress={recalc} disabled={loading} />
 
       {est && (
         <View style={s.summary}>
@@ -201,7 +227,7 @@ export function BudgetPlannerPanel({
                     style={s.priceInput}
                     keyboardType="numeric"
                     value={String(m.estimated_price)}
-                    onChangeText={(v) => updateMaterial(i, { estimated_price: +v || 0, total: (+v || 0) * m.qty })}
+                    onChangeText={(v: string) => updateMaterial(i, { estimated_price: +v || 0, total: (+v || 0) * m.qty })}
                   />
                 </View>
               ))}

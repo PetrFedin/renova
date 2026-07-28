@@ -1,4 +1,4 @@
-/** Контент главной Renova OS — first viewport = статус + 1 hero CTA */
+/** Контент главной Renova OS — 5 блоков: статус → действие → деньги → работа → события */
 import { Text } from 'react-native';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
@@ -18,7 +18,7 @@ import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
-import { budgetTabRoute, HEADER_MORE_LINK_IDS, type OsRole } from '@/constants/osSections';
+import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { HomeCompletionLinks } from '@/components/renova/os/home/HomeCompletionStrip';
@@ -26,7 +26,8 @@ import { roleScopeLabel } from '@/lib/domain/roleCapabilities';
 import { resolveProjectPhase, type ProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
 import { homeTypography } from '@/constants/homeTypography';
 import { useOsNavFromHere } from '@/lib/navigation';
-import { menuRoutes } from '@/lib/routeRegistry';
+import { buildSecondaryNavigation, getRouteLabel } from '@/lib/navigation/navigationPolicy';
+import { DOCK_DEFAULT } from '@/constants/dockBar';
 
 export type HomeScreenBodyProps = {
   role: OsRole;
@@ -52,7 +53,7 @@ export function HomeScreenBody({
   role,
   user,
   activeProject,
-  projectsCount: _projectsCount,
+  projectsCount,
   snap,
   headerMeta,
   readOnly,
@@ -73,33 +74,29 @@ export function HomeScreenBody({
   const inboxRole = readOnly ? 'customer' : role;
   const kpiDetailHref = budgetTabRoute(role, 'summary', { period: 'month', focus: 'fact' });
   const showKpiHeaderLink = phase !== 'closing';
-  const moneyZoneTitle = 'Деньги';
+  const moneyZoneTitle = role === 'customer' ? 'Деньги' : 'Сводка';
 
-  /**
-   * Clarity A: first viewport = header + 1 hero (customer и contractor в active).
-   * KPI / «В работе» — в «Сводка». Clarity D: strip сроков убран — только ссылка в календарь.
-   */
-  const leanFirstViewport = phase === 'active' && !readOnly;
-  const showKpiMain = showKpi && !leanFirstViewport;
-  const showWorksMain = showWorksMaterials && !snap.isComplete && !leanFirstViewport;
-  /** Ссылка «Сроки» без WeekScheduleStrip — дубль с вкладкой календаря */
-  const showScheduleLink = isVisible('schedule');
-  const showKpiInMore = leanFirstViewport && showKpi;
-  const showWorksInMore = leanFirstViewport && showWorksMaterials && !snap.isComplete;
-
-  const showMore =
-    moreHasContent ||
-    phase === 'complete' ||
-    showKpiInMore ||
-    showWorksInMore ||
-    (leanFirstViewport && showScheduleLink);
+  const showMore = readOnly || moreHasContent || phase === 'complete';
+  const headerIds = new Set(buildSecondaryNavigation({
+    role,
+    readOnly,
+    guest: readOnly,
+    phase,
+    dockItems: DOCK_DEFAULT,
+    surface: 'header',
+  }).map((route) => route.id));
+  const secondaryRoutes = buildSecondaryNavigation({
+    role,
+    readOnly,
+    guest: readOnly,
+    phase,
+    dockItems: DOCK_DEFAULT,
+    surface: 'home',
+    excludeRouteIds: readOnly ? [] : [...headerIds],
+  });
   const moreSectionSummary = phase === 'complete'
     ? (moreSummary ? `отчёты · ${moreSummary}` : 'отчёты · экспорт')
-    : leanFirstViewport
-      ? [moreSummary, showKpiInMore ? 'деньги' : '', showScheduleLink ? 'сроки' : '']
-          .filter(Boolean)
-          .join(' · ') || 'деньги · сроки'
-      : moreSummary;
+    : moreSummary;
 
   return (
     <>
@@ -117,13 +114,20 @@ export function HomeScreenBody({
         <Text style={homeTypography.homeSubtitle}>{roleScopeLabel({ role, readOnly })}</Text>
       ) : null}
 
-      {role === 'contractor' && phase === 'active' && !leanFirstViewport && (
+      {role === 'customer' && !readOnly && (
+        <>
+          <ProjectProfileHint project={activeProject} role={role} />
+          <HomeSetupChecklist project={activeProject} snap={snap} role={role} />
+        </>
+      )}
+
+      {role === 'contractor' && phase === 'active' && (
         <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
       )}
 
-      {/* 2. Единственный hero first-viewport (до чеклиста и KPI) */}
-      {/* Lean: баннер приёмки конкурирует с hero — оставляем только HomeActionHero */}
-      {!leanFirstViewport && snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
+      {/* 2. Очередь дел — единственный attention SoT (hero + inbox; без отдельной строки «Входящие») */}
+      {/* W47/W56: banner для обеих ролей; у contractor — «ждут заказчика», не дубль hero accept */}
+      {snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
         <HomeAcceptanceBanner
           count={snap.quality.awaitingAcceptance}
           role={role}
@@ -141,21 +145,8 @@ export function HomeScreenBody({
         />
       )}
 
-      {/* Lean contractor: одна secondary-строка после hero, не до него */}
-      {role === 'contractor' && phase === 'active' && leanFirstViewport && (
-        <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
-      )}
-
-      {/* 3. Настройка — после hero, чтобы CTA не конкурировал с nextAction */}
-      {role === 'customer' && !readOnly && (
-        <>
-          <HomeSetupChecklist project={activeProject} snap={snap} role={role} />
-          {!leanFirstViewport ? <ProjectProfileHint project={activeProject} role={role} /> : null}
-        </>
-      )}
-
-      {/* 4. Деньги / работа / сроки — на lean уходят в «Сводка» */}
-      {showKpiMain && (
+      {/* 3. Деньги */}
+      {showKpi && (
         <HomeZone
           title={moneyZoneTitle}
           linkLabel={showKpiHeaderLink ? 'Подробнее →' : undefined}
@@ -165,46 +156,24 @@ export function HomeScreenBody({
         </HomeZone>
       )}
 
-      {showWorksMain && (
+      {/* 4. Что в работе */}
+      {showWorksMaterials && !snap.isComplete && (
         <HomeZone title="В работе">
           <WorksMaterialsTwinRow snap={snap} role={role} />
         </HomeZone>
       )}
 
-      {/* Clarity D: без WeekScheduleStrip — календарь SoT для сроков */}
-      {!leanFirstViewport && showScheduleLink ? (
+      {isVisible('schedule') ? (
         <HomeLinkRow title="Сроки" onPress={() => pushTab('calendar')} />
       ) : null}
 
-      {/* 5. Сводка — вторичные поверхности + lean-блоки (не путать с шапкой «Ещё») */}
+      {/* Дополнительно — свёрнуто; приёмка/уведомления не дублируем (Ремонт / Входящие) */}
       {showMore && (
-        <HomeMoreSection summary={moreSectionSummary} title="Сводка">
-          {showKpiInMore ? (
-            <HomeZone
-              title={moneyZoneTitle}
-              linkLabel={showKpiHeaderLink ? 'Подробнее →' : undefined}
-              onLinkPress={showKpiHeaderLink ? () => pushNav(kpiDetailHref) : undefined}
-            >
-              <OsKpiGrid snap={snap} rolePrefix={rolePrefix} role={role} gridTitle={null} />
-            </HomeZone>
-          ) : null}
-          {showWorksInMore ? (
-            <HomeZone title="В работе">
-              <WorksMaterialsTwinRow snap={snap} role={role} />
-            </HomeZone>
-          ) : null}
-          {leanFirstViewport && showScheduleLink ? (
-            <HomeLinkRow title="Сроки" onPress={() => pushTab('calendar')} />
-          ) : null}
-          {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more', {
-            readOnly,
-            phase,
-            // Util-навигация — только шапка «Ещё» (HEADER_MORE_LINK_IDS); здесь не дублируем
-            excludeIds: [...HEADER_MORE_LINK_IDS],
-          }).map((route) => (
+        <HomeMoreSection summary={moreSectionSummary}>
+          {secondaryRoutes.map((route) => (
             <HomeLinkRow
               key={route.id}
-              title={route.titleRu}
+              title={getRouteLabel(route, role)}
               onPress={() => pushScreen(route.path)}
             />
           ))}

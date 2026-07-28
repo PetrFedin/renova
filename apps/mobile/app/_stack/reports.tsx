@@ -89,7 +89,6 @@ export default function ReportsScreen() {
           <ReportPdfActions userId={user.id} projectId={activeProject.id} kind="weekly" onError={onPdfError} />
           <HomeLinkRow
             title="Отправить недельный дайджест"
-            subtitle="Push заказчику и исполнителю · rule-based (Ollama опционально)"
             onPress={async () => {
               try {
                 const res = await api.pushWeeklyDigest(user.id, activeProject.id);
@@ -104,7 +103,6 @@ export default function ReportsScreen() {
           />
           <HomeLinkRow
             title="Превью дайджеста"
-            subtitle="Без push — проверить текст перед инвестором"
             onPress={async () => {
               try {
                 const res = await api.previewWeeklyDigest(user.id, activeProject.id);

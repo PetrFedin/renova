@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -14,8 +15,43 @@ import {
   applyRoomTypePreset,
 } from '@/components/renova/room/RoomSetupFields';
 
+function roomValidationError(room: {
+  name?: string;
+  length_m?: number;
+  width_m?: number;
+  height_m?: number;
+  outlets_count?: number;
+  switches_count?: number;
+  plumbing_points?: number;
+}, index: number): string | null {
+  const label = `Комната ${index + 1}`;
+
+  if (!room.name?.trim()) return `${label}: укажите название.`;
+  if (!Number.isFinite(room.length_m) || (room.length_m ?? 0) <= 0) return `${label}: длина должна быть больше 0.`;
+  if (!Number.isFinite(room.width_m) || (room.width_m ?? 0) <= 0) return `${label}: ширина должна быть больше 0.`;
+  if (!Number.isFinite(room.height_m) || (room.height_m ?? 0) <= 0) return `${label}: высота должна быть больше 0.`;
+
+  const counters = [room.outlets_count, room.switches_count, room.plumbing_points];
+  if (counters.some((value) => !Number.isFinite(value) || (value ?? 0) < 0)) {
+    return `${label}: количество точек не может быть отрицательным.`;
+  }
+
+  return null;
+}
+
 export default function WizardRooms() {
   const { wizard, setWizard } = useRenova();
+
+  const validationError = useMemo(() => {
+    if (!wizard.rooms.length) return 'Добавьте хотя бы одну комнату.';
+
+    for (let i = 0; i < wizard.rooms.length; i += 1) {
+      const error = roomValidationError(wizard.rooms[i], i);
+      if (error) return error;
+    }
+
+    return null;
+  }, [wizard.rooms]);
 
   function updateRoom(i: number, patch: object) {
     const rooms = [...wizard.rooms];
@@ -37,6 +73,14 @@ export default function WizardRooms() {
       plumbing_points: parseInt(preset.plumbing || '0', 10),
       floor_level: preset.floor ?? wizard.rooms[i].floor_level ?? 1,
     });
+  }
+
+  function continueToEstimate() {
+    if (validationError) {
+      Alert.alert('Проверьте комнаты', validationError);
+      return;
+    }
+    pushOsNav('/wizard/confirm');
   }
 
   return (
@@ -77,7 +121,7 @@ export default function WizardRooms() {
             setters={{
               setLength: (v) => updateRoom(i, { length_m: parseFloat(v) || 0 }),
               setWidth: (v) => updateRoom(i, { width_m: parseFloat(v) || 0 }),
-              setHeight: (v) => updateRoom(i, { height_m: parseFloat(v) || 2.7 }),
+              setHeight: (v) => updateRoom(i, { height_m: parseFloat(v) || 0 }),
               setOutlets: (v) => updateRoom(i, { outlets_count: parseInt(v, 10) || 0 }),
               setSwitches: (v) => updateRoom(i, { switches_count: parseInt(v, 10) || 0 }),
               setPlumbing: (v) => updateRoom(i, { plumbing_points: parseInt(v, 10) || 0 }),
@@ -125,7 +169,10 @@ export default function WizardRooms() {
       >
         <Text style={styles.link}>+ Пустая комната</Text>
       </Pressable>
-      <PrimaryButton title="Рассчитать смету" onPress={() => pushOsNav('/wizard/confirm')} />
+      {validationError ? <Text style={styles.validation}>{validationError}</Text> : null}
+      <View style={styles.action}>
+        <PrimaryButton title="Рассчитать смету" onPress={continueToEstimate} disabled={Boolean(validationError)} />
+      </View>
     </ScrollView>
   );
 }
@@ -147,6 +194,8 @@ const styles = StyleSheet.create({
   templates: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, paddingHorizontal: 16 },
   tpl: { backgroundColor: '#e0f2fe', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   tplText: { color: '#0369a1', fontWeight: '600', fontSize: 12 },
-  link: { color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 16, textAlign: 'center' },
+  link: { color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 12, textAlign: 'center' },
+  validation: { color: RenovaTheme.colors.warning, fontSize: 12, lineHeight: 16, textAlign: 'center', paddingHorizontal: 16, marginBottom: 8 },
+  action: { paddingHorizontal: 16 },
   del: { color: '#b91c1c', fontSize: 12, marginTop: 6, textAlign: 'right' },
 });

@@ -6,20 +6,20 @@ import {
   budgetTabRoute,
   calendarTabRoute,
   objectTabHref,
-  repairTabRoute,
-  tabsRoute,
   type OsRole,
   type OsTabRoute,
-} from '../constants/osSections';
-import { RENOVA_ROUTES } from './routeRegistry';
-import { logLegacyRouteDeprecation } from './legacyRoutes';
+} from '@/constants/osSections';
+import { RENOVA_ROUTES } from '@/lib/routeRegistry';
+import { logLegacyRouteDeprecation } from '@/lib/legacyRoutes';
+import { resolveRegistryRedirect, warrantyRoute } from '@/lib/navigation/navigationPolicy';
+import { parseOsHref } from '@/constants/osSections';
 
 export type CatchAllResolution =
   | { kind: 'stack' }
   | { kind: 'redirect'; href: string | OsTabRoute; canonical: string }
   | { kind: 'not_found'; slug: string };
 
-/** Slug → канон (без зависимостей от React). Всегда role-aware — не сырой `/repair?…`. */
+/** Slug → канон (без зависимостей от React). */
 export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | string | null {
   switch (seg) {
     case 'notifications':
@@ -33,97 +33,35 @@ export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | stri
     case 'design':
       return objectTabHref(role, 'plan', 'design');
     case 'control':
-    case 'work-acceptance':
       // W58: единый hub приёмки для обеих ролей
-      return repairTabRoute(role, 'control');
-    case 'materials-procurement':
-      // P0 IA: role tabs + subtab, не bare `/repair?…` вне (customer|contractor)
-      return tabsRoute(role, 'repair', 'materials', { subtab: 'purchases' });
-    case 'selections':
-      return repairTabRoute(role, 'selections');
+      return role === 'contractor'
+        ? { pathname: '/(contractor)/(tabs)/repair', params: { tab: 'control' } }
+        : { pathname: '/(customer)/(tabs)/repair', params: { tab: 'control' } };
+    case 'work-acceptance':
+      return { pathname: `/(${role})/(tabs)/repair`, params: { tab: 'control' } };
     case 'warranty-claim':
     case 'warranty':
-      // W126: обе роли → QC (заказчик закрывает тикеты; документы — closeout)
-      return '/quality-control';
+      return warrantyRoute(role, { source: 'deeplink' });
     default:
       break;
   }
-  // Registry redirectTo — только через roleAware (сырой `/repair?…` опасен без роли)
-  const byId = RENOVA_ROUTES.find((r) => r.id === seg && r.redirectTo);
-  if (byId?.redirectTo) {
-    const fixed = roleAwareRegistryRedirect(byId.redirectTo, role);
-    if (fixed) return fixed;
-  }
-  const byPath = RENOVA_ROUTES.find((r) => r.path === `/${seg}` && r.redirectTo);
-  if (byPath?.redirectTo) {
-    const fixed = roleAwareRegistryRedirect(byPath.redirectTo, role);
-    if (fixed) return fixed;
-  }
+  // Registry redirectTo by id or path suffix
+  const byId = RENOVA_ROUTES.find((r) => r.id === seg && r.redirectTarget);
+  if (byId?.redirectTarget) return resolveRegistryRedirect(byId.redirectTarget, role);
+  const byPath = RENOVA_ROUTES.find((r) => r.path === `/${seg}` && r.redirectTarget);
+  if (byPath?.redirectTarget) return resolveRegistryRedirect(byPath.redirectTarget, role);
   return null;
 }
 
-/**
- * Превращает сырой registry `redirectTo` в role-aware href.
- * Stack/inbox/QC оставляем; `/repair|budget|calendar|object` — через tabsRoute.
- */
-export function roleAwareRegistryRedirect(
-  redirectTo: string,
-  role: OsRole,
-): OsTabRoute | string | null {
-  if (!redirectTo.startsWith('/')) return null;
-
-  // Уже с группой роли — парсим query в params
-  if (redirectTo.startsWith('/(customer)') || redirectTo.startsWith('/(contractor)')) {
-    return parseHrefToRoute(redirectTo);
+/** Compatibility resolver used by route integration tests and old inbound links. */
+export function roleAwareRegistryRedirect(path: string, role: OsRole): OsTabRoute | string | null {
+  const [pathname, query] = path.split('?');
+  const route = RENOVA_ROUTES.find((candidate) => candidate.path === pathname || candidate.id === pathname.replace(/^\//, ''));
+  if (route?.redirectTarget) return resolveRegistryRedirect(route.redirectTarget, role, query ? Object.fromEntries(new URLSearchParams(query)) : {});
+  if (pathname === '/repair' || pathname === '/budget' || pathname === '/object' || pathname === '/calendar') {
+    return parseOsHref(path).pathname === pathname ? resolveRegistryRedirect({ routeId: pathname.slice(1) as 'repair' | 'budget' | 'object' | 'calendar', params: query ? Object.fromEntries(new URLSearchParams(query)) : {} }, role) : null;
   }
-
-  // Абсолютные attention / QC stack — без роли
-  if (
-    redirectTo === '/inbox' ||
-    redirectTo.startsWith('/inbox?') ||
-    redirectTo.startsWith('/quality-control')
-  ) {
-    return redirectTo;
-  }
-
-  const parsed = parseHrefToRoute(redirectTo);
-  const path = parsed.pathname;
-  const params = { ...(parsed.params || {}) };
-
-  switch (path) {
-    case '/repair': {
-      const tab = params.tab || 'works';
-      delete params.tab;
-      return tabsRoute(role, 'repair', tab, Object.keys(params).length ? params : undefined);
-    }
-    case '/budget': {
-      const tab = params.tab || 'summary';
-      delete params.tab;
-      return tabsRoute(role, 'budget', tab, Object.keys(params).length ? params : undefined);
-    }
-    case '/calendar':
-      return calendarTabRoute(role, Object.keys(params).length ? params : undefined);
-    case '/object': {
-      const tab = params.tab || 'overview';
-      delete params.tab;
-      return tabsRoute(role, 'object', tab, Object.keys(params).length ? params : undefined);
-    }
-    default:
-      // Неизвестный bare path — не отдаём сырой redirect (избегаем тупика вне role)
-      return null;
-  }
-}
-
-function parseHrefToRoute(href: string): OsTabRoute {
-  const qIdx = href.indexOf('?');
-  if (qIdx === -1) return { pathname: href };
-  const pathname = href.slice(0, qIdx);
-  const params: Record<string, string> = {};
-  for (const part of href.slice(qIdx + 1).split('&')) {
-    const [k, v] = part.split('=');
-    if (k && v != null) params[k] = decodeURIComponent(v);
-  }
-  return { pathname, params };
+  return null;
 }
 
 export function resolveCatchAllSlug(
@@ -153,6 +91,4 @@ export const KNOWN_LEGACY_SLUGS = [
   'design',
   'control',
   'work-acceptance',
-  'materials-procurement',
-  'selections',
 ] as const;

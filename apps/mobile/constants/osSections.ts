@@ -26,36 +26,7 @@ const CONTRACTOR_CORE: OsSection[] = [
   { id: 'budget', label: 'Бюджет', routeName: 'budget', icon: 'budget' },
 ];
 
-/** Верхнее меню «Ещё»: только то, чего нет в dock (не дублировать 4 столпа + chat) */
-export const OS_MENU_SECTIONS: Record<OsRole, OsSection[]> = {
-  customer: [
-    { id: 'calendar', label: 'Сроки', routeName: 'calendar', icon: 'calendar' },
-  ],
-  contractor: [
-    { id: 'calendar', label: 'Сроки', routeName: 'calendar', icon: 'calendar' },
-  ],
-};
-
-/** Утилиты шапки «Ещё» — вместе с OS_MENU_SECTIONS ≤ MAX_HEADER_MORE_ITEMS */
 export const MAX_HEADER_MORE_ITEMS = 6;
-
-export const OS_MORE_UTIL_LINKS: {
-  id: string;
-  label: string;
-  href: string;
-  icon: 'time-outline' | 'document-text-outline' | 'mail-unread-outline' | 'checkmark-done-outline';
-}[] = [
-  { id: 'inbox', label: 'Входящие', href: '/inbox', icon: 'mail-unread-outline' },
-  { id: 'approvals', label: 'Согласования', href: '/approvals', icon: 'checkmark-done-outline' },
-  { id: 'documents', label: 'Документы', href: '/documents', icon: 'document-text-outline' },
-  { id: 'activity', label: 'Архив ремонта', href: '/activity', icon: 'time-outline' },
-];
-
-/**
- * Investor P1: ссылки шапки «Ещё» — не дублировать теми же пунктами в Home «Ещё».
- * Home оставляет контент (KPI/сроки/риски), навигация util — в шапке.
- */
-export const HEADER_MORE_LINK_IDS = OS_MORE_UTIL_LINKS.map((l) => l.id);
 
 export const OS_SECTIONS: Record<OsRole, OsSection[]> = {
   customer: CUSTOMER_CORE,
@@ -192,31 +163,17 @@ export function customerProfileTabHref(role: OsRole, focus?: string): string {
   return `${r.pathname}?${qs}`;
 }
 
-export function objectTabHref(role: OsRole, tab: string, sub?: string, extra?: Record<string, string>): string {
-  let href = tabsHref(role, 'object', tab) + (sub ? `&sub=${sub}` : '');
-  if (extra) {
-    for (const [k, v] of Object.entries(extra)) {
-      if (v != null && v !== '') href += `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
-    }
-  }
-  return href;
+export function objectTabHref(role: OsRole, tab: string, sub?: string): string {
+  return tabsHref(role, 'object', tab) + (sub ? `&sub=${sub}` : '');
 }
 
-export function objectTabRoute(
-  role: OsRole,
-  tab: string,
-  sub?: string,
-  extra?: Record<string, string>,
-): OsTabRoute {
-  return tabsRoute(role, 'object', tab, {
-    ...(sub ? { sub } : {}),
-    ...(extra || {}),
-  });
+export function objectTabRoute(role: OsRole, tab: string, sub?: string): OsTabRoute {
+  return tabsRoute(role, 'object', tab, sub ? { sub } : undefined);
 }
 
-/** Investor P2: план этажа сразу в режиме punch (замечание на плане) */
+/** План этажа сразу в режиме фиксации замечания. */
 export function planPunchRoute(role: OsRole): OsTabRoute {
-  return objectTabRoute(role, 'plan', 'floor', { punch: '1' });
+  return tabsRoute(role, 'object', 'plan', { sub: 'floor', punch: '1' });
 }
 
 export type BudgetNavParams = {
