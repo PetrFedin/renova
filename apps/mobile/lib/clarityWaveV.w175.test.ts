@@ -42,6 +42,11 @@ if (pay.includes('onConfirmed?.(') && pay.includes('await syncProjectSideEffects
 
 const viewers = src('components/renova/ViewerSharePanel.tsx');
 if (!viewers.includes("title: 'Удалить гостя?'")) throw new Error('viewer remove confirm');
+if (!viewers.includes('primaryDestructive: true')) throw new Error('viewer remove destructive confirm');
+if (!viewers.includes('const busyRef = useRef(false)')) throw new Error('viewer duplicate mutation guard');
+if (!viewers.includes('width: RenovaTheme.minTouch')) throw new Error('viewer actions min touch');
+if (!viewers.includes("loading={busyAction === 'add'}")) throw new Error('viewer add loading state');
+if (!viewers.includes('disabled={busy}')) throw new Error('viewer actions disabled while busy');
 
 const typo = src('constants/screenTypography.ts');
 if (!typo.includes('export const filterChipStyles')) throw new Error('filterChipStyles SoT');
