@@ -9,10 +9,27 @@ const matPage = src('app/material/[id].tsx');
 if (!matPage.includes("title: 'Убрать из факта?'")) throw new Error('material page cancel confirm');
 
 const mats = src('components/screens/OsMaterialsScreen.tsx');
+const purchaseList = src('components/renova/PurchaseList.tsx');
 if (!mats.includes("status === 'cancelled'") || !mats.includes("title: 'Убрать из факта?'")) {
   throw new Error('OsMaterials cancel confirm');
 }
 if (mats.includes('} import {')) throw new Error('OsMaterials broken import');
+if ((mats.match(/<ScrollView/g) || []).length !== 1) throw new Error('materials must use one vertical scroll');
+if (!mats.includes('filterChipStyles') || !mats.includes('accessibilityState={{ selected, disabled: busy }}')) {
+  throw new Error('materials filters shared/accessibility');
+}
+if (!mats.includes('const mutationRef = useRef(false)') || !mats.includes('if (mutationRef.current) return')) {
+  throw new Error('materials duplicate mutation guard');
+}
+if (!mats.includes('primaryDestructive: true')) throw new Error('materials cancel destructive confirm');
+if ((mats.match(/Создать закупку \(/g) || []).length > 0) throw new Error('duplicate create purchase CTA');
+if (!mats.includes('Следующий шаг') || !mats.includes('next.cta')) throw new Error('canonical procurement next action');
+if (!mats.includes('Нужно купить') || !mats.includes('В факте')) throw new Error('materials focused summary');
+if (!purchaseList.includes('variant="dangerOutline"')) throw new Error('purchase cancel danger hierarchy');
+if (!purchaseList.includes('mutationKey === nextKey') || !purchaseList.includes('mutationKey === cancelKey')) {
+  throw new Error('purchase exact loading states');
+}
+if (!purchaseList.includes('disabled={busy}')) throw new Error('purchase navigation guarded while busy');
 
 const waste = src('components/renova/WasteOrderList.tsx');
 if (!waste.includes("title: 'Согласовать вывоз?'")) throw new Error('waste approve confirm');
