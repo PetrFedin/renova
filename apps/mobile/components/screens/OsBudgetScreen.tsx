@@ -8,12 +8,11 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { ExpenseDetailSheet, type ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
-import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
 import { useBudgetWidgets } from '@/lib/useBudgetWidgets';
 import { useCustomerBudget } from '@/lib/hooks/useCustomerBudget';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useOsBudgetScreen } from '@/lib/hooks/useOsBudgetScreen';
-import { budgetTabRoute, type OsRole } from '@/constants/osSections';
+import type { OsRole } from '@/constants/osSections';
 import { resolveBudgetFigures } from '@/lib/useOsBudgetFigures';
 import type { Payment } from '@/lib/api';
 import { BudgetSummarySection } from '@/components/screens/budget/BudgetSummarySection';
@@ -22,7 +21,6 @@ import { BudgetPaymentsSection } from '@/components/screens/budget/BudgetPayment
 import { BudgetDeviationsSection } from '@/components/screens/budget/BudgetDeviationsSection';
 import { buildUnifiedBudgetExpenses, unifiedExpenseTotal } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
-import { formatRub } from '@/constants/Theme';
 import type { BudgetTab, ExpenseView } from '@/constants/budgetTabs';
 import { normalizeBudgetTab } from '@/constants/budgetTabs';
 
@@ -66,6 +64,26 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     serverBudget: activeProject?.customer_budget,
   });
 
+  const resolvedTab = normalizeBudgetTab(tabParam ?? tab).tab;
+  const expenseView: ExpenseView =
+    viewParam
+    ?? (roomParam ? 'list' : undefined)
+    ?? normalizeBudgetTab(tabParam).view
+    ?? 'list';
+
+  useEffect(() => {
+    if (paymentDetail) return;
+    const wantOpen = openPaymentParam === '1' || openPaymentParam === 'true' || Boolean(paymentIdParam);
+    if (!wantOpen) return;
+    if (resolvedTab !== 'payments' && resolvedTab !== 'summary') return;
+    const pendingList = payments.filter((x) => x.status === 'pending');
+    const target =
+      (paymentIdParam && payments.find((x) => x.id === paymentIdParam))
+      || pendingList[0]
+      || null;
+    if (target) setPaymentDetail(target);
+  }, [openPaymentParam, paymentIdParam, payments, resolvedTab, paymentDetail]);
+
   if (!activeProject || !user) {
     return <ProjectEmptyState role={role} />;
   }
@@ -84,13 +102,6 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     );
   }
 
-  const resolvedTab = normalizeBudgetTab(tabParam ?? tab).tab;
-  const expenseView: ExpenseView =
-    viewParam
-    ?? (roomParam ? 'list' : undefined)
-    ?? normalizeBudgetTab(tabParam).view
-    ?? 'list';
-
   const figures = resolveBudgetFigures(activeProject, summary);
   const unifiedRows = buildUnifiedBudgetExpenses(
     receipts,
@@ -102,58 +113,11 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
   );
   const listTotal = unifiedExpenseTotal(unifiedRows);
   const serverFact = summary?.budget_spent ?? figures.spent;
-  const riskColor = summary?.risk === 'high' ? RenovaTheme.colors.danger : summary?.risk === 'medium' ? RenovaTheme.colors.warning : RenovaTheme.colors.success;
-  const period = (periodParam as string) || 'month';
-
-  useEffect(() => {
-    if (paymentDetail) return;
-    const wantOpen = openPaymentParam === '1' || openPaymentParam === 'true' || Boolean(paymentIdParam);
-    if (!wantOpen) return;
-    if (resolvedTab !== 'payments' && resolvedTab !== 'summary') return;
-    const pendingList = payments.filter((x) => x.status === 'pending');
-    const target =
-      (paymentIdParam && payments.find((x) => x.id === paymentIdParam))
-      || pendingList[0]
-      || null;
-    if (target) setPaymentDetail(target);
-  }, [openPaymentParam, paymentIdParam, payments, resolvedTab, paymentDetail]);
-
-  const summaryWidgets: OsWidget[] = [
-    {
-      id: 'plan',
-      label: 'План',
-      value: formatRub(summary?.budget_planned ?? figures.planned),
-      width: 96,
-      href: budgetTabRoute(role, 'summary', { period, focus: 'plan' }),
-    },
-    {
-      id: 'fact',
-      label: 'Факт',
-      value: formatRub(summary?.budget_spent ?? figures.spent),
-      width: 96,
-      href: budgetTabRoute(role, 'summary', { period, focus: 'fact' }),
-    },
-    ...(summary
-      ? [
-          {
-            id: 'forecast',
-            label: 'Прогноз',
-            value: formatRub(summary.forecast_total),
-            width: 96,
-            href: budgetTabRoute(role, 'summary', { period, focus: 'forecast' }),
-          },
-          {
-            id: 'left',
-            label: 'Остаток',
-            value: formatRub(summary.remaining),
-            hint: summary.forecast_over > 0 ? `+${formatRub(summary.forecast_over)} риск` : undefined,
-            width: 104,
-            accent: summary.remaining > 0 ? RenovaTheme.colors.success : RenovaTheme.colors.danger,
-            href: budgetTabRoute(role, 'summary', { period, focus: 'left' }),
-          },
-        ]
-      : []),
-  ];
+  const riskColor = summary?.risk === 'high'
+    ? RenovaTheme.colors.danger
+    : summary?.risk === 'medium'
+      ? RenovaTheme.colors.warning
+      : RenovaTheme.colors.success;
 
   return (
     <>
@@ -164,7 +128,6 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             userId={user.id}
             projectId={activeProject.id}
             summary={summary}
-            summaryWidgets={summaryWidgets}
             figures={figures}
             riskColor={riskColor}
             receipts={receipts}
