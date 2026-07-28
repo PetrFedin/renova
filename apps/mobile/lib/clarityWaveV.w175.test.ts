@@ -1,6 +1,7 @@
 /** Clarity V: approve asymmetries; payment/viewer; Manager KPI + filterChip + BudgetBreakdown */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { buildBudgetSummaryView } from './domain/buildBudgetSummaryView';
 
 const mobile = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(mobile, rel), 'utf8');
@@ -64,6 +65,39 @@ if (!viewers.includes('const busyRef = useRef(false)')) throw new Error('viewer 
 if (!viewers.includes('width: RenovaTheme.minTouch')) throw new Error('viewer actions min touch');
 if (!viewers.includes("loading={busyAction === 'add'}")) throw new Error('viewer add loading state');
 if (!viewers.includes('disabled={busy}')) throw new Error('viewer actions disabled while busy');
+
+const budgetSummary = src('components/screens/budget/BudgetSummarySection.tsx');
+const budgetScreen = src('components/screens/OsBudgetScreen.tsx');
+const budgetStyles = src('components/screens/budget/budgetScreenStyles.ts');
+if (!budgetSummary.includes('buildBudgetSummaryView') || !budgetSummary.includes('Состояние бюджета')) {
+  throw new Error('budget decision summary missing');
+}
+if (!budgetSummary.includes('nextAction.title') || !budgetSummary.includes("title: 'Разобрать отклонения'")) {
+  throw new Error('budget next action missing');
+}
+if (budgetSummary.includes('summaryWidgets') || budgetScreen.includes('const summaryWidgets')) {
+  throw new Error('budget duplicate summary widgets remain');
+}
+if (!budgetStyles.includes('summaryHero') || !budgetStyles.includes('summaryMetaRow')) {
+  throw new Error('budget summary shared surface styles');
+}
+
+const overBudget = buildBudgetSummaryView({ planned: 1000, spent: 1200, forecast: 1300, pendingAmounts: [100, 200] });
+if (overBudget.state !== 'over' || overBudget.deviation !== 200 || overBudget.pendingAmount !== 300 || overBudget.pendingCount !== 2) {
+  throw new Error('budget overrun decision model');
+}
+const forecastRisk = buildBudgetSummaryView({ planned: 1000, spent: 700, forecast: 1100 });
+if (forecastRisk.state !== 'forecast-risk' || forecastRisk.remaining !== 300) {
+  throw new Error('budget forecast risk model');
+}
+const onTrack = buildBudgetSummaryView({ planned: 1000, spent: 700, forecast: 900, customerBudget: 650 });
+if (onTrack.state !== 'on-track' || onTrack.customerBudgetOver !== 50 || onTrack.margin !== 300) {
+  throw new Error('budget on-track/limit model');
+}
+const emptyBudget = buildBudgetSummaryView({ planned: Number.NaN, spent: Number.NaN, pendingAmounts: [-1, Number.NaN] });
+if (emptyBudget.state !== 'empty' || emptyBudget.pendingAmount !== 0 || emptyBudget.customerBudget !== null) {
+  throw new Error('budget invalid input normalization');
+}
 
 const typo = src('constants/screenTypography.ts');
 if (!typo.includes('export const filterChipStyles')) throw new Error('filterChipStyles SoT');

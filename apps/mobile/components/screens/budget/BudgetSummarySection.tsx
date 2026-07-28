@@ -1,4 +1,4 @@
-/** Вкладка «Бюджет → Сводка» — KPI, alerts, сегменты, превью */
+/** Вкладка «Бюджет → Сводка» — состояние, решение, затем детали */
 import { View, Text, Pressable } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
@@ -7,24 +7,25 @@ import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { StageExpenseLinksPanel } from '@/components/renova/StageExpenseLinksPanel';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
 import { RepairControlSummary } from '@/components/renova/RepairControlSummary';
-import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
+import { OsWidgetGrid } from '@/components/renova/os/OsWidgetStrip';
 import { BUDGET_SEGMENT_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, Purchase, ReceiptItem, Room, Stage } from '@/lib/api';
 import { buildUnifiedBudgetExpenses, rowToExpenseTarget } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import { formatForecastOverLabel } from '@/lib/domain/formatBudgetHint';
+import { buildBudgetSummaryView } from '@/lib/domain/buildBudgetSummaryView';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
 import { BudgetPeriodDetailSection } from '@/components/screens/budget/BudgetPeriodDetailSection';
 import { parseBudgetFocus, parseBudgetPeriod } from '@/constants/budgetPeriod';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 import { budgetTabRoute, objectTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+
 type Props = {
   userId: string;
   projectId: string;
   summary: OsBudgetSummary | null;
-  summaryWidgets: OsWidget[];
   figures: { planned: number; spent: number };
   riskColor: string;
   receipts: ReceiptItem[];
@@ -50,7 +51,7 @@ type Props = {
 
 export function BudgetSummarySection(props: Props) {
   const {
-    userId, projectId, summary, summaryWidgets, figures, riskColor, receipts, payments,
+    userId, projectId, summary, figures, riskColor, receipts, payments,
     budgetAlerts, expenses, pendingPayments, purchases = [], stages = [], rooms = [], picks = [], bwVisible, role, readOnly, customerBudget,
     projectStart, projectEnd, periodParam, focusParam, onPaymentPress, onExpensePress,
   } = props;
@@ -58,10 +59,65 @@ export function BudgetSummarySection(props: Props) {
   const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks, purchases);
   const period = parseBudgetPeriod(periodParam);
   const focus = parseBudgetFocus(focusParam);
-
   const showRepairControl = bwVisible('repair_control');
-  const margin = figures.planned - figures.spent;
-  const showMargin = role === 'contractor';
+  const planned = summary?.budget_planned ?? figures.planned;
+  const spent = summary?.budget_spent ?? figures.spent;
+  const view = buildBudgetSummaryView({
+    planned,
+    spent,
+    deviation: summary?.deviation,
+    deviationPct: summary?.deviation_pct,
+    forecast: summary?.forecast_total,
+    remaining: summary?.remaining,
+    customerBudget,
+    pendingAmounts: pendingPayments.map((payment) => payment.amount),
+  });
+
+  const stateLabel = {
+    empty: 'Нет финансовых данных',
+    over: 'Перерасход',
+    'forecast-risk': 'Риск превышения',
+    'on-track': 'В пределах плана',
+  }[view.state];
+  const stateColor = view.state === 'over'
+    ? RenovaTheme.colors.danger
+    : view.state === 'forecast-risk'
+      ? RenovaTheme.colors.warning
+      : view.state === 'empty'
+        ? RenovaTheme.colors.textMuted
+        : RenovaTheme.colors.success;
+  const deviationLabel = view.deviation > 0 ? 'Перерасход' : view.deviation < 0 ? 'Экономия' : 'Отклонение';
+  const deviationValue = view.deviation > 0
+    ? `+${formatRub(view.deviation)}`
+    : view.deviation < 0
+      ? `−${formatRub(Math.abs(view.deviation))}`
+      : formatRub(0);
+
+  const firstPending = pendingPayments[0] ?? null;
+  const urgentBudget = view.state === 'over' || view.state === 'forecast-risk' || budgetAlerts.length > 0;
+  const nextAction = firstPending && role === 'customer' && !readOnly
+    ? {
+        title: `Оплатить ${formatRub(firstPending.amount)}`,
+        primary: true,
+        onPress: () => onPaymentPress(firstPending),
+      }
+    : view.pendingCount > 0
+      ? {
+          title: `Открыть оплаты (${view.pendingCount})`,
+          primary: true,
+          onPress: () => router.setParams({ tab: 'payments' }),
+        }
+      : urgentBudget
+        ? {
+            title: 'Разобрать отклонения',
+            primary: true,
+            onPress: () => router.setParams({ tab: 'deviations' }),
+          }
+        : {
+            title: 'Открыть расходы',
+            primary: false,
+            onPress: () => router.setParams({ tab: 'expenses' }),
+          };
 
   const onRowPress = (row: ExpenseDetailRow) => {
     openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress, role });
@@ -69,89 +125,75 @@ export function BudgetSummarySection(props: Props) {
 
   return (
     <>
-      {showMargin ? (
-        <View style={s.limitCard}>
-          <Text style={s.limitTitle}>Маржа (план − факт)</Text>
-          <Text style={s.limitVal}>{formatRub(margin)}</Text>
-          <Text style={s.dataHint}>
-            План {formatRub(figures.planned)} · факт {formatRub(figures.spent)}
-            {figures.planned > 0 ? ` · ${Math.round((margin / figures.planned) * 100)}%` : ''}
-          </Text>
-        </View>
-      ) : null}
-      {customerBudget ? (
-        <View style={s.limitCard}>
-          <Text style={s.limitTitle}>Лимит заказчика</Text>
-          <Text style={s.limitVal}>{formatRub(customerBudget)}</Text>
-          <Text style={s.dataHint}>
-            Смета {formatRub(figures.planned)} · факт {formatRub(figures.spent)}
-            {figures.spent > customerBudget ? ` · перерасход ${formatRub(figures.spent - customerBudget)}` : ''}
-          </Text>
-        </View>
-      ) : (
-        <View style={s.limitCard}>
-          <Text style={s.limitTitle}>Лимит не задан</Text>
-          <Text style={s.dataHint}>
-            План {formatRub(figures.planned)} — из сметы объекта. Факт {formatRub(figures.spent)} — учтённые траты. Задайте лимит в «Объект → Данные объекта».
-          </Text>
-        </View>
-      )}
-
-      {(summary?.change_orders?.length ?? 0) > 0 ? (
-        <View style={s.limitCard}>
-          <Text style={s.limitTitle}>Доп. работы (ДО)</Text>
-          <Text style={s.limitVal}>
-            {formatRub(summary?.change_orders_approved_sum ?? 0)}
-          </Text>
-          <Text style={s.dataHint}>
-            В плане бюджета · согласованные ДО. Черновик на подпись — в Документах.
-          </Text>
-          {(summary?.change_orders ?? []).slice(0, 4).map((co) => (
-            <Pressable
-              key={co.id}
-              onPress={() => {
-                // W121: ДО → слой сметы «Изменения» (Buildertrend CO chain)
-                const route = objectTabRoute(role, 'estimate');
-                pushOsNav(
-                  { pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } },
-                  pathname,
-                  role,
-                );
-              }}
-              style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border }}
-            >
-              <Text style={{ fontWeight: '700', color: RenovaTheme.colors.text }}>
-                {co.title} · {formatRub(co.amount)}
-              </Text>
-              <Text style={s.dataHint}>
-                {co.status === 'approved' ? 'Согласовано' : co.status === 'pending' ? 'На согласовании' : co.status}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
       {bwVisible('summary_kpi') && (
+        <View style={s.summaryHero}>
+          <View style={s.summaryHeader}>
+            <Text style={s.summaryTitle}>Состояние бюджета</Text>
+            <Text style={[s.summaryState, { color: stateColor }]}>{stateLabel}</Text>
+          </View>
 
-        <>
-          <OsWidgetGrid items={summaryWidgets} returnTo={pathname} role={role} />
+          <View style={s.summaryMainRow}>
+            <View style={s.summaryMainCell}>
+              <Text style={s.summaryLabel}>Факт</Text>
+              <Text style={s.summaryValue}>{formatRub(view.spent)}</Text>
+            </View>
+            <View style={s.summaryMainCell}>
+              <Text style={s.summaryLabel}>{deviationLabel}</Text>
+              <Text style={[s.summaryValue, { color: view.deviation > 0 ? RenovaTheme.colors.danger : RenovaTheme.colors.text }]}>
+                {deviationValue}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={s.dataHint}>
+            План {formatRub(view.planned)}
+            {view.deviationPct !== 0 ? ` · отклонение ${view.deviationPct > 0 ? '+' : ''}${view.deviationPct}%` : ''}
+            {role === 'contractor' ? ` · маржа ${formatRub(view.margin)}` : ''}
+          </Text>
+          <Text style={[s.dataHint, view.customerBudgetOver > 0 && { color: RenovaTheme.colors.dangerText }]}>
+            {view.customerBudget != null
+              ? `Лимит заказчика ${formatRub(view.customerBudget)}${view.customerBudgetOver > 0 ? ` · превышение ${formatRub(view.customerBudgetOver)}` : ''}`
+              : 'Лимит заказчика не задан — план берётся из сметы объекта.'}
+          </Text>
+
+          <View style={s.summaryMetaRow}>
+            {view.forecast != null ? (
+              <View style={s.summaryMetaCell}>
+                <Text style={s.summaryLabel}>Прогноз</Text>
+                <Text style={s.summaryMetaValue}>{formatRub(view.forecast)}</Text>
+              </View>
+            ) : null}
+            <View style={s.summaryMetaCell}>
+              <Text style={s.summaryLabel}>Остаток</Text>
+              <Text style={s.summaryMetaValue}>{formatRub(view.remaining)}</Text>
+            </View>
+            {view.pendingCount > 0 ? (
+              <View style={s.summaryMetaCell}>
+                <Text style={s.summaryLabel}>Ожидает оплаты</Text>
+                <Text style={s.summaryMetaValue}>{formatRub(view.pendingAmount)}</Text>
+              </View>
+            ) : null}
+          </View>
+
           <BudgetFactStatus
-            serverFact={summary?.budget_spent ?? figures.spent}
-            listTotal={unifiedRows.reduce((a, r) => a + r.amount, 0)}
+            serverFact={view.spent}
+            listTotal={unifiedRows.reduce((sum, row) => sum + row.amount, 0)}
             compact
             showAligned
           />
-          <Text style={s.dataHint}>
-            Плитка — детализация по периоду. Оплаты — во вкладке «Оплаты».
-            {!showRepairControl
-              ? ` План ${formatRub(summary?.budget_planned ?? figures.planned)} · факт ${formatRub(summary?.budget_spent ?? figures.spent)}.`
-              : ''}
-          </Text>
           {summary && (() => {
-            const label = formatForecastOverLabel(summary.forecast_over, summary.budget_planned || figures.planned);
+            const label = formatForecastOverLabel(summary.forecast_over, view.planned);
             return label ? <Text style={[s.risk, { color: riskColor }]}>{label}</Text> : null;
           })()}
-        </>
+          <View style={s.summaryAction}>
+            <PrimaryButton
+              title={nextAction.title}
+              variant={nextAction.primary ? 'primary' : 'outline'}
+              fullWidth
+              onPress={nextAction.onPress}
+            />
+          </View>
+        </View>
       )}
 
       {focus && bwVisible('summary_kpi') ? (
@@ -159,16 +201,46 @@ export function BudgetSummarySection(props: Props) {
           role={role}
           period={period}
           focus={focus}
-          planned={summary?.budget_planned ?? figures.planned}
-          spentTotal={summary?.budget_spent ?? figures.spent}
-          forecastTotal={summary?.forecast_total}
-          customerLimit={customerBudget}
+          planned={view.planned}
+          spentTotal={view.spent}
+          forecastTotal={view.forecast ?? undefined}
+          customerLimit={view.customerBudget}
           rows={unifiedRows}
           projectStart={projectStart}
           projectEnd={projectEnd}
           returnTo={pathname}
           onExpensePress={onRowPress}
         />
+      ) : null}
+
+      {(summary?.change_orders?.length ?? 0) > 0 ? (
+        <>
+          <Text style={s.section}>Доп. работы</Text>
+          <Text style={s.changeOrderTotal}>{formatRub(summary?.change_orders_approved_sum ?? 0)}</Text>
+          <Text style={s.dataHint}>Согласованные изменения уже включены в план бюджета.</Text>
+          {(summary?.change_orders ?? []).slice(0, 4).map((co) => (
+            <Pressable
+              key={co.id}
+              style={s.row}
+              accessibilityRole="button"
+              accessibilityLabel={`Открыть изменение сметы ${co.title}`}
+              onPress={() => {
+                const route = objectTabRoute(role, 'estimate');
+                pushOsNav(
+                  { pathname: route.pathname, params: { ...route.params, estimateLayer: 'changes' } },
+                  pathname,
+                  role,
+                );
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>{co.title}</Text>
+                <Text style={s.rowMeta}>{co.status === 'approved' ? 'Согласовано' : co.status === 'pending' ? 'На согласовании' : co.status}</Text>
+              </View>
+              <Text style={s.status}>{formatRub(co.amount)}</Text>
+            </Pressable>
+          ))}
+        </>
       ) : null}
 
       {bwVisible('repair_control') && (
@@ -182,11 +254,11 @@ export function BudgetSummarySection(props: Props) {
             role={role}
           />
           <RepairControlSummary
-            budgetPlanned={customerBudget ?? summary?.budget_planned ?? figures.planned}
-            budgetSpent={summary?.budget_spent ?? figures.spent}
+            budgetPlanned={view.customerBudget ?? view.planned}
+            budgetSpent={view.spent}
             receipts={receipts}
             payments={payments}
-            listTotal={unifiedRows.reduce((a, r) => a + r.amount, 0)}
+            listTotal={unifiedRows.reduce((sum, row) => sum + row.amount, 0)}
           />
         </>
       )}
@@ -218,17 +290,21 @@ export function BudgetSummarySection(props: Props) {
       {pendingPayments.length > 0 && bwVisible('pending_payments') && (
         <>
           <Text style={s.section}>Ожидает оплаты</Text>
-          {pendingPayments.map((p) => (
-            <Pressable key={p.id} style={s.row} onPress={() => onPaymentPress(p)}>
+          {pendingPayments.map((payment) => (
+            <Pressable
+              key={payment.id}
+              style={s.row}
+              accessibilityRole="button"
+              accessibilityLabel={`Открыть оплату ${payment.title}`}
+              onPress={() => onPaymentPress(payment)}
+            >
               <View style={{ flex: 1 }}>
-                <Text style={s.rowTitle}>{p.title}</Text>
-                <Text style={s.rowMeta}>{PAYMENT_TYPE_LABEL[p.payment_type] || p.payment_type} · {formatRub(p.amount)}</Text>
+                <Text style={s.rowTitle}>{payment.title}</Text>
+                <Text style={s.rowMeta}>{PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}</Text>
               </View>
-              {role === 'customer' && !readOnly ? (
-                <PrimaryButton title="Оплатить →" compact onPress={() => onPaymentPress(p)} />
-              ) : (
-                <Text style={[s.status, { color: RenovaTheme.colors.warning }]}>Ожидает</Text>
-              )}
+              <Text style={[s.status, { color: RenovaTheme.colors.warning }]}>
+                {role === 'customer' && !readOnly ? 'Открыть →' : 'Ожидает'}
+              </Text>
             </Pressable>
           ))}
         </>
@@ -240,6 +316,8 @@ export function BudgetSummarySection(props: Props) {
             <Pressable
               key={row.id}
               style={s.row}
+              accessibilityRole="button"
+              accessibilityLabel={`Открыть расход ${row.title}`}
               onPress={() => {
                 const target = rowToExpenseTarget(row, receipts, expenses);
                 if (target) onExpensePress(target);
