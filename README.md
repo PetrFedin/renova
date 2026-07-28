@@ -28,10 +28,15 @@ cd apps/mobile && npm install && npm run ios
 ## CI и локальные gates
 
 ```bash
+npm run verify:ci                  # локальное зеркало required CI (secret scan, env/sentry, alembic heads)
 npm run test:priority              # priority gate (~49 tests)
 bash scripts/ci-playwright.sh api  # Playwright API E2E (backend via script)
 npm run ci:playwright              # api + ui — как job playwright в CI
+npm run verify                     # полный e2e smoke + playwright (тяжелее verify:ci)
 ```
+
+Release / production readiness: `docs/PRODUCTION-READINESS-2026-07.md`  
+Canon base: **`main`** (mega PR #3 closed; open Draft #24–#27 не в main).
 
 Подробнее: `docs/P3-W18-CI-PLAYWRIGHT-SCRIPT-2026-07-18.md`, `docs/P3-W19-CI-WORKFLOW-PUSH-2026-07-18.md`.
 

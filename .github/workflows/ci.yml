@@ -1,8 +1,88 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  e2e:
+  # Required: install, secret scan, unit/env/sentry, migration heads, EAS config
+  quality:
+    name: Quality (required)
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Secret scan (required)
+        run: bash scripts/secret-scan.sh
+
+      - name: Workflow YAML syntax
+        run: |
+          ruby -ryaml <<'RUBY'
+          Dir[".github/workflows/*.yml"].each do |f|
+            YAML.load_stream(File.read(f))
+            puts "YAML OK #{f}"
+          end
+          RUBY
+
+
+      - name: Install JS (lockfile)
+        run: npm ci
+
+      - name: EAS / build config validation
+        run: npm run testflight:eas
+
+      - name: Mobile env + Sentry unit tests
+        run: |
+          set -euo pipefail
+          npx tsx apps/mobile/lib/envSchema.w150.test.ts
+          npx tsx apps/mobile/lib/sentrySanitize.w150.test.ts
+          npx tsx apps/mobile/lib/oauthScaffold.w145.test.ts
+
+      - name: Backend Poetry + env/sentry tests
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+          poetry run pytest tests/test_environment_guards.py tests/test_env_schema.py tests/test_sentry_sanitize.py -q
+          HEADS="$(poetry run alembic heads | wc -l | tr -d ' ')"
+          echo "alembic heads=$HEADS"
+          test "$HEADS" = "1"
+
+  # Informational: mobile typecheck noise (TS2786/TS2607 gated baseline)
+  typecheck-mobile:
+    name: Mobile typecheck (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: typecheck mobile (soft baseline)
+        run: bash scripts/typecheck-mobile.sh
+
+  e2e:
+    name: E2E smoke + Alembic Postgres (required)
+    runs-on: ubuntu-latest
+    needs: quality
     services:
       postgres:
         image: postgres:17-alpine
@@ -13,7 +93,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with:
+          python-version: "3.12"
+          cache: pip
       - name: Install backend + start API + e2e-smoke
         working-directory: backend
         run: |
@@ -47,17 +129,26 @@ jobs:
           SECRET_KEY: ci-staging-secret-key-32chars!!
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
+          # CI synthetic — not a production host approval
+          SENTRY_APPROVED_WITHOUT_DSN: "true"
         run: |
           set -euo pipefail
           poetry run python -m alembic upgrade head
+
   playwright:
+    name: Playwright API (required)
     runs-on: ubuntu-latest
+    needs: quality
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with:
+          python-version: "3.12"
+          cache: pip
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with:
+          node-version: "20"
+          cache: npm
       - name: API Playwright (ci-playwright api)
         run: |
           set -euo pipefail
@@ -66,6 +157,7 @@ jobs:
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
           cd ..
-          npm ci && npx playwright install chromium
+          npm ci
+          npx playwright install chromium
           bash scripts/assert-e2e-bearer.sh
           bash scripts/ci-playwright.sh api

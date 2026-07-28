@@ -216,3 +216,188 @@ def collect_warnings(
                 f"{name}: YOOKASSA_WEBHOOK_SECRET empty — webhook endpoint will 503"
             )
     return warnings
+
+
+# --- Capability-aware production validation (release-ops hardening) ---
+# Errors MUST name variables only — never interpolate secret values.
+
+
+def _truthy(value: str | bool | None) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _blank(value: str | None) -> bool:
+    return not (value or "").strip()
+
+
+def _missing(name: str) -> str:
+    """Standard missing-var message (name only)."""
+    return f"missing required variable: {name}"
+
+
+def validate_capability_settings(
+    *,
+    environment: str,
+    # Sentry
+    sentry_dsn: str | None = None,
+    sentry_approved_without_dsn: bool | str | None = None,
+    # Storage
+    s3_endpoint: str | None = None,
+    s3_access_key: str | None = None,
+    s3_secret_key: str | None = None,
+    s3_bucket: str | None = None,
+    # Payments
+    yookassa_shop_id: str | None = None,
+    yookassa_secret: str | None = None,
+    yookassa_webhook_secret: str | None = None,
+    # OAuth Moy nalog
+    moy_nalog_enabled: bool | str | None = None,
+    moy_nalog_client_id: str | None = None,
+    moy_nalog_client_secret: str | None = None,
+    moy_nalog_redirect_uri: str | None = None,
+    moy_nalog_token_url: str | None = None,
+    # E-sign
+    kontur_mode: str | None = None,
+    kontur_api_key: str | None = None,
+    esign_webhook_secret: str | None = None,
+    # Twilio
+    twilio_sid: str | None = None,
+    twilio_token: str | None = None,
+    twilio_from: str | None = None,
+    # CORS / portal
+    cors_allowed_origins: str | None = None,
+    public_base_url: str | None = None,
+) -> None:
+    """Fail-fast for provider-specific and production-required capabilities.
+
+    Categories:
+    - required always: ENVIRONMENT (validated via policy_for)
+    - required in production/staging: PUBLIC_BASE_URL, SECRET_KEY, DATABASE_URL (via validate_runtime_settings)
+    - optional: REDIS_URL, SMTP_*, OLLAMA_*, CLOUDFRONT_*
+    - mutually exclusive: none hard-coded (CloudFront vs raw S3 public URL co-exist as soft ops choice)
+    - provider-specific: YooKassa / S3 / Moy nalog / Kontur / Twilio when enabled or partially configured
+    """
+    name = normalize_environment(environment)
+    errors: list[str] = []
+    release_like = name in ("staging", "production")
+
+    # Sentry: production requires DSN unless explicit approved exception
+    if name == "production":
+        if _blank(sentry_dsn) and not _truthy(sentry_approved_without_dsn):
+            errors.append(
+                _missing("SENTRY_DSN")
+                + " (or set SENTRY_APPROVED_WITHOUT_DSN=true as explicit approved exception)"
+            )
+
+    # S3: if endpoint set, credentials required
+    if not _blank(s3_endpoint):
+        if _blank(s3_access_key):
+            errors.append(_missing("S3_ACCESS_KEY"))
+        if _blank(s3_secret_key):
+            errors.append(_missing("S3_SECRET_KEY"))
+        if _blank(s3_bucket):
+            errors.append(_missing("S3_BUCKET"))
+
+    # YooKassa: partial config is invalid; full pair required if either set
+    shop = not _blank(yookassa_shop_id)
+    ysec = not _blank(yookassa_secret)
+    if shop ^ ysec:
+        errors.append(
+            "provider-specific: YOOKASSA_SHOP_ID and YOOKASSA_SECRET are mutually required "
+            "(set both or neither)"
+        )
+    if shop and release_like and _blank(yookassa_webhook_secret):
+        errors.append(_missing("YOOKASSA_WEBHOOK_SECRET"))
+
+    # Moy nalog OAuth when enabled
+    if _truthy(moy_nalog_enabled):
+        for var, val in (
+            ("MOY_NALOG_CLIENT_ID", moy_nalog_client_id),
+            ("MOY_NALOG_CLIENT_SECRET", moy_nalog_client_secret),
+            ("MOY_NALOG_REDIRECT_URI", moy_nalog_redirect_uri),
+            ("MOY_NALOG_TOKEN_URL", moy_nalog_token_url),
+        ):
+            if _blank(val):
+                errors.append(_missing(var))
+
+    # Kontur when mode on
+    mode = (kontur_mode or "off").strip().lower()
+    if mode in ("sandbox", "live"):
+        if _blank(kontur_api_key):
+            errors.append(_missing("KONTUR_API_KEY"))
+        if release_like and _blank(esign_webhook_secret):
+            errors.append(_missing("ESIGN_WEBHOOK_SECRET"))
+
+    # Twilio partial
+    if not _blank(twilio_sid):
+        if _blank(twilio_token):
+            errors.append(_missing("TWILIO_TOKEN"))
+        if _blank(twilio_from):
+            errors.append(_missing("TWILIO_FROM"))
+
+    # Staging/prod: CORS should not be empty "*" implicitly — require explicit origins or rely on PUBLIC_BASE_URL
+    if release_like:
+        raw = (cors_allowed_origins or "").strip()
+        if raw == "*":
+            errors.append(
+                "CORS_ALLOWED_ORIGINS cannot be * in staging/production "
+                "(list explicit origins or leave empty to use PUBLIC_BASE_URL)"
+            )
+        if _blank(public_base_url):
+            errors.append(_missing("PUBLIC_BASE_URL"))
+
+    if errors:
+        raise ValueError("Environment capability guard failed:\n- " + "\n- ".join(errors))
+
+
+def classify_env_vars() -> dict[str, list[str]]:
+    """Documentation helper for operators / tests (names only)."""
+    return {
+        "required_always": ["ENVIRONMENT"],
+        "required_in_production": [
+            "DATABASE_URL",
+            "PUBLIC_BASE_URL",
+            "SECRET_KEY",
+            "SENTRY_DSN",  # or SENTRY_APPROVED_WITHOUT_DSN
+        ],
+        "optional": [
+            "REDIS_URL",
+            "SMTP_HOST",
+            "SMTP_USER",
+            "SMTP_PASSWORD",
+            "CLOUDFRONT_DOMAIN",
+            "CLOUDFRONT_KEY_ID",
+            "OLLAMA_BASE_URL",
+            "OPS_ALERT_EMAIL",
+        ],
+        "mutually_exclusive_pairs": [
+            # documented: shop_id XOR secret is invalid (both-or-neither)
+            "YOOKASSA_SHOP_ID+YOOKASSA_SECRET",
+        ],
+        "provider_specific": [
+            "S3_ENDPOINT→S3_ACCESS_KEY,S3_SECRET_KEY,S3_BUCKET",
+            "MOY_NALOG_ENABLED→MOY_NALOG_CLIENT_ID,MOY_NALOG_CLIENT_SECRET,MOY_NALOG_REDIRECT_URI,MOY_NALOG_TOKEN_URL",
+            "KONTUR_MODE=sandbox|live→KONTUR_API_KEY[,ESIGN_WEBHOOK_SECRET]",
+            "TWILIO_SID→TWILIO_TOKEN,TWILIO_FROM",
+            "YOOKASSA_SHOP_ID→YOOKASSA_SECRET[,YOOKASSA_WEBHOOK_SECRET in staging/prod]",
+        ],
+        "mobile_public_only": [
+            "EXPO_PUBLIC_API_URL",
+            "EXPO_PUBLIC_APP_ENV",
+            "EXPO_PUBLIC_DEMO",
+            "EXPO_PUBLIC_SENTRY_DSN",
+        ],
+        "never_in_expo_public": [
+            "SECRET_KEY",
+            "DATABASE_URL",
+            "YOOKASSA_SECRET",
+            "S3_SECRET_KEY",
+            "MOY_NALOG_CLIENT_SECRET",
+            "TWILIO_TOKEN",
+            "KONTUR_API_KEY",
+        ],
+    }
