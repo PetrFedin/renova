@@ -239,12 +239,12 @@ export function ExpenseDetailSheet({
             <Text style={s.note}>Запись ожидает чек — можно изменить сумму и привязку.</Text>
           )}
           {canEdit && (
-            <PrimaryButton title={busy ? 'Сохраняем…' : 'Сохранить'} onPress={saveChanges} disabled={busy} />
+            <PrimaryButton title={busy ? 'Сохраняем…' : 'Сохранить'} onPress={saveChanges} disabled={busy} fullWidth />
           )}
           {canDelete && (
-            <PrimaryButton title="Удалить" variant="outline" onPress={confirmDelete} disabled={busy} />
+            <PrimaryButton title="Удалить" variant="dangerOutline" onPress={confirmDelete} disabled={busy} fullWidth />
           )}
-          <PrimaryButton title="Закрыть" variant="outline" onPress={onClose} />
+          <PrimaryButton title="Закрыть" variant="ghost" onPress={onClose} fullWidth />
         </Pressable>
       </Pressable>
     </Modal>
