@@ -1,5 +1,5 @@
 /** Создание чата — модал: название, объект, тема, участники */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -10,7 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
-import { screenTypography } from '@/constants/screenTypography';
+import { filterChipStyles, screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { FilterDropdown } from '@/components/renova/FilterDropdown';
 import { createProjectChat, type ChatParticipantInvite } from '@/lib/createProjectChat';
@@ -64,6 +64,7 @@ export function CreateChatSheet({
   const [projectId, setProjectId] = useState(defaultProjectId ?? '');
   const [invites, setInvites] = useState<InviteRow[]>([emptyInvite()]);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   const projectOptions = useMemo(
     () =>
@@ -81,18 +82,27 @@ export function CreateChatSheet({
     setTopic('general');
     setProjectId(defaultProjectId ?? projectOptions[0]?.value ?? '');
     setInvites([emptyInvite()]);
+    busyRef.current = false;
     setBusy(false);
   }, [visible, defaultProjectId, projectOptions]);
 
+  const closeSafely = () => {
+    if (!busyRef.current) onClose();
+  };
+
   const updateInvite = (id: string, patch: Partial<InviteRow>) => {
+    if (busyRef.current) return;
     setInvites((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
   const submit = async () => {
+    if (busyRef.current) return;
     if (!projectId) {
       showActionConfirm({
         title: 'Выберите объект',
         message: 'Каждый чат привязан к одному объекту.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
       });
       return;
     }
@@ -101,6 +111,8 @@ export function CreateChatSheet({
       showActionConfirm({
         title: 'Название чата',
         message: 'Укажите тему переписки — например «Согласование плитки».',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
       });
       return;
     }
@@ -112,6 +124,7 @@ export function CreateChatSheet({
       }))
       .filter((r) => r.phone || r.profile_code);
 
+    busyRef.current = true;
     setBusy(true);
     try {
       await createProjectChat({
@@ -127,19 +140,22 @@ export function CreateChatSheet({
           onClose();
         },
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       showActionConfirm({
         title: 'Не удалось создать чат',
-        message: e?.message ?? 'Попробуйте ещё раз',
+        message: e instanceof Error ? e.message : 'Попробуйте ещё раз',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
       });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={closeSafely}>
+      <Pressable style={s.backdrop} onPress={closeSafely}>
         <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.scroll}>
             <Text style={s.head}>Новый чат</Text>
@@ -152,19 +168,24 @@ export function CreateChatSheet({
               onChangeText={setTitle}
               placeholder="Например: Согласование материалов"
               autoFocus
+              editable={!busy}
             />
 
             <Text style={s.label}>Тема</Text>
-            <View style={s.chips}>
+            <View style={filterChipStyles.row}>
               {CHAT_TOPICS.map((t) => {
                 const on = topic === t.value;
                 return (
                   <Pressable
                     key={t.value}
-                    style={[s.chip, on && s.chipOn]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on, disabled: busy }}
+                    accessibilityLabel={`Тема чата: ${t.label}`}
+                    disabled={busy}
+                    style={[filterChipStyles.chip, on && filterChipStyles.chipOn, s.topicChip]}
                     onPress={() => setTopic(t.value)}
                   >
-                    <Text style={[s.chipT, on && s.chipTOn]}>{t.label}</Text>
+                    <Text style={[filterChipStyles.chipT, on && filterChipStyles.chipTOn]}>{t.label}</Text>
                   </Pressable>
                 );
               })}
@@ -182,7 +203,7 @@ export function CreateChatSheet({
                 hint="Чат будет привязан только к выбранному объекту"
                 value={projectId}
                 options={projectOptions}
-                onChange={setProjectId}
+                onChange={(value) => { if (!busyRef.current) setProjectId(value); }}
               />
             )}
 
@@ -196,6 +217,7 @@ export function CreateChatSheet({
                   onChangeText={(v) => updateInvite(row.id, { profileCode: v })}
                   placeholder="Профиль (6 символов)"
                   autoCapitalize="characters"
+                  editable={!busy}
                 />
                 <Text style={s.or}>или</Text>
                 <TextInput
@@ -204,22 +226,35 @@ export function CreateChatSheet({
                   onChangeText={(v) => updateInvite(row.id, { phone: v })}
                   placeholder="Телефон +7…"
                   keyboardType="phone-pad"
+                  editable={!busy}
                 />
                 {invites.length > 1 ? (
-                  <Pressable onPress={() => setInvites((rows) => rows.filter((r) => r.id !== row.id))}>
-                    <Text style={s.remove}>Удалить</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Убрать участника ${idx + 1} из приглашения`}
+                    disabled={busy}
+                    style={s.inviteAction}
+                    onPress={() => setInvites((rows) => rows.filter((r) => r.id !== row.id))}
+                  >
+                    <Text style={s.remove}>Убрать участника</Text>
                   </Pressable>
                 ) : null}
                 {idx === invites.length - 1 && invites.length < 5 ? (
-                  <Pressable onPress={() => setInvites((rows) => [...rows, emptyInvite()])}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Добавить ещё одного участника"
+                    disabled={busy}
+                    style={s.inviteAction}
+                    onPress={() => setInvites((rows) => [...rows, emptyInvite()])}
+                  >
                     <Text style={s.addLink}>+ Ещё участник</Text>
                   </Pressable>
                 ) : null}
               </View>
             ))}
 
-            <PrimaryButton title={busy ? 'Создаём…' : 'Создать и открыть'} onPress={submit} disabled={busy} fullWidth />
-            <PrimaryButton title="Отмена" variant="outline" onPress={onClose} fullWidth />
+            <PrimaryButton title="Создать и открыть" onPress={() => { void submit(); }} loading={busy} fullWidth />
+            <PrimaryButton title="Отмена" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
           </ScrollView>
         </Pressable>
       </Pressable>
@@ -249,18 +284,7 @@ const s = StyleSheet.create({
     color: RenovaTheme.colors.text,
     backgroundColor: RenovaTheme.colors.background,
   },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RenovaTheme.radius.pill,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    backgroundColor: RenovaTheme.colors.surface,
-  },
-  chipOn: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
-  chipT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  chipTOn: { color: RenovaTheme.colors.primary },
+  topicChip: { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
   lockedBox: {
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
@@ -272,7 +296,8 @@ const s = StyleSheet.create({
   lockedHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4 },
   inviteRow: { gap: 6, marginBottom: 10 },
   inviteInput: { marginBottom: 0 },
+  inviteAction: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', alignSelf: 'flex-start' },
   or: { fontSize: 11, color: RenovaTheme.colors.textMuted, textAlign: 'center' },
-  addLink: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, marginTop: 4 },
-  remove: { fontSize: 12, color: RenovaTheme.colors.danger, fontWeight: '600' },
+  addLink: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary },
+  remove: { fontSize: 13, color: RenovaTheme.colors.danger, fontWeight: '600' },
 });
