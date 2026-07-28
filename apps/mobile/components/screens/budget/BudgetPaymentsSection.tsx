@@ -10,6 +10,7 @@ import type { Payment, ProjectDetail } from '@/lib/api';
 import type { PaymentFilter } from '@/lib/hooks/useOsBudgetScreen';
 import type { OsRole } from '@/constants/osSections';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
+import { filterChipStyles } from '@/constants/screenTypography';
 
 type Props = {
   role: OsRole;
@@ -46,20 +47,16 @@ export function BudgetPaymentsSection({
         />
       ) : null}
       <Text style={s.section}>Счета и история</Text>
-      <View style={s.filterRow}>
+      <View style={[s.filterRow, filterChipStyles.row]}>
         {(['all', 'pending', 'paid_unverified', 'confirmed'] as PaymentFilter[]).map((f) => (
-          <PrimaryButton
+          <Pressable
             key={f}
-            compact
-            title={
-              f === 'all' ? 'Все'
-              : f === 'pending' ? 'Ожидают'
-              : f === 'paid_unverified' ? 'Без чека'
-              : 'Оплачено'
-            }
-            variant={payFilter === f ? 'primary' : 'outline'}
+            style={[filterChipStyles.chip, payFilter === f && filterChipStyles.chipOn, { minHeight: 44, justifyContent: 'center' }]}
             onPress={() => setPayFilter(f)}
-          />
+            accessibilityRole="button"
+            accessibilityState={{ selected: payFilter === f }}
+            accessibilityLabel={`Фильтр: ${f === 'all' ? 'Все' : f === 'pending' ? 'Ожидают' : f === 'paid_unverified' ? 'Без чека' : 'Оплачено'}`}
+          ><Text style={[filterChipStyles.chipT, payFilter === f && filterChipStyles.chipTOn]}>{f === 'all' ? 'Все' : f === 'pending' ? 'Ожидают' : f === 'paid_unverified' ? 'Без чека' : 'Оплачено'}</Text></Pressable>
         ))}
       </View>
       {!filteredPayments.length && (
