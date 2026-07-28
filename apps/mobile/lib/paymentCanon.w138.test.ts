@@ -19,6 +19,15 @@ console.assert(payApi.includes('transfer_ack'), 'API sends transfer_ack');
 console.assert(sheet.includes('transfer_ack'), 'sheet passes transfer_ack');
 console.assert(sheet.includes('внешнего перевода') || sheet.includes('внешний перевод'), 'honest external-transfer copy');
 
+// Money-critical UI must prevent duplicate mutations and accidental dismissal.
+console.assert(sheet.includes("const [confirmBusy, setConfirmBusy] = useState(false)"), 'confirm busy state');
+console.assert(sheet.includes('if (confirmBusy) return'), 'duplicate confirm guard');
+console.assert(sheet.includes('loading={confirmBusy}'), 'confirm button loading state');
+console.assert(sheet.includes('const busy = cardBusy || confirmBusy'), 'shared payment busy state');
+console.assert(sheet.includes('onRequestClose={closeSafely}'), 'modal close guarded while busy');
+console.assert(sheet.includes('title="Закрыть" variant="ghost"'), 'close remains tertiary');
+console.assert(!sheet.includes("title={cardBusy ? 'Открываем ЮKassa…'"), 'card loading uses shared button state');
+
 console.assert(budget.includes('openPaymentParam'), 'budget auto-opens sheet');
 console.assert(push.includes("openPayment: '1'"), 'finance-center opens sheet');
 console.assert(catchAll.includes("openPayment: '1'"), 'slug finance-center opens sheet');
