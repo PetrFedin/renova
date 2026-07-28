@@ -99,6 +99,34 @@ if (emptyBudget.state !== 'empty' || emptyBudget.pendingAmount !== 0 || emptyBud
   throw new Error('budget invalid input normalization');
 }
 
+const expenseSection = src('components/screens/budget/BudgetExpensesSection.tsx');
+const manualExpense = src('components/renova/ManualExpenseForm.tsx');
+const expensePickers = src('components/renova/ExpenseContextPickers.tsx');
+if (expenseSection.indexOf('<UnifiedExpenseList') > expenseSection.indexOf('<ReceiptBulkLinkPanel')) {
+  throw new Error('expense list must precede bulk tools');
+}
+if (!expenseSection.includes("filter === 'no-stage'") || !expenseSection.includes('<ReceiptBulkLinkPanel')) {
+  throw new Error('bulk link only in no-stage context');
+}
+if (!expenseSection.includes('collapsed') || !expenseSection.includes('Показать все траты')) {
+  throw new Error('expense progressive disclosure/recovery');
+}
+if (!manualExpense.includes('const busyRef = useRef(false)') || !manualExpense.includes('if (busyRef.current || readOnly) return')) {
+  throw new Error('manual expense duplicate submit guard');
+}
+if (!manualExpense.includes('loading={busy}') || !manualExpense.includes('title="Добавить расход"')) {
+  throw new Error('manual expense primary loading action');
+}
+if (!manualExpense.includes('Введённые данные сохранены в форме') || !manualExpense.includes('minHeight: RenovaTheme.minTouch')) {
+  throw new Error('manual expense draft/touch contract');
+}
+if (!expensePickers.includes('filterChipStyles') || expensePickers.includes('backgroundColor: RenovaTheme.colors.primary')) {
+  throw new Error('expense categories not on shared chips');
+}
+if (!expensePickers.includes('accessibilityState={{ selected, disabled: Boolean(disabled) }}')) {
+  throw new Error('expense category accessibility state');
+}
+
 const typo = src('constants/screenTypography.ts');
 if (!typo.includes('export const filterChipStyles')) throw new Error('filterChipStyles SoT');
 

@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, filterChipStyles } from '@/constants/screenTypography';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
 import { StagePickerChips } from '@/components/renova/StagePickerChips';
 import { EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';
@@ -49,31 +50,34 @@ export function ExpenseContextPickers({
       {project.stages?.length ? (
         <StagePickerChips stages={project.stages} value={stageId} onChange={disabled ? () => {} : onStageChange} />
       ) : null}
-      {showCategory && (
+      {showCategory ? (
         <>
           <Text style={s.catLabel}>Категория расхода</Text>
-          <View style={s.catRow}>
-            {EXPENSE_CATEGORIES.map((c) => (
-              <Pressable
-                key={c.id}
-                style={[s.catChip, category === c.id && s.catOn]}
-                onPress={() => !disabled && onCategoryChange(c.id)}
-              >
-                <Text style={[s.catT, category === c.id && s.catTOn]}>{c.label}</Text>
-              </Pressable>
-            ))}
+          <View style={filterChipStyles.row}>
+            {EXPENSE_CATEGORIES.map((item) => {
+              const selected = category === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Категория расхода: ${item.label}`}
+                  accessibilityState={{ selected, disabled: Boolean(disabled) }}
+                  style={[filterChipStyles.chip, s.chipTouch, selected && filterChipStyles.chipOn]}
+                  disabled={disabled}
+                  onPress={() => onCategoryChange(item.id)}
+                >
+                  <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </>
-      )}
+      ) : null}
     </>
   );
 }
 
 const s = StyleSheet.create({
-  catLabel: { fontSize: 12, fontWeight: '600', marginTop: 4, color: RenovaTheme.colors.textMuted },
-  catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
-  catChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: RenovaTheme.colors.surfaceMuted },
-  catOn: { backgroundColor: RenovaTheme.colors.primary },
-  catT: { fontSize: 11, fontWeight: '600' },
-  catTOn: { color: RenovaTheme.colors.surface },
+  catLabel: { ...screenTypography.section, marginTop: 6, marginBottom: 4 },
+  chipTouch: { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
 });

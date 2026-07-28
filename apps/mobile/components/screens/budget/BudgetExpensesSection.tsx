@@ -1,11 +1,12 @@
 /** Вкладка «Бюджет → Расходы» — единый список трат + группировка по комнатам/этапам */
 import { useMemo, useState } from 'react';
-import { View, Text } from 'react-native';
+import { Text } from 'react-native';
 import { usePathname, router } from 'expo-router';
 import { BudgetPeriodPicker } from '@/components/renova/BudgetPeriodPicker';
 import { parseBudgetPeriod, BUDGET_PERIOD_LABEL } from '@/constants/budgetPeriod';
 import { filterRowsByPeriod, sumRows } from '@/lib/domain/aggregateBudgetByPeriod';
 import { formatRub } from '@/constants/Theme';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ManualExpenseForm } from '@/components/renova/ManualExpenseForm';
 import { ReceiptBulkLinkPanel } from '@/components/renova/ReceiptBulkLinkPanel';
 import { ReceiptBulkCategoryPanel } from '@/components/renova/ReceiptBulkCategoryPanel';
@@ -58,6 +59,12 @@ const VIEW_ITEMS: { key: ExpenseView; label: string }[] = [
   { key: 'stages', label: 'По этапам' },
 ];
 
+function emptyLabel(filter: ExpenseListFilter): string {
+  if (filter === 'no-stage') return 'Все траты привязаны к этапам.';
+  if (filter === 'unverified') return 'Нет чеков без проверки ФНС.';
+  return 'Трат за выбранный период пока нет.';
+}
+
 export function BudgetExpensesSection({
   userId, project, receipts, expenses, picks, purchases = [], role, canWrite, readOnly, initialRoomId, initialStageId, periodParam, serverFact, listTotal, expenseView = 'list', onReload, onExpensePress,
 }: Props) {
@@ -65,127 +72,124 @@ export function BudgetExpensesSection({
   const [filter, setFilter] = useState<ExpenseListFilter>('all');
   const period = parseBudgetPeriod(periodParam);
   const rows = buildUnifiedBudgetExpenses(receipts, expenses, project.rooms || [], project.stages || [], picks, purchases);
-  const unifiedTotal = listTotal ?? rows.reduce((a, r) => a + r.amount, 0);
+  const unifiedTotal = listTotal ?? rows.reduce((sum, row) => sum + row.amount, 0);
   const periodRows = useMemo(() => filterRowsByPeriod(rows, period), [rows, period]);
   const counts = useMemo(() => expenseFilterCounts(periodRows), [periodRows]);
   const filtered = useMemo(() => filterExpenseRows(periodRows, filter), [periodRows, filter]);
   const filteredReceiptIds = useMemo(() => receiptIdsFromRows(filtered), [filtered]);
+  const canOperate = canWrite && !readOnly;
 
   const filterItems = FILTER_KEYS.map((key) => ({
     key,
-    label: counts[key] > 0 && key !== 'all' ? `${EXPENSE_FILTER_LABELS[key]} (${counts[key]})` : EXPENSE_FILTER_LABELS[key],
+    label: counts[key] > 0 && key !== 'all'
+      ? `${EXPENSE_FILTER_LABELS[key]} (${counts[key]})`
+      : EXPENSE_FILTER_LABELS[key],
   }));
-  const bulkCategoryHint =
-    filter === 'all' && (counts['no-stage'] > 0 || counts['unverified'] > 0)
-      ? counts['no-stage'] > 0 && counts['unverified'] > 0
-        ? 'Массовая категория чеков: выберите фильтр «Без этапа» или «Не проверен» — панель появится ниже.'
-        : counts['no-stage'] > 0
-          ? 'Массовая категория чеков: выберите фильтр «Без этапа» — панель появится ниже.'
-          : 'Массовая категория чеков: выберите фильтр «Не проверен» — панель появится ниже.'
-      : null;
 
   return (
     <>
       <BudgetPeriodPicker period={period} tab="expenses" />
-      <Text style={s.section}>Группировка</Text>
+      <Text style={s.section}>Вид расходов</Text>
       <ScheduleFilterChips
         items={VIEW_ITEMS}
         value={expenseView}
         onChange={(key) => router.setParams({ tab: 'expenses', view: key })}
       />
-      {expenseView === 'rooms' && (
-        <>
-          <Text style={s.section}>По комнатам</Text>
-          <ExpenseByRoom
-            rooms={project.rooms || []}
-            lines={project.estimate_lines || []}
-            receipts={receipts}
-            expenses={expenses}
-            picks={picks}
-            purchases={purchases}
-            stages={project.stages || []}
-            returnTo={budgetTabHref(role, 'expenses', { view: 'rooms' })}
-          />
-        </>
-      )}
-      {expenseView === 'stages' && (
-        <>
-          <Text style={s.section}>По этапам</Text>
-          <ExpenseByStage
-            stages={project.stages || []}
-            lines={project.estimate_lines || []}
-            receipts={receipts}
-            expenses={expenses}
-            picks={picks}
-            purchases={purchases}
-            rooms={project.rooms || []}
-            returnTo={budgetTabHref(role, 'expenses', { view: 'stages' })}
-          />
-        </>
-      )}
-      {expenseView === 'list' && (
-        <>
-      {typeof serverFact === 'number' && (
-        <BudgetFactStatus serverFact={serverFact} listTotal={unifiedTotal} compact showAligned />
-      )}
-      <View style={{ marginBottom: 8 }}>
-        <Text style={s.dataHint}>
-          {BUDGET_PERIOD_LABEL[period]}: {formatRub(sumRows(periodRows))} · {periodRows.length} операций
-        </Text>
-        <Text style={s.dataHint}>
-          Чеки — вы; закупки «Куплено» — подрядчик. Убрать материал из факта — «Убрать из факта» в закупке.
-        </Text>
-      </View>
-      {canWrite && !readOnly && (
-        <ReceiptBulkLinkPanel
-          userId={userId}
-          project={project}
+
+      {expenseView === 'rooms' ? (
+        <ExpenseByRoom
+          rooms={project.rooms || []}
+          lines={project.estimate_lines || []}
           receipts={receipts}
-          onDone={onReload}
+          expenses={expenses}
+          picks={picks}
+          purchases={purchases}
+          stages={project.stages || []}
+          returnTo={budgetTabHref(role, 'expenses', { view: 'rooms' })}
         />
-      )}
-      {rows.length > 0 && (
-        <Text style={s.section}>Фильтр трат</Text>
-      )}
-      {periodRows.length > 0 && (
-        <ScheduleFilterChips items={filterItems} value={filter} onChange={(key) => setFilter(key as ExpenseListFilter)} />
-      )}
-      {canWrite && !readOnly && bulkCategoryHint && (
-        <Text style={s.bulkHint}>{bulkCategoryHint}</Text>
-      )}
-      {canWrite && !readOnly && filter !== 'all' && filteredReceiptIds.length > 0 && (
-        <ReceiptBulkCategoryPanel
-          userId={userId}
-          projectId={project.id}
-          receiptIds={filteredReceiptIds}
-          filterLabel={EXPENSE_FILTER_LABELS[filter]}
-          onDone={onReload}
+      ) : null}
+
+      {expenseView === 'stages' ? (
+        <ExpenseByStage
+          stages={project.stages || []}
+          lines={project.estimate_lines || []}
+          receipts={receipts}
+          expenses={expenses}
+          picks={picks}
+          purchases={purchases}
+          rooms={project.rooms || []}
+          returnTo={budgetTabHref(role, 'expenses', { view: 'stages' })}
         />
-      )}
-      <UnifiedExpenseList
-        rows={filtered}
-        onPress={(row) => openExpenseRowTarget(row, receipts, expenses, picks, { returnTo: pathname, onDetail: onExpensePress, role })}
-      />
-      {!filtered.length && (
-        <Text style={s.empty}>
-          {filter === 'all'
-            ? 'Нет трат. Используйте «+» для скана чека, добавьте вручную ниже или оформите закупку в «Материалы».'
-            : filter === 'no-stage'
-              ? 'Все траты привязаны к этапам.'
-              : 'Нет чеков без проверки ФНС.'}
-        </Text>
-      )}
-      {canWrite && !readOnly && (
-        <ManualExpenseForm
-          userId={userId}
-          project={project}
-          initialRoomId={initialRoomId ?? null}
-          initialStageId={initialStageId ?? null}
-          onSaved={onReload}
-        />
-      )}
+      ) : null}
+
+      {expenseView === 'list' ? (
+        <>
+          {typeof serverFact === 'number' ? (
+            <BudgetFactStatus serverFact={serverFact} listTotal={unifiedTotal} compact showAligned />
+          ) : null}
+          <Text style={s.dataHint}>
+            {BUDGET_PERIOD_LABEL[period]} · {formatRub(sumRows(periodRows))} · {periodRows.length} операций
+          </Text>
+
+          {periodRows.length > 0 ? (
+            <ScheduleFilterChips
+              items={filterItems}
+              value={filter}
+              onChange={(key) => setFilter(key as ExpenseListFilter)}
+            />
+          ) : null}
+
+          <UnifiedExpenseList
+            rows={filtered}
+            onPress={(row) => openExpenseRowTarget(
+              row,
+              receipts,
+              expenses,
+              picks,
+              { returnTo: pathname, onDetail: onExpensePress, role },
+            )}
+          />
+
+          {!filtered.length ? (
+            <>
+              <Text style={s.empty}>{emptyLabel(filter)}</Text>
+              {filter !== 'all' ? (
+                <PrimaryButton title="Показать все траты" variant="ghost" onPress={() => setFilter('all')} />
+              ) : null}
+            </>
+          ) : null}
+
+          {canOperate && filter === 'no-stage' ? (
+            <ReceiptBulkLinkPanel
+              userId={userId}
+              project={project}
+              receipts={receipts}
+              onDone={onReload}
+            />
+          ) : null}
+
+          {canOperate && filter !== 'all' && filteredReceiptIds.length > 0 ? (
+            <ReceiptBulkCategoryPanel
+              userId={userId}
+              projectId={project.id}
+              receiptIds={filteredReceiptIds}
+              filterLabel={EXPENSE_FILTER_LABELS[filter]}
+              onDone={onReload}
+            />
+          ) : null}
+
+          {canOperate ? (
+            <ManualExpenseForm
+              userId={userId}
+              project={project}
+              initialRoomId={initialRoomId ?? null}
+              initialStageId={initialStageId ?? null}
+              onSaved={onReload}
+              collapsed
+            />
+          ) : null}
         </>
-      )}
+      ) : null}
     </>
   );
 }
