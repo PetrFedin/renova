@@ -19,6 +19,7 @@ export type ActionConfirmSheetProps = {
   message: string;
   primaryLabel?: string;
   onPrimary?: () => void;
+  primaryDestructive?: boolean;
   secondaryLabel?: string;
   onSecondary?: () => void;
   /** Clarity M: ≥3 пункта меню (PDF, счёт, long-press) */
@@ -34,6 +35,7 @@ export function ActionConfirmSheet({
   message,
   primaryLabel,
   onPrimary,
+  primaryDestructive,
   secondaryLabel,
   onSecondary,
   actions,
@@ -56,7 +58,7 @@ export function ActionConfirmSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={closeDismiss}>
-      <Pressable style={s.backdrop} onPress={closeDismiss} accessibilityLabel="Закрыть">
+      <Pressable style={s.backdrop} onPress={closeDismiss} accessibilityRole="button" accessibilityLabel="Закрыть подтверждение">
         <Pressable style={s.sheet} onStartShouldSetResponder={() => true}>
           <View style={s.handle} />
           <Text style={s.title}>{title}</Text>
@@ -64,12 +66,12 @@ export function ActionConfirmSheet({
           <ScrollView style={s.scroll} bounces={false} keyboardShouldPersistTaps="handled">
             <View style={s.actions}>
               {multi
-                ? actions!.map((a, i) => (
+                ? actions!.map((action, index) => (
                     <PrimaryButton
-                      key={`${a.label}-${i}`}
-                      title={a.label}
-                      variant={a.destructive ? 'outline' : i === 0 ? 'primary' : 'outline'}
-                      onPress={() => runThenClose(a.onPress)}
+                      key={`${action.label}-${index}`}
+                      title={action.label}
+                      variant={action.destructive ? 'dangerOutline' : index === 0 ? 'primary' : 'outline'}
+                      onPress={() => runThenClose(action.onPress)}
                     />
                   ))
                 : (
@@ -77,6 +79,7 @@ export function ActionConfirmSheet({
                     {primaryLabel && onPrimary ? (
                       <PrimaryButton
                         title={primaryLabel}
+                        variant={primaryDestructive ? 'danger' : 'primary'}
                         onPress={() => runThenClose(onPrimary)}
                       />
                     ) : null}
@@ -89,7 +92,7 @@ export function ActionConfirmSheet({
                     ) : null}
                   </>
                 )}
-              <Pressable onPress={closeDismiss} style={s.dismiss}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Закрыть" onPress={closeDismiss} style={s.dismiss}>
                 <Text style={s.dismissT}>Закрыть</Text>
               </Pressable>
             </View>
@@ -128,6 +131,6 @@ const s = StyleSheet.create({
   title: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },
   message: { fontSize: 14, color: RenovaTheme.colors.textMuted, lineHeight: 20 },
   actions: { gap: 8, marginTop: 8 },
-  dismiss: { alignItems: 'center', paddingVertical: 8 },
+  dismiss: { alignItems: 'center', minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
   dismissT: { fontSize: 14, fontWeight: '600', color: RenovaTheme.colors.textMuted },
 });

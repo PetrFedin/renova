@@ -14,6 +14,8 @@ export type ActionConfirmPayload = {
   /** Legacy 1–2 кнопки (waves E–L) */
   primaryLabel?: string;
   onPrimary?: () => void;
+  /** Primary action changes data irreversibly and must use danger styling. */
+  primaryDestructive?: boolean;
   secondaryLabel?: string;
   onSecondary?: () => void;
   /** Clarity M: multi-option меню */

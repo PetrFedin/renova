@@ -135,12 +135,13 @@ export function ExpenseDetailSheet({
   }
 
   function confirmDelete() {
-    if (!userId || !projectId || !target) return;
+    if (!userId || !projectId || !target || busy) return;
     // Clarity P: destructive через sheet (деньги в факте бюджета)
     showActionConfirm({
       title: 'Удалить трату?',
-      message: 'Сумма будет убрана из факта бюджета.',
-      primaryLabel: 'Удалить',
+      message: 'Сумма будет убрана из факта бюджета. Отменить это действие после подтверждения нельзя.',
+      primaryLabel: 'Удалить трату',
+      primaryDestructive: true,
       onPrimary: () => {
         void (async () => {
           setBusy(true);
@@ -177,7 +178,7 @@ export function ExpenseDetailSheet({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose}>
+      <Pressable style={s.backdrop} onPress={busy ? undefined : onClose}>
         <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <Text style={s.head}>{formatRub(Number(amountText) || item.amount)}</Text>
           {canEdit ? (
@@ -239,12 +240,12 @@ export function ExpenseDetailSheet({
             <Text style={s.note}>Запись ожидает чек — можно изменить сумму и привязку.</Text>
           )}
           {canEdit && (
-            <PrimaryButton title={busy ? 'Сохраняем…' : 'Сохранить'} onPress={saveChanges} disabled={busy} />
+            <PrimaryButton title="Сохранить" onPress={saveChanges} loading={busy} disabled={busy} fullWidth />
           )}
           {canDelete && (
-            <PrimaryButton title="Удалить" variant="outline" onPress={confirmDelete} disabled={busy} />
+            <PrimaryButton title="Удалить трату" variant="dangerOutline" onPress={confirmDelete} disabled={busy} fullWidth />
           )}
-          <PrimaryButton title="Закрыть" variant="outline" onPress={onClose} />
+          <PrimaryButton title="Закрыть" variant="ghost" onPress={onClose} disabled={busy} fullWidth />
         </Pressable>
       </Pressable>
     </Modal>

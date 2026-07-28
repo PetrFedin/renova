@@ -11,6 +11,8 @@ const catchAll = readFileSync(join(mobile, 'lib/resolveCatchAllSlug.ts'), 'utf8'
 const snap = readFileSync(join(mobile, 'lib/domain/buildProjectOsSnapshot.ts'), 'utf8');
 const kpi = readFileSync(join(mobile, 'lib/domain/buildHomeKpiDetail.ts'), 'utf8');
 const chat = readFileSync(join(mobile, 'components/renova/chat/ChatThreadView.tsx'), 'utf8');
+const actionBus = readFileSync(join(mobile, 'lib/actionConfirmBus.ts'), 'utf8');
+const actionSheet = readFileSync(join(mobile, 'components/renova/ActionConfirmSheet.tsx'), 'utf8');
 const svc = readFileSync(join(mobile, '../../backend/app/services/payment_service.py'), 'utf8');
 const yk = readFileSync(join(mobile, '../../backend/app/services/yookassa_service.py'), 'utf8');
 
@@ -18,6 +20,20 @@ console.assert((sheet.match(/confirmPayment\(/g) || []).length >= 1, 'sheet call
 console.assert(payApi.includes('transfer_ack'), 'API sends transfer_ack');
 console.assert(sheet.includes('transfer_ack'), 'sheet passes transfer_ack');
 console.assert(sheet.includes('внешнего перевода') || sheet.includes('внешний перевод'), 'honest external-transfer copy');
+
+// Money-critical UI must prevent duplicate mutations and accidental dismissal.
+console.assert(sheet.includes("const [confirmBusy, setConfirmBusy] = useState(false)"), 'confirm busy state');
+console.assert(sheet.includes('if (confirmBusy) return'), 'duplicate confirm guard');
+console.assert(sheet.includes('loading={confirmBusy}'), 'confirm button loading state');
+console.assert(sheet.includes('const busy = cardBusy || confirmBusy'), 'shared payment busy state');
+console.assert(sheet.includes('onRequestClose={closeSafely}'), 'modal close guarded while busy');
+console.assert(sheet.includes('title="Закрыть" variant="ghost"'), 'close remains tertiary');
+console.assert(!sheet.includes("title={cardBusy ? 'Открываем ЮKassa…'"), 'card loading uses shared button state');
+
+// Shared confirmation layer must preserve destructive intent.
+console.assert(actionBus.includes('primaryDestructive?: boolean'), 'confirm payload destructive flag');
+console.assert(actionSheet.includes("primaryDestructive ? 'danger' : 'primary'"), 'destructive primary uses danger');
+console.assert(actionSheet.includes("a.destructive ? 'dangerOutline'"), 'destructive menu action uses danger outline');
 
 console.assert(budget.includes('openPaymentParam'), 'budget auto-opens sheet');
 console.assert(push.includes("openPayment: '1'"), 'finance-center opens sheet');

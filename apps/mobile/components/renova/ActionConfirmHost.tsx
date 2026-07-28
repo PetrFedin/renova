@@ -19,6 +19,7 @@ export function ActionConfirmHost() {
       message={payload?.message ?? ''}
       primaryLabel={payload?.primaryLabel}
       onPrimary={payload?.onPrimary}
+      primaryDestructive={payload?.primaryDestructive}
       secondaryLabel={payload?.secondaryLabel}
       onSecondary={payload?.onSecondary}
       actions={payload?.actions}

@@ -74,6 +74,7 @@ export function PaymentDetailSheet({
   const [transferAck, setTransferAck] = useState(false);
   const [receiptAttached, setReceiptAttached] = useState(false);
   const [cardBusy, setCardBusy] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
@@ -96,6 +97,8 @@ export function PaymentDetailSheet({
     setStep('info');
     setTransferAck(false);
     setReceiptAttached(false);
+    setCardBusy(false);
+    setConfirmBusy(false);
     reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
   }, [payment?.id, reloadReceiptFlag]);
 
@@ -151,8 +154,13 @@ export function PaymentDetailSheet({
   const statusLabel = PAYMENT_STATUS_LABEL[payment.status] || payment.status;
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
   const history = buildPaymentHistory(payment);
+  const busy = cardBusy || confirmBusy;
+  const closeSafely = () => {
+    if (!busy) onClose();
+  };
 
   const openReceipt = () => {
+    if (busy) return;
     setReceiptAttached(true);
     pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname, role);
     showActionConfirm({
@@ -166,6 +174,7 @@ export function PaymentDetailSheet({
   };
 
   const openSbp = async () => {
+    if (busy) return;
     if (reqMissing) {
       showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
       return;
@@ -199,6 +208,7 @@ export function PaymentDetailSheet({
   };
 
   const copySbpAmount = async () => {
+    if (busy) return;
     const amountText = String(Math.round(payment.amount));
     await Clipboard.setStringAsync(amountText);
     showActionConfirm({
@@ -222,8 +232,8 @@ export function PaymentDetailSheet({
     });
   };
 
-
   const copyRequisites = async () => {
+    if (busy) return;
     if (reqMissing) {
       showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
       return;
@@ -238,6 +248,7 @@ export function PaymentDetailSheet({
   };
 
   const goToAcceptance = () => {
+    if (busy) return;
     onClose();
     if (stage) {
       pushStageDetail(stage.id, pathname);
@@ -247,6 +258,7 @@ export function PaymentDetailSheet({
   };
 
   const payWithCard = async () => {
+    if (busy) return;
     if (stageNeedsAcceptance) {
       confirmAcceptanceFirst(goToAcceptance);
       return;
@@ -290,7 +302,12 @@ export function PaymentDetailSheet({
           onPrimary: () => undefined,
         });
       } else {
-        Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось открыть оплату картой'));
+        showActionConfirm({
+          title: 'Ошибка оплаты',
+          message: apiErrorMessage(e, 'Не удалось открыть оплату картой'),
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
       }
     } finally {
       setCardBusy(false);
@@ -298,6 +315,7 @@ export function PaymentDetailSheet({
   };
 
   const confirm = async () => {
+    if (busy) return;
     if (stageNeedsAcceptance) {
       confirmAcceptanceFirst(goToAcceptance);
       return;
@@ -318,6 +336,8 @@ export function PaymentDetailSheet({
       primaryLabel: 'Подтвердить',
       onPrimary: () => {
         void (async () => {
+          if (confirmBusy) return;
+          setConfirmBusy(true);
           try {
             const confirmed = await api.confirmPayment(userId, projectId, payment.id, {
               transfer_ack: Boolean(transferAck || receiptAttached),
@@ -349,6 +369,8 @@ export function PaymentDetailSheet({
                 message: apiErrorMessage(e, 'Не удалось подтвердить оплату'),
               });
             }
+          } finally {
+            setConfirmBusy(false);
           }
         })();
       },
@@ -358,8 +380,8 @@ export function PaymentDetailSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={closeSafely}>
+      <Pressable style={s.backdrop} onPress={closeSafely}>
         <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           <Text style={s.head}>{formatRub(payment.amount)}</Text>
           <Text style={s.title}>{payment.title}</Text>
@@ -388,23 +410,24 @@ export function PaymentDetailSheet({
               <PrimaryButton
                 title="Импорт выписки (пакетно)"
                 variant="outline"
+                disabled={busy}
                 onPress={() => {
                   onClose();
                   pushOsNav('/documents', pathname, role);
                 }}
               />
               {stageNeedsAcceptance ? (
-                <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} />
+                <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} disabled={busy} />
               ) : (
                 <>
                   <PrimaryButton
-                    title={cardBusy ? 'Открываем ЮKassa…' : 'Оплатить картой (ЮKassa)'}
+                    title="Оплатить картой (ЮKassa)"
                     onPress={payWithCard}
-                    disabled={cardBusy}
+                    loading={cardBusy}
+                    disabled={confirmBusy}
                   />
-                  {cardBusy ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
-                  <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} />
-                  <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} />
+                  <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} disabled={busy} />
+                  <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} />
                 </>
               )}
             </View>
@@ -418,14 +441,15 @@ export function PaymentDetailSheet({
               {requisites.split('\n').map((line) => (
                 <Text key={line} style={formMetaText.caption}>{line}</Text>
               ))}
-              <PrimaryButton title="Скопировать сумму" variant="outline" onPress={() => { copySbpAmount().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать сумму')); }} />
-              <PrimaryButton title="Скопировать реквизиты" variant="outline" onPress={() => { copyRequisites().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать реквизиты')); }} />
-              <PrimaryButton title="Открыть СБП / банк" variant="outline" onPress={() => { openSbp().catch(reportCatch('payment.openSbp')); }} />
+              <PrimaryButton title="Скопировать сумму" variant="outline" disabled={busy} onPress={() => { copySbpAmount().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать сумму')); }} />
+              <PrimaryButton title="Скопировать реквизиты" variant="outline" disabled={busy} onPress={() => { copyRequisites().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать реквизиты')); }} />
+              <PrimaryButton title="Открыть СБП / банк" variant="outline" disabled={busy} onPress={() => { openSbp().catch(reportCatch('payment.openSbp')); }} />
               <PrimaryButton
                 title="Я перевёл — дальше"
+                disabled={busy}
                 onPress={() => { setTransferAck(true); setStep('confirm'); }}
               />
-              <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep('info')} />
+              <PrimaryButton title="Назад" variant="ghost" disabled={busy} onPress={() => setStep('info')} />
             </View>
           ) : null}
 
@@ -437,10 +461,11 @@ export function PaymentDetailSheet({
               <PrimaryButton
                 title="Я оплатил — подтвердить"
                 onPress={confirm}
-                disabled={stageNeedsAcceptance}
+                loading={confirmBusy}
+                disabled={stageNeedsAcceptance || cardBusy}
               />
               {!receiptAttached ? (
-                <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} />
+                <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} />
               ) : null}
             </View>
           ) : null}
@@ -456,6 +481,9 @@ export function PaymentDetailSheet({
           {stage ? (
             <Pressable
               style={s.linkRow}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={`Открыть этап ${stage.name}`}
               onPress={() => { onClose(); pushStageDetail(stage.id, pathname); }}
             >
               <Text style={s.label}>Этап</Text>
@@ -482,7 +510,7 @@ export function PaymentDetailSheet({
             <Text style={s.wait}>Ожидает подтверждения заказчиком</Text>
           )}
 
-          <PrimaryButton title="Закрыть" variant="outline" onPress={onClose} />
+          <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} />
         </Pressable>
       </Pressable>
     </Modal>
@@ -500,7 +528,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   label: { fontSize: 13, color: RenovaTheme.colors.textMuted },
   val: { fontSize: 13, fontWeight: '600' },
-  linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', marginBottom: 8 },
+  linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: RenovaTheme.minTouch, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', marginBottom: 8 },
   link: { fontSize: 14, color: RenovaTheme.colors.primary, fontWeight: '600' },
   wait: { fontSize: 13, color: RenovaTheme.colors.warning, fontWeight: '600', marginBottom: 8 },
   sectionHead: { ...screenTypography.section, color: RenovaTheme.colors.text, marginTop: 0, marginBottom: 2 },
