@@ -16,6 +16,7 @@ import {
   alertJobLeadCreated,
   alertJobLeadQuoted,
 } from '@/lib/jobLeadNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
 
@@ -128,11 +129,30 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
                 <PrimaryButton
                   key={q.id}
                   title={`Принять · ${formatRub(q.pre_estimate)}`}
-                  onPress={async () => {
-                    await api.acceptJobLeadQuote(userId, l.id, q.id);
-                    await sync();
-                    load();
-                    alertJobLeadAssigned(osRole);
+                  onPress={() => {
+                    // Clarity U: привязка исполнителя — confirm
+                    showActionConfirm({
+                      title: 'Принять КП?',
+                      message: `${formatRub(q.pre_estimate)} — исполнитель будет закреплён за заявкой.`,
+                      primaryLabel: 'Принять',
+                      onPrimary: () => {
+                        void (async () => {
+                          try {
+                            await api.acceptJobLeadQuote(userId, l.id, q.id);
+                            await sync();
+                            load();
+                            alertJobLeadAssigned(osRole);
+                          } catch (e: unknown) {
+                            showActionConfirm({
+                              title: 'Не удалось',
+                              message: e instanceof Error ? e.message : 'Ошибка принятия КП',
+                            });
+                          }
+                        })();
+                      },
+                      secondaryLabel: 'Отмена',
+                      onSecondary: () => undefined,
+                    });
                   }}
                 />
               ))}
@@ -142,11 +162,29 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
             <PrimaryButton
               title="Авто-исполнитель"
               variant="outline"
-              onPress={async () => {
-                await api.autoAssignLead(userId, l.id);
-                await sync();
-                load();
-                alertJobLeadAssigned(osRole);
+              onPress={() => {
+                showActionConfirm({
+                  title: 'Авто-назначить?',
+                  message: 'Система выберет исполнителя по правилам площадки.',
+                  primaryLabel: 'Назначить',
+                  onPrimary: () => {
+                    void (async () => {
+                      try {
+                        await api.autoAssignLead(userId, l.id);
+                        await sync();
+                        load();
+                        alertJobLeadAssigned(osRole);
+                      } catch (e: unknown) {
+                        showActionConfirm({
+                          title: 'Не удалось',
+                          message: e instanceof Error ? e.message : 'Ошибка назначения',
+                        });
+                      }
+                    })();
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
+                });
               }}
             />
           ) : null}

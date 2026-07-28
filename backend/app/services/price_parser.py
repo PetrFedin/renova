@@ -1,6 +1,5 @@
 """Парсинг цен по URL (Petrovich/Leroy/OBI) с fallback."""
 import re
-import random
 
 SHOPS = {"lemanapro": (400, 14000), "lemana": (400, 14000), "leroymerlin": (500, 12000), "leroy": (500, 12000), "petrovich": (800, 15000), "obi": (600, 10000)}
 PRICE_RE = re.compile(r"(\d{1,3}(?:[\s\u00a0]?\d{3})*(?:[.,]\d{2})?)\s*(?:₽|руб|RUB)?", re.I)
@@ -27,6 +26,8 @@ async def fetch_price(url: str, current: float = 0) -> tuple[float, str, str]:
                     return round(sorted(nums)[0], 2), shop, "live"
     except Exception:
         pass
+    # Investor P1 honesty: stub ≠ рынок. Не крутим random ±3% — фиксируем текущую/середину диапазона.
+    if current and current > 0:
+        return round(float(current), 2), shop, "stub"
     lo, hi = SHOPS.get(shop, (500, 5000))
-    base = current if current > 0 else lo + random.random() * (hi - lo)
-    return round(base * (0.97 + random.random() * 0.06), 2), shop, "stub"
+    return round((lo + hi) / 2, 2), shop, "stub"

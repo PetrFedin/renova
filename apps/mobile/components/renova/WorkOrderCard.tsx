@@ -1,7 +1,8 @@
 /** Карточка детальной работы в календаре / списке */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { WORK_STATUS_LABEL, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
 import type { WorkOrder, Room } from '@/lib/api';
 import { formatScheduleWorkSpan } from '@/lib/formatScheduleDate';
@@ -51,9 +52,10 @@ export function WorkOrderCard({ wo, rooms, compact }: { wo: WorkOrder; rooms?: R
 }
 
 const s = StyleSheet.create({
-  row: { ...card, flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingVertical: 12 },
+  /** Clarity K: list-row работ */
+  row: { ...listRowStyles.row, flexDirection: 'row', alignItems: 'center' },
   compact: { paddingVertical: 8 },
-  title: { fontWeight: '700', fontSize: 14 },
-  meta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 3 },
+  title: { ...screenTypography.listTitle, fontSize: 14 },
+  meta: { ...screenTypography.listMeta },
   chat: { fontSize: 18, paddingHorizontal: 8 },
 });

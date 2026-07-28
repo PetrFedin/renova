@@ -237,8 +237,7 @@ export async function buildInboxItems(opts: {
           kind: 'warranty',
           title: (w.overdue ?? 0) > 0 ? `Гарантия: ${w.overdue} просрочено` : 'Открытые гарантии',
           sub: `${w.open} обращений`,
-          // W111: QC/control (не только документы) — закрытие и список замечаний
-          href: '/quality-control',
+          href: '/control?focus=warranty',
           priority: 78,
         });
       }
@@ -419,6 +418,24 @@ export async function buildInboxItems(opts: {
         all_stages_done: cl.all_stages_done ?? allDone,
       });
       if (row) next.push(row);
+    }
+  } catch { /* noop */ }
+
+  // Investor P2: discovery punch — только при активном ремонте и загруженном плане
+  try {
+    const hasActiveStage = stages.some((s) => s.status !== 'done');
+    if (hasActiveStage) {
+      const plans = await api.listFloorPlans(userId, projectId);
+      if (plans.length > 0) {
+        next.push({
+          id: 'floor-punch',
+          kind: 'issue',
+          title: 'Сфоткать дефект на плане',
+          sub: 'Тап на чертёж → фото → QC',
+          href: objectTabHref(role, 'plan', 'floor', { punch: '1' }),
+          priority: 48,
+        });
+      }
     }
   } catch { /* noop */ }
 

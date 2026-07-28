@@ -6,11 +6,10 @@ export const homeTypography = StyleSheet.create({
   homeTitle: { fontSize: 17, fontWeight: '600', color: RenovaTheme.colors.text, letterSpacing: -0.2 },
   homeSubtitle: { fontSize: 12, fontWeight: '500', color: RenovaTheme.colors.textMuted },
   zoneLabel: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '600',
     color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.35,
+    letterSpacing: 0,
   },
   heroTitle: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text, lineHeight: 20 },
   heroSub: { fontSize: 12, fontWeight: '400', color: RenovaTheme.colors.textMuted, lineHeight: 16 },

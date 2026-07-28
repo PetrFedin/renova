@@ -9,7 +9,7 @@ import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
 import { RoleSwitchButton, roleDisplayLabel } from '@/components/renova/RoleSwitchButton';
 import { AdminHubLink } from '@/components/renova/AdminHubLink';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
-import { NotificationsList } from '@/components/renova/NotificationsList';
+import { ProfileNotifications } from './ProfileNotifications';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -175,7 +175,7 @@ export function ContractorProfileScreen() {
 
       {user ? (
         <ProfileSection title="Уведомления">
-          <NotificationsList userId={user.id} defaultReturn="/(contractor)/(tabs)/profile" />
+          <ProfileNotifications role="contractor" returnTo="/(contractor)/(tabs)/profile" />
         </ProfileSection>
       ) : null}
 
@@ -331,7 +331,7 @@ export function ContractorProfileScreen() {
         </View>
       </ProfileSection>
 
-      <ProfileSection title="Ещё">
+      <ProfileSection title="Дополнительно">
         <ProfileExtraLinks items={EXTRA_ITEMS} returnTo="/(contractor)/(tabs)/profile" role="contractor" />
       </ProfileSection>
     </ScrollView>

@@ -8,13 +8,14 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { FilterDropdown } from '@/components/renova/FilterDropdown';
 import { createProjectChat, type ChatParticipantInvite } from '@/lib/createProjectChat';
 import type { ChatThread } from '@/lib/api';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 const CHAT_TOPICS = [
   { value: 'general', label: 'Общий' },
@@ -89,12 +90,18 @@ export function CreateChatSheet({
 
   const submit = async () => {
     if (!projectId) {
-      Alert.alert('Выберите объект', 'Каждый чат привязан к одному объекту.');
+      showActionConfirm({
+        title: 'Выберите объект',
+        message: 'Каждый чат привязан к одному объекту.',
+      });
       return;
     }
     const trimmed = title.trim();
     if (!trimmed) {
-      Alert.alert('Название чата', 'Укажите тему переписки — например «Согласование плитки».');
+      showActionConfirm({
+        title: 'Название чата',
+        message: 'Укажите тему переписки — например «Согласование плитки».',
+      });
       return;
     }
 
@@ -121,7 +128,10 @@ export function CreateChatSheet({
         },
       });
     } catch (e: any) {
-      Alert.alert('Не удалось создать чат', e?.message ?? 'Попробуйте ещё раз');
+      showActionConfirm({
+        title: 'Не удалось создать чат',
+        message: e?.message ?? 'Попробуйте ещё раз',
+      });
     } finally {
       setBusy(false);
     }
@@ -228,7 +238,7 @@ const s = StyleSheet.create({
   scroll: { padding: RenovaTheme.spacing.lg, paddingBottom: 32, gap: 4 },
   head: { fontSize: 20, fontWeight: '800', color: RenovaTheme.colors.text, marginBottom: 4 },
   sub: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18, marginBottom: 12 },
-  label: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, marginTop: 10, marginBottom: 6, textTransform: 'uppercase' },
+  label: { ...screenTypography.section, marginTop: 10, marginBottom: 6 },
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 8 },
   input: {
     borderWidth: 1,

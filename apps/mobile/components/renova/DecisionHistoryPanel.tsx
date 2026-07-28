@@ -1,7 +1,8 @@
 /** История решений — смета, сроки, согласования (поверх activity API) */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import {
@@ -134,23 +135,23 @@ const s = StyleSheet.create({
   chipT: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   chipTOn: { color: RenovaTheme.colors.accent },
   row: {
-    ...card,
+    ...listRowStyles.row,
     flexDirection: 'row',
     gap: 10,
-    padding: 10,
-    marginBottom: 6,
+    paddingVertical: 10,
   },
   badge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: RenovaTheme.colors.infoBg,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  badgeT: { fontSize: 10, fontWeight: '800', color: '#1D4ED8', textTransform: 'uppercase' },
+  // Clarity Q: category chip без uppercase-крика
+  badgeT: { ...screenTypography.metricLabel, color: RenovaTheme.colors.primary, marginTop: 0, fontWeight: '700' },
   main: { flex: 1, minWidth: 0 },
-  title: { fontWeight: '600', fontSize: 13 },
-  body: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  meta: { fontSize: 10, color: '#999', marginTop: 4 },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, fontStyle: 'italic', lineHeight: 18 },
+  title: { ...screenTypography.listTitle, fontSize: 13 },
+  body: { ...screenTypography.listMeta, fontSize: 11 },
+  meta: { ...screenTypography.listMeta, fontSize: 10, marginTop: 4 },
+  empty: { ...screenTypography.empty, fontStyle: 'italic' },
 });

@@ -1,4 +1,4 @@
-/** Контент главной Renova OS — 5 блоков: статус → действие → деньги → работа → события */
+/** Контент главной Renova OS — first viewport = статус + 1 hero CTA */
 import { Text } from 'react-native';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
@@ -17,9 +17,8 @@ import {
 import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
-import { WeekScheduleStrip } from '@/components/renova/os/WeekScheduleStrip';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
-import { budgetTabRoute, type OsRole } from '@/constants/osSections';
+import { budgetTabRoute, HEADER_MORE_LINK_IDS, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { HomeCompletionLinks } from '@/components/renova/os/home/HomeCompletionStrip';
@@ -53,7 +52,7 @@ export function HomeScreenBody({
   role,
   user,
   activeProject,
-  projectsCount,
+  projectsCount: _projectsCount,
   snap,
   headerMeta,
   readOnly,
@@ -74,12 +73,33 @@ export function HomeScreenBody({
   const inboxRole = readOnly ? 'customer' : role;
   const kpiDetailHref = budgetTabRoute(role, 'summary', { period: 'month', focus: 'fact' });
   const showKpiHeaderLink = phase !== 'closing';
-  const moneyZoneTitle = role === 'customer' ? 'Деньги' : 'Сводка';
+  const moneyZoneTitle = 'Деньги';
 
-  const showMore = moreHasContent || phase === 'complete';
+  /**
+   * Clarity A: first viewport = header + 1 hero (customer и contractor в active).
+   * KPI / «В работе» — в «Сводка». Clarity D: strip сроков убран — только ссылка в календарь.
+   */
+  const leanFirstViewport = phase === 'active' && !readOnly;
+  const showKpiMain = showKpi && !leanFirstViewport;
+  const showWorksMain = showWorksMaterials && !snap.isComplete && !leanFirstViewport;
+  /** Ссылка «Сроки» без WeekScheduleStrip — дубль с вкладкой календаря */
+  const showScheduleLink = isVisible('schedule');
+  const showKpiInMore = leanFirstViewport && showKpi;
+  const showWorksInMore = leanFirstViewport && showWorksMaterials && !snap.isComplete;
+
+  const showMore =
+    moreHasContent ||
+    phase === 'complete' ||
+    showKpiInMore ||
+    showWorksInMore ||
+    (leanFirstViewport && showScheduleLink);
   const moreSectionSummary = phase === 'complete'
     ? (moreSummary ? `отчёты · ${moreSummary}` : 'отчёты · экспорт')
-    : moreSummary;
+    : leanFirstViewport
+      ? [moreSummary, showKpiInMore ? 'деньги' : '', showScheduleLink ? 'сроки' : '']
+          .filter(Boolean)
+          .join(' · ') || 'деньги · сроки'
+      : moreSummary;
 
   return (
     <>
@@ -97,20 +117,13 @@ export function HomeScreenBody({
         <Text style={homeTypography.homeSubtitle}>{roleScopeLabel({ role, readOnly })}</Text>
       ) : null}
 
-      {role === 'customer' && !readOnly && (
-        <>
-          <ProjectProfileHint project={activeProject} role={role} />
-          <HomeSetupChecklist project={activeProject} snap={snap} role={role} />
-        </>
-      )}
-
-      {role === 'contractor' && phase === 'active' && (
+      {role === 'contractor' && phase === 'active' && !leanFirstViewport && (
         <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
       )}
 
-      {/* 2. Очередь дел — единственный attention SoT (hero + inbox; без отдельной строки «Входящие») */}
-      {/* W47/W56: banner для обеих ролей; у contractor — «ждут заказчика», не дубль hero accept */}
-      {snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
+      {/* 2. Единственный hero first-viewport (до чеклиста и KPI) */}
+      {/* Lean: баннер приёмки конкурирует с hero — оставляем только HomeActionHero */}
+      {!leanFirstViewport && snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
         <HomeAcceptanceBanner
           count={snap.quality.awaitingAcceptance}
           role={role}
@@ -128,8 +141,21 @@ export function HomeScreenBody({
         />
       )}
 
-      {/* 3. Деньги */}
-      {showKpi && (
+      {/* Lean contractor: одна secondary-строка после hero, не до него */}
+      {role === 'contractor' && phase === 'active' && leanFirstViewport && (
+        <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
+      )}
+
+      {/* 3. Настройка — после hero, чтобы CTA не конкурировал с nextAction */}
+      {role === 'customer' && !readOnly && (
+        <>
+          <HomeSetupChecklist project={activeProject} snap={snap} role={role} />
+          {!leanFirstViewport ? <ProjectProfileHint project={activeProject} role={role} /> : null}
+        </>
+      )}
+
+      {/* 4. Деньги / работа / сроки — на lean уходят в «Сводка» */}
+      {showKpiMain && (
         <HomeZone
           title={moneyZoneTitle}
           linkLabel={showKpiHeaderLink ? 'Подробнее →' : undefined}
@@ -139,31 +165,42 @@ export function HomeScreenBody({
         </HomeZone>
       )}
 
-      {/* 4. Что в работе */}
-      {showWorksMaterials && !snap.isComplete && (
+      {showWorksMain && (
         <HomeZone title="В работе">
           <WorksMaterialsTwinRow snap={snap} role={role} />
         </HomeZone>
       )}
 
-      {/* 5. Сроки — один preview → hub /calendar (без второго WorkSchedule card) */}
-      {isVisible('schedule') && (
-        <HomeZone
-          title="Сроки"
-          linkLabel="Открыть →"
-          onLinkPress={() => pushTab('calendar')}
-        >
-          <WeekScheduleStrip userId={user.id} projectId={activeProject.id} role={role} embedded />
-        </HomeZone>
-      )}
+      {/* Clarity D: без WeekScheduleStrip — календарь SoT для сроков */}
+      {!leanFirstViewport && showScheduleLink ? (
+        <HomeLinkRow title="Сроки" onPress={() => pushTab('calendar')} />
+      ) : null}
 
-      {/* Дополнительно — свёрнуто; приёмка/уведомления не дублируем (Ремонт / Входящие) */}
+      {/* 5. Сводка — вторичные поверхности + lean-блоки (не путать с шапкой «Ещё») */}
       {showMore && (
-        <HomeMoreSection summary={moreSectionSummary}>
+        <HomeMoreSection summary={moreSectionSummary} title="Сводка">
+          {showKpiInMore ? (
+            <HomeZone
+              title={moneyZoneTitle}
+              linkLabel={showKpiHeaderLink ? 'Подробнее →' : undefined}
+              onLinkPress={showKpiHeaderLink ? () => pushNav(kpiDetailHref) : undefined}
+            >
+              <OsKpiGrid snap={snap} rolePrefix={rolePrefix} role={role} gridTitle={null} />
+            </HomeZone>
+          ) : null}
+          {showWorksInMore ? (
+            <HomeZone title="В работе">
+              <WorksMaterialsTwinRow snap={snap} role={role} />
+            </HomeZone>
+          ) : null}
+          {leanFirstViewport && showScheduleLink ? (
+            <HomeLinkRow title="Сроки" onPress={() => pushTab('calendar')} />
+          ) : null}
           {menuRoutes(role === 'contractor' ? 'contractor' : 'customer', 'more', {
             readOnly,
             phase,
-            excludeIds: ['inbox'], // уже строка «Входящие» выше
+            // Util-навигация — только шапка «Ещё» (HEADER_MORE_LINK_IDS); здесь не дублируем
+            excludeIds: [...HEADER_MORE_LINK_IDS],
           }).map((route) => (
             <HomeLinkRow
               key={route.id}

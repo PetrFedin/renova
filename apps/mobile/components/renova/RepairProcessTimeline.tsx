@@ -1,7 +1,8 @@
-/** Хронология ремонта: этапы + статус + переход */
+/** Хронология ремонта: этапы + статус + переход — Clarity M: list-row без card */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { Stage } from '@/lib/api';
 import { STAGE_STATUS_ICON } from '@/constants/labels';
 import { pushStageDetail } from '@/lib/navigation';
@@ -13,7 +14,7 @@ export function RepairProcessTimeline({ stages }: { stages: Stage[] }) {
   return (
     <View style={s.box}>
       <Text style={s.head}>Хронология работ</Text>
-      {sorted.map((st, i) => (
+      {sorted.map((st) => (
         <Pressable key={st.id} style={s.row} onPress={() => pushStageDetail(st.id, pathname)}>
           <Text style={s.num}>{STAGE_STATUS_ICON[st.status] || '·'}</Text>
           <View style={{ flex: 1 }}>
@@ -27,11 +28,11 @@ export function RepairProcessTimeline({ stages }: { stages: Stage[] }) {
   );
 }
 const s = StyleSheet.create({
-  box: { ...card, marginBottom: 10, paddingVertical: 12 },
-  head: { fontWeight: '800', marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  box: { marginBottom: 10 },
+  head: { ...screenTypography.section, marginTop: 0, fontWeight: '700', color: RenovaTheme.colors.text },
+  row: { ...listRowStyles.row, flexDirection: 'row', alignItems: 'center', gap: 8 },
   num: { width: 28, fontSize: 16, textAlign: 'center' },
-  name: { fontWeight: '700', fontSize: 13 },
-  meta: { fontSize: 10, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  name: { ...screenTypography.listTitle, fontSize: 13 },
+  meta: { ...screenTypography.listMeta },
   pay: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.primary },
 });

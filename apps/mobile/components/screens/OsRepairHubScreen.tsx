@@ -56,11 +56,17 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
 
   const controlBadge = pendingAcceptance > 0 ? pendingAcceptance : undefined;
 
+  // Clarity A: Этапы + Приёмка primary; Материалы/Подбор — «Ещё» (badge поднимает подбор)
   const tabs: HubTab[] = [
     { id: 'works', label: 'Этапы' },
-    { id: 'materials', label: 'Материалы' },
-    { id: 'selections', label: 'Подбор', badge: pendingSelections || undefined },
     { id: 'control', label: 'Приёмка', badge: controlBadge || undefined },
+    { id: 'materials', label: 'Материалы', secondary: true },
+    {
+      id: 'selections',
+      label: 'Подбор',
+      badge: pendingSelections || undefined,
+      secondary: pendingSelections === 0,
+    },
   ];
 
   return (

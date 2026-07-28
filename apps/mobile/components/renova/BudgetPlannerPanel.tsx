@@ -1,7 +1,8 @@
 /** Планировщик бюджета: работа / материалы / срок / рынок / Лемана ПРО */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Linking } from 'react-native';
-import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORK_TYPES_FALLBACK, WORK_CATEGORY_LABEL, groupWorkTypes } from '@/constants/workCatalog';
 import { REGIONS_FALLBACK, fallbackMarketEstimate, type MarketEstimate, type MarketConsumable } from '@/constants/regions';
@@ -216,7 +217,7 @@ const s = StyleSheet.create({
   wrap: { marginVertical: 8 },
   head: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
   refHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 15, marginBottom: 8 },
-  label: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginTop: 10, marginBottom: 6 },
+  label: { ...screenTypography.section, marginTop: 10, marginBottom: 6 },
   cat: { fontSize: 10, color: RenovaTheme.colors.textMuted, marginBottom: 4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: RenovaTheme.colors.border, borderWidth: 1, borderColor: RenovaTheme.colors.border },
@@ -225,15 +226,15 @@ const s = StyleSheet.create({
   chipTOn: { color: RenovaTheme.colors.accent },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 8, backgroundColor: RenovaTheme.colors.surface },
-  summary: { ...card, marginTop: 12 },
+  summary: { ...listRowStyles.metricCell, alignItems: 'stretch', marginTop: 12, padding: 12 },
   total: { fontSize: 28, fontWeight: '800', color: RenovaTheme.colors.primary },
-  sub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4 },
+  sub: { ...screenTypography.listMeta },
   splitRow: { flexDirection: 'row', marginTop: 12, gap: 4, height: 48 },
   split: { backgroundColor: '#DBEAFE', borderRadius: 8, padding: 8, justifyContent: 'center' },
   splitMat: { backgroundColor: '#FEF3C7' },
-  splitT: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.textMuted },
+  splitT: { ...screenTypography.metricLabel, marginTop: 0 },
   splitV: { fontSize: 14, fontWeight: '700', marginTop: 2 },
-  section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, marginTop: 14, marginBottom: 6, textTransform: 'uppercase' },
+  section: { ...screenTypography.section, marginTop: 14, marginBottom: 6 },
   trendRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 },
   trendLabel: { width: 72, fontSize: 10, color: RenovaTheme.colors.textMuted },
   trendBarWrap: { flex: 1, height: 8, backgroundColor: RenovaTheme.colors.border, borderRadius: 4, overflow: 'hidden' },

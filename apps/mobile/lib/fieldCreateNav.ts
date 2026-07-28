@@ -1,5 +1,5 @@
-/** W133: create work/room, stage→acceptance, approvals, profile dates → SoT */
-import { Alert } from 'react-native';
+/** W133: create work/room, stage→acceptance, approvals, profile dates → SoT.
+ * Clarity G: sheet вместо Alert. */
 import { pushOsNav } from '@/lib/pushOsNav';
 import {
   calendarTabRoute,
@@ -7,153 +7,142 @@ import {
   repairTabRoute,
   type OsRole,
 } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 /** Новая работа / задача на день */
 export function alertWorkCreated(role: OsRole, workId?: string) {
-  const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [
-    { text: 'OK', style: 'cancel' },
-    {
-      text: 'График',
-      onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-    },
-  ];
   if (workId) {
-    buttons.push({
-      text: 'Открыть',
-      onPress: () =>
+    showActionConfirm({
+      title: 'Работа создана',
+      message: 'Появится в графике. Можно сразу открыть карточку.',
+      primaryLabel: 'Открыть',
+      onPrimary: () =>
         pushOsNav({ pathname: '/work-order/[id]', params: { id: workId } }, undefined, role),
+      secondaryLabel: 'График',
+      onSecondary: () => pushOsNav(calendarTabRoute(role), undefined, role),
     });
+    return;
   }
-  Alert.alert(
-    'Работа создана',
-    'Появится в графике. Можно сразу открыть карточку.',
-    buttons,
-  );
+  showActionConfirm({
+    title: 'Работа создана',
+    message: 'Появится в графике.',
+    primaryLabel: 'График',
+    onPrimary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Новая комната на объекте */
 export function alertRoomCreated(role: OsRole) {
-  Alert.alert(
-    'Комната добавлена',
-    'Дальше — план этажа, смета или материалы по комнатам.',
-    [
-      { text: 'OK' },
-      {
-        text: 'План',
-        onPress: () => pushOsNav(objectTabRoute(role, 'plan'), undefined, role),
-      },
-      {
-        text: 'Смета',
-        onPress: () => pushOsNav(objectTabRoute(role, 'estimate'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Комната добавлена',
+    message: 'Дальше — план этажа или смета по комнатам.',
+    primaryLabel: 'План',
+    onPrimary: () => pushOsNav(objectTabRoute(role, 'plan', 'floor'), undefined, role),
+    secondaryLabel: 'Смета',
+    onSecondary: () => pushOsNav(objectTabRoute(role, 'estimate'), undefined, role),
+  });
 }
 
 /** Исполнитель сдал этап на приёмку */
 export function alertStageSubmittedForAcceptance(role: OsRole) {
-  Alert.alert(
-    'На приёмке',
-    'Заказчик получит запрос. Следите за входящими и приёмкой.',
-    [
-      { text: 'OK' },
-      {
-        text: 'Приёмка',
-        onPress: () => pushOsNav(repairTabRoute(role, 'control'), undefined, role),
-      },
-      {
-        text: 'Входящие',
-        onPress: () => pushOsNav('/inbox', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'На приёмке',
+    message: 'Заказчик получит запрос. Следите за входящими и приёмкой.',
+    primaryLabel: 'Приёмка',
+    onPrimary: () => pushOsNav(repairTabRoute(role, 'control'), undefined, role),
+    secondaryLabel: 'Входящие',
+    onSecondary: () => pushOsNav('/inbox', undefined, role),
+  });
 }
 
 /** Hub согласований — после решения (не CO — CO через procurementNav) */
 export function alertApprovalApproved(role: OsRole, type: string) {
   if (type === 'material') {
-    Alert.alert(
-      'Согласовано',
-      'Материал в потребностях. Можно создать закупку.',
-      [
-        { text: 'OK' },
-        {
-          text: 'К материалам',
-          onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Согласовано',
+      message: 'Материал в потребностях. Можно создать закупку.',
+      primaryLabel: 'К материалам',
+      onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
     return;
   }
   if (type === 'design' || type === 'room_change') {
-    Alert.alert(
-      'Согласовано',
-      'Изменение принято. Откройте объект.',
-      [
-        { text: 'OK' },
-        {
-          text: 'Объект',
-          onPress: () => pushOsNav(objectTabRoute(role, 'plan'), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Согласовано',
+      message: 'Изменение принято. Откройте объект.',
+      primaryLabel: 'Объект',
+      onPrimary: () => pushOsNav(objectTabRoute(role, 'plan', 'floor'), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
     return;
   }
-  Alert.alert('Согласовано', 'Решение сохранено. Исполнитель получит уведомление.', [
-    { text: 'OK' },
-    {
-      text: 'Входящие',
-      onPress: () => pushOsNav('/inbox', undefined, role),
-    },
-  ]);
+  showActionConfirm({
+    title: 'Согласовано',
+    message: 'Решение сохранено. Исполнитель получит уведомление.',
+    primaryLabel: 'Входящие',
+    onPrimary: () => pushOsNav('/inbox', undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 export function alertApprovalRejected(role: OsRole, type: string) {
-  Alert.alert(
-    'Отклонено',
-    'Исполнитель получит уведомление и сможет исправить.',
-    [
-      { text: 'OK' },
-      type === 'material'
+  const secondary =
+    type === 'material'
+      ? {
+          label: 'Материалы',
+          go: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+        }
+      : type === 'change_order'
         ? {
-            text: 'Материалы',
-            onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+            label: 'Смета',
+            go: () =>
+              pushOsNav(
+                {
+                  pathname: objectTabRoute(role, 'estimate').pathname,
+                  params: { ...objectTabRoute(role, 'estimate').params, estimateLayer: 'changes' },
+                },
+                undefined,
+                role,
+              ),
           }
-        : type === 'change_order'
-          ? {
-              text: 'Смета',
-              onPress: () =>
-                pushOsNav(
-                  {
-                    pathname: objectTabRoute(role, 'estimate').pathname,
-                    params: { ...objectTabRoute(role, 'estimate').params, estimateLayer: 'changes' },
-                  },
-                  undefined,
-                  role,
-                ),
-            }
-          : {
-              text: 'Входящие',
-              onPress: () => pushOsNav('/inbox', undefined, role),
-            },
-    ],
-  );
+        : {
+            label: 'Входящие',
+            go: () => pushOsNav('/inbox', undefined, role),
+          };
+
+  showActionConfirm({
+    title: 'Отклонено',
+    message: 'Исполнитель получит уведомление и сможет исправить.',
+    primaryLabel: secondary.label,
+    onPrimary: secondary.go,
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Профиль объекта: сроки → календарь */
 export function alertProjectProfileSaved(role: OsRole, datesChanged?: boolean) {
-  const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [{ text: 'OK' }];
   if (datesChanged) {
-    buttons.push({
-      text: 'График',
-      onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
+    showActionConfirm({
+      title: 'Сохранено',
+      message: 'Профиль обновлён. Сроки можно сверить в графике.',
+      primaryLabel: 'График',
+      onPrimary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
     });
+    return;
   }
-  Alert.alert(
-    'Сохранено',
-    datesChanged
-      ? 'Профиль обновлён. Сроки можно сверить в графике.'
-      : 'Профиль объекта обновлён.',
-    buttons,
-  );
+  showActionConfirm({
+    title: 'Сохранено',
+    message: 'Профиль объекта обновлён.',
+    primaryLabel: 'Понятно',
+    onPrimary: () => undefined,
+  });
 }

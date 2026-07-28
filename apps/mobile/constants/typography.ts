@@ -20,12 +20,11 @@ export const typography = StyleSheet.create({
   tiny: { fontSize: fs.tiny, fontWeight: fw.semibold, color: c.textSubtle, lineHeight: 14 },
   link: { fontSize: fs.caption, fontWeight: fw.semibold, color: c.accent },
   metric: { fontSize: fs.hero, fontWeight: fw.bold, color: c.text, lineHeight: 28 },
-  metricLabel: { fontSize: fs.tiny, fontWeight: fw.semibold, color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.35 },
   zoneLabel: {
-    fontSize: fs.tiny,
+    fontSize: fs.bodySmall,
     fontWeight: fw.semibold,
     color: c.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.35,
+    letterSpacing: 0,
   },
+  metricLabel: { fontSize: fs.tiny, fontWeight: fw.medium, color: c.textMuted },
 });

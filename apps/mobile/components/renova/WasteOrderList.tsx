@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { api, WasteOrder } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -10,6 +10,7 @@ import { alertWasteOrderAdvanced } from '@/lib/siteOpsNav';
 import type { OsRole } from '@/constants/osSections';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 /** W114: UI офлайн для вывоза мусора (API уже в offlineQueue) */
 async function runWasteAction(
@@ -26,7 +27,10 @@ async function runWasteAction(
       await after();
       return;
     }
-    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось выполнить действие');
+    showActionConfirm({
+      title: 'Ошибка',
+      message: e instanceof Error ? e.message : 'Не удалось выполнить действие',
+    });
   }
 }
 
@@ -56,7 +60,27 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
           {role === 'customer' && w.status === 'requested' && (
             <PrimaryButton
               title="Согласовать"
-              onPress={() => runWasteAction('Согласование вывоза', () => api.approveWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); alertWasteOrderAdvanced(role as OsRole, 'approved'); })}
+              onPress={() => {
+                // Clarity W: money/obligation — pre-confirm перед approve
+                showActionConfirm({
+                  title: 'Согласовать вывоз?',
+                  message: `${w.volume_m3} м³ · ${formatRub(w.total || w.price)}. Стоимость войдёт в бюджет.`,
+                  primaryLabel: 'Согласовать',
+                  onPrimary: () => {
+                    void runWasteAction(
+                      'Согласование вывоза',
+                      () => api.approveWasteOrder(userId, projectId, w.id),
+                      async () => {
+                        await syncAfter();
+                        load();
+                        alertWasteOrderAdvanced(role as OsRole, 'approved');
+                      },
+                    );
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
+                });
+              }}
             />
           )}
           {role === 'contractor' && w.status === 'approved' && (

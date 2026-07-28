@@ -1,10 +1,13 @@
-/** Список чатов: фильтр объектов, архив, закрепление — каждый чат привязан к одному объекту */
+/** Список чатов: фильтр объектов, архив, закрепление — каждый чат привязан к одному объекту.
+ * Clarity D: unread только в dock; в списке — title + 1 строка preview. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { ChatBadge } from '@/components/renova/chat/ChatBadge';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { ChatProjectFilterDropdown } from '@/components/renova/chat/ChatProjectFilter';
 import { CreateChatSheet } from '@/components/renova/chat/CreateChatSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -18,10 +21,11 @@ import { useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { getChatProjectFilter, setChatProjectFilter } from '@/lib/chatPrefs';
 import { CHAT_FILTER_ALL, filterChatThreads, normalizeChatProjectFilter, shouldGroupChatsByProject, type ChatProjectFilter } from '@/lib/chatProjectFilter';
 import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
-import { threadAwaitingReply, threadsAwaitingReplyCount } from '@/lib/chatAttention';
+import { threadAwaitingReply } from '@/lib/chatAttention';
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Folder = 'active' | 'archive';
 
@@ -53,16 +57,13 @@ function ThreadCard({
           <View style={s.titleRow}>
             {thread.is_pinned ? <Text style={s.pinIcon}>📌</Text> : null}
             <Text style={s.title} numberOfLines={1}>{thread.title}</Text>
+            {/* Clarity D: точечный attention без цифры unread (цифра — только dock) */}
+            {unread > 0 || awaiting ? <View style={[s.awaitDot, unread > 0 && s.unreadDot]} /> : null}
           </View>
           {showProject && thread.project_name ? (
             <Text style={s.projectName} numberOfLines={1}>{thread.project_name}</Text>
           ) : null}
           <Text style={s.preview} numberOfLines={1}>{preview}</Text>
-          {awaiting ? <Text style={s.awaiting}>Ждёт вашего ответа</Text> : null}
-        </View>
-        <View style={s.rightCol}>
-          <Text style={s.meta}>{thread.updated_at.slice(0, 16).replace('T', ' ')}</Text>
-          {unread > 0 ? <ChatBadge count={unread} inline size={20} /> : awaiting ? <View style={s.awaitDot} /> : null}
         </View>
       </View>
     </Pressable>
@@ -190,31 +191,38 @@ export function ChatListView() {
       Alert.alert('Ошибка', 'Чат не привязан к объекту.');
       return;
     }
-    Alert.alert(t.title, t.project_name || undefined, [
-      {
-        text: t.is_pinned ? 'Открепить' : 'Закрепить',
-        onPress: async () => {
-          try {
-            await api.patchChatState(user.id, t.project_id, t.id, { is_pinned: !t.is_pinned });
-            await reload();
-          } catch (e) {
-            if (isOfflineQueued(e)) notifyOfflineQueued(t.is_pinned ? 'Открепление чата' : 'Закрепление чата');
-          }
+    showActionConfirm({
+      title: t.title,
+      message: t.project_name || 'Действия с чатом',
+      actions: [
+        {
+          label: t.is_pinned ? 'Открепить' : 'Закрепить',
+          onPress: () => {
+            void (async () => {
+              try {
+                await api.patchChatState(user.id, t.project_id, t.id, { is_pinned: !t.is_pinned });
+                await reload();
+              } catch (e) {
+                if (isOfflineQueued(e)) notifyOfflineQueued(t.is_pinned ? 'Открепление чата' : 'Закрепление чата');
+              }
+            })();
+          },
         },
-      },
-      {
-        text: folder === 'archive' ? 'Вернуть из архива' : 'В архив',
-        onPress: async () => {
-          try {
-            await api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' });
-            await reload();
-          } catch (e) {
-            if (isOfflineQueued(e)) notifyOfflineQueued(folder === 'archive' ? 'Восстановление чата' : 'Архивация чата');
-          }
+        {
+          label: folder === 'archive' ? 'Вернуть из архива' : 'В архив',
+          onPress: () => {
+            void (async () => {
+              try {
+                await api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' });
+                await reload();
+              } catch (e) {
+                if (isOfflineQueued(e)) notifyOfflineQueued(folder === 'archive' ? 'Восстановление чата' : 'Архивация чата');
+              }
+            })();
+          },
         },
-      },
-      { text: 'Отмена', style: 'cancel' },
-    ]);
+      ],
+    });
   };
 
   const canCreate = folder === 'active' && projects.length > 0;
@@ -227,22 +235,9 @@ export function ChatListView() {
     );
   }
 
-  const filterIsAll = projectFilter === CHAT_FILTER_ALL || (Array.isArray(projectFilter) && projectFilter.length === projectOptions.length);
-  const tabUnread = filterIsAll ? globalUnread : displayThreads.reduce((a, t) => a + (t.unread_count || 0), 0);
-  const awaitingCount = threadsAwaitingReplyCount(displayThreads.filter((t) => !t.is_archived), user?.role);
-
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
-      {folder === 'active' && (globalUnread > 0 || awaitingCount > 0) ? (
-        <View style={s.unreadBanner}>
-          <Text style={s.unreadBannerT}>
-            {globalUnread > 0
-              ? `${globalUnread} ${globalUnread === 1 ? 'непрочитанное' : globalUnread < 5 ? 'непрочитанных' : 'непрочитанных'}`
-              : `${awaitingCount} ${awaitingCount === 1 ? 'диалог ждёт' : 'диалогов ждут'} ответа`}
-          </Text>
-        </View>
-      ) : null}
-      {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 ? (
+      {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 && displayThreads.length > 0 ? (
         <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.7'))}>
           <Text style={s.unreadWarn}>Не удалось обновить — нажмите, чтобы повторить</Text>
         </Pressable>
@@ -250,9 +245,7 @@ export function ChatListView() {
 
       <View style={s.toolbar}>
         <Pressable style={[s.tab, folder === 'active' && s.tabOn]} onPress={() => setFolder('active')}>
-          <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>
-            Чаты{folder === 'active' && tabUnread > 0 ? ` · ${tabUnread}` : ''}
-          </Text>
+          <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>Чаты</Text>
         </Pressable>
         <Pressable style={[s.tab, folder === 'archive' && s.tabOn]} onPress={() => setFolder('archive')}>
           <Text style={[s.tabT, folder === 'archive' && s.tabTOn]}>Архив</Text>
@@ -310,30 +303,36 @@ export function ChatListView() {
         </View>
       ))}
 
-      {!displayThreads.length && (
-        <Text style={s.empty}>
-          {folder === 'archive'
-            ? 'Архив пуст'
-            : projects.length
-              ? 'Нет чатов по выбранным объектам — создайте новый'
-              : 'Создайте объект, чтобы начать переписку'}
-        </Text>
-      )}
+      {!displayThreads.length && loadError ? (
+        <LoadErrorState
+          title="Не удалось загрузить чаты"
+          hint="Это не пустой список — проверьте сеть и повторите."
+          onRetry={() => { void reload(); }}
+        />
+      ) : !displayThreads.length ? (
+        folder === 'archive' ? (
+          <Text style={s.empty}>Архив пуст</Text>
+        ) : projects.length ? (
+          <EmptyActionState
+            title="Нет чатов по выбранным объектам"
+            hint="Создайте переписку — вопросы по смете, срокам и приёмке остаются в одном месте."
+            actionLabel={canCreate ? 'Создать чат' : undefined}
+            actionVariant="primary"
+            onAction={canCreate ? () => setCreateOpen(true) : undefined}
+          />
+        ) : (
+          <EmptyActionState
+            title="Нет объектов для чата"
+            hint="Создайте или выберите объект, чтобы начать переписку."
+          />
+        )
+      ) : null}
     </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  unreadBanner: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 10,
-  },
-  unreadBannerT: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.danger, textAlign: 'center' },
   unreadWarn: { fontSize: 12, color: RenovaTheme.colors.warning, marginBottom: 8, textAlign: 'center' },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' },
   tab: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface },
@@ -341,18 +340,17 @@ const s = StyleSheet.create({
   tabT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   tabTOn: { color: RenovaTheme.colors.accent },
   createBtn: { marginBottom: 12 },
-  groupHead: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 6, marginTop: 4 },
-  card: { ...card, marginBottom: 8, padding: 12 },
-  cardPinned: { borderColor: RenovaTheme.colors.accent, backgroundColor: '#F8FAFF' },
+  groupHead: { ...screenTypography.section, marginBottom: 6, marginTop: 4 },
+  /** Clarity K: list-row чатов, не card-стек */
+  card: { ...listRowStyles.row, paddingVertical: 12 },
+  cardPinned: { ...listRowStyles.rowFocus },
   cardHead: { flexDirection: 'row', gap: 8 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pinIcon: { fontSize: 12 },
-  title: { fontWeight: '700', fontSize: 16, flex: 1, color: RenovaTheme.colors.text },
+  title: { ...screenTypography.listTitle, fontSize: 16, flex: 1 },
   projectName: { fontSize: 11, color: RenovaTheme.colors.accent, fontWeight: '600', marginTop: 2 },
-  preview: { color: RenovaTheme.colors.textMuted, marginTop: 4, fontSize: 13 },
-  awaiting: { fontSize: 11, color: RenovaTheme.colors.warning, fontWeight: '700', marginTop: 3 },
-  rightCol: { alignItems: 'flex-end', minWidth: 56 },
-  meta: { fontSize: 10, color: RenovaTheme.colors.textMuted },
-  awaitDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: RenovaTheme.colors.warning, marginTop: 4 },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginTop: 24 },
+  preview: { ...screenTypography.listMeta, marginTop: 4 },
+  awaitDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: RenovaTheme.colors.warning },
+  unreadDot: { backgroundColor: RenovaTheme.colors.danger },
+  empty: { ...screenTypography.empty, textAlign: 'center', marginTop: 24 },
 });

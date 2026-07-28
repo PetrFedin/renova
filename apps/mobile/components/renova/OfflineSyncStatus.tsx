@@ -10,6 +10,7 @@ import { getQueue } from '@/lib/offlineQueue';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { reloadInboxSync } from '@/lib/inboxSyncStore';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { pushOsNav } from '@/lib/pushOsNav';
 /** Статус канонической offline-очереди (тот же storage, что layout flush). */
 export function OfflineSyncStatus({
   compact = false,
@@ -124,6 +125,14 @@ export function OfflineSyncStatus({
       {pending > 0 ? (
         <Pressable style={({ pressed }) => [styles.button, pressed && styles.pressed]} onPress={runSync} disabled={syncing}>
           {syncing ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : <Text style={styles.buttonText}>Синхронизировать</Text>}
+        </Pressable>
+      ) : null}
+      {(conflicts > 0 || blocked > 0) ? (
+        <Pressable
+          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+          onPress={() => pushOsNav('/conflicts', undefined, (user?.role === 'contractor' ? 'contractor' : 'customer'))}
+        >
+          <Text style={styles.buttonText}>{conflicts > 0 ? 'Открыть конфликты' : 'Открыть очередь'}</Text>
         </Pressable>
       ) : null}
     </View>

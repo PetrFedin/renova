@@ -250,6 +250,43 @@ console.log('buildProjectOsSnapshot.w55.test OK');
   if (!/гарант/i.test(snap.nextAction.title)) throw new Error(`W76 warranty → got ${snap.nextAction.title}`);
   if (snap.nextAction.kind !== 'issue') throw new Error('warranty kind=issue');
   if (snap.healthLevel === 'good') throw new Error('warranty must not be health=good');
+  // Investor P1: warranty SoT = /control?focus=warranty (как inbox), не /documents
+  if (snap.nextAction.href !== '/control?focus=warranty') {
+    throw new Error(`warranty href SoT → got ${JSON.stringify(snap.nextAction.href)}`);
+  }
+}
+
+// Investor P1: без подрядчика — явный CTA (не «проверьте работы»)
+{
+  const snap = buildProjectOsSnapshot(
+    project({
+      contractor_id: null,
+      stages: [{ id: 's1', name: 'Черновые', status: 'planned' } as any],
+      estimate_locked_at: '2026-01-01',
+      estimate_lines: [{ id: 'e1' } as any],
+    }),
+    baseDash,
+    [],
+    [],
+    [],
+    [],
+    null,
+    'customer',
+    null,
+    0,
+    0,
+    0,
+    { status: 'confirmed' },
+  );
+  if (!/исполнител/i.test(snap.nextAction.title)) {
+    throw new Error(`no-contractor CTA → got ${snap.nextAction.title}`);
+  }
+  const href = typeof snap.nextAction.href === 'string'
+    ? snap.nextAction.href
+    : JSON.stringify(snap.nextAction.href);
+  if (!/focus=contractor|contractor/i.test(href)) {
+    throw new Error(`no-contractor href → ${href}`);
+  }
 }
 
 console.log('buildProjectOsSnapshot.w76 cases OK');

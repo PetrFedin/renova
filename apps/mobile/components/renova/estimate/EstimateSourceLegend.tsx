@@ -1,6 +1,7 @@
 /** Кто заполняет строки сметы */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 
 export function EstimateSourceLegend({ compact }: { compact?: boolean }) {
   return (
@@ -18,6 +19,6 @@ export function EstimateSourceLegend({ compact }: { compact?: boolean }) {
 const s = StyleSheet.create({
   box: { ...card, marginBottom: 12, paddingVertical: 10, backgroundColor: '#F8FAFC' },
   compact: { paddingVertical: 8 },
-  title: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, marginBottom: 4, textTransform: 'uppercase' },
+  title: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
   line: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17 },
 });

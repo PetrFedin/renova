@@ -1,5 +1,5 @@
-/** W127–W128: selections → purchase lifecycle → budget fact (Buildertrend/Smetter) */
-import { Alert } from 'react-native';
+/** W127–W128: selections → purchase lifecycle → budget fact (Buildertrend/Smetter).
+ * Clarity G: sheet вместо Alert. */
 import { pushOsNav } from '@/lib/pushOsNav';
 import {
   budgetTabRoute,
@@ -8,77 +8,62 @@ import {
   repairTabRoute,
   type OsRole,
 } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 /** Заказчик согласовал позицию — подрядчик может создать закупку */
 export function alertMaterialPickApproved(role: OsRole) {
-  Alert.alert(
-    'Материал согласован',
-    'После закупки и статуса «В факте» сумма попадёт в факт бюджета.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К материалам',
-        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Материал согласован',
+    message: 'После закупки и статуса «В факте» сумма попадёт в факт бюджета.',
+    primaryLabel: 'К материалам',
+    onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Подрядчик отправил на согласование */
 export function alertMaterialPickSubmitted(role: OsRole) {
-  Alert.alert(
-    'На согласование',
-    'Заказчик получит задачу. После «Согласовать» можно создать закупку.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К материалам',
-        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'На согласование',
+    message: 'Заказчик получит задачу. После «Согласовать» можно создать закупку.',
+    primaryLabel: 'К материалам',
+    onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Создана закупка из согласованных позиций */
 export function alertPurchaseCreated(role: OsRole, count: number) {
-  Alert.alert(
-    'Закупка создана',
-    `${count} поз. · отметьте заказ → оплату → доставку. В факт бюджета — только «В факте».`,
-    [
-      { text: 'OK' },
-      {
-        text: 'Расходы',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
-      },
-      {
-        text: 'Сканировать чек',
-        onPress: () => pushOsNav('/scan-receipt', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Закупка создана',
+    message: `${count} поз. · отметьте заказ → оплату → доставку. В факт бюджета — только «В факте».`,
+    primaryLabel: 'Сканировать чек',
+    onPrimary: () => pushOsNav('/scan-receipt', undefined, role),
+    secondaryLabel: 'Расходы',
+    onSecondary: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
+  });
 }
 
 /** Подрядчик отправил ДО заказчику */
 export function alertChangeOrderSubmitted(role: OsRole) {
-  Alert.alert(
-    'Доп. работы',
-    'Отправлено заказчику. После согласования сумма войдёт в план бюджета.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К изменениям',
-        onPress: () =>
-          pushOsNav(
-            {
-              pathname: objectTabRoute(role, 'estimate').pathname,
-              params: { ...objectTabRoute(role, 'estimate').params, estimateLayer: 'changes' },
-            },
-            undefined,
-            role,
-          ),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Доп. работы',
+    message: 'Отправлено заказчику. После согласования сумма войдёт в план бюджета.',
+    primaryLabel: 'К изменениям',
+    onPrimary: () =>
+      pushOsNav(
+        {
+          pathname: objectTabRoute(role, 'estimate').pathname,
+          params: { ...objectTabRoute(role, 'estimate').params, estimateLayer: 'changes' },
+        },
+        undefined,
+        role,
+      ),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Заказчик одобрил ДО — план бюджета + опционально подпись */
@@ -87,116 +72,92 @@ export function alertChangeOrderApproved(
   amountLabel: string,
   documentId?: string,
 ) {
-  const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [
-    { text: 'OK', style: 'cancel' },
-    {
-      text: 'Открыть бюджет',
-      onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
-    },
-  ];
   if (documentId) {
-    buttons.push({
-      text: 'Подписать',
-      onPress: () => pushOsNav('/documents', undefined, role),
+    showActionConfirm({
+      title: 'Доп. работы одобрены',
+      message: `${amountLabel} в плане бюджета. Подпишите черновик в Документах.`,
+      primaryLabel: 'Подписать',
+      onPrimary: () => pushOsNav('/documents', undefined, role),
+      secondaryLabel: 'Открыть бюджет',
+      onSecondary: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
     });
+    return;
   }
-  Alert.alert(
-    'Доп. работы одобрены',
-    documentId
-      ? `${amountLabel} в плане бюджета. Подпишите черновик в Документах.`
-      : `${amountLabel} добавлено к плану бюджета.`,
-    buttons,
-  );
+  showActionConfirm({
+    title: 'Доп. работы одобрены',
+    message: `${amountLabel} добавлено к плану бюджета.`,
+    primaryLabel: 'Открыть бюджет',
+    onPrimary: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** W128: шаг жизненного цикла закупки → факт / календарь / материалы */
 export function alertPurchaseAdvanced(role: OsRole, status: string) {
   if (status === 'delivered') {
-    Alert.alert(
-      'Доставлено · в факте',
-      'Сумма учтена в факте бюджета. Можно сверить расходы или даты доставки в календаре.',
-      [
-        { text: 'OK', style: 'cancel' },
-        {
-          text: 'Расходы',
-          onPress: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
-        },
-        {
-          text: 'Сводка',
-          onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
-        },
-        {
-          text: 'Календарь',
-          onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Доставлено · в факте',
+      message: 'Сумма учтена в факте бюджета. Можно сверить расходы или календарь.',
+      primaryLabel: 'Расходы',
+      onPrimary: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
+      secondaryLabel: 'Календарь',
+      onSecondary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+    });
     return;
   }
   if (status === 'cancelled') {
-    Alert.alert(
-      'Убрано из факта',
-      'Позиции снова доступны для закупки. Факт бюджета пересчитан.',
-      [
-        { text: 'OK' },
-        {
-          text: 'К материалам',
-          onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Убрано из факта',
+      message: 'Позиции снова доступны для закупки. Факт бюджета пересчитан.',
+      primaryLabel: 'К материалам',
+      onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
     return;
   }
   if (status === 'paid') {
-    Alert.alert(
-      'Оплачено',
-      'Отметьте доставку — тогда сумма попадёт в факт бюджета.',
-      [{ text: 'OK' }],
-    );
+    showActionConfirm({
+      title: 'Оплачено',
+      message: 'Отметьте доставку — тогда сумма попадёт в факт бюджета.',
+      primaryLabel: 'Понятно',
+      onPrimary: () => undefined,
+    });
     return;
   }
   if (status === 'ordered') {
-    Alert.alert(
-      'Заказано у поставщика',
-      'Далее: оплата → доставка. После «Доставлено» — факт в бюджете.',
-      [
-        { text: 'OK' },
-        {
-          text: 'Календарь',
-          onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-        },
-      ],
-    );
-    return;
+    showActionConfirm({
+      title: 'Заказано у поставщика',
+      message: 'Далее: оплата → доставка. После «Доставлено» — факт в бюджете.',
+      primaryLabel: 'Календарь',
+      onPrimary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
   }
 }
 
 /** W128: чистовой selection (OsSelections) согласован → материалы/закупка */
 export function alertSelectionApproved(role: OsRole) {
-  Alert.alert(
-    'Подбор согласован',
-    'Позиция в «Ремонт → Материалы → Потребности». Создайте закупку.',
-    [
-      { text: 'OK', style: 'cancel' },
-      {
-        text: 'К закупкам',
-        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Подбор согласован',
+    message: 'Позиция в «Ремонт → Материалы → Потребности». Создайте закупку.',
+    primaryLabel: 'К закупкам',
+    onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Подрядчик отправил selection заказчику */
 export function alertSelectionProposed(role: OsRole) {
-  Alert.alert(
-    'На согласование',
-    'Заказчик увидит вариант в подборе. После согласования — закупка.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К материалам',
-        onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'На согласование',
+    message: 'Заказчик увидит вариант в подборе. После согласования — закупка.',
+    primaryLabel: 'К материалам',
+    onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }

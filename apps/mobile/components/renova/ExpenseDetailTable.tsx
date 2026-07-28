@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles, filterChipStyles } from '@/constants/screenTypography';
 import {
   buildExpenseDetailRows,
   expensePayerLabel,
@@ -114,21 +115,32 @@ export function ExpenseDetailTable({
 const s = StyleSheet.create({
   box: { marginBottom: 10 },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  head: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
-  link: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.accent },
-  modes: { gap: 6, marginBottom: 10 },
-  mode: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface },
-  modeOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
-  modeT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  modeTOn: { color: RenovaTheme.colors.accent },
-  group: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },
-  groupHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  groupLabel: { fontSize: 14, fontWeight: '700', flex: 1, color: RenovaTheme.colors.text },
-  groupTotal: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.primary },
-  line: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#f0f0f0', gap: 8 },
-  lineTitle: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.text },
-  lineMeta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 1 },
-  lineAmt: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
-  more: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4 },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
+  head: { ...screenTypography.section, marginTop: 0 },
+  link: { ...screenTypography.listLink, marginTop: 0 },
+  modes: { ...filterChipStyles.row, marginBottom: 10, flexWrap: 'nowrap' as const },
+  mode: filterChipStyles.chip,
+  modeOn: filterChipStyles.chipOn,
+  modeT: filterChipStyles.chipT,
+  modeTOn: filterChipStyles.chipTOn,
+  group: { marginBottom: 10 },
+  groupHead: {
+    ...listRowStyles.row,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderBottomWidth: 0,
+    paddingBottom: 4,
+  },
+  groupLabel: { ...screenTypography.listTitle, flex: 1 },
+  groupTotal: { ...screenTypography.listMeta, fontWeight: '600', color: RenovaTheme.colors.primary },
+  line: {
+    ...listRowStyles.row,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  lineTitle: { ...screenTypography.listTitle, fontSize: 13 },
+  lineMeta: { ...screenTypography.listMeta },
+  lineAmt: { ...screenTypography.listTitle, fontSize: 13 },
+  more: { ...screenTypography.listMeta, marginTop: 4 },
+  empty: { ...screenTypography.empty, marginBottom: 12 },
 });

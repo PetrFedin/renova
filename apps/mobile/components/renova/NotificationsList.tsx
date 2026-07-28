@@ -1,52 +1,57 @@
-import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+/** Legacy twin ленты уведомлений — канон: /inbox (Investor P2: не плодить второй канал). */
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
-import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
-import { useProjectDataReload } from '@/lib/useProjectDataReload';
-import { api, AppNotification } from '@/lib/api';
-import { resolvePushLink, resolveNotificationLink } from '@/lib/pushLinks';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
-import { reportCatch } from '@/lib/reportError';
+import { useRenova } from '@/lib/context/RenovaContext';
 
-/** W118: уведомления → pushOsNav SoT (не сырой router) */
-export function NotificationsList({ userId, defaultReturn }: { userId: string; defaultReturn?: string }) {
-  const { user, activeProject } = useRenova();
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const reload = useCallback(() => {
-    api.listNotifications(userId).then(setItems).catch(reportCatch('components.renova.NotificationsList.1'));
-  }, [userId]);
-  useEffect(() => { reload(); }, [reload]);
-  useProjectDataReload(reload);
-  if (!items.length) return <Text style={s.empty}>Нет уведомлений</Text>;
+/**
+ * W118 / DD: NotificationsList больше не дублирует inbox.
+ * Оставлен как thin redirect для старых entryPoints / тестов journeyUnify.
+ */
+export function NotificationsList({
+  userId: _userId,
+  defaultReturn,
+}: {
+  userId: string;
+  defaultReturn?: string;
+}) {
+  const { user } = useRenova();
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+  const back = defaultReturn || (role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile');
+
+  useEffect(() => {
+    // Авто-редирект в канон — без второй ленты
+    pushOsNav('/inbox', back, role);
+  }, [back, role]);
+
   return (
     <View style={s.wrap}>
-      {items.slice(0, 10).map((n) => (
-        <Pressable key={n.id} style={[s.row, !n.read && s.unread]} onPress={async () => {
-          await api.readNotification(userId, n.id);
-          await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
-          const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
-          const back = (n as any).return_to || defaultReturn || (role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile');
-          if (n.link_path) {
-            pushOsNav(n.link_path, back, role);
-          } else {
-            const target = resolveNotificationLink(n.notification_type, role)
-              || resolvePushLink('/inbox', back, role);
-            if (target) pushOsNav({ pathname: target.pathname, params: target.params }, undefined, role);
-            else pushOsNav('/inbox', back, role);
-          }
-          reload();
-        }}>
-          <Text style={s.title}>{n.title}</Text><Text style={s.body}>{n.body}</Text>
-        </Pressable>
-      ))}
+      <Text style={s.title}>Уведомления перенесены во «Входящие»</Text>
+      <Text style={s.body}>Один канал внимания: задачи + сообщения. Открываем /inbox…</Text>
+      <Pressable
+        style={s.btn}
+        onPress={() => pushOsNav('/inbox', back, role)}
+        accessibilityRole="button"
+      >
+        <Text style={s.btnT}>Открыть входящие</Text>
+      </Pressable>
     </View>
   );
 }
+
 const s = StyleSheet.create({
-  wrap:{ gap:8 }, row:{ backgroundColor:RenovaTheme.colors.surface, padding:12, borderRadius:10 },
-  unread:{ borderLeftWidth:3, borderLeftColor: RenovaTheme.colors.primary },
-  title:{ fontWeight:'700' }, body:{ fontSize:13, color: RenovaTheme.colors.textMuted, marginTop:2 },
-  empty:{ color: RenovaTheme.colors.textMuted, marginVertical:8 },
+  wrap: { gap: 8, paddingVertical: 8 },
+  title: { fontWeight: '700', color: RenovaTheme.colors.text },
+  body: { fontSize: 13, color: RenovaTheme.colors.textMuted },
+  btn: {
+    alignSelf: 'flex-start',
+    backgroundColor: RenovaTheme.colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  btnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 13 },
 });

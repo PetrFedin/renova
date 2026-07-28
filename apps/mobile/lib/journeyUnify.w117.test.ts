@@ -22,7 +22,7 @@ console.assert(byRoom.includes("pathname: '/room/[id]'") && byRoom.includes('pus
 console.assert(detail.includes("pathname: '/room/[id]'") && detail.includes("pathname: '/stage/[id]'"), 'detail sheet SoT');
 console.assert(docs.includes('repairTabRoute') && docs.includes('budgetTabRoute'), 'closeout SoT');
 console.assert(qc.includes("pathname: '/stage/[id]'") && qc.includes('/quality-control'), 'QC→stage SoT');
-console.assert(floor.includes("pushOsNav('/quality-control'") && !floor.includes("router.push('/quality-control'"), 'floor→QC SoT');
+console.assert(floor.includes('openQcIssue(punchSheet?.issueId') && !floor.includes("router.push('/quality-control'"), 'floor→QC SoT');
 console.assert(mgr.includes('pushOsNav(topRisk.href') && mgr.includes('pushOsNav(topInsight.href'), 'manager SoT');
 console.assert(hero.includes("pushOsNav('/inbox'"), 'home inbox SoT');
 console.assert(wo.includes("pathname: '/chat/[threadId]'") && wo.includes("pathname: '/stage/[id]'"), 'WO links SoT');

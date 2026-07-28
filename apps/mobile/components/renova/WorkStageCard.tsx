@@ -1,6 +1,7 @@
-/** Компактная карточка работы для раздела «Работы» */
+/** Компактная строка этапа для раздела «Работы» — Clarity F: list-row, не card-стек */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORK_CARD_STATUS_LABEL } from '@/constants/labels';
 
@@ -31,37 +32,52 @@ export function WorkStageCard({ stage, roomLabel, onOpen, onPrimary, primaryLabe
   const progress = stage.checklist_progress ?? (stage.status === 'done' ? 100 : stage.status === 'review' ? 90 : 40);
   const overdue = stage.planned_end && stage.planned_end < new Date().toISOString().slice(0, 10) && stage.status !== 'done';
   return (
-    <Pressable style={[s.card, overdue && s.overdue, blocked && s.blocked, selected && s.selected]} onPress={onOpen} onLongPress={onLongPress}>
+    <Pressable
+      style={[
+        listRowStyles.row,
+        overdue && s.overdue,
+        blocked && s.blocked,
+        selected && listRowStyles.rowFocus,
+      ]}
+      onPress={onOpen}
+      onLongPress={onLongPress}
+    >
       <View style={s.top}>
-        <Text style={s.title} numberOfLines={1}>{stage.name}</Text>
-        <Text style={[s.st, stage.status === 'review' && s.stWarn]}>{stage.display_status_label || WORK_CARD_STATUS_LABEL[stage.status] || stage.status}</Text>
+        <Text style={screenTypography.listTitle} numberOfLines={1}>{stage.name}</Text>
+        <Text style={[s.st, stage.status === 'review' && s.stWarn]}>
+          {stage.display_status_label || WORK_CARD_STATUS_LABEL[stage.status] || stage.status}
+        </Text>
       </View>
-      <Text style={s.meta}>{roomLabel || '—'}{stage.works_total ? ` · ${stage.works_done ?? 0}/${stage.works_total} работ` : ''}{stage.overdue_days ? ` · +${stage.overdue_days} дн.` : ''}{blockedReason ? ` · ${blockedReason}` : ''}</Text>
-      <View style={s.row}>
-        <Text style={s.date}>{stage.planned_end || '—'}{overdue ? ' · +просрочка' : ''}</Text>
-        <Text style={s.pay}>{formatRub(stage.payment_amount || 0)}</Text>
-      </View>
+      <Text style={screenTypography.listMeta} numberOfLines={2}>
+        {roomLabel || '—'}
+        {stage.works_total ? ` · ${stage.works_done ?? 0}/${stage.works_total} работ` : ''}
+        {stage.overdue_days ? ` · +${stage.overdue_days} дн.` : ''}
+        {blockedReason ? ` · ${blockedReason}` : ''}
+        {' · '}
+        {stage.planned_end || 'без срока'}
+        {overdue ? ' · просрочка' : ''}
+        {' · '}
+        {formatRub(stage.payment_amount || 0)}
+      </Text>
       <View style={s.bar}><View style={[s.fill, { width: `${Math.min(100, progress)}%` }]} /></View>
       {!readOnly && onPrimary && primaryLabel && (
-        <PrimaryButton title={primaryLabel} compact variant={stage.status === 'review' ? 'primary' : 'outline'} onPress={(e) => { e?.stopPropagation?.(); onPrimary(); }} />
+        <PrimaryButton
+          title={primaryLabel}
+          compact
+          variant={stage.status === 'review' ? 'primary' : 'outline'}
+          onPress={(e) => { e?.stopPropagation?.(); onPrimary(); }}
+        />
       )}
     </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  card: { ...card, marginBottom: 10 },
-  overdue: { borderColor: '#D4A574', backgroundColor: '#FFFBF5' },
-  blocked: { borderColor: '#C4B5A0', backgroundColor: '#FAFAF8' },
-  selected: { borderWidth: 2, borderColor: RenovaTheme.colors.accent },
+  overdue: { borderLeftWidth: 3, borderLeftColor: '#D4A574', paddingLeft: 8 },
+  blocked: { opacity: 0.72 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  title: { fontSize: 15, fontWeight: '700', flex: 1, color: RenovaTheme.colors.text },
   st: { fontSize: 11, color: RenovaTheme.colors.textMuted },
   stWarn: { color: RenovaTheme.colors.warning, fontWeight: '600' },
-  meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  date: { fontSize: 12, color: RenovaTheme.colors.textMuted },
-  pay: { fontSize: 12, fontWeight: '600' },
-  bar: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginVertical: 8, overflow: 'hidden' },
-  fill: { height: 4, backgroundColor: RenovaTheme.colors.primary },
+  bar: { height: 3, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 8, marginBottom: 4, overflow: 'hidden' },
+  fill: { height: 3, backgroundColor: RenovaTheme.colors.primary },
 });

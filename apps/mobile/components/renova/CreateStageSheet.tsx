@@ -5,6 +5,7 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
 import type { ProjectDetail } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { alertStageCreated } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
@@ -47,8 +48,8 @@ export function CreateStageSheet({
       alertStageCreated(role);
     } catch (e: unknown) {
       // W113: offline из createStage
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Этап отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Этап');
         setName('');
         setStart('');
         setEnd('');

@@ -96,9 +96,16 @@ async def sync_price(project_id: str, pick_id: str, user: User = Depends(get_cur
     p = await db.get(MaterialPick, pick_id)
     if not p or p.project_id != project_id: raise HTTPException(404)
     from app.services.price_parser import fetch_price
+    # price_source: live | stub — клиент не маскирует stub как «синк с рынком»
+    price_source = "manual"
     if p.shop_url:
-        p.price, _shop, _src = await fetch_price(p.shop_url, p.price)
+        p.price, shop, price_source = await fetch_price(p.shop_url, p.price)
+        if shop and not p.shop_name:
+            p.shop_name = shop
     elif not p.price:
         p.price = 1000.0
+        price_source = "stub"
     await db.commit()
-    return _out(p)
+    out = _out(p)
+    out["price_source"] = price_source
+    return out

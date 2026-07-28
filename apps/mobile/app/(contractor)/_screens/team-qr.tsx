@@ -1,8 +1,9 @@
 import { BackHeader } from '@/components/renova/BackHeader';
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert, Share, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Share, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertTeamJoined } from '@/lib/jobLeadNav';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
@@ -39,18 +40,22 @@ export default function TeamQrScreen() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Создайте бригаду в профиле';
       // W67 #35
-      Alert.alert(
-        'Бригада',
-        /402|pro|подписк/i.test(msg)
+      // Clarity T: Pro gate / error через sheet с CTA
+      const isPro = /402|pro|подписк/i.test(msg);
+      showActionConfirm({
+        title: 'Бригада',
+        message: isPro
           ? 'QR бригады доступен на Pro. Откройте «Подписка» или используйте staging с trial.'
           : msg,
-        /402|pro|подписк/i.test(msg)
-          ? [
-              { text: 'OK', style: 'cancel' },
-              { text: 'Подписка', onPress: () => pushOsNav('/(contractor)/subscription', undefined, 'contractor') },
-            ]
-          : undefined,
-      );
+        ...(isPro
+          ? {
+              primaryLabel: 'Подписка',
+              onPrimary: () => pushOsNav('/(contractor)/subscription', undefined, 'contractor'),
+              secondaryLabel: 'Позже',
+              onSecondary: () => undefined,
+            }
+          : { primaryLabel: 'Понятно', onPrimary: () => undefined }),
+      });
     } finally {
       setBusy(false);
     }
@@ -89,7 +94,7 @@ export default function TeamQrScreen() {
             onPress={async () => {
               if (!link) return;
               await Clipboard.setStringAsync(link);
-              Alert.alert('Скопировано', 'Отправьте ссылку в WhatsApp / Telegram');
+              showActionConfirm({ title: 'Скопировано', message: 'Отправьте ссылку в WhatsApp / Telegram' });
             }}
           />
           <PrimaryButton

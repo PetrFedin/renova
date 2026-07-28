@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { Stage } from '@/lib/api';
 
 export function WeekTimeline({ stages }: { stages: Stage[] }) {
@@ -12,14 +13,27 @@ export function WeekTimeline({ stages }: { stages: Stage[] }) {
       <Text style={s.head}>Неделя</Text>
       <View style={s.row}>{days.map(d => {
         const n = stages.filter(st => st.planned_end === d || st.planned_start === d).length;
-        return (<View key={d} style={s.cell}><Text style={s.d}>{d.slice(5)}</Text><Text style={s.n}>{n || '·'}</Text></View>);
+        return (
+          <View key={d} style={s.cell}>
+            <Text style={s.d}>{d.slice(5)}</Text>
+            <Text style={s.n}>{n || '·'}</Text>
+          </View>
+        );
       })}</View>
     </View>
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:12, marginBottom:10 },
-  head:{ fontWeight:'800', marginBottom:8 },
-  row:{ flexDirection:'row', justifyContent:'space-between' },
-  cell:{ alignItems:'center', flex:1 }, d:{ fontSize:10, color: RenovaTheme.colors.textMuted }, n:{ fontWeight:'700', marginTop:4 },
+  // Clarity T: SoT вместо локального card/head 800
+  box: {
+    ...listRowStyles.metricCell,
+    alignItems: 'stretch',
+    padding: 12,
+    marginBottom: 10,
+  },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  cell: { alignItems: 'center', flex: 1 },
+  d: { ...screenTypography.metricLabel, marginTop: 0 },
+  n: { ...screenTypography.listTitle, fontSize: 14, marginTop: 4 },
 });

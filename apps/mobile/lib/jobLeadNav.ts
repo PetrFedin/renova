@@ -1,5 +1,5 @@
-/** W130: заявки / старт этапа / бригада / WO → SoT (Houzz leads + Fieldwire field ops) */
-import { Alert } from 'react-native';
+/** W130: заявки / старт этапа / бригада / WO → SoT (Houzz leads + Fieldwire field ops).
+ * Clarity H: sheet вместо Alert. */
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import {
   budgetTabRoute,
@@ -7,140 +7,108 @@ import {
   repairTabRoute,
   type OsRole,
 } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function alertJobLeadCreated(role: OsRole) {
-  Alert.alert(
-    'Заявка создана',
-    'Исполнители увидят объект и смогут прислать КП.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К заявкам',
-        onPress: () => pushOsNav('/job-leads', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Заявка создана',
+    message: 'Исполнители увидят объект и смогут прислать КП.',
+    primaryLabel: 'К заявкам',
+    onPrimary: () => pushOsNav('/job-leads', undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 export function alertJobLeadQuoted(role: OsRole) {
-  Alert.alert(
-    'КП отправлено',
-    'Заказчик получит оценку. После принятия — объект в кабинете.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К заявкам',
-        onPress: () => pushOsNav('/job-leads', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'КП отправлено',
+    message: 'Заказчик получит оценку. После принятия — объект в кабинете.',
+    primaryLabel: 'К заявкам',
+    onPrimary: () => pushOsNav('/job-leads', undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 export function alertJobLeadAssigned(role: OsRole) {
-  Alert.alert(
-    'Исполнитель подобран',
-    'Дождитесь КП или продолжите переписку в заявке.',
-    [{ text: 'OK' }],
-  );
+  showActionConfirm({
+    title: 'Исполнитель подобран',
+    message: 'Дождитесь КП или продолжите переписку в заявке.',
+    primaryLabel: 'К заявке',
+    onPrimary: () => pushOsNav('/job-leads', undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Этап начат — даты в графике (B6 honesty + CTA) */
 export function alertStageStarted(role: OsRole) {
-  Alert.alert(
-    'Этап начат',
-    'Сроки отражены в графике. Назначьте работы или откройте календарь.',
-    [
-      { text: 'OK' },
-      {
-        text: 'График',
-        onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-      },
-      {
-        text: 'Работы',
-        onPress: () => pushOsNav(repairTabRoute(role, 'works'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Этап начат',
+    message: 'Сроки отражены в графике. Назначьте работы или откройте календарь.',
+    primaryLabel: 'График',
+    onPrimary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+    secondaryLabel: 'Работы',
+    onSecondary: () => pushOsNav(repairTabRoute(role, 'works'), undefined, role),
+  });
 }
 
 /** Скан invite QR — в бригаде */
 export function alertTeamJoined(role: OsRole = 'contractor') {
-  Alert.alert(
-    'Вы в бригаде',
-    'Откройте главную объекта или календарь задач.',
-    [
-      { text: 'OK' },
-      {
-        text: 'На главную',
-        onPress: () => replaceOsNav(`/(${role})/(tabs)/`, undefined, role),
-      },
-      {
-        text: 'График',
-        onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Вы в бригаде',
+    message: 'Откройте главную объекта или календарь задач.',
+    primaryLabel: 'На главную',
+    onPrimary: () => replaceOsNav(`/(${role})/(tabs)/`, undefined, role),
+    secondaryLabel: 'График',
+    onSecondary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+  });
 }
 
 /** Переход WorkOrder — следующие шаги golden path */
 export function alertWorkOrderAdvanced(role: OsRole, next: string) {
   if (next === 'review') {
-    Alert.alert(
-      'На приёмке',
-      'Заказчик может принять работы по этапу или замечанию.',
-      [
-        { text: 'OK' },
-        {
-          text: 'Приёмка',
-          onPress: () => pushOsNav(repairTabRoute(role, 'control'), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'На приёмке',
+      message: 'Заказчик может принять работы по этапу или замечанию.',
+      primaryLabel: 'Приёмка',
+      onPrimary: () => pushOsNav(repairTabRoute(role, 'control'), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
     return;
   }
   if (next === 'done') {
-    Alert.alert(
-      'Работа выполнена',
-      'Можно выставить оплату или открыть график.',
-      [
-        { text: 'OK' },
-        {
-          text: 'Оплаты',
-          onPress: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
-        },
-        {
-          text: 'График',
-          onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Работа выполнена',
+      message: 'Можно выставить оплату или открыть график.',
+      primaryLabel: 'Оплаты',
+      onPrimary: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
+      secondaryLabel: 'График',
+      onSecondary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+    });
     return;
   }
   if (next === 'paid') {
-    Alert.alert(
-      'Оплачено',
-      'Сумма в бюджете. Сверьте расходы при необходимости.',
-      [
-        { text: 'OK' },
-        {
-          text: 'Бюджет',
-          onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Оплачено',
+      message: 'Сумма в бюджете. Сверьте расходы при необходимости.',
+      primaryLabel: 'Бюджет',
+      onPrimary: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
     return;
   }
   if (next === 'in_progress') {
-    Alert.alert(
-      'В работе',
-      'Этап и календарь обновятся на главной.',
-      [
-        { text: 'OK' },
-        {
-          text: 'График',
-          onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'В работе',
+      message: 'Этап и календарь обновятся на главной.',
+      primaryLabel: 'График',
+      onPrimary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
   }
 }

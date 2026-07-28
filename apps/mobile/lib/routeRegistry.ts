@@ -164,8 +164,9 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'deeplink',
     status: 'ga',
     entryPoints: ['repair.materials', 'home.next', 'selections'],
+    // redirectTo — intent; catch-all резолвит через repairTabRoute(role) в resolveCatchAllSlug
     redirectTo: '/repair?tab=materials&subtab=purchases',
-    descriptionRu: 'P2.4/W50 hub: потребность → закупка → чек. Не пункт «Ещё».',
+    descriptionRu: 'P2.4/W50 hub: потребность → закупка → чек. Catch-all → role repair materials.',
   },
   {
     id: 'selections',
@@ -176,7 +177,7 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     status: 'ga',
     entryPoints: ['repair.selections', 'approvals'],
     redirectTo: '/repair?tab=selections',
-    descriptionRu: 'P2.2: room × category × allowance × approve',
+    descriptionRu: 'P2.2: room × category × allowance × approve. Catch-all → role repair selections.',
   },
 
   // Hidden / deeplink legacy tabs
@@ -242,8 +243,18 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
     visibility: 'hidden',
     status: 'beta',
     entryPoints: ['deeplink'],
-    redirectTo: '/(customer)/(tabs)/budget?tab=deviations',
-    descriptionRu: 'Legacy deeplink → бюджет / отклонения',
+    redirectTo: '/budget?tab=deviations',
+    descriptionRu: 'Legacy deeplink → бюджет / отклонения (role-aware)',
+  },
+  {
+    id: 'portfolio',
+    path: '/portfolio',
+    titleRu: 'Портфель проектов',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['picker', 'home.link', 'deeplink'],
+    descriptionRu: 'Сводка по объектам: план/факт, выбор для сравнения. Stack app/portfolio.tsx',
   },
 ];
 
@@ -271,8 +282,8 @@ const REDIRECT_ONLY_MENU_IDS = new Set([
 /** Hard cap: Home «Ещё» и secondary centers ≤ 5 (Sprint IA DoD) */
 export const MAX_MORE_MENU_ITEMS = 5;
 
-/** Guest/readOnly «Ещё» — документы + входящие (без центров решений) */
-const READ_ONLY_MORE_IDS = new Set(['documents', 'inbox']);
+/** Guest/readOnly «Ещё» — документы + входящие (без центров решений). SoT для Home и header. */
+export const READ_ONLY_MORE_IDS = new Set(['documents', 'inbox']);
 /** KPI/отчёты — только на фазе complete (не раздувать «Ещё» в active) */
 const COMPLETION_PHASE_ONLY_IDS = new Set(['manager-dashboard', 'reports']);
 

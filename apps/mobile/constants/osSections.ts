@@ -51,6 +51,12 @@ export const OS_MORE_UTIL_LINKS: {
   { id: 'activity', label: 'Архив ремонта', href: '/activity', icon: 'time-outline' },
 ];
 
+/**
+ * Investor P1: ссылки шапки «Ещё» — не дублировать теми же пунктами в Home «Ещё».
+ * Home оставляет контент (KPI/сроки/риски), навигация util — в шапке.
+ */
+export const HEADER_MORE_LINK_IDS = OS_MORE_UTIL_LINKS.map((l) => l.id);
+
 export const OS_SECTIONS: Record<OsRole, OsSection[]> = {
   customer: CUSTOMER_CORE,
   contractor: CONTRACTOR_CORE,
@@ -186,12 +192,31 @@ export function customerProfileTabHref(role: OsRole, focus?: string): string {
   return `${r.pathname}?${qs}`;
 }
 
-export function objectTabHref(role: OsRole, tab: string, sub?: string): string {
-  return tabsHref(role, 'object', tab) + (sub ? `&sub=${sub}` : '');
+export function objectTabHref(role: OsRole, tab: string, sub?: string, extra?: Record<string, string>): string {
+  let href = tabsHref(role, 'object', tab) + (sub ? `&sub=${sub}` : '');
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) {
+      if (v != null && v !== '') href += `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
+    }
+  }
+  return href;
 }
 
-export function objectTabRoute(role: OsRole, tab: string, sub?: string): OsTabRoute {
-  return tabsRoute(role, 'object', tab, sub ? { sub } : undefined);
+export function objectTabRoute(
+  role: OsRole,
+  tab: string,
+  sub?: string,
+  extra?: Record<string, string>,
+): OsTabRoute {
+  return tabsRoute(role, 'object', tab, {
+    ...(sub ? { sub } : {}),
+    ...(extra || {}),
+  });
+}
+
+/** Investor P2: план этажа сразу в режиме punch (замечание на плане) */
+export function planPunchRoute(role: OsRole): OsTabRoute {
+  return objectTabRoute(role, 'plan', 'floor', { punch: '1' });
 }
 
 export type BudgetNavParams = {

@@ -121,6 +121,7 @@ const s = StyleSheet.create({
     marginBottom: homeLayout.innerGap,
   },
   hero: {
+    // Clarity W: interactive CTA surface — единственная card на first viewport
     ...card,
     marginBottom: homeLayout.innerGap,
     padding: homeLayout.heroCardPadding,
@@ -139,6 +140,6 @@ const s = StyleSheet.create({
     ...homeRowStyles.linkRow,
     justifyContent: 'flex-start',
   },
-  bullet: { color: RenovaTheme.colors.accent, fontWeight: '800', width: 12 },
+  bullet: { color: RenovaTheme.colors.accent, fontWeight: '700', width: 12 },
   secondaryText: { flex: 1 },
 });

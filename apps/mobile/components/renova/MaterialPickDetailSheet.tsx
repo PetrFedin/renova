@@ -17,6 +17,7 @@ import {
   alertMaterialPickApproved,
   alertMaterialPickSubmitted,
 } from '@/lib/procurementNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function MaterialPickDetailSheet({
   pick,
@@ -97,16 +98,34 @@ export function MaterialPickDetailSheet({
           )}
 
           {!readOnly && isCustomer && pick.status === 'pending' && (
-            <PrimaryButton title="Согласовать" onPress={async () => {
-              await api.approveMaterialPick(userId, projectId, pick.id);
-              await syncProjectSideEffects({
-                user: user ?? ({ id: userId } as any),
-                project: activeProject ?? ({ id: projectId } as any),
-                role,
+            <PrimaryButton title="Согласовать" onPress={() => {
+              showActionConfirm({
+                title: 'Согласовать материал?',
+                message: `«${pick.name}» · ${formatRub(pick.price)}. После согласия подрядчик сможет закупить.`,
+                primaryLabel: 'Согласовать',
+                onPrimary: () => {
+                  void (async () => {
+                    try {
+                      await api.approveMaterialPick(userId, projectId, pick.id);
+                      await syncProjectSideEffects({
+                        user: user ?? ({ id: userId } as any),
+                        project: activeProject ?? ({ id: projectId } as any),
+                        role,
+                      });
+                      onChanged?.();
+                      onClose();
+                      alertMaterialPickApproved(role);
+                    } catch (e: unknown) {
+                      showActionConfirm({
+                        title: 'Ошибка',
+                        message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                      });
+                    }
+                  })();
+                },
+                secondaryLabel: 'Отмена',
+                onSecondary: () => undefined,
               });
-              onChanged?.();
-              onClose();
-              alertMaterialPickApproved(role);
             }} />
           )}
           {!readOnly && isContractor && pick.status === 'draft' && (
@@ -126,15 +145,34 @@ export function MaterialPickDetailSheet({
             <PrimaryButton
               title={purchaseAdvanceLabel(cancelStatus)}
               variant="outline"
-              onPress={async () => {
-                await api.updatePurchaseStatus(userId, projectId, deliveredPurchase.id, cancelStatus);
-                await syncProjectSideEffects({
-                  user: user ?? ({ id: userId } as any),
-                  project: activeProject ?? ({ id: projectId } as any),
-                  role,
+              onPress={() => {
+                // Clarity V: откат факта бюджета — confirm
+                showActionConfirm({
+                  title: 'Убрать из факта?',
+                  message: 'Сумма закупки выйдет из факта бюджета. Можно вернуть статус позже.',
+                  primaryLabel: 'Убрать',
+                  onPrimary: () => {
+                    void (async () => {
+                      try {
+                        await api.updatePurchaseStatus(userId, projectId, deliveredPurchase.id, cancelStatus);
+                        await syncProjectSideEffects({
+                          user: user ?? ({ id: userId } as any),
+                          project: activeProject ?? ({ id: projectId } as any),
+                          role,
+                        });
+                        onChanged?.();
+                        onClose();
+                      } catch (e: unknown) {
+                        showActionConfirm({
+                          title: 'Ошибка',
+                          message: e instanceof Error ? e.message : 'Не удалось обновить закупку',
+                        });
+                      }
+                    })();
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
                 });
-                onChanged?.();
-                onClose();
               }}
             />
           )}

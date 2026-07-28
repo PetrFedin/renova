@@ -114,7 +114,16 @@ export const miscApi = {
       schedule: Record<string, unknown>;
       pending_work_schedule?: { id: string; title?: string; status: string } | null;
       can_confirm_schedule?: boolean;
-      pending_payments: { id: string; title: string; amount: number; status: string }[];
+      /** stage_id / payment_type / needs_acceptance — client gate как PaymentDetailSheet */
+      pending_payments: {
+        id: string;
+        title: string;
+        amount: number;
+        status: string;
+        stage_id?: string | null;
+        payment_type?: string;
+        needs_acceptance?: boolean;
+      }[];
       documents: { id: string; title: string; kind?: string; status?: string }[];
       documents_total: number;
       selections: { id: string; title: string; category: string; status: string; price: number; allowance?: number | null }[];
@@ -131,6 +140,10 @@ export const miscApi = {
       contractor_company_name?: string | null;
       contractor_payment_requisites?: string | null;
       payments_mode?: 'live' | 'requisites' | 'demo' | 'off';
+      /** Investor P1: Kontur CTA только при kontur_available */
+      esign_mode?: 'kontur' | 'in_app' | string;
+      kontur_mode?: string;
+      kontur_available?: boolean;
     }>(`/api/v1/portal/projects/${projectId}/snapshot`, {}, userId),
   approvalHub: (userId: string, projectId: string) => req<{ pending_count: number; items: ApprovalItem[] }>(`/api/v1/projects/${projectId}/approvals`, {}, userId),
   /** W66 #14: единый approve через hub (офлайн-очередь) */

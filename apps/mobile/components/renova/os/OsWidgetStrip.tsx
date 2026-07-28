@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { pushOsHrefWithReturn } from '@/lib/osTabNav';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { RenovaTheme, card } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { OsRole, OsTabRoute } from '@/constants/osSections';
 
 export type OsWidget = {
@@ -128,20 +128,23 @@ const s = StyleSheet.create({
   gridRow: { flexDirection: 'row', gap: homeLayout.innerGap, marginBottom: homeLayout.innerGap },
   cell: { flex: 1, minWidth: 0 },
   cellGhost: { opacity: 0 },
+  // Clarity U: KPI как metricCell, не тяжёлый Theme.card
   chip: {
-    ...card,
-    marginBottom: 0,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    ...listRowStyles.metricCell,
     minHeight: 68,
-    borderRadius: RenovaTheme.radius.md,
-    flex: 1,
+    paddingHorizontal: 10,
   },
-  label: { ...homeTypography.zoneLabel, textTransform: 'none', letterSpacing: 0 },
-  value: { ...homeTypography.kpiValue, marginTop: 2 },
+  label: { ...screenTypography.metricLabel, textTransform: 'none', letterSpacing: 0 },
+  value: { ...screenTypography.metric, marginTop: 2, fontSize: 18 },
   hint: { ...homeTypography.kpiHint, marginTop: 2 },
   twin: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   twinCell: { flex: 1, minWidth: 0 },
-  compact: { ...card, marginBottom: 0, padding: 10, flex: 1, minHeight: 76 },
-  compactTitle: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 4 },
+  compact: {
+    ...listRowStyles.metricCell,
+    alignItems: 'stretch',
+    padding: 10,
+    flex: 1,
+    minHeight: 76,
+  },
+  compactTitle: { ...screenTypography.metricLabel, marginBottom: 4 },
 });

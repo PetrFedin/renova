@@ -2,9 +2,11 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, Pressable, ScrollView } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api, type ProjectDetail } from '@/lib/api';
 import { EXPENSE_CATEGORIES } from '@/constants/expenseCategories';
@@ -76,8 +78,8 @@ export function AddEstimateLineForm({
       onSaved?.();
       alertEstimateLineAdded((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Строка сметы отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Строка сметы');
       } else {
         Alert.alert('Ошибка', 'Не удалось добавить строку');
       }
@@ -151,7 +153,7 @@ const s = StyleSheet.create({
   unitOn: { backgroundColor: RenovaTheme.colors.primary },
   unitT: { fontSize: 11, fontWeight: '600', color: '#334155' },
   unitTOn: { color: RenovaTheme.colors.surface },
-  lbl: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, marginBottom: 4 },
+  lbl: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },
   notes: { minHeight: 56, textAlignVertical: 'top' },
 });

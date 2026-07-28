@@ -1,7 +1,7 @@
 /** Нижняя панель — 5 кнопок, dynamic preset или настройки пользователя */
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router, usePathname, useFocusEffect } from 'expo-router';
+import { router, usePathname, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { ChatBadge } from '@/components/renova/chat/ChatBadge';
@@ -18,22 +18,22 @@ import { useBottomInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
+import { resolveDockItemActive } from '@/lib/domain/dockActive';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
 import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/resolveDynamicDock';
 import { reportCatch } from '@/lib/reportError';
 
-const REPAIR_SEGMENTS = new Set(['repair', 'works', 'materials', 'control', 'stages']);
-const OBJECT_SEGMENTS = new Set(['object', 'rooms', 'estimate', 'plan']);
-
 export function OsDockBar({ role }: { role: OsRole }) {
   const pathname = usePathname();
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const hubTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const bottomPad = useBottomInset();
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
-  /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
+  /** Chat badge только на dock «Сообщения»; «Ещё» показывает задачи (см. headerChatBadges) */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
@@ -51,10 +51,10 @@ export function OsDockBar({ role }: { role: OsRole }) {
   }, [activeProject, role, detailLevel]);
 
   /** Не вызываем setState, если состав кнопок тот же — иначе цикл с новой ссылкой массива. */
-  const applyItems = useCallback((next: DockItemId[]) => {
+  const applyItems = useCallback((next: readonly DockItemId[]) => {
     setItems((prev) => {
       if (prev.length === next.length && prev.every((id, i) => id === next[i])) return prev;
-      return next;
+      return [...next];
     });
   }, []);
 
@@ -75,19 +75,8 @@ export function OsDockBar({ role }: { role: OsRole }) {
     if (!dynamicItems) reloadPrefs();
   }), [dynamicItems, reloadPrefs]);
 
-  const isActive = (id: DockItemId) => {
-    const item = DOCK_BY_ID[id];
-    if (!item) return false;
-    if (item.routeName === 'index') return seg === 'index' || seg === '(tabs)' || section === 'home';
-    if (id === 'estimate') return OBJECT_SEGMENTS.has(seg) || section === 'object';
-    if (id === 'object') return OBJECT_SEGMENTS.has(seg) || section === 'object';
-    if (id === 'contractor' || id === 'more') return seg === 'profile';
-    if (id === 'calendar') return seg === 'calendar';
-    if (id === 'repair') return seg === 'repair' || REPAIR_SEGMENTS.has(seg);
-    if (id === 'budget') return seg === 'budget' || seg === 'finance' || seg === 'money' || section === 'budget';
-    if (id === 'chat') return seg === 'chat';
-    return seg === item.routeName || item.id === section;
-  };
+  const isActive = (id: DockItemId) =>
+    resolveDockItemActive({ id, seg, section, hubTab, items });
 
   const go = (id: DockItemId) => {
     const item = DOCK_BY_ID[id];
@@ -123,9 +112,9 @@ export function OsDockBar({ role }: { role: OsRole }) {
             <View style={s.iconWrap}>
               <TabIcon name={item.icon} color={color} size={22} />
               {id === 'chat' && <ChatBadge count={chatUnread} />}
-              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} />}
+              {id === 'calendar' && todayTasks > 0 && <ChatBadge count={todayTasks} tone="warning" />}
               {id === 'home' && !items.includes('calendar') && todayTasks > 0 && (
-                <ChatBadge count={todayTasks} />
+                <ChatBadge count={todayTasks} tone="warning" />
               )}
             </View>
             <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{label}</Text>

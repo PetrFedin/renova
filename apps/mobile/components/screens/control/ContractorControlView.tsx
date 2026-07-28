@@ -2,7 +2,8 @@ import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество (исполнитель) */
 import { Alert, ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { UnifiedAcceptanceList } from '@/components/renova/UnifiedAcceptanceList';
 import { computePendingAcceptanceCount } from '@/lib/domain/acceptancePending';
@@ -14,10 +15,13 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, ProjectIssue, WorkAcceptance } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function ContractorControlView() {
   const pathname = usePathname();
@@ -25,17 +29,24 @@ export function ContractorControlView() {
   const { user, activeProject, readOnly } = useRenova();
   const [issues, setIssues] = useState<ProjectIssue[]>([]);
   const [acceptances, setAcceptances] = useState<WorkAcceptance[]>([]);
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
 
   const reload = useCallback(() => {
     if (user && activeProject) {
-      api.listIssues(user.id, activeProject.id).then(setIssues).catch((e) => {
-        reportError('control.issues', e);
-        setIssues([]);
-      });
-      api.listWorkAcceptances(user.id, activeProject.id).then(setAcceptances).catch((e) => {
-        reportError('control.acceptances', e);
-        setAcceptances([]);
-      });
+      setLoadState('loading');
+      Promise.all([
+        api.listIssues(user.id, activeProject.id),
+        api.listWorkAcceptances(user.id, activeProject.id),
+      ])
+        .then(([iss, acc]) => {
+          setIssues(iss);
+          setAcceptances(acc);
+          setLoadState('loaded');
+        })
+        .catch((e) => {
+          reportError('control.reload', e);
+          setLoadState('error');
+        });
     }
   }, [user?.id, activeProject?.id]);
 
@@ -44,6 +55,14 @@ export function ContractorControlView() {
   useProjectDataReload(reload);
 
   if (!activeProject || !user) return <ProjectEmptyState role="contractor" />;
+
+  if (loadState === 'error') {
+    return (
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+        <LoadErrorState title="Не удалось загрузить приёмку" onRetry={reload} role="contractor" />
+      </ScrollView>
+    );
+  }
 
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
   const rework = activeProject.stages.filter((s) => s.status === 'rework');
@@ -57,7 +76,7 @@ export function ContractorControlView() {
         <View style={s.cell}><Text style={s.n}>{issues.filter(i => i.severity === 'critical' || i.severity === 'high').length}</Text><Text style={s.l}>Критичные</Text></View>
       </View>
 
-      <Text style={s.section}>Ожидают приёмки</Text>
+      <Text style={s.section}>Решение у заказчика</Text>
       <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} role="contractor" />
 
       <Text style={s.section}>Замечания</Text>
@@ -76,21 +95,45 @@ export function ContractorControlView() {
               title="Исправлено"
               compact
               variant="outline"
-              onPress={async () => {
-                try {
-                  const updated = await api.closeIssue(user!.id, activeProject!.id, iss.id);
-                  await syncProjectSideEffects({ user, project: activeProject });
-                  reload();
-                  if (updated?.status === 'fixed') {
-                    Alert.alert('QC', 'Отмечено как исправлено — заказчик получит уведомление для подтверждения');
-                  }
-                } catch (e) {
-                  if (isOfflineQueued(e)) notifyOfflineQueued('Исправление замечания');
-                  else {
-                    reportError('control.markFixed', e);
-                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отметить');
-                  }
-                }
+              onPress={() => {
+                // Clarity W: pre-confirm до closeIssue
+                showActionConfirm({
+                  title: 'Отметить исправленным?',
+                  message: `«${iss.title}». Заказчик подтвердит закрытие.`,
+                  primaryLabel: 'Исправлено',
+                  onPrimary: () => {
+                    void (async () => {
+                      try {
+                        const updated = await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                        await syncProjectSideEffects({ user, project: activeProject });
+                        reload();
+                        if (updated?.status === 'fixed') {
+                          showActionConfirm({
+                            title: 'QC',
+                            message: 'Отмечено как исправлено — заказчик получит уведомление для подтверждения',
+                            primaryLabel: 'Во входящие',
+                            onPrimary: () => pushOsNav('/inbox', pathname, 'contractor'),
+                            secondaryLabel: iss.stage_id ? 'К этапу' : 'Позже',
+                            onSecondary: () => {
+                              if (iss.stage_id) nav.stage(iss.stage_id);
+                            },
+                          });
+                        }
+                      } catch (e) {
+                        if (isOfflineQueued(e)) notifyOfflineQueued('Исправление замечания');
+                        else {
+                          reportError('control.markFixed', e);
+                          showActionConfirm({
+                            title: 'Ошибка',
+                            message: e instanceof Error ? e.message : 'Не удалось отметить',
+                          });
+                        }
+                      }
+                    })();
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
+                });
               }}
             />
           ) : null}
@@ -115,12 +158,13 @@ export function ContractorControlView() {
 
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  summary: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  cell: { ...card, flex: 1, alignItems: 'center', marginBottom: 0 },
-  n: { fontSize: 22, fontWeight: '800' }, l: { fontSize: 12, color: RenovaTheme.colors.textMuted },
-  section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginVertical: 8 },
-  row: { ...card, paddingVertical: 12 },
-  title: { fontSize: 15, fontWeight: '600' },
-  meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
+  summary: { ...listRowStyles.summaryRow },
+  cell: { ...listRowStyles.metricCell },
+  n: { ...screenTypography.metric },
+  l: { ...screenTypography.metricLabel },
+  section: { ...screenTypography.section },
+  row: { ...listRowStyles.row },
+  title: { ...screenTypography.listTitle },
+  meta: { ...screenTypography.listMeta },
+  empty: { ...screenTypography.empty, marginBottom: 12 },
 });

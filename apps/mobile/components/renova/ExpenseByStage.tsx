@@ -1,6 +1,7 @@
 /** Расходы по этапам: единый факт vs план из сметы */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { stagePlanFromEstimate } from '@/lib/stageEstimate';
 import { stageSpentUnified } from '@/lib/domain/expenseAnalytics';
 import type { Stage, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Purchase, Room } from '@/lib/api';
@@ -73,11 +74,16 @@ export function ExpenseByStage({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
-  head: { fontWeight: '800', marginBottom: 8 },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  name: { fontWeight: '600', flex: 1 },
-  val: { fontSize: 12, color: RenovaTheme.colors.primary, fontWeight: '700' },
+  box: { marginBottom: 12 },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
+  empty: { ...screenTypography.empty },
+  row: {
+    ...listRowStyles.row,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  name: { ...screenTypography.listTitle, flex: 1 },
+  val: { ...screenTypography.listMeta, fontWeight: '600', color: RenovaTheme.colors.primary },
   over: { color: RenovaTheme.colors.warning },
 });

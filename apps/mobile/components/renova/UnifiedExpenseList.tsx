@@ -1,6 +1,7 @@
 /** Объединённый список чеков и osExpenses — одна лента на вкладке «Расходы» */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 
 const KIND_LABEL: Record<string, string> = {
@@ -51,12 +52,12 @@ export function UnifiedExpenseList({
 
 const s = StyleSheet.create({
   wrap: { marginTop: 8 },
-  section: { fontWeight: '700', fontSize: 16, marginBottom: 4 },
-  meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 16 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 8, marginBottom: 6 },
-  amount: { fontWeight: '700', fontSize: 15 },
-  title: { fontSize: 13, marginTop: 2, color: RenovaTheme.colors.text },
-  metaLine: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  section: { ...screenTypography.section, marginTop: 0, fontWeight: '700', color: RenovaTheme.colors.text, fontSize: 14 },
+  meta: { ...screenTypography.listMeta, marginBottom: 8 },
+  row: { ...listRowStyles.row, flexDirection: 'row', alignItems: 'flex-start' },
+  amount: { ...screenTypography.listTitle },
+  title: { ...screenTypography.listMeta, color: RenovaTheme.colors.text },
+  metaLine: { ...screenTypography.listMeta },
   badge: { fontSize: 11, fontWeight: '600', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   ok: { backgroundColor: '#DCFCE7', color: RenovaTheme.colors.success },
   pending: { backgroundColor: '#FEF3C7', color: RenovaTheme.colors.warning },

@@ -2,14 +2,15 @@
 import type { OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 
-/** Stack /quality-control с issueId — без remap заказчика в hub без фокуса */
+/**
+ * Всегда строковый href → pushOsNav → resolvePushLink.
+ * Объектный pathname /quality-control обходил customer remap (без issueId → hub Приёмка).
+ */
 export function openQcIssue(issueId: string | undefined, returnTo: string | undefined, role: OsRole) {
-  pushOsNav(
-    {
-      pathname: '/quality-control',
-      params: issueId ? { issueId } : {},
-    },
-    returnTo,
-    role,
-  );
+  if (issueId) {
+    pushOsNav(`/quality-control?issueId=${encodeURIComponent(issueId)}`, returnTo, role);
+    return;
+  }
+  // Без issueId: /control — единый hub Приёмка для обеих ролей
+  pushOsNav('/control', returnTo, role);
 }

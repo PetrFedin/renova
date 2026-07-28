@@ -3,7 +3,8 @@ import type { DetailLevel } from '@/lib/detailLevel';
 import type { OsRole } from '@/constants/osSections';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 
-const CUSTOMER_FAB_STANDARD = ['expense', 'remark', 'photo', 'change', 'chat'];
+/** Customer FAB: только create (расход + чат). Remark/photo/change — через hub Приёмка/Объект. */
+const CUSTOMER_FAB_STANDARD = ['expense', 'chat'];
 const CUSTOMER_FAB_BRIEF = ['expense', 'chat'];
 
 const BRIEF_HIDDEN_WIDGETS = new Set<HomeWidgetId>(['risks', 'kpi_analytics']);

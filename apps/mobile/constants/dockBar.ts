@@ -37,7 +37,7 @@ export const DOCK_CATALOG: DockItem[] = [
   { id: 'calendar', routeName: 'calendar', label: 'Сроки', icon: 'calendar' },
   { id: 'estimate', routeName: 'object', hubTab: 'estimate', label: 'Смета', icon: 'estimate' },
   { id: 'contractor', routeName: 'profile', label: 'Исполнитель', icon: 'profile' },
-  { id: 'more', routeName: 'profile', label: 'Ещё', icon: 'more' },
+  { id: 'more', routeName: 'profile', label: 'Профиль', icon: 'more' },
 ];
 
 export const DOCK_BY_ID = Object.fromEntries(DOCK_CATALOG.map((d) => [d.id, d])) as Record<DockItemId, DockItem>;

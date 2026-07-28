@@ -1,6 +1,7 @@
 /** Поля настройки комнаты — фильтры, габариты с подписями, подсказки */
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import type { RoomTypeId } from '@/constants/roomTypes';
 import { ROOM_PRESETS } from '@/constants/roomTypes';
 import { ROOM_FORM_GUIDE, ROOM_FORM_HINTS, propertyTypeLabel } from '@/constants/roomFormHints';
@@ -273,7 +274,7 @@ const s = StyleSheet.create({
     borderLeftColor: RenovaTheme.colors.primary,
   },
   guideCompact: { paddingVertical: 10 },
-  guideTitle: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 4 },
+  guideTitle: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
   guideLine: { fontSize: 12, color: RenovaTheme.colors.text, lineHeight: 17, marginBottom: 2 },
   guideWarn: { fontSize: 12, color: '#92400E', lineHeight: 17, marginBottom: 2 },
   section: { marginBottom: 14 },

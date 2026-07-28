@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -8,6 +8,7 @@ import { RenovaTheme } from '@/constants/Theme';
 import { budgetTabRoute } from '@/constants/osSections';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 /** Deep link renova://payment-return?projectId=&paymentId= после ЮKassa redirect. */
 export default function PaymentReturnScreen() {
@@ -22,7 +23,7 @@ export default function PaymentReturnScreen() {
 
   useEffect(() => {
     if (!user?.id || !projectId || !paymentId) {
-      Alert.alert('Оплата', 'Неверная ссылка возврата', [{ text: 'OK', onPress: goBudgetPayments }]);
+      showActionConfirm({ title: 'Оплата', message: 'Неверная ссылка возврата', primaryLabel: 'К оплатам', onPrimary: goBudgetPayments });
       return;
     }
     let cancelled = false;
@@ -37,16 +38,20 @@ export default function PaymentReturnScreen() {
         if (cancelled) return;
         if (pay?.status === 'confirmed') {
           setNote('Оплата подтверждена');
-          Alert.alert('Готово', 'Оплата через ЮKassa зафиксирована.', [
-            { text: 'К оплатам', onPress: goBudgetPayments },
-          ]);
+          showActionConfirm({
+            title: 'Готово',
+            message: 'Оплата через ЮKassa зафиксирована.',
+            primaryLabel: 'К оплатам',
+            onPrimary: goBudgetPayments,
+          });
         } else {
           setNote('Ожидаем подтверждение от ЮKassa…');
-          Alert.alert(
-            'Оплата',
-            'Если оплата прошла, статус обновится через несколько секунд. Проверьте раздел «Оплаты».',
-            [{ text: 'К оплатам', onPress: goBudgetPayments }],
-          );
+          showActionConfirm({
+            title: 'Оплата',
+            message: 'Если оплата прошла, статус обновится через несколько секунд. Проверьте раздел «Оплаты».',
+            primaryLabel: 'К оплатам',
+            onPrimary: goBudgetPayments,
+          });
         }
       } catch {
         if (!cancelled) goBudgetPayments();

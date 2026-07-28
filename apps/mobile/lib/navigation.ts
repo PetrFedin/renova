@@ -40,8 +40,15 @@ export function useOsNavFromHere(role: OsRole) {
     pushNav: (target: OsNavHref) => pushOsNav(target, pathname, role),
     pushTab: (routeName: string, hubTab?: string, extra?: Record<string, string>) =>
       pushOsTabNav(role, routeName, hubTab, extra, pathname),
-    pushScreen: (path: string, params?: Record<string, string>) =>
-      pushOsNav({ pathname: path, params }, pathname, role),
+    // Строка → resolvePushLink (bare /repair|/budget|/documents…)
+    pushScreen: (path: string, params?: Record<string, string>) => {
+      if (params && Object.keys(params).length > 0) {
+        const qs = new URLSearchParams(params).toString();
+        pushOsNav(qs ? `${path}?${qs}` : path, pathname, role);
+        return;
+      }
+      pushOsNav(path, pathname, role);
+    },
   };
 }
 

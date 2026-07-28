@@ -1,8 +1,9 @@
-/** Секция формы профиля объекта — единый ритм заголовков и карточек */
+/** Секция формы профиля объекта — Clarity visual: sentence-case */
 import type { ReactNode } from 'react';
 import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 
 type Props = {
   title: string;
@@ -23,20 +24,14 @@ export function ObjectProfileSection({ title, hint, children, style }: Props) {
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 14 },
-  title: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 4,
-  },
+  title: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
   hint: {
     ...formMetaText.caption,
     marginBottom: 6,
   },
   card: {
-    ...card,
+    ...listRowStyles.metricCell,
+    alignItems: 'stretch',
     padding: RenovaTheme.spacing.md,
     gap: 8,
   },

@@ -1,4 +1,4 @@
-/** Сворачиваемый блок «Ещё» — площадки, риски, бюджет, документы, архив */
+/** Сворачиваемый блок «Сводка» на Home — не путать с шапкой «Ещё» */
 import { useState, type ReactNode } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,19 +9,33 @@ export function HomeMoreSection({
   children,
   summary,
   defaultOpen = false,
+  /** Clarity A: «Сводка» — util «Ещё» только в шапке */
+  title = 'Сводка',
 }: {
   children: ReactNode;
   summary?: string;
   defaultOpen?: boolean;
+  title?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const title = !open && summary ? `Ещё · ${summary}` : 'Ещё';
+  const head = !open && summary ? `${title} · ${summary}` : title;
 
   return (
     <View style={s.wrap}>
-      <Pressable style={s.head} onPress={() => setOpen((v) => !v)} accessibilityRole="button">
-        <Text style={[homeTypography.zoneLabel, s.title]} numberOfLines={1}>{title}</Text>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={RenovaTheme.colors.textMuted} />
+      <Pressable
+        style={s.head}
+        onPress={() => setOpen((v) => !v)}
+        accessibilityRole="button"
+        accessibilityLabel={open ? `Свернуть: ${title}` : `Раскрыть: ${title}`}
+      >
+        <Text style={[homeTypography.zoneLabel, s.title]} numberOfLines={1}>
+          {head}
+        </Text>
+        <Ionicons
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={18}
+          color={RenovaTheme.colors.textMuted}
+        />
       </Pressable>
       {open ? <View style={s.body}>{children}</View> : null}
     </View>

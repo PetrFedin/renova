@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -27,6 +28,7 @@ import {
   alertRoomChangeRequested,
   alertRoomArchived,
 } from '@/lib/siteOpsNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
 import type { OsRole } from '@/constants/osSections';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -226,30 +228,62 @@ function ContractorRoomsBody() {
             <Text style={styles.reqTitle}>Запрос заказчика</Text>
             <Text>{r.message}</Text>
             <View style={styles.row}>
-              <PrimaryButton disabled={!canWrite} title="Согласовать" onPress={async () => {
-                try {
-                  await api.approveRoomChange(user.id, activeProject.id, r.id);
-                  await syncProjectSideEffects({ user, project: activeProject });
-                  await reloadRequests();
-                  await loadProject(activeProject.id);
-                  await reloadRooms();
-                  // W136: room_change approve → plan
-                  alertApprovalApproved('contractor', 'room_change');
-                } catch (e) {
-                  if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
-                  else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
-                }
+              <PrimaryButton disabled={!canWrite} title="Согласовать" onPress={() => {
+                // Clarity V: зеркало reject — confirm перед approve room_change
+                showActionConfirm({
+                  title: 'Согласовать запрос?',
+                  message: r.message || 'Комната будет изменена по запросу заказчика.',
+                  primaryLabel: 'Согласовать',
+                  onPrimary: () => {
+                    void (async () => {
+                      try {
+                        await api.approveRoomChange(user.id, activeProject.id, r.id);
+                        await syncProjectSideEffects({ user, project: activeProject });
+                        await reloadRequests();
+                        await loadProject(activeProject.id);
+                        await reloadRooms();
+                        alertApprovalApproved('contractor', 'room_change');
+                      } catch (e) {
+                        if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
+                        else if (isRateLimitError(e)) {
+                          showActionConfirm({
+                            title: 'Подождите',
+                            message: 'Слишком много запросов. Повторите через несколько секунд.',
+                          });
+                        }
+                      }
+                    })();
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
+                });
               }} />
-              <PrimaryButton disabled={!canWrite} title="Отклонить" variant="outline" onPress={async () => {
-                try {
-                  await api.rejectRoomChange(user.id, activeProject.id, r.id);
-                  await reloadRequests();
-                  // W136: reject → inbox
-                  alertApprovalRejected('contractor', 'room_change');
-                } catch (e) {
-                  if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение запроса');
-                  else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
-                }
+              <PrimaryButton disabled={!canWrite} title="Отклонить" variant="outline" onPress={() => {
+                // Clarity R: confirm перед отклонением запроса комнаты
+                showActionConfirm({
+                  title: 'Отклонить запрос?',
+                  message: r.message || 'Запрос заказчика на изменение комнаты будет отклонён.',
+                  primaryLabel: 'Отклонить',
+                  onPrimary: () => {
+                    void (async () => {
+                      try {
+                        await api.rejectRoomChange(user.id, activeProject.id, r.id);
+                        await reloadRequests();
+                        alertApprovalRejected('contractor', 'room_change');
+                      } catch (e) {
+                        if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение запроса');
+                        else if (isRateLimitError(e)) {
+                          showActionConfirm({
+                            title: 'Подождите',
+                            message: 'Слишком много запросов. Повторите через несколько секунд.',
+                          });
+                        }
+                      }
+                    })();
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
+                });
               }} />
             </View>
           </View>
@@ -268,21 +302,37 @@ function ContractorRoomsBody() {
                 onOpen={() => nav.room(room.id)}
                 canWrite={canWrite}
                 archived={roomFilter === 'archive'}
-                onArchive={async (archived) => {
-                  try {
-                    await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: archived });
-                    await loadProject(activeProject.id);
-                    await reloadRooms();
-                    if (archived && roomFilter === 'active') {
-                      alertRoomArchived('contractor', room.name);
-                    }
-                  } catch (e: unknown) {
-                    if (isOfflineQueued(e)) notifyOfflineQueued(archived ? 'Архивирование' : 'Восстановление');
-                    else Alert.alert(
-                      'Ошибка',
-                      archived ? 'Не удалось отправить комнату в архив' : 'Не удалось восстановить комнату',
-                    );
-                  }
+                onArchive={(archived) => {
+                  // Clarity V: паритет RoomDetail — confirm перед архивом
+                  showActionConfirm({
+                    title: archived ? 'В архив?' : 'Восстановить комнату?',
+                    message: archived
+                      ? `«${room.name}» скрыть из активных. Смету и этапы можно будет вернуть позже.`
+                      : `«${room.name}» снова появится в активных комнатах.`,
+                    primaryLabel: archived ? 'В архив' : 'Восстановить',
+                    onPrimary: () => {
+                      void (async () => {
+                        try {
+                          await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: archived });
+                          await loadProject(activeProject.id);
+                          await reloadRooms();
+                          if (archived && roomFilter === 'active') {
+                            alertRoomArchived('contractor', room.name);
+                          }
+                        } catch (e: unknown) {
+                          if (isOfflineQueued(e)) notifyOfflineQueued(archived ? 'Архивирование' : 'Восстановление');
+                          else {
+                            showActionConfirm({
+                              title: 'Ошибка',
+                              message: archived ? 'Не удалось отправить комнату в архив' : 'Не удалось восстановить комнату',
+                            });
+                          }
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               />
             ))}
@@ -393,10 +443,10 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   hint: { color: RenovaTheme.colors.textMuted, marginBottom: 12, fontSize: 13, lineHeight: 18 },
-  empty: { color: RenovaTheme.colors.textMuted, marginBottom: 16, fontSize: 13, fontStyle: 'italic' },
-  card: { ...card, paddingVertical: 14 },
-  name: { fontWeight: '700', fontSize: 16 },
-  meta: { color: RenovaTheme.colors.textMuted, marginTop: 4, fontSize: 13 },
+  empty: { ...screenTypography.empty, marginBottom: 16 },
+  card: { ...listRowStyles.row, paddingVertical: 14 },
+  name: { ...screenTypography.listTitle, fontSize: 16 },
+  meta: { ...screenTypography.listMeta },
   input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   section: { fontWeight: '700', marginTop: 16, marginBottom: 8 },
   req: { backgroundColor: RenovaTheme.colors.surface, padding: 10, borderRadius: 8, marginBottom: 6 },

@@ -41,16 +41,22 @@ const LABELS: Record<string, string> = {
   '/(customer)/(tabs)/repair': 'Ремонт',
   '/(contractor)/(tabs)/object': 'Объект',
   '/(contractor)/(tabs)/repair': 'Ремонт',
-  '/(customer)/(tabs)/works': 'Работы',
-  '/(customer)/(tabs)/materials': 'Материалы',
-  '/(customer)/(tabs)/control': 'Контроль',
+  // Legacy tab paths → те же ярлыки, что канон (после TAB_ALIASES)
+  '/(customer)/(tabs)/works': 'Ремонт',
+  '/(customer)/(tabs)/materials': 'Ремонт',
+  '/(customer)/(tabs)/control': 'Приёмка',
   '/(customer)/(tabs)/more': 'Профиль',
-  '/(contractor)/(tabs)/works': 'Работы',
-  '/(contractor)/(tabs)/materials': 'Материалы',
-  '/(contractor)/(tabs)/control': 'Контроль',
+  '/(customer)/(tabs)/finance': 'Бюджет',
+  '/(contractor)/(tabs)/works': 'Ремонт',
+  '/(contractor)/(tabs)/materials': 'Ремонт',
+  '/(contractor)/(tabs)/control': 'Приёмка',
   '/(contractor)/(tabs)/more': 'Профиль',
+  '/(contractor)/(tabs)/money': 'Бюджет',
   '/(customer)/(tabs)/rooms': 'Комнаты',
   '/(contractor)/(tabs)/': 'Главная',
+  '/portfolio': 'Портфель',
+  '/activity': 'Архив ремонта',
+  '/documents': 'Документы',
 };
 
 export function pathLabel(p: string): string {

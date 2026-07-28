@@ -1,7 +1,8 @@
 /** Панель детализации работы — заметки, связи, подсказки по процессу */
 import { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api, type WorkOrder } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -151,14 +152,15 @@ export function WorkOrderDetailPanel({
 }
 
 const s = StyleSheet.create({
-  card: { ...card, marginBottom: 12 },
-  blockTitle: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 8 },
+  /** Clarity K: list-row связи, sentence-case заголовки */
+  card: { ...listRowStyles.metricCell, alignItems: 'stretch', marginBottom: 12, padding: RenovaTheme.spacing.md },
+  blockTitle: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
   row: { fontSize: 14, marginBottom: 6, color: RenovaTheme.colors.text },
-  label: { fontWeight: '700', color: RenovaTheme.colors.textMuted },
-  hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 17 },
+  label: { fontWeight: '600', color: RenovaTheme.colors.textMuted },
+  hint: { ...screenTypography.listMeta, marginBottom: 8 },
   notesInput: {
     minHeight: 88,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: RenovaTheme.colors.border,
     borderRadius: 8,
     padding: 10,
@@ -166,9 +168,9 @@ const s = StyleSheet.create({
     marginBottom: 8,
     textAlignVertical: 'top',
   },
-  section: { fontWeight: '700', marginVertical: 10, textTransform: 'uppercase', fontSize: 12, color: RenovaTheme.colors.textMuted },
-  linkCard: { ...card, marginBottom: 8, paddingVertical: 12 },
-  linkDisabled: { backgroundColor: '#f9fafb' },
-  linkTitle: { fontWeight: '700', fontSize: 14 },
-  linkSub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4 },
+  section: { ...screenTypography.section, marginVertical: 10 },
+  linkCard: { ...listRowStyles.row },
+  linkDisabled: { opacity: 0.55 },
+  linkTitle: { ...screenTypography.listTitle, fontSize: 14 },
+  linkSub: { ...screenTypography.listMeta },
 });

@@ -1,6 +1,7 @@
 /** Нормализация deep link из push-уведомлений */
 import { calendarTabRoute, budgetTabRoute, objectTabRoute, parseOsHref, repairTabRoute, tabsRoute, type OsRole } from '../constants/osSections';
 import { TAB_ALIASES, legacyRouteCanonical, logLegacyRouteDeprecation } from './legacyRoutes';
+import { roleAwareRegistryRedirect } from './resolveCatchAllSlug';
 
 export type PushTarget = { pathname: string; params: Record<string, string> };
 
@@ -36,11 +37,28 @@ export function resolvePushLink(
   if (canonicalPath === '/control' || canonicalPath === '/work-acceptance') {
     // W58 / W139: legacy control + отдельный центр → hub Ремонт → Приёмка
     const tab = role === 'contractor' ? '/(contractor)/(tabs)/repair' : '/(customer)/(tabs)/repair';
-    return { pathname: tab, params: { tab: 'control', returnTo: rt } };
+    const q = new URLSearchParams(canonicalQuery || '');
+    const focus = q.get('focus') || undefined;
+    const issueId = q.get('issueId') || undefined;
+    return {
+      pathname: tab,
+      params: {
+        tab: 'control',
+        ...(focus ? { focus } : {}),
+        ...(issueId ? { issueId } : {}),
+        returnTo: rt,
+      },
+    };
   }
 
   if (canonicalPath === '/work-schedule') {
     const target = calendarTabRoute(role);
+    return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
+  }
+
+  // Role-aware: не hardcoded customer (раньше TAB_ALIASES)
+  if (canonicalPath === '/project-analytics') {
+    const target = budgetTabRoute(role, 'deviations');
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
@@ -96,7 +114,7 @@ export function resolvePushLink(
     const id = canonicalPath.replace('/purchase/', '').split('/')[0];
     return { pathname: '/purchase/[id]', params: { id, returnTo: rt } };
   }
-  const stackPaths = ['/approvals', '/activity', '/documents', '/inbox', '/conflicts', '/scan-receipt', '/job-leads', '/checklist-templates', '/work-order', '/scratchpad'];
+  const stackPaths = ['/approvals', '/activity', '/documents', '/inbox', '/conflicts', '/scan-receipt', '/job-leads', '/checklist-templates', '/work-order', '/scratchpad', '/portfolio', '/reports', '/guide', '/budget-planner', '/manager-dashboard'];
   if (stackPaths.includes(canonicalPath)) {
     return { pathname: canonicalPath, params: { returnTo: rt } };
   }
@@ -105,6 +123,22 @@ export function resolvePushLink(
     const { pathname, params: tabParams } = parseOsHref(raw);
     return { pathname, params: { ...tabParams, returnTo: rt } };
   }
+
+  // Investor P0: bare /repair|/budget|/calendar|/object → role tabs (как catch-all)
+  {
+    const bare = roleAwareRegistryRedirect(
+      canonicalQuery ? `${canonicalPath}?${canonicalQuery}` : canonicalPath,
+      role,
+    );
+    if (bare && typeof bare !== 'string') {
+      return { pathname: bare.pathname, params: { ...(bare.params || {}), returnTo: rt } };
+    }
+    if (typeof bare === 'string') {
+      const parsed = parseOsHref(bare);
+      return { pathname: parsed.pathname, params: { ...(parsed.params || {}), returnTo: rt } };
+    }
+  }
+
   return { pathname: canonicalPath, params: { returnTo: rt } };
 }
 
@@ -156,7 +190,10 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
       return { pathname: '/approvals', params: {} };
     case 'warranty':
     case 'warranty_claim':
-      return { pathname: '/quality-control', params: {} };
+      // Investor P1: customer → Приёмка + focus=warranty; contractor → QC
+      return role === 'customer'
+        ? { pathname: '/(customer)/(tabs)/repair', params: { tab: 'control', focus: 'warranty' } }
+        : { pathname: '/quality-control', params: {} };
     case 'deadline':
       return tabsRoute(role, 'calendar');
     case 'waste_reminder':

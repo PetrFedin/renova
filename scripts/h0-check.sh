@@ -86,6 +86,20 @@ else
 fi
 
 echo ""
+echo "--- 3b) WebSocket deps (uvicorn /ws/inbox) ---"
+PY_BACKEND="python3"
+if [[ -x backend/.venv/bin/python ]]; then
+  PY_BACKEND="backend/.venv/bin/python"
+elif [[ -x backend/.venv/bin/python3 ]]; then
+  PY_BACKEND="backend/.venv/bin/python3"
+fi
+if "$PY_BACKEND" -c "import websockets; import uvicorn" >/dev/null 2>&1; then
+  pass "websockets + uvicorn importable ($PY_BACKEND)"
+else
+  fail "websockets missing in $PY_BACKEND — poetry install / add websockets (else /ws/inbox 404)"
+fi
+
+echo ""
 echo "--- 4) Client API guard unit ---"
 if (cd apps/mobile && npx tsx lib/apiBaseGuard.test.ts); then
   pass "apiBaseGuard"

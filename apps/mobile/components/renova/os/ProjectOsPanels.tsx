@@ -1,8 +1,9 @@
 /** Компактные панели Renova OS для главной */
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { ProjectOsSnapshot, ProjectHealthLevel } from '@/lib/domain/osTypes';
 import { OsWidgetGrid, OsTwinRow, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
 import { HomeKpiDetailSheet } from '@/components/renova/os/home/HomeKpiDetailSheet';
@@ -197,42 +198,44 @@ export function CompactMaterialsList({ snap, role }: { snap: ProjectOsSnapshot; 
 }
 
 const s = StyleSheet.create({
-  /** Карточка объекта — название отдельно от зон «Сделать сейчас» / KPI */
+  /** Clarity W: flat identity — без card, один elevated surface остаётся у HomeActionHero */
   header: { marginBottom: homeLayout.sectionGap + 4 },
   identityCard: {
-    ...card,
-    padding: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
     gap: 6,
-    borderRadius: homeLayout.heroCardRadius,
   },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   projectName: {
     flex: 1,
     minWidth: 0,
+    ...screenTypography.listTitle,
     fontSize: 20,
-    fontWeight: '700',
     lineHeight: 26,
-    color: RenovaTheme.colors.text,
     letterSpacing: -0.3,
   },
   projectMeta: {
-    fontSize: 12,
+    ...screenTypography.listMeta,
     fontWeight: '500',
-    lineHeight: 16,
-    color: RenovaTheme.colors.textMuted,
   },
   completeBadge: { flexShrink: 0, marginTop: 2 },
   healthWrap: { marginTop: 2 },
-  section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, marginTop: 4 },
+  /** Clarity K: sentence-case секции + list-row вместо card-стека */
+  section: { ...screenTypography.section, marginBottom: 8, marginTop: 4 },
   risks: { marginBottom: homeLayout.innerGap },
-  riskRow: { ...card, paddingVertical: 10, borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.warning },
-  riskTitle: { fontSize: 14, fontWeight: '600', color: RenovaTheme.colors.text },
-  riskSub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  listRow: { ...card, paddingVertical: 10, marginBottom: 8 },
-  listRowSm: { paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  compactList: { ...card, flex: 1, marginBottom: 0, padding: 10 },
-  sectionSm: { textTransform: 'none', letterSpacing: 0, marginBottom: 4 },
-  rowTitleSm: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.text },
-  rowTitle: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
-  rowMeta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  riskRow: {
+    ...listRowStyles.row,
+    borderLeftWidth: 3,
+    borderLeftColor: RenovaTheme.colors.warning,
+    paddingLeft: 10,
+  },
+  riskTitle: { ...screenTypography.listTitle, fontSize: 14 },
+  riskSub: { ...screenTypography.listMeta },
+  listRow: { ...listRowStyles.row },
+  listRowSm: { paddingVertical: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: RenovaTheme.colors.border },
+  compactList: { ...listRowStyles.metricCell, alignItems: 'stretch', flex: 1, marginBottom: 0, padding: 10 },
+  sectionSm: { ...screenTypography.section, marginBottom: 4, marginTop: 0 },
+  rowTitleSm: { ...screenTypography.listTitle, fontSize: 13 },
+  rowTitle: { ...screenTypography.listTitle },
+  rowMeta: { ...screenTypography.listMeta },
 });

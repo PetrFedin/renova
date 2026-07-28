@@ -75,7 +75,17 @@ export function ContractorDirectory({
       onLinked?.();
       reload();
     } catch (e: unknown) {
-      Alert.alert('Не удалось подключить', apiErrorMessage(e, 'Проверьте подключение'));
+      const msg = apiErrorMessage(e, 'Проверьте подключение');
+      // Investor P1: paywall/Pro — не маскируем как «сеть»
+      const paywall = /pro|подписк|paywall|лимит|403/i.test(msg);
+      Alert.alert(
+        paywall ? 'Нужна подписка Pro' : 'Не удалось подключить',
+        paywall
+          ? `${msg}
+
+Назначить исполнителя на staging/пилоте можно после Pro или trial.`
+          : msg,
+      );
     } finally {
       setBusyId(null);
     }

@@ -4,7 +4,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { api } from '@/lib/api';
 import type { ProjectIssue } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -12,8 +15,10 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { objectTabRoute, type OsRole } from '@/constants/osSections';
+import { objectTabRoute, tabsRoute, type OsRole } from '@/constants/osSections';
 import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { reportError } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -118,8 +123,8 @@ function IssueCard({
             variant="outline"
             compact
             onPress={() =>
-              // W121: обратно на план объекта (Fieldwire loop)
-              pushOsNav(objectTabRoute(role, 'plan'), '/quality-control', role)
+              // W121 + Investor P2: слой «Планировка» (пины punch видны)
+              pushOsNav(objectTabRoute(role, 'plan', 'floor'), '/quality-control', role)
             }
           />
         ) : null}
@@ -142,6 +147,7 @@ export function QualityControlScreen() {
   const focusIssueId = Array.isArray(params.issueId) ? params.issueId[0] : params.issueId;
   const [items, setItems] = useState<ProjectIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
 
@@ -150,6 +156,10 @@ export function QualityControlScreen() {
     try {
       const result = await api.listIssues(user.id, activeProject.id);
       setItems(result);
+      setLoadError(false);
+    } catch (e) {
+      reportError('QualityControl.load', e);
+      setLoadError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -186,47 +196,86 @@ export function QualityControlScreen() {
     }
   };
 
-  const escalateIssue = async (issue: ProjectIssue) => {
+  const escalateIssue = (issue: ProjectIssue) => {
     if (!user || !activeProject || readOnly) return;
-    try {
-      await api.escalateIssue(user.id, activeProject.id, issue.id);
-      await load();
-      await syncProjectSideEffects({ user, project: activeProject });
-      Alert.alert('Спор', 'Замечание эскалировано — стороны уведомлены');
-    } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Эскалация');
-      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось эскалировать');
-    }
+    // Clarity W: pre-confirm (раньше sheet был только post-success)
+    showActionConfirm({
+      title: 'Эскалировать в спор?',
+      message: `«${issue.title}». Стороны получат уведомление.`,
+      primaryLabel: 'В спор',
+      onPrimary: () => {
+        void (async () => {
+          try {
+            await api.escalateIssue(user.id, activeProject.id, issue.id);
+            await load();
+            await syncProjectSideEffects({ user, project: activeProject });
+            showActionConfirm({
+              title: 'Спор',
+              message: 'Замечание эскалировано — стороны уведомлены',
+            });
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued('Эскалация');
+            else {
+              showActionConfirm({
+                title: 'Ошибка',
+                message: e instanceof Error ? e.message : 'Не удалось эскалировать',
+              });
+            }
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
-  const closeIssue = async (issue: ProjectIssue) => {
+  const closeIssue = (issue: ProjectIssue) => {
     // W46/W62: гарантию закрывает только заказчик
     if (!user || !activeProject || readOnly) return;
     if ((issue.title || '').startsWith('[Гарантия]') && user.role !== 'customer') return;
-    setActingId(issue.id);
-    try {
-      if ((issue.title || '').startsWith('[Гарантия]')) {
-        await api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
-        await load();
-        await syncProjectSideEffects({ user, project: activeProject });
-        alertWarrantyClosed(user.role === 'contractor' ? 'contractor' : 'customer');
-      } else {
-        await api.closeIssue(user.id, activeProject.id, issue.id);
-        await load();
-        await syncProjectSideEffects({ user, project: activeProject });
-      }
-    } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');
-    } finally {
-      setActingId(null);
-    }
+    const isWarranty = (issue.title || '').startsWith('[Гарантия]');
+    const isContractorFix = !isCustomer && !isWarranty && !(issue.title || '').startsWith('[Спор]');
+    showActionConfirm({
+      title: isWarranty ? 'Закрыть гарантию?' : isContractorFix ? 'Отметить исправленным?' : 'Закрыть замечание?',
+      message: `«${issue.title}»`,
+      primaryLabel: isContractorFix ? 'Исправлено' : 'Закрыть',
+      onPrimary: () => {
+        void (async () => {
+          setActingId(issue.id);
+          try {
+            if (isWarranty) {
+              await api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
+              await load();
+              await syncProjectSideEffects({ user, project: activeProject });
+              alertWarrantyClosed(user.role === 'contractor' ? 'contractor' : 'customer');
+            } else {
+              await api.closeIssue(user.id, activeProject.id, issue.id);
+              await load();
+              await syncProjectSideEffects({ user, project: activeProject });
+            }
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');
+          } finally {
+            setActingId(null);
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
   if (!user || !activeProject) {
+    const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
     return (
       <View style={styles.center}>
-        <Text style={styles.stateTitle}>Нет активного проекта</Text>
-        <Text style={styles.stateText}>Выберите проект, чтобы открыть контроль качества.</Text>
+        <EmptyActionState
+          title="Нет активного проекта"
+          hint="Выберите объект на главной, чтобы открыть контроль качества."
+          actionLabel="На главную"
+          actionVariant="primary"
+          onAction={() => pushOsNav(tabsRoute(role, 'index'), undefined, role)}
+        />
       </View>
     );
   }
@@ -236,6 +285,24 @@ export function QualityControlScreen() {
       <View style={styles.center}>
         <ActivityIndicator color={RenovaTheme.colors.primaryMuted} />
         <Text style={styles.stateText}>Загружаем замечания...</Text>
+      </View>
+    );
+  }
+
+  if (loadError) {
+    const role: OsRole = user.role === 'contractor' ? 'contractor' : 'customer';
+    return (
+      <View style={styles.center}>
+        <LoadErrorState
+          title="Не удалось загрузить замечания"
+          hint="Это не пустой список — повторите или напишите в чат."
+          onRetry={() => {
+            setLoading(true);
+            void load();
+          }}
+          role={role}
+          showChatCta
+        />
       </View>
     );
   }
@@ -329,15 +396,23 @@ const styles = StyleSheet.create({
   back: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.primaryMuted, fontWeight: RenovaTheme.fontWeight.semibold },
   title: { fontSize: RenovaTheme.fontSize.h1, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
   subtitle: { fontSize: RenovaTheme.fontSize.body, lineHeight: 20, color: RenovaTheme.colors.textMuted },
-  noteCard: { ...card, backgroundColor: RenovaTheme.colors.surfaceMuted, padding: RenovaTheme.spacing.md },
-  noteText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  summaryGrid: { flexDirection: 'row', gap: RenovaTheme.spacing.sm },
-  summaryCard: { ...card, flex: 1, alignItems: 'center', gap: 2 },
-  summaryValue: { fontSize: RenovaTheme.fontSize.h2, fontWeight: RenovaTheme.fontWeight.extrabold, color: RenovaTheme.colors.text },
-  summaryLabel: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted },
-  cardBlock: { ...card, gap: RenovaTheme.spacing.sm },
-  sectionTitle: { fontSize: RenovaTheme.fontSize.h3, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.bold },
-  issueCard: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: RenovaTheme.radius.lg, padding: RenovaTheme.spacing.md, backgroundColor: RenovaTheme.colors.surface, gap: RenovaTheme.spacing.sm },
+  /** Clarity K: спокойные контейнеры вместо card-стека */
+  noteCard: { ...listRowStyles.metricCell, alignItems: 'stretch', backgroundColor: RenovaTheme.colors.surfaceMuted, padding: RenovaTheme.spacing.md },
+  noteText: { ...screenTypography.empty },
+  summaryGrid: { ...listRowStyles.summaryRow },
+  summaryCard: { ...listRowStyles.metricCell, gap: 2 },
+  summaryValue: { ...screenTypography.metric },
+  summaryLabel: { ...screenTypography.metricLabel },
+  cardBlock: { gap: RenovaTheme.spacing.sm, marginTop: 4 },
+  sectionTitle: { ...screenTypography.section, marginTop: 8, color: RenovaTheme.colors.text },
+  issueCard: {
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: RenovaTheme.colors.border,
+    backgroundColor: 'transparent',
+    gap: RenovaTheme.spacing.sm,
+  },
   focusedCard: {
     borderColor: RenovaTheme.colors.primary,
     borderWidth: 2,

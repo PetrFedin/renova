@@ -1,7 +1,8 @@
 /** Настройка виджетов главной — пресеты и галочки */
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import {
   HOME_WIDGET_CATALOG,
   HOME_WIDGET_GROUP_LABEL,
@@ -13,6 +14,7 @@ import {
 import { applyHomeWidgetPreset, getHomeWidgets, toggleHomeWidget, resetHomeWidgets } from '@/lib/homeWidgetPrefs';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 const GROUPS = ['main', 'kpi', 'lists'] as const;
 
@@ -33,8 +35,12 @@ export function HomeWidgetSettings({ role, embedded }: { role: OsRole; embedded?
   }, [role]);
 
   const onToggle = async (id: HomeWidgetId) => {
+    // Clarity O: gate sheet — главная не должна остаться пустой
     if (enabled.has(id) && enabled.size <= 1) {
-      Alert.alert('Минимум один', 'На главной должен остаться хотя бы один виджет.');
+      showActionConfirm({
+        title: 'Минимум один',
+        message: 'На главной должен остаться хотя бы один виджет.',
+      });
       return;
     }
     const next = await toggleHomeWidget(role, id);
@@ -128,7 +134,7 @@ const s = StyleSheet.create({
   presetH: { fontSize: 10, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   expand: { marginBottom: 8, paddingVertical: 6 },
   expandT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.primary },
-  group: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginTop: 8, marginBottom: 6 },
+  group: { ...screenTypography.section, marginTop: 8, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, marginBottom: 6 },
   rowOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   meta: { flex: 1 },

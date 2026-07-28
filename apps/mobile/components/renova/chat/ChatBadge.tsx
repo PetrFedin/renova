@@ -1,12 +1,30 @@
-/** Badge непрочитанных — компактный круг */
+/** Badge непрочитанных / задач дня — компактный круг */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
-export function ChatBadge({ count, size = 18, inline }: { count: number; size?: number; inline?: boolean }) {
+/** danger = chat unread; warning = задачи дня (не путать с непрочитанным) */
+export function ChatBadge({
+  count,
+  size = 18,
+  inline,
+  tone = 'danger',
+}: {
+  count: number;
+  size?: number;
+  inline?: boolean;
+  tone?: 'danger' | 'warning';
+}) {
   if (!count || count <= 0) return null;
   const label = count > 99 ? '99+' : String(count);
+  const bg = tone === 'warning' ? RenovaTheme.colors.warning : RenovaTheme.colors.danger;
   return (
-    <View style={[s.badge, inline ? s.inline : null, { minWidth: size, height: size, borderRadius: size / 2 }]}>
+    <View
+      style={[
+        s.badge,
+        inline ? s.inline : null,
+        { minWidth: size, height: size, borderRadius: size / 2, backgroundColor: bg },
+      ]}
+    >
       <Text style={s.text}>{label}</Text>
     </View>
   );
@@ -14,7 +32,6 @@ export function ChatBadge({ count, size = 18, inline }: { count: number; size?: 
 
 const s = StyleSheet.create({
   badge: {
-    backgroundColor: RenovaTheme.colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,

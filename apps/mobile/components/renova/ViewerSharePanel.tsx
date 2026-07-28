@@ -10,6 +10,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { apiErrorMessage, normalizePhoneInput } from '@/lib/formatPhone';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { alertViewerGuestAdded } from '@/lib/shareAccessNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportError } from '@/lib/reportError';
 
 type V = { user_id: string; phone: string; full_name?: string; role: string };
@@ -92,14 +93,29 @@ export function ViewerSharePanel({
               <Pressable
                 accessibilityLabel="Удалить гостя"
                 style={s.remove}
-                onPress={async () => {
-                  try {
-                    await api.removeViewer(userId, projectId, v.user_id);
-                    await syncAfter();
-                    load();
-                  } catch (e: unknown) {
-                    Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось удалить'));
-                  }
+                onPress={() => {
+                  // Clarity V: доступ к порталу — confirm перед remove
+                  showActionConfirm({
+                    title: 'Удалить гостя?',
+                    message: `${v.full_name || v.phone} потеряет доступ к просмотру объекта.`,
+                    primaryLabel: 'Удалить',
+                    onPrimary: () => {
+                      void (async () => {
+                        try {
+                          await api.removeViewer(userId, projectId, v.user_id);
+                          await syncAfter();
+                          load();
+                        } catch (e: unknown) {
+                          showActionConfirm({
+                            title: 'Ошибка',
+                            message: apiErrorMessage(e, 'Не удалось удалить'),
+                          });
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               >
                 <Text style={s.removeT}>✕</Text>

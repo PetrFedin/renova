@@ -1,6 +1,6 @@
 /** Ручной расход: наличные, перевод, без QR */
 import { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
@@ -10,7 +10,9 @@ import type { ProjectDetail } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertManualExpenseSaved } from '@/lib/receiptNav';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function ManualExpenseForm({
   userId, project, readOnly, onSaved, initialRoomId, initialStageId, collapsed,
@@ -35,7 +37,10 @@ export function ManualExpenseForm({
 
   async function submit() {
     const n = parseFloat(amount.replace(',', '.'));
-    if (!n || n <= 0) { Alert.alert('Сумма', 'Укажите сумму больше 0'); return; }
+    if (!n || n <= 0) {
+      showActionConfirm({ title: 'Сумма', message: 'Укажите сумму больше 0' });
+      return;
+    }
     setBusy(true);
     try {
       await api.addManualReceipt(userId, project.id, n, description.trim(), category, roomId, stageId);
@@ -44,8 +49,9 @@ export function ManualExpenseForm({
       onSaved?.();
       const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
       alertManualExpenseSaved(role, n);
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось сохранить расход');
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Расход без чека');
+      else showActionConfirm({ title: 'Ошибка', message: 'Не удалось сохранить расход' });
     } finally { setBusy(false); }
   }
 

@@ -1,4 +1,5 @@
 /** Список чеков — категория, комната, редактирование */
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import type { ReceiptItem } from '@/lib/api';
@@ -24,9 +25,22 @@ export function ReceiptList({
 }) {
   const { user, activeProject } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+  const [fnsLive, setFnsLive] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const uid = userId || user?.id;
+    if (!uid) return;
+    let alive = true;
+    api.getFnsHealth(uid)
+      .then((h) => { if (alive) setFnsLive(Boolean(h.live_verify_ready)); })
+      .catch(() => { if (alive) setFnsLive(false); });
+    return () => { alive = false; };
+  }, [userId, user?.id]);
+
   if (receipts.length === 0) return null;
   const sum = receipts.reduce((a, r) => a + r.amount, 0);
   const verified = receipts.filter((r) => r.verified).length;
+  const fnsLabel = fnsLive === true ? 'ФНС live' : fnsLive === false ? 'ФНС demo/off' : 'ФНС';
 
   const syncAfter = () =>
     syncProjectSideEffects({
@@ -61,7 +75,11 @@ export function ReceiptList({
   return (
     <View style={s.wrap}>
       <Text style={s.section}>{totalLabel} · {receipts.length} · {formatRub(sum)}</Text>
-      <Text style={s.meta}>Проверено ФНС: {verified} из {receipts.filter((x) => x.source !== "manual").length || receipts.length}</Text>
+      <Text style={s.meta}>
+        Проверено: {verified} из {receipts.filter((x) => x.source !== "manual").length || receipts.length}
+        {' · '}{fnsLabel}
+        {fnsLive === false ? ' (не налоговая правда)' : ''}
+      </Text>
       {receipts.map((r) => (
         <Pressable key={r.id} style={s.row} onPress={() => onReceiptPress?.(r)}>
           <View style={{ flex: 1 }}>
@@ -107,10 +125,12 @@ export function ReceiptList({
             )}
           </View>
           {r.verified || r.source === 'manual' ? (
-            <Text style={[s.badge, r.verified ? s.ok : s.pending]}>{r.verified ? '✓ ФНС' : 'Не проверен'}</Text>
+            <Text style={[s.badge, r.verified ? s.ok : s.pending]}>
+              {r.verified ? (fnsLive === false ? '✓ demo' : '✓ ФНС') : 'Не проверен'}
+            </Text>
           ) : (
             <Pressable onPress={() => reverify(r)} hitSlop={8}>
-              <Text style={[s.badge, s.pending]}>Проверить ФНС</Text>
+              <Text style={[s.badge, s.pending]}>{fnsLive === false ? 'Проверить (demo)' : 'Проверить ФНС'}</Text>
             </Pressable>
           )}
         </Pressable>

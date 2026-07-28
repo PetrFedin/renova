@@ -1,4 +1,5 @@
-/** Виджеты вкладки «Бюджет → Сводка» — настраиваются в профиле */
+/** Виджеты вкладки «Бюджет → Сводка» — настраиваются в профиле.
+ * Clarity F: default lean — KPI + оплаты + alerts + preview; контроль/сегменты — opt-in. */
 import type { OsRole } from '@/constants/osSections';
 
 export type BudgetWidgetId =
@@ -18,14 +19,20 @@ export type BudgetWidgetDef = {
 
 export const BUDGET_WIDGET_CATALOG: BudgetWidgetDef[] = [
   { id: 'summary_kpi', label: 'Сводка 2×2', hint: 'План · факт · прогноз · остаток' },
-  { id: 'repair_control', label: 'Контроль бюджета', hint: 'Смета · чеки · оплаты' },
-  { id: 'budget_alerts', label: 'Превышение по комнатам' },
-  { id: 'actions', label: 'Кнопки действий', hint: 'Таблица · документы · оценка' },
-  { id: 'segments', label: 'По статьям' },
   { id: 'pending_payments', label: 'Ожидает оплаты' },
+  { id: 'budget_alerts', label: 'Превышение по комнатам' },
   { id: 'expense_preview', label: 'Последние расходы' },
+  { id: 'repair_control', label: 'Контроль бюджета', hint: 'Смета · чеки · оплаты — подробный вид' },
+  { id: 'segments', label: 'По статьям', hint: 'подробный вид' },
+  { id: 'actions', label: 'Кнопки действий', hint: 'Таблица · оценка' },
 ];
 
-export const BUDGET_WIDGET_DEFAULT: BudgetWidgetId[] = BUDGET_WIDGET_CATALOG.map((w) => w.id);
+/** Lean default: без repair_control / segments / actions */
+export const BUDGET_WIDGET_DEFAULT: BudgetWidgetId[] = [
+  'summary_kpi',
+  'pending_payments',
+  'budget_alerts',
+  'expense_preview',
+];
 
 export type BudgetWidgetRole = OsRole;

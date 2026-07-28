@@ -185,6 +185,20 @@ async def portal_snapshot(
         pending_work_schedule = None
     payments = await pay_svc.list_payments(db, project_id)
     pending = [pay_svc.payment_dict(x) for x in payments if x.status.value == "pending"]
+    # Investor P1: needs_acceptance для client gate (как PaymentDetailSheet)
+    stage_ids = {x.get("stage_id") for x in pending if x.get("stage_id")}
+    stages_by_id: dict = {}
+    if stage_ids:
+        st_rows = (
+            await db.execute(select(Stage).where(Stage.id.in_(stage_ids)))
+        ).scalars().all()
+        stages_by_id = {s.id: s for s in st_rows}
+    for item in pending:
+        st = stages_by_id.get(item.get("stage_id")) if item.get("stage_id") else None
+        # Как payment_service / yookassa-checkout: gate = нет customer_accepted_at
+        item["needs_acceptance"] = bool(
+            st is not None and not getattr(st, "customer_accepted_at", None)
+        )
     canonical = await docs_svc.list_canonical_documents(db, project_id)
     sel_rows = (
         await db.execute(
@@ -290,6 +304,23 @@ async def portal_snapshot(
     ]
     can_decide_co = user.id == p.customer_id and user.role == UserRole.customer and not read_only
 
+    # Investor P1: portal не показывает Kontur CTA, если провайдер off
+    try:
+        from app.core.config import settings as _esign_settings
+        from app.services.esign import list_providers as _list_esign
+        _kmode = (_esign_settings.kontur_mode or "off").strip().lower()
+        _provs = _list_esign()
+        kontur_available = any(
+            pr.get("name") == "kontur" and pr.get("available")
+            for pr in (_provs or [])
+        )
+        esign_mode = "kontur" if kontur_available else "in_app"
+        kontur_mode = _kmode
+    except Exception:
+        kontur_available = False
+        esign_mode = "in_app"
+        kontur_mode = "off"
+
     return {
         "project": {"id": p.id, "name": p.name, "address": p.address, "progress_percent": p.progress_percent},
         "read_only": read_only,
@@ -312,6 +343,9 @@ async def portal_snapshot(
         "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
         "can_confirm_schedule": user.id == p.customer_id and user.role == UserRole.customer and not read_only,
         "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
+        "esign_mode": esign_mode,
+        "kontur_mode": kontur_mode,
+        "kontur_available": kontur_available,
         # W75: черновик на подпись — без уже подписанных (webhook → signed_at)
         "pending_draft_documents": [
             d for d in canonical
@@ -378,12 +412,25 @@ async def portal_accept_work(
             comment=body.comment,
         )
     except ValueError as exc:
-        if str(exc) == "photos_required":
+        code = str(exc)
+        if code == "photos_required":
             raise HTTPException(
                 409,
                 detail={
                     "code": "photos_required",
                     "message": "Добавьте хотя бы одно фото результата этапа перед приёмкой",
+                },
+            ) from exc
+        if code in ("checklist_required", "checklist_incomplete"):
+            raise HTTPException(
+                409,
+                detail={
+                    "code": code,
+                    "message": (
+                        "Заполните чеклист приёмки в приложении Renova"
+                        if code == "checklist_required"
+                        else "Чеклист приёмки заполнен не полностью — откройте этап в приложении"
+                    ),
                 },
             ) from exc
         raise

@@ -49,13 +49,13 @@ export default function ScanReceiptScreen() {
         roomId,
         resolveStageForRoom(activeProject.stages, roomId, stageId),
         paymentId ? String(paymentId) : null,
-      ) as { verified: boolean; message: string; amount: number; payment_id?: string | null };
+      ) as { verified: boolean; message: string; amount: number; payment_id?: string | null; verify_mode?: string };
       if (paymentId) {
         await AsyncStorage.setItem(paymentReceiptKey(String(paymentId)), '1');
       }
       await loadProject(activeProject.id);
       await syncProjectSideEffects({ user, project: activeProject }); // W94: бюджет/аналитика
-      // W129: чек → расходы / материалы / оплаты SoT
+      // W129: чек → расходы / материалы / оплаты SoT (+ FNS mode honesty)
       const role = (user.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
       alertReceiptScanned(
         role,
@@ -64,6 +64,7 @@ export default function ScanReceiptScreen() {
           message: r.message,
           amount: r.amount,
           paymentId: paymentId ? String(paymentId) : r.payment_id,
+          verify_mode: r.verify_mode,
         },
         () => router.back(),
       );

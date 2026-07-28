@@ -1,6 +1,7 @@
 /** Расходы по категориям — unified list (чеки + os + закупки) */
 import { View, Text, StyleSheet } from 'react-native';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { groupExpenseRows, type ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 
 export function ExpenseByCategory({ rows }: { rows: ExpenseDetailRow[] }) {
@@ -24,11 +25,11 @@ export function ExpenseByCategory({ rows }: { rows: ExpenseDetailRow[] }) {
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10, marginBottom: 12 },
-  head: { fontWeight: '800', marginBottom: 10 },
-  row: { marginBottom: 8 },
-  label: { fontSize: 13, fontWeight: '600' },
-  val: { fontSize: 12, color: RenovaTheme.colors.primary, marginTop: 2 },
+  box: { marginBottom: 12 },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 10 },
+  row: { ...listRowStyles.row, borderBottomWidth: 0, marginBottom: 4 },
+  label: { ...screenTypography.listTitle, fontSize: 13 },
+  val: { ...screenTypography.listMeta, color: RenovaTheme.colors.primary, fontWeight: '600' },
   bar: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 4, overflow: 'hidden' },
   fill: { height: 4, backgroundColor: RenovaTheme.colors.primary },
 });

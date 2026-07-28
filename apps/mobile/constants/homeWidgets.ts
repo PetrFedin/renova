@@ -30,10 +30,10 @@ export type HomeWidgetDef = {
 export const HOME_WIDGET_CATALOG: HomeWidgetDef[] = [
   { id: 'health_next', label: 'Сделать сейчас: главное действие', group: 'main' },
   { id: 'insights', label: 'Подсказки в «Сделать сейчас»', hint: 'если входящих нет', group: 'main' },
-  { id: 'kpi_budget', label: 'Сводка: Бюджет', group: 'kpi' },
-  { id: 'kpi_schedule', label: 'Сводка: Сроки', group: 'kpi' },
-  { id: 'kpi_materials', label: 'Сводка: Материалы', group: 'kpi' },
-  { id: 'kpi_quality', label: 'Сводка: Качество', group: 'kpi' },
+  { id: 'kpi_budget', label: 'KPI: Бюджет', group: 'kpi' },
+  { id: 'kpi_schedule', label: 'KPI: Сроки', group: 'kpi' },
+  { id: 'kpi_materials', label: 'KPI: Материалы', group: 'kpi' },
+  { id: 'kpi_quality', label: 'KPI: Качество', group: 'kpi' },
   { id: 'portfolio', label: 'Ссылка «Все проекты»', hint: 'дубль picker — используйте выбор в шапке', group: 'main', hidden: true },
   { id: 'budget_alerts', label: 'Превышение бюджета по комнатам', group: 'lists' },
   { id: 'inbox', label: 'Входящие в «Сделать сейчас»', hint: 'дублирует hero — используйте меню ↑', group: 'main', hidden: true },
@@ -42,10 +42,10 @@ export const HOME_WIDGET_CATALOG: HomeWidgetDef[] = [
   { id: 'risks', label: 'Риски', group: 'lists' },
   { id: 'works_materials', label: 'Работы и материалы', group: 'lists' },
   { id: 'documents', label: 'Кнопка «Документы»', hint: 'дубль меню ↑ — используйте меню или профиль', group: 'lists', hidden: true },
-  { id: 'activity', label: 'Недавнее', hint: 'в блоке «Ещё»', group: 'lists' },
+  { id: 'activity', label: 'Недавнее', hint: 'в блоке «Сводка» (только подробный вид)', group: 'lists' },
 ];
 
-/** Рекомендуемый набор по анализу главной (п. C) */
+/** Рекомендуемый набор — без ActivityFeed (дубль inbox / архива) */
 export const HOME_WIDGET_STANDARD: HomeWidgetId[] = [
   'health_next',
   'kpi_budget',
@@ -53,7 +53,6 @@ export const HOME_WIDGET_STANDARD: HomeWidgetId[] = [
   'kpi_materials',
   'kpi_quality',
   'schedule',
-  'activity',
 ];
 
 /** Пресеты глубины главной (P3) */
@@ -72,9 +71,10 @@ export const HOME_WIDGET_PRESETS: Record<HomeWidgetPresetId, { label: string; hi
   },
   detailed: {
     label: 'Подробно',
-    hint: 'Все блоки + «Ещё»',
+    hint: 'Все блоки + лента «Недавнее»',
     ids: [
       ...HOME_WIDGET_STANDARD,
+      'activity',
       'budget_alerts',
       'sites',
       'risks',

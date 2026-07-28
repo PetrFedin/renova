@@ -1,7 +1,7 @@
 /** Секция формы новой работы */
 import type { ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { formMetaText } from '@/constants/formTypography';
 
 export function WorkFormSection({
@@ -24,14 +24,7 @@ export function WorkFormSection({
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 12 },
-  title: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    marginBottom: 4,
-  },
+  title: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
   hint: { ...formMetaText.caption, marginBottom: 6 },
-  body: { ...card, padding: 12, gap: 8 },
+  body: { ...listRowStyles.metricCell, alignItems: 'stretch', padding: 12, gap: 8 },
 });

@@ -1,7 +1,7 @@
 /** Фильтры сметы — тип строки и статья расхода */
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, filterChipStyles } from '@/constants/screenTypography';
 import { api } from '@/lib/api';
 import type { EstimateLine } from '@/lib/api';
 import {
@@ -83,23 +83,10 @@ export function EstimateFilterBar({
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 12, gap: 6 },
-  label: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    backgroundColor: RenovaTheme.colors.surface,
-  },
-  chipOn: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
-  chipT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.text },
-  chipTOn: { color: RenovaTheme.colors.primary },
+  label: { ...screenTypography.section, marginTop: 0, marginBottom: 0 },
+  row: filterChipStyles.row,
+  chip: filterChipStyles.chip,
+  chipOn: filterChipStyles.chipOn,
+  chipT: filterChipStyles.chipT,
+  chipTOn: filterChipStyles.chipTOn,
 });

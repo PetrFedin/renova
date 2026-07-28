@@ -1,6 +1,7 @@
 /** Итог по выбранным проектам — план, факт, перерасход/экономия */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import type { PortfolioSummary } from '@/lib/domain/summarizePortfolio';
 
 type Props = {
@@ -68,14 +69,7 @@ function objectsLabel(n: number) {
 
 const s = StyleSheet.create({
   wrap: { ...card, marginBottom: 0, padding: 14 },
-  kicker: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 10,
-  },
+  kicker: { ...screenTypography.metricLabel, marginTop: 0, marginBottom: 10 },
   mainRow: { flexDirection: 'row', gap: 10 },
   mainCell: { flex: 1, minWidth: 0 },
   mainLabel: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 4 },

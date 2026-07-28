@@ -1,7 +1,8 @@
-/** Секция внутри вкладок «Объект» */
+/** Секция внутри вкладок «Объект» — Clarity visual: sentence-case, без uppercase-крика */
 import type { ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 
 export function ObjectSection({
   title,
@@ -23,19 +24,12 @@ export function ObjectSection({
 
 const s = StyleSheet.create({
   wrap: { marginTop: 16, marginBottom: 4 },
-  title: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 6,
-  },
-  hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 17 },
+  title: { ...screenTypography.section, marginTop: 0 },
+  hint: { ...screenTypography.listMeta, marginBottom: 8 },
   body: { gap: 8 },
 });
 
-/** Строка позиции сметы (read-only) */
+/** Строка позиции сметы (read-only) — list-row, не card */
 export function EstimateLineRow({
   name,
   detail,
@@ -61,10 +55,10 @@ export function EstimateLineRow({
 }
 
 const row = StyleSheet.create({
-  box: { ...card, paddingVertical: 10 },
-  badge: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.primary, marginBottom: 2 },
-  name: { fontWeight: '600', fontSize: 14 },
-  detail: { fontSize: 11, color: RenovaTheme.colors.primary, marginTop: 2, fontStyle: 'italic' },
-  notes: { fontSize: 12, color: RenovaTheme.colors.text, marginTop: 4, lineHeight: 16 },
-  meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4 },
+  box: { ...listRowStyles.row },
+  badge: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.primary, marginBottom: 2 },
+  name: { ...screenTypography.listTitle, fontSize: 14 },
+  detail: { fontSize: 11, color: RenovaTheme.colors.primary, marginTop: 2 },
+  notes: { ...screenTypography.listMeta, color: RenovaTheme.colors.text, marginTop: 4 },
+  meta: { ...screenTypography.listMeta },
 });

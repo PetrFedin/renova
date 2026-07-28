@@ -1,6 +1,6 @@
 /** Комната — Digital Twin: паспорт сверху, детали по запросу */
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { useLocalSearchParams, router, usePathname } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -11,6 +11,7 @@ import { RoomPassport } from '@/components/renova/os/RoomPassport';
 import { RoomTypePicker, FloorLevelPicker } from '@/components/renova/RoomTypePicker';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { snapshotRoom, getRoomDiff } from '@/lib/roomDiff';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { budgetTabRoute, objectTabHref } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -24,6 +25,7 @@ import { api, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function RoomDetailScreen() {
   const { id, returnTo, overrun } = useLocalSearchParams<{ id: string; returnTo?: string; overrun?: string }>();
@@ -72,15 +74,35 @@ export function RoomDetailScreen() {
 
   const toggleArchive = async () => {
     if (!user || !activeProject || !room || !isContractor) return;
-    try {
-      await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: !room.is_archived });
-      await syncProjectSideEffects({ user, project: activeProject });
-      await loadProject(activeProject.id);
-      await load();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '';
-      Alert.alert('Ошибка', msg === 'offline_queued' ? 'Команда в очереди синхронизации' : 'Не удалось изменить архив');
-    }
+    const nextArchived = !room.is_archived;
+    // Clarity R: архив комнаты — подтверждение (влияет на план/смету)
+    showActionConfirm({
+      title: nextArchived ? 'В архив?' : 'Восстановить комнату?',
+      message: nextArchived
+        ? `«${room.name}» скрыть из активных. Смету и этапы можно будет вернуть позже.`
+        : `«${room.name}» снова появится в активных комнатах.`,
+      primaryLabel: nextArchived ? 'В архив' : 'Восстановить',
+      onPrimary: () => {
+        void (async () => {
+          try {
+            await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: nextArchived });
+            await syncProjectSideEffects({ user, project: activeProject });
+            await loadProject(activeProject.id);
+            await load();
+          } catch (e: unknown) {
+            if (isOfflineQueued(e)) notifyOfflineQueued('Архив комнаты');
+            else {
+              showActionConfirm({
+                title: 'Ошибка',
+                message: e instanceof Error ? e.message : 'Не удалось изменить архив',
+              });
+            }
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
   const save = async (body: object) => {
@@ -91,7 +113,7 @@ export function RoomDetailScreen() {
       await loadProject(activeProject.id);
       await load();
     } catch (e: any) {
-      if (e?.message === 'offline_queued') Alert.alert('Офлайн', 'Изменения сохранены в очередь синхронизации');
+      if (isOfflineQueued(e)) notifyOfflineQueued('Изменения комнаты');
       else throw e;
     }
   };

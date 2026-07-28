@@ -31,6 +31,7 @@ import { repairTabRoute, objectTabHref } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertStageAccepted } from '@/lib/acceptanceNav';
 import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { reportError, reportCatch } from '@/lib/reportError';
 
@@ -187,18 +188,18 @@ export function StageDetailScreen() {
 
   const onAcceptPress = (qualityScore: number | null) => {
     if (!canWrite || acceptBlocked) return;
-    if (CHECKLIST.length === 0) {
-      Alert.alert(
-        'Принять без чеклиста?',
-        'Список проверок пуст. Принять этап без отметки пунктов?',
-        [
-          { text: 'Отмена', style: 'cancel' },
-          { text: 'Принять', onPress: () => { runAcceptStage(qualityScore).catch(reportCatch('stage.accept')); } },
-        ],
-      );
-      return;
-    }
-    runAcceptStage(qualityScore).catch(reportCatch('stage.accept'));
+    // Clarity V: всегда pre-confirm (паритет hub/portal), не только при пустом чеклисте
+    const emptyChecklist = CHECKLIST.length === 0;
+    showActionConfirm({
+      title: emptyChecklist ? 'Принять без чеклиста?' : 'Принять этап?',
+      message: emptyChecklist
+        ? 'Список проверок пуст. Принять этап без отметки пунктов?'
+        : `«${stage?.name || 'Этап'}». После приёмки откроется цепочка оплаты.`,
+      primaryLabel: 'Принять',
+      onPrimary: () => { runAcceptStage(qualityScore).catch(reportCatch('stage.accept')); },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
   if (!activeProject || !stage || !user) {
@@ -231,7 +232,17 @@ export function StageDetailScreen() {
 
   const onAddPhoto = async (label: string) => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) {
+      showActionConfirm({
+        title: 'Нужен доступ к фото',
+        message: 'Разрешите доступ к галерее в настройках устройства, чтобы прикрепить фото к этапу.',
+        primaryLabel: 'Повторить',
+        onPrimary: () => { void onAddPhoto(label); },
+        secondaryLabel: 'Позже',
+        onSecondary: () => undefined,
+      });
+      return;
+    }
     const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.5 });
     if (pick.canceled || !pick.assets[0]?.base64) return;
     setLoading(true);
@@ -247,8 +258,8 @@ export function StageDetailScreen() {
       await reload();
       await syncProjectSideEffects({ user, project: activeProject });
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Фото отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Фото');
       } else throw e;
     } finally {
       setLoading(false);
@@ -460,8 +471,8 @@ export function StageDetailScreen() {
             await rejectStage(stage.id, reason, { qualityScore: rejectQualityScore });
             await reload();
           } catch (e: unknown) {
-            if (e instanceof Error && e.message === 'offline_queued') {
-              Alert.alert('Офлайн', 'Отклонение отправится при подключении');
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued('Отклонение');
             } else {
               Alert.alert('Ошибка', 'Не удалось вернуть этап на доработку');
             }

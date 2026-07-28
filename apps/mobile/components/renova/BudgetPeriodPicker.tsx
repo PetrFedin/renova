@@ -2,6 +2,7 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { BUDGET_PERIOD_LABEL, type BudgetPeriod } from '@/constants/budgetPeriod';
 
 const PERIODS: BudgetPeriod[] = ['week', 'month', 'year', 'all'];
@@ -40,13 +41,7 @@ export function BudgetPeriodPicker({
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 12 },
-  label: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
+  label: { ...screenTypography.section, marginTop: 0, marginBottom: 6 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 12,

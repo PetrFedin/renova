@@ -7,6 +7,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, ApprovalItem } from '@/lib/api';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { RenovaTheme } from '@/constants/Theme';
 
 import { APPROVAL_TYPE_LABEL, approvalSourceLabel, resolveApprovalHref } from '@/lib/approvalLinks';
@@ -14,6 +15,7 @@ import { navigateApproval } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { objectTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertChangeOrderApproved } from '@/lib/procurementNav';
 import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
 import { reportCatch } from '@/lib/reportError';
@@ -25,8 +27,20 @@ export default function ApprovalsScreen() {
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const isCustomer = user?.role === 'customer';
 
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
+
   const load = useCallback(() => {
-    if (user && activeProject) api.approvalHub(user.id, activeProject.id).then(r => setItems(r.items)).catch(reportCatch('app.approvals.1'));
+    if (!user || !activeProject) return;
+    setLoadState('loading');
+    api.approvalHub(user.id, activeProject.id)
+      .then((r) => {
+        setItems(r.items);
+        setLoadState('loaded');
+      })
+      .catch((e) => {
+        reportCatch('app.approvals.1')(e);
+        setLoadState('error');
+      });
   }, [user?.id, activeProject?.id]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);
@@ -61,7 +75,7 @@ export default function ApprovalsScreen() {
         {!isCustomer && items.length > 0 && (
           <Text style={s.hint}>Отправлено заказчику на подтверждение. Вы получите уведомление после решения.</Text>
         )}
-        {items.map(it => (
+        {loadState !== 'error' && items.map(it => (
           <View key={key(it)} style={s.card}>
             <Text style={s.type}>{APPROVAL_TYPE_LABEL[it.type] || it.type}</Text>
             <Pressable onPress={() => navigateApproval(it, (isCustomer ? 'customer' : 'contractor') as OsRole, returnTo)}>
@@ -82,18 +96,39 @@ export default function ApprovalsScreen() {
                   onChangeText={(v) => setReasons(prev => ({ ...prev, [key(it)]: v }))}
                 />
                 <View style={s.actions}>
-                  <PrimaryButton title="Согласовать" onPress={() => approve(it)} />
-                  <PrimaryButton title="Отклонить" variant="outline" onPress={async () => {
+                  <PrimaryButton title="Согласовать" onPress={() => {
+                    // Clarity S: approve тоже через sheet (симметрия с reject)
+                    showActionConfirm({
+                      title: 'Согласовать?',
+                      message: it.subtitle || it.title || 'Подтвердить решение.',
+                      primaryLabel: 'Согласовать',
+                      onPrimary: () => { void approve(it); },
+                      secondaryLabel: 'Отмена',
+                      onSecondary: () => undefined,
+                    });
+                  }} />
+                  <PrimaryButton title="Отклонить" variant="outline" onPress={() => {
                     if (!user || !activeProject || readOnly) return;
-                    try {
-                      await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
-                      await syncProjectSideEffects({ user, project: activeProject });
-                      load();
-                      // W133: reject → материалы / смета / inbox
-                      alertApprovalRejected('customer', it.type);
-                    } catch (e) {
-                      if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение');
-                    }
+                    // Clarity R: confirm перед отклонением согласования
+                    showActionConfirm({
+                      title: 'Отклонить согласование?',
+                      message: it.subtitle || it.title || 'Решение будет отклонено.',
+                      primaryLabel: 'Отклонить',
+                      onPrimary: () => {
+                        void (async () => {
+                          try {
+                            await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
+                            await syncProjectSideEffects({ user, project: activeProject });
+                            load();
+                            alertApprovalRejected('customer', it.type);
+                          } catch (e) {
+                            if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение');
+                          }
+                        })();
+                      },
+                      secondaryLabel: 'Отмена',
+                      onSecondary: () => undefined,
+                    });
                   }} />
                 </View>
               </>
@@ -102,7 +137,10 @@ export default function ApprovalsScreen() {
             )}
           </View>
         ))}
-        {!items.length && (
+        {loadState === 'error' && (
+          <LoadErrorState title="Не удалось загрузить согласования" onRetry={load} role={isCustomer ? 'customer' : 'contractor'} />
+        )}
+        {loadState !== 'error' && !items.length && (
           <View style={s.emptyBox}>
             <Text style={s.empty}>Нет ожидающих согласований</Text>
             {isCustomer ? (

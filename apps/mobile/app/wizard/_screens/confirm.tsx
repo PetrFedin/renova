@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { calcRoomMetrics, generateTemplateLines, calcEstimateSummary } from '@/lib/calc-engine';
 import { resolveRenovationType, roomTypeLabel } from '@/constants/roomTypes';
@@ -22,6 +22,7 @@ import { WizardHint } from '@/components/renova/wizard/WizardHint';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { tabsHref } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 function formatCreateError(e: unknown): string {
   if (e && typeof e === 'object') {
@@ -101,7 +102,7 @@ export default function WizardConfirm() {
 
   async function onCreate() {
     if (!wizard.name.trim()) {
-      Alert.alert('Укажите название проекта');
+      showActionConfirm({ title: 'Название', message: 'Укажите название проекта' });
       return;
     }
     const budgetNum = parseInt(budgetInput.replace(/\s/g, ''), 10);
@@ -123,18 +124,22 @@ export default function WizardConfirm() {
       setCreatedName(wizard.name.trim());
       if (result.demoKeptPrimary && __DEV__) {
         const { createdName: cn, activeName } = result.demoKeptPrimary;
-        Alert.alert(
-          'Объект создан',
-          `«${cn}» добавлен в список. На демо открыт «${activeName}» — переключите объект в шапке.`,
-        );
+        showActionConfirm({
+          title: 'Объект создан',
+          message: `«${cn}» добавлен в список. На демо открыт «${activeName}» — переключите объект в шапке.`,
+        });
       }
       setPostCreateOpen(true);
     } catch (e) {
       const msg = formatCreateError(e);
-      Alert.alert('Ошибка создания', msg, [
-        { text: 'Повторить', onPress: () => { onCreate().catch(reportCatch('app.wizard._screens.confirm.1')); } },
-        { text: 'OK', style: 'cancel' },
-      ]);
+      showActionConfirm({
+        title: 'Ошибка создания',
+        message: msg,
+        primaryLabel: 'Повторить',
+        onPrimary: () => { onCreate().catch(reportCatch('app.wizard._screens.confirm.1')); },
+        secondaryLabel: 'Закрыть',
+        onSecondary: () => undefined,
+      });
     } finally {
       setBusy(false);
     }

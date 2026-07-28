@@ -1,6 +1,6 @@
 /** Планировщик бюджета — рыночная оценка для проекта (справочно) */
 import { useState } from 'react';
-import { ScrollView, Text, StyleSheet, Alert } from 'react-native';
+import { ScrollView, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { BudgetPlannerPanel } from '@/components/renova/BudgetPlannerPanel';
@@ -12,6 +12,7 @@ import { calcRoomMetrics } from '@/lib/calc-engine';
 import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export default function BudgetPlannerScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -37,29 +38,32 @@ export default function BudgetPlannerScreen() {
 
   async function applyToPlan() {
     if (!user || !activeProject || !estimate || readOnly || !canWrite) return;
-    Alert.alert(
-      'Применить к плану?',
-      `Записать ${formatRub(estimate.grand_total)} в план проекта «${activeProject.name}»? Текущий план: ${formatRub(activeProject.budget_planned)}.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Применить',
-          onPress: async () => {
-            setApplying(true);
-            try {
-              await api.patchProject(user.id, activeProject.id, { budget_planned: Math.round(estimate.grand_total) });
-              await syncProjectSideEffects({ user, project: activeProject });
-              await loadProject(activeProject.id);
-              Alert.alert('Готово', 'План проекта обновлён. Смету по работам согласуйте с подрядчиком.');
-            } catch {
-              Alert.alert('Ошибка', 'Не удалось обновить план проекта');
-            } finally {
-              setApplying(false);
-            }
-          },
-        },
-      ],
-    );
+    // Clarity Q: money-affecting confirm через sheet
+    showActionConfirm({
+      title: 'Применить к плану?',
+      message: `Записать ${formatRub(estimate.grand_total)} в план проекта «${activeProject.name}»? Текущий план: ${formatRub(activeProject.budget_planned)}.`,
+      primaryLabel: 'Применить',
+      onPrimary: () => {
+        void (async () => {
+          setApplying(true);
+          try {
+            await api.patchProject(user.id, activeProject.id, { budget_planned: Math.round(estimate.grand_total) });
+            await syncProjectSideEffects({ user, project: activeProject });
+            await loadProject(activeProject.id);
+            showActionConfirm({
+              title: 'Готово',
+              message: 'План проекта обновлён. Смету по работам согласуйте с подрядчиком.',
+            });
+          } catch {
+            showActionConfirm({ title: 'Ошибка', message: 'Не удалось обновить план проекта' });
+          } finally {
+            setApplying(false);
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   }
 
   return (

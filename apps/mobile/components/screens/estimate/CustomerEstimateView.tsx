@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { ScrollView, StyleSheet, Alert } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
@@ -126,8 +127,8 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
               // W131: lock → договор / график
               alertEstimateLocked('customer');
             } catch (e: unknown) {
-              if (e instanceof Error && e.message === 'offline_queued') {
-                Alert.alert('Офлайн', 'Фиксация сметы отправится при подключении');
+              if (isOfflineQueued(e)) {
+                notifyOfflineQueued('Фиксация сметы');
               } else {
                 throw e;
               }

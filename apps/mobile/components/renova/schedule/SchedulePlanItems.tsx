@@ -3,10 +3,10 @@
  * Одна primary CTA на пункт; offline → очередь.
  */
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, type WorkSchedule, type WorkScheduleItem, type WorkScheduleItemStatus } from '@/lib/api';
-import type { OsRole } from '@/constants/osSections';
+import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { assertCanSetScheduleItemStatus } from '@/lib/scheduleItemStatusGuard';
 import {
   SCHEDULE_ITEM_ACTION_LABEL,
@@ -15,6 +15,9 @@ import {
 } from '@/lib/domain/scheduleItemNextActions';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { reportError } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { pushStageDetail } from '@/lib/navigation';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 type Props = {
   schedule: WorkSchedule;
@@ -46,19 +49,23 @@ export function SchedulePlanItems({
   const applyStatus = async (item: WorkScheduleItem, to: WorkScheduleItemStatus) => {
     const gate = assertCanSetScheduleItemStatus(role, to);
     if (!gate.ok) {
-      Alert.alert('График', gate.message);
+      // Clarity P: gate sheet вместо Alert
+      showActionConfirm({ title: 'График', message: gate.message });
       return;
     }
     if (role === 'customer' && to === 'accepted') {
-      // Честность: сервер требует WA; предупреждаем заранее
-      Alert.alert(
-        'Приёмка этапа',
-        'Принятие из графика возможно только после приёмки с фото и чеклистом. Продолжить?',
-        [
-          { text: 'Отмена', style: 'cancel' },
-          { text: 'Продолжить', onPress: () => void runUpdate(item, to) },
-        ],
-      );
+      // Честность: без WA сервер 409 — ведём в приёмку, не ложный «Продолжить»
+      showActionConfirm({
+        title: 'Нужна приёмка этапа',
+        message: 'Принятие из графика возможно только после приёмки с фото и чеклистом.',
+        primaryLabel: item.stage_id ? 'К этапу' : 'К приёмке',
+        onPrimary: () => {
+          if (item.stage_id) pushStageDetail(item.stage_id);
+          else pushOsNav(repairTabRoute('customer', 'control'), undefined, 'customer');
+        },
+        secondaryLabel: 'Отмена',
+        onSecondary: () => undefined,
+      });
       return;
     }
     await runUpdate(item, to);
@@ -80,7 +87,10 @@ export function SchedulePlanItems({
         });
       } else {
         reportError('schedule.planItem.status', e);
-        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось сменить статус');
+        showActionConfirm({
+          title: 'Ошибка',
+          message: e instanceof Error ? e.message : 'Не удалось сменить статус',
+        });
       }
     } finally {
       setBusyId(null);

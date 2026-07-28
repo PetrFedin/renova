@@ -1,18 +1,18 @@
 /** Какой проект считать активным: сохранённый на устройстве или канонический demo */
 import { pickPrimaryDemoProject } from './pickPrimaryDemoProject';
+import { filterOutJunkProjects, isJunkProjectName } from './junkProjects';
 
-export function isJunkProjectName(name?: string | null): boolean {
-  return /wizard|(^|\s)test(\s|$)/i.test(name ?? '');
-}
+export { isJunkProjectName, filterOutJunkProjects } from './junkProjects';
 
 export function resolveActiveProjectId(
   projects: { id: string; name?: string | null }[],
   savedProjectId: string | null | undefined,
 ): string | null {
   if (!projects.length) return null;
+  const usable = filterOutJunkProjects(projects);
   if (savedProjectId) {
-    const saved = projects.find((p) => p.id === savedProjectId);
-    if (saved && !isJunkProjectName(saved.name)) return savedProjectId;
+    const saved = usable.find((p) => p.id === savedProjectId);
+    if (saved) return savedProjectId;
   }
-  return pickPrimaryDemoProject(projects)?.id ?? projects[0].id;
+  return pickPrimaryDemoProject(usable)?.id ?? usable[0]?.id ?? null;
 }

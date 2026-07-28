@@ -1,7 +1,8 @@
-/** Заголовок секции вкладки «План» */
+/** Заголовок секции вкладки «План» — Clarity C: короче, без «who»-шума */
 import type { ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 
 type Props = {
   step: string;
@@ -11,13 +12,13 @@ type Props = {
   children: ReactNode;
 };
 
-export function PlanSectionFrame({ step, title, hint, who, children }: Props) {
+export function PlanSectionFrame({ title, hint, children }: Props) {
   return (
     <View style={s.wrap}>
-      <Text style={s.step}>{step}</Text>
       <Text style={s.title}>{title}</Text>
-      <Text style={s.hint}>{hint}</Text>
-      <Text style={s.who}>{who}</Text>
+      <Text style={s.hint} numberOfLines={2}>
+        {hint}
+      </Text>
       {children}
     </View>
   );
@@ -25,13 +26,6 @@ export function PlanSectionFrame({ step, title, hint, who, children }: Props) {
 
 const s = StyleSheet.create({
   wrap: { paddingTop: 4 },
-  step: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: RenovaTheme.colors.primary,
-    marginBottom: 2,
-  },
-  title: { fontSize: 18, fontWeight: '800', color: RenovaTheme.colors.text, marginBottom: 4 },
-  hint: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18, marginBottom: 4 },
-  who: { fontSize: 12, color: RenovaTheme.colors.textSubtle, marginBottom: 10, fontStyle: 'italic' },
+  title: { fontSize: 17, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 4 },
+  hint: { ...screenTypography.listMeta, marginBottom: 10 },
 });

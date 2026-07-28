@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import {
   CHAT_FILTER_ALL,
   chatProjectFilterLabel,
@@ -155,14 +156,11 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   menuTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    ...screenTypography.section,
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 8,
+    marginTop: 0,
   },
   menuScroll: { maxHeight: 360 },
   option: {

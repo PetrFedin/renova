@@ -1,7 +1,7 @@
 /** W123: импорт банковской выписки → матч → confirm оплат → бюджет (Smetter/Gectaro) */
 import { useState } from 'react';
 import {
-  View, Text, Modal, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator,
+  View, Text, Modal, TextInput, Pressable, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -9,6 +9,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
   visible: boolean;
@@ -45,46 +46,50 @@ export function BankStatementImportSheet({
     onDone?.();
   };
 
+  /** Clarity P: post-import decisions через sheet, не nested Alert */
   const askExpenses = (csvText: string, unmatched: number) => {
     if (unmatched <= 0) {
       onDone?.();
       return;
     }
-    Alert.alert(
-      'Расходы из выписки',
-      `${unmatched} строк без счёта. Создать расходы в бюджете?`,
-      [
-        { text: 'Нет', style: 'cancel', onPress: () => onDone?.() },
-        {
-          text: 'Создать расходы',
-          onPress: () => {
-            setBusy('expenses');
-            api.importBankStatement(userId, projectId, csvText, { create_expenses: true })
-              .then(async (r2) => {
-                await sync();
-                Alert.alert(
-                  'Бюджет',
-                  `Создано расходов: ${r2.expenses_created ?? 0}.`,
-                  [
-                    { text: 'OK', style: 'cancel', onPress: () => onDone?.() },
-                    { text: 'К расходам', onPress: goExpenses },
-                  ],
-                );
-              })
-              .catch((e: unknown) => {
-                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать расходы');
-              })
-              .finally(() => setBusy(null));
-          },
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Расходы из выписки',
+      message: `${unmatched} строк без счёта. Создать расходы в бюджете?`,
+      primaryLabel: 'Создать расходы',
+      onPrimary: () => {
+        setBusy('expenses');
+        api.importBankStatement(userId, projectId, csvText, { create_expenses: true })
+          .then(async (r2) => {
+            await sync();
+            showActionConfirm({
+              title: 'Бюджет',
+              message: `Создано расходов: ${r2.expenses_created ?? 0}.`,
+              primaryLabel: 'К расходам',
+              onPrimary: goExpenses,
+              secondaryLabel: 'Готово',
+              onSecondary: () => onDone?.(),
+            });
+          })
+          .catch((e: unknown) => {
+            showActionConfirm({
+              title: 'Ошибка',
+              message: e instanceof Error ? e.message : 'Не удалось создать расходы',
+            });
+          })
+          .finally(() => setBusy(null));
+      },
+      secondaryLabel: 'Нет',
+      onSecondary: () => onDone?.(),
+    });
   };
 
   const submit = async () => {
     const text = csv.trim();
     if (!text) {
-      Alert.alert('Импорт выписки', 'Вставьте CSV: дата;сумма;назначение');
+      showActionConfirm({
+        title: 'Импорт выписки',
+        message: 'Вставьте CSV: дата;сумма;назначение',
+      });
       return;
     }
     setBusy('import');
@@ -101,46 +106,61 @@ export function BankStatementImportSheet({
       const summary = `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${unmatched}`;
 
       if (!pendingIds.length) {
-        Alert.alert('Импорт выписки', summary, [
-          { text: 'OK', onPress: () => askExpenses(text, unmatched) },
-          ...(res.matched > 0 ? [{ text: 'К оплатам', onPress: goPayments }] : []),
-        ]);
+        showActionConfirm({
+          title: 'Импорт выписки',
+          message: summary,
+          actions: [
+            ...(res.matched > 0
+              ? [{ label: 'К оплатам', onPress: goPayments }]
+              : []),
+            { label: 'Дальше', onPress: () => askExpenses(text, unmatched) },
+          ],
+        });
         return;
       }
 
-      Alert.alert(
-        'Импорт выписки',
-        `${summary}\n\nПодтвердить ${pendingIds.length} pending-оплат(ы)? (gate: приёмка этапа)`,
-        [
-          { text: 'Только матч', style: 'cancel', onPress: () => askExpenses(text, unmatched) },
+      showActionConfirm({
+        title: 'Подтвердить оплаты?',
+        message: `${summary}\n\nПодтвердить ${pendingIds.length} pending-оплат(ы)? Требуется приёмка этапа (gate).`,
+        actions: [
           {
-            text: 'Подтвердить',
+            label: 'Подтвердить',
             onPress: () => {
               setBusy('confirm');
               api.confirmBankStatementMatches(userId, projectId, pendingIds)
                 .then(async (r) => {
                   await sync();
-                  Alert.alert(
-                    'Выписка → оплаты',
-                    `Подтверждено: ${r.confirmed_count} · заблокировано gate: ${r.blocked_count}`,
-                    [
-                      { text: 'OK', style: 'cancel', onPress: () => askExpenses(text, unmatched) },
+                  showActionConfirm({
+                    title: 'Выписка → оплаты',
+                    message: `Подтверждено: ${r.confirmed_count} · заблокировано gate: ${r.blocked_count}`,
+                    actions: [
                       ...(r.confirmed_count > 0
-                        ? [{ text: 'К оплатам', onPress: () => { goPayments(); } }]
+                        ? [{ label: 'К оплатам', onPress: goPayments }]
                         : []),
+                      { label: 'Дальше', onPress: () => askExpenses(text, unmatched) },
                     ],
-                  );
+                  });
                 })
                 .catch((e: unknown) => {
-                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось подтвердить');
+                  showActionConfirm({
+                    title: 'Ошибка',
+                    message: e instanceof Error ? e.message : 'Не удалось подтвердить',
+                  });
                 })
                 .finally(() => setBusy(null));
             },
           },
+          {
+            label: 'Только матч',
+            onPress: () => askExpenses(text, unmatched),
+          },
         ],
-      );
+      });
     } catch (e: unknown) {
-      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось импортировать');
+      showActionConfirm({
+        title: 'Ошибка',
+        message: e instanceof Error ? e.message : 'Не удалось импортировать',
+      });
     } finally {
       setBusy(null);
     }
@@ -211,12 +231,12 @@ const s = StyleSheet.create({
   btn: {
     backgroundColor: RenovaTheme.colors.primary,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 10,
     minWidth: 120,
     alignItems: 'center',
   },
   btnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 14 },
-  btnGhost: { paddingHorizontal: 12, paddingVertical: 10 },
-  btnGhostT: { color: RenovaTheme.colors.textMuted, fontWeight: '600' },
+  btnGhost: { paddingHorizontal: 14, paddingVertical: 12 },
+  btnGhostT: { color: RenovaTheme.colors.textMuted, fontWeight: '600', fontSize: 14 },
 });

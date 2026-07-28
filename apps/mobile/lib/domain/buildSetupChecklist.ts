@@ -52,11 +52,19 @@ export function buildSetupChecklist(
       priority: 2,
     },
     {
+      id: 'contractor',
+      // Раньше rooms/estimate: без исполнителя путь «ремонт» мёртв
+      label: 'Исполнитель',
+      done: !!project.contractor_id,
+      href: customerProfileTabHref(role, 'contractor'),
+      priority: 3,
+    },
+    {
       id: 'rooms',
       label: 'Комнаты',
       done: rooms > 0,
       href: objectTabHref(role, 'rooms'),
-      priority: 3,
+      priority: 4,
     },
     {
       id: 'estimate',
@@ -64,13 +72,6 @@ export function buildSetupChecklist(
       label: 'Смета согласована',
       done: !!project.estimate_locked_at && estimateLines > 0,
       href: objectTabHref(role, 'estimate'),
-      priority: 4,
-    },
-    {
-      id: 'contractor',
-      label: 'Исполнитель',
-      done: !!project.contractor_id,
-      href: customerProfileTabHref(role, 'contractor'),
       priority: 5,
     },
     {

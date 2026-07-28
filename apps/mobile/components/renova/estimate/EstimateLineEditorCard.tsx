@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import type { EstimateLine } from '@/lib/api';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
 
@@ -105,7 +106,7 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', padding: 12, gap: 8, alignItems: 'flex-start' },
   headMain: { flex: 1 },
   headRight: { alignItems: 'flex-end', gap: 4 },
-  type: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
+  type: { ...screenTypography.metricLabel, marginTop: 0 },
   name: { fontWeight: '700', fontSize: 14, marginTop: 2 },
   meta: { fontSize: 11, color: RenovaTheme.colors.textSubtle, marginTop: 4 },
   sum: { fontWeight: '800', fontSize: 14, color: RenovaTheme.colors.primary },

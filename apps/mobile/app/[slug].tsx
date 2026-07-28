@@ -17,6 +17,10 @@ import S_portfolio from './_stack/portfolio';
 import S_reports from './_stack/reports';
 import S_scratchpad from './_stack/scratchpad';
 
+/**
+ * Stack via catch-all [slug]: reports/guide/scratchpad/… живут только здесь
+ * (нет app/reports.tsx). portfolio — app/portfolio.tsx + re-export _stack.
+ */
 const STACK: Record<string, ComponentType> = {
   'budget-planner': S_budget_planner,
   'checklist-templates': S_checklist_templates,

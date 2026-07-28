@@ -9,6 +9,7 @@ import { calendarEventInRange, filterCalendarEventsForRole } from '@/lib/domain/
 import { useOsNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
 type DayGroup = { date: string; label: string; count: number; sample: string };
 
@@ -37,6 +38,7 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
   const { pushTab } = useOsNavFromHere(role);
   const [events, setEvents] = useState<{ date: string; title: string }[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const reload = useCallback(() => {
     api.getCalendar(userId, projectId).then((c: CalendarData) => {
@@ -44,7 +46,11 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
       const to = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
       const week = filterCalendarEventsForRole(c.events, role).filter((e) => calendarEventInRange(e, from, to));
       setEvents(week);
-    }).catch((e) => { reportError('components.renova.os.WeekScheduleStrip.Events', e); setEvents([]); });
+      setLoadError(false);
+    }).catch((e) => {
+      reportError('components.renova.os.WeekScheduleStrip.Events', e);
+      setLoadError(true);
+    });
   }, [userId, projectId, role]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);
@@ -64,6 +70,20 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
     pushTab('calendar', undefined, date ? { date } : undefined);
 
   const wrapStyle = embedded ? undefined : homeRowStyles.zone;
+
+  if (loadError) {
+    const err = (
+      <>
+        {!embedded ? (
+          <View style={homeRowStyles.zoneHead}>
+            <Text style={homeTypography.zoneLabel}>План на неделю</Text>
+          </View>
+        ) : null}
+        <LoadErrorState title="Не удалось загрузить план" onRetry={reload} />
+      </>
+    );
+    return embedded ? <View>{err}</View> : <View style={wrapStyle}>{err}</View>;
+  }
 
   if (!groups.length) {
     const empty = (

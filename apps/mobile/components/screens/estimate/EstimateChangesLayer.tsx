@@ -11,6 +11,7 @@ import { budgetTabRoute } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChangeOrderApproved } from '@/lib/procurementNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
   userId: string;
@@ -37,39 +38,80 @@ export function EstimateChangesLayer({
   };
   const pending = orders.filter((o) => o.status === 'pending');
   const decided = orders.filter((o) => o.status !== 'pending');
+  /** Clarity D: сумма дельты по ожидающим — сразу видно влияние на бюджет */
+  const pendingDelta = pending.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
 
   return (
     <View style={s.wrap}>
       <ObjectSection
-        title="Ждут вашего решения"
-        hint={pending.length ? 'Одобрите или отклоните — сумма сметы обновится автоматически.' : 'Нет ожидающих доп. работ.'}
+        title={pending.length ? `Ждут решения · Δ ${formatRub(pendingDelta)}` : 'Ждут вашего решения'}
+        hint={
+          pending.length
+            ? `Одобрите или отклоните ${pending.length} поз. — смета обновится. Итоговая дельта: ${formatRub(pendingDelta)}.`
+            : 'Нет ожидающих доп. работ.'
+        }
       >
         {!pending.length && <Text style={s.meta}>Все изменения обработаны</Text>}
+        {pending.length > 0 ? (
+          <View style={s.deltaBar}>
+            <Text style={s.deltaLabel}>Сумма ожидающих изменений</Text>
+            <Text style={s.deltaValue}>{formatRub(pendingDelta)}</Text>
+            <PrimaryButton
+              title="К бюджету"
+              variant="outline"
+              compact
+              onPress={() => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role)}
+            />
+          </View>
+        ) : null}
         {pending.map((o) => (
           <ChangeOrderRow
             key={o.id}
             order={o}
             canWrite={canWrite}
-            onApprove={async () => {
-              try {
-                const res = await api.approveChangeOrder(userId, projectId, o.id);
-                await onProjectReload();
-                onOrdersChanged(await api.listChangeOrders(userId, projectId));
-                notifyBudgetDelta(o, res?.document_id);
-                await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
-              } catch (e) {
-                if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение доп. работ');
-              }
+            onApprove={() => {
+              // Clarity R: money confirm перед одобрением дельты
+              showActionConfirm({
+                title: 'Согласовать доп. работу?',
+                message: `«${o.title}» · ${formatRub(o.amount)} попадёт в смету и бюджет.`,
+                primaryLabel: 'Согласовать',
+                onPrimary: () => {
+                  void (async () => {
+                    try {
+                      const res = await api.approveChangeOrder(userId, projectId, o.id);
+                      await onProjectReload();
+                      onOrdersChanged(await api.listChangeOrders(userId, projectId));
+                      notifyBudgetDelta(o, res?.document_id);
+                      await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
+                    } catch (e) {
+                      if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение доп. работ');
+                    }
+                  })();
+                },
+                secondaryLabel: 'Отмена',
+                onSecondary: () => undefined,
+              });
             }}
-            onReject={async () => {
-              try {
-                await api.rejectChangeOrder(userId, projectId, o.id);
-                await onProjectReload();
-                onOrdersChanged(await api.listChangeOrders(userId, projectId));
-                await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
-              } catch (e) {
-                if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение доп. работ');
-              }
+            onReject={() => {
+              showActionConfirm({
+                title: 'Отклонить доп. работу?',
+                message: `«${o.title}» · ${formatRub(o.amount)} не войдёт в смету.`,
+                primaryLabel: 'Отклонить',
+                onPrimary: () => {
+                  void (async () => {
+                    try {
+                      await api.rejectChangeOrder(userId, projectId, o.id);
+                      await onProjectReload();
+                      onOrdersChanged(await api.listChangeOrders(userId, projectId));
+                      await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
+                    } catch (e) {
+                      if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение доп. работ');
+                    }
+                  })();
+                },
+                secondaryLabel: 'Отмена',
+                onSecondary: () => undefined,
+              });
             }}
           />
         ))}
@@ -129,6 +171,18 @@ function ChangeOrderRow({
 
 const s = StyleSheet.create({
   wrap: { marginTop: 12, gap: 4 },
+  deltaBar: {
+    marginBottom: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: RenovaTheme.colors.border,
+    backgroundColor: RenovaTheme.colors.surface,
+    gap: 6,
+  },
+  deltaLabel: { fontSize: 12, color: RenovaTheme.colors.textMuted },
+  deltaValue: { fontSize: 18, fontWeight: '700', color: RenovaTheme.colors.text },
   orderRow: {
     backgroundColor: RenovaTheme.colors.surface,
     padding: 12,

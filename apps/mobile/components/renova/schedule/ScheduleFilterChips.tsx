@@ -1,6 +1,6 @@
-/** Горизонтальные фильтры — компактные чипы */
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { RenovaTheme } from '@/constants/Theme';
+/** Горизонтальные фильтры — Clarity V: общий filterChipStyles SoT */
+import { ScrollView, View, Text, Pressable } from 'react-native';
+import { filterChipStyles } from '@/constants/screenTypography';
 
 export function ScheduleFilterChips({
   items,
@@ -12,28 +12,17 @@ export function ScheduleFilterChips({
   onChange: (key: string) => void;
 }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filterChipStyles.row}>
       {items.map((f) => (
-        <Pressable key={f.key} style={[s.chip, value === f.key && s.chipOn]} onPress={() => onChange(f.key)}>
-          <Text style={[s.chipT, value === f.key && s.chipTOn]}>{f.label}</Text>
+        <Pressable
+          key={f.key}
+          style={[filterChipStyles.chip, value === f.key && filterChipStyles.chipOn]}
+          onPress={() => onChange(f.key)}
+        >
+          <Text style={[filterChipStyles.chipT, value === f.key && filterChipStyles.chipTOn]}>{f.label}</Text>
         </Pressable>
       ))}
       <View style={{ width: 4 }} />
     </ScrollView>
   );
 }
-
-const s = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 6, paddingVertical: 2 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    backgroundColor: RenovaTheme.colors.borderLight,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-  },
-  chipOn: { backgroundColor: RenovaTheme.colors.accent, borderColor: RenovaTheme.colors.accent },
-  chipT: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  chipTOn: { color: RenovaTheme.colors.surface },
-});

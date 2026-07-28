@@ -131,7 +131,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
         Факт = «Бюджет → Сводка». Закупки материалов — только статус «куплено». Оплаты подрядчикам — вкладка «Оплаты».
       </Text>
       <BudgetFactStatus serverFact={fact} listTotal={listTotal} compact showAligned />
-      <OsWidgetGrid items={kpiWidgets} title="Сводка по проекту" />
+      <OsWidgetGrid items={kpiWidgets} title="План и факт" />
       <KPITrends points={kpiPoints} />
       {full && user && activeProject && (
         <BudgetScenario userId={user.id} projectId={activeProject.id} />

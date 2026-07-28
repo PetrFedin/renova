@@ -1,6 +1,7 @@
 /** Детализация бюджета по периоду — после нажатия на виджет */
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { BudgetPeriodPicker } from '@/components/renova/BudgetPeriodPicker';
 import {
   BUDGET_FOCUS_LABEL,
@@ -142,31 +143,32 @@ export function BudgetPeriodDetailSection(props: Props) {
 }
 
 const s = StyleSheet.create({
-  wrap: { ...card, marginBottom: 16, borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.primary },
-  title: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
-  hero: { marginBottom: 12, paddingVertical: 8 },
-  heroVal: { fontSize: 22, fontWeight: '700', color: RenovaTheme.colors.primary },
-  heroSub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 17 },
-  limit: { fontSize: 12, color: RenovaTheme.colors.text, marginTop: 6, fontWeight: '600' },
-  section: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    marginTop: 4,
+  // Clarity Q: hairline container вместо тяжёлого card-in-card
+  wrap: {
+    ...listRowStyles.metricCell,
+    alignItems: 'stretch',
+    marginBottom: 16,
+    padding: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: RenovaTheme.colors.primary,
   },
+  title: { ...screenTypography.listTitle, fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  hero: { marginBottom: 12, paddingVertical: 8 },
+  heroVal: { ...screenTypography.metric, color: RenovaTheme.colors.primary },
+  heroSub: { ...screenTypography.listMeta, marginTop: 4, lineHeight: 17 },
+  limit: { ...screenTypography.listTitle, fontSize: 12, marginTop: 6 },
+  section: { ...screenTypography.section, marginBottom: 8, marginTop: 4 },
   bucket: {
     paddingVertical: 10,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: RenovaTheme.colors.border,
   },
   bucketHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  bucketLabel: { fontSize: 13, fontWeight: '600', flex: 1 },
-  bucketVal: { fontSize: 15, fontWeight: '800' },
+  bucketLabel: { ...screenTypography.listTitle, fontSize: 13, flex: 1 },
+  bucketVal: { ...screenTypography.listTitle, fontSize: 15, fontWeight: '700' },
   over: { color: RenovaTheme.colors.danger },
-  bucketMeta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  rowLine: { fontSize: 12, color: RenovaTheme.colors.primary, marginTop: 4 },
+  bucketMeta: { ...screenTypography.listMeta },
+  rowLine: { ...screenTypography.listLink },
   link: { marginTop: 10, alignItems: 'center' },
-  linkT: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary },
+  linkT: { ...screenTypography.listLink, marginTop: 0, fontWeight: '700' },
 });

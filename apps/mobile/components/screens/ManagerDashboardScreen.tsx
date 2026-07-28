@@ -4,13 +4,15 @@ import { router } from 'expo-router';
 
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { api } from '@/lib/api';
 import type { OsBudgetSummary, OsInsight, OsRisk } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
-import type { OsRole } from '@/constants/osSections';
+import { tabsRoute, type OsRole } from '@/constants/osSections';
 
 type LoadState = {
   budget: OsBudgetSummary | null;
@@ -79,10 +81,16 @@ export function ManagerDashboardScreen() {
   const riskColor = severityTone(topRisk?.severity || budget?.risk);
 
   if (!user || !activeProject) {
+    const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
     return (
       <View style={styles.center}>
-        <Text style={styles.stateTitle}>Нет активного проекта</Text>
-        <Text style={styles.stateText}>Выберите проект, чтобы открыть управленческую сводку.</Text>
+        <EmptyActionState
+          title="Нет активного проекта"
+          hint="Выберите объект на главной, чтобы открыть управленческую сводку."
+          actionLabel="На главную"
+          actionVariant="primary"
+          onAction={() => pushOsNav(tabsRoute(role, 'index'), undefined, role)}
+        />
       </View>
     );
   }
@@ -172,19 +180,27 @@ const styles = StyleSheet.create({
   back: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.primaryMuted, fontWeight: RenovaTheme.fontWeight.semibold },
   title: { fontSize: RenovaTheme.fontSize.h1, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
   subtitle: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.textMuted },
-  heroCard: { ...card, gap: RenovaTheme.spacing.sm, borderLeftWidth: 4, borderLeftColor: RenovaTheme.colors.primaryMuted },
-  heroLabel: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, fontWeight: RenovaTheme.fontWeight.bold, textTransform: 'uppercase', letterSpacing: 0.4 },
-  heroTitle: { fontSize: RenovaTheme.fontSize.h2, fontWeight: RenovaTheme.fontWeight.extrabold, lineHeight: 26 },
-  heroText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: RenovaTheme.spacing.sm },
-  kpiCard: { ...card, width: '48%', minHeight: 118, gap: 5 },
-  kpiLabel: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, fontWeight: RenovaTheme.fontWeight.bold },
-  kpiValue: { fontSize: RenovaTheme.fontSize.h3, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.extrabold },
-  kpiHint: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
-  card: { ...card, gap: RenovaTheme.spacing.sm },
-  sectionTitle: { fontSize: RenovaTheme.fontSize.h3, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.bold },
-  itemTitle: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.extrabold },
-  itemText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  stateTitle: { fontSize: RenovaTheme.fontSize.h3, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text, textAlign: 'center' },
-  stateText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, textAlign: 'center', lineHeight: 18 },
+  // Clarity V: risk strip без тяжёлого Theme.card
+  heroCard: {
+    gap: RenovaTheme.spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: RenovaTheme.colors.primaryMuted,
+    paddingLeft: 12,
+  },
+  heroLabel: { ...screenTypography.metricLabel, letterSpacing: 0 },
+  heroTitle: { ...screenTypography.listTitle, fontSize: 18, lineHeight: 24 },
+  heroText: { ...screenTypography.empty },
+  kpiGrid: { ...listRowStyles.summaryRow, flexWrap: 'wrap' },
+  kpiCard: { ...listRowStyles.metricCell, width: '48%', minWidth: '46%', minHeight: 100, gap: 4 },
+  kpiLabel: { ...screenTypography.metricLabel },
+  kpiValue: { ...screenTypography.metric, fontSize: 18 },
+  kpiHint: { ...screenTypography.listMeta, textAlign: 'center' },
+  card: { gap: RenovaTheme.spacing.sm, paddingVertical: 8 },
+  sectionTitle: { ...screenTypography.section, marginTop: 0 },
+  itemTitle: { ...screenTypography.listTitle },
+  itemText: { ...screenTypography.empty },
+  stateTitle: { ...screenTypography.listTitle, textAlign: 'center' },
+  stateText: { ...screenTypography.empty, textAlign: 'center' },
 });

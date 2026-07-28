@@ -15,10 +15,10 @@ console.assert(stages.includes('createStage') && stages.includes('offline_queued
 console.assert(stages.includes('/stages`') || stages.includes('stages`, { method: \'POST\''), 'createStage POST');
 console.assert(os.includes('patchOsExpense') && os.includes('offline_queued'), 'expense patch offline');
 console.assert(os.includes('deleteOsExpense') && os.includes("'DELETE'"), 'expense delete offline');
-console.assert(sheet.includes('offline_queued') && sheet.includes('Работа отправится'), 'WO create UI');
+console.assert(sheet.includes('notifyOfflineQueued') && sheet.includes('isOfflineQueued'), 'WO create UI');
 console.assert(syncUi.includes('syncProjectSideEffects') && syncUi.includes('result.synced'), 'flush→bus');
 console.assert(works.includes('createStage') && works.includes('offline_queued'), 'works create offline');
-console.assert(expense.includes('offline_queued') && expense.includes('траты'), 'expense UI offline');
-console.assert(day.includes('offline_queued'), 'schedule day offline');
+console.assert(expense.includes('notifyOfflineQueued') && expense.includes('isOfflineQueued'), 'expense UI offline');
+console.assert(day.includes('notifyOfflineQueued') && day.includes('isOfflineQueued'), 'schedule day offline');
 
 console.log('journeyUnify.w112.test.ts OK');

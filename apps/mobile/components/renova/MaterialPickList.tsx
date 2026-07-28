@@ -1,9 +1,10 @@
 /** Подбор материалов с привязкой к комнате */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, Linking, StyleSheet, TextInput } from 'react-native';
+import { View, Text, Pressable, Linking, StyleSheet, TextInput, Alert } from 'react-native';
 import { api, MaterialPick, Room, Stage } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { materialPickStatusLabel } from '@/constants/labels';
 import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
@@ -17,6 +18,7 @@ import {
   alertMaterialPickApproved,
   alertMaterialPickSubmitted,
 } from '@/lib/procurementNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function MaterialPickList({
   userId,
@@ -68,7 +70,25 @@ export function MaterialPickList({
           <Text style={s.n}>{p.name} · {materialPickStatusLabel(p.status)}{p.room_id && roomName(p.room_id) ? ` · ${roomName(p.room_id)}` : ''}</Text>
           <Text style={s.m}>{p.qty} {p.unit} · {formatRub(p.total)} {p.analog_of_id ? '· аналог' : ''}</Text>
           {p.shop_url && role === 'contractor' && (
-            <PrimaryButton title="↻ цена" variant="outline" onPress={async () => { await api.syncMaterialPrice(userId, projectId, p.id); load(); }} />
+            <PrimaryButton
+              title="↻ цена"
+              variant="outline"
+              onPress={async () => {
+                try {
+                  const updated = await api.syncMaterialPrice(userId, projectId, p.id);
+                  load();
+                  // Honesty: stub не маскируем как live-рынок
+                  if (updated?.price_source === 'stub') {
+                    Alert.alert(
+                      'Цена (оценка)',
+                      'Магазин не отдал живую цену — показана оценка (stub), не рыночный синк.',
+                    );
+                  }
+                } catch (e) {
+                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось обновить цену');
+                }
+              }}
+            />
           )}
           {p.shop_url && (
             <Pressable onPress={() => Linking.openURL(p.shop_url!)}>
@@ -76,11 +96,30 @@ export function MaterialPickList({
             </Pressable>
           )}
           {!readOnly && role === 'customer' && p.status === 'pending' && (
-            <PrimaryButton title="Согласовать" onPress={async () => {
-              await api.approveMaterialPick(userId, projectId, p.id);
-              await syncAfter();
-              load();
-              alertMaterialPickApproved(role);
+            <PrimaryButton title="Согласовать" onPress={() => {
+              // Clarity V: бюджет/закупка — confirm перед approve
+              showActionConfirm({
+                title: 'Согласовать материал?',
+                message: `«${p.name}» · ${formatRub(p.price)}. После согласия подрядчик сможет закупить.`,
+                primaryLabel: 'Согласовать',
+                onPrimary: () => {
+                  void (async () => {
+                    try {
+                      await api.approveMaterialPick(userId, projectId, p.id);
+                      await syncAfter();
+                      load();
+                      alertMaterialPickApproved(role);
+                    } catch (e: unknown) {
+                      showActionConfirm({
+                        title: 'Ошибка',
+                        message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                      });
+                    }
+                  })();
+                },
+                secondaryLabel: 'Отмена',
+                onSecondary: () => undefined,
+              });
             }} />
           )}
           {!readOnly && role === 'contractor' && p.status === 'draft' && (
@@ -110,4 +149,13 @@ export function MaterialPickList({
     </View>
   );
 }
-const s = StyleSheet.create({ form:{ gap:8, marginTop:8 }, inp:{ borderWidth:1, borderColor:'#ddd', borderRadius:8, padding:10, backgroundColor:RenovaTheme.colors.surface }, box:{ marginVertical:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ backgroundColor:RenovaTheme.colors.surface, padding:10, borderRadius:8, marginBottom:6 }, n:{ fontWeight:'600' }, m:{ fontSize:12, color:'#666' }, link:{ color:'#2563eb', fontSize:12, marginTop:4 } });
+const s = StyleSheet.create({
+  form: { gap: 8, marginTop: 8 },
+  inp: { borderWidth: StyleSheet.hairlineWidth, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 10, backgroundColor: RenovaTheme.colors.surface },
+  box: { marginVertical: 10 },
+  head: { ...screenTypography.section, marginTop: 0, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 8 },
+  row: { ...listRowStyles.row },
+  n: { ...screenTypography.listTitle },
+  m: { ...screenTypography.listMeta },
+  link: { ...screenTypography.listLink },
+});

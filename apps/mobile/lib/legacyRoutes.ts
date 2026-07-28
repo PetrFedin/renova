@@ -11,7 +11,6 @@ export const TAB_ALIASES: Record<string, string> = {
   '/(customer)/(tabs)/stages': '/(customer)/(tabs)/repair?tab=works',
   '/(customer)/(tabs)/rooms': '/(customer)/(tabs)/object?tab=rooms',
   '/(customer)/(tabs)/estimate': '/(customer)/(tabs)/object?tab=estimate',
-  '/project-analytics': '/(customer)/(tabs)/budget?tab=deviations',
   '/(customer)/(tabs)/plan': '/(customer)/(tabs)/object?tab=plan',
   '/(contractor)/(tabs)/money': '/(contractor)/(tabs)/budget',
   '/(contractor)/(tabs)/more': '/(contractor)/(tabs)/profile',

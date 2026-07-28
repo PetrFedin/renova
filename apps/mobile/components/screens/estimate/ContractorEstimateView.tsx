@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { router, usePathname } from 'expo-router';
 import { ScrollView, Text, View, StyleSheet, TextInput, Alert } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { AddEstimateLineForm } from '@/components/renova/AddEstimateLineForm';
@@ -19,6 +21,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { alertChangeOrderSubmitted } from '@/lib/procurementNav';
 import { alertEstimateProposed, alertEstimateProposalRevoked } from '@/lib/estimatePayNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { screenLayout } from '@/constants/screenLayout';
 import {
   estimateTotals,
@@ -54,8 +57,8 @@ export function ContractorEstimateView() {
       await loadProject(activeProject!.id);
       await syncProjectSideEffects({ user, project: activeProject });
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Изменение строки отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Изменение строки');
         return;
       }
       throw e;
@@ -71,8 +74,8 @@ export function ContractorEstimateView() {
       // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
       alertChangeOrderSubmitted('contractor');
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Допсоглашение отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Допсоглашение');
         return;
       }
       throw e;
@@ -134,15 +137,30 @@ export function ContractorEstimateView() {
               <PrimaryButton
                 title="Отозвать предложение"
                 variant="outline"
-                onPress={async () => {
-                  try {
-                    await api.withdrawEstimateLock(user.id, activeProject.id);
-                    await loadProject(activeProject.id);
-                    await syncProjectSideEffects({ user, project: activeProject });
-                    alertEstimateProposalRevoked('contractor');
-                  } catch (e: unknown) {
-                    Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');
-                  }
+                onPress={() => {
+                  // Clarity U: тот же confirm, что EstimateSummaryLayer (не обходить sheet)
+                  showActionConfirm({
+                    title: 'Отозвать предложение?',
+                    message: 'Смета снова станет черновиком. Заказчик не увидит это предложение.',
+                    primaryLabel: 'Отозвать',
+                    onPrimary: () => {
+                      void (async () => {
+                        try {
+                          await api.withdrawEstimateLock(user.id, activeProject.id);
+                          await loadProject(activeProject.id);
+                          await syncProjectSideEffects({ user, project: activeProject });
+                          alertEstimateProposalRevoked('contractor');
+                        } catch (e: unknown) {
+                          showActionConfirm({
+                            title: 'Не удалось',
+                            message: e instanceof Error ? e.message : 'Ошибка отзыва',
+                          });
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               />
             ) : null}
@@ -187,7 +205,7 @@ export function ContractorEstimateView() {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   totalBox: { marginBottom: 12 },
-  totalLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
+  totalLabel: { ...screenTypography.metricLabel, fontWeight: '600' },
   total: { fontSize: 28, fontWeight: '800', color: RenovaTheme.colors.primary, marginTop: 4 },
   locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '600' },
   breakdown: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },

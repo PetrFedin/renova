@@ -1,13 +1,17 @@
-/** Подсказка на вкладках hub «Объект» — что читать, что делать, куда дальше */
+/** Подсказка на вкладках hub «Объект» — dismissible, по умолчанию compact */
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { budgetTabHref, repairTabHref, type OsRole } from '@/constants/osSections';
 import { formMetaText } from '@/constants/formTypography';
 import { objectProfileHint } from '@/lib/domain/roleCapabilities';
 import { objectTabGuideCompact } from '@/lib/detailLevelPolicy';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useDetailLevel } from '@/lib/useDetailLevel';
+import { reportCatch } from '@/lib/reportError';
 
 export type ObjectTabId = 'profile' | 'rooms' | 'estimate' | 'plan';
 
@@ -19,7 +23,7 @@ type Guide = {
 
 const GUIDES: Record<ObjectTabId, Guide> = {
   profile: {
-    read: 'Сводка объекта: название, адрес, тип и сроки.',
+    read: 'О проекте: название, адрес, тип и сроки.',
     do: 'Заполните пробелы и нажмите «Сохранить».',
     next: { tab: 'rooms', label: 'Дальше: Комнаты →' },
   },
@@ -34,8 +38,8 @@ const GUIDES: Record<ObjectTabId, Guide> = {
     next: { tab: 'plan', label: 'Дальше: План →' },
   },
   plan: {
-    read: 'Три слоя: планировка, дизайн, график этапов.',
-    do: 'Выберите слой ниже. Сроки проекта — в «Профиль», выполнение — в «Ремонт».',
+    read: 'Планировка и дизайн. Сроки — в «Календарь».',
+    do: 'Выберите слой ниже. Замечания с фото — «Замечания на плане».',
   },
 };
 
@@ -43,6 +47,10 @@ const PLAN_LINKS = (role: OsRole) => [
   { label: '→ Ремонт', href: repairTabHref(role, 'works') },
   { label: '→ Деньги', href: budgetTabHref(role, 'summary') },
 ] as const;
+
+function dismissKey(tab: ObjectTabId) {
+  return `renova_object_guide_dismissed_${tab}`;
+}
 
 export function ObjectTabGuide({
   tab,
@@ -61,6 +69,34 @@ export function ObjectTabGuide({
   const detailLevel = useDetailLevel();
   const compact = compactProp ?? objectTabGuideCompact(detailLevel);
   const doText = tab === 'profile' && role ? objectProfileHint({ role, readOnly: false }) : g.do;
+  const [dismissed, setDismissed] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(dismissKey(tab))
+      .then((v) => {
+        if (alive) {
+          setDismissed(v === '1');
+          setReady(true);
+        }
+      })
+      .catch((e) => {
+        reportCatch('ObjectTabGuide.dismissLoad')(e);
+        if (alive) setReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [tab]);
+
+  const dismiss = useCallback(() => {
+    setDismissed(true);
+    AsyncStorage.setItem(dismissKey(tab), '1').catch(reportCatch('ObjectTabGuide.dismissSave'));
+  }, [tab]);
+
+  if (!ready || dismissed) return null;
+
   if (compact) {
     return (
       <View style={s.compactRow}>
@@ -75,12 +111,21 @@ export function ObjectTabGuide({
             <Text style={s.nextT}>{g.next.label}</Text>
           </Pressable>
         ) : null}
+        <Pressable onPress={dismiss} accessibilityLabel="Скрыть подсказку" hitSlop={8}>
+          <Text style={s.dismiss}>Скрыть</Text>
+        </Pressable>
       </View>
     );
   }
+
   return (
     <View style={s.box}>
-      <Text style={s.label}>Что здесь</Text>
+      <View style={s.boxHead}>
+        <Text style={s.label}>Что здесь</Text>
+        <Pressable onPress={dismiss} hitSlop={8}>
+          <Text style={s.dismiss}>Скрыть</Text>
+        </Pressable>
+      </View>
       <Text style={s.read}>{g.read}</Text>
       <Text style={s.label}>Что делать</Text>
       <Text style={s.do}>{doText}</Text>
@@ -92,7 +137,7 @@ export function ObjectTabGuide({
           <Text style={s.nextT}>{g.next.label}</Text>
         </Pressable>
       ) : null}
-      {tab === 'plan' && role && !compact ? (
+      {tab === 'plan' && role ? (
         <View style={s.linksRow}>
           {PLAN_LINKS(role).map((link) => (
             <Pressable key={link.label} style={s.linkBtn} onPress={() => pushOsNav(link.href, pathname, role)}>
@@ -110,12 +155,13 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 8,
     marginBottom: 12,
     paddingVertical: 4,
   },
   compactText: { flex: 1, ...formMetaText.caption },
   compactNext: { flexShrink: 0 },
+  dismiss: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   box: {
     ...card,
     marginBottom: 12,
@@ -123,12 +169,9 @@ const s = StyleSheet.create({
     borderLeftColor: RenovaTheme.colors.primary,
     backgroundColor: '#F8FAFC',
   },
+  boxHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   label: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    ...screenTypography.metricLabel,
     marginTop: 6,
     marginBottom: 2,
   },

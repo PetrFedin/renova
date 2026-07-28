@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { homeLayout } from '@/constants/homeTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { Card } from '@/components/ui/Card';
@@ -88,11 +89,11 @@ export function HomeSetupChecklist({
 const s = StyleSheet.create({
   wrap: { marginBottom: homeLayout.sectionGap },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  title: { flex: 1, fontSize: RenovaTheme.fontSize.h3, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
-  progress: { fontSize: RenovaTheme.fontSize.caption, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.infoText },
+  title: { flex: 1, ...screenTypography.listTitle },
+  progress: { ...screenTypography.metricLabel, color: RenovaTheme.colors.infoText, marginTop: 0, fontWeight: '700' },
   dismiss: { fontSize: 20, color: RenovaTheme.colors.textSubtle, paddingHorizontal: 4 },
-  sub: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, marginBottom: 10 },
+  sub: { ...screenTypography.listMeta, marginBottom: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 3 },
-  label: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.text },
+  label: { ...screenTypography.listTitle, fontWeight: '400' },
   labelDone: { color: RenovaTheme.colors.textMuted },
 });

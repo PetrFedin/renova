@@ -22,7 +22,8 @@ export function useHubTab<T extends string>(
         setActive(tabParam as T);
       } else if (saved && (allowed as readonly string[]).includes(saved)) {
         setActive(saved as T);
-        router.setParams({ tab: saved });
+        // Не дергаем setParams, если tab уже совпадает — иначе цикл навигации
+        if (tabParam !== saved) router.setParams({ tab: saved });
       } else {
         setActive(defaultTab);
       }

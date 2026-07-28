@@ -68,4 +68,13 @@ console.assert(resolveNotificationLink('room_updated', 'customer')?.pathname.inc
 console.assert(resolveNotificationLink('schedule_confirmed', 'customer')?.pathname.includes('calendar'), 'schedule_confirmed');
 console.assert(resolveNotificationLink('estimate_lock', 'customer')?.pathname.includes('object'), 'estimate_lock notify');
 
+// Investor P1: warranty SoT = Приёмка для customer (как inbox /control)
+const wCust = resolveNotificationLink('warranty', 'customer');
+console.assert(wCust?.pathname === '/(customer)/(tabs)/repair' && wCust?.params?.tab === 'control', 'warranty customer → control');
+console.assert(wCust?.params?.focus === 'warranty', 'warranty customer focus');
+const wClaim = resolveNotificationLink('warranty_claim', 'customer');
+console.assert(wClaim?.pathname === '/(customer)/(tabs)/repair' && wClaim?.params?.tab === 'control', 'warranty_claim customer → control');
+console.assert(resolveNotificationLink('warranty', 'contractor')?.pathname === '/quality-control', 'warranty contractor → QC');
+console.assert(resolvePushLink('/control?focus=warranty', '/home', 'customer')?.params?.focus === 'warranty', 'control focus query');
+
 console.log('pushLinks.test OK');

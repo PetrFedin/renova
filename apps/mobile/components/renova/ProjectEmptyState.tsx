@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { formMetaText } from '@/constants/formTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StatusPill, type StatusTone } from '@/components/ui/StatusPill';
@@ -296,7 +297,10 @@ export function ProjectEmptyState({
               onPress={async () => {
                 if (!user) return;
                 try {
-                  const p = await api.createProjectFromTemplate(user.id, { template_id: id, name: `${label}` });
+                  // Не «Студия»/«Studio» exact — иначе junk-фильтр picker скроет объект рядом с демо
+                  const name =
+                    id === 'studio' ? 'Моя студия' : id === 'house' ? 'Мой дом' : 'Моя квартира';
+                  const p = await api.createProjectFromTemplate(user.id, { template_id: id, name });
                   await refreshProjects();
                   await loadProject((p as { id: string }).id);
                   await syncProjectSideEffects({ user, project: p as any });
@@ -332,10 +336,7 @@ const s = StyleSheet.create({
   wrapContent: { padding: 16, paddingBottom: 32, flexGrow: 1 },
   title: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 8 },
   sectionHead: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textSubtle,
-    textTransform: 'uppercase',
+    ...screenTypography.section,
     marginBottom: 8,
     marginTop: 4,
   },
