@@ -184,4 +184,16 @@ const expenses: OsExpense[] = [
   assert(integrity.duplicateKeys[0] === key, `unexpected duplicate key: ${integrity.duplicateKeys[0]}`);
 }
 
+{
+  const graph = buildConstructionProjectGraph({
+    projectId: 'project-1',
+    rooms: [rooms[0]],
+    stages: [{ ...stages[0], project_id: 'project-2' }],
+    workOrders: [{ ...workOrders[0], project_id: 'project-1', stage_id: 'stage-electric' }],
+  });
+  const integrity = inspectConstructionProjectGraph(graph);
+  assert(!integrity.isHealthy, 'cross-project relation must be unhealthy');
+  assert(integrity.invalidReferences['work_order:work-cable']?.includes('cross_project:stage:stage-electric') ?? false, 'cross-project stage relation must be explicit');
+}
+
 console.log('constructionProjectGraph.test OK');

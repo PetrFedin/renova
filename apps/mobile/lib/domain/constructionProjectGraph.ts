@@ -44,6 +44,7 @@ export type ConstructionGraphNode = {
   kind: ConstructionGraphNodeKind;
   id: string;
   title: string;
+  projectId?: string;
   roomIds: string[];
   stageIds: string[];
   relatedKeys: string[];
@@ -62,6 +63,7 @@ export type ConstructionProjectGraph = {
   byRoom: Record<string, string[]>;
   byStage: Record<string, string[]>;
   duplicateKeys: string[];
+  invalidReferences: Record<string, string[]>;
 };
 
 export type ConstructionGraphIntegrity = {
@@ -70,10 +72,12 @@ export type ConstructionGraphIntegrity = {
   duplicateKeys: string[];
   unresolvedByNode: Record<string, string[]>;
   unresolvedCount: number;
+  invalidReferences: Record<string, string[]>;
   isHealthy: boolean;
 };
 
 export type BuildConstructionProjectGraphInput = {
+  projectId?: string;
   rooms?: readonly Room[];
   stages?: readonly Stage[];
   workOrders?: readonly WorkOrder[];
@@ -98,6 +102,7 @@ export function buildConstructionProjectGraph(
   const edges: ConstructionGraphEdge[] = [];
   const edgeKeys = new Set<string>();
   const duplicateKeys = new Set<string>();
+  const invalidReferences: Record<string, string[]> = {};
   const byRoom: Record<string, string[]> = {};
   const byStage: Record<string, string[]> = {};
 
@@ -107,6 +112,7 @@ export function buildConstructionProjectGraph(
     title: string,
     roomIds: readonly (string | null | undefined)[] = [],
     stageIds: readonly (string | null | undefined)[] = [],
+    projectId?: string,
   ) => {
     const key = constructionGraphNodeKey(kind, id);
     if (nodes[key]) duplicateKeys.add(key);
@@ -115,6 +121,7 @@ export function buildConstructionProjectGraph(
       kind,
       id,
       title: title.trim() || id,
+      ...(projectId ? { projectId } : {}),
       roomIds: unique(roomIds.filter((value): value is string => Boolean(value))),
       stageIds: unique(stageIds.filter((value): value is string => Boolean(value))),
       relatedKeys: [],
@@ -124,16 +131,16 @@ export function buildConstructionProjectGraph(
   };
 
   for (const room of input.rooms ?? []) {
-    addNode('room', room.id, room.name, [room.id]);
+    addNode('room', room.id, room.name, [room.id], [], input.projectId);
   }
   for (const stage of input.stages ?? []) {
-    addNode('stage', stage.id, stage.name, stage.room_ids ?? [], [stage.id]);
+    addNode('stage', stage.id, stage.name, stage.room_ids ?? [], [stage.id], stage.project_id || input.projectId);
   }
   for (const workOrder of input.workOrders ?? []) {
-    addNode('work_order', workOrder.id, workOrder.title, [workOrder.room_id], [workOrder.stage_id]);
+    addNode('work_order', workOrder.id, workOrder.title, [workOrder.room_id], [workOrder.stage_id], workOrder.project_id || input.projectId);
   }
   for (const issue of input.issues ?? []) {
-    addNode('issue', issue.id, issue.title, [issue.room_id], [issue.stage_id]);
+    addNode('issue', issue.id, issue.title, [issue.room_id], [issue.stage_id], (issue as { project_id?: string }).project_id || input.projectId);
   }
   for (const acceptance of input.acceptances ?? []) {
     addNode(
@@ -142,13 +149,14 @@ export function buildConstructionProjectGraph(
       acceptance.stage_name?.trim() || `Приёмка этапа ${acceptance.stage_id}`,
       [acceptance.room_id],
       [acceptance.stage_id],
+      (acceptance as ConstructionGraphAcceptance & { project_id?: string }).project_id || input.projectId,
     );
   }
   for (const expense of input.expenses ?? []) {
-    addNode('expense', expense.id, expense.title, [expense.room_id], [expense.stage_id]);
+    addNode('expense', expense.id, expense.title, [expense.room_id], [expense.stage_id], (expense as OsExpense & { project_id?: string }).project_id || input.projectId);
   }
   for (const activity of input.activities ?? []) {
-    addNode('activity', activity.id, activity.title, [activity.room_id]);
+    addNode('activity', activity.id, activity.title, [activity.room_id], [], (activity as ActivityItem & { project_id?: string }).project_id || input.projectId);
   }
 
   const addIndex = (index: Record<string, string[]>, id: string, nodeKey: string) => {
@@ -175,6 +183,10 @@ export function buildConstructionProjectGraph(
       addIndex(byRoom, roomId, node.key);
       const roomKey = constructionGraphNodeKey('room', roomId);
       if (nodes[roomKey]) {
+        if (node.projectId && nodes[roomKey].projectId && node.projectId !== nodes[roomKey].projectId) {
+          invalidReferences[node.key] = [...(invalidReferences[node.key] ?? []), `cross_project:${roomKey}`];
+          continue;
+        }
         if (node.kind !== 'room') {
           connect(node.key, roomKey, node.kind === 'stage' ? 'contains' : 'located_in');
         }
@@ -187,6 +199,10 @@ export function buildConstructionProjectGraph(
       addIndex(byStage, stageId, node.key);
       const stageKey = constructionGraphNodeKey('stage', stageId);
       if (nodes[stageKey]) {
+        if (node.projectId && nodes[stageKey].projectId && node.projectId !== nodes[stageKey].projectId) {
+          invalidReferences[node.key] = [...(invalidReferences[node.key] ?? []), `cross_project:${stageKey}`];
+          continue;
+        }
         if (node.kind === 'acceptance') {
           connect(node.key, stageKey, 'accepts_stage');
         } else if (node.kind === 'activity') {
@@ -208,6 +224,7 @@ export function buildConstructionProjectGraph(
     byRoom,
     byStage,
     duplicateKeys: [...duplicateKeys].sort(),
+    invalidReferences,
   };
 }
 
@@ -229,7 +246,8 @@ export function inspectConstructionProjectGraph(
     duplicateKeys: [...graph.duplicateKeys],
     unresolvedByNode,
     unresolvedCount,
-    isHealthy: unresolvedCount === 0 && graph.duplicateKeys.length === 0,
+    invalidReferences: graph.invalidReferences,
+    isHealthy: unresolvedCount === 0 && graph.duplicateKeys.length === 0 && Object.keys(graph.invalidReferences).length === 0,
   };
 }
 
