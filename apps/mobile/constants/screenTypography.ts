@@ -63,8 +63,10 @@ export const listRowStyles = StyleSheet.create({
 export const filterChipStyles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: c.border,
