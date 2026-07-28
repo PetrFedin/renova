@@ -18,6 +18,14 @@ if (!rooms.includes("title: 'Согласовать запрос?'") || !rooms.i
   throw new Error('rooms approve/archive confirm');
 }
 
+const roomDetail = src('components/screens/RoomDetailScreen.tsx');
+if (!roomDetail.includes('primaryDestructive: nextArchived')) throw new Error('room archive destructive confirm');
+if (!roomDetail.includes("variant={room.is_archived ? 'outline' : 'dangerOutline'}")) throw new Error('room archive danger hierarchy');
+if (!roomDetail.includes('const mutationRef = useRef(false)')) throw new Error('room mutation ref guard');
+if (!roomDetail.includes('if (mutationRef.current) return undefined')) throw new Error('room duplicate mutation guard');
+if (!roomDetail.includes("loading={mutation === 'archive'}")) throw new Error('room archive loading state');
+if (!roomDetail.includes("loading={mutation === 'save'}")) throw new Error('room save loading state');
+
 const mats = src('components/renova/MaterialPickList.tsx');
 const matSheet = src('components/renova/MaterialPickDetailSheet.tsx');
 const matPage = src('app/material/[id].tsx');
