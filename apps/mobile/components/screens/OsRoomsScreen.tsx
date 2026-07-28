@@ -1,5 +1,5 @@
 /** Комнаты объекта — список по этажам (вкладка «Объект → Комнаты») */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -20,7 +20,6 @@ import { api, Room, RoomChangeRequest, isRateLimitError } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomChangeStatusLabel } from '@/constants/labels';
-import { ROOM_FORM_HINTS } from '@/constants/roomFormHints';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { budgetTabRoute, customerProfileTabHref, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -97,7 +96,6 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
             title="→ Подключить исполнителя"
             variant="outline"
             onPress={() =>
-              // SoT: форма в профиле аккаунта (блок «Исполнитель»), не Объект → Профиль
               pushOsNav(customerProfileTabHref('customer', 'contractor'), nav.from, 'customer')
             }
           />
@@ -105,15 +103,14 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
           <PrimaryButton
             title="→ Ход работ и этапы"
             variant="outline"
-           
             onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from, 'customer')}
           />
         )}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
         <Text style={styles.hint}>
           {activeProject.contractor_id
-            ? 'Нажмите комнату — расходы и запрос изменений исполнителю.'
-            : 'Нажмите комнату — можно редактировать параметры до подключения исполнителя.'}
+            ? 'Откройте комнату для паспорта, расходов и запроса изменений.'
+            : 'Откройте комнату для паспорта, размеров и связанных данных.'}
         </Text>
         {!filtered.length && (
           <Text style={styles.empty}>Комнат пока нет. Список появится после создания объекта.</Text>
@@ -122,28 +119,43 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
           <View key={`f-${floor}`}>
             <FloorSectionHeader floor={floor} count={floorRooms.length} isHouse={activeProject.property_type === 'house'} />
             {floorRooms.map((room) => (
-              <Pressable key={room.id} onPress={() => nav.room(room.id)}>
-                <RoomRequestCard
-                  room={room}
-                  requestOnly={!!activeProject.contractor_id}
-                  onSubmit={async (message, payload) => {
+              <RoomRequestCard
+                key={room.id}
+                room={room}
+                requestOnly={!!activeProject.contractor_id}
+                onOpen={() => nav.room(room.id)}
+                onSubmit={async (message, payload) => {
                   try {
                     await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
                     setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
-                    // W136: запрос → inbox / approvals
                     alertRoomChangeRequested('customer');
+                    return true;
                   } catch (e) {
                     if (isOfflineQueued(e)) notifyOfflineQueued('Запрос на изменение');
-                    else if (isRateLimitError(e)) Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+                    else if (isRateLimitError(e)) {
+                      showActionConfirm({
+                        title: 'Подождите',
+                        message: 'Слишком много запросов. Повторите через несколько секунд.',
+                      });
+                    } else {
+                      showActionConfirm({
+                        title: 'Не удалось отправить',
+                        message: 'Запрос сохранён в форме. Повторите отправку позже.',
+                      });
+                    }
+                    return false;
                   }
-                }} />
-              </Pressable>
+                }}
+              />
             ))}
           </View>
         ))}
         {requests.length > 0 && <Text style={styles.section}>Мои запросы</Text>}
         {requests.map((r) => (
-          <View key={r.id} style={styles.req}><Text>{r.message}</Text><Text style={styles.status}>Статус: {roomChangeStatusLabel(r.status)}</Text></View>
+          <View key={r.id} style={styles.req}>
+            <Text>{r.message}</Text>
+            <Text style={styles.status}>Статус: {roomChangeStatusLabel(r.status)}</Text>
+          </View>
         ))}
       </ScrollView>
     </>
@@ -159,6 +171,21 @@ function ContractorRoomsBody() {
   const [showCreate, setShowCreate] = useState(false);
   const [roomFilter, setRoomFilter] = useState('active');
   const [query, setQuery] = useState('');
+  const [mutationKey, setMutationKey] = useState<string | null>(null);
+  const mutationRef = useRef(false);
+  const busy = mutationKey !== null;
+
+  const runMutation = useCallback(async (key: string, task: () => Promise<void>) => {
+    if (mutationRef.current) return;
+    mutationRef.current = true;
+    setMutationKey(key);
+    try {
+      await task();
+    } finally {
+      mutationRef.current = false;
+      setMutationKey(null);
+    }
+  }, []);
 
   const reloadRequests = useCallback(async () => {
     if (!user || !activeProject) return;
@@ -176,7 +203,10 @@ function ContractorRoomsBody() {
       setRooms(filterRoomsByArchive(list, roomFilter === 'archive'));
     } catch (e) {
       if (isRateLimitError(e)) {
-        Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+        showActionConfirm({
+          title: 'Подождите',
+          message: 'Слишком много запросов. Повторите через несколько секунд.',
+        });
       }
     }
   }, [user?.id, activeProject?.id, roomFilter]);
@@ -191,14 +221,102 @@ function ContractorRoomsBody() {
   }, [refreshRoomsSurface]);
   useProjectDataReload(refreshRoomsSurface);
 
-  const activeRooms = (activeProject.rooms || []).filter((r) => !r.is_archived);
-
   if (!activeProject || !user) return <ProjectEmptyState role="contractor" />;
 
-  const save = async (room: Room, patch: Partial<Room>) => {
-    const u = await api.updateRoom(user.id, activeProject.id, room.id, patch);
-    setRooms((prev) => prev.map((r) => (r.id === room.id ? u : r)));
-    await loadProject(activeProject.id);
+  const activeRooms = (activeProject.rooms || []).filter((r) => !r.is_archived);
+
+  const approveRequest = (request: RoomChangeRequest) => {
+    if (!canWrite || mutationRef.current) return;
+    const key = `approve:${request.id}`;
+    showActionConfirm({
+      title: 'Согласовать запрос?',
+      message: request.message || 'Комната будет изменена по запросу заказчика.',
+      primaryLabel: 'Согласовать',
+      onPrimary: () => {
+        void runMutation(key, async () => {
+          try {
+            await api.approveRoomChange(user.id, activeProject.id, request.id);
+            await syncProjectSideEffects({ user, project: activeProject });
+            await reloadRequests();
+            await loadProject(activeProject.id);
+            await reloadRooms();
+            alertApprovalApproved('contractor', 'room_change');
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
+            else if (isRateLimitError(e)) {
+              showActionConfirm({ title: 'Подождите', message: 'Слишком много запросов. Повторите через несколько секунд.' });
+            } else {
+              showActionConfirm({ title: 'Ошибка', message: 'Не удалось согласовать запрос' });
+            }
+          }
+        });
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const rejectRequest = (request: RoomChangeRequest) => {
+    if (!canWrite || mutationRef.current) return;
+    const key = `reject:${request.id}`;
+    showActionConfirm({
+      title: 'Отклонить запрос?',
+      message: request.message || 'Запрос заказчика на изменение комнаты будет отклонён.',
+      primaryLabel: 'Отклонить',
+      primaryDestructive: true,
+      onPrimary: () => {
+        void runMutation(key, async () => {
+          try {
+            await api.rejectRoomChange(user.id, activeProject.id, request.id);
+            await reloadRequests();
+            alertApprovalRejected('contractor', 'room_change');
+          } catch (e) {
+            if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение запроса');
+            else if (isRateLimitError(e)) {
+              showActionConfirm({ title: 'Подождите', message: 'Слишком много запросов. Повторите через несколько секунд.' });
+            } else {
+              showActionConfirm({ title: 'Ошибка', message: 'Не удалось отклонить запрос' });
+            }
+          }
+        });
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const changeArchive = (room: Room, archived: boolean) => {
+    if (!canWrite || mutationRef.current) return;
+    const key = `archive:${room.id}`;
+    showActionConfirm({
+      title: archived ? 'В архив?' : 'Восстановить комнату?',
+      message: archived
+        ? `«${room.name}» будет скрыта из активных комнат. Работы, смета, расходы и документы сохранятся.`
+        : `«${room.name}» снова появится в активных комнатах.`,
+      primaryLabel: archived ? 'В архив' : 'Восстановить',
+      primaryDestructive: archived,
+      onPrimary: () => {
+        void runMutation(key, async () => {
+          try {
+            await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: archived });
+            await syncProjectSideEffects({ user, project: activeProject });
+            await loadProject(activeProject.id);
+            await reloadRooms();
+            if (archived && roomFilter === 'active') alertRoomArchived('contractor', room.name);
+          } catch (e: unknown) {
+            if (isOfflineQueued(e)) notifyOfflineQueued(archived ? 'Архивирование' : 'Восстановление');
+            else {
+              showActionConfirm({
+                title: 'Ошибка',
+                message: archived ? 'Не удалось отправить комнату в архив' : 'Не удалось восстановить комнату',
+              });
+            }
+          }
+        });
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
   return (
@@ -208,19 +326,21 @@ function ContractorRoomsBody() {
         <StageRoomMatrix
           rooms={activeRooms}
           stages={activeProject.stages || []}
-          canEdit={canWrite}
+          canEdit={canWrite && !busy}
           onToggleLink={async (stageId, roomIds) => {
-            try {
-              await api.patchStageRooms(user.id, activeProject.id, stageId, roomIds);
-              await loadProject(activeProject.id);
-            } catch (e) {
-              if (isOfflineQueued(e)) notifyOfflineQueued('Привязка комнат');
-              else Alert.alert('Ошибка', 'Не удалось обновить привязку');
-            }
+            await runMutation(`link:${stageId}`, async () => {
+              try {
+                await api.patchStageRooms(user.id, activeProject.id, stageId, roomIds);
+                await loadProject(activeProject.id);
+              } catch (e) {
+                if (isOfflineQueued(e)) notifyOfflineQueued('Привязка комнат');
+                else showActionConfirm({ title: 'Ошибка', message: 'Не удалось обновить привязку' });
+              }
+            });
           }}
         />
         {canWrite && roomFilter === 'active' && (
-          <PrimaryButton title="+ Комната" onPress={() => setShowCreate(true)} />
+          <PrimaryButton title="+ Комната" onPress={() => setShowCreate(true)} disabled={busy} />
         )}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
         {requests.filter((r) => r.status === 'pending').map((r) => (
@@ -228,63 +348,19 @@ function ContractorRoomsBody() {
             <Text style={styles.reqTitle}>Запрос заказчика</Text>
             <Text>{r.message}</Text>
             <View style={styles.row}>
-              <PrimaryButton disabled={!canWrite} title="Согласовать" onPress={() => {
-                // Clarity V: зеркало reject — confirm перед approve room_change
-                showActionConfirm({
-                  title: 'Согласовать запрос?',
-                  message: r.message || 'Комната будет изменена по запросу заказчика.',
-                  primaryLabel: 'Согласовать',
-                  onPrimary: () => {
-                    void (async () => {
-                      try {
-                        await api.approveRoomChange(user.id, activeProject.id, r.id);
-                        await syncProjectSideEffects({ user, project: activeProject });
-                        await reloadRequests();
-                        await loadProject(activeProject.id);
-                        await reloadRooms();
-                        alertApprovalApproved('contractor', 'room_change');
-                      } catch (e) {
-                        if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
-                        else if (isRateLimitError(e)) {
-                          showActionConfirm({
-                            title: 'Подождите',
-                            message: 'Слишком много запросов. Повторите через несколько секунд.',
-                          });
-                        }
-                      }
-                    })();
-                  },
-                  secondaryLabel: 'Отмена',
-                  onSecondary: () => undefined,
-                });
-              }} />
-              <PrimaryButton disabled={!canWrite} title="Отклонить" variant="outline" onPress={() => {
-                // Clarity R: confirm перед отклонением запроса комнаты
-                showActionConfirm({
-                  title: 'Отклонить запрос?',
-                  message: r.message || 'Запрос заказчика на изменение комнаты будет отклонён.',
-                  primaryLabel: 'Отклонить',
-                  onPrimary: () => {
-                    void (async () => {
-                      try {
-                        await api.rejectRoomChange(user.id, activeProject.id, r.id);
-                        await reloadRequests();
-                        alertApprovalRejected('contractor', 'room_change');
-                      } catch (e) {
-                        if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение запроса');
-                        else if (isRateLimitError(e)) {
-                          showActionConfirm({
-                            title: 'Подождите',
-                            message: 'Слишком много запросов. Повторите через несколько секунд.',
-                          });
-                        }
-                      }
-                    })();
-                  },
-                  secondaryLabel: 'Отмена',
-                  onSecondary: () => undefined,
-                });
-              }} />
+              <PrimaryButton
+                disabled={!canWrite || busy}
+                loading={mutationKey === `approve:${r.id}`}
+                title="Согласовать"
+                onPress={() => approveRequest(r)}
+              />
+              <PrimaryButton
+                disabled={!canWrite || busy}
+                loading={mutationKey === `reject:${r.id}`}
+                title="Отклонить"
+                variant="dangerOutline"
+                onPress={() => rejectRequest(r)}
+              />
             </View>
           </View>
         ))}
@@ -295,45 +371,14 @@ function ContractorRoomsBody() {
           <View key={`f-${floor}`}>
             <FloorSectionHeader floor={floor} count={floorRooms.length} isHouse={activeProject.property_type === 'house'} />
             {floorRooms.map((room) => (
-              <RoomForm
+              <RoomListRow
                 key={room.id}
                 room={room}
-                onSave={save}
-                onOpen={() => nav.room(room.id)}
-                canWrite={canWrite}
                 archived={roomFilter === 'archive'}
-                onArchive={(archived) => {
-                  // Clarity V: паритет RoomDetail — confirm перед архивом
-                  showActionConfirm({
-                    title: archived ? 'В архив?' : 'Восстановить комнату?',
-                    message: archived
-                      ? `«${room.name}» скрыть из активных. Смету и этапы можно будет вернуть позже.`
-                      : `«${room.name}» снова появится в активных комнатах.`,
-                    primaryLabel: archived ? 'В архив' : 'Восстановить',
-                    onPrimary: () => {
-                      void (async () => {
-                        try {
-                          await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: archived });
-                          await loadProject(activeProject.id);
-                          await reloadRooms();
-                          if (archived && roomFilter === 'active') {
-                            alertRoomArchived('contractor', room.name);
-                          }
-                        } catch (e: unknown) {
-                          if (isOfflineQueued(e)) notifyOfflineQueued(archived ? 'Архивирование' : 'Восстановление');
-                          else {
-                            showActionConfirm({
-                              title: 'Ошибка',
-                              message: archived ? 'Не удалось отправить комнату в архив' : 'Не удалось восстановить комнату',
-                            });
-                          }
-                        }
-                      })();
-                    },
-                    secondaryLabel: 'Отмена',
-                    onSecondary: () => undefined,
-                  });
-                }}
+                busy={busy}
+                archiveLoading={mutationKey === `archive:${room.id}`}
+                onOpen={() => nav.room(room.id)}
+                onArchive={(archived) => changeArchive(room, archived)}
               />
             ))}
           </View>
@@ -343,14 +388,13 @@ function ContractorRoomsBody() {
         <CreateRoomSheet
           visible={showCreate}
           project={activeProject}
-          onClose={() => setShowCreate(false)}
+          onClose={() => { if (!busy) setShowCreate(false); }}
           onCreate={async (body) => {
             const created = await api.createRoom(user.id, activeProject.id, body);
             await loadProject(activeProject.id);
             try {
               await reloadRooms();
             } catch {
-              // запасной путь: комната уже на сервере, обновляем список локально
               setRooms((prev) =>
                 filterRoomsByArchive(
                   prev.some((r) => r.id === created.id) ? prev : [...prev, created],
@@ -365,22 +409,72 @@ function ContractorRoomsBody() {
   );
 }
 
-function RoomRequestCard({ room, onSubmit, requestOnly }: { room: Room; onSubmit: (msg: string, payload: Record<string, unknown>) => Promise<void>; requestOnly?: boolean }) {
+function RoomRequestCard({
+  room,
+  onOpen,
+  onSubmit,
+  requestOnly,
+}: {
+  room: Room;
+  onOpen: () => void;
+  onSubmit: (msg: string, payload: Record<string, unknown>) => Promise<boolean>;
+  requestOnly?: boolean;
+}) {
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
   const [msg, setMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+
+  const submit = async () => {
+    const message = msg.trim();
+    if (!message || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      const accepted = await onSubmit(message, {});
+      if (accepted) setMsg('');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
   return (
     <View style={styles.card}>
-      <Text style={styles.name}>{room.name} ›</Text>
-      <Text style={styles.meta}>{roomTypeLabel(room.room_type)}{(room.floor_level ?? 1) > 1 ? ` · ${room.floor_level} эт.` : ''} · {room.floor_sq_m} м² · розетки {room.outlets_count}</Text>
-      <Pressable onPress={() => pushOsNav(budgetTabRoute('customer', 'expenses', { roomId: room.id }), pathname, 'customer')}>
-        <Text style={styles.link}>→ Расходы по комнате</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Открыть комнату ${room.name}`} style={styles.roomHead} onPress={onOpen} disabled={submitting}>
+        <View style={styles.roomHeadText}>
+          <Text style={styles.name}>{room.name}</Text>
+          <Text style={styles.meta}>{roomTypeLabel(room.room_type)}{(room.floor_level ?? 1) > 1 ? ` · ${room.floor_level} эт.` : ''} · {room.floor_sq_m} м²</Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Открыть расходы комнаты ${room.name}`}
+        style={styles.linkRow}
+        disabled={submitting}
+        onPress={() => pushOsNav(budgetTabRoute('customer', 'expenses', { roomId: room.id }), pathname, 'customer')}
+      >
+        <Text style={styles.link}>Расходы по комнате →</Text>
       </Pressable>
       {canWrite && requestOnly && (
-        <>
-          <TextInput style={styles.input} placeholder="Запрос изменения…" value={msg} onChangeText={setMsg} />
-          <PrimaryButton title="Отправить запрос" variant="outline" onPress={() => { if (msg.trim()) onSubmit(msg.trim(), {}); setMsg(''); }} />
-        </>
+        <View style={styles.requestBlock}>
+          <TextInput
+            style={styles.input}
+            placeholder="Запрос изменения…"
+            value={msg}
+            onChangeText={setMsg}
+            editable={!submitting}
+          />
+          <PrimaryButton
+            title="Отправить запрос"
+            variant="outline"
+            loading={submitting}
+            disabled={!msg.trim() || submitting}
+            onPress={() => { void submit(); }}
+          />
+        </View>
       )}
       {canWrite && !requestOnly && (
         <Text style={styles.meta}>Редактирование — в карточке комнаты</Text>
@@ -389,73 +483,72 @@ function RoomRequestCard({ room, onSubmit, requestOnly }: { room: Room; onSubmit
   );
 }
 
-function RoomForm({ room, onSave, onOpen, canWrite, archived, onArchive }: {
+function RoomListRow({
+  room,
+  archived,
+  busy,
+  archiveLoading,
+  onOpen,
+  onArchive,
+}: {
   room: Room;
-  onSave: (r: Room, p: Partial<Room>) => void;
+  archived: boolean;
+  busy: boolean;
+  archiveLoading: boolean;
   onOpen: () => void;
-  canWrite: boolean;
-  archived?: boolean;
-  onArchive?: (archived: boolean) => void;
+  onArchive: (archived: boolean) => void;
 }) {
   const pathname = usePathname();
-  const [outlets, setOutlets] = useState(String(room.outlets_count));
-  const [plumbing, setPlumbing] = useState(String(room.plumbing_points));
-  const [switches, setSwitches] = useState(String(room.switches_count));
-  const [length, setLength] = useState(String(room.length_m));
-  const [width, setWidth] = useState(String(room.width_m));
-
   return (
     <View style={styles.card}>
-      <Pressable onPress={onOpen}><Text style={styles.name}>{room.name} →</Text></Pressable>
-      <Text style={styles.meta}>Пол {roomTypeLabel(room.room_type)} · {room.floor_sq_m} м² · Стены {room.wall_sq_m} м²</Text>
-      <DimRow label="Длина" hint={ROOM_FORM_HINTS.length} value={length} set={setLength} />
-      <DimRow label="Ширина" hint={ROOM_FORM_HINTS.width} value={width} set={setWidth} />
-      <DimRow label="Розетки" hint={ROOM_FORM_HINTS.outlets} value={outlets} set={setOutlets} />
-      <DimRow label="Выключатели" hint={ROOM_FORM_HINTS.switches} value={switches} set={setSwitches} />
-      <DimRow label="Сантехника" hint={ROOM_FORM_HINTS.plumbing} value={plumbing} set={setPlumbing} />
-      <PrimaryButton title="Карточка комнаты" variant="outline" onPress={onOpen} />
-      <Pressable onPress={() => pushOsNav(budgetTabRoute('contractor', 'expenses', { roomId: room.id }), pathname, 'contractor')}>
-        <Text style={styles.link}>→ Расходы по комнате</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Открыть комнату ${room.name}`} style={styles.roomHead} onPress={onOpen} disabled={busy}>
+        <View style={styles.roomHeadText}>
+          <Text style={styles.name}>{room.name}</Text>
+          <Text style={styles.meta}>
+            {roomTypeLabel(room.room_type)} · пол {room.floor_sq_m} м² · стены {room.wall_sq_m} м²
+          </Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
       </Pressable>
-      <PrimaryButton disabled={!canWrite} title="Сохранить и пересчитать смету" onPress={() => onSave(room, { length_m: +length, width_m: +width, outlets_count: +outlets, switches_count: +switches, plumbing_points: +plumbing })} />
-      {canWrite && onArchive && (
-        <PrimaryButton
-          title={archived ? 'Восстановить из архива' : 'В архив'}
-          variant="outline"
-          onPress={() => onArchive(!archived)}
-        />
-      )}
-    </View>
-  );
-}
-
-function DimRow({ label, hint, value, set }: { label: string; hint?: string; value: string; set: (v: string) => void }) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput style={styles.input} keyboardType="decimal-pad" value={value} onChangeText={set} />
-      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Открыть расходы комнаты ${room.name}`}
+        style={styles.linkRow}
+        disabled={busy}
+        onPress={() => pushOsNav(budgetTabRoute('contractor', 'expenses', { roomId: room.id }), pathname, 'contractor')}
+      >
+        <Text style={styles.link}>Расходы по комнате →</Text>
+      </Pressable>
+      <PrimaryButton
+        title={archived ? 'Восстановить из архива' : 'В архив'}
+        variant={archived ? 'outline' : 'dangerOutline'}
+        compact
+        loading={archiveLoading}
+        disabled={busy && !archiveLoading}
+        onPress={() => onArchive(!archived)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   hint: { color: RenovaTheme.colors.textMuted, marginBottom: 12, fontSize: 13, lineHeight: 18 },
   empty: { ...screenTypography.empty, marginBottom: 16 },
   card: { ...listRowStyles.row, paddingVertical: 14 },
+  roomHead: { minHeight: RenovaTheme.minTouch, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  roomHeadText: { flex: 1, paddingRight: 8 },
+  chevron: { fontSize: 22, color: RenovaTheme.colors.textMuted },
   name: { ...screenTypography.listTitle, fontSize: 16 },
   meta: { ...screenTypography.listMeta },
   input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },
-  section: { fontWeight: '700', marginTop: 16, marginBottom: 8 },
-  req: { backgroundColor: RenovaTheme.colors.surface, padding: 10, borderRadius: 8, marginBottom: 6 },
-  reqPending: { backgroundColor: '#FEF3C7', padding: 12, borderRadius: 10, marginBottom: 12 },
-  reqTitle: { fontWeight: '700', marginBottom: 4 },
+  requestBlock: { gap: 8 },
+  section: { ...screenTypography.section, marginTop: 16 },
+  req: { ...listRowStyles.row },
+  reqPending: { backgroundColor: RenovaTheme.colors.warningBg, padding: 12, borderRadius: 10, marginBottom: 12 },
+  reqTitle: { ...screenTypography.listTitle, marginBottom: 4 },
   row: { gap: 8, marginTop: 10 },
   status: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4 },
-  field: { marginTop: 8 },
-  fieldLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.text },
-  fieldHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 14 },
-  link: { fontSize: 13, color: RenovaTheme.colors.primary, fontWeight: '700', marginTop: 8 },
+  linkRow: { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
+  link: { ...screenTypography.listLink, marginTop: 0 },
 });
