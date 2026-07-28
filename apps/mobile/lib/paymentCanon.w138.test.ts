@@ -5,6 +5,8 @@ import { join } from 'path';
 const mobile = join(__dirname, '..');
 const sheet = readFileSync(join(mobile, 'components/renova/PaymentDetailSheet.tsx'), 'utf8');
 const budget = readFileSync(join(mobile, 'components/screens/OsBudgetScreen.tsx'), 'utf8');
+const paymentsSection = readFileSync(join(mobile, 'components/screens/budget/BudgetPaymentsSection.tsx'), 'utf8');
+const createForm = readFileSync(join(mobile, 'components/renova/CreatePaymentForm.tsx'), 'utf8');
 const payApi = readFileSync(join(mobile, 'lib/api/payments.ts'), 'utf8');
 const push = readFileSync(join(mobile, 'lib/pushLinks.ts'), 'utf8');
 const catchAll = readFileSync(join(mobile, 'lib/resolveCatchAllSlug.ts'), 'utf8');
@@ -29,6 +31,25 @@ console.assert(sheet.includes('const busy = cardBusy || confirmBusy'), 'shared p
 console.assert(sheet.includes('onRequestClose={closeSafely}'), 'modal close guarded while busy');
 console.assert(sheet.includes('title="Закрыть" variant="ghost"'), 'close remains tertiary');
 console.assert(!sheet.includes("title={cardBusy ? 'Открываем ЮKassa…'"), 'card loading uses shared button state');
+
+// Payments list uses shared filters and a single create action hierarchy.
+console.assert(paymentsSection.includes('filterChipStyles'), 'payment filters use shared chips');
+console.assert(paymentsSection.includes('const [createOpen, setCreateOpen]'), 'create form is progressively disclosed');
+console.assert(paymentsSection.includes("title={createOpen ? 'Скрыть форму' : 'Выставить счёт'}"), 'single create action');
+console.assert(paymentsSection.includes('title="Импорт выписки"') && paymentsSection.includes('variant="outline"'), 'bank import is secondary');
+console.assert(!paymentsSection.includes('variant={payFilter ==='), 'filters are not primary buttons');
+console.assert(paymentsSection.includes('accessibilityState={{ selected }}'), 'filter selected state');
+console.assert(paymentsSection.includes('Показать все счета'), 'filtered empty state recovery');
+console.assert(paymentsSection.includes('formatConfirmedDate'), 'payment dates fail safely');
+
+// Create form keeps drafts on error and blocks duplicate submissions.
+console.assert(createForm.includes('const busyRef = useRef(false)'), 'create payment ref guard');
+console.assert(createForm.includes('if (busyRef.current) return'), 'create payment duplicate submit guard');
+console.assert(createForm.includes('filterChipStyles'), 'payment type/percent shared chips');
+console.assert(createForm.includes('loading={busy}'), 'create payment shared loading');
+console.assert(createForm.includes('Введённые данные сохранены в форме'), 'create payment preserves draft on error');
+console.assert(createForm.includes('title="Отмена"') && createForm.includes('variant="ghost"'), 'create payment cancel tertiary');
+console.assert(createForm.includes('setTitle(\'\')') && createForm.indexOf("setTitle('')") > createForm.indexOf('await syncProjectSideEffects'), 'form clears after confirmed save');
 
 // Shared confirmation layer must preserve destructive intent.
 console.assert(actionBus.includes('primaryDestructive?: boolean'), 'confirm payload destructive flag');
