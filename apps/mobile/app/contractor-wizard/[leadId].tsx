@@ -76,7 +76,7 @@ export default function ContractorLeadWizard() {
         </View>
         {rooms.map((r, i) => (
           <View key={i} style={s.card}>
-            <TextInput style={s.inp} value={r.name} onChangeText={(name) => { const n = [...rooms]; n[i] = { ...r, name }; setRooms(n); }} />
+            <TextInput style={s.inp} value={r.name} onChangeText={(name: string) => { const n = [...rooms]; n[i] = { ...r, name }; setRooms(n); }} />
             <RoomTypePicker value={r.room_type} onChange={(room_type) => { const n = [...rooms]; n[i] = { ...r, room_type }; setRooms(n); }} />
             {propertyType === 'house' && (
               <FloorLevelPicker value={r.floor_level ?? 1} onChange={(floor_level) => { const n = [...rooms]; n[i] = { ...r, floor_level }; setRooms(n); }} />

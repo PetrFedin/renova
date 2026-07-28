@@ -48,10 +48,10 @@ export function OsDockBar({ role }: { role: OsRole }) {
   }, [activeProject, role, detailLevel]);
 
   /** Не вызываем setState, если состав кнопок тот же — иначе цикл с новой ссылкой массива. */
-  const applyItems = useCallback((next: DockItemId[]) => {
+  const applyItems = useCallback((next: readonly DockItemId[]) => {
     setItems((prev) => {
       if (prev.length === next.length && prev.every((id, i) => id === next[i])) return prev;
-      return next;
+      return [...next];
     });
   }, []);
 

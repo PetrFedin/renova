@@ -12,6 +12,7 @@ import {
 import { RENOVA_ROUTES } from '@/lib/routeRegistry';
 import { logLegacyRouteDeprecation } from '@/lib/legacyRoutes';
 import { resolveRegistryRedirect, warrantyRoute } from '@/lib/navigation/navigationPolicy';
+import { parseOsHref } from '@/constants/osSections';
 
 export type CatchAllResolution =
   | { kind: 'stack' }
@@ -49,6 +50,17 @@ export function legacySlugRedirect(seg: string, role: OsRole): OsTabRoute | stri
   if (byId?.redirectTarget) return resolveRegistryRedirect(byId.redirectTarget, role);
   const byPath = RENOVA_ROUTES.find((r) => r.path === `/${seg}` && r.redirectTarget);
   if (byPath?.redirectTarget) return resolveRegistryRedirect(byPath.redirectTarget, role);
+  return null;
+}
+
+/** Compatibility resolver used by route integration tests and old inbound links. */
+export function roleAwareRegistryRedirect(path: string, role: OsRole): OsTabRoute | string | null {
+  const [pathname, query] = path.split('?');
+  const route = RENOVA_ROUTES.find((candidate) => candidate.path === pathname || candidate.id === pathname.replace(/^\//, ''));
+  if (route?.redirectTarget) return resolveRegistryRedirect(route.redirectTarget, role, query ? Object.fromEntries(new URLSearchParams(query)) : {});
+  if (pathname === '/repair' || pathname === '/budget' || pathname === '/object' || pathname === '/calendar') {
+    return parseOsHref(path).pathname === pathname ? resolveRegistryRedirect({ routeId: pathname.slice(1) as 'repair' | 'budget' | 'object' | 'calendar', params: query ? Object.fromEntries(new URLSearchParams(query)) : {} }, role) : null;
+  }
   return null;
 }
 

@@ -57,7 +57,7 @@ export function ActionConfirmSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={closeDismiss}>
       <Pressable style={s.backdrop} onPress={closeDismiss} accessibilityLabel="Закрыть">
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={s.sheet} onStartShouldSetResponder={() => true}>
           <View style={s.handle} />
           <Text style={s.title}>{title}</Text>
           {message ? <Text style={s.message}>{message}</Text> : null}

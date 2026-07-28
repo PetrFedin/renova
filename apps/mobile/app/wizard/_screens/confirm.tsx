@@ -232,13 +232,12 @@ export default function WizardConfirm() {
           visible={inviteOpen}
           userId={user.id}
           projectId={createdProjectId}
-          projectName={createdName || wizard.name}
           linkedContractorId={activeProject?.contractor_id}
           onClose={() => {
             setInviteOpen(false);
             replaceOsNav(tabsHref('customer', 'index'));
           }}
-          onLinked={() => loadProject(createdProjectId).catch(reportCatch('app.wizard._screens.confirm.2'))}
+          onLinked={() => { void loadProject(createdProjectId).catch(reportCatch('app.wizard._screens.confirm.2')); }}
         />
       ) : null}
     </>

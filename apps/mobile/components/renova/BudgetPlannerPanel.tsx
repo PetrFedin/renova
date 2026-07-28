@@ -156,8 +156,8 @@ export function BudgetPlannerPanel({
         <>
           <Text style={s.label}>Габариты (м² / м)</Text>
           <View style={s.row}>
-            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.floor_sq_m)} onChangeText={(v) => onMetricsChange({ ...metrics, floor_sq_m: +v || 0 })} placeholder="Пол" />
-            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.wall_sq_m)} onChangeText={(v) => onMetricsChange({ ...metrics, wall_sq_m: +v || 0 })} placeholder="Стены" />
+            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.floor_sq_m)} onChangeText={(v: string) => onMetricsChange({ ...metrics, floor_sq_m: +v || 0 })} placeholder="Пол" />
+            <TextInput style={[s.input, { flex: 1 }]} keyboardType="numeric" value={String(metrics.wall_sq_m)} onChangeText={(v: string) => onMetricsChange({ ...metrics, wall_sq_m: +v || 0 })} placeholder="Стены" />
           </View>
         </>
       )}
@@ -227,7 +227,7 @@ export function BudgetPlannerPanel({
                     style={s.priceInput}
                     keyboardType="numeric"
                     value={String(m.estimated_price)}
-                    onChangeText={(v) => updateMaterial(i, { estimated_price: +v || 0, total: (+v || 0) * m.qty })}
+                    onChangeText={(v: string) => updateMaterial(i, { estimated_price: +v || 0, total: (+v || 0) * m.qty })}
                   />
                 </View>
               ))}

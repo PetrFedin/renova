@@ -15,6 +15,8 @@ import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
 import { PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
+type PortalLayoutEvent = { nativeEvent: { layout: { y: number } } };
+
 const PORTAL_USER_KEY = 'renova:portal:user';
 
 export default function PortalScreen() {
@@ -155,6 +157,7 @@ export default function PortalScreen() {
   }
 
   const sched = snapshot.schedule as { current_stage?: string; progress_percent?: number; planned_end?: string };
+  const pendingWorkSchedule = snapshot.pending_work_schedule;
 
   const portalReadOnly = session.read_only || snapshot.read_only;
   // Честность scopes: не выводить оплату/приёмку/подпись из «есть pending» без явного права в токене
@@ -231,10 +234,10 @@ export default function PortalScreen() {
         </Text>
       </View>
 
-      {snapshot.pending_work_schedule ? (
+      {pendingWorkSchedule ? (
         <View style={s.card}>
           <Text style={s.cardHead}>План-график</Text>
-          <Text style={s.line}>{snapshot.pending_work_schedule.title || 'График работ'} · на согласовании</Text>
+          <Text style={s.line}>{pendingWorkSchedule.title || 'График работ'} · на согласовании</Text>
           {canConfirmSchedule ? (
             <View style={s.payActions}>
               <Pressable
@@ -251,7 +254,7 @@ export default function PortalScreen() {
                           await api.portalConfirmSchedule(
                             session.user_id,
                             session.project_id,
-                            snapshot.pending_work_schedule.id,
+                            pendingWorkSchedule.id,
                             portalToken,
                           );
                           await refreshPortalSnapshot(session.user_id, session.project_id);
@@ -282,7 +285,7 @@ export default function PortalScreen() {
                           await api.portalRejectSchedule(
                             session.user_id,
                             session.project_id,
-                            snapshot.pending_work_schedule.id,
+                            pendingWorkSchedule.id,
                             portalToken,
                             'Нужна правка сроков',
                           );
@@ -596,7 +599,7 @@ export default function PortalScreen() {
 
       <View
         style={[s.card, focusSection === 'payments' && s.focusCard]}
-        onLayout={(e) => { paymentsY.current = e.nativeEvent.layout.y; }}
+        onLayout={(e: PortalLayoutEvent) => { paymentsY.current = e.nativeEvent.layout.y; }}
       >
         <Text style={s.cardHead}>Ожидают оплаты ({snapshot.pending_payments.length})</Text>
         <Text style={s.muted}>
@@ -764,7 +767,7 @@ export default function PortalScreen() {
 
       <View
         style={[s.card, focusSection === 'docs' && s.focusCard]}
-        onLayout={(e) => { docsY.current = e.nativeEvent.layout.y; }}
+        onLayout={(e: PortalLayoutEvent) => { docsY.current = e.nativeEvent.layout.y; }}
       >
         <Text style={s.cardHead}>Документы ({snapshot.documents_total})</Text>
         {snapshot.documents.filter((d) => d.status === 'draft').length > 0 ? (

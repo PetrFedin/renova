@@ -30,6 +30,7 @@ import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { alertIcalExported } from '@/lib/calendarIcsNav';
 import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
 import { openQcIssue } from '@/lib/qcNav';
 import { alertCloseoutDone, alertDocumentSigned } from '@/lib/scheduleCloseoutNav';
 import { alertDocumentOcrDone } from '@/lib/fieldCommsNav';
@@ -616,7 +617,19 @@ export function DocumentsHub({
           {
             label: 'Открыть',
             onPress: () => {
-              void Linking.openURL(doc.href!).catch(() => {
+              const safeHref = resolveSafeDocumentUrl(doc.href);
+              if (!safeHref) {
+                showActionConfirm({
+                  title: 'Ссылка недоступна',
+                  message: 'Документ содержит небезопасный или пустой адрес.',
+                  primaryLabel: section.label,
+                  onPrimary: () => pushOsNav(section.route, undefined, role),
+                  secondaryLabel: 'Позже',
+                  onSecondary: () => undefined,
+                });
+                return;
+              }
+              void Linking.openURL(safeHref).catch(() => {
                 showActionConfirm({
                   title: 'Не удалось открыть',
                   message: 'Скопируйте ссылку или перейдите в раздел документа.',

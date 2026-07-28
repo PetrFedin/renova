@@ -129,4 +129,9 @@ console.assert(warrantyContractor.params?.projectId === 'p1', 'contractor warran
 const docsWarranty = resolvePushLink('/documents?tab=warranty&claimId=abc', '/home', 'customer')!;
 console.assert(docsWarranty.params?.tab === 'warranty' && docsWarranty.params?.claimId === 'abc', 'documents query preserved');
 
+const explicitReturn = resolvePushLink('/documents?returnTo=%2Fexplicit&source=push', '/caller', 'customer')!;
+console.assert(explicitReturn.params.returnTo === '/explicit', 'explicit URL returnTo wins');
+const fallbackReturn = resolvePushLink('/documents?source=push', '/caller', 'customer')!;
+console.assert(fallbackReturn.params.returnTo === '/caller', 'caller returnTo fills missing URL context');
+
 console.log('pushLinks.test OK');

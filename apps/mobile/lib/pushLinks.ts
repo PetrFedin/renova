@@ -35,11 +35,13 @@ export function resolvePushLink(
 ): PushTarget | null {
   if (!link) return null;
   const [path, query = ''] = link.split('?');
-  const rt = returnTo || '/';
   const canonical = TAB_ALIASES[path] || link;
   const canonicalPath = canonical.split('?')[0];
   const canonicalQuery = canonical.includes('?') ? canonical.split('?')[1] : query;
   const incoming = queryParams(canonicalQuery || '');
+  // An explicit returnTo carried by the inbound URL is authoritative; the
+  // caller-provided context is only a fallback for links that omit it.
+  const rt = incoming.returnTo || returnTo || '/';
 
   const bareHub = canonicalPath.match(/^\/(object|repair|budget|calendar)$/)?.[1];
   if (bareHub) {
@@ -84,7 +86,7 @@ export function resolvePushLink(
   }
 
   if (canonicalPath === '/design') {
-    const target = objectTabRoute(role, 'plan', incoming);
+    const target = tabsRoute(role, 'object', 'plan', incoming);
     return { pathname: target.pathname, params: { ...(target.params || {}), returnTo: rt } };
   }
 
