@@ -25,10 +25,12 @@ export function CreatePaymentForm({
   userId,
   project,
   onSaved,
+  onCancel,
 }: {
   userId: string;
   project: ProjectDetail;
   onSaved?: () => void;
+  onCancel?: () => void;
 }) {
   const { user } = useRenova();
   const [title, setTitle] = useState('');
@@ -185,6 +187,15 @@ export function CreatePaymentForm({
         disabled={busy}
         fullWidth
       />
+      {onCancel ? (
+        <PrimaryButton
+          title="Отмена"
+          variant="ghost"
+          onPress={onCancel}
+          disabled={busy}
+          fullWidth
+        />
+      ) : null}
     </View>
   );
 }
