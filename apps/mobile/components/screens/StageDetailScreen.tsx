@@ -22,6 +22,7 @@ import { toggleReaction, getReaction } from '@/lib/commentReactions';
 import { getCustomChecks } from '@/lib/customChecklist';
 import { RejectStageModal } from '@/components/renova/RejectStageModal';
 import { StageDetailLinks } from '@/components/screens/stage/StageDetailLinks';
+import { StageContextSummary } from '@/components/screens/stage/StageContextSummary';
 import { StageDetailHero } from '@/components/screens/stage/StageDetailHero';
 import { StageDetailAcceptanceFold } from '@/components/screens/stage/StageDetailAcceptanceFold';
 import { StageDetailPaymentBlock } from '@/components/screens/stage/StageDetailPaymentBlock';
@@ -303,6 +304,8 @@ export function StageDetailScreen() {
           onProjectReload={() => loadProject(activeProject.id)}
           onSubmitStage={submitStage}
         />
+
+        <StageContextSummary stage={stage} role={role} returnTo={`/stage/${stage.id}`} />
 
         {showAcceptance ? (
           <StageDetailAcceptanceFold
