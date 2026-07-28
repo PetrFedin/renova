@@ -1,7 +1,8 @@
 /** Digital Twin комнаты — паспорт + этапы + связь с бюджетом */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname, router } from 'expo-router';
-import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { RoomSnapshot } from '@/lib/api';
 import { RoomStageTimeline } from '@/components/renova/os/RoomStageTimeline';
@@ -80,15 +81,15 @@ export function RoomPassport({ snap, role }: { snap: RoomSnapshot; role?: OsRole
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 12 },
-  hero: { ...card, marginBottom: 10, padding: 14 },
-  title: { fontSize: 20, fontWeight: '800', color: RenovaTheme.colors.text },
-  meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4 },
+  hero: { marginBottom: 10, paddingVertical: 4, gap: 4 },
+  title: { ...screenTypography.listTitle, fontSize: 18 },
+  meta: { ...screenTypography.listMeta, marginTop: 4 },
   bar: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 10, overflow: 'hidden' },
   fill: { height: 4, backgroundColor: RenovaTheme.colors.accent },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  cell: { ...card, width: '48%', minWidth: '46%', flexGrow: 1, padding: 12 },
+  cell: { ...listRowStyles.metricCell, width: '48%', minWidth: '46%', flexGrow: 1, padding: 12 },
   cellWarn: { borderColor: RenovaTheme.colors.warning, backgroundColor: '#fffbeb' },
-  cellL: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
-  cellV: { fontSize: 16, fontWeight: '800', marginTop: 4, color: RenovaTheme.colors.text },
-  cellS: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  cellL: { ...screenTypography.metricLabel, marginTop: 0 },
+  cellV: { ...screenTypography.listTitle, fontSize: 16, marginTop: 4 },
+  cellS: { ...screenTypography.listMeta },
 });

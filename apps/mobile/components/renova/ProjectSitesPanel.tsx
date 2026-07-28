@@ -1,6 +1,7 @@
 /** Площадки (этажи/зоны) и циклы работ внутри проекта */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { buildProjectSites } from '@/lib/domain/projectSites';
 import type { ProjectDetail, ReceiptItem, MaterialPick } from '@/lib/api';
 import { objectTabRoute, type OsRole } from '@/constants/osSections';
@@ -61,7 +62,7 @@ export function ProjectSitesPanel({
 const s = StyleSheet.create({
   wrap: { marginBottom: 10 },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  title: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  title: { ...screenTypography.section, marginTop: 0, marginBottom: 0 },
   site: { ...card, padding: 10, marginBottom: 8 },
   siteHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   siteName: { fontSize: 15, fontWeight: '700', flex: 1, color: RenovaTheme.colors.text },

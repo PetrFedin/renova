@@ -1,6 +1,7 @@
 /** Компактная аналитика выполнения — календарь */
 import { View, Text, StyleSheet } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { ScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats';
 
 export function ScheduleExecutionStrip({ stats }: { stats: ScheduleExecutionStats }) {
@@ -24,19 +25,17 @@ export function ScheduleExecutionStrip({ stats }: { stats: ScheduleExecutionStat
 }
 
 const s = StyleSheet.create({
+  // Clarity W: summaryRow + metricCell вместо Theme.card + 800
   wrap: {
-    ...card,
-    flexDirection: 'row',
+    ...listRowStyles.summaryRow,
     marginBottom: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
   },
-  chip: { flex: 1, alignItems: 'center', minWidth: 0 },
-  val: { fontSize: 18, fontWeight: '800' },
+  chip: { ...listRowStyles.metricCell },
+  val: { ...screenTypography.metric, fontSize: 18 },
   val_accent: { color: RenovaTheme.colors.primary },
   val_warn: { color: RenovaTheme.colors.warning },
   val_good: { color: RenovaTheme.colors.success },
   val_muted: { color: RenovaTheme.colors.textMuted },
   val_neutral: { color: RenovaTheme.colors.text },
-  label: { fontSize: 10, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginTop: 2, textAlign: 'center' },
+  label: { ...screenTypography.metricLabel, textAlign: 'center' },
 });

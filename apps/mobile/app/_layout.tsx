@@ -74,6 +74,10 @@ export default function RootLayout() {
             <Stack.Screen name="approvals" options={{ headerShown: false }} />
             <Stack.Screen name="activity" options={{ headerShown: false }} />
             <Stack.Screen name="documents" options={{ headerShown: false }} />
+            <Stack.Screen name="portfolio" options={{ headerShown: false }} />
+            <Stack.Screen name="reports" options={{ headerShown: false }} />
+            <Stack.Screen name="guide" options={{ headerShown: false }} />
+            <Stack.Screen name="inbox" options={{ headerShown: false }} />
             <Stack.Screen name="scan-receipt" options={{ presentation: 'modal', headerShown: false }} />
             <Stack.Screen name="payment-return" options={{ headerShown: false }} />
             <Stack.Screen name="portal" options={{ headerShown: false }} />

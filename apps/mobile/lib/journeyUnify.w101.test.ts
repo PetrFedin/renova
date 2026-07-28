@@ -26,5 +26,5 @@ console.assert(portalApi.includes('portal_lock_estimate'), 'portal lock API');
 console.assert(portalUi.includes('Зафиксировать смету'), 'portal lock UI');
 console.assert(stage.includes('syncProjectSideEffects'), 'stage bus');
 console.assert(wo.includes("a.next === 'paid'"), 'WO → payments');
-console.assert(notifList.includes('resolveNotificationLink'), 'notif fallback');
+console.assert(notifList.includes('/inbox') && notifList.includes('pushOsNav'), 'notif → inbox SoT');
 console.log('journeyUnify.w101.test.ts OK');

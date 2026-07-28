@@ -1,18 +1,22 @@
 /** Детализация выбранного дня — события и быстрые действия по задачам */
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { dayTaskCount, formatCalendarEventDates, isPeriodCalendarEvent, isWorkCalendarEvent } from '@/lib/domain/calendarEvents';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { CalendarEvent, WorkOrder } from '@/lib/api';
-import type { OsRole } from '@/constants/osSections';
+import { calendarTabRoute, type OsRole } from '@/constants/osSections';
 import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -85,10 +89,19 @@ export function ScheduleDayDetail({
       await api.patchWorkOrder(userId, projectId, wo.id, { planned_end: nextEnd, notes: note });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
-      Alert.alert('Срок обновлён', `Новый дедлайн: ${nextEnd}`);
+      showActionConfirm({
+        title: 'Срок обновлён',
+        message: `Новый дедлайн: ${nextEnd}`,
+        primaryLabel: 'К графику',
+        onPrimary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+        secondaryLabel: 'К работе',
+        onSecondary: () => {
+          pushOsNav({ pathname: '/work-order/[id]', params: { id: wo.id } }, undefined, role);
+        },
+      });
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Продление срока отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Продление срока');
       } else {
         Alert.alert('Ошибка', 'Не удалось продлить срок');
       }
@@ -104,8 +117,8 @@ export function ScheduleDayDetail({
       // W133: день календаря → те же CTA, что WO detail
       alertWorkOrderAdvanced(role === 'contractor' ? 'contractor' : 'customer', next);
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Смена статуса отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Смена статуса');
       } else {
         Alert.alert('Ошибка', 'Не удалось обновить статус');
       }
@@ -206,14 +219,14 @@ const s = StyleSheet.create({
   title: { fontSize: 15, fontWeight: '800', color: RenovaTheme.colors.text, textTransform: 'capitalize' },
   sub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   list: { flex: 1 },
-  empty: { ...card, alignItems: 'center', paddingVertical: 16 },
-  emptyT: { color: RenovaTheme.colors.textMuted, marginBottom: 10, fontSize: 13 },
-  eventWrap: { marginBottom: 6 },
-  event: { ...card, paddingVertical: 10 },
-  kind: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.accent, textTransform: 'uppercase' },
-  eventT: { fontWeight: '600', fontSize: 14, marginTop: 2 },
-  period: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  status: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  empty: { ...listRowStyles.metricCell, alignItems: 'center', paddingVertical: 16 },
+  emptyT: { ...screenTypography.empty, marginBottom: 10 },
+  eventWrap: { marginBottom: 0 },
+  event: { ...listRowStyles.row, paddingVertical: 10 },
+  kind: { ...screenTypography.metricLabel, color: RenovaTheme.colors.accent, marginTop: 0 },
+  eventT: { ...screenTypography.listTitle, fontSize: 14 },
+  period: { ...screenTypography.listMeta },
+  status: { ...screenTypography.listMeta },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, paddingHorizontal: 4 },
   actionBtn: {
     paddingHorizontal: 10,

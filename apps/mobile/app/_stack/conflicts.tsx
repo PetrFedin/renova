@@ -7,6 +7,7 @@ import { OfflineDiffViewer } from '@/components/renova/OfflineDiffViewer';
 import { FieldMergePicker } from '@/components/renova/FieldMergePicker';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { dedupeQueue } from '@/lib/smartMerge';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { getQueue, removeJob, writeQueue, type OfflineJob } from '@/lib/offlineQueue';
 import { flushOfflineOutbox, subscribeOfflineFlush } from '@/lib/offline';
 import { RenovaTheme } from '@/constants/Theme';
@@ -47,7 +48,16 @@ export default function ConflictsScreen() {
               setJobs(next);
             }} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              <PrimaryButton title="Удалить" variant="outline" onPress={async () => { await removeJob(j.id); await reload(); }} />
+              <PrimaryButton title="Удалить" variant="outline" onPress={() => {
+              showActionConfirm({
+                title: 'Удалить из очереди?',
+                message: 'Запись offline-очереди будет удалена без синхронизации.',
+                primaryLabel: 'Удалить',
+                onPrimary: () => { void removeJob(j.id).then(reload); },
+                secondaryLabel: 'Отмена',
+                onSecondary: () => undefined,
+              });
+            }} />
             </View>
           </View>
         ))}

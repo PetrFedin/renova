@@ -26,6 +26,8 @@ export type MaterialPick = {
   category?: string | null;
   shop_url?: string | null;
   shop_name?: string | null;
+  /** От sync-price: live | stub | manual — stub ≠ рыночная правда */
+  price_source?: string | null;
   work_type?: string | null;
   status: string;
   analog_of_id?: string | null;

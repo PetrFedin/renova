@@ -102,7 +102,7 @@ export function CustomerProfileScreen() {
 
       {user ? (
         <ProfileSection title="Уведомления">
-          <ProfileNotifications userId={user.id} />
+          <ProfileNotifications role="customer" returnTo="/(customer)/(tabs)/profile" />
         </ProfileSection>
       ) : null}
 
@@ -131,7 +131,7 @@ export function CustomerProfileScreen() {
         </View>
       </ProfileSection>
 
-      <ProfileSection title="Ещё">
+      <ProfileSection title="Дополнительно">
         <ProfileExtraLinks items={extraItems} returnTo="/(customer)/(tabs)/profile" role="customer" />
       </ProfileSection>
     </ScrollView>

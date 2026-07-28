@@ -7,6 +7,7 @@ import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { formMetaText } from '@/constants/formTypography';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -24,6 +25,7 @@ import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL, PAYMENT_BLOCKED_ACCEPTANCE_MS
 import { buildPaymentHistory, formatPaymentEventDate } from '@/lib/domain/paymentHistory';
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { alertPaymentConfirmed } from '@/lib/estimatePayNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportCatch, reportError } from '@/lib/reportError';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
@@ -31,6 +33,18 @@ export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Clarity I: gate приёмки — sheet с CTA, не Alert */
+function confirmAcceptanceFirst(goToAcceptance: () => void) {
+  showActionConfirm({
+    title: 'Сначала приёмка',
+    message: PAYMENT_BLOCKED_ACCEPTANCE_MSG,
+    primaryLabel: 'Перейти к приёмке',
+    onPrimary: goToAcceptance,
+    secondaryLabel: 'Отмена',
+    onSecondary: () => undefined,
+  });
 }
 
 type PayStep = 'info' | 'transfer' | 'confirm';
@@ -141,73 +155,86 @@ export function PaymentDetailSheet({
   const openReceipt = () => {
     setReceiptAttached(true);
     pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname, role);
-    Alert.alert('Чек', 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить».');
+    showActionConfirm({
+      title: 'Чек',
+      message: 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить».',
+      primaryLabel: 'К подтверждению',
+      onPrimary: () => setStep('confirm'),
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
   };
 
   const openSbp = async () => {
     if (reqMissing) {
-      Alert.alert('Реквизиты не указаны', reqMissing);
+      showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
       return;
     }
     try {
       await Clipboard.setStringAsync(String(Math.round(payment.amount)));
     } catch { /* fallback — пользователь скопирует вручную */ }
-    Alert.alert(
-      'Перевод',
-      `${requisites}\n\nСумма скопирована в буфер. Откройте приложение банка или СБП и вставьте сумму.`,
-      Platform.OS === 'web'
-        ? [
-            { text: 'Отмена', style: 'cancel' },
-            { text: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
-          ]
-        : [
-            { text: 'Отмена', style: 'cancel' },
-            {
-              text: 'Открыть банк',
+    showActionConfirm({
+      title: 'Перевод',
+      message: `${requisites}\n\nСумма скопирована в буфер. Откройте приложение банка или СБП и вставьте сумму.`,
+      actions: [
+        {
+          label: 'Я перевёл',
+          onPress: () => { setTransferAck(true); setStep('confirm'); },
+        },
+        ...(Platform.OS !== 'web'
+          ? [{
+              label: 'Открыть банк',
               onPress: () => {
-                // W58: без fake bank:// scheme — пользователь открывает свой банк
-                Alert.alert(
-                  'Реквизиты скопированы',
-                  'Откройте приложение вашего банка или СБП и вставьте реквизиты из буфера.',
-                );
+                showActionConfirm({
+                  title: 'Реквизиты скопированы',
+                  message: 'Откройте приложение вашего банка или СБП и вставьте реквизиты из буфера.',
+                  primaryLabel: 'Понятно',
+                  onPrimary: () => undefined,
+                });
               },
-            },
-            { text: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
-          ],
-    );
+            }]
+          : []),
+      ],
+    });
   };
 
   const copySbpAmount = async () => {
     const amountText = String(Math.round(payment.amount));
     await Clipboard.setStringAsync(amountText);
-    Alert.alert(
-      'Сумма скопирована',
-      `${formatRub(payment.amount)} в буфере обмена. Откройте приложение банка и вставьте сумму для перевода по СБП.`,
-      Platform.OS === 'web'
-        ? [{ text: 'OK' }]
-        : [
-            { text: 'OK' },
-            {
-              text: 'Открыть банк',
-              onPress: () => {
-                Alert.alert(
-                  'Сумма в буфере',
-                  'Откройте приложение банка или СБП и вставьте сумму вручную.',
-                );
-              },
+    showActionConfirm({
+      title: 'Сумма скопирована',
+      message: `${formatRub(payment.amount)} в буфере обмена. Откройте приложение банка и вставьте сумму для перевода по СБП.`,
+      primaryLabel: 'Понятно',
+      onPrimary: () => undefined,
+      ...(Platform.OS !== 'web'
+        ? {
+            secondaryLabel: 'Подсказка',
+            onSecondary: () => {
+              showActionConfirm({
+                title: 'Сумма в буфере',
+                message: 'Откройте приложение банка или СБП и вставьте сумму вручную.',
+                primaryLabel: 'Понятно',
+                onPrimary: () => undefined,
+              });
             },
-          ],
-    );
+          }
+        : {}),
+    });
   };
 
 
   const copyRequisites = async () => {
     if (reqMissing) {
-      Alert.alert('Реквизиты не указаны', reqMissing);
+      showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
       return;
     }
     await Clipboard.setStringAsync(requisites);
-    Alert.alert('Реквизиты скопированы', 'Вставьте в приложении банка для перевода по СБП или реквизитам.');
+    showActionConfirm({
+      title: 'Реквизиты скопированы',
+      message: 'Вставьте в приложении банка для перевода по СБП или реквизитам.',
+      primaryLabel: 'Понятно',
+      onPrimary: () => undefined,
+    });
   };
 
   const goToAcceptance = () => {
@@ -221,10 +248,7 @@ export function PaymentDetailSheet({
 
   const payWithCard = async () => {
     if (stageNeedsAcceptance) {
-      Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
-        { text: 'Отмена', style: 'cancel' },
-        { text: 'Перейти к приёмке', onPress: goToAcceptance },
-      ]);
+      confirmAcceptanceFirst(goToAcceptance);
       return;
     }
     setCardBusy(true);
@@ -238,24 +262,33 @@ export function PaymentDetailSheet({
         });
         onChanged?.();
         onClose();
-        Alert.alert('Оплата (demo)', pay.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.');
+        showActionConfirm({
+          title: 'Оплата (demo)',
+          message: pay.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.',
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
         return;
       }
       if (pay.confirmation_url) {
         await WebBrowser.openBrowserAsync(pay.confirmation_url);
-        Alert.alert(
-          'ЮKassa',
-          'После оплаты вы вернётесь в приложение. Статус счёта обновится автоматически.',
-        );
+        showActionConfirm({
+          title: 'ЮKassa',
+          message: 'После оплаты вы вернётесь в приложение. Статус счёта обновится автоматически.',
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
       }
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 409) {
-        Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
-          { text: 'Отмена', style: 'cancel' },
-          { text: 'Перейти к приёмке', onPress: goToAcceptance },
-        ]);
+        confirmAcceptanceFirst(goToAcceptance);
       } else if (e instanceof ApiError && e.status === 503) {
-        Alert.alert('ЮKassa', 'Нет ключей YOOKASSA_* на сервере (staging/prod demo выключен). Задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET или оплатите по реквизитам/чеку.');
+        showActionConfirm({
+          title: 'ЮKassa',
+          message: 'Нет ключей YOOKASSA_* на сервере (staging/prod demo выключен). Задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET или оплатите по реквизитам/чеку.',
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
       } else {
         Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось открыть оплату картой'));
       }
@@ -266,51 +299,62 @@ export function PaymentDetailSheet({
 
   const confirm = async () => {
     if (stageNeedsAcceptance) {
-      Alert.alert(
-        'Сначала приёмка',
-        PAYMENT_BLOCKED_ACCEPTANCE_MSG,
-        [
-          { text: 'Отмена', style: 'cancel' },
-          { text: 'Перейти к приёмке', onPress: goToAcceptance },
-        ],
-      );
+      confirmAcceptanceFirst(goToAcceptance);
       return;
     }
     if (!transferAck && !receiptAttached) {
-      Alert.alert('Подтверждение', 'Сначала переведите сумму или прикрепите чек.');
+      showActionConfirm({
+        title: 'Подтверждение',
+        message: 'Сначала переведите сумму или прикрепите чек.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
       return;
     }
-    try {
-      const confirmed = await api.confirmPayment(userId, projectId, payment.id, {
-        // Клиентский gate уже проверил перевод/чек; сервер принимает ack или receipt_id
-        transfer_ack: Boolean(transferAck || receiptAttached),
-      });
-      await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(reportCatch('components.renova.PaymentDetailSheet.1'));
-      await syncProjectSideEffects({
-        user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
-        project: activeProject ?? ({ id: projectId } as any),
-        role,
-      });
-      onChanged?.();
-      onClose();
-      if (confirmed?.status === 'paid_unverified') {
-        Alert.alert(
-          'Принято без проверки',
-          'Статус «оплачено, не верифицировано». Прикрепите чек — тогда сумма войдёт в бюджет как подтверждённый факт.',
-        );
-      } else {
-        alertPaymentConfirmed(role);
-      }
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 409) {
-        Alert.alert('Сначала приёмка', PAYMENT_BLOCKED_ACCEPTANCE_MSG, [
-          { text: 'Отмена', style: 'cancel' },
-          { text: 'Перейти к приёмке', onPress: goToAcceptance },
-        ]);
-      } else {
-        Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось подтвердить оплату'));
-      }
-    }
+    // Clarity V: money-critical — pre-confirm перед api.confirmPayment
+    showActionConfirm({
+      title: 'Подтвердить оплату?',
+      message: `${formatRub(payment.amount)}. Исполнитель увидит счёт как оплаченный.`,
+      primaryLabel: 'Подтвердить',
+      onPrimary: () => {
+        void (async () => {
+          try {
+            const confirmed = await api.confirmPayment(userId, projectId, payment.id, {
+              transfer_ack: Boolean(transferAck || receiptAttached),
+            });
+            await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(reportCatch('components.renova.PaymentDetailSheet.1'));
+            await syncProjectSideEffects({
+              user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
+              project: activeProject ?? ({ id: projectId } as any),
+              role,
+            });
+            onChanged?.();
+            onClose();
+            if (confirmed?.status === 'paid_unverified') {
+              showActionConfirm({
+                title: 'Принято без проверки',
+                message: 'Статус «оплачено, не верифицировано». Прикрепите чек — тогда сумма войдёт в бюджет как подтверждённый факт.',
+                primaryLabel: 'Понятно',
+                onPrimary: () => undefined,
+              });
+            } else {
+              alertPaymentConfirmed(role);
+            }
+          } catch (e: unknown) {
+            if (e instanceof ApiError && e.status === 409) {
+              confirmAcceptanceFirst(goToAcceptance);
+            } else {
+              showActionConfirm({
+                title: 'Ошибка',
+                message: apiErrorMessage(e, 'Не удалось подтвердить оплату'),
+              });
+            }
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
   return (
@@ -459,7 +503,7 @@ const s = StyleSheet.create({
   linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', marginBottom: 8 },
   link: { fontSize: 14, color: RenovaTheme.colors.primary, fontWeight: '600' },
   wait: { fontSize: 13, color: RenovaTheme.colors.warning, fontWeight: '600', marginBottom: 8 },
-  sectionHead: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 2 },
+  sectionHead: { ...screenTypography.section, color: RenovaTheme.colors.text, marginTop: 0, marginBottom: 2 },
   histRow: { borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 8 },
   histBody: { gap: 2 },
   histTitle: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },

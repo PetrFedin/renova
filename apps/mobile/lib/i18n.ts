@@ -6,7 +6,7 @@ const KEY = 'renova_lang';
 
 const ru: Record<string, string> = {
   rooms: 'Комнаты', stages: 'Этапы', calendar: 'Календарь', chat: 'Связь', finance: 'Финансы',
-  submit: 'Отправить', accept: 'Принять', readOnly: 'Гостевой доступ — только просмотр', send: 'Отправить',
+  submit: 'Отправить', accept: 'Принять', readOnly: 'Только просмотр — действия недоступны. Напишите владельцу в чат.', send: 'Отправить',
   invite: 'Пригласить', team: 'Бригада', export: 'Экспорт', profile: 'Профиль', home: 'Главная',
   estimate: 'Смета', guide: 'Гид', loading: 'Загрузка…', error: 'Ошибка', save: 'Сохранить',
   cancel: 'Отмена', search: 'Поиск…', continue: 'Продолжить', customer: 'Заказчик', contractor: 'Исполнитель',

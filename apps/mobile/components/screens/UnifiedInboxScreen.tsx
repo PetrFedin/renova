@@ -1,6 +1,7 @@
 /** Полный экран единого inbox — чат · оплаты · согласования · приёмка · этапы · offline */
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -10,8 +11,9 @@ import { navigateApproval } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { flushOfflineOutbox } from '@/lib/offline';
-import type { OsRole } from '@/constants/osSections';
+import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
 
 function inboxSubtitle(badge: number, chatUnread: number): string {
@@ -78,7 +80,13 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
       <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <OfflineSyncStatus />
         {!visible.length && (
-          <Text style={s.empty}>Нет активных задач — всё под контролем</Text>
+          <EmptyActionState
+            title="Нет активных задач"
+            hint="Всё под контролем — можно открыть сообщения или документы."
+            actionLabel="Сообщения"
+            actionVariant="primary"
+            onAction={() => pushOsNav(tabsRoute(role, 'chat'), returnTo, role)}
+          />
         )}
         {visible.map((it) => (
           <InboxRow key={it.id} item={it} onPress={() => { open(it).catch(reportCatch('components.screens.UnifiedInboxScreen.3')); }} />
@@ -90,9 +98,10 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
 
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  row: { ...card, flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingVertical: 12 },
-  title: { fontWeight: '700', fontSize: 15 },
-  sub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  /** Clarity visual: list-row, не card-стек входящих */
+  row: { ...listRowStyles.row, flexDirection: 'row', alignItems: 'center' },
+  title: { ...screenTypography.listTitle },
+  sub: { ...screenTypography.listMeta },
   arrow: { fontSize: 18, color: RenovaTheme.colors.textMuted, marginLeft: 8 },
-  empty: { textAlign: 'center', color: RenovaTheme.colors.textMuted, marginTop: 24 },
+  empty: { ...screenTypography.empty, textAlign: 'center', marginTop: 24 },
 });

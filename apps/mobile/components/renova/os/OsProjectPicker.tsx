@@ -4,6 +4,7 @@ import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, Scr
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { useTopInset } from '@/lib/useTopInset';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useOsNavFromHere } from '@/lib/navigation';
@@ -17,6 +18,7 @@ import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActio
 import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import type { OsRole } from '@/constants/osSections';
+import { filterOutJunkProjects } from '@/lib/junkProjects';
 
 function projectMeta(p: ProjectSummary, pendingById: Record<string, number>): string {
   const type = p.property_type === 'house' ? 'Дом' : 'Квартира';
@@ -114,12 +116,14 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
 
   const portfolio = useMemo(() => summarizePortfolio(projects, pendingById), [projects, pendingById]);
-  const displayProjects = bucket === 'active' ? projects : bucketItems;
+  // Investor honesty: E2E/Wizard Test не засоряют список объектов
+  const activeProjects = useMemo(() => filterOutJunkProjects(projects), [projects]);
+  const displayProjects = bucket === 'active' ? activeProjects : bucketItems;
   const { inProgress, completed } = useMemo(
     () => partitionPortfolioProjects(displayProjects, pendingById),
     [displayProjects, pendingById],
   );
-  const showPortfolioRow = projects.length >= 2 && bucket === 'active';
+  const showPortfolioRow = activeProjects.length >= 2 && bucket === 'active';
   const isPortfolioScreen = pathname.includes('/portfolio');
 
   useEffect(() => {
@@ -128,7 +132,18 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
     for (const p of displayProjects) {
       if (p.pending_payments != null) fromSummary[p.id] = p.pending_payments;
     }
-    setPendingById(fromSummary);
+    // Не пишем тот же объект — иначе лишний ре-рендер шапки при каждом обновлении projects[]
+    setPendingById((prev) => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(fromSummary);
+      if (
+        prevKeys.length === nextKeys.length
+        && nextKeys.every((id) => prev[id] === fromSummary[id])
+      ) {
+        return prev;
+      }
+      return fromSummary;
+    });
 
     const closing = displayProjects.filter((p) => p.progress_percent >= 100 && p.pending_payments == null);
     if (!closing.length) return;
@@ -154,7 +169,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
     };
   }, [open, user?.id, displayProjects]);
 
-  if (!activeProject || projects.length === 0) return null;
+  if (!activeProject || activeProjects.length === 0) return null;
 
   async function select(id: string) {
     if (bucket !== 'active') return;
@@ -177,7 +192,8 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
   function openPortfolio() {
     setOpen(false);
-    pushScreen('/portfolio');
+    // Web Modal: навигация в том же тике может съесться при unmount — откладываем.
+    setTimeout(() => pushScreen('/portfolio'), 0);
   }
 
   return (
@@ -190,9 +206,9 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
         hitSlop={8}
       >
         <Ionicons name="business-outline" size={22} color={RenovaTheme.colors.text} />
-        {projects.length > 1 ? (
+        {activeProjects.length > 1 ? (
           <View style={s.countBadge}>
-            <Text style={s.countBadgeT}>{projects.length}</Text>
+            <Text style={s.countBadgeT}>{activeProjects.length}</Text>
           </View>
         ) : null}
       </Pressable>
@@ -305,7 +321,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                   }}
                 >
                   <Ionicons name="create-outline" size={18} color={RenovaTheme.colors.textMuted} />
-                  <Text style={s.itemT}>Редактировать профиль</Text>
+                  <Text style={s.itemT}>Данные объекта</Text>
                 </Pressable>
                 {bucket === 'active' ? (
                   <Pressable
@@ -386,20 +402,20 @@ const s = StyleSheet.create({
     elevation: 8,
   },
   menuHead: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
+    ...screenTypography.section,
     paddingHorizontal: 16,
     paddingBottom: 8,
+    marginTop: 0,
+    marginBottom: 0,
   },
   sectionHead: {
-    fontSize: 11,
-    fontWeight: '700',
+    ...screenTypography.section,
     color: RenovaTheme.colors.textSubtle,
     paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 4,
+    marginTop: 0,
+    marginBottom: 0,
   },
   sectionHeadGap: { marginTop: 4, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.borderLight },
   itemWrap: { paddingBottom: 4, position: 'relative', minHeight: 72 },

@@ -1,6 +1,7 @@
 /** Sheet детализации KPI на главной — кратко, без ухода в раздел */
 import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { homeTypography } from '@/constants/homeTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { buildHomeKpiDetail, type HomeKpiBar } from '@/lib/domain/buildHomeKpiDetail';
@@ -102,17 +103,17 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.border,
     marginBottom: 14,
   },
-  title: { fontSize: 18, fontWeight: '800', color: RenovaTheme.colors.text },
-  lead: { fontSize: 14, color: RenovaTheme.colors.textMuted, marginTop: 6, marginBottom: 4 },
+  title: { ...screenTypography.listTitle, fontSize: 18, fontWeight: '700' },
+  lead: { ...screenTypography.listMeta, marginTop: 6, marginBottom: 4, fontSize: 14 },
   barBlock: { marginTop: 14 },
   barHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  barLabel: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  barPct: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.text },
+  barLabel: { ...screenTypography.metricLabel, marginTop: 0 },
+  barPct: { ...screenTypography.listTitle, fontSize: 12 },
   barTrack: { height: 8, borderRadius: 4, backgroundColor: '#EEF2F6', overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 4 },
   rows: { marginTop: 12, marginBottom: 16, gap: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  rowLabel: { flex: 1, fontSize: 13, color: RenovaTheme.colors.textMuted },
-  rowValue: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text, textAlign: 'right' },
+  row: { ...listRowStyles.row, flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingHorizontal: 0 },
+  rowLabel: { flex: 1, ...screenTypography.listMeta, marginTop: 0 },
+  rowValue: { ...screenTypography.listTitle, fontSize: 13, textAlign: 'right' },
   closeLink: { alignItems: 'center', marginTop: 12 },
 });

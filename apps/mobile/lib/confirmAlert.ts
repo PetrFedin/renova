@@ -1,22 +1,34 @@
-/** Подтверждение destructive-действий — Alert на native, window.confirm на web. */
-import { Alert, Platform } from 'react-native';
+/** Подтверждение destructive-действий — OS sheet (Clarity P), web: window.confirm. */
+import { Platform } from 'react-native';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function confirmDestructive(title: string, message: string): Promise<boolean> {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.confirm === 'function') {
     return Promise.resolve(window.confirm(`${title}\n\n${message}`));
   }
   return new Promise((resolve) => {
-    Alert.alert(title, message, [
-      { text: 'Отмена', style: 'cancel', onPress: () => resolve(false) },
-      { text: 'OK', style: 'destructive', onPress: () => resolve(true) },
-    ]);
+    let settled = false;
+    const settle = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    showActionConfirm({
+      title,
+      message,
+      primaryLabel: 'Подтвердить',
+      onPrimary: () => settle(true),
+      secondaryLabel: 'Отмена',
+      onSecondary: () => settle(false),
+      onDismiss: () => settle(false),
+    });
   });
 }
 
 export function alertMessage(title: string, message: string): void {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
-    window.alert(`${title}\n\n${message}`);
-    return;
-  }
-  Alert.alert(title, message);
+  // Info-only: единый sheet без Promise
+  showActionConfirm({
+    title,
+    message,
+  });
 }

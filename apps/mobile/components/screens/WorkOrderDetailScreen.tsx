@@ -6,13 +6,16 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WorkOrderDetailPanel } from '@/components/renova/WorkOrderDetailPanel';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, WorkOrder } from '@/lib/api';
 import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/domain/workLifecycle';
 import { isWorkArchived } from '@/lib/domain/workArchive';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { budgetTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertWorkOrderAdvanced } from '@/lib/jobLeadNav';
@@ -42,8 +45,8 @@ export function WorkOrderDetailScreen() {
       // W130: WO lifecycle → приёмка / оплаты / график
       alertWorkOrderAdvanced(role, next);
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Смена статуса отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Смена статуса');
       } else {
         Alert.alert('Ошибка', 'Недопустимый переход статуса');
       }
@@ -109,6 +112,29 @@ export function WorkOrderDetailScreen() {
                   pushOsNav(budgetTabRoute(role, 'payments'), back, role);
                   return;
                 }
+                // Clarity W: irreversible WO transitions — pre-confirm
+                const needsConfirm =
+                  a.next === 'cancelled' ||
+                  a.next === 'approved' ||
+                  a.next === 'done' ||
+                  (a.next === 'in_progress' && wo.status === 'review');
+                if (needsConfirm) {
+                  const titles: Partial<Record<WorkOrderStatus, string>> = {
+                    cancelled: 'Отменить работу?',
+                    approved: 'Согласовать работу?',
+                    done: 'Принять результат?',
+                    in_progress: 'Вернуть на доработку?',
+                  };
+                  showActionConfirm({
+                    title: titles[a.next] || `${a.label}?`,
+                    message: `«${wo.title || 'Работа'}» → ${WORK_STATUS_LABEL[a.next]}`,
+                    primaryLabel: a.label,
+                    onPrimary: () => { void transition(a.next); },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
+                  return;
+                }
                 transition(a.next);
               }} />
             ))}
@@ -121,10 +147,10 @@ export function WorkOrderDetailScreen() {
 
 const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  section: { fontWeight: '700', marginVertical: 12, textTransform: 'uppercase', fontSize: 12, color: RenovaTheme.colors.textMuted },
+  section: { ...screenTypography.section, marginVertical: 12 },
   archiveBanner: { backgroundColor: RenovaTheme.colors.surfaceMuted, padding: 10, borderRadius: 8, marginBottom: 10 },
   archiveText: { fontSize: 13, color: RenovaTheme.colors.textMuted, fontWeight: '600' },
   budgetRow: { marginTop: 4, marginBottom: 8 },
-  budgetLabel: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
-  budgetVal: { fontSize: 15, fontWeight: '700', marginTop: 4 },
+  budgetLabel: { ...screenTypography.metricLabel },
+  budgetVal: { ...screenTypography.listTitle, marginTop: 4 },
 });

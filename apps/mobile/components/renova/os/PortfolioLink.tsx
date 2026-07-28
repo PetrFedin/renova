@@ -16,7 +16,7 @@ export function PortfolioLink({ role }: { role: OsRole }) {
     : `Все проекты (${projects.length}) →`;
 
   return (
-    <Pressable style={s.row} onPress={() => pushScreen('/portfolio')} accessibilityRole="button">
+    <Pressable style={s.row} onPress={() => setTimeout(() => pushScreen('/portfolio'), 0)} accessibilityRole="button">
       <Text style={homeTypography.actionRow} numberOfLines={1}>{label}</Text>
     </Pressable>
   );

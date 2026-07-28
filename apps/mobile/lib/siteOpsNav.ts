@@ -1,5 +1,5 @@
-/** W136: room change, archive, waste lifecycle, expense edit → SoT */
-import { Alert } from 'react-native';
+/** W136: room change, archive, waste lifecycle, expense edit → SoT.
+ * Clarity H: sheet вместо Alert. */
 import { pushOsNav } from '@/lib/pushOsNav';
 import {
   budgetTabRoute,
@@ -7,39 +7,30 @@ import {
   repairTabRoute,
   type OsRole,
 } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 /** Заказчик запросил изменение комнаты */
 export function alertRoomChangeRequested(role: OsRole = 'customer') {
-  Alert.alert(
-    'Запрос отправлен',
-    'Исполнитель согласует изменение. Следите во «Входящих» и в комнатах.',
-    [
-      { text: 'OK' },
-      {
-        text: 'Входящие',
-        onPress: () => pushOsNav('/inbox', undefined, role),
-      },
-      {
-        text: 'Согласования',
-        onPress: () => pushOsNav('/approvals', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Запрос отправлен',
+    message: 'Исполнитель согласует изменение. Следите во «Входящих» и в комнатах.',
+    primaryLabel: 'Входящие',
+    onPrimary: () => pushOsNav('/inbox', undefined, role),
+    secondaryLabel: 'Согласования',
+    onSecondary: () => pushOsNav('/approvals', undefined, role),
+  });
 }
 
 /** Комната в архиве */
 export function alertRoomArchived(role: OsRole, roomName: string) {
-  Alert.alert(
-    'В архиве',
-    `«${roomName}» скрыта из активных. Смотрите вкладку «Архив».`,
-    [
-      { text: 'OK' },
-      {
-        text: 'Комнаты',
-        onPress: () => pushOsNav(objectTabRoute(role, 'rooms'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'В архиве',
+    message: `«${roomName}» скрыта из активных. Смотрите вкладку «Архив».`,
+    primaryLabel: 'Комнаты',
+    onPrimary: () => pushOsNav(objectTabRoute(role, 'rooms'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Вывоз мусора: create / request / approve / complete */
@@ -56,53 +47,49 @@ export function alertWasteOrderAdvanced(role: OsRole, action: 'created' | 'reque
     approved: 'Исполнитель отметит факт вывоза.',
     completed: 'Расход зафиксирован. Сверьте факт в расходах.',
   } as const;
-  Alert.alert(titles[action], bodies[action], [
-    { text: 'OK' },
-    {
-      text: 'Материалы',
-      onPress: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
-    },
-    ...(action === 'completed'
-      ? [
-          {
-            text: 'Расходы',
-            onPress: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
-          },
-        ]
-      : []),
-  ]);
+
+  if (action === 'completed') {
+    showActionConfirm({
+      title: titles.completed,
+      message: bodies.completed,
+      primaryLabel: 'Расходы',
+      onPrimary: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
+      secondaryLabel: 'Материалы',
+      onSecondary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+    });
+    return;
+  }
+
+  showActionConfirm({
+    title: titles[action],
+    message: bodies[action],
+    primaryLabel: 'Материалы',
+    onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Правка траты в карточке расхода */
 export function alertExpenseUpdated(role: OsRole) {
-  Alert.alert(
-    'Трата обновлена',
-    'Fact бюджета пересчитан. Можно сверить сводку.',
-    [
-      { text: 'OK' },
-      {
-        text: 'Расходы',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
-      },
-      {
-        text: 'Сводка',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Трата обновлена',
+    message: 'Fact бюджета пересчитан. Можно сверить сводку.',
+    primaryLabel: 'Расходы',
+    onPrimary: () => pushOsNav(budgetTabRoute(role, 'expenses'), undefined, role),
+    secondaryLabel: 'Сводка',
+    onSecondary: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
+  });
 }
 
 /** Удаление траты */
 export function alertExpenseDeleted(role: OsRole) {
-  Alert.alert(
-    'Трата удалена',
-    'Сумма убрана из факта бюджета.',
-    [
-      { text: 'OK' },
-      {
-        text: 'Сводка',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Трата удалена',
+    message: 'Сумма убрана из факта бюджета.',
+    primaryLabel: 'Сводка',
+    onPrimary: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }

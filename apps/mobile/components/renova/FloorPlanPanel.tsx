@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent, ActivityIndicator, Platform } from 'react-native';
-import { usePathname } from 'expo-router';
+import { useLocalSearchParams, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -16,9 +16,11 @@ import { pushRoomDetail } from '@/lib/navigation';
 import { RenovaTheme } from '@/constants/Theme';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { openQcIssue } from '@/lib/qcNav';
-import { alertFloorPlanUploaded, alertFloorPunchCreated } from '@/lib/shareAccessNav';
-import type { OsRole } from '@/constants/osSections';
+import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
+import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 const MAP_H = 180;
@@ -48,6 +50,7 @@ export function FloorPlanPanel({
 }) {
   const { user, activeProject } = useRenova();
   const pathname = usePathname();
+  const { punch: punchParam } = useLocalSearchParams<{ punch?: string }>();
   const [plans, setPlans] = useState<FloorPlan[]>([]);
   const [floor, setFloor] = useState(1);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -56,8 +59,28 @@ export function FloorPlanPanel({
   const [mapW, setMapW] = useState(0);
   const [addingPunch, setAddingPunch] = useState(false);
   const planRef = useRef<FloorPlan | null>(null);
+  /** Clarity B: sheet вместо Alert после punch / upload */
+  const [punchSheet, setPunchSheet] = useState<{ issueId?: string; hasPhoto: boolean } | null>(null);
+  const [uploadSheet, setUploadSheet] = useState(false);
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
+
+  // Investor P2: deep-link ?punch=1 → сразу режим замечаний на плане
+  useEffect(() => {
+    if (punchParam === '1' || punchParam === 'true') setPunchMode(true);
+  }, [punchParam]);
+
   const load = useCallback(() => {
-    api.listFloorPlans(userId, projectId).then(setPlans).catch(reportCatch('components.renova.FloorPlanPanel.1'));
+    setLoadState('loading');
+    api
+      .listFloorPlans(userId, projectId)
+      .then((list) => {
+        setPlans(list);
+        setLoadState('loaded');
+      })
+      .catch((e) => {
+        reportCatch('components.renova.FloorPlanPanel.1')(e);
+        setLoadState('error');
+      });
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);
@@ -125,15 +148,8 @@ export function FloorPlanPanel({
       });
       await load();
       setPunchMode(false);
-      const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
-      // W121: сразу в QC на созданное замечание (Fieldwire)
-      openQcIssue(created?.id, pathname, osRole);
-      // W135: punch → QC + CTA назад на план
-      alertFloorPunchCreated(osRole, {
-        hasPhoto: Boolean(photo_key),
-        issueId: created?.id,
-        returnTo: pathname,
-      });
+      // Clarity B: sheet с выбором — не Alert + авто-навигация одновременно
+      setPunchSheet({ issueId: created?.id, hasPhoto: Boolean(photo_key) });
     } catch (e) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Замечание на плане');
@@ -162,8 +178,8 @@ export function FloorPlanPanel({
         project: activeProject ?? ({ id: projectId } as any),
       });
       load();
-      // W135: план → punch / комнаты
-      alertFloorPlanUploaded((role === 'contractor' ? 'contractor' : 'customer') as OsRole);
+      // Clarity B: sheet вместо Alert
+      setUploadSheet(true);
     } catch {
       Alert.alert('Загрузка', 'Не удалось загрузить план');
     } finally {
@@ -172,6 +188,20 @@ export function FloorPlanPanel({
   };
 
   const canPunch = role === 'customer' || role === 'contractor';
+  const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+
+  if (loadState === 'error') {
+    return (
+      <View style={embedded ? s.embedded : s.box}>
+        <LoadErrorState
+          title="Не удалось загрузить план"
+          onRetry={load}
+          role={osRole}
+          showChatCta={role === 'customer'}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={embedded ? s.embedded : s.box}>
@@ -267,28 +297,61 @@ export function FloorPlanPanel({
         </>
       ) : (
         <View style={s.emptyBox}>
-          <Text style={s.emptyTitle}>План не загружен</Text>
-          <Text style={s.emptyHint}>
-            1. Загрузите чертёж этажа{'\n'}
-            2. Сверьте метки комнат с вкладкой «Комнаты» ({roomsCount} шт.){'\n'}
-            3. Включите Punch list — отметьте дефект на плане
-          </Text>
-          {onOpenRooms ? (
-            <Pressable onPress={onOpenRooms}>
-              <Text style={s.link}>→ Список комнат</Text>
-            </Pressable>
-          ) : null}
+          <EmptyActionState
+            title="План не загружен"
+            hint={
+              role === 'contractor'
+                ? 'Загрузите чертёж этажа, сверьте комнаты, затем отмечайте замечания на плане.'
+                : 'Подрядчик ещё не загрузил чертёж. Когда появится — «Замечания на плане» → фото дефекта.'
+            }
+            actionLabel={
+              role === 'contractor'
+                ? '+ Загрузить план'
+                : 'Написать подрядчику'
+            }
+            onAction={
+              role === 'contractor'
+                ? () => { void uploadPlan(); }
+                : () => pushOsNav(tabsRoute('customer', 'chat'), pathname, 'customer')
+            }
+          />
         </View>
       )}
       {plan && <FurnitureLayer userId={userId} projectId={projectId} planId={plan.id} role={role} />}
-      {role === 'contractor' && (
+      {/* Clarity G: upload в empty — primary; outline только для замены */}
+      {role === 'contractor' && plan ? (
         <PrimaryButton
-          title={uploading ? 'Загрузка…' : plan ? 'Заменить план этажа' : '+ Загрузить план этажа'}
+          title={uploading ? 'Загрузка…' : 'Заменить план этажа'}
           variant="outline"
           disabled={uploading}
           onPress={uploadPlan}
         />
-      )}
+      ) : null}
+
+      <ActionConfirmSheet
+        visible={Boolean(punchSheet)}
+        title="Замечание сохранено"
+        message={
+          punchSheet?.hasPhoto
+            ? 'Фото прикреплено. Откройте в Контроле качества или останьтесь на плане.'
+            : 'Можно дополнить описание в Контроле качества.'
+        }
+        primaryLabel="Открыть в QC"
+        onPrimary={() => openQcIssue(punchSheet?.issueId, pathname, osRole)}
+        secondaryLabel="Остаться на плане"
+        onSecondary={() => undefined}
+        onClose={() => setPunchSheet(null)}
+      />
+      <ActionConfirmSheet
+        visible={uploadSheet}
+        title="План загружен"
+        message="Отметьте замечания на плане или сверьте комнаты."
+        primaryLabel="Замечания на плане"
+        onPrimary={() => setPunchMode(true)}
+        secondaryLabel={onOpenRooms ? 'Комнаты' : undefined}
+        onSecondary={onOpenRooms}
+        onClose={() => setUploadSheet(false)}
+      />
     </View>
   );
 }

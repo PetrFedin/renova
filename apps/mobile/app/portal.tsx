@@ -7,10 +7,13 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type Payment, type Stage } from '@/lib/api';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { setAccessToken } from '@/lib/api/client';
+import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
+import { PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -24,6 +27,9 @@ export default function PortalScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const paymentsY = useRef(0);
   const docsY = useRef(0);
+  /** W138: подтверждение перевода только через PaymentDetailSheet */
+  const [sheetPayment, setSheetPayment] = useState<Payment | null>(null);
+  const [sheetStages, setSheetStages] = useState<Stage[]>([]);
 
   /** W85: snapshot + inbox/home side-effects (если заказчик открыл портал и приложение) */
   const refreshPortalSnapshot = async (userId: string, projectId: string) => {
@@ -51,6 +57,46 @@ export default function PortalScreen() {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ y: Math.max(0, docsY.current - 12), animated: true });
     });
+  };
+
+  /** Открыть канон оплаты (чек / transfer_ack) — не сырой confirmPayment */
+  const openPaymentSheet = (pay: {
+    id: string;
+    title: string;
+    amount: number;
+    status: string;
+    stage_id?: string | null;
+    payment_type?: string;
+    needs_acceptance?: boolean;
+  }) => {
+    const stageId = pay.stage_id ?? null;
+    const needs = Boolean(pay.needs_acceptance);
+    setSheetPayment({
+      id: pay.id,
+      title: pay.title,
+      amount: pay.amount,
+      payment_type: pay.payment_type || 'stage',
+      status: pay.status,
+      stage_id: stageId,
+      notes: null,
+      confirmed_at: null,
+      created_at: '',
+    });
+    setSheetStages(
+      stageId
+        ? [
+            {
+              id: stageId,
+              name: 'Этап',
+              sort_order: 0,
+              status: needs ? 'review' : 'done',
+              percent_complete: needs ? 90 : 100,
+              payment_amount: pay.amount,
+              customer_accepted_at: needs ? null : new Date().toISOString(),
+            },
+          ]
+        : [],
+    );
   };
 
   useEffect(() => {
@@ -129,6 +175,7 @@ export default function PortalScreen() {
   ].filter(Boolean);
 
   return (
+    <>
     <ScrollView ref={scrollRef} style={s.wrap} contentContainerStyle={s.content}>
       <View style={s.hero}>
         <Text style={s.brand}>RENOVA</Text>
@@ -192,39 +239,69 @@ export default function PortalScreen() {
             <View style={s.payActions}>
               <Pressable
                 style={s.acceptBtn}
-                onPress={async () => {
-                  try {
-                    await api.portalConfirmSchedule(
-                      session.user_id,
-                      session.project_id,
-                      snapshot.pending_work_schedule.id,
-                      portalToken,
-                    );
-                    await refreshPortalSnapshot(session.user_id, session.project_id);
-                    Alert.alert('График', 'План-график согласован');
-                  } catch (e) {
-                    Alert.alert('График', apiErrorMessage(e, 'Не удалось подтвердить'));
-                  }
+                onPress={() => {
+                  // Clarity U: confirm перед фиксацией сроков (зеркало app)
+                  showActionConfirm({
+                    title: 'Согласовать график?',
+                    message: 'Сроки этапов станут рабочим планом.',
+                    primaryLabel: 'Согласовать',
+                    onPrimary: () => {
+                      void (async () => {
+                        try {
+                          await api.portalConfirmSchedule(
+                            session.user_id,
+                            session.project_id,
+                            snapshot.pending_work_schedule.id,
+                            portalToken,
+                          );
+                          await refreshPortalSnapshot(session.user_id, session.project_id);
+                          showActionConfirm({ title: 'График', message: 'План-график согласован' });
+                        } catch (e) {
+                          showActionConfirm({ title: 'График', message: apiErrorMessage(e, 'Не удалось подтвердить') });
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               >
                 <Text style={s.acceptBtnT}>Согласовать график</Text>
               </Pressable>
               <Pressable
                 style={s.payBtnOutline}
-                onPress={async () => {
-                  try {
-                    await api.portalRejectSchedule(
-                      session.user_id,
-                      session.project_id,
-                      snapshot.pending_work_schedule.id,
-                      portalToken,
-                      'Нужна правка сроков',
-                    );
-                    await refreshPortalSnapshot(session.user_id, session.project_id);
-                    Alert.alert('График', 'План отклонён — исполнитель получит задачу на правку');
-                  } catch (e) {
-                    Alert.alert('График', apiErrorMessage(e, 'Не удалось отклонить'));
-                  }
+                onPress={() => {
+                  // Clarity Q: destructive confirm перед отклонением графика
+                  showActionConfirm({
+                    title: 'Отклонить график?',
+                    message: 'Исполнитель получит задачу на правку сроков.',
+                    primaryLabel: 'Отклонить',
+                    onPrimary: () => {
+                      void (async () => {
+                        try {
+                          await api.portalRejectSchedule(
+                            session.user_id,
+                            session.project_id,
+                            snapshot.pending_work_schedule.id,
+                            portalToken,
+                            'Нужна правка сроков',
+                          );
+                          await refreshPortalSnapshot(session.user_id, session.project_id);
+                          showActionConfirm({
+                            title: 'График',
+                            message: 'План отклонён — исполнитель получит задачу на правку',
+                          });
+                        } catch (e) {
+                          showActionConfirm({
+                            title: 'График',
+                            message: apiErrorMessage(e, 'Не удалось отклонить'),
+                          });
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               >
                 <Text style={s.payBtnOutlineT}>Отклонить</Text>
@@ -245,43 +322,111 @@ export default function PortalScreen() {
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 <Pressable
                   style={s.acceptBtn}
-                  onPress={async () => {
+                  onPress={() => {
+                    // Clarity U: pre-confirm приёмки (симметрия с «На доработку»)
+                    showActionConfirm({
+                      title: 'Принять этап?',
+                      message: `«${acc.stage_name || 'работы'}». После приёмки откроется оплата/подпись.`,
+                      primaryLabel: 'Принять',
+                      onPrimary: () => {
+                        void (async () => {
                     try {
                       await api.portalAcceptStage(session.project_id, acc.id, portalToken);
                       // W122: после приёмки — актуальный snapshot + CTA к оплате (BT chain)
                       const next = await refreshPortalSnapshot(session.user_id, session.project_id);
                       const payN = next?.pending_payments?.length ?? 0;
                       const docN = next?.pending_draft_documents?.length ?? next?.documents?.filter((d) => d.status === 'draft')?.length ?? 0;
-                      Alert.alert(
-                        'Этап принят',
-                        payN
+                      {
+                        const msg = payN
                           ? `«${acc.stage_name || 'работы'}» принят. Доступно счетов: ${payN}.`
                           : docN
                             ? `«${acc.stage_name || 'работы'}» принят. Есть документы на подпись.`
-                            : `«${acc.stage_name || 'работы'}» принят.`,
-                        [
-                          { text: 'OK', style: 'cancel' },
-                          ...(payN && canPayPortal ? [{ text: 'К оплате', onPress: goPayments }] : []),
-                          ...(!payN && docN && canSignPortal ? [{ text: 'К подписи', onPress: goDocs }] : []),
-                        ],
-                      );
-                    } catch {
-                      Alert.alert('Ошибка', 'Не удалось принять этап');
+                            : `«${acc.stage_name || 'работы'}» принят.`;
+                        const actions: { label: string; onPress: () => void }[] = [];
+                        if (payN && canPayPortal) actions.push({ label: 'К оплате', onPress: goPayments });
+                        if (!payN && docN && canSignPortal) actions.push({ label: 'К подписи', onPress: goDocs });
+                        showActionConfirm({
+                          title: 'Этап принят',
+                          message: msg,
+                          ...(actions.length
+                            ? { actions }
+                            : { primaryLabel: 'Готово', onPrimary: () => undefined }),
+                        });
+                      }
+                    } catch (e) {
+                      const msg = apiErrorMessage(e, 'Не удалось принять этап');
+                      const code = e instanceof ApiError ? e.code : undefined;
+                      if (code === 'photos_required' || /фото/i.test(msg)) {
+                        showActionConfirm({ title: 'Нужны фото', message: msg });
+                      } else if (code === 'checklist_required' || code === 'checklist_incomplete' || /чеклист/i.test(msg)) {
+                        const stageId = acc.stage_id;
+                        showActionConfirm({
+                          title: 'Нужен чек-лист',
+                          message: `${msg}\n\nЗаполните чеклист приёмки в приложении Renova.`,
+                          actions: stageId
+                            ? [
+                                {
+                                  label: 'Открыть этап',
+                                  onPress: () => {
+                                    void Linking.openURL(`renova://stage/${stageId}`).catch(() => {
+                                      showActionConfirm({
+                                        title: 'Приложение',
+                                        message: 'Откройте Renova → Ремонт → Приёмка и заполните чеклист этапа.',
+                                      });
+                                    });
+                                  },
+                                },
+                              ]
+                            : [
+                                {
+                                  label: 'Как открыть',
+                                  onPress: () => {
+                                    showActionConfirm({
+                                      title: 'Приёмка',
+                                      message: 'В приложении Renova: Ремонт → Приёмка → этап → чеклист.',
+                                    });
+                                  },
+                                },
+                              ],
+                        });
+                      } else {
+                        showActionConfirm({ title: 'Ошибка', message: msg });
+                      }
                     }
+                        })();
+                      },
+                      secondaryLabel: 'Отмена',
+                      onSecondary: () => undefined,
+                    });
                   }}
                 >
                   <Text style={s.acceptBtnT}>Принять этап</Text>
                 </Pressable>
                 <Pressable
                   style={[s.acceptBtn, { backgroundColor: RenovaTheme.colors.border }]}
-                  onPress={async () => {
-                    try {
-                      await api.portalReturnStage(session.project_id, acc.id, portalToken, 'Нужна доработка');
-                      await refreshPortalSnapshot(session.user_id, session.project_id);
-                      Alert.alert('Возвращено', `«${acc.stage_name || 'работы'}» отправлены на доработку`);
-                    } catch {
-                      Alert.alert('Ошибка', 'Не удалось вернуть этап');
-                    }
+                  onPress={() => {
+                    // Clarity Q: one-tap destructive → sheet confirm
+                    showActionConfirm({
+                      title: 'На доработку?',
+                      message: `«${acc.stage_name || 'работы'}» вернутся исполнителю.`,
+                      primaryLabel: 'Вернуть',
+                      onPrimary: () => {
+                        void (async () => {
+                          try {
+                            await api.portalReturnStage(session.project_id, acc.id, portalToken, 'Нужна доработка');
+                            await refreshPortalSnapshot(session.user_id, session.project_id);
+                            showActionConfirm({
+                              title: 'Возвращено',
+                              message: `«${acc.stage_name || 'работы'}» отправлены на доработку`,
+                            });
+                          } catch {
+                            showActionConfirm({ title: 'Ошибка', message: 'Не удалось вернуть этап' });
+                          }
+                        })();
+                      },
+                      secondaryLabel: 'Отмена',
+                      onSecondary: () => undefined,
+                    });
                   }}
                 >
                   <Text style={[s.acceptBtnT, { color: RenovaTheme.colors.text }]}>На доработку</Text>
@@ -304,28 +449,51 @@ export default function PortalScreen() {
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                   <Pressable
                     style={s.acceptBtn}
-                    onPress={async () => {
-                      try {
-                        await api.portalApproveChangeOrder(session.project_id, co.id, portalToken);
-                        setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
-                        Alert.alert('Согласовано', `«${co.title}»`);
-                      } catch {
-                        Alert.alert('Ошибка', 'Не удалось согласовать');
-                      }
+                    onPress={() => {
+                      // Clarity U: money confirm (зеркало EstimateChangesLayer)
+                      showActionConfirm({
+                        title: 'Согласовать доп. работу?',
+                        message: `«${co.title}» · ${formatRub(co.amount)} попадёт в смету.`,
+                        primaryLabel: 'Согласовать',
+                        onPrimary: () => {
+                          void (async () => {
+                            try {
+                              await api.portalApproveChangeOrder(session.project_id, co.id, portalToken);
+                              setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                              showActionConfirm({ title: 'Согласовано', message: `«${co.title}»` });
+                            } catch {
+                              showActionConfirm({ title: 'Ошибка', message: 'Не удалось согласовать' });
+                            }
+                          })();
+                        },
+                        secondaryLabel: 'Отмена',
+                        onSecondary: () => undefined,
+                      });
                     }}
                   >
                     <Text style={s.acceptBtnT}>Согласовать</Text>
                   </Pressable>
                   <Pressable
                     style={[s.acceptBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: RenovaTheme.colors.border }]}
-                    onPress={async () => {
-                      try {
-                        await api.portalRejectChangeOrder(session.project_id, co.id, portalToken);
-                        setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
-                        Alert.alert('Отклонено', `«${co.title}»`);
-                      } catch {
-                        Alert.alert('Ошибка', 'Не удалось отклонить');
-                      }
+                    onPress={() => {
+                      showActionConfirm({
+                        title: 'Отклонить доп. работу?',
+                        message: `«${co.title}» будет отклонена.`,
+                        primaryLabel: 'Отклонить',
+                        onPrimary: () => {
+                          void (async () => {
+                            try {
+                              await api.portalRejectChangeOrder(session.project_id, co.id, portalToken);
+                              setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                              showActionConfirm({ title: 'Отклонено', message: `«${co.title}»` });
+                            } catch {
+                              showActionConfirm({ title: 'Ошибка', message: 'Не удалось отклонить' });
+                            }
+                          })();
+                        },
+                        secondaryLabel: 'Отмена',
+                        onSecondary: () => undefined,
+                      });
                     }}
                   >
                     <Text style={[s.acceptBtnT, { color: RenovaTheme.colors.text }]}>Отклонить</Text>
@@ -358,28 +526,58 @@ export default function PortalScreen() {
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <Pressable
                 style={s.acceptBtn}
-                onPress={async () => {
-                  try {
-                    await api.portalLockEstimate(session.project_id, portalToken);
-                    setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
-                    Alert.alert('Готово', 'Смета зафиксирована');
-                  } catch {
-                    Alert.alert('Ошибка', 'Не удалось зафиксировать смету');
-                  }
+                onPress={() => {
+                  // Clarity U: фиксация сметы — money confirm
+                  const total = snapshot.estimate_summary?.total;
+                  const totalLabel = total != null
+                    ? (typeof total === 'number' ? total.toLocaleString('ru-RU') : String(total))
+                    : '—';
+                  showActionConfirm({
+                    title: 'Зафиксировать смету?',
+                    message: `Итого ${totalLabel} ₽. После фиксации базовые строки нельзя свободно менять.`,
+                    primaryLabel: 'Зафиксировать',
+                    onPrimary: () => {
+                      void (async () => {
+                        try {
+                          await api.portalLockEstimate(session.project_id, portalToken);
+                          setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                          showActionConfirm({ title: 'Готово', message: 'Смета зафиксирована' });
+                        } catch {
+                          showActionConfirm({ title: 'Ошибка', message: 'Не удалось зафиксировать смету' });
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               >
                 <Text style={s.acceptBtnT}>Зафиксировать смету</Text>
               </Pressable>
               <Pressable
                 style={[s.acceptBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: RenovaTheme.colors.border }]}
-                onPress={async () => {
-                  try {
-                    await api.portalRejectEstimate(session.project_id, portalToken, 'Нужна правка сметы');
-                    setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
-                    Alert.alert('Отклонено', 'Исполнитель получит уведомление');
-                  } catch {
-                    Alert.alert('Ошибка', 'Не удалось отклонить');
-                  }
+                onPress={() => {
+                  showActionConfirm({
+                    title: 'Отклонить смету?',
+                    message: 'Исполнитель получит уведомление о правке.',
+                    primaryLabel: 'Отклонить',
+                    onPrimary: () => {
+                      void (async () => {
+                        try {
+                          await api.portalRejectEstimate(session.project_id, portalToken, 'Нужна правка сметы');
+                          setSnapshot(await api.portalSnapshot(session.user_id, session.project_id));
+                          showActionConfirm({
+                            title: 'Отклонено',
+                            message: 'Исполнитель получит уведомление',
+                          });
+                        } catch {
+                          showActionConfirm({ title: 'Ошибка', message: 'Не удалось отклонить' });
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               >
                 <Text style={[s.acceptBtnT, { color: RenovaTheme.colors.text }]}>Отклонить</Text>
@@ -408,7 +606,7 @@ export default function PortalScreen() {
               ? 'Оплата: перевод по реквизитам (карта недоступна)'
               : snapshot.payments_mode === 'off'
                 ? 'Оплата картой недоступна на этом сервере. Используйте реквизиты или полное приложение.'
-                : 'Оплата: demo / укажите реквизиты исполнителя'}
+                : 'Оплата: DEMO — карта не списывает деньги. Для пилота нужны live-ключи ЮKassa или перевод по реквизитам.'}
         </Text>
         {portalReadOnly ? (
           <Text style={s.muted}>Оплата недоступна в режиме просмотра. Откройте полное приложение Renova.</Text>
@@ -423,57 +621,125 @@ export default function PortalScreen() {
               title: pay.title,
             });
             const requisites = built.text;
+            const needsAcceptance = Boolean(pay.needs_acceptance);
             return (
               <View key={pay.id} style={s.payRow}>
                 <Text style={s.line}>{pay.title} · {formatRub(pay.amount)}</Text>
+                {needsAcceptance ? (
+                  <Text style={s.muted}>{PAYMENT_BLOCKED_ACCEPTANCE_MSG}</Text>
+                ) : null}
                 {canPayPortal ? (
                 <View style={s.payActions}>
-                  {(snapshot.payments_mode === 'live' || snapshot.payments_mode === 'demo') ? (
+                  {/* Demo honesty: реквизиты primary; карта — secondary + confirm */}
                   <Pressable
-                    style={s.payBtn}
+                    style={snapshot.payments_mode === 'demo' ? s.payBtn : s.payBtnOutline}
                     onPress={async () => {
-                      try {
-                        const checkout = await api.checkoutYookassa(session.user_id, session.project_id, pay.id, { portal_token: portalToken });
-                        if (checkout.demo) {
-                          await refreshPortalSnapshot(session.user_id, session.project_id);
-                          Alert.alert('Оплата (demo)', checkout.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.');
-                          return;
-                        }
-                        if (checkout.confirmation_url) {
-                          await WebBrowser.openBrowserAsync(checkout.confirmation_url);
-                          await refreshPortalSnapshot(session.user_id, session.project_id);
-                          Alert.alert('ЮKassa', 'Статус оплаты обновлён. Если платёж не отображается — подождите минуту.');
-                        }
-                      } catch (e) {
-                        const msg = apiErrorMessage(e, 'Оплата картой недоступна. Используйте перевод по реквизитам.');
-                        Alert.alert('ЮKassa', msg);
+                      if (needsAcceptance) {
+                        showActionConfirm({ title: 'Сначала приёмка', message: PAYMENT_BLOCKED_ACCEPTANCE_MSG });
+                        return;
                       }
+                      if (built.missingHint) {
+                        showActionConfirm({ title: 'Реквизиты не указаны', message: built.missingHint });
+                        return;
+                      }
+                      try { await Clipboard.setStringAsync(requisites); } catch { /* noop */ }
+                      showActionConfirm({
+                        title: 'Перевод',
+                        message: `${requisites}\n\nРеквизиты скопированы. Откройте банк или СБП. После перевода подтвердите оплату (чек).`,
+                        primaryLabel: 'К подтверждению',
+                        onPrimary: () => openPaymentSheet(pay),
+                        secondaryLabel: 'Позже',
+                        onSecondary: () => undefined,
+                      });
                     }}
                   >
-                    <Text style={s.payBtnT}>
+                    <Text style={snapshot.payments_mode === 'demo' ? s.payBtnT : s.payBtnOutlineT}>Реквизиты / СБП</Text>
+                  </Pressable>
+                  {(snapshot.payments_mode === 'live' || snapshot.payments_mode === 'demo') ? (
+                  <Pressable
+                    style={[
+                      snapshot.payments_mode === 'live' ? s.payBtn : s.payBtnOutline,
+                      needsAcceptance && { opacity: 0.5 },
+                    ]}
+                    onPress={() => {
+                      if (needsAcceptance) {
+                        showActionConfirm({
+                          title: 'Сначала приёмка',
+                          message: PAYMENT_BLOCKED_ACCEPTANCE_MSG,
+                          ...(canAcceptStageSnap
+                            ? {
+                                primaryLabel: 'К приёмке',
+                                onPrimary: () => {
+                                  setFocusSection(null);
+                                  requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
+                                },
+                                secondaryLabel: 'Отмена',
+                                onSecondary: () => undefined,
+                              }
+                            : { primaryLabel: 'Понятно', onPrimary: () => undefined }),
+                        });
+                        return;
+                      }
+                      const runCheckout = async () => {
+                        try {
+                          const checkout = await api.checkoutYookassa(session.user_id, session.project_id, pay.id, { portal_token: portalToken });
+                          if (checkout.demo) {
+                            await refreshPortalSnapshot(session.user_id, session.project_id);
+                            showActionConfirm({ title: 'Оплата (demo)', message: checkout.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.' });
+                            return;
+                          }
+                          if (checkout.confirmation_url) {
+                            await WebBrowser.openBrowserAsync(checkout.confirmation_url);
+                            await refreshPortalSnapshot(session.user_id, session.project_id);
+                            showActionConfirm({
+                            title: 'ЮKassa',
+                            message: 'Статус оплаты обновлён. Если платёж не отображается — подождите минуту.',
+                          });
+                          }
+                        } catch (e) {
+                          const msg = apiErrorMessage(e, 'Оплата картой недоступна. Используйте перевод по реквизитам.');
+                          const blocked = e instanceof ApiError && e.status === 409 && /приём|прием/i.test(msg);
+                          if (blocked) {
+                            showActionConfirm({
+                              title: 'Сначала приёмка',
+                              message: PAYMENT_BLOCKED_ACCEPTANCE_MSG,
+                              ...(canAcceptStageSnap
+                                ? {
+                                    primaryLabel: 'К приёмке',
+                                    onPrimary: () => {
+                                      setFocusSection(null);
+                                      requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
+                                    },
+                                    secondaryLabel: 'Отмена',
+                                    onSecondary: () => undefined,
+                                  }
+                                : { primaryLabel: 'Понятно', onPrimary: () => undefined }),
+                            });
+                          } else {
+                            showActionConfirm({ title: 'ЮKassa', message: msg });
+                          }
+                        }
+                      };
+                      if (snapshot.payments_mode === 'demo') {
+                        // Clarity T: honesty gate demo → sheet (не native Alert)
+                        showActionConfirm({
+                          title: 'Demo-оплата',
+                          message: 'Это DEMO: деньги с карты не спишутся. Для пилота с клиентами нужны live-ключи ЮKassa.',
+                          primaryLabel: 'Продолжить demo',
+                          onPrimary: () => { void runCheckout(); },
+                          secondaryLabel: 'Отмена',
+                          onSecondary: () => undefined,
+                        });
+                        return;
+                      }
+                      void runCheckout();
+                    }}
+                  >
+                    <Text style={snapshot.payments_mode === 'live' ? s.payBtnT : s.payBtnOutlineT}>
                       {snapshot.payments_mode === 'live' ? 'Оплатить картой' : 'Карта (demo)'}
                     </Text>
                   </Pressable>
                   ) : null}
-                  <Pressable
-                    style={s.payBtnOutline}
-                    onPress={async () => {
-                      if (built.missingHint) {
-                        Alert.alert('Реквизиты не указаны', built.missingHint);
-                        return;
-                      }
-                      try { await Clipboard.setStringAsync(requisites); } catch { /* noop */ }
-                      Alert.alert(
-                        'Перевод',
-                        `${requisites}\n\nРеквизиты скопированы. Откройте банк или СБП.`,
-                        Platform.OS === 'web'
-                          ? [{ text: 'OK' }]
-                          : [{ text: 'OK' }, { text: 'Готово', onPress: () => {} }],
-                      );
-                    }}
-                  >
-                    <Text style={s.payBtnOutlineT}>Реквизиты / СБП</Text>
-                  </Pressable>
                 </View>
                 ) : (
                   <Text style={s.muted}>Оплата по ссылке недоступна — попросите исполнителя выставить счёт в приложении.</Text>
@@ -515,23 +781,27 @@ export default function PortalScreen() {
 const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 'in_app');
                         const next = await refreshPortalSnapshot(session.user_id, session.project_id);
                         const payN = next?.pending_payments?.length ?? 0;
-                        Alert.alert(
-                          'Подписано',
-                          res.status === 'signed' ? d.title : 'Запрос на подпись создан',
-                          [
-                            { text: 'OK', style: 'cancel' },
-                            ...(payN && canPayPortal ? [{ text: 'К оплате', onPress: goPayments }] : []),
-                          ],
-                        );
+                        showActionConfirm({
+                          title: 'Подписано',
+                          message: res.status === 'signed' ? d.title : 'Запрос на подпись создан',
+                          ...(payN && canPayPortal
+                            ? {
+                                primaryLabel: 'К оплате',
+                                onPrimary: goPayments,
+                                secondaryLabel: 'Готово',
+                                onSecondary: () => undefined,
+                              }
+                            : { primaryLabel: 'Готово', onPrimary: () => undefined }),
+                        });
                       } catch (e) {
                         Alert.alert('Ошибка', apiErrorMessage(e, 'Не удалось подписать документ'));
                       }
                     }}
                   >
-                    <Text style={s.acceptBtnT}>Подписать</Text>
+                    <Text style={s.acceptBtnT}>{snapshot.kontur_available ? 'Подписать' : 'Подписать (in_app)'}</Text>
                   </Pressable>
                 ) : null}
-                {canSignPortal ? (
+                {canSignPortal && snapshot.kontur_available ? (
                   <Pressable
                     style={s.konturBtn}
                     onPress={async () => {
@@ -555,7 +825,11 @@ const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 
                 ) : null}
               </View>
             ))}
-            <Text style={s.muted}>Подпишите в приложении Renova → Документы проекта</Text>
+            <Text style={s.muted}>
+              {snapshot.kontur_available
+                ? 'Подпись: Контур (live/sandbox) или в приложении'
+                : 'Подпись в приложении (in_app) — не юр. ЭЦП. Контур выключен на сервере.'}
+            </Text>
           </View>
         ) : null}
         {snapshot.documents.slice(0, 8).map((d) => (
@@ -563,6 +837,17 @@ const res = await api.portalSignDocument(session.project_id, d.id, portalToken, 
         ))}
       </View>
     </ScrollView>
+      <PaymentDetailSheet
+        payment={sheetPayment}
+        stages={sheetStages}
+        role="customer"
+        readOnly={portalReadOnly || !canPayPortal}
+        userId={session.user_id}
+        projectId={session.project_id}
+        onClose={() => { setSheetPayment(null); setSheetStages([]); }}
+        onChanged={() => { void refreshPortalSnapshot(session.user_id, session.project_id); }}
+      />
+    </>
   );
 }
 

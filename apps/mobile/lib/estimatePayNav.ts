@@ -1,5 +1,5 @@
-/** W131: estimate lock → docs/schedule; payment; chat task/invoice (golden path SoT) */
-import { Alert } from 'react-native';
+/** W131: estimate lock → docs/schedule; payment; chat task/invoice (golden path SoT).
+ * Clarity H: sheet вместо Alert. */
 import { pushOsNav } from '@/lib/pushOsNav';
 import {
   budgetTabRoute,
@@ -7,135 +7,100 @@ import {
   objectTabRoute,
   type OsRole,
 } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 /** Заказчик зафиксировал смету */
 export function alertEstimateLocked(role: OsRole) {
-  Alert.alert(
-    'Смета зафиксирована',
-    'Дальше — договор в Документах и согласование графика.',
-    [
-      { text: 'OK' },
-      {
-        text: 'Документы',
-        onPress: () => pushOsNav('/documents', undefined, role),
-      },
-      {
-        text: 'График',
-        onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Смета зафиксирована',
+    message: 'Дальше — договор в Документах и согласование графика.',
+    primaryLabel: 'Документы',
+    onPrimary: () => pushOsNav('/documents', undefined, role),
+    secondaryLabel: 'График',
+    onSecondary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+  });
 }
 
 /** Исполнитель отправил смету на согласование */
 export function alertEstimateProposed(role: OsRole) {
-  Alert.alert(
-    'Смета у заказчика',
-    'Фиксацию подтверждает заказчик. Следите за входящими.',
-    [
-      { text: 'OK' },
-      {
-        text: 'Входящие',
-        onPress: () => pushOsNav('/inbox', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Смета у заказчика',
+    message: 'Фиксацию подтверждает заказчик. Следите за входящими.',
+    primaryLabel: 'Входящие',
+    onPrimary: () => pushOsNav('/inbox', undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Заказчик отклонил предложение сметы */
 export function alertEstimateLockRejected(role: OsRole) {
-  Alert.alert(
-    'Нужна правка сметы',
-    'Исполнитель получит уведомление и отправит новую версию.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К смете',
-        onPress: () => pushOsNav(objectTabRoute(role, 'estimate'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Нужна правка сметы',
+    message: 'Исполнитель получит уведомление и отправит новую версию.',
+    primaryLabel: 'К смете',
+    onPrimary: () => pushOsNav(objectTabRoute(role, 'estimate'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** W136: исполнитель отозвал предложение фиксации */
 export function alertEstimateProposalRevoked(role: OsRole = 'contractor') {
-  Alert.alert(
-    'Отозвано',
-    'Можно править смету и отправить снова.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К смете',
-        onPress: () => pushOsNav(objectTabRoute(role, 'estimate'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Отозвано',
+    message: 'Можно править смету и отправить снова.',
+    primaryLabel: 'К смете',
+    onPrimary: () => pushOsNav(objectTabRoute(role, 'estimate'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Подтверждение оплаты заказчиком */
 export function alertPaymentConfirmed(role: OsRole) {
-  Alert.alert(
-    'Оплата подтверждена',
-    'Статус в бюджете и во «Входящих» у исполнителя.',
-    [
-      { text: 'OK' },
-      {
-        text: 'Сводка бюджета',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
-      },
-      {
-        text: 'Входящие',
-        onPress: () => pushOsNav('/inbox', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Оплата подтверждена',
+    message: 'Статус в бюджете и во «Входящих» у исполнителя.',
+    primaryLabel: 'Сводка бюджета',
+    onPrimary: () => pushOsNav(budgetTabRoute(role, 'summary'), undefined, role),
+    secondaryLabel: 'Входящие',
+    onSecondary: () => pushOsNav('/inbox', undefined, role),
+  });
 }
 
 /** W135: исполнитель выставил счёт */
 export function alertPaymentCreated(role: OsRole) {
-  Alert.alert(
-    'Счёт создан',
-    'Заказчику отправлено уведомление. Следите за оплатой во «Входящих».',
-    [
-      { text: 'OK' },
-      {
-        text: 'Оплаты',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
-      },
-      {
-        text: 'Входящие',
-        onPress: () => pushOsNav('/inbox', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Счёт создан',
+    message: 'Заказчику отправлено уведомление. Следите за оплатой во «Входящих».',
+    primaryLabel: 'Оплаты',
+    onPrimary: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
+    secondaryLabel: 'Входящие',
+    onSecondary: () => pushOsNav('/inbox', undefined, role),
+  });
 }
 
 /** Задача из сообщения чата */
 export function alertChatTaskCreated(role: OsRole) {
-  Alert.alert(
-    'Задача создана',
-    'Появится в графике и во входящих.',
-    [
-      { text: 'OK' },
-      {
-        text: 'График',
-        onPress: () => pushOsNav(calendarTabRoute(role), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Задача создана',
+    message: 'Появится в графике и во входящих.',
+    primaryLabel: 'График',
+    onPrimary: () => pushOsNav(calendarTabRoute(role), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }
 
 /** Счёт из чата — роль-aware CTA */
 export function alertChatInvoiceCreated(role: OsRole, amount: number) {
-  Alert.alert(
-    'Счёт создан',
-    `${amount.toLocaleString('ru-RU')} ₽ в «Деньги → Оплаты».`,
-    [
-      { text: 'OK' },
-      {
-        text: 'Открыть оплаты',
-        onPress: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Счёт создан',
+    message: `${amount.toLocaleString('ru-RU')} ₽ в «Деньги → Оплаты».`,
+    primaryLabel: 'Открыть оплаты',
+    onPrimary: () => pushOsNav(budgetTabRoute(role, 'payments'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
 }

@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { RoomStageCard } from '@/lib/api';
 import { pushStageDetail } from '@/lib/navigation';
@@ -69,7 +70,7 @@ export function RoomStageTimeline({ stages, role = 'customer' }: { stages: RoomS
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 12 },
-  head: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 8 },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
   row: { flexDirection: 'row', gap: 10, marginBottom: 4 },
   muted: { opacity: 0.55 },
   rail: { width: 16, alignItems: 'center' },
@@ -77,7 +78,7 @@ const s = StyleSheet.create({
   dotDone: { backgroundColor: '#22c55e' },
   line: { flex: 1, width: 2, backgroundColor: RenovaTheme.colors.border, marginTop: 2, minHeight: 20 },
   lineDone: { backgroundColor: '#bbf7d0' },
-  card: { ...card, flex: 1, marginBottom: 6, padding: 12 },
+  card: { ...listRowStyles.metricCell, alignItems: 'stretch', flex: 1, marginBottom: 6, padding: 12 },
   cardOpen: { borderColor: RenovaTheme.colors.accent },
   cardCollapsed: { paddingVertical: 10 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },

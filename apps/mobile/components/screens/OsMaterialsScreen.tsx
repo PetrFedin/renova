@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { MaterialPickList } from '@/components/renova/MaterialPickList';
 import { MaterialReceiptReconcile } from '@/components/renova/MaterialReceiptReconcile';
@@ -13,10 +14,12 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, MaterialPick, Purchase, ReceiptItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenLayout } from '@/constants/screenLayout';
 import { procurementNextAction, readyPickIds } from '@/lib/domain/procurementNextAction';
 import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertPurchaseCreated, alertPurchaseAdvanced } from '@/lib/procurementNav';
 
 const PICK_FILTERS = [
@@ -95,14 +98,13 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
   if (loadState === 'error') {
     return (
-      <View style={[screenLayout.screen, { padding: 16, gap: 12 }]}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text }}>
-          Не удалось загрузить материалы
-        </Text>
-        <Text style={{ fontSize: 13, color: RenovaTheme.colors.textMuted }}>
-          Данные не загружены — это не «ноль закупок». Проверьте сеть и повторите.
-        </Text>
-        <PrimaryButton title="Повторить" onPress={reload} />
+      <View style={[screenLayout.screen, { padding: 16 }]}>
+        <LoadErrorState
+          title="Не удалось загрузить материалы"
+          hint="Данные не загружены — это не «ноль закупок». Проверьте сеть и повторите."
+          onRetry={reload}
+          role={role}
+        />
       </View>
     );
   }
@@ -165,12 +167,27 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     setMaterialSubtab(next.subtab);
   };
 
-  const advancePurchase = async (id: string, status: string) => {
-    await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
-    await syncProjectSideEffects({ user, project: activeProject });
-    reload();
-    // W128: заказ → оплата → доставка → факт бюджета
-    alertPurchaseAdvanced(role, status);
+  const advancePurchase = (id: string, status: string) => {
+    const run = async () => {
+      await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
+      await syncProjectSideEffects({ user, project: activeProject });
+      reload();
+      // W128: заказ → оплата → доставка → факт бюджета
+      alertPurchaseAdvanced(role, status);
+    };
+    // Clarity W: откат факта (cancelled) — pre-confirm (паритет sheet/page)
+    if (status === 'cancelled') {
+      showActionConfirm({
+        title: 'Убрать из факта?',
+        message: 'Сумма закупки выйдет из факта бюджета. Можно вернуть статус позже.',
+        primaryLabel: 'Убрать',
+        onPrimary: () => { void run().catch(() => undefined); },
+        secondaryLabel: 'Отмена',
+        onSecondary: () => undefined,
+      });
+      return;
+    }
+    void run().catch(() => undefined);
   };
 
   return (
@@ -271,19 +288,19 @@ const s = StyleSheet.create({
   wrap: { flexGrow: 0 },
   body: { flex: 1 },
   summary: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
-  cell: { ...card, width: '47%', alignItems: 'center', marginBottom: 0, paddingVertical: 12 },
+  cell: { ...listRowStyles.metricCell, width: '47%', marginBottom: 0 },
   cellWarn: { borderColor: '#D4A574', backgroundColor: '#FFFBF5' },
-  n: { fontSize: 22, fontWeight: '800', color: RenovaTheme.colors.text },
-  l: { fontSize: 12, color: RenovaTheme.colors.textMuted },
+  n: { ...screenTypography.metric },
+  l: { ...screenTypography.metricLabel },
   actions: { gap: 8, marginBottom: 12 },
-  fabHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginBottom: 12 },
-  factHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 4 },
-  nextBox: { ...card, marginTop: 8, marginBottom: 4, gap: 8 },
-  nextLabel: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
-  nextTitle: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text, lineHeight: 20 },
-  empty: { ...card, marginBottom: 12 },
-  emptyT: { fontWeight: '700', fontSize: 15 },
-  emptyM: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginVertical: 8, lineHeight: 18 },
+  fabHint: { ...screenTypography.listMeta, textAlign: 'center', marginBottom: 12 },
+  factHint: { ...screenTypography.listMeta, marginBottom: 4 },
+  nextBox: { ...listRowStyles.metricCell, alignItems: 'stretch', marginTop: 8, marginBottom: 4, gap: 8, paddingHorizontal: 12 },
+  nextLabel: { ...screenTypography.metricLabel },
+  nextTitle: { ...screenTypography.listTitle, lineHeight: 20 },
+  empty: { ...listRowStyles.row, marginBottom: 12 },
+  emptyT: { ...screenTypography.listTitle },
+  emptyM: { ...screenTypography.empty, marginVertical: 8 },
   chips: { marginBottom: 8, maxHeight: 40 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: RenovaTheme.colors.border, marginRight: 8, backgroundColor: RenovaTheme.colors.surface },
   chipOn: { borderColor: RenovaTheme.colors.text, backgroundColor: RenovaTheme.colors.borderLight },

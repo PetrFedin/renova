@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { formatRub, RenovaTheme, card } from '@/constants/Theme';
+import { formatRub, RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -44,9 +45,16 @@ export function BudgetAlerts({
   );
 }
 const s = StyleSheet.create({
-  box: { ...card, borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.danger },
-  head: { fontWeight: '600', fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, marginBottom: 6 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.borderLight },
-  n: { fontWeight: '500', color: RenovaTheme.colors.text },
+  box: {
+    ...listRowStyles.metricCell,
+    alignItems: 'stretch',
+    borderLeftWidth: 3,
+    borderLeftColor: RenovaTheme.colors.danger,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+  },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 6 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', ...listRowStyles.row, paddingHorizontal: 0 },
+  n: { ...screenTypography.listTitle, fontWeight: '500' },
   v: { color: RenovaTheme.colors.danger, fontWeight: '600', fontSize: RenovaTheme.fontSize.caption },
 });

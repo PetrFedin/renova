@@ -2,6 +2,7 @@
 import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { objectTabHref, repairTabHref, tabsHref, customerProfileTabHref } from '@/constants/osSections';
 
 type Step = {
@@ -94,19 +95,18 @@ const s = StyleSheet.create({
     paddingBottom: 32,
     gap: 4,
   },
-  head: { fontSize: RenovaTheme.fontSize.h1, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
-  sub: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
+  head: { ...screenTypography.listTitle, fontSize: 20, fontWeight: '700' },
+  sub: { ...screenTypography.listMeta, marginBottom: 12, fontSize: 14 },
   row: {
+    ...listRowStyles.row,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: RenovaTheme.colors.borderLight,
   },
   body: { flex: 1, minWidth: 0 },
-  label: { fontSize: 15, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.text },
-  hint: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  label: { ...screenTypography.listTitle },
+  hint: { ...screenTypography.listMeta },
   homeBtn: { marginTop: 12, alignItems: 'center', paddingVertical: 12 },
-  homeT: { fontSize: RenovaTheme.fontSize.body, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.accent },
+  homeT: { ...screenTypography.listLink, marginTop: 0, color: RenovaTheme.colors.accent },
 });

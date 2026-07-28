@@ -6,12 +6,16 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
 import { ScratchpadLineRow } from '@/components/renova/scratchpad/ScratchpadLineRow';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ScratchpadLine } from '@/lib/api';
@@ -61,8 +65,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       setLines((prev) => [...prev, line]);
       reload();
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Строка черновика отправится при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Строка черновика');
         setDraft('');
       } else {
         Alert.alert('Черновик', 'Не удалось сохранить строку');
@@ -78,25 +82,25 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       await api.patchScratchpadLine(user.id, activeProject.id, line.id, { done: !line.done });
       reload();
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Статус строки в очереди');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Статус строки');
       }
     }
   };
 
   const deleteLine = (line: ScratchpadLine) => {
     if (!user || !activeProject || readOnly) return;
-    Alert.alert('Удалить строку?', line.text, [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Удалить',
-        style: 'destructive',
-        onPress: async () => {
-          await api.deleteScratchpadLine(user.id, activeProject.id, line.id);
-          reload();
-        },
+    // Clarity O: destructive confirm через sheet (не native Alert)
+    showActionConfirm({
+      title: 'Удалить строку?',
+      message: line.text,
+      primaryLabel: 'Удалить',
+      onPrimary: () => {
+        void api.deleteScratchpadLine(user.id, activeProject.id, line.id).then(reload);
       },
-    ]);
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
   const markPromoted = async (line: ScratchpadLine, kind: string, id?: string) => {
@@ -131,45 +135,55 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
 
   const openPromoteMenu = (line: ScratchpadLine) => {
     if (readOnly) return;
-    Alert.alert(line.text, 'Превратить заметку в', [
-      {
-        text: '→ Задача в календаре',
-        onPress: () => { setPromoteLine(line); setWorkOpen(true); },
-      },
-      {
-        text: '→ Сообщение в чат',
-        onPress: async () => {
-          if (!user || !activeProject) return;
-          try {
-            // Fail-closed: без inbox не создаём чат «вслепую» (дубли/потеря контекста)
-            const existing = await api.chatInbox(user.id);
-            const title = line.text.slice(0, 60);
-            await createProjectChat({
-              userId: user.id,
-              projectId: activeProject.id,
-              title,
-              existingThreads: existing,
-              onOpen: async (threadId) => {
-                await markPromoted(line, 'chat', threadId);
-                pushOsNav({ pathname: '/chat/[threadId]', params: { threadId } }, returnTo, role);
-              },
-            });
-          } catch {
-            Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть и повторите.');
-          }
+    showActionConfirm({
+      title: line.text.slice(0, 80),
+      message: 'Превратить заметку в',
+      actions: [
+        {
+          label: '→ Задача в календаре',
+          onPress: () => { setPromoteLine(line); setWorkOpen(true); },
         },
-      },
-      {
-        text: '→ Расход',
-        onPress: async () => {
-          await markPromoted(line, 'expense');
-          await syncProjectSideEffects({ user, project: activeProject });
-          pushOsNav(budgetTabHref(role, 'expenses'), returnTo, role);
+        {
+          label: '→ Сообщение в чат',
+          onPress: () => {
+            void (async () => {
+              if (!user || !activeProject) return;
+              try {
+                const existing = await api.chatInbox(user.id);
+                const title = line.text.slice(0, 60);
+                await createProjectChat({
+                  userId: user.id,
+                  projectId: activeProject.id,
+                  title,
+                  existingThreads: existing,
+                  onOpen: async (threadId) => {
+                    await markPromoted(line, 'chat', threadId);
+                    pushOsNav({ pathname: '/chat/[threadId]', params: { threadId } }, returnTo, role);
+                  },
+                });
+              } catch {
+                Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть и повторите.');
+              }
+            })();
+          },
         },
-      },
-      { text: 'Отмена', style: 'cancel' },
-      { text: 'Удалить', style: 'destructive', onPress: () => deleteLine(line) },
-    ]);
+        {
+          label: '→ Расход',
+          onPress: () => {
+            void (async () => {
+              await markPromoted(line, 'expense');
+              await syncProjectSideEffects({ user, project: activeProject });
+              pushOsNav(budgetTabHref(role, 'expenses'), returnTo, role);
+            })();
+          },
+        },
+        {
+          label: 'Удалить',
+          destructive: true,
+          onPress: () => deleteLine(line),
+        },
+      ],
+    });
   };
 
   if (!user) return null;
@@ -203,7 +217,11 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
 
       <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 120 }}>
         {loadError ? (
-          <Text style={[s.empty, { color: '#B45309' }]}>{loadError}</Text>
+          <LoadErrorState
+            title="Не удалось загрузить черновик"
+            hint={loadError}
+            onRetry={() => { void reload(); }}
+          />
         ) : null}
         {active.length ? (
           <>
@@ -303,8 +321,8 @@ const s = StyleSheet.create({
   sub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginTop: 8 },
   list: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
-  section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, marginBottom: 8, textTransform: 'uppercase' },
-  empty: { fontSize: 14, color: RenovaTheme.colors.textMuted, lineHeight: 20, paddingVertical: 24, textAlign: 'center' },
+  section: { ...screenTypography.section, marginBottom: 8 },
+  empty: { ...screenTypography.empty, fontSize: 14, lineHeight: 20, paddingVertical: 24, textAlign: 'center' },
   composer: {
     position: 'absolute',
     left: 0,

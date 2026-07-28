@@ -15,7 +15,7 @@ const guide = readFileSync(join(mobile, 'components/screens/object/ObjectTabGuid
 console.assert(passport.includes('pushOsNav(na.href, pathname, role'), 'passport role');
 console.assert(timeline.includes('role = \'customer\'') || timeline.includes('role?: OsRole'), 'timeline role prop');
 console.assert(timeline.includes('pushOsNav(st.next_action.href, pathname, role)'), 'timeline push role');
-console.assert(stageSheet.includes('offline_queued') && stageSheet.includes('Alert'), 'stage sheet offline');
+console.assert(stageSheet.includes('notifyOfflineQueued') && stageSheet.includes('isOfflineQueued'), 'stage sheet offline');
 console.assert(receipts.includes('deleteReceipt') && receipts.includes('offline_queued'), 'receipt delete offline');
 console.assert(receipts.includes('patchReceipt') && receipts.includes('offline_queued'), 'receipt patch offline');
 console.assert(floor.includes('createWasteOrder') && floor.includes('offline_queued'), 'waste create offline');

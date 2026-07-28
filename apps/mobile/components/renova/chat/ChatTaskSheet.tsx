@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Modal, View, Text, TextInput, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -99,7 +100,7 @@ const s = StyleSheet.create({
   sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
   head: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 15 },
-  label: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginBottom: 8 },
+  label: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   members: { gap: 6, marginBottom: 12 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: RenovaTheme.colors.border, marginRight: 6 },

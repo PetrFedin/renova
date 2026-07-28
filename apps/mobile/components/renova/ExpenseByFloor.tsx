@@ -1,6 +1,7 @@
 /** Расходы по этажам — unified list для дома и многоуровневых объектов */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { Room, EstimateLine } from '@/lib/api';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 import { floorGroups, roomPlan } from '@/lib/expenseSummary';
@@ -48,9 +49,9 @@ export function ExpenseByFloor({
 }
 
 const s = StyleSheet.create({
-  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
-  head: { fontWeight: '800', marginBottom: 8 },
-  row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  name: { fontWeight: '700', fontSize: 13 },
-  val: { fontSize: 12, color: RenovaTheme.colors.primary, fontWeight: '700', marginTop: 2 },
+  box: { marginBottom: 12 },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
+  row: { ...listRowStyles.row },
+  name: { ...screenTypography.listTitle, fontSize: 14 },
+  val: { ...screenTypography.listMeta, fontWeight: '600', color: RenovaTheme.colors.primary },
 });

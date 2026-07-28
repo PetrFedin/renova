@@ -28,7 +28,10 @@ import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
 import { StageDependenciesPanel } from '@/components/renova/StageDependenciesPanel';
 import { WorkOrdersListPanel } from '@/components/renova/WorkOrdersListPanel';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import type { OsRole } from '@/constants/osSections';
+import { tabsRoute } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
 
@@ -53,6 +56,8 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
   const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
   const [filter, setFilter] = useState(isCustomer ? 'now' : 'all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  /** Clarity F: зависимости / WO — secondary, не конкурируют со списком этапов */
+  const [showSecondaryPanels, setShowSecondaryPanels] = useState(false);
 
   useEffect(() => {
     if (typeof filterParam === 'string') {
@@ -181,7 +186,6 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     <>
       <ReadOnlyBanner />
       <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
-        <RepairProcessTimeline stages={activeProject.stages || []} />
         {isContractor && user && (
           <>
             <ReworkSlaWidget stages={activeProject.stages} userId={user.id} projectId={activeProject.id} role="contractor" onExtended={() => loadProject(activeProject.id)} />
@@ -192,18 +196,28 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         {isContractor && !showAdvancedFilters && (
           <PrimaryButton title="Ещё фильтры" variant="ghost" compact onPress={() => setShowAdvancedFilters(true)} />
         )}
-        {/* Заказчик: зависимости/WO не зависят от чипов — прячем, иначе вкладки «одинаковые» */}
-        {user && (!isCustomer || filter === 'all') && (
-          <StageDependenciesPanel userId={user.id} projectId={activeProject.id} role={role} />
-        )}
-        {user && (!isCustomer || filter === 'all') && (
-          <WorkOrdersListPanel
-            userId={user.id}
-            projectId={activeProject.id}
-            rooms={activeProject.rooms}
-            role={role}
+        {/* Clarity M: хронология не в first viewport — вместе с deps/WO */}
+        {user && (!isCustomer || filter === 'all') && !showSecondaryPanels ? (
+          <PrimaryButton
+            title="План и назначения"
+            variant="ghost"
+            compact
+            onPress={() => setShowSecondaryPanels(true)}
           />
-        )}
+        ) : null}
+        {user && (!isCustomer || filter === 'all') && showSecondaryPanels ? (
+          <>
+            <RepairProcessTimeline stages={activeProject.stages || []} />
+            <PrimaryButton title="Свернуть план" variant="ghost" compact onPress={() => setShowSecondaryPanels(false)} />
+            <StageDependenciesPanel userId={user.id} projectId={activeProject.id} role={role} />
+            <WorkOrdersListPanel
+              userId={user.id}
+              projectId={activeProject.id}
+              rooms={activeProject.rooms}
+              role={role}
+            />
+          </>
+        ) : null}
         {isContractor && !readOnly && (
           <View style={s.createRow}>
             <PrimaryButton title="+ Этап" onPress={() => setShowCreate(true)} />
@@ -247,7 +261,16 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           </View>
         )}
         {!stages.length && !hasActiveFilter && (activeProject.stages?.length ?? 0) === 0 && (
-          <Text style={s.empty}>Этапов пока нет. {isContractor ? 'Создайте первый этап.' : 'Они появятся после планирования ремонта.'}</Text>
+          <EmptyActionState
+            title="Этапов пока нет"
+            hint={isContractor ? 'Создайте первый этап — план ремонта станет прозрачным для заказчика.' : 'Этапы появятся после планирования ремонта. Можно написать исполнителю.'}
+            actionLabel={isContractor ? 'Создать этап' : 'Сообщения'}
+            actionVariant="primary"
+            onAction={() => {
+              if (isContractor) setShowCreate(true);
+              else pushOsNav(tabsRoute(role, 'chat'), undefined, role);
+            }}
+          />
         )}
       </ScrollView>
       {user && isContractor && (

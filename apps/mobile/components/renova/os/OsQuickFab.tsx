@@ -11,7 +11,7 @@ import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
-import { tabsPrefix, budgetTabHref, objectTabHref, repairTabRoute, type OsRole } from '@/constants/osSections';
+import { tabsPrefix, budgetTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { fabActionIdsForLevel } from '@/lib/detailLevelPolicy';
@@ -66,46 +66,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
         setOpen(false);
         pushOsNav({ pathname: '/scratchpad', params: { role } }, pathname, role);
       },
-    }] : [
-      {
-        id: 'remark',
-        label: 'Замечание',
-        sub: expenseContext.stageId ? 'К текущему этапу' : 'Раздел приёмки',
-        icon: 'alert-circle-outline',
-        run: () => {
-          setOpen(false);
-          if (expenseContext.stageId) {
-            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname, role);
-          } else {
-            pushOsNav(repairTabRoute(role, 'control'), pathname, role);
-          }
-        },
-      },
-      {
-        id: 'photo',
-        label: 'Фото',
-        sub: expenseContext.stageId ? 'На этап' : 'Скан или галерея',
-        icon: 'camera-outline',
-        run: () => {
-          setOpen(false);
-          if (expenseContext.stageId) {
-            pushOsNav({ pathname: '/stage/[id]', params: { id: expenseContext.stageId, returnTo: pathname } }, pathname, role);
-          } else {
-            nav.scanReceipt(expenseContext.roomId, expenseContext.stageId);
-          }
-        },
-      },
-      {
-        id: 'change',
-        label: 'Запрос изменения',
-        sub: 'Комната или план',
-        icon: 'create-outline',
-        run: () => {
-          setOpen(false);
-          pushOsNav(objectTabHref(role, 'rooms'), pathname, role);
-        },
-      },
-    ]),
+    }] : []),
     {
       id: 'chat',
       label: 'Сообщение',

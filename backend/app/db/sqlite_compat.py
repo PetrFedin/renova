@@ -365,6 +365,15 @@ def ensure_os_schema() -> None:
             c.execute("DELETE FROM projects WHERE name LIKE 'Wizard Test%'")
         except Exception:
             pass
+        # Investor honesty: E2E Gate / Walkthrough / голая «Студия» не должны висеть в demo picker
+        try:
+            c.execute("""
+                DELETE FROM projects WHERE name LIKE '%E2E%' OR name LIKE '%Walkthrough%'
+                OR name LIKE '%Gate Test%'
+                OR name IN ('Студия', 'Studio')
+            """)
+        except Exception:
+            pass
         c.execute("""
             UPDATE projects SET budget_spent = COALESCE((
               SELECT ROUND(SUM(amount), 2) FROM expenses

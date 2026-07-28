@@ -2,7 +2,8 @@
 import { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
@@ -115,13 +116,14 @@ export function StageDependenciesPanel({
 }
 
 const s = StyleSheet.create({
-  wrap: { ...card, marginBottom: 12 },
+  /** Clarity K: без card-обёртки и uppercase-крика */
+  wrap: { marginBottom: 12 },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  head: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', gap: 8 },
-  title: { fontSize: 14, fontWeight: '700' },
-  sub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  status: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  more: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 6 },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 0 },
+  empty: { ...screenTypography.empty },
+  row: { flexDirection: 'row', alignItems: 'center', ...listRowStyles.row, gap: 8 },
+  title: { ...screenTypography.listTitle, fontSize: 14 },
+  sub: { ...screenTypography.listMeta },
+  status: { fontSize: 11, fontWeight: '600' },
+  more: { ...screenTypography.listMeta, marginTop: 6 },
 });

@@ -1,6 +1,7 @@
 /** «N ждут приёмки» на главной — роль-зависимый CTA (W56/W107) */
 import { Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
 import { pushOsNav, type OsNavHref } from '@/lib/pushOsNav';
@@ -47,6 +48,6 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.warningBorder,
   },
-  head: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.warningText },
-  link: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.accent, marginTop: 4 },
+  head: { ...screenTypography.listTitle, color: RenovaTheme.colors.warningText },
+  link: { ...screenTypography.listLink, color: RenovaTheme.colors.accent },
 });

@@ -7,7 +7,7 @@ import type { ProjectOsSnapshot } from './osTypes';
 import { computeProjectHealth, forecastFinalCost, capOverrunRisk } from './projectHealth';
 import { sanitizeRiskImpact } from './sanitizeRiskImpact';
 import { resolveProjectProgress } from './resolveProjectProgress';
-import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute } from '@/constants/osSections';
+import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute, customerProfileTabHref } from '@/constants/osSections';
 import { closeoutNextActionTitle } from './closeoutHome';
 
 /**
@@ -203,7 +203,7 @@ export function buildProjectOsSnapshot(
           ? 'Пост-сдача: закройте обращения или создайте новое'
           : 'Закройте обращения перед архивом объекта',
         button: 'Гарантия',
-        href: '/documents',
+        href: '/control?focus=warranty',
         kind: 'issue',
       };
     } else if (pendingSignDocs > 0 && role === 'customer') {
@@ -396,6 +396,18 @@ export function buildProjectOsSnapshot(
       button: 'Материалы',
       href: repairTabRoute(role, 'materials'),
       kind: 'material',
+    };
+  } else if (role === 'customer' && !project.contractor_id) {
+    /**
+     * Investor P1: явный CTA вместо generic «проверьте работы».
+     * Ниже payment / приёмки / графика / сметы / материалов — не перебивает живые очереди.
+     */
+    nextAction = {
+      title: 'Подключить исполнителя',
+      subtitle: 'Без подрядчика этапы, приёмка и оплата не запустятся',
+      button: 'Пригласить',
+      href: customerProfileTabHref('customer', 'contractor'),
+      kind: 'review',
     };
   } else if (dashTitle && !dashSaysComplete) {
     const deadline = osSchedule?.planned_end || project.planned_end_date;

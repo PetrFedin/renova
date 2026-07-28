@@ -7,6 +7,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, MaterialPick, Purchase } from '@/lib/api';
@@ -95,14 +96,56 @@ export default function MaterialDetailScreen() {
           <Text style={s.hint}>Оплата: подрядчик · учтено в факте бюджета.</Text>
         )}
         {pick.status === 'purchased' && deliveredPurchase && cancelStatus && role === 'contractor' && user && activeProject && (
-          <PrimaryButton title={purchaseAdvanceLabel(cancelStatus)} variant="outline" onPress={async () => {
-            await api.updatePurchaseStatus(user.id, activeProject.id, deliveredPurchase.id, cancelStatus);
-            await syncProjectSideEffects({ user, project: activeProject });
-            reload();
+          <PrimaryButton title={purchaseAdvanceLabel(cancelStatus)} variant="outline" onPress={() => {
+            // Clarity W: паритет MaterialPickDetailSheet — откат факта с confirm
+            showActionConfirm({
+              title: 'Убрать из факта?',
+              message: 'Сумма закупки выйдет из факта бюджета. Можно вернуть статус позже.',
+              primaryLabel: 'Убрать',
+              onPrimary: () => {
+                void (async () => {
+                  try {
+                    await api.updatePurchaseStatus(user.id, activeProject.id, deliveredPurchase.id, cancelStatus);
+                    await syncProjectSideEffects({ user, project: activeProject });
+                    reload();
+                  } catch (e: unknown) {
+                    showActionConfirm({
+                      title: 'Ошибка',
+                      message: e instanceof Error ? e.message : 'Не удалось обновить закупку',
+                    });
+                  }
+                })();
+              },
+              secondaryLabel: 'Отмена',
+              onSecondary: () => undefined,
+            });
           }} />
         )}
         {role === 'customer' && pick.status === 'pending' && user && activeProject && (
-          <PrimaryButton title="Согласовать" onPress={async () => { await api.approveMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); alertMaterialPickApproved(role); }} />
+          <PrimaryButton title="Согласовать" onPress={() => {
+            showActionConfirm({
+              title: 'Согласовать материал?',
+              message: 'После согласия подрядчик сможет закупить позицию.',
+              primaryLabel: 'Согласовать',
+              onPrimary: () => {
+                void (async () => {
+                  try {
+                    await api.approveMaterialPick(user.id, activeProject.id, pick.id);
+                    await syncProjectSideEffects({ user, project: activeProject });
+                    reload();
+                    alertMaterialPickApproved(role);
+                  } catch (e: unknown) {
+                    showActionConfirm({
+                      title: 'Ошибка',
+                      message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                    });
+                  }
+                })();
+              },
+              secondaryLabel: 'Отмена',
+              onSecondary: () => undefined,
+            });
+          }} />
         )}
         {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
           <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); alertMaterialPickSubmitted(role); }} />

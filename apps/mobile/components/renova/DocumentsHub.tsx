@@ -2,12 +2,12 @@ import { reportError, reportCatch } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
+  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Linking,
 } from 'react-native';
-import type { PressableStateCallbackType } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { api, ApiError, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { pollDocumentSignature } from '@/lib/esignPoll';
@@ -25,6 +25,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
+import { documentSectionTarget } from '@/lib/documentSectionNav';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { alertIcalExported } from '@/lib/calendarIcsNav';
@@ -32,6 +33,7 @@ import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
 import { openQcIssue } from '@/lib/qcNav';
 import { alertCloseoutDone, alertDocumentSigned } from '@/lib/scheduleCloseoutNav';
 import { alertDocumentOcrDone } from '@/lib/fieldCommsNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type DocRow = {
   id: string;
@@ -154,6 +156,13 @@ export function DocumentsHub({
   useProjectDataReload(reloadIndex);
 
   const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 8), [docIndex]);
+  /** Clarity D: черновики ждут подписи — pinned сверху */
+  const needsSignDocs = useMemo(
+    () => (docIndex?.items || []).filter((d) => d.status === 'draft'),
+    [docIndex],
+  );
+  /** Clarity D: секции свёрнуты по умолчанию — меньше шума */
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   const sections: DocSection[] = useMemo(() => {
     const rows = {
@@ -230,27 +239,18 @@ export function DocumentsHub({
           const res = await api.pushWeeklyDigest(userId, projectId);
           const modeLabel =
             res.source === 'ollama' ? 'Текст: Ollama' : 'Текст: rule-based (без LLM)';
-          Alert.alert(
-            'Дайджест отправлен',
-            `${modeLabel}
-Уведомлений: ${res.notified}
-
-${(res.body || '').slice(0, 220)}`,
-            [
-              { text: 'OK', style: 'cancel' },
-              {
-                text: 'KPI PDF',
-                onPress: () => {
-                  void api.exportKpiWeeklyPdf(userId, projectId);
-                },
-              },
-              {
-                // W126: дайджест → inbox (аналог weekly summary)
-                text: 'Входящие',
-                onPress: () => pushOsNav('/inbox', undefined, isContractor ? 'contractor' : 'customer'),
-              },
-            ],
-          );
+          const role = (isContractor ? 'contractor' : 'customer') as OsRole;
+          // Clarity I: sheet вместо Alert после дайджеста
+          showActionConfirm({
+            title: 'Дайджест отправлен',
+            message: `${modeLabel}\nУведомлений: ${res.notified}\n\n${(res.body || '').slice(0, 220)}`,
+            primaryLabel: 'Входящие',
+            onPrimary: () => pushOsNav('/inbox', undefined, role),
+            secondaryLabel: 'KPI PDF',
+            onSecondary: () => {
+              void api.exportKpiWeeklyPdf(userId, projectId);
+            },
+          });
         },
       },
       // W122: Houzz/BT client portal share
@@ -288,40 +288,43 @@ ${(res.body || '').slice(0, 220)}`,
           // W64/W126: заказчик закрывает гарантию — иначе closeout тупик; обе роли → QC
           if (!isContractor && openItems.length > 0) {
             const first = openItems[0];
-            Alert.alert(
-              'Открытые гарантии',
-              `Открыто: ${openItems.length}. «${first.title || 'Обращение'}» — закрыть?`,
-              [
-                { text: 'Отмена', style: 'cancel' },
+            showActionConfirm({
+              title: 'Открытые гарантии',
+              message: `Открыто: ${openItems.length}. «${first.title || 'Обращение'}» — закрыть?`,
+              actions: [
                 {
-                  text: 'В QC',
+                  label: 'В QC',
                   onPress: () => openQcIssue(first.id, '/documents', role),
                 },
                 {
-                  text: 'Закрыть это',
-                  onPress: async () => {
-                    try {
-                      await api.closeWarrantyClaim(userId, projectId, first.id);
-                      void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                      alertWarrantyClosed(role);
-                    } catch (e: unknown) {
-                      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
-                    }
+                  label: 'Закрыть это',
+                  onPress: () => {
+                    void (async () => {
+                      try {
+                        await api.closeWarrantyClaim(userId, projectId, first.id);
+                        void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                        alertWarrantyClosed(role);
+                      } catch (e: unknown) {
+                        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
+                      }
+                    })();
                   },
                 },
                 {
-                  text: 'Создать ещё',
-                  onPress: async () => {
-                    const res = await api.createWarrantyClaim(userId, projectId, {
-                      title: 'Гарантийное обращение',
-                      description: 'Создано из Document Center',
-                    });
-                    void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                    alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+                  label: 'Создать ещё',
+                  onPress: () => {
+                    void (async () => {
+                      const res = await api.createWarrantyClaim(userId, projectId, {
+                        title: 'Гарантийное обращение',
+                        description: 'Создано из Document Center',
+                      });
+                      void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                      alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+                    })();
                   },
                 },
               ],
-            );
+            });
             return;
           }
           const res = await api.createWarrantyClaim(userId, projectId, {
@@ -342,7 +345,12 @@ ${(res.body || '').slice(0, 220)}`,
         run: async () => {
           const snap = await api.closeoutChecklist(userId, projectId);
           if (snap.archived) {
-            Alert.alert('Closeout', 'Объект уже в архиве');
+            showActionConfirm({
+              title: 'Closeout',
+              message: 'Объект уже в архиве',
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
             return;
           }
           const body = [
@@ -354,57 +362,68 @@ ${(res.body || '').slice(0, 220)}`,
           ].join('\n');
           // W61: исполнитель видит чеклист, архивирует только заказчик
           if (isContractor) {
-            Alert.alert('Готовность объекта', `${body}\n\nЗавершить объект может только заказчик.`);
+            showActionConfirm({
+              title: 'Готовность объекта',
+              message: `${body}\n\nЗавершить объект может только заказчик.`,
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
             return;
           }
           if (!snap.ready) {
             // W65 #12: deep-link на каждый блокер closeout
-            const buttons: { text: string; style?: 'cancel'; onPress?: () => void }[] = [{ text: 'OK' }];
+            const actions: { label: string; onPress: () => void }[] = [];
             if (!snap.all_stages_done) {
-              buttons.push({
-                text: 'К приёмке',
+              actions.push({
+                label: 'К приёмке',
                 onPress: () => pushOsNav(repairTabRoute('customer', 'control'), undefined, 'customer'),
               });
             }
             if ((snap.pending_payments || 0) > 0) {
-              buttons.push({
-                text: 'К оплатам',
+              actions.push({
+                label: 'К оплатам',
                 onPress: () => pushOsNav(budgetTabRoute('customer', 'payments'), undefined, 'customer'),
               });
             }
             if ((snap.acceptance_acts_active || 0) === 0 && snap.all_stages_done) {
-              buttons.push({
-                text: 'К документам',
+              actions.push({
+                label: 'К документам',
                 onPress: () => pushOsNav('/documents', undefined, 'customer'),
               });
             }
             if ((snap.warranty_open || 0) > 0) {
-              buttons.push({
-                text: 'К гарантии',
-                onPress: () => {
-                  void rows.warrantyClaim.run?.();
-                },
+              actions.push({
+                label: 'К гарантии',
+                onPress: () => { void rows.warrantyClaim.run?.(); },
               });
             }
-            Alert.alert('Ещё не готово', body, buttons);
+            showActionConfirm({
+              title: 'Ещё не готово',
+              message: body,
+              ...(actions.length
+                ? { actions }
+                : { primaryLabel: 'Понятно', onPrimary: () => undefined }),
+            });
             return;
           }
-          Alert.alert('Завершить объект?', body, [
-            { text: 'Отмена', style: 'cancel' },
-            {
-              text: 'Завершить',
-              onPress: async () => {
+          showActionConfirm({
+            title: 'Завершить объект?',
+            message: body,
+            primaryLabel: 'Завершить',
+            onPrimary: () => {
+              void (async () => {
                 try {
                   const res = await api.closeoutProject(userId, projectId);
                   void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                  // W132: closeout → главная / документы
                   alertCloseoutDone('customer', res.next_action);
                 } catch (e: unknown) {
                   Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось завершить');
                 }
-              },
+              })();
             },
-          ]);
+            secondaryLabel: 'Отмена',
+            onSecondary: () => undefined,
+          });
         },
       },
       activityPdf: {
@@ -516,35 +535,46 @@ ${(res.body || '').slice(0, 220)}`,
 
   function openPdfMenu(row: DocRow) {
     if (!row.run) return;
-    const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
+    const actions = [
       {
-        text: 'Открыть',
+        label: 'Открыть',
         onPress: () => {
           if (!row.previewPath || !row.filename) return;
           withBusy(`${row.id}-open`, () => previewProjectPdf(userId, row.previewPath!, row.filename!));
         },
       },
       {
-        text: 'Скачать',
+        label: 'Скачать',
         onPress: () => withBusy(`${row.id}-dl`, row.run!),
       },
     ];
     if (Platform.OS !== 'web') {
       actions.push({
-        text: 'Поделиться',
+        label: 'Поделиться',
         onPress: () => withBusy(`${row.id}-share`, () => sharePdf(row)),
       });
     }
-    actions.push({ text: 'Отмена', style: 'cancel' });
-    Alert.alert(row.label, row.desc, actions);
+    showActionConfirm({
+      title: row.label,
+      message: row.desc,
+      actions,
+    });
   }
 
   function openEstimateTableMenu() {
-    Alert.alert('Смета для Excel', 'Выберите формат файла', [
-      { text: 'CSV', onPress: () => withBusy('csv', () => api.exportEstimateCsv(userId, projectId)) },
-      { text: 'Excel (XLSX)', onPress: () => withBusy('xlsx', () => api.exportEstimateXlsx(userId, projectId)) },
-      { text: 'Отмена', style: 'cancel' },
-    ]);
+    // Clarity K: sheet вместо Alert-меню формата
+    showActionConfirm({
+      title: 'Смета для Excel',
+      message: 'Выберите формат файла',
+      primaryLabel: 'Excel (XLSX)',
+      onPrimary: () => {
+        void withBusy('xlsx', () => api.exportEstimateXlsx(userId, projectId));
+      },
+      secondaryLabel: 'CSV',
+      onSecondary: () => {
+        void withBusy('csv', () => api.exportEstimateCsv(userId, projectId));
+      },
+    });
   }
 
   function onRowPress(row: DocRow) {
@@ -562,25 +592,48 @@ ${(res.body || '').slice(0, 220)}`,
   function openIndexedDocument(doc: ProjectDocument) {
     const openFile = () => {
       if (!doc.href) {
-        Alert.alert(
-          doc.title,
-          'Файл ещё не загружен. Добавьте документ через «+ Файл» или дождитесь генерации акта.',
-          [
-            { text: 'Отмена', style: 'cancel' },
-            { text: 'Загрузить', onPress: () => { void uploadCanonicalDocument(); } },
-          ],
-        );
+        showActionConfirm({
+          title: doc.title,
+          message: 'Файл ещё не загружен. Добавьте документ через «+ Файл» или дождитесь генерации акта.',
+          primaryLabel: 'Загрузить',
+          onPrimary: () => { void uploadCanonicalDocument(); },
+          secondaryLabel: 'Позже',
+          onSecondary: () => undefined,
+        });
         return;
       }
-      const href = doc.href;
-      if (href.toLowerCase().includes('.pdf') || href.includes('/media/')) {
-        withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, href, indexedFilename(doc)));
+      if (doc.href.toLowerCase().includes('.pdf') || doc.href.includes('/media/')) {
+        withBusy(`index-${doc.id}`, () => previewProjectPdf(userId, doc.href!, indexedFilename(doc)));
         return;
       }
-      Alert.alert(doc.title, formatDocMeta(doc), [
-        { text: 'Отмена', style: 'cancel' },
-        { text: 'Открыть документ', onPress: () => { void WebBrowser.openBrowserAsync(href); } },
-      ]);
+      // Investor P2: sheet + deep-link в канон раздела
+      const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+      const section = documentSectionTarget(role, doc);
+      showActionConfirm({
+        title: doc.title,
+        message: formatDocMeta(doc),
+        actions: [
+          {
+            label: 'Открыть',
+            onPress: () => {
+              void Linking.openURL(doc.href!).catch(() => {
+                showActionConfirm({
+                  title: 'Не удалось открыть',
+                  message: 'Скопируйте ссылку или перейдите в раздел документа.',
+                  primaryLabel: section.label,
+                  onPrimary: () => pushOsNav(section.route, undefined, role),
+                  secondaryLabel: 'Позже',
+                  onSecondary: () => undefined,
+                });
+              });
+            },
+          },
+          {
+            label: section.label,
+            onPress: () => pushOsNav(section.route, undefined, role),
+          },
+        ],
+      });
     };
 
     if (!isCanonicalDocument(doc)) {
@@ -589,8 +642,14 @@ ${(res.body || '').slice(0, 220)}`,
     }
 
     // Wave 3d: действия Document Center для канонических документов
+    const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+    const section = documentSectionTarget(role, doc);
     const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
       { text: 'Открыть', onPress: openFile },
+      {
+        text: section.label,
+        onPress: () => pushOsNav(section.route, undefined, role),
+      },
       {
         text: 'Подписать в приложении',
         onPress: () => withBusy(`sign-${doc.id}`, async () => {
@@ -598,7 +657,6 @@ ${(res.body || '').slice(0, 220)}`,
           await reloadIndex();
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           // W132: подпись → документы / график
-          const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
           alertDocumentSigned(role, 'in_app');
         }),
       },
@@ -617,17 +675,23 @@ ${(res.body || '').slice(0, 220)}`,
           await reloadIndex();
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
           if (status === 'signed') {
-            const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
             alertDocumentSigned(role, 'kontur');
           } else if (status === 'failed') {
-            Alert.alert('Контур', 'Подпись не завершена. Проверьте статус позже.');
+            showActionConfirm({
+              title: 'Контур',
+              message: 'Подпись не завершена. Проверьте статус позже или подпишите в приложении.',
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
           } else {
-            Alert.alert(
-              'Контур',
-              signed?.signing_url
+            showActionConfirm({
+              title: 'Контур',
+              message: signed?.signing_url
                 ? 'Подпишите в браузере Контура. Статус обновится по webhook.'
                 : 'Запрос создан (pending). Статус обновится по webhook или при следующем открытии документов.',
-            );
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
           }
         }),
       }] : []),
@@ -637,7 +701,7 @@ ${(res.body || '').slice(0, 220)}`,
           await api.runDocumentOcr(userId, projectId, doc.id, true);
           await reloadIndex();
           void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-          alertDocumentOcrDone((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
+          alertDocumentOcrDone(role);
         }),
       },
       {
@@ -654,9 +718,12 @@ ${(res.body || '').slice(0, 220)}`,
           await reloadIndex();
         }),
       },
-      { text: 'Отмена', style: 'cancel' },
     ];
-    Alert.alert(doc.title, formatDocMeta(doc), actions);
+    showActionConfirm({
+      title: doc.title,
+      message: formatDocMeta(doc),
+      actions: actions.map((a) => ({ label: a.text, onPress: () => { a.onPress?.(); } })),
+    });
   }
 
   async function doUploadPicked(file: { uri: string; name: string; type: string }) {
@@ -681,37 +748,40 @@ ${(res.body || '').slice(0, 220)}`,
         return;
       }
 
-      Alert.alert('Загрузить документ', 'Выберите источник файла', [
-        {
-          text: 'Файл (PDF, DOC…)',
-          onPress: () => {
-            void (async () => {
-              try {
-                const file = await pickDocumentForUpload();
-                if (!file) return;
-                await doUploadPicked(file);
-              } catch (e: any) {
-                Alert.alert('Ошибка загрузки', String(e?.message || e));
-              }
-            })();
+      showActionConfirm({
+        title: 'Загрузить документ',
+        message: 'Выберите источник файла',
+        actions: [
+          {
+            label: 'Файл (PDF, DOC…)',
+            onPress: () => {
+              void (async () => {
+                try {
+                  const file = await pickDocumentForUpload();
+                  if (!file) return;
+                  await doUploadPicked(file);
+                } catch (e: any) {
+                  Alert.alert('Ошибка загрузки', String(e?.message || e));
+                }
+              })();
+            },
           },
-        },
-        {
-          text: 'Фото из галереи',
-          onPress: () => {
-            void (async () => {
-              try {
-                const file = await pickImageForDocumentUpload();
-                if (!file) return;
-                await doUploadPicked(file);
-              } catch (e: any) {
-                Alert.alert('Ошибка загрузки', String(e?.message || e));
-              }
-            })();
+          {
+            label: 'Фото из галереи',
+            onPress: () => {
+              void (async () => {
+                try {
+                  const file = await pickImageForDocumentUpload();
+                  if (!file) return;
+                  await doUploadPicked(file);
+                } catch (e: any) {
+                  Alert.alert('Ошибка загрузки', String(e?.message || e));
+                }
+              })();
+            },
           },
-        },
-        { text: 'Отмена', style: 'cancel' },
-      ]);
+        ],
+      });
     } catch (e: any) {
       Alert.alert('Ошибка загрузки', String(e?.message || e));
     }
@@ -734,7 +804,39 @@ ${(res.body || '').slice(0, 220)}`,
         }}
       />
     <View style={s.wrap}>
-      <Text style={s.sub}>Нажмите на документ — откроется меню или сразу загрузка</Text>
+      <Text style={s.sub}>Сначала подпишите черновики — остальные разделы ниже по запросу</Text>
+      <OfflineSyncStatus compact />
+
+      {needsSignDocs.length > 0 ? (
+        <View style={s.signPin} accessibilityLabel={`Нужно подписать ${needsSignDocs.length}`}>
+          <Text style={s.signPinTitle}>Нужно подписать ({needsSignDocs.length})</Text>
+          <Text style={s.signPinHint}>Откройте документ и выберите «Подписать в приложении»</Text>
+          {needsSignDocs.map((doc) => {
+            const loading = busy === `index-${doc.id}` || busy?.startsWith(`sign-${doc.id}`);
+            return (
+              <Pressable
+                key={doc.id}
+                style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
+                onPress={() => openIndexedDocument(doc)}
+                disabled={Boolean(busy)}
+                accessibilityRole="button"
+                accessibilityLabel={`Подписать: ${doc.title}`}
+              >
+                <View style={s.recentMain}>
+                  <Text style={s.recentTitle} numberOfLines={1}>{doc.title}</Text>
+                  <Text style={s.recentMeta} numberOfLines={1}>{formatDocMeta(doc)}</Text>
+                </View>
+                {loading ? (
+                  <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
+                ) : (
+                  <Ionicons name="create-outline" size={18} color={RenovaTheme.colors.primary} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       <View style={s.modeRow} accessibilityLabel="Режимы интеграций документов">
         <Text style={[s.modeChip, s.modeWarn]}>OCR: {ocrModeLabel}</Text>
         <Text style={[s.modeChip, konturMode === 'live' ? s.modeOk : s.modeWarn]}>
@@ -742,7 +844,6 @@ ${(res.body || '').slice(0, 220)}`,
         </Text>
         <Text style={[s.modeChip, s.modeWarn]}>Подпись: {konturAvailable ? 'PROVIDER' : 'IN_APP / LOCAL'}</Text>
       </View>
-      <OfflineSyncStatus compact />
 
       <View style={s.indexCard}>
         <View style={s.indexHeader}>
@@ -780,7 +881,7 @@ ${(res.body || '').slice(0, 220)}`,
               return (
                 <Pressable
                   key={doc.id}
-                  style={({ pressed }: PressableStateCallbackType) => [s.recentRow, pressed && s.rowPressed]}
+                  style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
                   onPress={() => openIndexedDocument(doc)}
                   disabled={Boolean(busy)}
                   accessibilityRole="button"
@@ -806,37 +907,65 @@ ${(res.body || '').slice(0, 220)}`,
         ) : null}
       </View>
 
-      {sections.map((section) => (
-        <View key={section.title} style={s.section}>
-          <Text style={s.sectionTitle}>{section.title}</Text>
-          {section.hint ? <Text style={s.sectionHint}>{section.hint}</Text> : null}
-          {section.rows.map((row) => {
-            const loading = busy === row.id || busy?.startsWith(`${row.id}-`);
-            return (
-              <Pressable
-                key={row.id}
-                style={({ pressed }: PressableStateCallbackType) => [s.row, pressed && s.rowPressed]}
-                onPress={() => onRowPress(row)}
-                disabled={!!busy}
-                accessibilityRole="button"
-              >
-                <View style={s.rowMain}>
-                  <Text style={s.label}>{row.label}</Text>
-                  <Text style={s.desc}>{row.desc}</Text>
-                </View>
-                <View style={s.rowTail}>
-                  <Text style={s.format}>{row.format}</Text>
-                  {loading ? (
-                    <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
-                  ) : (
-                    <Ionicons name="chevron-forward" size={18} color={RenovaTheme.colors.textMuted} />
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
+      {sections.map((section) => {
+        const open = Boolean(expandedSections[section.title]);
+        return (
+          <View key={section.title} style={s.section}>
+            <Pressable
+              style={s.sectionHeader}
+              onPress={() =>
+                setExpandedSections((prev) => ({ ...prev, [section.title]: !prev[section.title] }))
+              }
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open }}
+              accessibilityLabel={`${section.title}, ${open ? 'свернуть' : 'развернуть'}`}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={s.sectionTitle}>{section.title}</Text>
+                {!open && section.hint ? (
+                  <Text style={s.sectionHint} numberOfLines={1}>{section.hint}</Text>
+                ) : null}
+              </View>
+              <Text style={s.sectionCount}>{section.rows.length}</Text>
+              <Ionicons
+                name={open ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={RenovaTheme.colors.textMuted}
+              />
+            </Pressable>
+            {open ? (
+              <>
+                {section.hint ? <Text style={s.sectionHint}>{section.hint}</Text> : null}
+                {section.rows.map((row) => {
+                  const loading = busy === row.id || busy?.startsWith(`${row.id}-`);
+                  return (
+                    <Pressable
+                      key={row.id}
+                      style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+                      onPress={() => onRowPress(row)}
+                      disabled={!!busy}
+                      accessibilityRole="button"
+                    >
+                      <View style={s.rowMain}>
+                        <Text style={s.label}>{row.label}</Text>
+                        <Text style={s.desc}>{row.desc}</Text>
+                      </View>
+                      <View style={s.rowTail}>
+                        <Text style={s.format}>{row.format}</Text>
+                        {loading ? (
+                          <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
+                        ) : (
+                          <Ionicons name="chevron-forward" size={18} color={RenovaTheme.colors.textMuted} />
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </>
+            ) : null}
+          </View>
+        );
+      })}
     </View>
     </>
   );
@@ -850,44 +979,64 @@ const s = StyleSheet.create({
 
   wrap: { paddingHorizontal: 16, paddingBottom: 24 },
   sub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 16, lineHeight: 18 },
-  indexCard: { ...card, marginBottom: 18, gap: 10 },
+  // Clarity W: index без Theme.card / 800
+  indexCard: { marginBottom: 18, gap: 10 },
   indexHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
-  indexTitle: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
+  indexTitle: { ...screenTypography.listTitle, fontSize: 16 },
   uploadBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: RenovaTheme.colors.primary },
   uploadBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  indexHint: { marginTop: 3, fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
-  indexEmpty: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
-  countsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  countPill: { flexGrow: 1, minWidth: '22%', borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 12, paddingVertical: 8, alignItems: 'center', backgroundColor: RenovaTheme.colors.surface },
-  countValue: { fontSize: 16, fontWeight: '800', color: RenovaTheme.colors.text },
-  countLabel: { fontSize: 10, color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginTop: 2 },
+  indexHint: { ...screenTypography.listMeta, marginTop: 3 },
+  indexEmpty: { ...screenTypography.empty },
+  countsRow: { ...listRowStyles.summaryRow, flexWrap: 'wrap' },
+  countPill: { ...listRowStyles.metricCell, flexGrow: 1, minWidth: '22%' },
+  countValue: { ...screenTypography.metric, fontSize: 16 },
+  countLabel: { ...screenTypography.metricLabel },
   recentList: { gap: 6 },
-  recentRow: { flexDirection: 'row', gap: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, paddingTop: 10, paddingBottom: 4 },
+  recentRow: { flexDirection: 'row', gap: 8, alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: RenovaTheme.colors.border, paddingTop: 10, paddingBottom: 4 },
   recentMain: { flex: 1, minWidth: 0 },
-  recentTitle: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
+  recentTitle: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.text },
   recentMeta: { marginTop: 2, fontSize: 11, color: RenovaTheme.colors.textMuted },
-  section: { marginBottom: 18 },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: RenovaTheme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 4,
+  signPin: {
+    marginBottom: 14,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.primary,
+    backgroundColor: RenovaTheme.colors.surface,
+    gap: 6,
   },
-  sectionHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 16 },
-  row: {
-    ...card,
+  signPinTitle: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
+  signPinHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 4, lineHeight: 16 },
+  section: { marginBottom: 12 },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-    gap: 10,
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: RenovaTheme.colors.border,
   },
-  rowPressed: { opacity: 0.92, backgroundColor: '#F8FAFC' },
+  sectionTitle: {
+    ...screenTypography.section,
+    marginBottom: 0,
+    marginTop: 0,
+  },
+  sectionCount: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
+  sectionHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8, marginTop: 6, lineHeight: 16 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 2,
+    marginBottom: 0,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: RenovaTheme.colors.border,
+    backgroundColor: 'transparent',
+  },
+  rowPressed: { opacity: 0.85, backgroundColor: RenovaTheme.colors.infoBg },
   rowMain: { flex: 1, minWidth: 0 },
-  label: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
+  label: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },
   rowTail: { alignItems: 'flex-end', gap: 4, minWidth: 56 },
   format: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.primary, textTransform: 'uppercase' },

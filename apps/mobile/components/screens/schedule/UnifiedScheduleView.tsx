@@ -8,6 +8,7 @@ import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
 import { WorkOrderCard } from '@/components/renova/WorkOrderCard';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { ScheduleCalendar, type CalendarViewMode } from '@/components/renova/schedule/ScheduleCalendar';
 import { ScheduleDayDetail } from '@/components/renova/schedule/ScheduleDayDetail';
 import { ScheduleIconToolbar } from '@/components/renova/schedule/ScheduleIconToolbar';
@@ -33,6 +34,7 @@ import {
   alertScheduleRejected,
   alertScheduleSubmitted,
 } from '@/lib/scheduleCloseoutNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -74,6 +76,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
     !readOnly &&
     (user?.role === 'customer' || !teamRole || teamRole === 'owner' || teamRole === 'foreman');
   const [cal, setCal] = useState<CalendarData | null>(null);
+  const [calLoadState, setCalLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [filter, setFilter] = useState('all');
@@ -86,10 +89,23 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const [planBusy, setPlanBusy] = useState(false);
   const [planHint, setPlanHint] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
+  /** Clarity D: план/фильтры — secondary, не конкурируют с днём */
+  const [planExpanded, setPlanExpanded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api.getCalendar(user.id, activeProject.id).then(setCal).catch((e) => { reportError('components.screens.schedule.UnifiedSched.Cal', e); setCal(null); });
+    api
+      .getCalendar(user.id, activeProject.id)
+      .then((data) => {
+        setCal(data);
+        setCalLoadState('loaded');
+      })
+      .catch((e) => {
+        reportError('components.screens.schedule.UnifiedSched.Cal', e);
+        setCal(null);
+        setCalLoadState('error');
+      });
     api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch((e) => { reportError('components.screens.schedule.UnifiedSched.WorkOrders', e); setWorkOrders([]); });
     api.listPurchases(user.id, activeProject.id).then(setPurchases).catch((e) => { reportError('components.screens.schedule.UnifiedSched.Purchases', e); setPurchases([]); });
     api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => {
@@ -99,13 +115,22 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   }, [user?.id, activeProject?.id]);
   useProjectDataReload(reload);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    setCalLoadState('loading');
+    reload();
+  }, [reload]);
 
   useEffect(() => {
     const raw = typeof dateParam === 'string' ? dateParam : Array.isArray(dateParam) ? dateParam[0] : null;
-    if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
-    setSelectedDate(raw);
-    setCursor(new Date(`${raw}T12:00:00`));
+    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      setSelectedDate(raw);
+      setCursor(new Date(`${raw}T12:00:00`));
+      setDayDetailOpen(true);
+      return;
+    }
+    // Clarity D: день = список дел по умолчанию (сегодня)
+    const t = new Date().toISOString().slice(0, 10);
+    setSelectedDate(t);
     setDayDetailOpen(true);
   }, [dateParam]);
 
@@ -189,7 +214,21 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   if (!user || !activeProject) {
     return <ProjectEmptyState role={role} />;
   }
-  if (!cal) {
+  if (calLoadState === 'error' && !cal) {
+    return (
+      <View style={s.center}>
+        <LoadErrorState
+          title="Не удалось загрузить календарь"
+          onRetry={() => {
+            setCalLoadState('loading');
+            reload();
+          }}
+          role={role}
+        />
+      </View>
+    );
+  }
+  if (!cal || calLoadState === 'loading') {
     return <View style={s.center}><Text>Загрузка календаря…</Text></View>;
   }
 
@@ -202,7 +241,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
             <ScheduleDayDetail
             date={selectedDate}
             events={dayEvents}
-            onBack={() => setDayDetailOpen(false)}
+            onBack={() => {
+              setDayDetailOpen(false);
+              setPlanExpanded(true);
+            }}
             onEventPress={openEvent}
             onCreateWork={() => { setDayDetailOpen(false); setShowCreate(true); }}
             readOnly={readOnly}
@@ -229,7 +271,27 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
         )}
       </View>
 
+      {/* Clarity D: в режиме дня план свёрнут — день читается как todo-list */}
+      {dayDetailOpen && !planExpanded ? (
+        <Pressable
+          style={s.planToggle}
+          onPress={() => setPlanExpanded(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Развернуть план-график и задачи"
+        >
+          <Text style={s.planToggleT}>План-график и задачи · развернуть</Text>
+        </Pressable>
+      ) : (
       <ScrollView style={s.planPane} contentContainerStyle={s.planContent}>
+        {dayDetailOpen ? (
+          <Pressable
+            style={s.planToggle}
+            onPress={() => setPlanExpanded(false)}
+            accessibilityRole="button"
+          >
+            <Text style={s.planToggleT}>Свернуть план</Text>
+          </Pressable>
+        ) : null}
         <Text style={s.planTitle}>Расписание и задачи</Text>
         <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
         <View style={s.agreeBox}>
@@ -253,7 +315,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                 setPlanBusy(true);
                 try {
                   if (!canManageSchedulePlan) {
-                    Alert.alert('График', 'Создать план может владелец или прораб бригады');
+                    showActionConfirm({
+                      title: 'График',
+                      message: 'Создать план может владелец или прораб бригады',
+                    });
                     return;
                   }
                   const created = await api.createWorkSchedule(user.id, activeProject.id, { title: 'План-график работ' });
@@ -283,7 +348,10 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                 setPlanBusy(true);
                 try {
                   if (!canManageSchedulePlan) {
-                    Alert.alert('График', 'На согласование отправляет владелец или прораб');
+                    showActionConfirm({
+                      title: 'График',
+                      message: 'На согласование отправляет владелец или прораб',
+                    });
                     return;
                   }
                   const next = await api.submitWorkSchedule(user.id, activeProject.id, schedule.id);
@@ -308,21 +376,37 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
               <Pressable
                 style={[s.planCta, s.agreeConfirm]}
                 disabled={planBusy}
-                onPress={async () => {
-                  setPlanBusy(true);
-                  try {
-                    const next = await api.confirmWorkSchedule(user.id, activeProject.id, schedule.id);
-                    setSchedule(next);
-                    reload();
-                    await syncScheduleSideEffects();
-                    // W132: согласован → этапы / календарь
-                    alertScheduleConfirmed(role);
-                  } catch (e: unknown) {
-                    if (isOfflineQueued(e)) notifyOfflineQueued('Согласование графика');
-                    else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось согласовать');
-                  } finally {
-                    setPlanBusy(false);
-                  }
+                onPress={() => {
+                  // Clarity U: зеркало reject — confirm перед фиксацией сроков
+                  showActionConfirm({
+                    title: 'Согласовать график?',
+                    message: 'Сроки этапов станут рабочим планом. Изменения — через новый график.',
+                    primaryLabel: 'Согласовать',
+                    onPrimary: () => {
+                      void (async () => {
+                        setPlanBusy(true);
+                        try {
+                          const next = await api.confirmWorkSchedule(user.id, activeProject.id, schedule.id);
+                          setSchedule(next);
+                          reload();
+                          await syncScheduleSideEffects();
+                          alertScheduleConfirmed(role);
+                        } catch (e: unknown) {
+                          if (isOfflineQueued(e)) notifyOfflineQueued('Согласование графика');
+                          else {
+                            showActionConfirm({
+                              title: 'Ошибка',
+                              message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                            });
+                          }
+                        } finally {
+                          setPlanBusy(false);
+                        }
+                      })();
+                    },
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               >
                 <Text style={s.planCtaT}>{planBusy ? '…' : 'Согласовать график'}</Text>
@@ -331,46 +415,41 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                 style={s.planCta}
                 disabled={planBusy}
                 onPress={() => {
-                  Alert.prompt?.(
-                    'Отклонить график',
-                    'Причина (необязательно)',
-                    async (reason) => {
-                      setPlanBusy(true);
-                      try {
-                        const next = await api.rejectWorkSchedule(user.id, activeProject.id, schedule.id, reason || undefined);
-                        setSchedule(next);
-                        reload();
-                        await syncScheduleSideEffects();
-                        alertScheduleRejected(role);
-                      } catch (e: unknown) {
-                        if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
-                        else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
-                      } finally {
-                        setPlanBusy(false);
-                      }
-                    },
-                  ) ?? Alert.alert('Отклонить график?', 'Исполнитель получит уведомление', [
-                    { text: 'Отмена', style: 'cancel' },
-                    {
-                      text: 'Отклонить',
-                      style: 'destructive',
-                      onPress: async () => {
+                  // Clarity Q: единый sheet вместо Alert.prompt / Alert.alert
+                  showActionConfirm({
+                    title: 'Отклонить график?',
+                    message: 'Исполнитель получит уведомление. Причину можно уточнить в чате.',
+                    primaryLabel: 'Отклонить',
+                    onPrimary: () => {
+                      void (async () => {
                         setPlanBusy(true);
                         try {
-                          const next = await api.rejectWorkSchedule(user.id, activeProject.id, schedule.id, 'Нужна правка сроков');
+                          const next = await api.rejectWorkSchedule(
+                            user.id,
+                            activeProject.id,
+                            schedule.id,
+                            'Нужна правка сроков',
+                          );
                           setSchedule(next);
                           reload();
                           await syncScheduleSideEffects();
                           alertScheduleRejected(role);
                         } catch (e: unknown) {
                           if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
-                          else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отклонить');
+                          else {
+                            showActionConfirm({
+                              title: 'Ошибка',
+                              message: e instanceof Error ? e.message : 'Не удалось отклонить',
+                            });
+                          }
                         } finally {
                           setPlanBusy(false);
                         }
-                      },
+                      })();
                     },
-                  ]);
+                    secondaryLabel: 'Отмена',
+                    onSecondary: () => undefined,
+                  });
                 }}
               >
                 <Text style={s.planCtaT}>Отклонить</Text>
@@ -409,16 +488,36 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
           onImported={reload}
         />
 
+        {/* Clarity D: фильтры secondary — не в first viewport дня */}
+        <Pressable
+          style={s.filtersToggle}
+          onPress={() => setFiltersOpen((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: filtersOpen }}
+        >
+          <Text style={s.filtersToggleT}>
+            Фильтры{filtersOpen ? '' : filter !== 'all' || workFilter !== 'active' ? ' · заданы' : ''}
+            {filtersOpen ? ' · скрыть' : ' · показать'}
+          </Text>
+        </Pressable>
+        {filtersOpen ? (
+          <View style={s.filtersBox}>
+            <Text style={s.filterLabel}>{role === 'customer' ? 'Задачи' : 'Работы'}</Text>
+            <ScheduleFilterChips
+              items={[
+                { key: 'active', label: 'Активные' },
+                { key: 'archive', label: 'Архив' },
+              ]}
+              value={workFilter}
+              onChange={(k) => setWorkFilter(k as 'active' | 'archive')}
+            />
+            <Text style={[s.filterLabel, { marginTop: 8 }]}>События</Text>
+            <ScheduleFilterChips items={EVENT_FILTERS} value={filter} onChange={setFilter} />
+          </View>
+        ) : null}
+
         <View style={s.sectionHead}>
           <Text style={s.sectionTitle}>{role === 'customer' ? 'Задачи на день' : 'Работы'}</Text>
-          <ScheduleFilterChips
-            items={[
-              { key: 'active', label: 'Активные' },
-              { key: 'archive', label: 'Архив' },
-            ]}
-            value={workFilter}
-            onChange={(k) => setWorkFilter(k as 'active' | 'archive')}
-          />
         </View>
         {!upcomingWorks.length ? (
           <View style={s.emptyBox}>
@@ -443,7 +542,6 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
 
         <View style={[s.sectionHead, { marginTop: 14 }]}>
           <Text style={s.sectionTitle}>События</Text>
-          <ScheduleFilterChips items={EVENT_FILTERS} value={filter} onChange={setFilter} />
         </View>
         {!events.length ? (
           <Text style={s.emptyT}>Нет событий по выбранному фильтру</Text>
@@ -462,6 +560,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
           <Text style={s.moreEvents}>Показано 20 из {events.length} — уточните фильтр</Text>
         )}
       </ScrollView>
+      )}
 
       {canAddTask ? (
         <CreateWorkSheet
@@ -481,10 +580,33 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
+  errorTitle: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text, textAlign: 'center' },
+  errorHint: { fontSize: 13, color: RenovaTheme.colors.textMuted, textAlign: 'center', lineHeight: 18 },
+  retryBtn: {
+    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.primary,
+  },
+  retryT: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.primary },
   calendarPane: { flexShrink: 0, minHeight: 200, paddingBottom: 4 },
   planPane: { flex: 1, minHeight: 0 },
   planContent: { padding: 16, paddingBottom: 32 },
+  planToggle: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: RenovaTheme.colors.border,
+    backgroundColor: RenovaTheme.colors.surface,
+  },
+  planToggleT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.accent, textAlign: 'center' },
+  filtersToggle: { paddingVertical: 8, marginBottom: 4 },
+  filtersToggleT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
+  filtersBox: { marginBottom: 10, gap: 4 },
+  filterLabel: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginBottom: 4 },
   agreeBox: { marginBottom: 10, padding: 12, borderRadius: 12, backgroundColor: RenovaTheme.colors.surface, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   agreeTitle: { fontSize: 15, fontWeight: '800', color: RenovaTheme.colors.text },
   agreeActions: { gap: 8, marginTop: 4 },

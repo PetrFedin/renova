@@ -12,12 +12,12 @@ const floor = readFileSync(join(mobile, 'components/renova/FloorPlanPanel.tsx'),
 const form = readFileSync(join(mobile, 'components/renova/CreatePaymentForm.tsx'), 'utf8');
 
 console.assert(nav.includes('alertPortalLinkShared') && nav.includes('alertViewerGuestAdded'), 'share');
-console.assert(nav.includes('alertFloorPlanUploaded') && nav.includes('alertFloorPunchCreated'), 'floor');
+console.assert(nav.includes('alertFloorPlanUploaded') && nav.includes('alertFloorPunchCreated'), 'floor helpers kept');
 console.assert(pay.includes('alertPaymentCreated') && pay.includes('budgetTabRoute'), 'payment create');
 console.assert(portal.includes('alertPortalLinkShared'), 'portal wired');
 console.assert(viewer.includes('alertViewerGuestAdded'), 'viewer wired');
-console.assert(floor.includes('alertFloorPunchCreated') && floor.includes('alertFloorPlanUploaded'), 'floor wired');
-console.assert(!floor.includes("'Замечание в QC'"), 'punch uses shared');
+console.assert(floor.includes('ActionConfirmSheet') && floor.includes('setPunchSheet'), 'floor punch sheet');
+console.assert(floor.includes('setUploadSheet') && !floor.includes('alertFloorPunchCreated'), 'floor upload sheet');
 console.assert(form.includes('alertPaymentCreated'), 'payment form');
 
 console.log('journeyUnify.w135.test.ts OK');

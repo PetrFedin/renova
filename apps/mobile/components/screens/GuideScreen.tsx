@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { api, ArticleSummary } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { reportCatch } from '@/lib/reportError';
@@ -33,7 +34,7 @@ const styles = StyleSheet.create({
   head: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
   sub: { color: RenovaTheme.colors.textMuted, marginBottom: 16, fontSize: 13 },
   card: { backgroundColor: RenovaTheme.colors.surface, padding: 14, borderRadius: 12, marginBottom: 10 },
-  cat: { fontSize: 11, color: RenovaTheme.colors.primary, fontWeight: '700', textTransform: 'uppercase' },
+  cat: { ...screenTypography.metricLabel, color: RenovaTheme.colors.primary, marginTop: 0 },
   title: { fontSize: 16, fontWeight: '700', marginTop: 4 },
   summary: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 6 },
   meta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 8 },

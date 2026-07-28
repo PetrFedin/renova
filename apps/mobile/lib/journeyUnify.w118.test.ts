@@ -36,10 +36,10 @@ function noRawPush(name: string, body: string) {
 
 for (const [k, body] of Object.entries(src)) noRawPush(k, body);
 
-console.assert(src.notifyList.includes('pushOsNav') && src.notifyList.includes('resolveNotificationLink'), 'notify list SoT');
+console.assert(src.notifyList.includes('pushOsNav') && src.notifyList.includes('/inbox'), 'notify list → inbox SoT');
 console.assert(src.notifyCenter.includes("pushOsNav(changeOrderEstimateRoute"), 'notify CO SoT');
 console.assert(src.decisions.includes('pushOsNav(item.linkPath'), 'decisions SoT');
-console.assert(src.approvals.includes("pushOsNav(budget") || src.approvals.includes('pushOsNav(budget,'), 'approvals budget SoT');
+console.assert(src.approvals.includes('estimateLayer') && src.approvals.includes('pushOsNav'), 'approvals CO → estimate SoT');
 console.assert(src.approvals.includes("estimateLayer: 'changes'"), 'approvals changes layer');
 console.assert(src.stageLinks.includes("pathname: '/chat/[threadId]'") && src.stageLinks.includes('pushOsNav'), 'stage chat SoT');
 console.assert(src.woCard.includes("pathname: '/work-order/[id]'") && src.woCard.includes('pushOsNav'), 'WO card SoT');

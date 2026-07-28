@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Modal, Alert } from 'react-native';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORK_TYPES_FALLBACK, type WorkTypeOption } from '@/constants/workCatalog';
 import { WORK_CATEGORIES, WORK_FORM_HINTS } from '@/constants/workFormHints';
@@ -13,6 +14,7 @@ import { api, Room, isRateLimitError } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertWorkCreated } from '@/lib/fieldCreateNav';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
 
@@ -177,8 +179,8 @@ export function CreateWorkSheet({
     } catch (e) {
       if (isRateLimitError(e)) {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
-      } else if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Работа отправится при подключении');
+      } else if (isOfflineQueued(e) || (e instanceof Error && e.message === 'offline_queued')) {
+        notifyOfflineQueued('Создание работы', variant === 'customer' ? 'customer' : 'contractor');
         onClose();
       } else {
         Alert.alert('Ошибка', 'Не удалось создать работу');
@@ -380,7 +382,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
   },
-  previewLabel: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
+  previewLabel: { ...screenTypography.metricLabel, marginTop: 0 },
   previewVal: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text, marginTop: 2 },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.text, marginBottom: 4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

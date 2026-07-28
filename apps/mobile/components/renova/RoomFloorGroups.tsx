@@ -1,6 +1,7 @@
 /** Группировка комнат по этажам (для дома) */
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import type { Room } from '@/lib/api';
 
 export function groupRoomsByFloor(rooms: Room[], propertyType?: string) {
@@ -20,13 +21,14 @@ export function FloorSectionHeader({ floor, count, isHouse }: { floor: number; c
   const label = floor === 1 ? '1 этаж' : floor === 2 ? '2 этаж' : `${floor} этаж`;
   return (
     <View style={s.head}>
-      <Text style={s.title}>🏠 {label}</Text>
+      {/* Clarity S: SoT listTitle вместо локального 15/800 */}
+      <Text style={s.title}>{label}</Text>
       <Text style={s.meta}>{count} комн.</Text>
     </View>
   );
 }
 const s = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 6 },
-  title: { fontWeight: '800', fontSize: 15 },
-  meta: { fontSize: 12, color: RenovaTheme.colors.textMuted },
+  title: { ...screenTypography.listTitle },
+  meta: { ...screenTypography.listMeta, marginTop: 0 },
 });

@@ -1,6 +1,7 @@
 /** Список закупок Renova OS */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { Purchase } from '@/lib/api';
 import { PURCHASE_STATUS_LABEL } from '@/constants/labels';
@@ -69,12 +70,12 @@ export function PurchaseList({ purchases, readOnly, returnTo, onAdvance }: Props
 
 const s = StyleSheet.create({
   wrap: { marginTop: 8, marginBottom: 12 },
-  h: { fontSize: 17, fontWeight: '700', marginBottom: 4, color: RenovaTheme.colors.text },
-  pipe: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 10 },
-  card: { ...card, marginBottom: 10 },
+  h: { ...screenTypography.section, marginTop: 0, fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
+  pipe: { ...screenTypography.listMeta, marginBottom: 10 },
+  card: { ...listRowStyles.row },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  title: { fontSize: 15, fontWeight: '700', flex: 1, color: RenovaTheme.colors.text },
-  st: { fontSize: 12, color: RenovaTheme.colors.textMuted },
-  sum: { fontSize: 14, fontWeight: '600', marginTop: 6, color: RenovaTheme.colors.text },
-  item: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4 },
+  title: { ...screenTypography.listTitle, flex: 1 },
+  st: { ...screenTypography.listMeta, marginTop: 0 },
+  sum: { ...screenTypography.listTitle, fontSize: 14, marginTop: 6 },
+  item: { ...screenTypography.listMeta },
 });

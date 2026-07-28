@@ -12,6 +12,7 @@ import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type DocRow = {
   id: string;
@@ -110,21 +111,25 @@ export function EstimateDocumentsLayer({
   }
 
   function openPdfMenu(row: DocRow) {
-    const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
+    // Clarity P: parity с DocumentsHub — sheet вместо Alert
+    const actions: { label: string; onPress: () => void }[] = [
       {
-        text: 'Открыть',
+        label: 'Открыть',
         onPress: () => {
           if (!row.previewPath || !row.filename) return;
           withBusy(`${row.id}-open`, () => previewProjectPdf(userId, row.previewPath!, row.filename!));
         },
       },
-      { text: 'Скачать', onPress: () => withBusy(`${row.id}-dl`, row.run) },
+      { label: 'Скачать', onPress: () => withBusy(`${row.id}-dl`, row.run) },
     ];
     if (Platform.OS !== 'web') {
-      actions.push({ text: 'Поделиться', onPress: () => withBusy(`${row.id}-share`, () => sharePdf(row)) });
+      actions.push({ label: 'Поделиться', onPress: () => withBusy(`${row.id}-share`, () => sharePdf(row)) });
     }
-    actions.push({ text: 'Отмена', style: 'cancel' });
-    Alert.alert(row.label, row.desc, actions);
+    showActionConfirm({
+      title: row.label,
+      message: row.desc,
+      actions,
+    });
   }
 
   function onRowPress(row: DocRow) {

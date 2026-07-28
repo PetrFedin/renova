@@ -1,6 +1,7 @@
 /** Расходы по комнатам: план сметы vs единый факт (чеки + os + материалы) */
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomSpentUnified } from '@/lib/domain/expenseAnalytics';
 import type { Room, ReceiptItem, EstimateLine, OsExpense, MaterialPick, Purchase, Stage } from '@/lib/api';
@@ -83,14 +84,19 @@ export function ExpenseByRoom({
   );
 }
 const s = StyleSheet.create({
-  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
-  head: { fontWeight: '800', marginBottom: 10, fontSize: 14 },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  name: { fontWeight: '700', fontSize: 13 },
-  sub: { fontSize: 10, color: RenovaTheme.colors.textMuted, marginTop: 1 },
+  // Clarity U: list SoT вместо opaque card-бокса
+  box: { marginBottom: 12 },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
+  empty: { ...screenTypography.empty },
+  row: {
+    ...listRowStyles.row,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  name: { ...screenTypography.listTitle, fontSize: 14 },
+  sub: { ...screenTypography.listMeta, fontSize: 11 },
   bar: { height: 4, backgroundColor: RenovaTheme.colors.border, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   fill: { height: 4 },
-  val: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted, marginLeft: 8 },
+  val: { ...screenTypography.listMeta, fontWeight: '600', marginLeft: 8 },
   over: { color: RenovaTheme.colors.warning },
 });

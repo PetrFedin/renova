@@ -85,6 +85,25 @@ async def _ensure_thread(db: AsyncSession, project_id: str, user_id: str, title:
     return await chat_svc.create_thread(db, project_id, user_id, title, topic)
 
 
+
+async def _mark_project_chats_read(
+    db: AsyncSession,
+    project_id: str,
+    *user_ids: str,
+) -> None:
+    """Investor QA / chat honesty: после seed не оставлять epoch-unread на всю историю.
+
+    `_get_or_create_read` ставит last_read_at=1970 → чужие сообщения = unread.
+    Помечаем все треды прочитанными для обеих ролей (badge 0), чтобы демо не «кричало» 10–20.
+    """
+    if not user_ids:
+        return
+    threads = await chat_svc.list_threads(db, project_id)
+    for t in threads:
+        for uid in user_ids:
+            await chat_svc.mark_thread_read(db, t.id, uid)
+
+
 async def _seed_apartment_chats(
     db: AsyncSession,
     project_id: str,
@@ -100,6 +119,7 @@ async def _seed_apartment_chats(
 
     t_est_check = await chat_svc.find_thread_by_title(db, project_id, APT_DEMO_CHATS[1])
     if t_est_check and await _non_system_count(db, t_est_check.id) >= 2:
+        await _mark_project_chats_read(db, project_id, customer_id, contractor_id)
         return
 
     m1 = await chat_svc.send_message(
@@ -208,6 +228,7 @@ async def _seed_apartment_chats(
         )
 
     await chat_svc.set_thread_state(db, t_payment.id, customer_id, is_pinned=True)
+    await _mark_project_chats_read(db, project_id, customer_id, contractor_id)
 
 
 async def _seed_house_chats(
@@ -219,6 +240,7 @@ async def _seed_house_chats(
     await _purge_project_chats(db, project_id, HOUSE_DEMO_CHATS)
     t = await _ensure_thread(db, project_id, customer_id, HOUSE_DEMO_CHATS[0], "general")
     if await _non_system_count(db, t.id) > 0:
+        await _mark_project_chats_read(db, project_id, customer_id, contractor_id)
         return
     await chat_svc.send_message(
         db,
@@ -234,6 +256,7 @@ async def _seed_house_chats(
         "contractor",
         "В субботу до обеда — напишите, если подходит.",
     )
+    await _mark_project_chats_read(db, project_id, customer_id, contractor_id)
 
 
 
@@ -443,6 +466,27 @@ async def _ensure_demo_contractor_profile(db: AsyncSession, contractor_id: str) 
 
 
 
+
+async def _mark_demo_notifications_read(db: AsyncSession, *user_ids: str) -> None:
+    """Investor P0: после seed не оставлять гору unread notifications (attention spam)."""
+    from app.models.entities import AppNotification
+    ids = [u for u in user_ids if u]
+    if not ids:
+        return
+    rows = (
+        await db.execute(
+            select(AppNotification).where(
+                AppNotification.user_id.in_(ids),
+                AppNotification.read.is_(False),
+            )
+        )
+    ).scalars().all()
+    for n in rows:
+        n.read = True
+    if rows:
+        await db.commit()
+
+
 async def ensure_demo_users(db: AsyncSession) -> None:
     names = {"customer": "Демо заказчик", "contractor": "Демо исполнитель", "guest": "Демо гость (read-only)"}
     for key, phone in DEMO_PHONES.items():
@@ -481,6 +525,9 @@ async def ensure_demo_users(db: AsyncSession) -> None:
             await _ensure_demo_procurement(db, apt.id)
         await _seed_chats_for_customer_projects(db, customer, contractor, existing_projects)
         await _link_guest(db, existing_projects)
+        rg = await db.execute(select(User).where(User.phone == DEMO_PHONES["guest"]))
+        guest = rg.scalar_one_or_none()
+        await _mark_demo_notifications_read(db, customer.id, contractor.id, guest.id if guest else "")
         return
 
     p = await proj_svc.create_project(
@@ -504,3 +551,6 @@ async def ensure_demo_users(db: AsyncSession) -> None:
     await _ensure_demo_procurement(db, p.id)
     await _seed_apartment_chats(db, p.id, customer.id, contractor.id)
     await _link_guest(db, [p])
+    rg = await db.execute(select(User).where(User.phone == DEMO_PHONES["guest"]))
+    guest = rg.scalar_one_or_none()
+    await _mark_demo_notifications_read(db, customer.id, contractor.id, guest.id if guest else "")

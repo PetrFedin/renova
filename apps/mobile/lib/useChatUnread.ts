@@ -37,6 +37,8 @@ function useInboxWsConnected() {
   return useSyncExternalStore(subscribeInboxSync, getInboxWsConnectedSnapshot, getInboxWsConnectedSnapshot);
 }
 
+export { useInboxWsConnected };
+
 function useInboxItems() {
   return useSyncExternalStore(subscribeInboxSync, getInboxItemsSnapshot, getInboxItemsSnapshot);
 }

@@ -6,12 +6,13 @@ import { OsHubTabs } from '@/components/renova/os/OsHubTabs';
 import { OsBudgetScreen } from '@/components/screens/OsBudgetScreen';
 import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { useHubTab } from '@/lib/useHubTab';
-import { BUDGET_HUB_TABS, BUDGET_TAB_IDS, normalizeBudgetTab, type BudgetTab } from '@/constants/budgetTabs';
+import { budgetHubTabsForRole, BUDGET_TAB_IDS, normalizeBudgetTab, type BudgetTab } from '@/constants/budgetTabs';
 import type { OsRole } from '@/constants/osSections';
 
 export function OsBudgetHubScreen({ role }: { role: OsRole }) {
   const { tab: tabParam, view: viewParam } = useLocalSearchParams<{ tab?: string; view?: string }>();
   const [active, setActive] = useHubTab(BUDGET_TAB_IDS, 'summary', `renova_budget_hub_tab_${role}`);
+  const tabs = budgetHubTabsForRole(role);
 
   useEffect(() => {
     if (typeof tabParam !== 'string') return;
@@ -30,7 +31,7 @@ export function OsBudgetHubScreen({ role }: { role: OsRole }) {
   return (
     <ProjectScopeLoader role={role}>
       <View style={s.root}>
-        <OsHubTabs tabs={BUDGET_HUB_TABS} value={active} onChange={(id) => setActive(id as BudgetTab)} />
+        <OsHubTabs tabs={tabs} value={active} onChange={(id) => setActive(id as BudgetTab)} />
         <OsBudgetScreen role={role} tab={active as BudgetTab} />
       </View>
     </ProjectScopeLoader>

@@ -6,6 +6,7 @@ import {
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
@@ -26,6 +27,7 @@ import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { router } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
@@ -73,13 +75,16 @@ function MessageBubble({
     <Pressable
       style={[s.msg, mine ? s.me : s.them, highlight && s.highlight, m.is_pinned && s.pinnedMsg]}
       onLongPress={() => {
-        Alert.alert('Сообщение', undefined, [
-          ...REACTIONS.map((e) => ({ text: e, onPress: () => onReact(e) })),
-          { text: m.is_pinned ? 'Открепить' : 'Закрепить', onPress: onPin },
-          { text: 'Ответить', onPress: onReply },
-          { text: 'Создать задачу', onPress: onTask },
-          { text: 'Отмена', style: 'cancel' },
-        ]);
+        showActionConfirm({
+          title: 'Сообщение',
+          message: 'Реакция или действие',
+          actions: [
+            ...REACTIONS.map((e) => ({ label: e, onPress: () => onReact(e) })),
+            { label: m.is_pinned ? 'Открепить' : 'Закрепить', onPress: onPin },
+            { label: 'Ответить', onPress: onReply },
+            { label: 'Создать задачу', onPress: onTask },
+          ],
+        });
       }}
     >
       {m.is_pinned ? <Text style={s.pinTag}>📌 Закреплено</Text> : null}
@@ -429,8 +434,8 @@ export function ChatThreadView({
                     // W131: счёт из чата — роль-aware оплаты
                     alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
                   } catch (e: unknown) {
-                    if (e instanceof Error && e.message === 'offline_queued') {
-                      Alert.alert('Офлайн', 'Счёт отправится при подключении');
+                    if (isOfflineQueued(e)) {
+                      notifyOfflineQueued('Счёт');
                     } else {
                       Alert.alert('Ошибка', 'Не удалось создать счёт');
                     }
@@ -440,14 +445,17 @@ export function ChatThreadView({
                   const osRole = role === 'contractor' ? 'contractor' : 'customer';
                   pushOsNav(budgetTabRoute(osRole, 'payments', { openPayment: '1' }), returnTo || pathname, osRole);
                 };
-                Alert.alert('Счёт в бюджете', 'Быстрая сумма или полная форма (сумма / этап / тип). Заказчик увидит счёт в «Деньги → Оплаты».', [
-                  { text: 'Отмена', style: 'cancel' },
-                  { text: '5 000 ₽', onPress: () => { createInvoice(5000).catch(reportCatch('chat.invoice')); } },
-                  { text: '10 000 ₽', onPress: () => { createInvoice(10000).catch(reportCatch('chat.invoice')); } },
-                  { text: '25 000 ₽', onPress: () => { createInvoice(25000).catch(reportCatch('chat.invoice')); } },
-                  { text: 'Другая сумма…', onPress: openPaymentForm },
-                  { text: 'Открыть оплаты', onPress: openPaymentForm },
-                ]);
+                showActionConfirm({
+                  title: 'Счёт в бюджете',
+                  message: 'Быстрая сумма или полная форма (сумма / этап / тип). Заказчик увидит счёт в «Деньги → Оплаты».',
+                  actions: [
+                    { label: '5 000 ₽', onPress: () => { createInvoice(5000).catch(reportCatch('chat.invoice')); } },
+                    { label: '10 000 ₽', onPress: () => { createInvoice(10000).catch(reportCatch('chat.invoice')); } },
+                    { label: '25 000 ₽', onPress: () => { createInvoice(25000).catch(reportCatch('chat.invoice')); } },
+                    { label: 'Другая сумма…', onPress: openPaymentForm },
+                    { label: 'Открыть оплаты', onPress: openPaymentForm },
+                  ],
+                });
               }}><Text style={s.toolBtn}>💳</Text></Pressable>
             </>
           )}
@@ -575,7 +583,7 @@ const s = StyleSheet.create({
   systemText: { fontSize: 12, color: RenovaTheme.colors.textMuted, textAlign: 'center' },
   systemTime: { fontSize: 10, color: RenovaTheme.colors.textSubtle, textAlign: 'center', marginTop: 2 },
   settingRow: { marginBottom: 8 },
-  settingLabel: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginTop: 4 },
+  settingLabel: { ...screenTypography.section, marginTop: 4, marginBottom: 0 },
   settingVal: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text, marginTop: 4 },
   participant: { fontSize: 13, color: RenovaTheme.colors.text, paddingVertical: 4 },
 });

@@ -1,7 +1,8 @@
-/** Стили общие для вкладок «Бюджет» */
+/** Стили общие для вкладок «Бюджет» — Clarity F: list-row, без card-стека и uppercase */
 import { StyleSheet } from 'react-native';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 
 export const budgetScreenStyles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
@@ -22,20 +23,25 @@ export const budgetScreenStyles = StyleSheet.create({
   widgetSettingsArrow: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.accent },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
-  section: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', marginVertical: 8 },
-  row: { ...card, flexDirection: 'row', alignItems: 'center', paddingVertical: 9, gap: 8 },
-  rowTitle: { fontSize: 14, fontWeight: '600' },
-  rowMeta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  status: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
-  bulkHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10, lineHeight: 16 },
-  limitCard: {
-    ...card,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: RenovaTheme.colors.primary,
-    backgroundColor: RenovaTheme.colors.neutralBg,
+  section: { ...screenTypography.section },
+  row: {
+    ...listRowStyles.row,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  limitTitle: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
-  limitVal: { fontSize: 18, fontWeight: '700', color: RenovaTheme.colors.text, marginTop: 2 },
+  rowTitle: { ...screenTypography.listTitle, fontSize: 14 },
+  rowMeta: { ...screenTypography.listMeta },
+  status: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.textMuted },
+  empty: { ...screenTypography.empty, marginBottom: 12 },
+  bulkHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10, lineHeight: 16 },
+  /** Лимит / маржа — одна спокойная полоса, не стопка card */
+  limitCard: {
+    ...listRowStyles.metricCell,
+    alignItems: 'flex-start',
+    marginBottom: 8,
+    paddingHorizontal: 12,
+  },
+  limitTitle: { ...screenTypography.metricLabel },
+  limitVal: { ...screenTypography.metric, marginTop: 2 },
 });

@@ -6,6 +6,7 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
 import { api, type OsExpense, type ProjectDetail, type ReceiptItem, type Room, type Stage } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertExpenseUpdated, alertExpenseDeleted } from '@/lib/siteOpsNav';
@@ -13,6 +14,7 @@ import type { OsRole } from '@/constants/osSections';
 import { EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export type ExpenseDetailTarget =
   | { kind: 'expense'; item: OsExpense }
@@ -120,8 +122,8 @@ export function ExpenseDetailSheet({
       // W136: правка → расходы / сводка
       alertExpenseUpdated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
     } catch (e: unknown) {
-      if (e instanceof Error && e.message === 'offline_queued') {
-        Alert.alert('Офлайн', 'Изменения траты отправятся при подключении');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Изменения траты');
         onClose();
         return;
       }
@@ -134,12 +136,13 @@ export function ExpenseDetailSheet({
 
   function confirmDelete() {
     if (!userId || !projectId || !target) return;
-    Alert.alert('Удалить трату?', 'Сумма будет убрана из факта бюджета.', [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Удалить',
-        style: 'destructive',
-        onPress: async () => {
+    // Clarity P: destructive через sheet (деньги в факте бюджета)
+    showActionConfirm({
+      title: 'Удалить трату?',
+      message: 'Сумма будет убрана из факта бюджета.',
+      primaryLabel: 'Удалить',
+      onPrimary: () => {
+        void (async () => {
           setBusy(true);
           try {
             if (target.kind === 'receipt') {
@@ -155,8 +158,8 @@ export function ExpenseDetailSheet({
             onClose();
             alertExpenseDeleted((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
           } catch (e: unknown) {
-            if (e instanceof Error && e.message === 'offline_queued') {
-              Alert.alert('Офлайн', 'Удаление отправится при подключении');
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued('Удаление');
               onClose();
             } else {
               const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось удалить';
@@ -165,9 +168,11 @@ export function ExpenseDetailSheet({
           } finally {
             setBusy(false);
           }
-        },
+        })();
       },
-    ]);
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   }
 
   return (

@@ -2,7 +2,8 @@
 import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -99,16 +100,16 @@ export function StageRoomMatrix({ rooms, stages, canEdit, onToggleLink }: Props)
 }
 
 const s = StyleSheet.create({
-  box: { ...card, marginBottom: 12, paddingVertical: 12 },
-  head: { fontWeight: '800', marginBottom: 4 },
-  hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10, lineHeight: 16 },
-  empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 18 },
-  link: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary },
+  box: { marginBottom: 12, paddingVertical: 4 },
+  head: { ...screenTypography.section, marginTop: 0, fontWeight: '700', color: RenovaTheme.colors.text },
+  hint: { ...screenTypography.listMeta, marginBottom: 10 },
+  empty: { ...screenTypography.empty, marginBottom: 8 },
+  link: { ...screenTypography.listLink },
   header: { flexDirection: 'row', marginBottom: 4 },
   corner: { width: 88 },
   colHead: { flex: 1, paddingHorizontal: 2 },
-  colH: { fontSize: 9, fontWeight: '700', textAlign: 'center', color: RenovaTheme.colors.textMuted },
-  row: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingVertical: 6 },
+  colH: { fontSize: 9, fontWeight: '600', textAlign: 'center', color: RenovaTheme.colors.textMuted },
+  row: { flexDirection: 'row', alignItems: 'center', ...listRowStyles.row, paddingHorizontal: 0 },
   roomCell: { width: 88, paddingRight: 4 },
   roomN: { fontSize: 11, fontWeight: '700' },
   roomT: { fontSize: 8, color: RenovaTheme.colors.textMuted },

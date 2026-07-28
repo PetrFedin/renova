@@ -1,12 +1,14 @@
 /** Слой «Итог» — сумма сметы и быстрые переходы в деньги / материалы */
-import { Alert, View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourceLegend';
 import { budgetTabRoute, objectTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { ProjectDetail } from '@/lib/api';
 import { estimateTotals } from '@/lib/domain/estimateFilters';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
   project: ProjectDetail;
@@ -104,8 +106,21 @@ export function EstimateSummaryLayer({
           title={locking ? 'Фиксация…' : 'Согласовать и зафиксировать смету'}
           disabled={!!locking || !!clearingProposal}
           onPress={() => {
-            void onLockEstimate().catch((e: unknown) => {
-              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка фиксации сметы');
+            // Clarity S: фиксация сметы — money-critical confirm
+            showActionConfirm({
+              title: 'Зафиксировать смету?',
+              message: `Итого ${formatRub(project.budget_planned)}. После фиксации базовые строки нельзя свободно менять.`,
+              primaryLabel: 'Зафиксировать',
+              onPrimary: () => {
+                void onLockEstimate().catch((e: unknown) => {
+                  showActionConfirm({
+                    title: 'Не удалось',
+                    message: e instanceof Error ? e.message : 'Ошибка фиксации сметы',
+                  });
+                });
+              },
+              secondaryLabel: 'Отмена',
+              onSecondary: () => undefined,
             });
           }}
         />
@@ -116,8 +131,20 @@ export function EstimateSummaryLayer({
           variant="outline"
           disabled={!!clearingProposal || !!locking}
           onPress={() => {
-            void onRejectProposal().catch((e: unknown) => {
-              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отклонения');
+            showActionConfirm({
+              title: 'Отклонить смету?',
+              message: 'Исполнитель получит задачу на правку предложения.',
+              primaryLabel: 'Отклонить',
+              onPrimary: () => {
+                void onRejectProposal().catch((e: unknown) => {
+                  showActionConfirm({
+                    title: 'Не удалось',
+                    message: e instanceof Error ? e.message : 'Ошибка отклонения',
+                  });
+                });
+              },
+              secondaryLabel: 'Отмена',
+              onSecondary: () => undefined,
             });
           }}
         />
@@ -128,8 +155,20 @@ export function EstimateSummaryLayer({
           variant="outline"
           disabled={!!clearingProposal}
           onPress={() => {
-            void onWithdrawProposal().catch((e: unknown) => {
-              Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отзыва');
+            showActionConfirm({
+              title: 'Отозвать предложение?',
+              message: 'Смета снова станет черновиком. Заказчик не увидит это предложение.',
+              primaryLabel: 'Отозвать',
+              onPrimary: () => {
+                void onWithdrawProposal().catch((e: unknown) => {
+                  showActionConfirm({
+                    title: 'Не удалось',
+                    message: e instanceof Error ? e.message : 'Ошибка отзыва',
+                  });
+                });
+              },
+              secondaryLabel: 'Отмена',
+              onSecondary: () => undefined,
             });
           }}
         />
@@ -196,7 +235,7 @@ function MetaChip({ label, value, warn }: { label: string; value: string; warn?:
 const s = StyleSheet.create({
   wrap: { gap: 10, marginTop: 12 },
   totalBox: { marginBottom: 4 },
-  totalLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
+  totalLabel: { ...screenTypography.metricLabel, fontWeight: '600' },
   total: { fontSize: 32, fontWeight: '800', color: RenovaTheme.colors.primary, marginTop: 4 },
   locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '700' },
   unlocked: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
@@ -208,14 +247,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
   },
   chipWarn: { borderColor: '#FCD34D', backgroundColor: '#FFFBEB' },
-  chipLabel: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase' },
+  chipLabel: { ...screenTypography.metricLabel, marginTop: 0 },
   chipVal: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.text, marginTop: 2 },
   chipValWarn: { color: '#92400E' },
-  hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17 },
+  hint: { ...screenTypography.empty },
   links: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

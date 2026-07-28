@@ -1,6 +1,5 @@
 /** Ссылки после завершения — без отдельного заголовка, живут в «Ещё» */
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -8,6 +7,7 @@ import { HomeLinkRow } from '@/components/renova/os/HomeLinkRow';
 import { exportExpensesCsvFile } from '@/lib/exportExpensesCsv';
 import type { OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
   role: OsRole;
@@ -25,7 +25,10 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
     try {
       await exportExpensesCsvFile(userId, projectId);
     } catch {
-      Alert.alert('Ошибка', 'Не удалось выгрузить таблицу. Проверьте сервер.');
+      showActionConfirm({
+        title: 'Ошибка',
+        message: 'Не удалось выгрузить таблицу. Проверьте сервер.',
+      });
     } finally {
       setBusy(false);
     }
@@ -49,16 +52,16 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
                 project: activeProject ?? ({ id: projectId } as any),
                 role,
               });
-              Alert.alert(
-                'Дайджест',
-                `Отправлено: ${res.notified}. ${(res.body || '').slice(0, 160)}`,
-                [
-                  { text: 'OK' },
-                  { text: 'Документы', onPress: () => pushScreen('/documents') },
-                ],
-              );
+              showActionConfirm({
+                title: 'Дайджест',
+                message: `Отправлено: ${res.notified}. ${(res.body || '').slice(0, 160)}`,
+                primaryLabel: 'Документы',
+                onPrimary: () => pushScreen('/documents'),
+                secondaryLabel: 'Готово',
+                onSecondary: () => undefined,
+              });
             })
-            .catch(() => Alert.alert('Дайджест', 'Не удалось отправить'))
+            .catch(() => showActionConfirm({ title: 'Дайджест', message: 'Не удалось отправить' }))
             .finally(() => setBusy(false));
         }}
       />

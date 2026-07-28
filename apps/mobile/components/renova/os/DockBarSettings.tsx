@@ -1,7 +1,8 @@
 /** Настройка нижней панели — 2 обязательных + 3 из 4 дополнительных */
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import {
   DOCK_BY_ID,
   DOCK_CATALOG,
@@ -15,6 +16,7 @@ import { getDockBar, setDockBar, toggleDockItem } from '@/lib/dockBarPrefs';
 import { TabIcon } from '@/components/renova/TabIcon';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 function DockPreview({ selected }: { selected: DockItemId[] }) {
   return (
@@ -71,27 +73,34 @@ export function DockBarSettings({ role, embedded }: { role: OsRole; embedded?: b
   const optionalOn = DOCK_OPTIONAL.filter((id) => selected.includes(id));
 
   const onToggle = async (id: DockItemId) => {
+    // Clarity O: gate/info sheet вместо Alert — единый канон с Docs/Acceptance
     if (DOCK_MANDATORY.includes(id)) {
-      Alert.alert('Обязательно', '«Главная» и «Сообщения» всегда в нижней панели.');
+      showActionConfirm({
+        title: 'Обязательно',
+        message: '«Главная» и «Сообщения» всегда в нижней панели.',
+      });
       return;
     }
     try {
       const { ids, replaced } = await toggleDockItem(role, id);
       setSelected(ids);
       if (replaced && ids.includes(id)) {
-        Alert.alert(
-          'Панель обновлена',
-          `«${DOCK_BY_ID[replaced]?.label}» заменён на «${DOCK_BY_ID[id]?.label}».`,
-        );
+        showActionConfirm({
+          title: 'Панель обновлена',
+          message: `«${DOCK_BY_ID[replaced]?.label}» заменён на «${DOCK_BY_ID[id]?.label}».`,
+        });
       }
     } catch (e: any) {
       if (e?.message === 'max') {
-        Alert.alert('Максимум 5', 'Отключите другой раздел или включите новый — он заменит последний дополнительный.');
+        showActionConfirm({
+          title: 'Максимум 5',
+          message: 'Отключите другой раздел или включите новый — он заменит последний дополнительный.',
+        });
       } else if (e?.message === 'min') {
-        Alert.alert(
-          'Замена раздела',
-          `Чтобы убрать «${DOCK_BY_ID[id]?.label}», сначала включите другой раздел — он займёт его место в панели.`,
-        );
+        showActionConfirm({
+          title: 'Замена раздела',
+          message: `Чтобы убрать «${DOCK_BY_ID[id]?.label}», сначала включите другой раздел — он займёт его место в панели.`,
+        });
       }
     }
   };
@@ -150,7 +159,7 @@ const s = StyleSheet.create({
   count: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.accent, marginBottom: 8 },
   expand: { marginBottom: 8, paddingVertical: 4 },
   expandT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.primary },
-  group: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 8, marginBottom: 6 },
+  group: { ...screenTypography.section, marginTop: 8, marginBottom: 6 },
   preview: {
     flexDirection: 'row',
     gap: 4,

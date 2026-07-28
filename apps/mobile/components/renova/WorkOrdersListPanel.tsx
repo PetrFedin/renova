@@ -2,10 +2,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { RenovaTheme, card } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { api, type WorkOrder, type Room } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { WorkOrderCard } from '@/components/renova/WorkOrderCard';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { useNavFromHere } from '@/lib/navigation';
 import { calendarTabHref, type OsRole } from '@/constants/osSections';
@@ -33,9 +35,19 @@ export function WorkOrdersListPanel({
   const nav = useNavFromHere();
   const [items, setItems] = useState<WorkOrder[]>([]);
   const [filter, setFilter] = useState<WorkFilter>('active');
+  const [loadError, setLoadError] = useState(false);
 
   const reload = useCallback(() => {
-    api.listWorkOrders(userId, projectId).then(setItems).catch((e) => { reportError('components.renova.WorkOrdersListPanel.Items', e); setItems([]); });
+    api
+      .listWorkOrders(userId, projectId)
+      .then((list) => {
+        setItems(list);
+        setLoadError(false);
+      })
+      .catch((e) => {
+        reportError('components.renova.WorkOrdersListPanel.Items', e);
+        setLoadError(true);
+      });
   }, [userId, projectId]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
@@ -67,11 +79,21 @@ export function WorkOrdersListPanel({
           </Pressable>
         ))}
       </View>
-      {filtered.map((wo) => (
-        <WorkOrderCard key={wo.id} wo={wo} rooms={rooms} />
-      ))}
-      {!filtered.length && (
-        <Text style={s.empty}>Нет работ по фильтру</Text>
+      {loadError ? (
+        <LoadErrorState
+          title="Не удалось загрузить работы"
+          hint="Это не пустой фильтр — повторите загрузку."
+          onRetry={reload}
+        />
+      ) : (
+        <>
+          {filtered.map((wo) => (
+            <WorkOrderCard key={wo.id} wo={wo} rooms={rooms} />
+          ))}
+          {!filtered.length && (
+            <Text style={s.empty}>Нет работ по фильтру</Text>
+          )}
+        </>
       )}
     </View>
   );
@@ -80,12 +102,12 @@ export function WorkOrdersListPanel({
 const s = StyleSheet.create({
   wrap: { marginBottom: 12 },
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  head: { fontWeight: '800', fontSize: 15, color: RenovaTheme.colors.text },
-  calLink: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.primary },
+  head: { ...screenTypography.listTitle, fontWeight: '700' },
+  calLink: { ...screenTypography.listLink, marginTop: 0 },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: RenovaTheme.colors.surfaceMuted },
   chipOn: { backgroundColor: RenovaTheme.colors.infoBg, borderWidth: 1, borderColor: RenovaTheme.colors.accent },
   chipT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   chipTOn: { color: RenovaTheme.colors.accent },
-  empty: { ...card, textAlign: 'center', color: RenovaTheme.colors.textMuted, paddingVertical: 14 },
+  empty: { ...screenTypography.empty, textAlign: 'center', paddingVertical: 14 },
 });

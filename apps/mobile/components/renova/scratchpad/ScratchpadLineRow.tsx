@@ -2,6 +2,7 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import type { ScratchpadLine } from '@/lib/api';
 import { isCheckableKind, promotedLabel, scratchpadKindLabel } from '@/lib/domain/scratchpadLine';
 
@@ -53,7 +54,7 @@ const s = StyleSheet.create({
   check: { paddingTop: 2 },
   dot: { width: 22, height: 22, marginTop: 2, borderRadius: 11, backgroundColor: '#E2E8F0' },
   body: { flex: 1, minWidth: 0 },
-  kind: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.accent, textTransform: 'uppercase' },
+  kind: { ...screenTypography.metricLabel, color: RenovaTheme.colors.accent, marginTop: 0 },
   text: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text, marginTop: 2, lineHeight: 20 },
   textDone: { textDecorationLine: 'line-through', color: RenovaTheme.colors.textMuted },
   promoted: { fontSize: 11, color: RenovaTheme.colors.primary, marginTop: 4, fontWeight: '600' },

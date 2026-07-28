@@ -1,14 +1,16 @@
 /** Верх экрана этапа: статус, главное действие, краткий прогресс */
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { api, type StageDetail, type WorkSnapshot, ApiError } from '@/lib/api';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { alertStageStarted } from '@/lib/jobLeadNav';
 import { alertStageSubmittedForAcceptance } from '@/lib/fieldCreateNav';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
   stage: StageDetail;
@@ -100,24 +102,34 @@ export function StageDetailHero({
               // W130: старт этапа → график / работы
               alertStageStarted(role);
             } catch (e: unknown) {
-              if (e instanceof Error && e.message === 'offline_queued') {
-                Alert.alert('Офлайн', 'Старт этапа отправится при подключении');
+              if (isOfflineQueued(e)) {
+                notifyOfflineQueued('Старт этапа');
               } else if (e instanceof ApiError && e.status === 409) {
-                Alert.alert('Блокировка', 'Сначала завершите зависимый этап');
+                showActionConfirm({
+                  title: 'Блокировка',
+                  message: 'Сначала завершите зависимый этап',
+                  primaryLabel: 'Понятно',
+                  onPrimary: () => undefined,
+                });
               } else if (e instanceof ApiError && e.status === 403) {
                 const d = e.detail as { code?: string; message?: string; pending_titles?: string[] } | undefined;
                 if (d?.code === 'contract_not_signed') {
                   const titles = (d.pending_titles || []).join(', ');
-                  Alert.alert(
-                    'Нужен договор',
-                    [d.message || 'Подпишите договор перед началом работ', titles ? `Документы: ${titles}` : ''].filter(Boolean).join('\n'),
-                    [
-                      { text: 'Отмена', style: 'cancel' },
-                      { text: 'К документам', onPress: openDocs },
-                    ],
-                  );
+                  showActionConfirm({
+                    title: 'Нужен договор',
+                    message: [d.message || 'Подпишите договор перед началом работ', titles ? `Документы: ${titles}` : ''].filter(Boolean).join('\n'),
+                    primaryLabel: 'К документам',
+                    onPrimary: openDocs,
+                    secondaryLabel: 'Позже',
+                    onSecondary: () => undefined,
+                  });
                 } else {
-                  Alert.alert('Доступ запрещён', d?.message || e.message);
+                  showActionConfirm({
+                    title: 'Доступ запрещён',
+                    message: d?.message || e.message,
+                    primaryLabel: 'Понятно',
+                    onPrimary: () => undefined,
+                  });
                 }
               } else throw e;
             }
@@ -137,14 +149,16 @@ export function StageDetailHero({
               // W133: сдача → приёмка / inbox
               alertStageSubmittedForAcceptance(role);
             } catch (e: unknown) {
-              if (e instanceof Error && e.message === 'offline_queued') {
-                Alert.alert('Офлайн', 'Сдача отправится при подключении');
+              if (isOfflineQueued(e)) {
+                notifyOfflineQueued('Сдача');
               } else if (e instanceof ApiError && e.status === 400) {
                 const d = e.detail as { completion?: { failed?: { message: string }[] } } | undefined;
-                Alert.alert(
-                  'Не готово',
-                  (d?.completion?.failed || []).map((x) => x.message).join('\n') || e.message,
-                );
+                showActionConfirm({
+                  title: 'Не готово',
+                  message: (d?.completion?.failed || []).map((x) => x.message).join('\n') || e.message,
+                  primaryLabel: 'Понятно',
+                  onPrimary: () => undefined,
+                });
               } else throw e;
             }
           }}

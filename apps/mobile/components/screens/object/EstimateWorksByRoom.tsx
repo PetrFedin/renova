@@ -1,7 +1,8 @@
 /** Работы сметы — свёрнуто по комнатам (аналог материалов) */
 import { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { RenovaTheme, card, formatRub } from '@/constants/Theme';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { EstimateLineRow } from '@/components/screens/object/ObjectSection';
 import type { EstimateLine } from '@/lib/api';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
@@ -56,16 +57,20 @@ export function EstimateWorksByRoom({ lines }: { lines: EstimateLine[] }) {
 
 const s = StyleSheet.create({
   wrap: { gap: 8 },
-  group: { ...card, padding: 0, overflow: 'hidden' },
+  // Clarity W: hairline accordion, не Theme.card
+  group: {
+    overflow: 'hidden',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: RenovaTheme.colors.border,
+  },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 2,
     paddingVertical: 10,
     gap: 8,
-    backgroundColor: '#F8FAFC',
   },
-  room: { fontWeight: '700', fontSize: 14, color: RenovaTheme.colors.text, flex: 1 },
-  summary: { fontSize: 11, color: RenovaTheme.colors.textMuted, flexShrink: 1 },
+  room: { ...screenTypography.listTitle, flex: 1 },
+  summary: { ...screenTypography.listMeta, flexShrink: 1 },
   chevron: { fontSize: 12, color: RenovaTheme.colors.primary, fontWeight: '700', width: 14, textAlign: 'right' },
 });

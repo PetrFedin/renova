@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reportCatch } from '@/lib/reportError';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PaywallModal } from '@/components/renova/PaywallModal';
+import { ActionConfirmHost } from '@/components/renova/ActionConfirmHost';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { flushOfflineOutbox } from '@/lib/offline';
 import { reloadInboxSync } from "@/lib/inboxSyncStore";
@@ -646,6 +647,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   return (
     <RenovaContext.Provider value={value}>
       {children}
+      {/* Clarity E: post-action sheet для offline / warranty / closeout */}
+      <ActionConfirmHost />
       {paywallVisible && user && (
         <PaywallModal
           visible={paywallVisible}

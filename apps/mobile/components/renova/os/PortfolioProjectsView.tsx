@@ -5,6 +5,7 @@ import { replaceOsNav } from '@/lib/pushOsNav';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { filterOutJunkProjects } from '@/lib/junkProjects';
 import { api } from '@/lib/api';
 import { summarizePortfolio } from '@/lib/domain/summarizePortfolio';
 import { aggregatePortfolioBudgetBreakdowns, type PortfolioCategoryRow } from '@/lib/domain/aggregatePortfolioBudget';
@@ -16,8 +17,9 @@ import { PortfolioCompareList } from '@/components/renova/os/portfolio/Portfolio
 
 export function PortfolioProjectsView() {
   const { user, projects, activeProject, loadProject } = useRenova();
+  const cleanProjects = filterOutJunkProjects(projects);
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
-  const allIds = useMemo(() => projects.map((p) => p.id), [projects]);
+  const allIds = useMemo(() => cleanProjects.map((p) => p.id), [cleanProjects]);
   const {
     ready,
     selected,
@@ -34,7 +36,7 @@ export function PortfolioProjectsView() {
 
   useEffect(() => {
     if (!user) return;
-    const closing = projects.filter((p) => p.progress_percent >= 100);
+    const closing = cleanProjects.filter((p) => p.progress_percent >= 100);
     if (!closing.length) {
       setPendingById({});
       return;
@@ -54,15 +56,15 @@ export function PortfolioProjectsView() {
       if (!cancelled) setPendingById(Object.fromEntries(rows));
     });
     return () => { cancelled = true; };
-  }, [user?.id, projects]);
+  }, [user?.id, cleanProjects]);
 
   const selectedProjects = useMemo(
-    () => projects.filter((p) => selected.has(p.id)),
-    [projects, selected],
+    () => cleanProjects.filter((p) => selected.has(p.id)),
+    [cleanProjects, selected],
   );
   const allRows = useMemo(
-    () => summarizePortfolio(projects, pendingById).rows,
-    [projects, pendingById],
+    () => summarizePortfolio(cleanProjects, pendingById).rows,
+    [cleanProjects, pendingById],
   );
   const summary = useMemo(
     () => summarizePortfolio(selectedProjects, pendingById),

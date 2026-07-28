@@ -134,7 +134,7 @@ export function BudgetSummarySection(props: Props) {
       {bwVisible('summary_kpi') && (
 
         <>
-          <OsWidgetGrid items={summaryWidgets} title="Сводка" returnTo={pathname} role={role} />
+          <OsWidgetGrid items={summaryWidgets} returnTo={pathname} role={role} />
           <BudgetFactStatus
             serverFact={summary?.budget_spent ?? figures.spent}
             listTotal={unifiedRows.reduce((a, r) => a + r.amount, 0)}
@@ -142,7 +142,7 @@ export function BudgetSummarySection(props: Props) {
             showAligned
           />
           <Text style={s.dataHint}>
-            Нажмите плитку — детализация по периоду. Комнаты, этапы и аналитика — вкладки выше. Счета подрядчикам — «Оплаты», не путать с фактом.
+            Плитка — детализация по периоду. Оплаты — во вкладке «Оплаты».
             {!showRepairControl
               ? ` План ${formatRub(summary?.budget_planned ?? figures.planned)} · факт ${formatRub(summary?.budget_spent ?? figures.spent)}.`
               : ''}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { api, BudgetBreakdown as BB } from '@/lib/api';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { getDetailLevel } from '@/lib/detailLevel';
 import { reportCatch } from '@/lib/reportError';
 
@@ -10,20 +11,57 @@ export function BudgetBreakdown({ userId, projectId }: { userId: string; project
   const [fc, setFc] = useState<{ forecast_total: number; forecast_over: number; risk: string } | null>(null);
   const [alerts, setAlerts] = useState<{ category: string; over_pct: number }[]>([]);
   const [lvl, setLvl] = useState('standard');
-  useEffect(() => { getDetailLevel().then(setLvl); api.budgetBreakdown(userId, projectId).then(setD).catch(reportCatch('components.renova.BudgetBreakdown.1')); api.budgetForecast(userId, projectId).then(setFc).catch(reportCatch('components.renova.BudgetBreakdown.2')); api.budgetCategoryAlerts(userId, projectId).then(setAlerts).catch(reportCatch('components.renova.BudgetBreakdown.3')).catch(reportCatch('components.renova.BudgetBreakdown.4')); }, [projectId]);
+  useEffect(() => {
+    getDetailLevel().then(setLvl);
+    api.budgetBreakdown(userId, projectId).then(setD).catch(reportCatch('components.renova.BudgetBreakdown.1'));
+    api.budgetForecast(userId, projectId).then(setFc).catch(reportCatch('components.renova.BudgetBreakdown.2'));
+    api.budgetCategoryAlerts(userId, projectId).then(setAlerts).catch(reportCatch('components.renova.BudgetBreakdown.3')).catch(reportCatch('components.renova.BudgetBreakdown.4'));
+  }, [projectId]);
   if (!d) return null;
   const rows = lvl === 'brief'
     ? [{ l: 'План', v: d.budget_planned }, { l: 'Факт', v: d.budget_spent }]
-    : [{ l: 'Работы', v: d.works }, { l: 'Материалы (план)', v: d.materials_plan }, { l: 'Материалы (факт)', v: d.materials_fact }, { l: 'Мусор', v: d.waste }, { l: 'Резерв', v: d.reserve }];
+    : [
+      { l: 'Работы', v: d.works },
+      { l: 'Материалы (план)', v: d.materials_plan },
+      { l: 'Материалы (факт)', v: d.materials_fact },
+      { l: 'Мусор', v: d.waste },
+      { l: 'Резерв', v: d.reserve },
+    ];
   return (
     <View style={s.box}>
       <Text style={s.head}>Бюджет по статьям</Text>
-      {rows.map(r => <View key={r.l} style={s.row}><Text>{r.l}</Text><Text style={s.v}>{formatRub(r.v)}</Text></View>)}
-      {alerts.length > 0 && lvl !== 'brief' && alerts.map(a => <Text key={a.category} style={s.warn}>⚠ {a.category}: +{a.over_pct}%</Text>)}
-      {fc && lvl !== 'brief' && <Text style={s.sub}>Прогноз: {formatRub(fc.forecast_total)}{fc.risk==='high'?' ⚠':''}</Text>}
-      {lvl === 'detailed' && <Text style={s.sub}>Итого план: {formatRub(d.total_planned)} · бюджет проекта: {formatRub(d.budget_planned)}</Text>}
+      {rows.map((r) => (
+        <View key={r.l} style={s.row}>
+          <Text style={s.label}>{r.l}</Text>
+          <Text style={s.v}>{formatRub(r.v)}</Text>
+        </View>
+      ))}
+      {alerts.length > 0 && lvl !== 'brief' && alerts.map((a) => (
+        <Text key={a.category} style={s.warn}>⚠ {a.category}: +{a.over_pct}%</Text>
+      ))}
+      {fc && lvl !== 'brief' ? (
+        <Text style={s.sub}>Прогноз: {formatRub(fc.forecast_total)}{fc.risk === 'high' ? ' ⚠' : ''}</Text>
+      ) : null}
+      {lvl === 'detailed' ? (
+        <Text style={s.sub}>Итого план: {formatRub(d.total_planned)} · бюджет проекта: {formatRub(d.budget_planned)}</Text>
+      ) : null}
       <Text style={s.sub}>Факт по статьям — с сервера (budget_spent). Список «Расходы» — unified без дублей.</Text>
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginVertical:10, backgroundColor:RenovaTheme.colors.surface, padding:12, borderRadius:10 }, head:{ fontWeight:'800', marginBottom:8 }, row:{ flexDirection:'row', justifyContent:'space-between', paddingVertical:4 }, v:{ fontWeight:'600' }, warn:{ color:'#b45309', fontSize:11, marginTop:4 }, sub:{ fontSize:11, color:'#666', marginTop:8 } });
+
+const s = StyleSheet.create({
+  // Clarity V: list SoT рядом с ExpenseBy* (Wave U)
+  box: { marginVertical: 10 },
+  head: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
+  row: {
+    ...listRowStyles.row,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  label: { ...screenTypography.listTitle, fontSize: 14 },
+  v: { ...screenTypography.listMeta, fontWeight: '600' },
+  warn: { color: RenovaTheme.colors.warningText, fontSize: 11, marginTop: 4 },
+  sub: { ...screenTypography.empty, marginTop: 8 },
+});

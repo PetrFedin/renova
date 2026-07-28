@@ -1,8 +1,8 @@
 /** Создание чата: одно уникальное название на объект — дубликаты открываются, не создаются */
-import { Alert } from 'react-native';
 import { api, type ChatThread } from '@/lib/api';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { findExistingChat } from '@/lib/chatPreview';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export type ChatParticipantInvite = {
   phone?: string;
@@ -29,7 +29,11 @@ export async function createProjectChat({
   onOpen,
 }: CreateOpts): Promise<ChatThread | null> {
   if (!projectId?.trim()) {
-    Alert.alert('Объект обязателен', 'Выберите объект — каждый чат привязан к одному объекту.');
+    // Clarity R: gate sheet вместо Alert
+    showActionConfirm({
+      title: 'Объект обязателен',
+      message: 'Выберите объект — каждый чат привязан к одному объекту.',
+    });
     return null;
   }
   const trimmed = title.trim() || 'Чат';

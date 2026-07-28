@@ -15,7 +15,8 @@ export function minimalSnapFromProject(project: ProjectDetail): Pick<ProjectOsSn
   return {
     isComplete: (project.progress_percent ?? 0) >= 100,
     pendingPayments: project.pending_payments ?? 0,
-    schedule: { progressPercent: project.progress_percent ?? 0 },
+    // delayDays неизвестен без полного OS-snapshot — 0 = «нет данных о просрочке»
+    schedule: { progressPercent: project.progress_percent ?? 0, delayDays: 0 },
   };
 }
 
@@ -38,8 +39,9 @@ export function resolveDockPresetMode(
   return 'repair';
 }
 
-export function dockPresetItems(mode: DockPresetMode): DockItemId[] {
-  return mode === 'setup' ? [...DOCK_PRESET_SETUP] : [...DOCK_PRESET_REPAIR];
+/** Те же ссылки на пресеты — иначе useMemo/effects видят «новый» массив каждый раз. */
+export function dockPresetItems(mode: DockPresetMode): readonly DockItemId[] {
+  return mode === 'setup' ? DOCK_PRESET_SETUP : DOCK_PRESET_REPAIR;
 }
 
 /** Dynamic dock только для customer; detailed — ручные prefs */
@@ -55,7 +57,7 @@ export function resolveDynamicDockItems(
   snap: Pick<ProjectOsSnapshot, 'isComplete' | 'pendingPayments' | 'schedule'> | null,
   role: OsRole,
   detailLevel: DetailLevel,
-): DockItemId[] | null {
+): readonly DockItemId[] | null {
   if (!project || !snap) return null;
   const phase = resolveProjectPhase(snap as ProjectOsSnapshot);
   if (!shouldUseDynamicDock(role, detailLevel, phase)) return null;

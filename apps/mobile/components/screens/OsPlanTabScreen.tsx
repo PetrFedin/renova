@@ -1,4 +1,4 @@
-/** План объекта — вкладка «Объект → План»: планировка · дизайн · график */
+/** План объекта — вкладка «Объект → План»: планировка · дизайн (сроки — Календарь) */
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -7,23 +7,22 @@ import { screenLayout } from '@/constants/screenLayout';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { FloorPlanPanel } from '@/components/renova/FloorPlanPanel';
 import { DesignPackageList } from '@/components/renova/DesignPackageList';
-import { PlanSchedulePanel } from '@/components/renova/PlanSchedulePanel';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { OsHubTabs } from '@/components/renova/os/OsHubTabs';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { PlanTabOverview } from '@/components/screens/object/PlanTabOverview';
 import { PlanSectionFrame } from '@/components/screens/object/PlanSectionFrame';
-import type { OsRole } from '@/constants/osSections';
+import { calendarTabRoute, type OsRole } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
-type PlanSub = 'floor' | 'design' | 'schedule';
+type PlanSub = 'floor' | 'design';
 
 const SUBTABS = [
   { id: 'floor', label: 'Планировка' },
   { id: 'design', label: 'Дизайн' },
-  { id: 'schedule', label: 'График' },
 ];
 
 const SECTIONS: Record<
@@ -42,12 +41,6 @@ const SECTIONS: Record<
     hint: 'PDF или визуализации отделки — версии и согласование.',
     who: 'Подрядчик загружает · заказчик согласует',
   },
-  schedule: {
-    step: 'Слой 3',
-    title: 'График этапов',
-    hint: 'Обзор этапов по датам (только просмотр). Сроки — «Календарь», ход — «Ремонт».',
-    who: 'Даты проекта — профиль · выполнение — ремонт',
-  },
 };
 
 export function OsPlanTabScreen({
@@ -57,15 +50,27 @@ export function OsPlanTabScreen({
   role: OsRole;
   onNextTab?: (tab: ObjectTabId) => void;
 }) {
-  const { sub: subParam } = useLocalSearchParams<{ sub?: string }>();
+  const { sub: subParam, punch: punchParam } = useLocalSearchParams<{ sub?: string; punch?: string }>();
   const { user, activeProject } = useRenova();
   const [sub, setSub] = useState<PlanSub>('floor');
 
   useEffect(() => {
-    if (subParam === 'design' || subParam === 'schedule' || subParam === 'floor') {
+    // Investor P2: ?punch=1 всегда открывает слой «Планировка»
+    if (punchParam === '1' || punchParam === 'true') {
+      setSub('floor');
+      return;
+    }
+    // Legacy sub=schedule → единый SoT «Календарь» (не третий график)
+    if (subParam === 'schedule') {
+      setSub('floor');
+      router.setParams({ sub: 'floor' });
+      pushOsNav(calendarTabRoute(role), undefined, role);
+      return;
+    }
+    if (subParam === 'design' || subParam === 'floor') {
       setSub(subParam);
     }
-  }, [subParam]);
+  }, [subParam, punchParam, role]);
 
   const setSubTab = useCallback((id: PlanSub) => {
     setSub(id);
@@ -97,18 +102,6 @@ export function OsPlanTabScreen({
         )}
         {sub === 'design' && (
           <DesignPackageList embedded userId={user.id} projectId={activeProject.id} role={user.role || role} />
-        )}
-        {sub === 'schedule' && (
-          <PlanSchedulePanel
-            embedded
-            userId={user.id}
-            projectId={activeProject.id}
-            role={role}
-            projectDates={{
-              start: activeProject.planned_start_date,
-              end: activeProject.planned_end_date,
-            }}
-          />
         )}
       </PlanSectionFrame>
     </ScrollView>

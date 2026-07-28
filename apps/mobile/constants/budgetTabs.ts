@@ -8,11 +8,20 @@ export const BUDGET_TAB_IDS = ['summary', 'expenses', 'payments', 'deviations'] 
 export type ExpenseView = 'list' | 'rooms' | 'stages';
 
 export const BUDGET_HUB_TABS: HubTab[] = [
-  { id: 'summary', label: 'Сводка' },
+  { id: 'summary', label: 'План–факт' },
   { id: 'expenses', label: 'Расходы' },
   { id: 'payments', label: 'Оплаты' },
   { id: 'deviations', label: 'Отклонения' },
 ];
+
+/** Customer + contractor lean: План–факт + Оплаты primary; Расходы/Отклонения — «Все» */
+export function budgetHubTabsForRole(role: string): HubTab[] {
+  // Clarity A: обе роли — ≤2 primary на деньгах
+  void role;
+  return BUDGET_HUB_TABS.map((t) =>
+    t.id === 'expenses' || t.id === 'deviations' ? { ...t, secondary: true } : t,
+  );
+}
 
 /** rooms/stages/analytics → новые вкладки (aliases на 1 релиз) */
 export function normalizeBudgetTab(tab: string | undefined): { tab: BudgetTab; view?: ExpenseView } {

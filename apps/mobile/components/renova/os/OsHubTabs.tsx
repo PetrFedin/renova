@@ -1,8 +1,15 @@
-/** Горизонтальные вкладки внутри hub-раздела (Объект / Ремонт / Бюджет) */
+/** Горизонтальные вкладки hub — Clarity C: underline, не pill-карточки */
+import { useMemo, useState } from 'react';
 import { ScrollView, Pressable, Text, StyleSheet, View } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
-export type HubTab = { id: string; label: string; badge?: number };
+export type HubTab = {
+  id: string;
+  label: string;
+  badge?: number;
+  /** Progressive disclosure — вторичные вкладки за «Все» */
+  secondary?: boolean;
+};
 
 type Props = {
   tabs: HubTab[];
@@ -11,10 +18,18 @@ type Props = {
 };
 
 export function OsHubTabs({ tabs, value, onChange }: Props) {
+  const primary = useMemo(() => tabs.filter((t) => !t.secondary), [tabs]);
+  const secondary = useMemo(() => tabs.filter((t) => t.secondary), [tabs]);
+  const valueIsSecondary = secondary.some((t) => t.id === value);
+  const [moreOpen, setMoreOpen] = useState(valueIsSecondary);
+
+  const expanded = moreOpen || valueIsSecondary;
+  const visible = expanded || secondary.length === 0 ? tabs : primary;
+
   return (
     <View style={s.wrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row}>
-        {tabs.map((t) => {
+        {visible.map((t) => {
           const on = t.id === value;
           return (
             <Pressable
@@ -26,11 +41,33 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
             >
               <Text style={[s.label, on && s.labelOn]}>{t.label}</Text>
               {t.badge != null && t.badge > 0 ? (
-                <View style={s.badge}><Text style={s.badgeT}>{t.badge > 9 ? '9+' : t.badge}</Text></View>
+                <View style={s.badge}>
+                  <Text style={s.badgeT}>{t.badge > 9 ? '9+' : t.badge}</Text>
+                </View>
               ) : null}
             </Pressable>
           );
         })}
+        {secondary.length > 0 && !expanded ? (
+          <Pressable
+            style={s.tab}
+            onPress={() => setMoreOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Все вкладки"
+          >
+            <Text style={s.label}>Все</Text>
+            {secondary.some((t) => (t.badge ?? 0) > 0) ? (
+              <View style={s.badge}>
+                <Text style={s.badgeT}>
+                  {(() => {
+                    const n = secondary.reduce((sum, t) => sum + (t.badge ?? 0), 0);
+                    return n > 9 ? '9+' : String(n);
+                  })()}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -38,25 +75,31 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
 
 const s = StyleSheet.create({
   wrap: {
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  row: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  row: { paddingHorizontal: 8, paddingTop: 4, gap: 4 },
   tab: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: RenovaTheme.colors.background,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  tabOn: { backgroundColor: RenovaTheme.colors.infoBg, borderColor: RenovaTheme.colors.accent },
-  label: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  labelOn: { color: RenovaTheme.colors.accent },
-  badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: RenovaTheme.colors.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  badgeT: { fontSize: 10, fontWeight: '800', color: RenovaTheme.colors.surface },
+  tabOn: { borderBottomColor: RenovaTheme.colors.primary },
+  label: { fontSize: 14, fontWeight: '500', color: RenovaTheme.colors.textMuted },
+  labelOn: { color: RenovaTheme.colors.text, fontWeight: '700' },
+  badge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: RenovaTheme.colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeT: { fontSize: 9, fontWeight: '800', color: RenovaTheme.colors.surface },
 });

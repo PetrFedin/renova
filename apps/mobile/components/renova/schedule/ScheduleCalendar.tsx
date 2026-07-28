@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { addDays, isoDate, startOfWeek, type DayMark } from '@/lib/domain/scheduleMarks';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -171,7 +172,7 @@ const s = StyleSheet.create({
   todayBtn: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 4 },
   todayT: { fontSize: 11, fontWeight: '600', color: RenovaTheme.colors.accent },
   weekHead: { flexDirection: 'row', marginBottom: 2 },
-  weekDay: { width: '14.28%', textAlign: 'center', fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.textMuted },
+  weekDay: { ...screenTypography.metricLabel, width: '14.28%', textAlign: 'center', marginTop: 0 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', flexGrow: 1 },
   gridWeek: { minHeight: 72 },
   cell: {

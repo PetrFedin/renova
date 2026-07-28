@@ -1,21 +1,15 @@
-import { Tabs } from 'expo-router';
-import { useOsTabsScreenOptions, OsTabsShell } from '@/components/renova/os/OsTabsLayoutOptions';
+import { OsRoleTabsNavigator } from '@/components/renova/os/OsRoleTabsNavigator';
 
-/** Renova OS — 4 столпа + сервисы; legacy tabs → [legacyTab] catch-all */
+/** Стартовая вкладка при первом заходе в группу (Slot, не BottomTabs). */
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
+/**
+ * Renova OS — 4 столпа + сервисы; legacy → [legacyTab].
+ * Не используем expo-router <Tabs>: BottomTabNavigator + useSortedScreens на web
+ * пересоздаёт options → setOptions → Maximum update depth. Dock — SoT нижней навигации.
+ */
 export default function CustomerTabs() {
-  const screenOptions = useOsTabsScreenOptions('customer');
-  return (
-    <OsTabsShell role="customer">
-      <Tabs initialRouteName="index" screenOptions={screenOptions}>
-        <Tabs.Screen name="index" options={{ title: 'Главная' }} />
-        <Tabs.Screen name="object" options={{ title: 'Объект' }} />
-        <Tabs.Screen name="repair" options={{ title: 'Ремонт' }} />
-        <Tabs.Screen name="budget" options={{ title: 'Деньги' }} />
-        <Tabs.Screen name="chat" options={{ href: null }} />
-        <Tabs.Screen name="profile" options={{ href: null }} />
-        <Tabs.Screen name="calendar" options={{ href: null }} />
-        <Tabs.Screen name="[legacyTab]" options={{ href: null }} />
-      </Tabs>
-    </OsTabsShell>
-  );
+  return <OsRoleTabsNavigator role="customer" />;
 }

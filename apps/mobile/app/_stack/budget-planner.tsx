@@ -1,6 +1,6 @@
 /** Планировщик бюджета — рыночная оценка для проекта (справочно) */
-import { useEffect, useState } from 'react';
-import { ScrollView, Text, StyleSheet, Alert } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { BudgetPlannerPanel } from '@/components/renova/BudgetPlannerPanel';
@@ -12,77 +12,58 @@ import { calcRoomMetrics } from '@/lib/calc-engine';
 import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
-
-function plannerMetrics(room?: {
-  length_m?: number | null;
-  width_m?: number | null;
-  height_m?: number | null;
-  openings_sq_m?: number | null;
-  outlets_count?: number | null;
-  plumbing_points?: number | null;
-}) {
-  const calculated = room
-    ? calcRoomMetrics({
-        lengthM: room.length_m,
-        widthM: room.width_m,
-        heightM: room.height_m,
-        openingsSqM: room.openings_sq_m ?? 2,
-      })
-    : { floorSqM: 12, wallSqM: 24, perimeterM: 14 };
-
-  return {
-    floor_sq_m: calculated.floorSqM,
-    wall_sq_m: calculated.wallSqM,
-    perimeter_m: calculated.perimeterM,
-    outlets_count: room?.outlets_count || 0,
-    plumbing_points: room?.plumbing_points || 0,
-  };
-}
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export default function BudgetPlannerScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { user, activeProject, loadProject, readOnly } = useRenova();
   const canWrite = useWriteAllowed();
   const room = activeProject?.rooms?.[0];
+  const m = room
+    ? calcRoomMetrics({ lengthM: room.length_m, widthM: room.width_m, heightM: room.height_m, openingsSqM: room.openings_sq_m ?? 2 })
+    : { floorSqM: 12, wallSqM: 24, perimeterM: 14 };
   const [workTypes, setWorkTypes] = useState<string[]>(['painting']);
   const [regionCode, setRegionCode] = useState('moscow');
   const [complexity, setComplexity] = useState(1);
   const [laborShare, setLaborShare] = useState(0.5);
   const [estimate, setEstimate] = useState<MarketEstimate | null>(null);
   const [applying, setApplying] = useState(false);
-  const [metrics, setMetrics] = useState(() => plannerMetrics(room));
-
-  /** Не переносим площади и рассчитанную сумму между разными объектами/помещениями. */
-  useEffect(() => {
-    setMetrics(plannerMetrics(room));
-    setEstimate(null);
-  }, [activeProject?.id, room?.id]);
+  const [metrics, setMetrics] = useState({
+    floor_sq_m: m.floorSqM,
+    wall_sq_m: m.wallSqM,
+    perimeter_m: m.perimeterM,
+    outlets_count: room?.outlets_count || 0,
+    plumbing_points: room?.plumbing_points || 0,
+  });
 
   async function applyToPlan() {
     if (!user || !activeProject || !estimate || readOnly || !canWrite) return;
-    Alert.alert(
-      'Применить к плану?',
-      `Записать ${formatRub(estimate.grand_total)} в план проекта «${activeProject.name}»? Текущий план: ${formatRub(activeProject.budget_planned)}.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Применить',
-          onPress: async () => {
-            setApplying(true);
-            try {
-              await api.patchProject(user.id, activeProject.id, { budget_planned: Math.round(estimate.grand_total) });
-              await syncProjectSideEffects({ user, project: activeProject });
-              await loadProject(activeProject.id);
-              Alert.alert('Готово', 'План проекта обновлён. Смету по работам согласуйте с подрядчиком.');
-            } catch {
-              Alert.alert('Ошибка', 'Не удалось обновить план проекта');
-            } finally {
-              setApplying(false);
-            }
-          },
-        },
-      ],
-    );
+    // Clarity Q: money-affecting confirm через sheet
+    showActionConfirm({
+      title: 'Применить к плану?',
+      message: `Записать ${formatRub(estimate.grand_total)} в план проекта «${activeProject.name}»? Текущий план: ${formatRub(activeProject.budget_planned)}.`,
+      primaryLabel: 'Применить',
+      onPrimary: () => {
+        void (async () => {
+          setApplying(true);
+          try {
+            await api.patchProject(user.id, activeProject.id, { budget_planned: Math.round(estimate.grand_total) });
+            await syncProjectSideEffects({ user, project: activeProject });
+            await loadProject(activeProject.id);
+            showActionConfirm({
+              title: 'Готово',
+              message: 'План проекта обновлён. Смету по работам согласуйте с подрядчиком.',
+            });
+          } catch {
+            showActionConfirm({ title: 'Ошибка', message: 'Не удалось обновить план проекта' });
+          } finally {
+            setApplying(false);
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   }
 
   return (
@@ -99,7 +80,7 @@ export default function BudgetPlannerScreen() {
           regionCode={regionCode}
           onRegionChange={setRegionCode}
           metrics={metrics}
-          onMetricsChange={(next) => setMetrics((previous) => ({ ...previous, ...next }))}
+          onMetricsChange={setMetrics}
           complexity={complexity}
           onComplexityChange={setComplexity}
           laborShare={laborShare}

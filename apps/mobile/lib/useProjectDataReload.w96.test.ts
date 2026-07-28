@@ -12,8 +12,6 @@ const files = [
   'components/renova/DesignPackageList.tsx',
   'components/renova/ViewerSharePanel.tsx',
   'components/renova/MaterialPickList.tsx',
-  'components/renova/NotificationsList.tsx',
-  'components/renova/PlanSchedulePanel.tsx',
   'components/screens/RoomDetailScreen.tsx',
 ];
 
