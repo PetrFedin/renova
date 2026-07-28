@@ -17,6 +17,23 @@ const rooms = src('components/screens/OsRoomsScreen.tsx');
 if (!rooms.includes("title: 'Согласовать запрос?'") || !rooms.includes("title: archived ? 'В архив?'")) {
   throw new Error('rooms approve/archive confirm');
 }
+if (rooms.includes('function DimRow') || rooms.includes('Сохранить и пересчитать смету')) {
+  throw new Error('rooms list still contains inline editor');
+}
+if (!rooms.includes('const mutationRef = useRef(false)') || !rooms.includes('if (mutationRef.current) return')) {
+  throw new Error('rooms list duplicate mutation guard');
+}
+if (!rooms.includes('primaryDestructive: archived')) throw new Error('rooms list archive destructive confirm');
+if (!rooms.includes("variant={archived ? 'outline' : 'dangerOutline'}")) throw new Error('rooms list archive danger hierarchy');
+if (!rooms.includes('primaryDestructive: true') || !rooms.includes('variant="dangerOutline"')) {
+  throw new Error('room request rejection destructive hierarchy');
+}
+if (!rooms.includes('const accepted = await onSubmit(message, {})') || !rooms.includes("if (accepted) setMsg('')")) {
+  throw new Error('room request draft preservation');
+}
+if (!rooms.includes('loading={mutationKey === `approve:${r.id}`}') || !rooms.includes('loading={archiveLoading}')) {
+  throw new Error('rooms list loading states');
+}
 
 const roomDetail = src('components/screens/RoomDetailScreen.tsx');
 if (!roomDetail.includes('primaryDestructive: nextArchived')) throw new Error('room archive destructive confirm');
