@@ -125,12 +125,16 @@ async def match_bank_rows_to_payments(
             if abs(float(p.amount) - float(row["amount"])) > amount_tol:
                 continue
             score = 1.0
+            date_match = True
             p_date = (p.confirmed_at or p.created_at).date() if (p.confirmed_at or p.created_at) else None
             if row_date and p_date:
                 delta = abs((row_date - p_date).days)
-                if delta > day_window:
-                    continue
-                score += max(0.0, (day_window - delta) / day_window)
+                date_match = delta <= day_window
+                # A bank statement can be imported after the payment date has
+                # aged beyond the narrow confidence window. Keep an exact
+                # amount match viable, but record the weaker confidence rather
+                # than silently dropping a unique pending payment.
+                score += max(-0.5, (day_window - delta) / max(day_window, 1))
             desc = (row.get("description") or "").lower()
             title = (p.title or "").lower()
             if desc and title:
@@ -149,6 +153,7 @@ async def match_bank_rows_to_payments(
                     "payment_status": st,
                     "payment_amount": best.amount,
                     "score": round(best_score, 3),
+                    "date_match": date_match,
                 }
             )
         else:
