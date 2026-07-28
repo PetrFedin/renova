@@ -10,6 +10,7 @@ Audited the merged navigation architecture, mobile route contracts, document ope
 - query context loss/precedence → inbound `returnTo` is preserved;
 - unsafe document links → safe URL resolver rejects empty, `javascript:` and `data:` targets;
 - stage links were generic → stage context summary now exposes linked rooms, work, issues, budget and the next action;
+- bank import could discard a unique payment when the statement date was older than the confidence window → amount match is retained with explicit date confidence;
 - construction relations were scattered → graph domain and location resolver restored with integrity tests;
 - stale Clarity regressions after merge → Home calendar entry, profile terminology, shared typography, and punch discovery restored.
 
