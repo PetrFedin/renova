@@ -16,6 +16,7 @@ import { alertEstimateLineAdded } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 const UNITS = ['pcs', 'm2', 'm', 'kg', 'l', 'компл'] as const;
 
@@ -43,6 +44,7 @@ export function AddEstimateLineForm({
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>(WORK_TYPES_FALLBACK);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const requestIdRef = useRef(createClientRequestId('estimate-line'));
 
   useEffect(() => {
     api.listWorkTypes().then(setWorkTypes).catch(() => setWorkTypes(WORK_TYPES_FALLBACK));
@@ -59,6 +61,10 @@ export function AddEstimateLineForm({
     setPrice('');
     setNotes('');
     setRoomId(null);
+  };
+
+  const rotateRequestId = () => {
+    requestIdRef.current = createClientRequestId('estimate-line');
   };
 
   async function submit() {
@@ -95,11 +101,13 @@ export function AddEstimateLineForm({
         room_name: room?.name || null,
         category,
         notes: notes.trim() || null,
+        client_request_id: requestIdRef.current,
       });
       saved = true;
     } catch (error: unknown) {
       if (isOfflineQueued(error)) {
         notifyOfflineQueued('Строка сметы');
+        rotateRequestId();
         clearDraft();
         if (collapsed) setOpen(false);
       } else {
@@ -114,6 +122,7 @@ export function AddEstimateLineForm({
     }
 
     if (!saved) return;
+    rotateRequestId();
     clearDraft();
     if (collapsed) setOpen(false);
     onSaved?.();
