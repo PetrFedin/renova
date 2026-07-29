@@ -4,7 +4,15 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services.subscription_service import PRO_PRICE, activate_pro, start_trial, subscription_payload
-from app.services.yookassa_service import create_payment, check_webhook_ip, remember_webhook_durable, process_webhook, demo_allowed
+from app.services.yookassa_service import (
+    create_payment,
+    check_webhook_ip,
+    process_webhook,
+    demo_allowed,
+    record_webhook_processed,
+    was_webhook_processed,
+    webhook_event_key,
+)
 from app.core.config import settings
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
@@ -35,6 +43,7 @@ async def start_pro_trial(user: User = Depends(get_current_user), db: AsyncSessi
         return {"ok": True, **result, **(await subscription_payload(db, user.id))}
     return {"ok": True, **result, **(await subscription_payload(db, user.id))}
 
+
 @router.post("/checkout")
 async def checkout(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
@@ -63,9 +72,10 @@ async def checkout(user: User = Depends(get_current_user), db: AsyncSession = De
         }
     return {**pay, "demo": False, "payments_mode": "live"}
 
+
 @router.post("/webhook")
 async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """ЮKassa: payment.succeeded → activate Pro / project payment."""
+    """ЮKassa delivery: authenticate, process atomically, then persist event completion."""
     ip = request.client.host if request.client else None
     if not check_webhook_ip(ip):
         raise HTTPException(403, "ip denied")
@@ -79,11 +89,27 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
             raise HTTPException(401, "invalid webhook")
     elif secret and request.headers.get("X-Webhook-Secret") != secret:
         raise HTTPException(401, "invalid webhook")
+
     body = await request.json()
-    eid = body.get('object', {}).get('id') or body.get('event', '')
-    if eid and not await remember_webhook_durable(db, str(eid), kind=str((body or {}).get("event") or "")):
-        return {"ok": True, "duplicate": True}
-    event = body.get("event")
-    obj = body.get("object") or {}
+    event_kind = str((body or {}).get("event") or "")
+    event_key = webhook_event_key(body)
+    if event_key and await was_webhook_processed(db, event_key):
+        return {"ok": True, "duplicate": True, "event_key": event_key}
+
     result = await process_webhook(body, db)
+    if result.get("retryable"):
+        # Non-2xx is intentional: the provider must redeliver after the temporary block clears.
+        raise HTTPException(
+            503,
+            detail={
+                "code": "webhook_processing_deferred",
+                "reason": result.get("blocked") or result.get("reason"),
+            },
+        )
+
+    if result.get("handled") and event_key:
+        recorded = await record_webhook_processed(db, event_key, kind=event_kind)
+        if not recorded:
+            return {**result, "duplicate": True, "event_key": event_key}
+        return {**result, "event_key": event_key}
     return result
