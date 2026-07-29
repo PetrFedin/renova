@@ -15,11 +15,11 @@ export function subscribeProjectDataChanged(listener: Listener): () => void {
 }
 
 export function notifyProjectDataChanged(): void {
-  listeners.forEach((fn) => {
+  [...listeners].forEach((listener) => {
     try {
-      fn();
+      listener();
     } catch {
-      /* noop */
+      /* Один ошибочный listener не блокирует остальные экраны. */
     }
   });
 }
@@ -31,32 +31,132 @@ type SyncOpts = {
   role?: OsRole | UserRole | string | null;
 };
 
+type SyncState = {
+  dirty: boolean;
+  latest: SyncOpts;
+  promise: Promise<void>;
+};
+
+type ScheduledSync = {
+  latest: SyncOpts;
+  promise: Promise<void>;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 /**
- * W82: единый side-effect после мутаций golden path
- * (приёмка, ДО, подпись, гарантия, closeout, график).
- * reloadInboxSync — dynamic import, чтобы bus не тянул RN в unit-тестах.
+ * Последовательные UI callbacks одной операции часто вызывают sync несколько раз.
+ * Первый refresh выполняется сразу, вызовы в том же burst объединяются в один
+ * обязательный trailing refresh с последними opts.
  */
-export async function syncProjectSideEffects(opts: SyncOpts): Promise<void> {
+const SIDE_EFFECT_COALESCE_MS = 300;
+const activeSyncs = new Map<string, SyncState>();
+const scheduledSyncs = new Map<string, ScheduledSync>();
+const lastCompletedAt = new Map<string, number>();
+
+function resolveSyncContext(opts: SyncOpts) {
   const { user, project } = opts;
-  if (!user?.id || !project?.id) {
+  if (!user?.id || !project?.id) return null;
+  const raw = opts.role ?? user.role;
+  const osRole: OsRole = String(raw) === 'contractor' ? 'contractor' : 'customer';
+  return {
+    key: `${user.id}:${project.id}:${osRole}`,
+    user,
+    project,
+    osRole,
+  };
+}
+
+async function performProjectSideEffects(opts: SyncOpts): Promise<void> {
+  const context = resolveSyncContext(opts);
+  if (!context) {
     notifyProjectDataChanged();
     return;
   }
-  const raw = opts.role ?? user.role;
-  const osRole: OsRole = String(raw) === 'contractor' ? 'contractor' : 'customer';
+
   try {
     const { reloadInboxSync } = await import('@/lib/inboxSyncStore');
     await reloadInboxSync({
-      userId: user.id,
-      userRole: user.role,
-      projectId: project.id,
-      project,
-      osRole,
+      userId: context.user.id,
+      userRole: context.user.role,
+      projectId: context.project.id,
+      project: context.project,
+      osRole: context.osRole,
     }).catch(reportCatch('projectDataBus.inboxSync'));
   } catch {
     /* offline / test env без inboxSyncStore */
   }
   notifyProjectDataChanged();
+}
+
+function startSync(key: string, opts: SyncOpts): Promise<void> {
+  const state: SyncState = {
+    dirty: false,
+    latest: opts,
+    promise: Promise.resolve(),
+  };
+
+  state.promise = (async () => {
+    let current = opts;
+    do {
+      state.dirty = false;
+      await performProjectSideEffects(current);
+      current = state.latest;
+    } while (state.dirty);
+  })().finally(() => {
+    if (activeSyncs.get(key) === state) activeSyncs.delete(key);
+    lastCompletedAt.set(key, Date.now());
+  });
+
+  activeSyncs.set(key, state);
+  return state.promise;
+}
+
+/**
+ * W82: единый side-effect после мутаций golden path
+ * (приёмка, ДО, подпись, гарантия, closeout, график).
+ * reloadInboxSync — dynamic import, чтобы bus не тянул RN в unit-тестах.
+ */
+export function syncProjectSideEffects(opts: SyncOpts): Promise<void> {
+  const context = resolveSyncContext(opts);
+  if (!context) {
+    notifyProjectDataChanged();
+    return Promise.resolve();
+  }
+
+  const active = activeSyncs.get(context.key);
+  if (active) {
+    active.latest = opts;
+    active.dirty = true;
+    return active.promise;
+  }
+
+  const scheduled = scheduledSyncs.get(context.key);
+  if (scheduled) {
+    scheduled.latest = opts;
+    return scheduled.promise;
+  }
+
+  const elapsed = Date.now() - (lastCompletedAt.get(context.key) ?? 0);
+  if (elapsed < SIDE_EFFECT_COALESCE_MS) {
+    let resolvePromise: () => void = () => undefined;
+    let rejectPromise: (error: unknown) => void = () => undefined;
+    const promise = new Promise<void>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+    const entry: ScheduledSync = {
+      latest: opts,
+      promise,
+      timer: setTimeout(() => {
+        scheduledSyncs.delete(context.key);
+        startSync(context.key, entry.latest).then(resolvePromise, rejectPromise);
+      }, SIDE_EFFECT_COALESCE_MS - elapsed),
+    };
+    scheduledSyncs.set(context.key, entry);
+    return promise;
+  }
+
+  return startSync(context.key, opts);
 }
 
 /**
@@ -71,4 +171,3 @@ export async function runWithProjectSideEffects<T>(
   await syncProjectSideEffects(opts);
   return result;
 }
-

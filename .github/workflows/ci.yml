@@ -27,6 +27,10 @@ jobs:
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/projectReloadFocusContract.test.ts
+      - name: Project side-effect coalescing contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/projectSideEffectsCoalescing.test.ts
 
   e2e:
     runs-on: ubuntu-latest
