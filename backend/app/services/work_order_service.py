@@ -100,7 +100,7 @@ async def create_work_order(
     notes: str | None = None,
     publish: bool = False,
 ) -> WorkOrder:
-    w = WorkOrder(
+    work_order = WorkOrder(
         project_id=project_id,
         room_id=room_id,
         stage_id=stage_id,
@@ -113,35 +113,50 @@ async def create_work_order(
         notes=notes,
         created_by=user_id,
     )
-    db.add(w)
+    db.add(work_order)
     await db.flush()
-    thread = await chat_svc.create_thread(db, project_id, user_id, f"Работа: {title}", topic=f"work:{w.id}")
-    w.chat_thread_id = thread.id
+    thread = await chat_svc.create_thread(db, project_id, user_id, f"Работа: {title}", topic=f"work:{work_order.id}")
+    work_order.chat_thread_id = thread.id
     await act.log_event(
-        db, project_id=project_id, user_id=user_id, kind="work",
-        title=f"Задача: {title}", body=notes, room_id=room_id, work_type=work_type,
-        link_path=f"/work-order/{w.id}", stage_id=stage_id,
+        db,
+        project_id=project_id,
+        user_id=user_id,
+        kind="work",
+        title=f"Задача: {title}",
+        body=notes,
+        room_id=room_id,
+        work_type=work_type,
+        link_path=f"/work-order/{work_order.id}",
+        stage_id=stage_id,
     )
-    await db.refresh(w)
-    return w
+    await db.refresh(work_order)
+    return work_order
 
 
-async def update_work_order(db: AsyncSession, w: WorkOrder, patch: dict) -> WorkOrder:
+async def update_work_order(db: AsyncSession, work_order: WorkOrder, patch: dict) -> WorkOrder:
     for key in ("title", "work_type", "room_id", "stage_id", "notes", "assignee_id", "budget_planned"):
         if key in patch:
-            setattr(w, key, patch[key])
+            setattr(work_order, key, patch[key])
     for key in ("planned_start", "planned_end", "actual_start", "actual_end"):
         if key in patch:
             value = patch[key]
-            setattr(w, key, date.fromisoformat(value) if isinstance(value, str) and value else value)
-    w.updated_at = utc_now()
+            setattr(work_order, key, date.fromisoformat(value) if isinstance(value, str) and value else value)
+    work_order.updated_at = utc_now()
     await db.commit()
-    await db.refresh(w)
-    return w
+    await db.refresh(work_order)
+    return work_order
 
 
 def role_value(role: UserRole | str) -> str:
     return role.value if hasattr(role, "value") else str(role)
+
+
+def infer_actor_role(project: Project, user_id: str) -> UserRole:
+    if user_id == project.customer_id:
+        return UserRole.customer
+    if user_id in {project.contractor_id, project.foreman_id}:
+        return UserRole.contractor
+    raise ValueError("work_order_actor_unknown")
 
 
 def validate_transition(current: str, new_status: str, actor_role: UserRole | str) -> None:
@@ -184,58 +199,62 @@ def transition_notification_copy(current: str, new_status: str, title: str) -> t
 
 async def transition(
     db: AsyncSession,
-    w: WorkOrder,
+    work_order: WorkOrder,
     new_status: str,
     user_id: str,
-    actor_role: UserRole | str,
+    actor_role: UserRole | str | None = None,
     *,
     project: Project | None = None,
 ) -> WorkOrder:
-    current = w.status.value if hasattr(w.status, "value") else str(w.status)
-    validate_transition(current, new_status, actor_role)
-
-    project_row = project or await db.get(Project, w.project_id)
+    project_row = project or await db.get(Project, work_order.project_id)
     if not project_row:
         raise ValueError("work_order_project_missing")
+    effective_role = actor_role or infer_actor_role(project_row, user_id)
 
-    w.status = WorkOrderStatus(new_status)
+    current = work_order.status.value if hasattr(work_order.status, "value") else str(work_order.status)
+    validate_transition(current, new_status, effective_role)
+
+    work_order.status = WorkOrderStatus(new_status)
     today = date.today()
-    if new_status == WorkOrderStatus.in_progress.value and not w.actual_start:
-        w.actual_start = today
-    if new_status == WorkOrderStatus.done.value and not w.actual_end:
-        w.actual_end = today
-    w.updated_at = utc_now()
+    if new_status == WorkOrderStatus.in_progress.value and not work_order.actual_start:
+        work_order.actual_start = today
+    if new_status == WorkOrderStatus.done.value and not work_order.actual_end:
+        work_order.actual_end = today
+    work_order.updated_at = utc_now()
 
     await act.log_event(
         db,
-        project_id=w.project_id,
+        project_id=work_order.project_id,
         user_id=user_id,
         kind="work_status",
-        title=f"{w.title}: {current} → {new_status}",
-        body=f"actor_role={role_value(actor_role)}",
-        room_id=w.room_id,
-        work_type=w.work_type,
-        link_path=f"/work-order/{w.id}",
-        stage_id=w.stage_id,
+        title=f"{work_order.title}: {current} → {new_status}",
+        body=f"actor_role={role_value(effective_role)}",
+        room_id=work_order.room_id,
+        work_type=work_order.work_type,
+        link_path=f"/work-order/{work_order.id}",
+        stage_id=work_order.stage_id,
     )
 
-    notification_type, notification_title, notification_body = transition_notification_copy(current, new_status, w.title)
+    notification_type, notification_title, notification_body = transition_notification_copy(current, new_status, work_order.title)
     for target_id in transition_notification_targets(project_row, user_id):
         try:
             await notif_svc.notify(
                 db,
                 user_id=target_id,
-                project_id=w.project_id,
+                project_id=work_order.project_id,
                 notification_type=notification_type,
                 title=notification_title,
                 body=notification_body,
-                link_path=f"/work-order/{w.id}",
+                link_path=f"/work-order/{work_order.id}",
             )
         except Exception:
-            logger.exception("work_order_transition_notification_failed", extra={"work_order_id": w.id, "target_id": target_id})
+            logger.exception(
+                "work_order_transition_notification_failed",
+                extra={"work_order_id": work_order.id, "target_id": target_id},
+            )
 
-    await db.refresh(w)
-    return w
+    await db.refresh(work_order)
+    return work_order
 
 
 async def get_work_order(db: AsyncSession, work_order_id: str) -> WorkOrder | None:
