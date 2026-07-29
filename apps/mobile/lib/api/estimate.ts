@@ -1,6 +1,7 @@
 /** API: estimate */
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ChangeOrder, MaterialStats, User } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
 export const estimateApi = {
   /** W107: правка строки сметы — очередь офлайн */
   patchEstimateLine: async (userId: string, projectId: string, lineId: string, body: object) => {
@@ -89,10 +90,16 @@ export const estimateApi = {
   listChangeOrders: (userId: string, projectId: string) => req<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, {}, userId),
   /** W107: допсоглашение — очередь офлайн */
   createChangeOrder: async (userId: string, projectId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const requestBody = {
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('change-order'),
+    };
+    const serialized = JSON.stringify(requestBody);
     try {
       return await req(
         `/api/v1/projects/${projectId}/change-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (e) {
@@ -101,7 +108,7 @@ export const estimateApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/change-orders`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
@@ -184,4 +191,3 @@ export const estimateApi = {
     }
   },
 };
-

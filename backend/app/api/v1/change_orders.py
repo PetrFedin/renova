@@ -3,18 +3,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import User, UserRole
+from app.models.entities import ChangeOrder, User, UserRole
 from app.services import change_order_service as co_svc
 from app.services import activity_service as act
 from app.services import notification_service as notif
 
 router = APIRouter(prefix="/projects/{project_id}/change-orders", tags=["change-orders"])
+CHANGE_ORDER_CREATE_SCOPE = "change_order.create"
 
 
 class ChangeOrderCreate(BaseModel):
     title: str
     amount: float = Field(gt=0)
     description: str | None = None
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 def _member_ids(project) -> list[str]:
@@ -39,28 +41,102 @@ async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depen
     project = await require_project(db, project_id, user, write=True)
     if user.role != UserRole.contractor:
         raise HTTPException(403)
-    co = await co_svc.create_order(db, project_id, user.id, body.title, body.amount, body.description)
-    await act.log_event(
+
+    from app.services.change_order_create_service import prepare_order
+    from app.services.client_write_idempotency import (
+        IdempotencyConflict,
+        commit_client_write,
+        replay_entity_id,
+    )
+
+    payload = {
+        "title": body.title,
+        "amount": float(body.amount),
+        "description": body.description,
+    }
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=CHANGE_ORDER_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор запроса уже использован для других доп. работ",
+            },
+        ) from error
+
+    if replay_id:
+        existing = await db.get(ChangeOrder, replay_id)
+        if not existing or existing.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_entity_missing"})
+        return {"id": existing.id, "status": existing.status.value, "replayed": True}
+
+    order = await prepare_order(
         db,
         project_id=project_id,
         user_id=user.id,
-        kind="ChangeOrderCreated",
-        title=f"Доп. работы: {co.title}",
-        body=body.description,
-        link_path="/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
+        title=body.title,
+        amount=body.amount,
+        description=body.description,
     )
-    if project.customer_id:
-        await notif.notify(
+    try:
+        created, entity_id = await commit_client_write(
             db,
-            user_id=project.customer_id,
+            scope=CHANGE_ORDER_CREATE_SCOPE,
             project_id=project_id,
-            notification_type="change_order",
-            title=f"Согласуйте доп. работы: {co.title}",
-            body=f"{co.amount:.0f} ₽ · смета → Доп. работы",
-            link_path="/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
-            return_to="/(customer)/(tabs)/",
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+            entity_id=order.id,
         )
-    return {"id": co.id, "status": co.status.value}
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор запроса уже использован для других доп. работ",
+            },
+        ) from error
+
+    if not created:
+        existing = await db.get(ChangeOrder, entity_id)
+        if not existing or existing.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_entity_missing"})
+        return {"id": existing.id, "status": existing.status.value, "replayed": True}
+
+    from app.services.client_write_side_effects import clear_request_side_effect_context
+
+    try:
+        await act.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="ChangeOrderCreated",
+            title=f"Доп. работы: {order.title}",
+            body=body.description,
+            link_path="/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
+        )
+        if project.customer_id:
+            await notif.notify(
+                db,
+                user_id=project.customer_id,
+                project_id=project_id,
+                notification_type="change_order",
+                title=f"Согласуйте доп. работы: {order.title}",
+                body=f"{order.amount:.0f} ₽ · смета → Доп. работы",
+                link_path="/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
+                return_to="/(customer)/(tabs)/",
+            )
+    finally:
+        clear_request_side_effect_context()
+    return {"id": order.id, "status": order.status.value, "replayed": False}
 
 
 @router.post("/{order_id}/approve")

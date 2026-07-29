@@ -9,7 +9,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Expense, Payment, Project, Receipt
+from app.models.entities import ChangeOrder, Expense, Payment, Project, Receipt
 from app.services import outbox_service as outbox
 
 
@@ -30,19 +30,21 @@ _suppress_payment_transition_effects: ContextVar[bool] = ContextVar(
 )
 
 
-async def prepare_client_write_side_effect(
+async def prepare_client_write_side_effects(
     db: AsyncSession,
     *,
     scope: str,
     project_id: str,
     user_id: str,
     entity_id: str,
-) -> PreparedSideEffect | None:
+) -> list[PreparedSideEffect]:
+    effects: list[PreparedSideEffect] = []
+
     if scope == "payment.create":
         payment = await db.get(Payment, entity_id)
         project = await db.get(Project, project_id)
         if not payment or not project or not project.customer_id or project.customer_id == user_id:
-            return None
+            return effects
         row = await outbox.enqueue(
             db,
             aggregate_type="payment",
@@ -58,16 +60,19 @@ async def prepare_client_write_side_effect(
                 "return_to": "/(customer)/(tabs)/home",
             },
         )
-        return PreparedSideEffect(
-            effect_type="notification",
-            outbox_id=row.id,
-            match_key=project.customer_id,
+        effects.append(
+            PreparedSideEffect(
+                effect_type="notification",
+                outbox_id=row.id,
+                match_key=project.customer_id,
+            )
         )
+        return effects
 
     if scope in {"receipt.scan", "receipt.manual"}:
         receipt = await db.get(Receipt, entity_id)
         if not receipt:
-            return None
+            return effects
         expense = (
             await db.execute(
                 select(Expense)
@@ -93,9 +98,74 @@ async def prepare_client_write_side_effect(
                 "link_path": "/(customer)/(tabs)/budget",
             },
         )
-        return PreparedSideEffect(effect_type="activity", outbox_id=row.id)
+        effects.append(PreparedSideEffect(effect_type="activity", outbox_id=row.id))
+        return effects
 
-    return None
+    if scope == "change_order.create":
+        order = await db.get(ChangeOrder, entity_id)
+        project = await db.get(Project, project_id)
+        if not order or not project:
+            return effects
+        activity_row = await outbox.enqueue(
+            db,
+            aggregate_type="change_order",
+            aggregate_id=order.id,
+            event_type=outbox.RECEIPT_CREATED_EVENT,
+            payload={
+                "project_id": project_id,
+                "user_id": user_id,
+                "kind": "ChangeOrderCreated",
+                "title": f"Доп. работы: {order.title}",
+                "body": order.description,
+                "link_path": "/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
+            },
+        )
+        effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
+        if project.customer_id and project.customer_id != user_id:
+            notification_row = await outbox.enqueue(
+                db,
+                aggregate_type="change_order",
+                aggregate_id=order.id,
+                event_type=outbox.PAYMENT_CREATED_EVENT,
+                payload={
+                    "user_id": project.customer_id,
+                    "project_id": project_id,
+                    "notification_type": "change_order",
+                    "title": f"Согласуйте доп. работы: {order.title}",
+                    "body": f"{order.amount:.0f} ₽ · смета → Доп. работы",
+                    "link_path": "/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes",
+                    "return_to": "/(customer)/(tabs)/",
+                },
+            )
+            effects.append(
+                PreparedSideEffect(
+                    effect_type="notification",
+                    outbox_id=notification_row.id,
+                    match_key=project.customer_id,
+                )
+            )
+        return effects
+
+    return effects
+
+
+async def prepare_client_write_side_effect(
+    db: AsyncSession,
+    *,
+    scope: str,
+    project_id: str,
+    user_id: str,
+    entity_id: str,
+) -> PreparedSideEffect | None:
+    """Compatibility helper for older callers expecting one side effect."""
+    effects = await prepare_client_write_side_effects(
+        db,
+        scope=scope,
+        project_id=project_id,
+        user_id=user_id,
+        entity_id=entity_id,
+    )
+    return effects[0] if effects else None
 
 
 def activate_client_write_side_effect(effect: PreparedSideEffect | None) -> None:
