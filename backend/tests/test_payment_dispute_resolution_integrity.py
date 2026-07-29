@@ -215,16 +215,19 @@ async def test_resolution_requires_canonical_dispute_evidence(resolution_db):
         status=PaymentStatus.disputed,
         with_expense=False,
     )
+    project_id = project.id
+    payment_id = payment.id
+    customer_id = customer.id
     with pytest.raises(ValueError, match="payment_dispute_evidence_missing"):
         await disputes.resolve_payment_dispute(
             resolution_db,
-            project_id=project.id,
-            payment_id=payment.id,
-            actor_user_id=customer.id,
+            project_id=project_id,
+            payment_id=payment_id,
+            actor_user_id=customer_id,
             note="Клиент не может восстановить статус без исходного события спора",
         )
     await resolution_db.rollback()
-    assert (await resolution_db.get(Payment, payment.id)).status == PaymentStatus.disputed
+    assert (await resolution_db.get(Payment, payment_id)).status == PaymentStatus.disputed
 
 
 @pytest.mark.asyncio
@@ -251,17 +254,20 @@ async def test_resolution_blocks_conflicting_expense_state(resolution_db):
     expense.status = "refund"
     await resolution_db.commit()
 
+    project_id = project.id
+    payment_id = payment.id
+    customer_id = customer.id
     with pytest.raises(ValueError, match="payment_dispute_expense_state_conflict"):
         await disputes.resolve_payment_dispute(
             resolution_db,
-            project_id=project.id,
-            payment_id=payment.id,
-            actor_user_id=customer.id,
+            project_id=project_id,
+            payment_id=payment_id,
+            actor_user_id=customer_id,
             note="Конфликтующий возврат нельзя заменить отзывом спора",
         )
     await resolution_db.rollback()
-    assert (await resolution_db.get(Payment, payment.id)).status == PaymentStatus.disputed
-    assert (await resolution_db.get(Project, project.id)).budget_spent == 0
+    assert (await resolution_db.get(Payment, payment_id)).status == PaymentStatus.disputed
+    assert (await resolution_db.get(Project, project_id)).budget_spent == 0
 
 
 @pytest.mark.asyncio
