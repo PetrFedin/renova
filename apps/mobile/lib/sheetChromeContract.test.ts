@@ -43,15 +43,17 @@ must(!expense.includes('Alert.alert') && !expense.includes(', card'), 'expense n
 const payment = src('components/renova/PaymentDetailSheet.tsx');
 must(payment.includes('SheetSurface'), 'payment shared surface');
 must(payment.includes('const mutationRef = useRef(false)'), 'payment mutation ref');
-must(payment.includes("type PaymentMutation = 'card' | 'confirm' | 'dispute' | null"), 'payment exact mutation states');
+must(payment.includes("type PaymentMutation = 'card' | 'confirm' | 'dispute' | 'resolveDispute' | null"), 'payment exact mutation states');
 must(payment.includes("loading={mutation === 'card'}"), 'payment card loading');
 must(payment.includes("loading={mutation === 'confirm'}"), 'payment confirm loading');
 must(payment.includes("loading={mutation === 'dispute'}"), 'payment dispute loading');
+must(payment.includes("loading={mutation === 'resolveDispute'}"), 'payment dispute resolution loading');
 must(payment.includes("title: 'Подтвердить оплату?'"), 'payment pre-confirm');
 must(payment.includes('beginMutation') && payment.includes('endMutation'), 'payment single mutation orchestration');
 must(payment.includes('footer={footer}'), 'payment sticky action footer');
-must(payment.includes('<TextInput') && payment.includes('multiline'), 'payment dispute reason uses keyboard-aware multiline input');
+must(payment.includes('<TextInput') && payment.includes('multiline'), 'payment dispute forms use keyboard-aware multiline input');
 must(payment.includes('variant="dangerOutline"') && payment.includes('variant="danger"'), 'payment dispute danger hierarchy');
+must(payment.includes('title="Отозвать спор"') && payment.includes('title="Подтвердить отзыв спора"'), 'payment resolution footer hierarchy');
 must(!payment.includes('Alert.alert') && !payment.includes(', card'), 'payment no Alert/local card');
 
 const material = src('components/renova/MaterialPickDetailSheet.tsx');
