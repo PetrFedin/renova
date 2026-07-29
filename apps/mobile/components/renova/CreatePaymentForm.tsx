@@ -15,6 +15,7 @@ import { apiErrorMessage } from '@/lib/formatPhone';
 import type { OsRole } from '@/constants/osSections';
 import { OFFLINE_MESSAGES, OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
 import { reportCatch } from '@/lib/reportError';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 /** Backend: contractor может создавать только stage/material (payments.py). */
 const PAY_TYPES = [
@@ -45,6 +46,7 @@ export function CreatePaymentForm({
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const requestIdRef = useRef(createClientRequestId('payment'));
   const [percent, setPercent] = useState<number | null>(null);
 
   const clearDraft = () => {
@@ -83,6 +85,7 @@ export function CreatePaymentForm({
         payment_type: paymentType,
         stage_id: paymentType === 'stage' ? stageId : null,
         notes: notes.trim() || null,
+        client_request_id: requestIdRef.current,
       });
       created = true;
     } catch (error: unknown) {
@@ -102,6 +105,7 @@ export function CreatePaymentForm({
     }
 
     if (!created) return;
+    requestIdRef.current = createClientRequestId('payment');
     clearDraft();
     onSaved?.();
     alertPaymentCreated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
