@@ -1,30 +1,34 @@
-from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import Receipt, User
-from app.services.fns.receipt_verify import parse_receipt_qr, verify_receipt, receipt_meta
+from app.models.entities import Payment, PaymentStatus, Receipt, Stage, User
+from app.services import receipt_integrity_service as receipt_svc
 from app.services.client_write_idempotency import IdempotencyConflict, commit_client_write, replay_entity_id
-
-
-def _resolve_stage_for_room(stages, room_id: str | None) -> str | None:
-    if not room_id:
-        return None
-    from app.services.stage_service import parse_room_ids
-    from app.models.entities import StageStatus
-    priority = [StageStatus.active, StageStatus.review, StageStatus.planned, StageStatus.done]
-    ordered = sorted(stages, key=lambda stage: priority.index(stage.status) if stage.status in priority else 99)
-    for stage in ordered:
-        if room_id in parse_room_ids(stage):
-            return stage.id
-    return None
+from app.services.fns.receipt_verify import parse_receipt_qr, receipt_meta, verify_receipt
 
 
 router = APIRouter(prefix="/projects/{project_id}/receipts", tags=["receipts"])
 VALID_CATEGORIES = {"materials", "labor", "delivery", "tools", "other"}
 RECEIPT_SCAN_SCOPE = "receipt.scan"
 RECEIPT_MANUAL_SCOPE = "receipt.manual"
+
+
+def _resolve_stage_for_room(stages, room_id: str | None) -> str | None:
+    if not room_id:
+        return None
+    from app.models.entities import StageStatus
+    from app.services.stage_service import parse_room_ids
+
+    priority = [StageStatus.active, StageStatus.review, StageStatus.planned, StageStatus.done]
+    ordered = sorted(stages, key=lambda stage: priority.index(stage.status) if stage.status in priority else 99)
+    for stage in ordered:
+        if room_id in parse_room_ids(stage):
+            return stage.id
+    return None
 
 
 def _idempotency_http_error() -> HTTPException:
@@ -37,30 +41,75 @@ def _idempotency_http_error() -> HTTPException:
     )
 
 
-async def _resolve_payment_id(db, project_id: str, payment_id: str | None) -> str | None:
+def _receipt_error(error: ValueError) -> HTTPException:
+    code = str(error)
+    messages = {
+        "receipt_room_not_found": "Комната не найдена в этом проекте",
+        "receipt_stage_not_found": "Этап не найден в этом проекте",
+        "receipt_amount_invalid": "Сумма должна быть больше 0",
+        "fiscal_receipt_amount_immutable": "Сумма QR-чека определяется фискальными данными и не редактируется",
+        "fiscal_receipt_description_immutable": "Описание QR-чека определяется фискальными данными и не редактируется",
+        "manual_receipt_not_reverifiable": "Ручной расход нельзя проверить через ФНС",
+        "confirmed_payment_receipt_locked": "Нельзя удалить чек, подтверждающий завершённую оплату",
+        "receipt_not_found": "Чек не найден",
+    }
+    status = 404 if code == "receipt_not_found" else 422 if code in {
+        "receipt_room_not_found",
+        "receipt_stage_not_found",
+        "receipt_amount_invalid",
+    } else 409
+    return HTTPException(status, detail={"code": code, "message": messages.get(code, "Операция с чеком недоступна")})
+
+
+async def _resolve_payment_id(db: AsyncSession, project_id: str, payment_id: str | None) -> str | None:
     if not payment_id:
         return None
-    from app.models.entities import Payment, PaymentStatus
-    payment = await db.get(Payment, payment_id)
-    if not payment or payment.project_id != project_id:
+    payment = (
+        await db.execute(
+            select(Payment).where(Payment.id == payment_id, Payment.project_id == project_id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if not payment:
         raise HTTPException(404, "Счёт не найден")
     if payment.status != PaymentStatus.pending:
         raise HTTPException(409, "К счёту уже нельзя прикрепить чек")
     return payment.id
 
 
-async def _resolve_stage_id(db, project_id: str, stage_id: str | None, room_id: str | None) -> str | None:
-    if stage_id or not room_id:
-        return stage_id
-    from sqlalchemy import select
-    from app.models.entities import Stage
-    stages = (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
-    return _resolve_stage_for_room(stages, room_id)
+async def _resolve_receipt_links(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    room_id: str | None,
+    stage_id: str | None,
+) -> tuple[str | None, str | None]:
+    try:
+        resolved_room_id = await receipt_svc.resolve_room_id(
+            db,
+            project_id=project_id,
+            room_id=room_id,
+        )
+        if stage_id:
+            resolved_stage_id = await receipt_svc.resolve_stage_id(
+                db,
+                project_id=project_id,
+                stage_id=stage_id,
+            )
+        elif resolved_room_id:
+            stages = (
+                await db.execute(select(Stage).where(Stage.project_id == project_id))
+            ).scalars().all()
+            resolved_stage_id = _resolve_stage_for_room(stages, resolved_room_id)
+        else:
+            resolved_stage_id = None
+    except ValueError as error:
+        raise _receipt_error(error) from error
+    return resolved_room_id, resolved_stage_id
 
 
 class ReceiptScan(BaseModel):
     payment_id: str | None = None
-    qr_raw: str
+    qr_raw: str = Field(min_length=1, max_length=500)
     expense_category: str = "materials"
     room_id: str | None = None
     stage_id: str | None = None
@@ -69,7 +118,7 @@ class ReceiptScan(BaseModel):
 
 class ReceiptManual(BaseModel):
     payment_id: str | None = None
-    amount: float
+    amount: float = Field(gt=0)
     description: str = ""
     expense_category: str = "materials"
     room_id: str | None = None
@@ -81,19 +130,20 @@ class ReceiptPatch(BaseModel):
     expense_category: str | None = None
     room_id: str | None = None
     stage_id: str | None = None
-    amount: float | None = None
+    amount: float | None = Field(default=None, gt=0)
     description: str | None = None
 
 
 def _scan_response(rec: Receipt, *, message: str, idempotent_replay: bool = False) -> dict:
     from app.services.fns.receipt_verify import fns_receipt_health
+
     health = fns_receipt_health()
     verify_mode = "live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "off")
     return {
         "id": rec.id,
         "amount": rec.amount,
         "verified": rec.fns_verified,
-        "verification_status": getattr(rec, "verification_status", None) or ("verified_live" if rec.fns_verified else "saved_unverified"),
+        "verification_status": rec.verification_status or ("verified_live" if rec.fns_verified else "saved_unverified"),
         "message": message,
         "expense_category": rec.expense_category,
         "room_id": rec.room_id,
@@ -129,12 +179,17 @@ async def scan_receipt(
     await require_project(db, project_id, user, write=True)
     category = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
     payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
-    stage_id = await _resolve_stage_id(db, project_id, body.stage_id, body.room_id)
+    room_id, stage_id = await _resolve_receipt_links(
+        db,
+        project_id=project_id,
+        room_id=body.room_id,
+        stage_id=body.stage_id,
+    )
     qr_raw = body.qr_raw[:500]
     payload = {
         "qr_raw": qr_raw,
         "expense_category": category,
-        "room_id": body.room_id,
+        "room_id": room_id,
         "stage_id": stage_id,
         "payment_id": payment_id,
     }
@@ -147,37 +202,35 @@ async def scan_receipt(
             request_id=body.client_request_id,
             payload=payload,
         )
-    except IdempotencyConflict as exc:
-        raise _idempotency_http_error() from exc
+    except IdempotencyConflict as error:
+        raise _idempotency_http_error() from error
     if replay_id:
-        existing = await db.get(Receipt, replay_id)
-        if not existing or existing.project_id != project_id:
+        existing = await receipt_svc.get_receipt(db, project_id=project_id, receipt_id=replay_id)
+        if not existing:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
         return _scan_response(existing, message="Чек уже сохранён", idempotent_replay=True)
 
     parsed = parse_receipt_qr(body.qr_raw)
     check = await verify_receipt(parsed)
+    verified = bool(check.get("verified"))
+    mode = check.get("mode") or "offline"
     rec = Receipt(
         project_id=project_id,
         amount=parsed.get("amount", 0),
         qr_raw=qr_raw,
         fn=parsed.get("fn"),
         fd=parsed.get("fd"),
-        fns_verified=check["verified"],
-        verification_status=(
-            "verified_live" if check.get("verified") and check.get("mode") == "live"
-            else "demo_verified" if check.get("verified") and check.get("mode") == "demo"
-            else "verification_failed" if check.get("mode") == "live" and not check.get("verified")
-            else "saved_unverified"
-        ),
+        fns_verified=verified,
+        verification_status=receipt_svc.verification_status(verified=verified, mode=mode),
         expense_category=category,
-        room_id=body.room_id,
+        room_id=room_id,
         stage_id=stage_id,
         payment_id=payment_id,
     )
     db.add(rec)
     await db.flush()
     from app.services import budget_service as budget
+
     expense = await budget.expense_from_receipt(db, rec)
     await budget.refresh_budget_facts(db, project_id)
     try:
@@ -190,25 +243,30 @@ async def scan_receipt(
             payload=payload,
             entity_id=rec.id,
         )
-    except IdempotencyConflict as exc:
-        raise _idempotency_http_error() from exc
+    except IdempotencyConflict as error:
+        raise _idempotency_http_error() from error
     if not created:
-        rec = await db.get(Receipt, entity_id)
-        if not rec:
+        existing = await receipt_svc.get_receipt(db, project_id=project_id, receipt_id=entity_id)
+        if not existing:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
-        return _scan_response(rec, message="Чек уже сохранён", idempotent_replay=True)
+        return _scan_response(existing, message="Чек уже сохранён", idempotent_replay=True)
 
     from app.services import activity_service as activity
-    await activity.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="ExpenseAdded",
-        title=expense.title,
-        body=str(expense.amount),
-        link_path="/(customer)/(tabs)/budget",
-    )
-    return _scan_response(rec, message=check["message"])
+    from app.services.client_write_side_effects import clear_request_side_effect_context
+
+    try:
+        await activity.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="ExpenseAdded",
+            title=expense.title,
+            body=str(expense.amount),
+            link_path="/(customer)/(tabs)/budget",
+        )
+    finally:
+        clear_request_side_effect_context()
+    return _scan_response(rec, message=check.get("message") or "Чек сохранён")
 
 
 @router.post("/manual")
@@ -218,19 +276,21 @@ async def manual_receipt(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Расход без QR: наличные, перевод, доставка."""
-    if body.amount <= 0:
-        raise HTTPException(400, "Сумма должна быть больше 0")
     await require_project(db, project_id, user, write=True)
     category = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
     payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
-    stage_id = await _resolve_stage_id(db, project_id, body.stage_id, body.room_id)
+    room_id, stage_id = await _resolve_receipt_links(
+        db,
+        project_id=project_id,
+        room_id=body.room_id,
+        stage_id=body.stage_id,
+    )
     description = (body.description or "Ручной расход")[:500]
     payload = {
         "amount": round(body.amount, 2),
         "description": description,
         "expense_category": category,
-        "room_id": body.room_id,
+        "room_id": room_id,
         "stage_id": stage_id,
         "payment_id": payment_id,
     }
@@ -243,11 +303,11 @@ async def manual_receipt(
             request_id=body.client_request_id,
             payload=payload,
         )
-    except IdempotencyConflict as exc:
-        raise _idempotency_http_error() from exc
+    except IdempotencyConflict as error:
+        raise _idempotency_http_error() from error
     if replay_id:
-        existing = await db.get(Receipt, replay_id)
-        if not existing or existing.project_id != project_id:
+        existing = await receipt_svc.get_receipt(db, project_id=project_id, receipt_id=replay_id)
+        if not existing:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
         return _manual_response(existing, idempotent_replay=True)
 
@@ -259,13 +319,14 @@ async def manual_receipt(
         fd=None,
         fns_verified=True,
         expense_category=category,
-        room_id=body.room_id,
+        room_id=room_id,
         stage_id=stage_id,
         payment_id=payment_id,
     )
     db.add(rec)
     await db.flush()
     from app.services import budget_service as budget
+
     expense = await budget.expense_from_receipt(db, rec, title=description)
     await budget.refresh_budget_facts(db, project_id)
     try:
@@ -278,24 +339,29 @@ async def manual_receipt(
             payload=payload,
             entity_id=rec.id,
         )
-    except IdempotencyConflict as exc:
-        raise _idempotency_http_error() from exc
+    except IdempotencyConflict as error:
+        raise _idempotency_http_error() from error
     if not created:
-        rec = await db.get(Receipt, entity_id)
-        if not rec:
+        existing = await receipt_svc.get_receipt(db, project_id=project_id, receipt_id=entity_id)
+        if not existing:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
-        return _manual_response(rec, idempotent_replay=True)
+        return _manual_response(existing, idempotent_replay=True)
 
     from app.services import activity_service as activity
-    await activity.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="ExpenseAdded",
-        title=expense.title,
-        body=str(expense.amount),
-        link_path="/(customer)/(tabs)/budget",
-    )
+    from app.services.client_write_side_effects import clear_request_side_effect_context
+
+    try:
+        await activity.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="ExpenseAdded",
+            title=expense.title,
+            body=str(expense.amount),
+            link_path="/(customer)/(tabs)/budget",
+        )
+    finally:
+        clear_request_side_effect_context()
     return _manual_response(rec)
 
 
@@ -307,29 +373,28 @@ async def patch_receipt(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=True)
-    rec = await db.get(Receipt, receipt_id)
-    if not rec or rec.project_id != project_id:
+    await require_project(db, project_id, user, write=True)
+    if body.expense_category is not None and body.expense_category not in VALID_CATEGORIES:
+        raise HTTPException(422, detail={"code": "receipt_category_invalid"})
+    fields = body.model_fields_set
+    try:
+        rec = await receipt_svc.patch_receipt(
+            db,
+            project_id=project_id,
+            receipt_id=receipt_id,
+            expense_category=body.expense_category,
+            room_id_supplied="room_id" in fields,
+            room_id=body.room_id,
+            stage_id_supplied="stage_id" in fields,
+            stage_id=body.stage_id,
+            amount=body.amount,
+            description_supplied="description" in fields,
+            description=body.description,
+        )
+    except ValueError as error:
+        raise _receipt_error(error) from error
+    if not rec:
         raise HTTPException(404)
-    if body.expense_category and body.expense_category in VALID_CATEGORIES:
-        rec.expense_category = body.expense_category
-    if body.room_id is not None:
-        rec.room_id = body.room_id or None
-    if body.amount is not None:
-        if body.amount <= 0:
-            raise HTTPException(400, detail="Сумма должна быть больше 0")
-        old_amount = rec.amount
-        rec.amount = round(body.amount, 2)
-        if rec.fns_verified:
-            project.budget_spent = round(max(0, (project.budget_spent or 0) - old_amount + rec.amount), 2)
-    if body.description is not None and rec.fn == "MANUAL":
-        rec.qr_raw = (body.description or "Ручной расход")[:500]
-    if body.stage_id is not None:
-        rec.stage_id = body.stage_id or None
-    from app.services import budget_service as budget
-    await budget.expense_from_receipt(db, rec, title=rec.qr_raw if rec.fn == "MANUAL" else None)
-    await budget.refresh_budget_facts(db, project_id)
-    await db.commit()
     return {
         "ok": True,
         "amount": rec.amount,
@@ -346,27 +411,39 @@ async def delete_receipt(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Удалить чек и связанные расходы, пересчитать факт бюджета."""
     await require_project(db, project_id, user, write=True)
-    rec = await db.get(Receipt, receipt_id)
-    if not rec or rec.project_id != project_id:
+    try:
+        result = await receipt_svc.delete_receipt(
+            db,
+            project_id=project_id,
+            receipt_id=receipt_id,
+            actor_id=user.id,
+        )
+    except ValueError as error:
+        raise _receipt_error(error) from error
+    if not result:
         raise HTTPException(404)
-    from app.services import budget_service as budget
-    removed = await budget.delete_receipt_expenses(db, receipt_id, rec=rec)
-    await db.delete(rec)
-    await budget.refresh_budget_facts(db, project_id)
+
     from app.services import activity_service as activity
-    await activity.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="ExpenseRemoved",
-        title="Чек удалён",
-        body=str(rec.amount),
-        link_path="/(customer)/(tabs)/budget",
-    )
-    await db.commit()
-    return {"ok": True, "removed_amount": rec.amount, "ledger_removed": removed}
+    from app.services.client_write_side_effects import clear_request_side_effect_context
+
+    try:
+        await activity.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="ExpenseRemoved",
+            title="Чек удалён",
+            body=str(result.amount),
+            link_path="/(customer)/(tabs)/budget",
+        )
+    finally:
+        clear_request_side_effect_context()
+    return {
+        "ok": True,
+        "removed_amount": result.amount,
+        "ledger_removed": result.ledger_removed,
+    }
 
 
 @router.get("")
@@ -375,25 +452,36 @@ async def list_receipts(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=False)
+    await require_project(db, project_id, user, write=False)
+    receipts = list(
+        (
+            await db.execute(
+                select(Receipt)
+                .where(Receipt.project_id == project_id)
+                .order_by(Receipt.created_at.desc())
+            )
+        ).scalars().all()
+    )
     out = []
-    for receipt in project.receipts:
+    for receipt in receipts:
         meta = receipt_meta(receipt.qr_raw)
-        out.append({
-            "id": receipt.id,
-            "amount": receipt.amount,
-            "verified": receipt.fns_verified,
-            "verification_status": getattr(receipt, "verification_status", None) or ("verified_live" if receipt.fns_verified else "saved_unverified"),
-            "created_at": receipt.created_at.isoformat(),
-            "receipt_at": meta.get("receipt_at"),
-            "fn": receipt.fn,
-            "expense_category": getattr(receipt, "expense_category", "materials"),
-            "room_id": getattr(receipt, "room_id", None),
-            "stage_id": getattr(receipt, "stage_id", None),
-            "source": "manual" if receipt.fn == "MANUAL" else "scan",
-            "description": receipt.qr_raw if receipt.fn == "MANUAL" else None,
-            "payment_id": getattr(receipt, "payment_id", None),
-        })
+        out.append(
+            {
+                "id": receipt.id,
+                "amount": receipt.amount,
+                "verified": receipt.fns_verified,
+                "verification_status": receipt.verification_status or ("verified_live" if receipt.fns_verified else "saved_unverified"),
+                "created_at": receipt.created_at.isoformat(),
+                "receipt_at": meta.get("receipt_at"),
+                "fn": receipt.fn,
+                "expense_category": receipt.expense_category,
+                "room_id": receipt.room_id,
+                "stage_id": receipt.stage_id,
+                "source": "manual" if receipt.fn == "MANUAL" else "scan",
+                "description": receipt.qr_raw if receipt.fn == "MANUAL" else None,
+                "payment_id": receipt.payment_id,
+            }
+        )
     return out
 
 
@@ -404,35 +492,63 @@ async def reverify_receipt(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """P4: повторная live-проверка сохранённого чека по QR."""
     await require_project(db, project_id, user, write=True)
-    rec = await db.get(Receipt, receipt_id)
-    if not rec or rec.project_id != project_id:
-        raise HTTPException(404, "receipt_not_found")
+    rec = await receipt_svc.get_receipt(db, project_id=project_id, receipt_id=receipt_id)
+    if not rec:
+        raise HTTPException(404, detail={"code": "receipt_not_found"})
+    if rec.fn == "MANUAL":
+        raise _receipt_error(ValueError("manual_receipt_not_reverifiable"))
     if not rec.qr_raw:
-        raise HTTPException(400, "no_qr_raw")
-    parsed = parse_receipt_qr(rec.qr_raw)
+        raise HTTPException(400, detail={"code": "no_qr_raw"})
+
+    qr_raw = rec.qr_raw
+    parsed = parse_receipt_qr(qr_raw)
     check = await verify_receipt(parsed)
     from app.services.fns.receipt_verify import fns_receipt_health
+
     health = fns_receipt_health()
-    rec.fns_verified = bool(check.get("verified"))
     mode = check.get("mode") or ("live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "offline"))
-    if rec.fns_verified and mode == "live":
-        rec.verification_status = "verified_live"
-    elif rec.fns_verified and mode == "demo":
-        rec.verification_status = "demo_verified"
-    elif mode == "live" and not rec.fns_verified:
-        rec.verification_status = "verification_failed"
-    else:
-        rec.verification_status = "saved_unverified"
+    try:
+        mutation = await receipt_svc.apply_verification_result(
+            db,
+            project_id=project_id,
+            receipt_id=receipt_id,
+            actor_id=user.id,
+            verified=bool(check.get("verified")),
+            mode=mode,
+            message=check.get("message"),
+        )
+    except ValueError as error:
+        raise _receipt_error(error) from error
+
+    if mutation.changed:
+        from app.services import activity_service as activity
+        from app.services.client_write_side_effects import clear_request_side_effect_context
+
+        kind = "ReceiptVerified" if mutation.receipt.fns_verified else "ReceiptVerificationFailed"
+        title = "Чек подтверждён ФНС" if mutation.receipt.fns_verified else "Проверка чека не пройдена"
+        try:
+            await activity.log_event(
+                db,
+                project_id=project_id,
+                user_id=user.id,
+                kind=kind,
+                title=title,
+                body=check.get("message") or str(mutation.receipt.amount),
+                room_id=mutation.receipt.room_id,
+                link_path="/(customer)/(tabs)/budget",
+            )
+        finally:
+            clear_request_side_effect_context()
+
     verify_mode = "live" if health.get("live_verify_ready") else ("demo" if health.get("demo_verify_allowed") else "off")
-    await db.commit()
     return {
-        "id": rec.id,
-        "verified": rec.fns_verified,
-        "verification_status": getattr(rec, "verification_status", None) or ("verified_live" if rec.fns_verified else "saved_unverified"),
+        "id": mutation.receipt.id,
+        "verified": mutation.receipt.fns_verified,
+        "verification_status": mutation.receipt.verification_status,
         "message": check.get("message"),
         "mode": check.get("mode"),
         "verify_mode": verify_mode,
         "live_verify_ready": bool(health.get("live_verify_ready")),
+        "replayed": not mutation.changed,
     }
