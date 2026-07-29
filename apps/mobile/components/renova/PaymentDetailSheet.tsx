@@ -1,16 +1,17 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
-import { useCallback, useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Alert, AppState, ActivityIndicator, Platform } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
-import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
-import { screenTypography } from '@/constants/screenTypography';
-import { formMetaText } from '@/constants/formTypography';
+
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
+import { formMetaText } from '@/constants/formTypography';
 import { api, ApiError, type Payment, type Stage } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -20,13 +21,12 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { repairTabRoute } from '@/constants/osSections';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { paymentReceiptKey } from '@/constants/sessionKeys';
-
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL, PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
 import { buildPaymentHistory, formatPaymentEventDate } from '@/lib/domain/paymentHistory';
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { alertPaymentConfirmed } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
-import { reportCatch, reportError } from '@/lib/reportError';
+import { reportCatch } from '@/lib/reportError';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
@@ -48,6 +48,7 @@ function confirmAcceptanceFirst(goToAcceptance: () => void) {
 }
 
 type PayStep = 'info' | 'transfer' | 'confirm';
+type PaymentMutation = 'card' | 'confirm' | null;
 
 export function PaymentDetailSheet({
   payment,
@@ -73,51 +74,57 @@ export function PaymentDetailSheet({
   const [step, setStep] = useState<PayStep>('info');
   const [transferAck, setTransferAck] = useState(false);
   const [receiptAttached, setReceiptAttached] = useState(false);
-  const [cardBusy, setCardBusy] = useState(false);
-  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [mutation, setMutation] = useState<PaymentMutation>(null);
+  const mutationRef = useRef(false);
+  const [reqText, setReqText] = useState('');
+  const [reqMissing, setReqMissing] = useState<string | null>(null);
+  const [reqLoaded, setReqLoaded] = useState(false);
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
     if (payment.receipt_id) {
       setReceiptAttached(true);
-      setStep((s) => (s === 'info' ? 'confirm' : s));
+      setStep((current) => (current === 'info' ? 'confirm' : current));
       return;
     }
     try {
-      const v = await AsyncStorage.getItem(paymentReceiptKey(payment.id));
-      if (v === '1') {
+      const value = await AsyncStorage.getItem(paymentReceiptKey(payment.id));
+      if (value === '1') {
         setReceiptAttached(true);
-        setStep((s) => (s === 'info' ? 'confirm' : s));
+        setStep((current) => (current === 'info' ? 'confirm' : current));
       }
-    } catch { /* storage fallback до синхронизации API */ }
+    } catch {
+      // Storage is only a fallback until the API receipt relation is synced.
+    }
   }, [payment?.id, payment?.receipt_id]);
 
   useEffect(() => {
     if (!payment) return;
+    mutationRef.current = false;
+    setMutation(null);
     setStep('info');
     setTransferAck(false);
     setReceiptAttached(false);
-    setCardBusy(false);
-    setConfirmBusy(false);
-    reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
+    void reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
   }, [payment?.id, reloadReceiptFlag]);
 
   useEffect(() => {
     if (!payment) return;
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && !mutationRef.current) {
+        void reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
+      }
     });
-    return () => sub.remove();
+    return () => subscription.remove();
   }, [payment?.id, reloadReceiptFlag]);
-
-  const [reqText, setReqText] = useState('');
-  const [reqMissing, setReqMissing] = useState<string | null>(null);
-  const [reqLoaded, setReqLoaded] = useState(false);
 
   useEffect(() => {
     if (!payment || !userId || !projectId) return;
     let cancelled = false;
-    (async () => {
+    setReqLoaded(false);
+    setReqText('');
+    setReqMissing(null);
+    void (async () => {
       try {
         const raw = await api.getPaymentRequisites(userId, projectId);
         if (cancelled) return;
@@ -131,10 +138,7 @@ export function PaymentDetailSheet({
         setReqMissing(built.missingHint);
       } catch {
         if (cancelled) return;
-        const built = buildPaymentRequisites({
-          amount: payment.amount,
-          title: payment.title,
-        });
+        const built = buildPaymentRequisites({ amount: payment.amount, title: payment.title });
         setReqText(built.text);
         setReqMissing(built.missingHint);
       } finally {
@@ -147,20 +151,33 @@ export function PaymentDetailSheet({
   if (!payment) return null;
 
   const requisites = reqText || buildPaymentRequisites({ amount: payment.amount, title: payment.title }).text;
-  const stage = stages.find((st) => st.id === payment.stage_id);
+  const stage = stages.find((candidate) => candidate.id === payment.stage_id);
   const isCustomer = role === 'customer';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
-  const stageNeedsAcceptance = !!stage && stage.status !== 'done';
+  const stageNeedsAcceptance = Boolean(stage && stage.status !== 'done');
   const statusLabel = PAYMENT_STATUS_LABEL[payment.status] || payment.status;
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
   const history = buildPaymentHistory(payment);
-  const busy = cardBusy || confirmBusy;
+  const busy = mutation !== null;
+
   const closeSafely = () => {
-    if (!busy) onClose();
+    if (!mutationRef.current) onClose();
+  };
+
+  const beginMutation = (next: Exclude<PaymentMutation, null>): boolean => {
+    if (mutationRef.current) return false;
+    mutationRef.current = true;
+    setMutation(next);
+    return true;
+  };
+
+  const endMutation = () => {
+    mutationRef.current = false;
+    setMutation(null);
   };
 
   const openReceipt = () => {
-    if (busy) return;
+    if (mutationRef.current) return;
     setReceiptAttached(true);
     pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname, role);
     showActionConfirm({
@@ -174,33 +191,31 @@ export function PaymentDetailSheet({
   };
 
   const openSbp = async () => {
-    if (busy) return;
+    if (mutationRef.current) return;
     if (reqMissing) {
       showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
       return;
     }
     try {
       await Clipboard.setStringAsync(String(Math.round(payment.amount)));
-    } catch { /* fallback — пользователь скопирует вручную */ }
+    } catch {
+      showActionConfirm({ title: 'Сумма не скопирована', message: 'Скопируйте сумму вручную из карточки счёта.' });
+      return;
+    }
     showActionConfirm({
       title: 'Перевод',
       message: `${requisites}\n\nСумма скопирована в буфер. Откройте приложение банка или СБП и вставьте сумму.`,
       actions: [
-        {
-          label: 'Я перевёл',
-          onPress: () => { setTransferAck(true); setStep('confirm'); },
-        },
+        { label: 'Я перевёл', onPress: () => { setTransferAck(true); setStep('confirm'); } },
         ...(Platform.OS !== 'web'
           ? [{
               label: 'Открыть банк',
-              onPress: () => {
-                showActionConfirm({
-                  title: 'Реквизиты скопированы',
-                  message: 'Откройте приложение вашего банка или СБП и вставьте реквизиты из буфера.',
-                  primaryLabel: 'Понятно',
-                  onPrimary: () => undefined,
-                });
-              },
+              onPress: () => showActionConfirm({
+                title: 'Реквизиты скопированы',
+                message: 'Откройте приложение вашего банка или СБП и вставьте реквизиты из буфера.',
+                primaryLabel: 'Понятно',
+                onPrimary: () => undefined,
+              }),
             }]
           : []),
       ],
@@ -208,47 +223,41 @@ export function PaymentDetailSheet({
   };
 
   const copySbpAmount = async () => {
-    if (busy) return;
-    const amountText = String(Math.round(payment.amount));
-    await Clipboard.setStringAsync(amountText);
-    showActionConfirm({
-      title: 'Сумма скопирована',
-      message: `${formatRub(payment.amount)} в буфере обмена. Откройте приложение банка и вставьте сумму для перевода по СБП.`,
-      primaryLabel: 'Понятно',
-      onPrimary: () => undefined,
-      ...(Platform.OS !== 'web'
-        ? {
-            secondaryLabel: 'Подсказка',
-            onSecondary: () => {
-              showActionConfirm({
-                title: 'Сумма в буфере',
-                message: 'Откройте приложение банка или СБП и вставьте сумму вручную.',
-                primaryLabel: 'Понятно',
-                onPrimary: () => undefined,
-              });
-            },
-          }
-        : {}),
-    });
+    if (mutationRef.current) return;
+    try {
+      await Clipboard.setStringAsync(String(Math.round(payment.amount)));
+      showActionConfirm({
+        title: 'Сумма скопирована',
+        message: `${formatRub(payment.amount)} в буфере обмена. Вставьте сумму в приложении банка или СБП.`,
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+    } catch {
+      showActionConfirm({ title: 'Сумма не скопирована', message: 'Скопируйте сумму вручную из карточки счёта.' });
+    }
   };
 
   const copyRequisites = async () => {
-    if (busy) return;
+    if (mutationRef.current) return;
     if (reqMissing) {
       showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
       return;
     }
-    await Clipboard.setStringAsync(requisites);
-    showActionConfirm({
-      title: 'Реквизиты скопированы',
-      message: 'Вставьте в приложении банка для перевода по СБП или реквизитам.',
-      primaryLabel: 'Понятно',
-      onPrimary: () => undefined,
-    });
+    try {
+      await Clipboard.setStringAsync(requisites);
+      showActionConfirm({
+        title: 'Реквизиты скопированы',
+        message: 'Вставьте их в приложении банка для перевода по СБП или реквизитам.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+    } catch {
+      showActionConfirm({ title: 'Реквизиты не скопированы', message: 'Выделите и скопируйте реквизиты вручную.' });
+    }
   };
 
   const goToAcceptance = () => {
-    if (busy) return;
+    if (mutationRef.current) return;
     onClose();
     if (stage) {
       pushStageDetail(stage.id, pathname);
@@ -258,32 +267,31 @@ export function PaymentDetailSheet({
   };
 
   const payWithCard = async () => {
-    if (busy) return;
     if (stageNeedsAcceptance) {
       confirmAcceptanceFirst(goToAcceptance);
       return;
     }
-    setCardBusy(true);
+    if (!beginMutation('card')) return;
     try {
-      const pay = await api.checkoutYookassa(userId, projectId, payment.id);
-      if (pay.demo) {
+      const checkout = await api.checkoutYookassa(userId, projectId, payment.id);
+      if (checkout.demo) {
         await syncProjectSideEffects({
-          user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
-          project: activeProject ?? ({ id: projectId } as any),
+          user: user ?? ({ id: userId, role } as never),
+          project: activeProject ?? ({ id: projectId } as never),
           role,
         });
         onChanged?.();
         onClose();
         showActionConfirm({
           title: 'Оплата (demo)',
-          message: pay.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.',
+          message: checkout.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.',
           primaryLabel: 'Понятно',
           onPrimary: () => undefined,
         });
         return;
       }
-      if (pay.confirmation_url) {
-        await WebBrowser.openBrowserAsync(pay.confirmation_url);
+      if (checkout.confirmation_url) {
+        await WebBrowser.openBrowserAsync(checkout.confirmation_url);
         showActionConfirm({
           title: 'ЮKassa',
           message: 'После оплаты вы вернётесь в приложение. Статус счёта обновится автоматически.',
@@ -291,31 +299,26 @@ export function PaymentDetailSheet({
           onPrimary: () => undefined,
         });
       }
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 409) {
+    } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 409) {
         confirmAcceptanceFirst(goToAcceptance);
-      } else if (e instanceof ApiError && e.status === 503) {
+      } else if (error instanceof ApiError && error.status === 503) {
         showActionConfirm({
           title: 'ЮKassa',
-          message: 'Нет ключей YOOKASSA_* на сервере (staging/prod demo выключен). Задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET или оплатите по реквизитам/чеку.',
+          message: 'Карточная оплата не настроена на сервере. Используйте перевод по реквизитам или приложите чек.',
           primaryLabel: 'Понятно',
           onPrimary: () => undefined,
         });
       } else {
-        showActionConfirm({
-          title: 'Ошибка оплаты',
-          message: apiErrorMessage(e, 'Не удалось открыть оплату картой'),
-          primaryLabel: 'Понятно',
-          onPrimary: () => undefined,
-        });
+        showActionConfirm({ title: 'Ошибка оплаты', message: apiErrorMessage(error, 'Не удалось открыть оплату картой') });
       }
     } finally {
-      setCardBusy(false);
+      endMutation();
     }
   };
 
-  const confirm = async () => {
-    if (busy) return;
+  const confirm = () => {
+    if (mutationRef.current) return;
     if (stageNeedsAcceptance) {
       confirmAcceptanceFirst(goToAcceptance);
       return;
@@ -329,23 +332,21 @@ export function PaymentDetailSheet({
       });
       return;
     }
-    // Clarity V: money-critical — pre-confirm перед api.confirmPayment
     showActionConfirm({
       title: 'Подтвердить оплату?',
       message: `${formatRub(payment.amount)}. Исполнитель увидит счёт как оплаченный.`,
       primaryLabel: 'Подтвердить',
       onPrimary: () => {
         void (async () => {
-          if (confirmBusy) return;
-          setConfirmBusy(true);
+          if (!beginMutation('confirm')) return;
           try {
             const confirmed = await api.confirmPayment(userId, projectId, payment.id, {
               transfer_ack: Boolean(transferAck || receiptAttached),
             });
-            await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(reportCatch('components.renova.PaymentDetailSheet.1'));
+            await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(reportCatch('payment.receipt.remove'));
             await syncProjectSideEffects({
-              user: user ?? ({ id: userId, role: role === 'contractor' ? 'contractor' : 'customer' } as any),
-              project: activeProject ?? ({ id: projectId } as any),
+              user: user ?? ({ id: userId, role } as never),
+              project: activeProject ?? ({ id: projectId } as never),
               role,
             });
             onChanged?.();
@@ -360,17 +361,14 @@ export function PaymentDetailSheet({
             } else {
               alertPaymentConfirmed(role);
             }
-          } catch (e: unknown) {
-            if (e instanceof ApiError && e.status === 409) {
+          } catch (error: unknown) {
+            if (error instanceof ApiError && error.status === 409) {
               confirmAcceptanceFirst(goToAcceptance);
             } else {
-              showActionConfirm({
-                title: 'Ошибка',
-                message: apiErrorMessage(e, 'Не удалось подтвердить оплату'),
-              });
+              showActionConfirm({ title: 'Оплата не подтверждена', message: apiErrorMessage(error, 'Повторите операцию.') });
             }
           } finally {
-            setConfirmBusy(false);
+            endMutation();
           }
         })();
       },
@@ -379,162 +377,177 @@ export function PaymentDetailSheet({
     });
   };
 
-  return (
-    <Modal visible transparent animationType="slide" onRequestClose={closeSafely}>
-      <Pressable style={s.backdrop} onPress={closeSafely}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={s.head}>{formatRub(payment.amount)}</Text>
-          <Text style={s.title}>{payment.title}</Text>
-          <Text style={[s.badge, payment.status === 'pending' && s.badgePending]}>{statusLabel}</Text>
-
-          {canConfirm && payment.status === 'pending' ? (
-            <Text style={formMetaText.caption}>
-              Шаг {step === 'info' ? 1 : step === 'transfer' ? 2 : 3} из 3 · перевод → подтверждение
-            </Text>
-          ) : null}
-
-          {canConfirm && step === 'info' ? (
-            <View style={s.block}>
-              {stageNeedsAcceptance ? (
-                <InfoBanner
-                  tone="warning"
-                  title="Этап ждёт приёмки"
-                  message={PAYMENT_BLOCKED_ACCEPTANCE_MSG}
-                />
-              ) : null}
-              <Text style={formMetaText.caption}>
-                Renova фиксирует факт внешнего перевода (СБП/реквизиты/чек), а не проводит банковскую транзакцию внутри приложения.
-                Карта — через ЮKassa. Сначала перевод или чек, затем отдельное подтверждение.
-              </Text>
-              {/* W123: пакетное подтверждение из выписки (1С/банк) */}
-              <PrimaryButton
-                title="Импорт выписки (пакетно)"
-                variant="outline"
-                disabled={busy}
-                onPress={() => {
-                  onClose();
-                  pushOsNav('/documents', pathname, role);
-                }}
-              />
-              {stageNeedsAcceptance ? (
-                <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} disabled={busy} />
-              ) : (
-                <>
-                  <PrimaryButton
-                    title="Оплатить картой (ЮKassa)"
-                    onPress={payWithCard}
-                    loading={cardBusy}
-                    disabled={confirmBusy}
-                  />
-                  <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} disabled={busy} />
-                  <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} />
-                </>
-              )}
-            </View>
-          ) : null}
-
-          {canConfirm && step === 'transfer' ? (
-            <View style={s.block}>
-              <Text style={s.sectionHead}>Реквизиты</Text>
-              {reqMissing ? <Text style={{ color: RenovaTheme.colors.warningText, marginBottom: 8, fontSize: 13 }}>{reqMissing}</Text> : null}
-              {!reqLoaded ? <ActivityIndicator /> : null}
-              {requisites.split('\n').map((line) => (
-                <Text key={line} style={formMetaText.caption}>{line}</Text>
-              ))}
-              <PrimaryButton title="Скопировать сумму" variant="outline" disabled={busy} onPress={() => { copySbpAmount().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать сумму')); }} />
-              <PrimaryButton title="Скопировать реквизиты" variant="outline" disabled={busy} onPress={() => { copyRequisites().catch(() => Alert.alert('Ошибка', 'Не удалось скопировать реквизиты')); }} />
-              <PrimaryButton title="Открыть СБП / банк" variant="outline" disabled={busy} onPress={() => { openSbp().catch(reportCatch('payment.openSbp')); }} />
-              <PrimaryButton
-                title="Я перевёл — дальше"
-                disabled={busy}
-                onPress={() => { setTransferAck(true); setStep('confirm'); }}
-              />
-              <PrimaryButton title="Назад" variant="ghost" disabled={busy} onPress={() => setStep('info')} />
-            </View>
-          ) : null}
-
-          {canConfirm && step === 'confirm' ? (
-            <View style={s.block}>
-              <Text style={formMetaText.caption}>
-                {transferAck ? 'Перевод отмечен.' : ''}{receiptAttached ? ' Чек будет в расходах.' : ''} Подтвердите оплату для исполнителя.
-              </Text>
-              <PrimaryButton
-                title="Я оплатил — подтвердить"
-                onPress={confirm}
-                loading={confirmBusy}
-                disabled={stageNeedsAcceptance || cardBusy}
-              />
-              {!receiptAttached ? (
-                <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} />
-              ) : null}
-            </View>
-          ) : null}
-
-          <View style={s.block}>
-            <View style={s.row}><Text style={s.label}>Тип</Text><Text style={s.val}>{typeLabel}</Text></View>
-            <View style={s.row}><Text style={s.label}>Выставлен</Text><Text style={s.val}>{fmtDate(payment.created_at)}</Text></View>
-            {payment.confirmed_at ? (
-              <View style={s.row}><Text style={s.label}>Оплачен</Text><Text style={s.val}>{fmtDate(payment.confirmed_at)}</Text></View>
-            ) : null}
-          </View>
-
-          {stage ? (
-            <Pressable
-              style={s.linkRow}
+  const footer = canConfirm ? (
+    <>
+      {step === 'info' ? (
+        stageNeedsAcceptance ? (
+          <PrimaryButton
+            title="Перейти к приёмке"
+            onPress={goToAcceptance}
+            disabled={busy}
+            fullWidth
+          />
+        ) : (
+          <>
+            <PrimaryButton
+              title="Оплатить картой (ЮKassa)"
+              onPress={() => { void payWithCard(); }}
+              loading={mutation === 'card'}
+              disabled={busy && mutation !== 'card'}
+              fullWidth
+            />
+            <PrimaryButton
+              title="Перевести (СБП / реквизиты)"
+              variant="outline"
+              onPress={() => setStep('transfer')}
               disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={`Открыть этап ${stage.name}`}
-              onPress={() => { onClose(); pushStageDetail(stage.id, pathname); }}
-            >
-              <Text style={s.label}>Этап</Text>
-              <Text style={s.link}>{stage.name} →</Text>
-            </Pressable>
+              fullWidth
+            />
+            <PrimaryButton
+              title="Прикрепить чек"
+              variant="outline"
+              onPress={openReceipt}
+              disabled={busy}
+              fullWidth
+            />
+          </>
+        )
+      ) : null}
+      {step === 'transfer' ? (
+        <>
+          <PrimaryButton
+            title="Я перевёл — дальше"
+            onPress={() => { setTransferAck(true); setStep('confirm'); }}
+            disabled={busy}
+            fullWidth
+          />
+          <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep('info')} disabled={busy} fullWidth />
+        </>
+      ) : null}
+      {step === 'confirm' ? (
+        <>
+          <PrimaryButton
+            title="Я оплатил — подтвердить"
+            onPress={confirm}
+            loading={mutation === 'confirm'}
+            disabled={stageNeedsAcceptance || (busy && mutation !== 'confirm')}
+            fullWidth
+          />
+          {!receiptAttached ? (
+            <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} fullWidth />
           ) : null}
+          <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep('transfer')} disabled={busy} fullWidth />
+        </>
+      ) : null}
+      <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+    </>
+  ) : (
+    <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+  );
 
-          {history.length > 0 && (
-            <View style={s.block}>
-              <Text style={s.sectionHead}>История</Text>
-              {history.map((ev) => (
-                <View key={ev.id} style={s.histRow}>
-                  <View style={s.histBody}>
-                    <Text style={s.histTitle}>{ev.title}</Text>
-                    {ev.subtitle ? <Text style={s.histSub}>{ev.subtitle}</Text> : null}
-                    <Text style={s.histDate}>{formatPaymentEventDate(ev.at)}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
+  return (
+    <SheetSurface
+      visible
+      value={formatRub(payment.amount)}
+      title={payment.title}
+      subtitle={`${statusLabel} · ${typeLabel}`}
+      busy={busy}
+      onClose={closeSafely}
+      accessibilityLabel="Детали счёта"
+      footer={footer}
+    >
+      {canConfirm ? (
+        <Text style={formMetaText.caption}>
+          Шаг {step === 'info' ? 1 : step === 'transfer' ? 2 : 3} из 3 · перевод → подтверждение
+        </Text>
+      ) : null}
 
-          {!isCustomer && payment.status === 'pending' && (
-            <Text style={s.wait}>Ожидает подтверждения заказчиком</Text>
-          )}
+      {canConfirm && step === 'info' ? (
+        <View style={sheetContentStyles.section}>
+          {stageNeedsAcceptance ? (
+            <InfoBanner tone="warning" title="Этап ждёт приёмки" message={PAYMENT_BLOCKED_ACCEPTANCE_MSG} />
+          ) : null}
+          <Text style={formMetaText.caption}>
+            Renova фиксирует факт внешнего перевода, СБП или чека, а не проводит банковскую транзакцию внутри приложения.
+          </Text>
+          <PrimaryButton
+            title="Импорт выписки (пакетно)"
+            variant="outline"
+            disabled={busy}
+            onPress={() => {
+              onClose();
+              pushOsNav('/documents', pathname, role);
+            }}
+            fullWidth
+          />
+        </View>
+      ) : null}
 
-          <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} />
+      {canConfirm && step === 'transfer' ? (
+        <View style={sheetContentStyles.section}>
+          <Text style={screenTypography.section}>Реквизиты</Text>
+          {reqMissing ? <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>{reqMissing}</Text> : null}
+          {!reqLoaded ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
+          {requisites.split('\n').filter(Boolean).map((line, index) => (
+            <Text key={`${line}:${index}`} style={formMetaText.caption}>{line}</Text>
+          ))}
+          <PrimaryButton title="Скопировать сумму" variant="outline" disabled={busy} onPress={() => { void copySbpAmount(); }} fullWidth />
+          <PrimaryButton title="Скопировать реквизиты" variant="outline" disabled={busy} onPress={() => { void copyRequisites(); }} fullWidth />
+          <PrimaryButton title="Открыть СБП / банк" variant="outline" disabled={busy} onPress={() => { void openSbp(); }} fullWidth />
+        </View>
+      ) : null}
+
+      {canConfirm && step === 'confirm' ? (
+        <Text style={formMetaText.caption}>
+          {transferAck ? 'Перевод отмечен.' : ''}{receiptAttached ? ' Чек будет в расходах.' : ''} Подтвердите оплату для исполнителя.
+        </Text>
+      ) : null}
+
+      <View style={sheetContentStyles.row}>
+        <Text style={sheetContentStyles.label}>Тип</Text>
+        <Text style={sheetContentStyles.value}>{typeLabel}</Text>
+      </View>
+      <View style={sheetContentStyles.row}>
+        <Text style={sheetContentStyles.label}>Выставлен</Text>
+        <Text style={sheetContentStyles.value}>{fmtDate(payment.created_at)}</Text>
+      </View>
+      {payment.confirmed_at ? (
+        <View style={sheetContentStyles.row}>
+          <Text style={sheetContentStyles.label}>Оплачен</Text>
+          <Text style={sheetContentStyles.value}>{fmtDate(payment.confirmed_at)}</Text>
+        </View>
+      ) : null}
+      {stage ? (
+        <Pressable
+          style={sheetContentStyles.row}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть этап ${stage.name}`}
+          onPress={() => { onClose(); pushStageDetail(stage.id, pathname); }}
+        >
+          <Text style={sheetContentStyles.label}>Этап</Text>
+          <Text style={sheetContentStyles.link}>{stage.name} →</Text>
         </Pressable>
-      </Pressable>
-    </Modal>
+      ) : null}
+
+      {history.length > 0 ? (
+        <View style={sheetContentStyles.section}>
+          <Text style={screenTypography.section}>История</Text>
+          {history.map((event) => (
+            <View key={event.id} style={sheetContentStyles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={screenTypography.listTitle}>{event.title}</Text>
+                {event.subtitle ? <Text style={screenTypography.listMeta}>{event.subtitle}</Text> : null}
+                <Text style={screenTypography.metricLabel}>{formatPaymentEventDate(event.at)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {!isCustomer && payment.status === 'pending' ? (
+        <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>Ожидает подтверждения заказчиком</Text>
+      ) : null}
+    </SheetSurface>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { ...card, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 28, gap: 8 },
-  head: { fontSize: 22, fontWeight: '700', color: RenovaTheme.colors.text },
-  title: { fontSize: 16, fontWeight: '600', marginTop: 4, color: RenovaTheme.colors.textMuted },
-  badge: { alignSelf: 'flex-start', marginTop: 8, marginBottom: 4, fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.success, backgroundColor: '#ecfdf5', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  badgePending: { color: RenovaTheme.colors.warning, backgroundColor: '#fef9c3' },
-  block: { marginBottom: 4, gap: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  label: { fontSize: 13, color: RenovaTheme.colors.textMuted },
-  val: { fontSize: 13, fontWeight: '600' },
-  linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: RenovaTheme.minTouch, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', marginBottom: 8 },
-  link: { fontSize: 14, color: RenovaTheme.colors.primary, fontWeight: '600' },
-  wait: { fontSize: 13, color: RenovaTheme.colors.warning, fontWeight: '600', marginBottom: 8 },
-  sectionHead: { ...screenTypography.section, color: RenovaTheme.colors.text, marginTop: 0, marginBottom: 2 },
-  histRow: { borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 8 },
-  histBody: { gap: 2 },
-  histTitle: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
-  histSub: { fontSize: 12, color: RenovaTheme.colors.textMuted },
-  histDate: { fontSize: 11, color: RenovaTheme.colors.textMuted },
-});
