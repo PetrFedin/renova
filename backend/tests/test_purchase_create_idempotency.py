@@ -170,36 +170,38 @@ async def test_purchase_create_replays_one_order_and_activity(purchase_create_db
 
 @pytest.mark.asyncio
 async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(purchase_create_db):
-    _, contractor, project, picks = await seed_project_and_picks(purchase_create_db)
+    _, _, project, picks = await seed_project_and_picks(purchase_create_db)
+    pick_ids = [pick.id for pick in picks]
     first = await prepare_purchase_from_picks(
         purchase_create_db,
         project_id=project.id,
-        pick_ids=[pick.id for pick in picks],
+        pick_ids=pick_ids,
         supplier_name="Первый",
     )
+    first_id = first.id
     await purchase_create_db.commit()
 
     with pytest.raises(ValueError, match="picks_already_in_active_purchase"):
         await prepare_purchase_from_picks(
             purchase_create_db,
             project_id=project.id,
-            pick_ids=[pick.id for pick in picks],
+            pick_ids=pick_ids,
             supplier_name="Второй",
         )
     await purchase_create_db.rollback()
     assert (await purchase_create_db.scalar(select(func.count()).select_from(Purchase))) == 1
 
-    stored = await purchase_create_db.get(Purchase, first.id)
+    stored = await purchase_create_db.get(Purchase, first_id)
     stored.status = PurchaseStatus.cancelled
     await purchase_create_db.commit()
     replacement = await prepare_purchase_from_picks(
         purchase_create_db,
         project_id=project.id,
-        pick_ids=[pick.id for pick in picks],
+        pick_ids=pick_ids,
         supplier_name="Повторный заказ",
     )
     await purchase_create_db.commit()
-    assert replacement.id != first.id
+    assert replacement.id != first_id
     assert (await purchase_create_db.scalar(select(func.count()).select_from(Purchase))) == 2
     clear_request_side_effect_context()
 
@@ -207,6 +209,7 @@ async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(p
 @pytest.mark.asyncio
 async def test_foreign_or_unapproved_pick_rejects_entire_purchase(purchase_create_db):
     _, _, project, picks = await seed_project_and_picks(purchase_create_db)
+    local_pick_id = picks[0].id
     foreign_customer = User(id="foreign-customer", phone="+79990000503", role=UserRole.customer)
     foreign_project = Project(
         id="foreign-purchase-project",
@@ -231,19 +234,20 @@ async def test_foreign_or_unapproved_pick_rejects_entire_purchase(purchase_creat
         await prepare_purchase_from_picks(
             purchase_create_db,
             project_id=project.id,
-            pick_ids=[picks[0].id, foreign_pick.id],
+            pick_ids=[local_pick_id, foreign_pick.id],
             supplier_name=None,
         )
     await purchase_create_db.rollback()
     assert (await purchase_create_db.scalar(select(func.count()).select_from(Purchase))) == 0
 
-    picks[0].status = MaterialPickStatus.pending
+    local_pick = await purchase_create_db.get(MaterialPick, local_pick_id)
+    local_pick.status = MaterialPickStatus.pending
     await purchase_create_db.commit()
     with pytest.raises(ValueError, match="picks_not_approved"):
         await prepare_purchase_from_picks(
             purchase_create_db,
             project_id=project.id,
-            pick_ids=[picks[0].id],
+            pick_ids=[local_pick_id],
             supplier_name=None,
         )
     await purchase_create_db.rollback()
