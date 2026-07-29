@@ -46,6 +46,13 @@ class ProjectDocument(Base):
     stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
     payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id"), nullable=True, index=True)
     receipt_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("receipts.id"), nullable=True)
+    change_order_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("change_orders.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     work_acceptance_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("work_acceptances.id"), nullable=True, index=True
     )
@@ -56,15 +63,12 @@ class ProjectDocument(Base):
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Wave 3: legal hold блокирует soft-delete; retention_until — дата снятия холда (ISO day)
     legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)
     retention_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class DocumentVersion(Base):
-    """Версия файла документа."""
-
     __tablename__ = "document_versions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -78,8 +82,7 @@ class DocumentVersion(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
-    # Wave 3b: OCR classify stub (async-ready flags; sync runner in MVP)
-    ocr_status: Mapped[str] = mapped_column(String(16), default="none")  # none|queued|processing|done|failed
+    ocr_status: Mapped[str] = mapped_column(String(16), default="none")
     ocr_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ocr_suggested_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -88,8 +91,6 @@ class DocumentVersion(Base):
 
 
 class DocumentSignature(Base):
-    """Подпись версии документа (MVP stub — без внешнего провайдера)."""
-
     __tablename__ = "document_signatures"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
