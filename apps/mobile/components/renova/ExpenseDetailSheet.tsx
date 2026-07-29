@@ -1,10 +1,13 @@
 /** Детализация расхода — просмотр, правка и удаление */
-import { useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, TextInput, Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { usePathname } from 'expo-router';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
+import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { screenTypography } from '@/constants/screenTypography';
 import { api, type OsExpense, type ProjectDetail, type ReceiptItem, type Room, type Stage } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -50,6 +53,7 @@ export function ExpenseDetailSheet({
   const [roomId, setRoomId] = useState<string | null>(null);
   const [stageId, setStageId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const mutationRef = useRef(false);
 
   useEffect(() => {
     if (!target) return;
@@ -74,26 +78,31 @@ export function ExpenseDetailSheet({
   const categoryLabel = isExpense
     ? EXPENSE_CATEGORY_LABEL[target.item.category] || target.item.category
     : EXPENSE_CATEGORY_LABEL[target.item.expense_category || 'other'] || target.item.expense_category || '—';
-  const date = isExpense
-    ? target.item.expense_date
-    : target.item.receipt_at || target.item.created_at;
-  const room = rooms.find((r) => r.id === (roomId ?? item.room_id));
-  const stage = stages.find((st) => st.id === (stageId ?? item.stage_id));
+  const date = isExpense ? target.item.expense_date : target.item.receipt_at || target.item.created_at;
+  const room = rooms.find((candidate) => candidate.id === (roomId ?? item.room_id));
+  const stage = stages.find((candidate) => candidate.id === (stageId ?? item.stage_id));
   const status = isExpense
     ? (target.item.status === 'pending_receipt' ? 'Ждёт чек' : 'Подтверждён')
     : (target.item.verified ? 'Проверен' : 'Не проверен');
-  const canDelete = !!editable && !!userId && !!projectId;
+  const canDelete = Boolean(editable && userId && projectId);
   const canEdit = canDelete;
   const payerLabel = isExpense ? 'Учёт' : 'Вы';
   const pickerProject = project ?? (rooms.length || stages.length ? { rooms, stages } : null);
+  const currentTitle = description.trim() || (isExpense ? target.item.title : target.item.description || 'Чек');
+
+  const closeSafely = () => {
+    if (!mutationRef.current) onClose();
+  };
 
   async function saveChanges() {
-    if (!userId || !projectId || !target || !canEdit) return;
+    if (!userId || !projectId || !target || !canEdit || mutationRef.current) return;
     const amount = Number(amountText.replace(',', '.'));
-    if (!amount || amount <= 0) {
-      Alert.alert('Сумма', 'Укажите корректную сумму');
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showActionConfirm({ title: 'Сумма расхода', message: 'Укажите сумму больше 0.' });
       return;
     }
+
+    mutationRef.current = true;
     setBusy(true);
     try {
       if (target.kind === 'receipt') {
@@ -114,29 +123,30 @@ export function ExpenseDetailSheet({
         });
       }
       await syncProjectSideEffects({
-        user: user ?? ({ id: userId } as any),
-        project: activeProject ?? project ?? ({ id: projectId } as any),
+        user: user ?? ({ id: userId } as never),
+        project: activeProject ?? project ?? ({ id: projectId } as never),
       });
       onChanged?.();
       onClose();
-      // W136: правка → расходы / сводка
-      alertExpenseUpdated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
-    } catch (e: unknown) {
-      if (isOfflineQueued(e)) {
+      alertExpenseUpdated(role);
+    } catch (error: unknown) {
+      if (isOfflineQueued(error)) {
         notifyOfflineQueued('Изменения траты');
         onClose();
         return;
       }
-      const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось сохранить изменения';
-      Alert.alert('Ошибка', msg);
+      const message = error && typeof error === 'object' && 'detail' in error
+        ? String((error as { detail?: string }).detail)
+        : 'Не удалось сохранить изменения. Введённые данные остались в форме.';
+      showActionConfirm({ title: 'Изменения не сохранены', message });
     } finally {
+      mutationRef.current = false;
       setBusy(false);
     }
   }
 
   function confirmDelete() {
-    if (!userId || !projectId || !target || busy) return;
-    // Clarity P: destructive через sheet (деньги в факте бюджета)
+    if (!userId || !projectId || !target || mutationRef.current) return;
     showActionConfirm({
       title: 'Удалить трату?',
       message: 'Сумма будет убрана из факта бюджета. Отменить это действие после подтверждения нельзя.',
@@ -144,6 +154,8 @@ export function ExpenseDetailSheet({
       primaryDestructive: true,
       onPrimary: () => {
         void (async () => {
+          if (mutationRef.current) return;
+          mutationRef.current = true;
           setBusy(true);
           try {
             if (target.kind === 'receipt') {
@@ -152,21 +164,24 @@ export function ExpenseDetailSheet({
               await api.deleteOsExpense(userId, projectId, target.item.id);
             }
             await syncProjectSideEffects({
-              user: user ?? ({ id: userId } as any),
-              project: activeProject ?? project ?? ({ id: projectId } as any),
+              user: user ?? ({ id: userId } as never),
+              project: activeProject ?? project ?? ({ id: projectId } as never),
             });
             onChanged?.();
             onClose();
-            alertExpenseDeleted((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
-          } catch (e: unknown) {
-            if (isOfflineQueued(e)) {
-              notifyOfflineQueued('Удаление');
+            alertExpenseDeleted(role);
+          } catch (error: unknown) {
+            if (isOfflineQueued(error)) {
+              notifyOfflineQueued('Удаление траты');
               onClose();
             } else {
-              const msg = e && typeof e === 'object' && 'detail' in e ? String((e as { detail?: string }).detail) : 'Не удалось удалить';
-              Alert.alert('Ошибка', msg);
+              const message = error && typeof error === 'object' && 'detail' in error
+                ? String((error as { detail?: string }).detail)
+                : 'Не удалось удалить трату.';
+              showActionConfirm({ title: 'Трата не удалена', message });
             }
           } finally {
+            mutationRef.current = false;
             setBusy(false);
           }
         })();
@@ -177,90 +192,137 @@ export function ExpenseDetailSheet({
   }
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={busy ? undefined : onClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={s.head}>{formatRub(Number(amountText) || item.amount)}</Text>
+    <SheetSurface
+      visible
+      value={formatRub(Number(amountText) || item.amount)}
+      title={currentTitle}
+      subtitle={`${categoryLabel} · ${status}`}
+      busy={busy}
+      onClose={closeSafely}
+      accessibilityLabel="Детали траты"
+      footer={
+        <>
           {canEdit ? (
-            <>
-              <Text style={s.label}>Сумма, ₽</Text>
-              <TextInput style={s.input} keyboardType="decimal-pad" value={amountText} onChangeText={setAmountText} editable={!busy} />
-              <Text style={s.label}>{isExpense ? 'Название' : 'Описание'}</Text>
-              <TextInput style={s.input} value={description} onChangeText={setDescription} placeholder="За что трата" editable={!busy} />
-              {pickerProject && (
-                <ExpenseContextPickers
-                  project={pickerProject}
-                  roomId={roomId}
-                  stageId={stageId}
-                  category={category}
-                  onRoomChange={setRoomId}
-                  onStageChange={setStageId}
-                  onCategoryChange={setCategory}
-                  disabled={busy}
-                />
-              )}
-            </>
-          ) : (
-            <Text style={s.title}>{isExpense ? target.item.title : (target.item.description || 'Чек')}</Text>
-          )}
-          {!canEdit && (
-            <View style={s.row}><Text style={s.label}>Статья</Text><Text style={s.val}>{categoryLabel}</Text></View>
-          )}
-          <View style={s.row}><Text style={s.label}>Статус</Text><Text style={s.val}>{status}</Text></View>
-          <View style={s.row}>
-            <Text style={s.label}>Кто платил</Text>
-            <Text style={s.val}>{payerLabel}</Text>
-          </View>
-          {date ? (
-            <View style={s.row}>
-              <Text style={s.label}>Дата</Text>
-              <Text style={s.val}>{new Date(date).toLocaleDateString('ru-RU')}</Text>
-            </View>
+            <PrimaryButton
+              title="Сохранить"
+              accessibilityLabel="Сохранить изменения траты"
+              onPress={() => { void saveChanges(); }}
+              loading={busy}
+              disabled={busy}
+              fullWidth
+            />
           ) : null}
-          {room ? (
-            <View style={s.row}>
-              <Text style={s.label}>Комната</Text>
-              <Pressable onPress={() => { onClose(); pushOsNav({ pathname: '/room/[id]', params: { id: room.id } }, pathname, role); }}>
-                <Text style={s.link}>{room.name}</Text>
-              </Pressable>
-            </View>
+          {canDelete ? (
+            <PrimaryButton
+              title="Удалить трату"
+              accessibilityLabel="Удалить трату из бюджета"
+              variant="dangerOutline"
+              onPress={confirmDelete}
+              disabled={busy}
+              fullWidth
+            />
           ) : null}
-          {stage ? (
-            <View style={s.row}>
-              <Text style={s.label}>Этап</Text>
-              <Pressable onPress={() => { onClose(); pushOsNav({ pathname: '/stage/[id]', params: { id: stage.id } }, pathname, role); }}>
-                <Text style={s.link}>{stage.name}</Text>
-              </Pressable>
-            </View>
+          <PrimaryButton
+            title="Закрыть"
+            accessibilityLabel="Закрыть детали траты"
+            variant="ghost"
+            onPress={closeSafely}
+            disabled={busy}
+            fullWidth
+          />
+        </>
+      }
+    >
+      {canEdit ? (
+        <View style={sheetContentStyles.section}>
+          <Text style={sheetContentStyles.fieldLabel}>Сумма, ₽</Text>
+          <TextInput
+            style={sheetContentStyles.input}
+            keyboardType="decimal-pad"
+            value={amountText}
+            onChangeText={setAmountText}
+            editable={!busy}
+            accessibilityLabel="Сумма траты"
+          />
+          <Text style={sheetContentStyles.fieldLabel}>{isExpense ? 'Название' : 'Описание'}</Text>
+          <TextInput
+            style={sheetContentStyles.input}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="За что трата"
+            editable={!busy}
+            accessibilityLabel={isExpense ? 'Название траты' : 'Описание чека'}
+          />
+          {pickerProject ? (
+            <ExpenseContextPickers
+              project={pickerProject}
+              roomId={roomId}
+              stageId={stageId}
+              category={category}
+              onRoomChange={setRoomId}
+              onStageChange={setStageId}
+              onCategoryChange={setCategory}
+              disabled={busy}
+            />
           ) : null}
-          {!isExpense && target.item.fn ? (
-            <View style={s.row}><Text style={s.label}>ФН</Text><Text style={s.val}>{target.item.fn}</Text></View>
-          ) : null}
-          {isExpense && target.item.status === 'pending_receipt' && (
-            <Text style={s.note}>Запись ожидает чек — можно изменить сумму и привязку.</Text>
-          )}
-          {canEdit && (
-            <PrimaryButton title="Сохранить" onPress={saveChanges} loading={busy} disabled={busy} fullWidth />
-          )}
-          {canDelete && (
-            <PrimaryButton title="Удалить трату" variant="dangerOutline" onPress={confirmDelete} disabled={busy} fullWidth />
-          )}
-          <PrimaryButton title="Закрыть" variant="ghost" onPress={onClose} disabled={busy} fullWidth />
+        </View>
+      ) : null}
+
+      <View style={sheetContentStyles.row}>
+        <Text style={sheetContentStyles.label}>Статус</Text>
+        <Text style={sheetContentStyles.value}>{status}</Text>
+      </View>
+      <View style={sheetContentStyles.row}>
+        <Text style={sheetContentStyles.label}>Кто платил</Text>
+        <Text style={sheetContentStyles.value}>{payerLabel}</Text>
+      </View>
+      {date ? (
+        <View style={sheetContentStyles.row}>
+          <Text style={sheetContentStyles.label}>Дата</Text>
+          <Text style={sheetContentStyles.value}>{new Date(date).toLocaleDateString('ru-RU')}</Text>
+        </View>
+      ) : null}
+      {room ? (
+        <Pressable
+          style={sheetContentStyles.row}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть комнату ${room.name}`}
+          onPress={() => {
+            onClose();
+            pushOsNav({ pathname: '/room/[id]', params: { id: room.id } }, pathname, role);
+          }}
+        >
+          <Text style={sheetContentStyles.label}>Комната</Text>
+          <Text style={sheetContentStyles.link}>{room.name} →</Text>
         </Pressable>
-      </Pressable>
-    </Modal>
+      ) : null}
+      {stage ? (
+        <Pressable
+          style={sheetContentStyles.row}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть этап ${stage.name}`}
+          onPress={() => {
+            onClose();
+            pushOsNav({ pathname: '/stage/[id]', params: { id: stage.id } }, pathname, role);
+          }}
+        >
+          <Text style={sheetContentStyles.label}>Этап</Text>
+          <Text style={sheetContentStyles.link}>{stage.name} →</Text>
+        </Pressable>
+      ) : null}
+      {!isExpense && target.item.fn ? (
+        <View style={sheetContentStyles.row}>
+          <Text style={sheetContentStyles.label}>ФН</Text>
+          <Text style={sheetContentStyles.value}>{target.item.fn}</Text>
+        </View>
+      ) : null}
+      {isExpense && target.item.status === 'pending_receipt' ? (
+        <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>
+          Запись ожидает чек — можно изменить сумму и привязку.
+        </Text>
+      ) : null}
+    </SheetSurface>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { ...card, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 28, gap: 8 },
-  head: { fontSize: 22, fontWeight: '700', color: RenovaTheme.colors.text },
-  title: { fontSize: 16, fontWeight: '600', marginTop: 4, marginBottom: 12, color: RenovaTheme.colors.textMuted },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  label: { fontSize: 13, color: RenovaTheme.colors.textMuted },
-  val: { fontSize: 13, fontWeight: '600' },
-  link: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.primary },
-  input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 10, backgroundColor: RenovaTheme.colors.surface },
-  note: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
-});
