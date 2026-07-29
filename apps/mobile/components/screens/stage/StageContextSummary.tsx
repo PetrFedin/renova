@@ -54,15 +54,10 @@ export function StageContextSummary({ stage, role, returnTo, showAction = true }
           <Text style={s.value}>{summary.worksOpen}</Text>
           <Text style={s.label}>Открытые работы</Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Открыть комментарии этапа, ${summary.comments}`}
-          style={s.metric}
-          onPress={() => open(repairTabRoute(role, 'control', `stage:${stage.id}`))}
-        >
+        <View accessible accessibilityLabel={`Комментарии этапа, ${summary.comments}`} style={s.metric}>
           <Text style={s.value}>{summary.comments}</Text>
           <Text style={s.label}>Комментарии</Text>
-        </Pressable>
+        </View>
         <View accessible accessibilityLabel={`Фото этапа, ${summary.photos}`} style={s.metric}>
           <Text style={s.value}>{summary.photos}</Text>
           <Text style={s.label}>Фото</Text>
