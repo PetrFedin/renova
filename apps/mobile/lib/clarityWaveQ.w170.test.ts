@@ -5,7 +5,8 @@ import { join } from 'path';
 const mobile = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(mobile, rel), 'utf8');
 
-const portal = src('app/portal.tsx');
+const portalRoute = src('app/portal.tsx');
+const portal = src('components/screens/PortalScreen.tsx');
 const schedule = src('components/screens/schedule/UnifiedScheduleView.tsx');
 const budget = src('app/_stack/budget-planner.tsx');
 const home = src('components/renova/os/home/HomeCompletionStrip.tsx');
@@ -13,9 +14,12 @@ const qc = src('components/screens/QualityControlScreen.tsx');
 const decisions = src('components/renova/DecisionHistoryPanel.tsx');
 const periodDetail = src('components/screens/budget/BudgetPeriodDetailSection.tsx');
 
+if (portalRoute.trim() !== "export { default } from '@/components/screens/PortalScreen';") {
+  throw new Error('portal route must delegate to PortalScreen');
+}
 if (!portal.includes('showActionConfirm')) throw new Error('portal missing showActionConfirm');
 for (const title of [
-  "title: 'На доработку?'",
+  "title: 'Вернуть этап на доработку?'",
   "title: 'Отклонить график?'",
   "title: 'Этап принят'",
   "title: 'Нужен чек-лист'",
@@ -24,8 +28,14 @@ for (const title of [
 ]) {
   if (!portal.includes(title)) throw new Error(`portal missing ${title}`);
 }
-if (portal.includes('await api.portalReturnStage') && portal.includes("onPress={async () => {\n                    try {\n                      await api.portalReturnStage")) {
-  throw new Error('portal return still one-tap');
+if (!portal.includes("primaryDestructive: intent === 'destructive'")) {
+  throw new Error('portal destructive confirms must use ActionConfirmSheet intent');
+}
+if (!portal.includes("intent: 'destructive'") || !portal.includes('api.portalReturnStage')) {
+  throw new Error('portal rework must be destructive and confirmed');
+}
+if (portal.includes('onPress={async () =>') && portal.includes('await api.portalReturnStage')) {
+  throw new Error('portal return still one-tap inline mutation');
 }
 
 if (schedule.includes('Alert.prompt?.') || schedule.includes("Alert.alert('Отклонить график?'")) {
