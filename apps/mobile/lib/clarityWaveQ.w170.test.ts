@@ -18,21 +18,24 @@ if (portalRoute.trim() !== "export { default } from '@/components/screens/Portal
   throw new Error('portal route must delegate to PortalScreen');
 }
 if (!portal.includes('showActionConfirm')) throw new Error('portal missing showActionConfirm');
-for (const title of [
-  "title: 'Вернуть этап на доработку?'",
-  "title: 'Отклонить график?'",
-  "title: 'Этап принят'",
-  "title: 'Нужен чек-лист'",
-  "title: 'Отклонить доп. работу?'",
-  "title: 'Отклонить смету?'",
+for (const copy of [
+  'Вернуть этап на доработку?',
+  'Отклонить график?',
+  'Этап принят',
+  'Нужен чек-лист',
+  'Отклонить доп. работу?',
+  'Отклонить смету?',
 ]) {
-  if (!portal.includes(title)) throw new Error(`portal missing ${title}`);
+  if (!portal.includes(copy)) throw new Error(`portal missing ${copy}`);
 }
 if (!portal.includes("primaryDestructive: intent === 'destructive'")) {
   throw new Error('portal destructive confirms must use ActionConfirmSheet intent');
 }
 if (!portal.includes("intent: 'destructive'") || !portal.includes('api.portalReturnStage')) {
   throw new Error('portal rework must be destructive and confirmed');
+}
+if (!portal.includes('api.portalRejectSchedule') || !portal.includes('api.portalRejectChangeOrder') || !portal.includes('api.portalRejectEstimate')) {
+  throw new Error('portal reject APIs must remain in confirmed flow');
 }
 if (portal.includes('onPress={async () =>') && portal.includes('await api.portalReturnStage')) {
   throw new Error('portal return still one-tap inline mutation');
