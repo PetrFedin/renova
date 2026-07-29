@@ -30,10 +30,11 @@ must(sheet.includes('transfer_ack'), 'sheet passes transfer_ack');
 must(sheet.includes('внешнего перевода') || sheet.includes('внешний перевод'), 'honest external-transfer copy');
 
 must(sheet.includes('const mutationRef = useRef(false)'), 'payment mutation ref');
-must(sheet.includes("type PaymentMutation = 'card' | 'confirm' | null"), 'exact payment mutation state');
+must(sheet.includes("type PaymentMutation = 'card' | 'confirm' | 'dispute' | null"), 'exact payment mutation state');
 must(sheet.includes('if (mutationRef.current) return false'), 'duplicate payment mutation guard');
 must(sheet.includes("loading={mutation === 'confirm'}"), 'confirm button loading state');
 must(sheet.includes("loading={mutation === 'card'}"), 'card button loading state');
+must(sheet.includes("loading={mutation === 'dispute'}"), 'dispute button loading state');
 must(sheet.includes('SheetSurface'), 'payment uses shared surface');
 must(surface.includes('if (!busy) onClose()'), 'modal close guarded while busy');
 must(sheet.includes('title="Закрыть"') && sheet.includes('variant="ghost"'), 'close remains tertiary');
