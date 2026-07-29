@@ -1,5 +1,7 @@
 /** W89: подписка на projectDataBus → локальный reload экрана без remount. */
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
+
 import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
 import { isRateLimitError } from '@/lib/api/client';
 import { reportError } from '@/lib/reportError';
@@ -9,40 +11,81 @@ const RELOAD_DEBOUNCE_MS = 450;
 
 /**
  * Когда другая поверхность сделала golden-path мутацию (syncProjectSideEffects),
- * экран с локальным state (приёмка, контроль) перечитывает данные.
+ * перечитываем только видимый экран. Скрытый экран помечается stale и выполняет
+ * ровно один reload при следующем focus.
  *
- * Важно: Promise.reject (в т.ч. rate_limit) всегда ловим — иначе Uncaught Error в Expo.
+ * Promise.reject (в т.ч. rate_limit) всегда ловим — иначе Uncaught Error в Expo.
  */
 export function useProjectDataReload(reload: () => void | Promise<void>): void {
   const reloadRef = useRef(reload);
+  const focusedRef = useRef(false);
+  const staleRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const generationRef = useRef(0);
   reloadRef.current = reload;
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let generation = 0;
+  const cancelScheduledReload = useCallback((markStale: boolean) => {
+    generationRef.current += 1;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      if (markStale) staleRef.current = true;
+    }
+  }, []);
 
-    const unsub = subscribeProjectDataChanged(() => {
-      if (timer) clearTimeout(timer);
-      const gen = ++generation;
-      timer = setTimeout(() => {
-        if (gen !== generation) return;
-        Promise.resolve()
-          .then(() => reloadRef.current())
-          .catch((e: unknown) => {
-            // 429 — ожидаемо при storm; не роняем UI
-            if (isRateLimitError(e)) {
-              reportError('projectDataReload.rate_limit', e);
-              return;
-            }
-            reportError('projectDataReload', e);
-          });
-      }, RELOAD_DEBOUNCE_MS);
+  const scheduleReload = useCallback((delayMs = RELOAD_DEBOUNCE_MS) => {
+    if (!focusedRef.current) {
+      staleRef.current = true;
+      return;
+    }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const generation = ++generationRef.current;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (generation !== generationRef.current || !focusedRef.current) {
+        staleRef.current = true;
+        return;
+      }
+      staleRef.current = false;
+      Promise.resolve()
+        .then(() => reloadRef.current())
+        .catch((error: unknown) => {
+          if (isRateLimitError(error)) {
+            reportError('projectDataReload.rate_limit', error);
+            return;
+          }
+          reportError('projectDataReload', error);
+        });
+    }, delayMs);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeProjectDataChanged(() => {
+      if (!focusedRef.current) {
+        staleRef.current = true;
+        return;
+      }
+      scheduleReload();
     });
 
     return () => {
-      generation += 1;
-      if (timer) clearTimeout(timer);
-      unsub();
+      cancelScheduledReload(false);
+      unsubscribe();
     };
-  }, []);
+  }, [cancelScheduledReload, scheduleReload]);
+
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      if (staleRef.current) {
+        // Данные уже менялись, пока вкладка была скрыта. Не ждём полный debounce.
+        scheduleReload(0);
+      }
+
+      return () => {
+        focusedRef.current = false;
+        cancelScheduledReload(true);
+      };
+    }, [cancelScheduledReload, scheduleReload]),
+  );
 }
