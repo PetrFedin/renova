@@ -1,6 +1,7 @@
 /** API: materials */
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { MaterialPick, Purchase } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
 export const materialsApi = {
   listMaterialPicks: (userId: string, projectId: string, workType?: string) => req<MaterialPick[]>(`/api/v1/projects/${projectId}/material-picks${workType ? `?work_type=${workType}` : ''}`, {}, userId),
   createMaterialPick: (userId: string, projectId: string, body: object) => req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks`, { method: 'POST', body: JSON.stringify(body) }, userId),
@@ -18,13 +19,18 @@ export const materialsApi = {
   syncMaterialPrice: (userId: string, projectId: string, pickId: string) => req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks/${pickId}/sync-price`, { method: 'POST' }, userId),
   listPurchases: (userId: string, projectId: string) => req<Purchase[]>(`/api/v1/projects/${projectId}/purchases`, {}, userId),
   createPurchase: async (userId: string, projectId: string, material_pick_ids: string[], supplier_name?: string) => {
-    const body = JSON.stringify({ material_pick_ids, supplier_name });
+    const requestBody = {
+      material_pick_ids,
+      supplier_name,
+      client_request_id: createClientRequestId('purchase'),
+    };
+    const serialized = JSON.stringify(requestBody);
     try {
-      return await req<Purchase>(`/api/v1/projects/${projectId}/purchases`, { method: 'POST', body }, userId);
+      return await req<Purchase>(`/api/v1/projects/${projectId}/purchases`, { method: 'POST', body: serialized }, userId);
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/purchases`, method: 'POST', body, userId });
+      await enqueue({ path: `/api/v1/projects/${projectId}/purchases`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
     }
   },
