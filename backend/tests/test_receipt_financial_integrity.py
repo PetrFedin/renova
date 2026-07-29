@@ -1,5 +1,3 @@
-from unittest.mock import AsyncMock
-
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
@@ -195,21 +193,23 @@ async def test_manual_patch_updates_single_expense_and_exact_budget(receipt_db):
 @pytest.mark.asyncio
 async def test_fiscal_receipt_amount_and_description_are_immutable(receipt_db):
     _, _, project, room, stage = await seed_project(receipt_db, "301")
+    project_id = project.id
     receipt = await seed_receipt(
         receipt_db,
         receipt_id="immutable-fiscal-receipt",
-        project_id=project.id,
+        project_id=project_id,
         amount=3200,
         manual=False,
         verified=True,
         room_id=room.id,
         stage_id=stage.id,
     )
+    receipt_id = receipt.id
     with pytest.raises(ValueError, match="fiscal_receipt_amount_immutable"):
         await receipt_integrity_service.patch_receipt(
             receipt_db,
-            project_id=project.id,
-            receipt_id=receipt.id,
+            project_id=project_id,
+            receipt_id=receipt_id,
             expense_category=None,
             room_id_supplied=False,
             room_id=None,
@@ -223,8 +223,8 @@ async def test_fiscal_receipt_amount_and_description_are_immutable(receipt_db):
     with pytest.raises(ValueError, match="fiscal_receipt_description_immutable"):
         await receipt_integrity_service.patch_receipt(
             receipt_db,
-            project_id=project.id,
-            receipt_id=receipt.id,
+            project_id=project_id,
+            receipt_id=receipt_id,
             expense_category=None,
             room_id_supplied=False,
             room_id=None,
@@ -235,13 +235,13 @@ async def test_fiscal_receipt_amount_and_description_are_immutable(receipt_db):
             description="Подмена",
         )
     await receipt_db.rollback()
-    stored = await receipt_db.get(Receipt, receipt.id)
+    stored = await receipt_db.get(Receipt, receipt_id)
     assert stored.amount == 3200
     assert stored.qr_raw != "Подмена"
 
 
 @pytest.mark.asyncio
-async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db, monkeypatch):
+async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db):
     customer, _, project, room, stage = await seed_project(receipt_db, "401")
     project_id = project.id
     receipt = await seed_receipt(
@@ -254,17 +254,18 @@ async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db, mo
         room_id=room.id,
         stage_id=stage.id,
     )
+    receipt_id = receipt.id
     stored_project = await receipt_db.get(Project, project_id)
     assert stored_project.budget_spent == 0
     expense = (
-        await receipt_db.execute(select(Expense).where(Expense.receipt_id == receipt.id))
+        await receipt_db.execute(select(Expense).where(Expense.receipt_id == receipt_id))
     ).scalar_one()
     assert expense.status == "pending_receipt"
 
     mutation = await receipt_integrity_service.apply_verification_result(
         receipt_db,
         project_id=project_id,
-        receipt_id=receipt.id,
+        receipt_id=receipt_id,
         actor_id=customer.id,
         verified=True,
         mode="live",
@@ -273,7 +274,7 @@ async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db, mo
     assert mutation.changed is True
     assert mutation.receipt.verification_status == "verified_live"
     expense = (
-        await receipt_db.execute(select(Expense).where(Expense.receipt_id == receipt.id))
+        await receipt_db.execute(select(Expense).where(Expense.receipt_id == receipt_id))
     ).scalar_one()
     assert expense.status == "confirmed"
     stored_project = await receipt_db.get(Project, project_id)
@@ -297,7 +298,7 @@ async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db, mo
     replay = await receipt_integrity_service.apply_verification_result(
         receipt_db,
         project_id=project_id,
-        receipt_id=receipt.id,
+        receipt_id=receipt_id,
         actor_id=customer.id,
         verified=True,
         mode="live",
@@ -309,7 +310,7 @@ async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db, mo
     failed = await receipt_integrity_service.apply_verification_result(
         receipt_db,
         project_id=project_id,
-        receipt_id=receipt.id,
+        receipt_id=receipt_id,
         actor_id=customer.id,
         verified=False,
         mode="live",
@@ -317,7 +318,7 @@ async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db, mo
     )
     assert failed.changed is True
     expense = (
-        await receipt_db.execute(select(Expense).where(Expense.receipt_id == receipt.id))
+        await receipt_db.execute(select(Expense).where(Expense.receipt_id == receipt_id))
     ).scalar_one()
     assert expense.status == "pending_receipt"
     stored_project = await receipt_db.get(Project, project_id)
@@ -330,6 +331,10 @@ async def test_reverify_reconciles_expense_budget_and_outbox_once(receipt_db, mo
 async def test_delete_reverses_fact_but_confirmed_payment_receipt_is_locked(receipt_db):
     customer, contractor, project, room, stage = await seed_project(receipt_db, "501")
     project_id = project.id
+    customer_id = customer.id
+    contractor_id = contractor.id
+    stage_id = stage.id
+    room_id = room.id
     deletable = await seed_receipt(
         receipt_db,
         receipt_id="deletable-receipt",
@@ -337,17 +342,18 @@ async def test_delete_reverses_fact_but_confirmed_payment_receipt_is_locked(rece
         amount=2100,
         manual=True,
         verified=True,
-        room_id=room.id,
-        stage_id=stage.id,
+        room_id=room_id,
+        stage_id=stage_id,
     )
+    deletable_id = deletable.id
     result = await receipt_integrity_service.delete_receipt(
         receipt_db,
         project_id=project_id,
-        receipt_id=deletable.id,
-        actor_id=customer.id,
+        receipt_id=deletable_id,
+        actor_id=customer_id,
     )
     assert result is not None and result.amount == 2100
-    assert await receipt_db.get(Receipt, deletable.id) is None
+    assert await receipt_db.get(Receipt, deletable_id) is None
     assert (await receipt_db.scalar(select(func.count()).select_from(Expense))) == 0
     stored_project = await receipt_db.get(Project, project_id)
     assert stored_project.budget_spent == 0
@@ -356,7 +362,7 @@ async def test_delete_reverses_fact_but_confirmed_payment_receipt_is_locked(rece
     await activity_service.log_event(
         receipt_db,
         project_id=project_id,
-        user_id=customer.id,
+        user_id=customer_id,
         kind="ExpenseRemoved",
         title="Чек удалён",
         body="2100.0",
@@ -369,13 +375,14 @@ async def test_delete_reverses_fact_but_confirmed_payment_receipt_is_locked(rece
     payment = Payment(
         id="confirmed-receipt-payment",
         project_id=project_id,
-        stage_id=stage.id,
+        stage_id=stage_id,
         payment_type=PaymentType.stage,
         status=PaymentStatus.confirmed,
         title="Этап",
         amount=5000,
-        created_by=contractor.id,
+        created_by=contractor_id,
     )
+    payment_id = payment.id
     receipt_db.add(payment)
     await receipt_db.commit()
     locked = await seed_receipt(
@@ -385,16 +392,17 @@ async def test_delete_reverses_fact_but_confirmed_payment_receipt_is_locked(rece
         amount=5000,
         manual=False,
         verified=True,
-        room_id=room.id,
-        stage_id=stage.id,
-        payment_id=payment.id,
+        room_id=room_id,
+        stage_id=stage_id,
+        payment_id=payment_id,
     )
+    locked_id = locked.id
     with pytest.raises(ValueError, match="confirmed_payment_receipt_locked"):
         await receipt_integrity_service.delete_receipt(
             receipt_db,
             project_id=project_id,
-            receipt_id=locked.id,
-            actor_id=customer.id,
+            receipt_id=locked_id,
+            actor_id=customer_id,
         )
     await receipt_db.rollback()
-    assert await receipt_db.get(Receipt, locked.id) is not None
+    assert await receipt_db.get(Receipt, locked_id) is not None
