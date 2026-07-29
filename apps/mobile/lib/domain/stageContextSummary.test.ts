@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import type { StageDetail } from '@/lib/api';
 import {
   buildStageContextSummary,
@@ -67,5 +69,15 @@ for (const role of ['customer', 'contractor'] as const) {
   check(stageContextPriorityTarget('schedule', role, 's1')?.params?.stageId === 's1', `${role} schedule route`);
   check(stageContextPriorityTarget('none', role, 's1') === null, `${role} no false CTA`);
 }
+
+const mobileRoot = join(__dirname, '..', '..');
+const contextUi = readFileSync(join(mobileRoot, 'components/screens/stage/StageContextSummary.tsx'), 'utf8');
+const heroUi = readFileSync(join(mobileRoot, 'components/screens/stage/StageDetailHero.tsx'), 'utf8');
+check(!contextUi.includes('payableAmount'), 'context UI must not duplicate the payment block');
+check(contextUi.includes('RenovaTheme.minTouch'), 'context actions use minimum touch targets');
+check(contextUi.includes('accessibilityRole="button"'), 'context actions are accessible');
+check(heroUi.includes('<StageContextSummary'), 'stage context is integrated into the hero');
+check(heroUi.includes('showAction={!hasPrimaryFlowAction}'), 'context CTA yields to the primary flow action');
+check(!heroUi.includes('К оплате:'), 'hero no longer duplicates payment amount');
 
 console.log('stageContextSummary.test OK');
