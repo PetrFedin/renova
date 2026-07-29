@@ -24,14 +24,23 @@ if (!changes.includes("title: 'Согласовать доп. работу?'") |
   throw new Error('change order confirms');
 }
 if (!rooms.includes("title: 'Отклонить запрос?'")) throw new Error('room change reject sheet');
-if (!roomDetail.includes("В архив?") || !roomDetail.includes('showActionConfirm')) {
+if (!roomDetail.includes('В архив?') || !roomDetail.includes('showActionConfirm')) {
   throw new Error('room archive sheet');
 }
 if (createChat.includes('Alert.alert') || !createChat.includes("title: 'Объект обязателен'")) {
   throw new Error('createProjectChat gate');
 }
-if (expense.includes('Alert.alert') || !expense.includes("title: 'Сумма'")) {
-  throw new Error('manual expense sheet');
+if (expense.includes('Alert.alert') || !expense.includes("title: 'Сумма расхода'")) {
+  throw new Error('manual expense validation sheet');
+}
+if (!expense.includes('const busyRef = useRef(false)') || !expense.includes('if (busyRef.current || readOnly) return')) {
+  throw new Error('manual expense duplicate submit guard');
+}
+if (!expense.includes("notifyOfflineQueued('Расход без чека')") || !expense.includes('Введённые данные сохранены в форме')) {
+  throw new Error('manual expense offline/error preservation');
+}
+if (!expense.includes('ExpenseContextPickers') || !expense.includes('roomId') || !expense.includes('stageId')) {
+  throw new Error('manual expense context links');
 }
 if (!approvals.includes("title: 'Отклонить согласование?'")) throw new Error('approvals reject');
 if (!conflicts.includes("title: 'Удалить из очереди?'")) throw new Error('conflicts delete');

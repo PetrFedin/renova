@@ -50,7 +50,13 @@ const matPage = src('app/material/[id].tsx');
 for (const [n, b] of [['list', mats], ['sheet', matSheet], ['page', matPage]] as const) {
   if (!b.includes("title: 'Согласовать материал?'")) throw new Error(`material approve ${n}`);
 }
-if (!matSheet.includes("title: 'Убрать из факта?'")) throw new Error('purchase cancel confirm');
+if (!matSheet.includes("title: 'Убрать закупку из факта?'")) throw new Error('purchase rollback confirm');
+if (!matSheet.includes('primaryDestructive: true') || !matSheet.includes('variant="dangerOutline"')) {
+  throw new Error('purchase rollback destructive hierarchy');
+}
+if (!matSheet.includes('api.updatePurchaseStatus') || !matSheet.includes("loading={busyAction === 'rollback'}")) {
+  throw new Error('purchase rollback canonical mutation/loading');
+}
 
 const pay = src('components/renova/PaymentDetailSheet.tsx');
 if (!pay.includes("title: 'Подтвердить оплату?'")) throw new Error('payment confirm');

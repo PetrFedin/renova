@@ -1,4 +1,4 @@
-/** Clarity W: procurement, QC and Work Order transition integrity */
+/** Clarity W: procurement, QC, Work Order and Portal transition integrity */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
@@ -12,6 +12,12 @@ import {
   issueActions,
   issueWaitingHint,
 } from './domain/issueLifecycle';
+import {
+  buildPortalCapabilities,
+  buildPortalPendingSummary,
+  portalActionVariant,
+  portalMutationKey,
+} from './domain/portalActions';
 
 const mobile = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(mobile, rel), 'utf8');
@@ -76,7 +82,6 @@ if (!qc.includes('api.transitionIssue') || !qc.includes('loading={mutationKey ==
   throw new Error('QC transition API/exact loading');
 }
 if (!qc.includes('Подтвердить исправление') || !qc.includes('Вернуть на доработку') || !qc.includes('Открыть снова')) {
-  // Labels live in the imported domain and must remain in the bundled source contract.
   if (!issueDomain.includes('Подтвердить исправление') || !issueDomain.includes('Вернуть на доработку') || !issueDomain.includes('Открыть снова')) {
     throw new Error('QC verify/rework/reopen copy');
   }
@@ -158,6 +163,69 @@ if (!workService.includes('kind="work_status"') || !workService.includes('actor_
 }
 if (!workApi.includes('user.role') || !workApi.includes('HTTPException(409, code)')) {
   throw new Error('WO API role/payment enforcement');
+}
+
+// Portal must intersect token scopes with snapshot capabilities and use one mutation guard.
+const fullPortalCapabilities = buildPortalCapabilities(
+  { scopes: ['pay', 'accept_stage', 'sign_document'] },
+  {
+    can_confirm_schedule: true,
+    can_accept_stage: true,
+    can_sign_documents: true,
+    can_decide_change_orders: true,
+  },
+);
+if (!fullPortalCapabilities.pay || !fullPortalCapabilities.accept || !fullPortalCapabilities.sign) {
+  throw new Error('portal full capability set');
+}
+const missingScopeCapabilities = buildPortalCapabilities(
+  { scopes: ['pay'] },
+  { can_accept_stage: true, can_sign_documents: true, can_decide_change_orders: true },
+);
+if (missingScopeCapabilities.acceptStage || missingScopeCapabilities.signDocuments || missingScopeCapabilities.decideChangeOrders) {
+  throw new Error('portal snapshot flags cannot bypass token scopes');
+}
+const readOnlyCapabilities = buildPortalCapabilities(
+  { scopes: ['pay', 'accept_stage', 'sign_document'], read_only: true },
+  { can_accept_stage: true, can_sign_documents: true, can_decide_change_orders: true },
+);
+if (readOnlyCapabilities.pay || readOnlyCapabilities.accept || readOnlyCapabilities.sign) {
+  throw new Error('portal read-only fail closed');
+}
+const pendingPortal = buildPortalPendingSummary({
+  pending_acceptances: [{ id: 1 }],
+  pending_payments: [{ id: 2 }, { id: 3 }],
+  pending_draft_documents: [{ id: 4 }],
+});
+if (pendingPortal.total !== 4 || pendingPortal.label !== 'приёмка 1 · оплата 2 · подпись 1') {
+  throw new Error('portal pending summary');
+}
+if (portalActionVariant('destructive') !== 'dangerOutline') throw new Error('portal destructive hierarchy');
+if (portalMutationKey('payment:checkout', 'p1') !== 'payment:checkout:p1') throw new Error('portal mutation key');
+
+const portalRoute = src('app/portal.tsx');
+const portal = src('components/screens/PortalScreen.tsx');
+const primaryButton = src('components/renova/PrimaryButton.tsx');
+if (portalRoute.trim() !== "export { default } from '@/components/screens/PortalScreen';") {
+  throw new Error('portal route must stay thin');
+}
+if (!portal.includes('const mutationRef = useRef(false)') || !portal.includes('if (!session || mutationRef.current) return null')) {
+  throw new Error('portal duplicate mutation guard');
+}
+if (!portal.includes('buildPortalCapabilities') || !portal.includes('capabilities.decideChangeOrders')) {
+  throw new Error('portal capability domain');
+}
+if (!portal.includes('PrimaryButton') || portal.includes('acceptBtn:') || portal.includes('payBtn:') || portal.includes('konturBtn:')) {
+  throw new Error('portal must use shared button dialect');
+}
+if (!portal.includes('variant="dangerOutline"') || !portal.includes("primaryDestructive: intent === 'destructive'")) {
+  throw new Error('portal negative actions hierarchy');
+}
+if (!portal.includes('loading={mutationKey ===') || !portal.includes('disabled={busy}')) {
+  throw new Error('portal exact loading/competing action guard');
+}
+if (!primaryButton.includes('accessibilityLabel={accessibilityLabel ?? title}') || !primaryButton.includes('accessibilityState={{ disabled: unavailable, busy: Boolean(loading) }}')) {
+  throw new Error('shared button accessibility contract');
 }
 
 const panels = src('components/renova/os/ProjectOsPanels.tsx');

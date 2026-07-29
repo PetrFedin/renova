@@ -1,6 +1,21 @@
 name: CI
 on: [push, pull_request]
 jobs:
+  mobile-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Mobile baseline typecheck
+        run: npm run typecheck:mobile
+      - name: Mobile domain and UI contracts
+        run: npm run mobile:test
+
   e2e:
     runs-on: ubuntu-latest
     services:
@@ -51,6 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           poetry run python -m alembic upgrade head
+
   playwright:
     runs-on: ubuntu-latest
     steps:

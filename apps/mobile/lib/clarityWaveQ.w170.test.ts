@@ -5,7 +5,8 @@ import { join } from 'path';
 const mobile = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(mobile, rel), 'utf8');
 
-const portal = src('app/portal.tsx');
+const portalRoute = src('app/portal.tsx');
+const portal = src('components/screens/PortalScreen.tsx');
 const schedule = src('components/screens/schedule/UnifiedScheduleView.tsx');
 const budget = src('app/_stack/budget-planner.tsx');
 const home = src('components/renova/os/home/HomeCompletionStrip.tsx');
@@ -13,19 +14,31 @@ const qc = src('components/screens/QualityControlScreen.tsx');
 const decisions = src('components/renova/DecisionHistoryPanel.tsx');
 const periodDetail = src('components/screens/budget/BudgetPeriodDetailSection.tsx');
 
-if (!portal.includes('showActionConfirm')) throw new Error('portal missing showActionConfirm');
-for (const title of [
-  "title: 'На доработку?'",
-  "title: 'Отклонить график?'",
-  "title: 'Этап принят'",
-  "title: 'Нужен чек-лист'",
-  "title: 'Отклонить доп. работу?'",
-  "title: 'Отклонить смету?'",
-]) {
-  if (!portal.includes(title)) throw new Error(`portal missing ${title}`);
+if (portalRoute.trim() !== "export { default } from '@/components/screens/PortalScreen';") {
+  throw new Error('portal route must delegate to PortalScreen');
 }
-if (portal.includes('await api.portalReturnStage') && portal.includes("onPress={async () => {\n                    try {\n                      await api.portalReturnStage")) {
-  throw new Error('portal return still one-tap');
+if (!portal.includes('showActionConfirm')) throw new Error('portal missing showActionConfirm');
+for (const copy of [
+  'Вернуть этап на доработку?',
+  'Отклонить график?',
+  'Этап принят',
+  'Нужен чек-лист',
+  'Отклонить доп. работу?',
+  'Отклонить смету?',
+]) {
+  if (!portal.includes(copy)) throw new Error(`portal missing ${copy}`);
+}
+if (!portal.includes("primaryDestructive: intent === 'destructive'")) {
+  throw new Error('portal destructive confirms must use ActionConfirmSheet intent');
+}
+if (!portal.includes("intent: 'destructive'") || !portal.includes('api.portalReturnStage')) {
+  throw new Error('portal rework must be destructive and confirmed');
+}
+if (!portal.includes('api.portalRejectSchedule') || !portal.includes('api.portalRejectChangeOrder') || !portal.includes('api.portalRejectEstimate')) {
+  throw new Error('portal reject APIs must remain in confirmed flow');
+}
+if (portal.includes('onPress={async () =>') && portal.includes('await api.portalReturnStage')) {
+  throw new Error('portal return still one-tap inline mutation');
 }
 
 if (schedule.includes('Alert.prompt?.') || schedule.includes("Alert.alert('Отклонить график?'")) {
@@ -40,7 +53,12 @@ if (home.includes('Alert.alert') || home.includes('Alert.')) throw new Error('ho
 if (!home.includes("title: 'Дайджест'")) throw new Error('digest sheet');
 
 if (qc.includes("Alert.alert('Спор'")) throw new Error('QC escalate Alert');
-if (!qc.includes("title: 'Спор'")) throw new Error('QC escalate sheet');
+if (!qc.includes("title: 'Эскалировать в спор?'") || !qc.includes('api.escalateIssue')) {
+  throw new Error('QC escalation must use confirmed API flow');
+}
+if (!qc.includes('Стороны получат уведомление') || !qc.includes("'Эскалация'")) {
+  throw new Error('QC escalation feedback/notification copy');
+}
 
 if (decisions.includes("textTransform: 'uppercase'")) throw new Error('decision badge uppercase');
 if (!decisions.includes('screenTypography') || !decisions.includes('listRowStyles')) {

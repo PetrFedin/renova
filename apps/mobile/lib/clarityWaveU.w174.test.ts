@@ -10,17 +10,24 @@ if (!sheet.includes('queueMicrotask') || !sheet.includes('runThenClose')) {
   throw new Error('ActionConfirmSheet must defer actions after close (nested sheets)');
 }
 
-const portal = src('app/portal.tsx');
-for (const title of [
-  "title: 'Согласовать график?'",
-  "title: 'Принять этап?'",
-  "title: 'Согласовать доп. работу?'",
-  "title: 'Зафиксировать смету?'",
+const portalRoute = src('app/portal.tsx');
+const portal = src('components/screens/PortalScreen.tsx');
+if (portalRoute.trim() !== "export { default } from '@/components/screens/PortalScreen';") {
+  throw new Error('portal route must delegate');
+}
+for (const copy of [
+  'Согласовать график?',
+  'Принять этап?',
+  'Согласовать доп. работу?',
+  'Зафиксировать смету?',
 ]) {
-  if (!portal.includes(title)) throw new Error(`portal missing ${title}`);
+  if (!portal.includes(copy)) throw new Error(`portal missing ${copy}`);
 }
 if (portal.includes("Alert.alert('Согласовано'") || portal.includes("Alert.alert('Готово', 'Смета зафиксирована')")) {
   throw new Error('portal still uses Alert for CO/lock success');
+}
+if (!portal.includes('confirmMutation') || !portal.includes('showActionConfirm')) {
+  throw new Error('portal approvals must use shared confirmation orchestration');
 }
 
 const schedule = src('components/screens/schedule/UnifiedScheduleView.tsx');

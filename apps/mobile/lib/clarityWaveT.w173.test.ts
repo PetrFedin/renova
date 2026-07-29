@@ -5,7 +5,8 @@ import { join } from 'path';
 const mobile = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(mobile, rel), 'utf8');
 
-const portal = src('app/portal.tsx');
+const portalRoute = src('app/portal.tsx');
+const portal = src('components/screens/PortalScreen.tsx');
 const teamQr = src('app/(contractor)/_screens/team-qr.tsx');
 const post = src('components/renova/os/home/PostCreateSheet.tsx');
 const plan = src('components/screens/object/PlanTabOverview.tsx');
@@ -13,11 +14,17 @@ const week = src('components/renova/WeekTimeline.tsx');
 const chips = src('components/renova/StagePickerChips.tsx');
 const setup = src('components/renova/os/home/HomeSetupChecklist.tsx');
 
+if (portalRoute.trim() !== "export { default } from '@/components/screens/PortalScreen';") {
+  throw new Error('portal route must delegate');
+}
 if (portal.includes("Alert.alert(\n                          'Demo-оплата'") || portal.includes("Alert.alert(\n                          'Подписано'")) {
   throw new Error('portal decision Alert left');
 }
 if (!portal.includes("title: 'Demo-оплата'") || !portal.includes("title: 'Подписано'")) {
   throw new Error('portal sheets missing');
+}
+if (!portal.includes('runPortalMutation') || !portal.includes('api.portalSignDocument')) {
+  throw new Error('portal demo/sign mutations must use shared guard');
 }
 // no multi-button Alert left in portal
 if (portal.includes("text: 'Продолжить demo'") || portal.includes("text: 'К оплате', onPress: goPayments")) {
