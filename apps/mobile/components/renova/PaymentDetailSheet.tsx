@@ -48,7 +48,7 @@ function confirmAcceptanceFirst(goToAcceptance: () => void) {
 }
 
 type PayStep = 'info' | 'transfer' | 'confirm';
-type PaymentMutation = 'card' | 'confirm' | 'dispute' | null;
+type PaymentMutation = 'card' | 'confirm' | 'dispute' | 'resolveDispute' | null;
 
 export function PaymentDetailSheet({
   payment,
@@ -81,6 +81,8 @@ export function PaymentDetailSheet({
   const [reqLoaded, setReqLoaded] = useState(false);
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
+  const [resolutionOpen, setResolutionOpen] = useState(false);
+  const [resolutionNote, setResolutionNote] = useState('');
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
@@ -109,6 +111,8 @@ export function PaymentDetailSheet({
     setReceiptAttached(false);
     setDisputeOpen(false);
     setDisputeReason('');
+    setResolutionOpen(false);
+    setResolutionNote('');
     void reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
   }, [payment?.id, reloadReceiptFlag]);
 
@@ -159,6 +163,7 @@ export function PaymentDetailSheet({
   const isCustomer = role === 'customer';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
   const canDispute = isCustomer && !readOnly && ['confirmed', 'paid_unverified'].includes(payment.status);
+  const canResolveDispute = isCustomer && !readOnly && payment.status === 'disputed';
   const stageNeedsAcceptance = Boolean(stage && stage.status !== 'done');
   const statusLabel = PAYMENT_STATUS_LABEL[payment.status] || payment.status;
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
@@ -434,65 +439,82 @@ export function PaymentDetailSheet({
     });
   };
 
+  const submitResolution = () => {
+    if (mutationRef.current) return;
+    const note = resolutionNote.trim().replace(/\s+/g, ' ');
+    if (note.length < 10) {
+      showActionConfirm({
+        title: 'Добавьте пояснение',
+        message: 'Опишите основание отзыва спора минимум десятью символами.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+      return;
+    }
+    showActionConfirm({
+      title: 'Отозвать спор?',
+      message: `Сервер восстановит исходный статус оплаты из доказательной истории. Если оплата была подтверждена, ${formatRub(payment.amount)} снова войдёт в факт бюджета.`,
+      primaryLabel: 'Отозвать спор',
+      onPrimary: () => {
+        void (async () => {
+          if (!beginMutation('resolveDispute')) return;
+          try {
+            const result = await api.resolvePaymentDispute(userId, projectId, payment.id, { note });
+            await syncProjectSideEffects({
+              user: user ?? ({ id: userId, role } as never),
+              project: activeProject ?? ({ id: projectId } as never),
+              role,
+            }).catch(reportCatch('payment.dispute.resolve.sync'));
+            onChanged?.();
+            onClose();
+            showActionConfirm({
+              title: 'Спор отозван',
+              message: result.payment.status === 'confirmed'
+                ? 'Оплата и связанный расход снова учитываются в подтверждённом факте бюджета.'
+                : 'Оплата возвращена в статус «оплачено, не верифицировано». Подтверждённый расход не создавался.',
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
+          } catch (error: unknown) {
+            showActionConfirm({
+              title: 'Спор не отозван',
+              message: apiErrorMessage(error, 'Проверьте статус оплаты и повторите операцию.'),
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
+          } finally {
+            endMutation();
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
   const footer = canConfirm ? (
     <>
       {step === 'info' ? (
         stageNeedsAcceptance ? (
-          <PrimaryButton
-            title="Перейти к приёмке"
-            onPress={goToAcceptance}
-            disabled={busy}
-            fullWidth
-          />
+          <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} disabled={busy} fullWidth />
         ) : (
           <>
-            <PrimaryButton
-              title="Оплатить картой (ЮKassa)"
-              onPress={() => { void payWithCard(); }}
-              loading={mutation === 'card'}
-              disabled={busy && mutation !== 'card'}
-              fullWidth
-            />
-            <PrimaryButton
-              title="Перевести (СБП / реквизиты)"
-              variant="outline"
-              onPress={() => setStep('transfer')}
-              disabled={busy}
-              fullWidth
-            />
-            <PrimaryButton
-              title="Прикрепить чек"
-              variant="outline"
-              onPress={openReceipt}
-              disabled={busy}
-              fullWidth
-            />
+            <PrimaryButton title="Оплатить картой (ЮKassa)" onPress={() => { void payWithCard(); }} loading={mutation === 'card'} disabled={busy && mutation !== 'card'} fullWidth />
+            <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} disabled={busy} fullWidth />
+            <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} fullWidth />
           </>
         )
       ) : null}
       {step === 'transfer' ? (
         <>
-          <PrimaryButton
-            title="Я перевёл — дальше"
-            onPress={() => { setTransferAck(true); setStep('confirm'); }}
-            disabled={busy}
-            fullWidth
-          />
+          <PrimaryButton title="Я перевёл — дальше" onPress={() => { setTransferAck(true); setStep('confirm'); }} disabled={busy} fullWidth />
           <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep('info')} disabled={busy} fullWidth />
         </>
       ) : null}
       {step === 'confirm' ? (
         <>
-          <PrimaryButton
-            title="Я оплатил — подтвердить"
-            onPress={confirm}
-            loading={mutation === 'confirm'}
-            disabled={stageNeedsAcceptance || (busy && mutation !== 'confirm')}
-            fullWidth
-          />
-          {!receiptAttached ? (
-            <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} fullWidth />
-          ) : null}
+          <PrimaryButton title="Я оплатил — подтвердить" onPress={confirm} loading={mutation === 'confirm'} disabled={stageNeedsAcceptance || (busy && mutation !== 'confirm')} fullWidth />
+          {!receiptAttached ? <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} fullWidth /> : null}
           <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep('transfer')} disabled={busy} fullWidth />
         </>
       ) : null}
@@ -502,30 +524,23 @@ export function PaymentDetailSheet({
     <>
       {disputeOpen ? (
         <>
-          <PrimaryButton
-            title="Подтвердить спор"
-            variant="danger"
-            onPress={submitDispute}
-            loading={mutation === 'dispute'}
-            disabled={busy && mutation !== 'dispute'}
-            fullWidth
-          />
-          <PrimaryButton
-            title="Отмена"
-            variant="ghost"
-            onPress={() => { setDisputeOpen(false); setDisputeReason(''); }}
-            disabled={busy}
-            fullWidth
-          />
+          <PrimaryButton title="Подтвердить спор" variant="danger" onPress={submitDispute} loading={mutation === 'dispute'} disabled={busy && mutation !== 'dispute'} fullWidth />
+          <PrimaryButton title="Отмена" variant="ghost" onPress={() => { setDisputeOpen(false); setDisputeReason(''); }} disabled={busy} fullWidth />
         </>
       ) : (
-        <PrimaryButton
-          title="Оспорить оплату"
-          variant="dangerOutline"
-          onPress={() => setDisputeOpen(true)}
-          disabled={busy}
-          fullWidth
-        />
+        <PrimaryButton title="Оспорить оплату" variant="dangerOutline" onPress={() => setDisputeOpen(true)} disabled={busy} fullWidth />
+      )}
+      <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+    </>
+  ) : canResolveDispute ? (
+    <>
+      {resolutionOpen ? (
+        <>
+          <PrimaryButton title="Подтвердить отзыв спора" onPress={submitResolution} loading={mutation === 'resolveDispute'} disabled={busy && mutation !== 'resolveDispute'} fullWidth />
+          <PrimaryButton title="Отмена" variant="ghost" onPress={() => { setResolutionOpen(false); setResolutionNote(''); }} disabled={busy} fullWidth />
+        </>
+      ) : (
+        <PrimaryButton title="Отозвать спор" variant="outline" onPress={() => setResolutionOpen(true)} disabled={busy} fullWidth />
       )}
       <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
     </>
@@ -534,40 +549,14 @@ export function PaymentDetailSheet({
   );
 
   return (
-    <SheetSurface
-      visible
-      value={formatRub(payment.amount)}
-      title={payment.title}
-      subtitle={`${statusLabel} · ${typeLabel}`}
-      busy={busy}
-      onClose={closeSafely}
-      accessibilityLabel="Детали счёта"
-      footer={footer}
-    >
-      {canConfirm ? (
-        <Text style={formMetaText.caption}>
-          Шаг {step === 'info' ? 1 : step === 'transfer' ? 2 : 3} из 3 · перевод → подтверждение
-        </Text>
-      ) : null}
+    <SheetSurface visible value={formatRub(payment.amount)} title={payment.title} subtitle={`${statusLabel} · ${typeLabel}`} busy={busy} onClose={closeSafely} accessibilityLabel="Детали счёта" footer={footer}>
+      {canConfirm ? <Text style={formMetaText.caption}>Шаг {step === 'info' ? 1 : step === 'transfer' ? 2 : 3} из 3 · перевод → подтверждение</Text> : null}
 
       {canConfirm && step === 'info' ? (
         <View style={sheetContentStyles.section}>
-          {stageNeedsAcceptance ? (
-            <InfoBanner tone="warning" title="Этап ждёт приёмки" message={PAYMENT_BLOCKED_ACCEPTANCE_MSG} />
-          ) : null}
-          <Text style={formMetaText.caption}>
-            Renova фиксирует факт внешнего перевода, СБП или чека, а не проводит банковскую транзакцию внутри приложения.
-          </Text>
-          <PrimaryButton
-            title="Импорт выписки (пакетно)"
-            variant="outline"
-            disabled={busy}
-            onPress={() => {
-              onClose();
-              pushOsNav('/documents', pathname, role);
-            }}
-            fullWidth
-          />
+          {stageNeedsAcceptance ? <InfoBanner tone="warning" title="Этап ждёт приёмки" message={PAYMENT_BLOCKED_ACCEPTANCE_MSG} /> : null}
+          <Text style={formMetaText.caption}>Renova фиксирует факт внешнего перевода, СБП или чека, а не проводит банковскую транзакцию внутри приложения.</Text>
+          <PrimaryButton title="Импорт выписки (пакетно)" variant="outline" disabled={busy} onPress={() => { onClose(); pushOsNav('/documents', pathname, role); }} fullWidth />
         </View>
       ) : null}
 
@@ -576,76 +565,41 @@ export function PaymentDetailSheet({
           <Text style={screenTypography.section}>Реквизиты</Text>
           {reqMissing ? <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>{reqMissing}</Text> : null}
           {!reqLoaded ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
-          {requisites.split('\n').filter(Boolean).map((line, index) => (
-            <Text key={`${line}:${index}`} style={formMetaText.caption}>{line}</Text>
-          ))}
+          {requisites.split('\n').filter(Boolean).map((line, index) => <Text key={`${line}:${index}`} style={formMetaText.caption}>{line}</Text>)}
           <PrimaryButton title="Скопировать сумму" variant="outline" disabled={busy} onPress={() => { void copySbpAmount(); }} fullWidth />
           <PrimaryButton title="Скопировать реквизиты" variant="outline" disabled={busy} onPress={() => { void copyRequisites(); }} fullWidth />
           <PrimaryButton title="Открыть СБП / банк" variant="outline" disabled={busy} onPress={() => { void openSbp(); }} fullWidth />
         </View>
       ) : null}
 
-      {canConfirm && step === 'confirm' ? (
-        <Text style={formMetaText.caption}>
-          {transferAck ? 'Перевод отмечен.' : ''}{receiptAttached ? ' Чек будет в расходах.' : ''} Подтвердите оплату для исполнителя.
-        </Text>
-      ) : null}
+      {canConfirm && step === 'confirm' ? <Text style={formMetaText.caption}>{transferAck ? 'Перевод отмечен.' : ''}{receiptAttached ? ' Чек будет в расходах.' : ''} Подтвердите оплату для исполнителя.</Text> : null}
 
       {canDispute && disputeOpen ? (
         <View style={sheetContentStyles.section}>
-          <InfoBanner
-            tone="warning"
-            title="Финансовый спор"
-            message="После подтверждения оплата и связанный расход перестанут учитываться как подтверждённый факт бюджета. Причина сохранится в истории."
-          />
+          <InfoBanner tone="warning" title="Финансовый спор" message="После подтверждения оплата и связанный расход перестанут учитываться как подтверждённый факт бюджета. Причина сохранится в истории." />
           <Text style={sheetContentStyles.fieldLabel}>Причина спора</Text>
-          <TextInput
-            value={disputeReason}
-            onChangeText={setDisputeReason}
-            editable={!busy}
-            multiline
-            maxLength={1000}
-            textAlignVertical="top"
-            placeholder="Опишите недостатки, расхождение суммы или отсутствие подтверждения"
-            accessibilityLabel="Причина спора по оплате"
-            style={[sheetContentStyles.input, { minHeight: 96 }]}
-          />
+          <TextInput value={disputeReason} onChangeText={setDisputeReason} editable={!busy} multiline maxLength={1000} textAlignVertical="top" placeholder="Опишите недостатки, расхождение суммы или отсутствие подтверждения" accessibilityLabel="Причина спора по оплате" style={[sheetContentStyles.input, { minHeight: 96 }]} />
           <Text style={formMetaText.caption}>{disputeReason.trim().length}/1000 · минимум 10 символов</Text>
         </View>
       ) : null}
 
-      {payment.status === 'disputed' ? (
-        <InfoBanner
-          tone="warning"
-          title="Оплата оспорена"
-          message="Сумма не учитывается как подтверждённый факт бюджета до разрешения спора или возврата."
-        />
-      ) : null}
-
-      <View style={sheetContentStyles.row}>
-        <Text style={sheetContentStyles.label}>Тип</Text>
-        <Text style={sheetContentStyles.value}>{typeLabel}</Text>
-      </View>
-      <View style={sheetContentStyles.row}>
-        <Text style={sheetContentStyles.label}>Выставлен</Text>
-        <Text style={sheetContentStyles.value}>{fmtDate(payment.created_at)}</Text>
-      </View>
-      {payment.confirmed_at ? (
-        <View style={sheetContentStyles.row}>
-          <Text style={sheetContentStyles.label}>Оплачен</Text>
-          <Text style={sheetContentStyles.value}>{fmtDate(payment.confirmed_at)}</Text>
+      {canResolveDispute && resolutionOpen ? (
+        <View style={sheetContentStyles.section}>
+          <InfoBanner tone="info" title="Отзыв спора" message="Исходный статус будет восстановлен только из серверной истории. Для подтверждённой оплаты связанный расход снова войдёт в бюджет." />
+          <Text style={sheetContentStyles.fieldLabel}>Основание отзыва</Text>
+          <TextInput value={resolutionNote} onChangeText={setResolutionNote} editable={!busy} multiline maxLength={1000} textAlignVertical="top" placeholder="Опишите, почему спор урегулирован или был открыт ошибочно" accessibilityLabel="Основание отзыва спора" style={[sheetContentStyles.input, { minHeight: 96 }]} />
+          <Text style={formMetaText.caption}>{resolutionNote.trim().length}/1000 · минимум 10 символов</Text>
         </View>
       ) : null}
+
+      {payment.status === 'disputed' ? <InfoBanner tone="warning" title="Оплата оспорена" message="Сумма не учитывается как подтверждённый факт бюджета до разрешения спора или возврата." /> : null}
+
+      <View style={sheetContentStyles.row}><Text style={sheetContentStyles.label}>Тип</Text><Text style={sheetContentStyles.value}>{typeLabel}</Text></View>
+      <View style={sheetContentStyles.row}><Text style={sheetContentStyles.label}>Выставлен</Text><Text style={sheetContentStyles.value}>{fmtDate(payment.created_at)}</Text></View>
+      {payment.confirmed_at ? <View style={sheetContentStyles.row}><Text style={sheetContentStyles.label}>Оплачен</Text><Text style={sheetContentStyles.value}>{fmtDate(payment.confirmed_at)}</Text></View> : null}
       {stage ? (
-        <Pressable
-          style={sheetContentStyles.row}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityLabel={`Открыть этап ${stage.name}`}
-          onPress={() => { onClose(); pushStageDetail(stage.id, pathname); }}
-        >
-          <Text style={sheetContentStyles.label}>Этап</Text>
-          <Text style={sheetContentStyles.link}>{stage.name} →</Text>
+        <Pressable style={sheetContentStyles.row} disabled={busy} accessibilityRole="button" accessibilityLabel={`Открыть этап ${stage.name}`} onPress={() => { onClose(); pushStageDetail(stage.id, pathname); }}>
+          <Text style={sheetContentStyles.label}>Этап</Text><Text style={sheetContentStyles.link}>{stage.name} →</Text>
         </Pressable>
       ) : null}
 
@@ -653,20 +607,12 @@ export function PaymentDetailSheet({
         <View style={sheetContentStyles.section}>
           <Text style={screenTypography.section}>История</Text>
           {history.map((event) => (
-            <View key={event.id} style={sheetContentStyles.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={screenTypography.listTitle}>{event.title}</Text>
-                {event.subtitle ? <Text style={screenTypography.listMeta}>{event.subtitle}</Text> : null}
-                <Text style={screenTypography.metricLabel}>{formatPaymentEventDate(event.at)}</Text>
-              </View>
-            </View>
+            <View key={event.id} style={sheetContentStyles.row}><View style={{ flex: 1 }}><Text style={screenTypography.listTitle}>{event.title}</Text>{event.subtitle ? <Text style={screenTypography.listMeta}>{event.subtitle}</Text> : null}<Text style={screenTypography.metricLabel}>{formatPaymentEventDate(event.at)}</Text></View></View>
           ))}
         </View>
       ) : null}
 
-      {!isCustomer && payment.status === 'pending' ? (
-        <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>Ожидает подтверждения заказчиком</Text>
-      ) : null}
+      {!isCustomer && payment.status === 'pending' ? <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>Ожидает подтверждения заказчиком</Text> : null}
     </SheetSurface>
   );
 }
