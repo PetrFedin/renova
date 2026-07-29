@@ -177,7 +177,7 @@ async def apply_provider_refund(
     if payment.status == PaymentStatus.refunded:
         await db.commit()
         return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="replay")
-    if payment.status != PaymentStatus.confirmed:
+    if payment.status not in {PaymentStatus.confirmed, PaymentStatus.disputed}:
         await db.commit()
         return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="refund_source_not_confirmed")
 
@@ -208,9 +208,9 @@ async def apply_provider_refund(
         expense.status = "refund"
     await db.flush()
 
-    from app.services import budget_service as budget
+    from app.services.expense_ledger_service import recalculate_existing_expense_facts
 
-    await budget.refresh_budget_facts(db, payment.project_id)
+    await recalculate_existing_expense_facts(db, payment.project_id)
     await _enqueue_reversal_effects(
         db,
         payment=payment,
