@@ -1,4 +1,4 @@
-import { Pressable, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
+import { Pressable, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
@@ -16,6 +16,8 @@ type Props = {
   fullWidth?: boolean;
   disabled?: boolean;
   loading?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 };
 
 const sizePad: Record<Size, { v: number; h: number; font: number }> = {
@@ -33,6 +35,8 @@ export function PrimaryButton({
   fullWidth,
   disabled,
   loading,
+  accessibilityLabel,
+  accessibilityHint,
 }: Props) {
   const sz = size ?? (compact ? 'sm' : 'md');
   const pad = sizePad[sz];
@@ -40,11 +44,15 @@ export function PrimaryButton({
   const isOutline = variant === 'outline' || variant === 'dangerOutline';
   const isGhost = variant === 'ghost';
   const isSecondary = variant === 'secondary';
+  const unavailable = Boolean(disabled || loading);
 
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled || loading}
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: unavailable, busy: Boolean(loading) }}
+      disabled={unavailable}
       style={({ pressed }) => [
         styles.btn,
         { paddingVertical: pad.v, paddingHorizontal: pad.h },
@@ -54,11 +62,11 @@ export function PrimaryButton({
         isOutline && isDanger && styles.dangerOutline,
         variant === 'danger' && styles.danger,
         isGhost && styles.ghost,
-        (disabled || loading) && styles.disabled,
-        pressed && !disabled && !loading && styles.pressed,
+        unavailable && styles.disabled,
+        pressed && !unavailable && styles.pressed,
       ]}
       onPress={() => {
-        if (disabled || loading) return;
+        if (unavailable) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(reportCatch('components.renova.PrimaryButton.1'));
         onPress();
       }}
@@ -75,7 +83,7 @@ export function PrimaryButton({
             isOutline && isDanger && styles.textDangerOutline,
             variant === 'danger' && styles.textDanger,
             isGhost && styles.textGhost,
-            (disabled || loading) && styles.textDisabled,
+            unavailable && styles.textDisabled,
           ]}
         >
           {title}
