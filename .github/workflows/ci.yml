@@ -23,6 +23,10 @@ jobs:
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/financialFormIntegrity.test.ts
+      - name: Focus-aware reload contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/projectReloadFocusContract.test.ts
 
   e2e:
     runs-on: ubuntu-latest
