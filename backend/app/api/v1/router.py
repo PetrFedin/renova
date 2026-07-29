@@ -4,6 +4,7 @@ from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
 from app.api.v1 import payment_disputes
+from app.api.v1 import payment_history
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -72,6 +73,8 @@ api_router.include_router(chats.router)
 # --- finance ---
 # Canonical customer dispute transition must precede general payment routes.
 api_router.include_router(payment_disputes.router)
+# Canonical list projection adds evidence history and removes receipt/event N+1 queries.
+api_router.include_router(payment_history.router)
 api_router.include_router(payments.router)
 api_router.include_router(estimate.router)
 api_router.include_router(change_orders.router)

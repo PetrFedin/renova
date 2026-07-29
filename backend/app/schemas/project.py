@@ -125,6 +125,17 @@ class PaymentCreate(BaseModel):
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
+class PaymentEventOut(BaseModel):
+    id: str
+    old_status: str
+    new_status: str
+    source: str
+    evidence_type: str | None = None
+    note: str | None = None
+    actor_label: str
+    created_at: str
+
+
 class PaymentOut(BaseModel):
     id: str
     title: str
@@ -136,6 +147,7 @@ class PaymentOut(BaseModel):
     confirmed_at: str | None
     created_at: str
     receipt_id: str | None = None
+    events: list[PaymentEventOut] = Field(default_factory=list)
 
 
 class StageCommentIn(BaseModel):

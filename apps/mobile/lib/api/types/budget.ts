@@ -1,4 +1,15 @@
 /** Платежи, закупки, чеки, материалы */
+export type PaymentEvent = {
+  id: string;
+  old_status: string;
+  new_status: string;
+  source: string;
+  evidence_type?: string | null;
+  note?: string | null;
+  actor_label: string;
+  created_at: string;
+};
+
 export type Payment = {
   id: string;
   title: string;
@@ -11,6 +22,8 @@ export type Payment = {
   created_at: string;
   /** Чек, прикреплённый к счёту (API) */
   receipt_id?: string | null;
+  /** Каноническая доказательная история PaymentEvent. */
+  events?: PaymentEvent[];
 };
 
 export type MaterialPick = {
