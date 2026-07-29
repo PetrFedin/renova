@@ -360,7 +360,7 @@ async def _on_reversed(
         stage = await db.get(Stage, stage_id)
         if not stage or stage.status == StageStatus.done:
             continue
-        evaluation = await dependencies.evaluate_stage(db, stage)
+        evaluation = await dependencies.evaluate_stage(db, stage, commit=False)
         if evaluation["blocked"]:
             stage.status = StageStatus.planned
 
@@ -376,13 +376,17 @@ async def _on_delivered(db: AsyncSession, purchase: Purchase) -> None:
             if pick:
                 pick.status = MaterialPickStatus.purchased
                 pick.qty_delivered = (pick.qty_delivered or 0) + item.qty
-                await dependencies.on_material_delivered(db, item.material_pick_id)
+                await dependencies.on_material_delivered(
+                    db,
+                    item.material_pick_id,
+                    commit=False,
+                )
 
         stage_id = item.stage_id or (pick.stage_id if pick else None)
         if stage_id:
             stage = await db.get(Stage, stage_id)
             if stage and stage.status == StageStatus.planned:
-                evaluation = await dependencies.evaluate_stage(db, stage)
+                evaluation = await dependencies.evaluate_stage(db, stage, commit=False)
                 if not evaluation["blocked"]:
                     stage.status = StageStatus.active
 
