@@ -69,54 +69,74 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
     if user.role != UserRole.customer:
         raise HTTPException(403)
     co, draft_meta = await co_svc.approve_with_sign_draft(
-        db, project_id=project_id, order_id=order_id, created_by=user.id
+        db,
+        project_id=project_id,
+        order_id=order_id,
+        created_by=user.id,
     )
     if not co:
         raise HTTPException(404)
+
     draft_id = (draft_meta or {}).get("id")
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="DocumentDraftForSign",
-        title=f"Подпишите доп. работы: {co.title}",
-        body=f"Документ {draft_id} · {co.amount:.0f} ₽",
-        link_path="/documents",
-    )
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="ChangeOrderApproved",
-        title=f"Доп. работы согласованы: {co.title}",
-        body=str(co.amount),
-        link_path="/(customer)/(tabs)/budget",
-    )
-    for member_id in _member_ids(project):
-        if member_id == user.id:
-            continue
-        await notif.notify(
-            db,
-            user_id=member_id,
-            project_id=project_id,
-            notification_type="change_order",
-            title=f"Доп. работы согласованы: {co.title}",
-            body=str(co.amount),
-            link_path="/(contractor)/(tabs)/budget",
-            return_to="/(contractor)/(tabs)/home",
-        )
-    if project.customer_id:
-        await notif.notify(
-            db,
-            user_id=project.customer_id,
-            project_id=project_id,
-            notification_type="document",
-            title=f"Подпишите доп. работы: {co.title}",
-            body=f"Черновик в Документах · {co.amount:.0f} ₽",
-            link_path="/documents",
-            return_to="/(customer)/(tabs)/",
-        )
-    return {"ok": True, "status": co.status.value, "document_id": draft_id, "amount": co.amount, "title": co.title, "schedule_synced": bool((draft_meta or {}).get("schedule_synced"))}
+    replayed = bool((draft_meta or {}).get("replayed"))
+    if not replayed:
+        from app.services.client_write_side_effects import clear_request_side_effect_context
+
+        try:
+            await act.log_event(
+                db,
+                project_id=project_id,
+                user_id=user.id,
+                kind="DocumentDraftForSign",
+                title=f"Подпишите доп. работы: {co.title}",
+                body=f"Документ {draft_id} · {co.amount:.0f} ₽",
+                link_path="/documents",
+            )
+            await act.log_event(
+                db,
+                project_id=project_id,
+                user_id=user.id,
+                kind="ChangeOrderApproved",
+                title=f"Доп. работы согласованы: {co.title}",
+                body=str(co.amount),
+                link_path="/(customer)/(tabs)/budget",
+            )
+            for member_id in _member_ids(project):
+                if member_id == user.id:
+                    continue
+                await notif.notify(
+                    db,
+                    user_id=member_id,
+                    project_id=project_id,
+                    notification_type="change_order",
+                    title=f"Доп. работы согласованы: {co.title}",
+                    body=str(co.amount),
+                    link_path="/(contractor)/(tabs)/budget",
+                    return_to="/(contractor)/(tabs)/home",
+                )
+            if project.customer_id:
+                await notif.notify(
+                    db,
+                    user_id=project.customer_id,
+                    project_id=project_id,
+                    notification_type="document",
+                    title=f"Подпишите доп. работы: {co.title}",
+                    body=f"Черновик в Документах · {co.amount:.0f} ₽",
+                    link_path="/documents",
+                    return_to="/(customer)/(tabs)/",
+                )
+        finally:
+            clear_request_side_effect_context()
+
+    return {
+        "ok": True,
+        "status": co.status.value,
+        "document_id": draft_id,
+        "amount": co.amount,
+        "title": co.title,
+        "schedule_synced": bool((draft_meta or {}).get("schedule_synced")),
+        "replayed": replayed,
+    }
 
 
 @router.post("/{order_id}/reject")
