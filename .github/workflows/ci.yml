@@ -67,7 +67,7 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py -q
+          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py tests/test_financial_side_effect_outbox.py -q
           export ENVIRONMENT=development
           export DATABASE_URL=sqlite+aiosqlite:///./ci.db
           export PUBLIC_BASE_URL=http://127.0.0.1:8100
