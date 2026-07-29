@@ -1,8 +1,13 @@
 import pytest
+import pytest_asyncio
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.db.base import Base
 from app.models.client_write_request import ClientWriteRequest
-from app.models.entities import EstimateLine, Payment, PaymentType, Project, Receipt, User, UserRole
+from app.models.entities import EstimateLine, Payment, Project, Receipt, User, UserRole
+import app.models.work_schedule  # noqa: F401
+import app.models.project_documents  # noqa: F401
 from app.services.client_write_idempotency import (
     IdempotencyConflict,
     commit_client_write,
@@ -10,6 +15,17 @@ from app.services.client_write_idempotency import (
 )
 from app.services.estimate_service import prepare_line
 from app.services.payment_service import prepare_payment
+
+
+@pytest_asyncio.fixture
+async def idempotency_db():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        yield session
+    await engine.dispose()
 
 
 async def seed_project(db):
@@ -28,7 +44,8 @@ async def seed_project(db):
 
 
 @pytest.mark.asyncio
-async def test_payment_create_replays_one_entity_and_conflicts_on_changed_payload(db):
+async def test_payment_create_replays_one_entity_and_conflicts_on_changed_payload(idempotency_db):
+    db = idempotency_db
     _, contractor, project = await seed_project(db)
     payload = {
         "title": "Этап 1",
@@ -83,7 +100,8 @@ async def test_payment_create_replays_one_entity_and_conflicts_on_changed_payloa
 
 
 @pytest.mark.asyncio
-async def test_estimate_line_preserves_room_category_notes_and_replays(db):
+async def test_estimate_line_preserves_room_category_notes_and_replays(idempotency_db):
+    db = idempotency_db
     _, contractor, project = await seed_project(db)
     payload = {
         "line_type": "material",
@@ -124,7 +142,8 @@ async def test_estimate_line_preserves_room_category_notes_and_replays(db):
 
 
 @pytest.mark.asyncio
-async def test_manual_receipt_request_is_project_user_scoped(db):
+async def test_manual_receipt_request_is_project_user_scoped(idempotency_db):
+    db = idempotency_db
     customer, contractor, project = await seed_project(db)
     payload = {
         "amount": 1500.0,
