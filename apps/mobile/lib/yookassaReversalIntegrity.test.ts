@@ -11,6 +11,7 @@ const must = (condition: boolean, message: string) => {
 const webhook = readBackend('app/services/yookassa_service.py');
 const reversal = readBackend('app/services/payment_reversal_service.py');
 const budget = readBackend('app/services/budget_service.py');
+const ledger = readBackend('app/services/expense_ledger_service.py');
 
 must(webhook.includes('{"payment.canceled", "refund.succeeded"}'), 'webhook routes provider reversals');
 must(webhook.includes('process_provider_reversal'), 'webhook delegates to canonical reversal state machine');
@@ -25,8 +26,11 @@ must(reversal.includes('partial_refund_unsupported'), 'partial refunds fail clos
 must(reversal.includes('evidence_type="yookassa_cancellation"'), 'cancellation evidence is recorded');
 must(reversal.includes('evidence_type="yookassa_refund"'), 'refund evidence is recorded');
 must(reversal.includes('expense.status = "refund"'), 'full refund reverses canonical expense');
-must(reversal.includes('budget.refresh_budget_facts'), 'refund recalculates exact budget');
+must(reversal.includes('recalculate_existing_expense_facts'), 'refund uses status-preserving exact budget recalculation');
+must(!reversal.includes('budget.refresh_budget_facts'), 'refund must not re-hydrate source facts');
 must(reversal.includes('outbox.enqueue('), 'reversal effects are durable');
-must(budget.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'refund expenses are excluded from budget fact');
+must(ledger.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'ledger excludes disputed/refund expenses from budget fact');
+must(!ledger.includes('expense_from_receipt') && !ledger.includes('expense_from_payment'), 'ledger cannot resurrect reversed source facts');
+must(budget.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'canonical budget also excludes refund expenses');
 
 console.log('yookassaReversalIntegrity.test OK');
