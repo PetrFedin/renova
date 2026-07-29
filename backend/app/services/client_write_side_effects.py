@@ -1,9 +1,10 @@
-"""Prepare transactional side effects for idempotent client create requests."""
+"""Prepare and bind transactional side effects to the current request task."""
 
 from __future__ import annotations
 
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +17,16 @@ from app.services import outbox_service as outbox
 class PreparedSideEffect:
     effect_type: str
     outbox_id: str
+    match_key: str | None = None
 
 
-_active_side_effect: ContextVar[PreparedSideEffect | None] = ContextVar(
-    "active_client_write_side_effect",
-    default=None,
+_active_side_effects: ContextVar[tuple[PreparedSideEffect, ...]] = ContextVar(
+    "active_client_write_side_effects",
+    default=(),
+)
+_suppress_payment_transition_effects: ContextVar[bool] = ContextVar(
+    "suppress_payment_transition_effects",
+    default=False,
 )
 
 
@@ -41,7 +47,7 @@ async def prepare_client_write_side_effect(
             db,
             aggregate_type="payment",
             aggregate_id=payment.id,
-            event_type=outbox.PAYMENT_CREATED_EVENT,
+            event_type=outbox.NOTIFICATION_EVENT,
             payload={
                 "user_id": project.customer_id,
                 "project_id": project_id,
@@ -52,7 +58,11 @@ async def prepare_client_write_side_effect(
                 "return_to": "/(customer)/(tabs)/home",
             },
         )
-        return PreparedSideEffect(effect_type="notification", outbox_id=row.id)
+        return PreparedSideEffect(
+            effect_type="notification",
+            outbox_id=row.id,
+            match_key=project.customer_id,
+        )
 
     if scope in {"receipt.scan", "receipt.manual"}:
         receipt = await db.get(Receipt, entity_id)
@@ -72,7 +82,7 @@ async def prepare_client_write_side_effect(
             db,
             aggregate_type="receipt",
             aggregate_id=receipt.id,
-            event_type=outbox.RECEIPT_CREATED_EVENT,
+            event_type=outbox.ACTIVITY_EVENT,
             payload={
                 "project_id": project_id,
                 "user_id": user_id,
@@ -89,13 +99,40 @@ async def prepare_client_write_side_effect(
 
 
 def activate_client_write_side_effect(effect: PreparedSideEffect | None) -> None:
-    if effect is not None:
-        _active_side_effect.set(effect)
+    activate_client_write_side_effects([effect] if effect is not None else [])
 
 
-def take_client_write_side_effect(effect_type: str) -> str | None:
-    effect = _active_side_effect.get()
-    if not effect or effect.effect_type != effect_type:
-        return None
-    _active_side_effect.set(None)
-    return effect.outbox_id
+def activate_client_write_side_effects(effects: Iterable[PreparedSideEffect]) -> None:
+    prepared = tuple(effect for effect in effects if effect is not None)
+    if prepared:
+        _active_side_effects.set(prepared)
+
+
+def take_client_write_side_effect(
+    effect_type: str,
+    *,
+    match_key: str | None = None,
+) -> str | None:
+    effects = list(_active_side_effects.get())
+    for index, effect in enumerate(effects):
+        if effect.effect_type != effect_type:
+            continue
+        if effect.match_key is not None and effect.match_key != match_key:
+            continue
+        effects.pop(index)
+        _active_side_effects.set(tuple(effects))
+        return effect.outbox_id
+    return None
+
+
+def suppress_payment_transition_side_effects() -> None:
+    _suppress_payment_transition_effects.set(True)
+
+
+def payment_transition_side_effects_suppressed() -> bool:
+    return _suppress_payment_transition_effects.get()
+
+
+def clear_request_side_effect_context() -> None:
+    _active_side_effects.set(())
+    _suppress_payment_transition_effects.set(False)
