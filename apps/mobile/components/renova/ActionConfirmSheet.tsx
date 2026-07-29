@@ -1,10 +1,9 @@
 /**
  * Clarity B/M: bottom sheet вместо Alert для post-action CTA и multi-option меню.
- * Канон: slide Modal; primary/secondary ИЛИ actions[] (Clarity M).
+ * Канон: shared SheetSurface; primary/secondary ИЛИ actions[].
  */
-import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { SheetSurface } from '@/components/renova/SheetSurface';
 
 export type ActionConfirmAction = {
   label: string;
@@ -42,7 +41,7 @@ export function ActionConfirmSheet({
   onDismiss,
   onClose,
 }: ActionConfirmSheetProps) {
-  const multi = actions && actions.length > 0;
+  const multi = Boolean(actions?.length);
   /**
    * Clarity U: сначала закрываем sheet, затем action.
    * Иначе nested showActionConfirm из onPress мгновенно сбрасывается clearActionConfirm.
@@ -57,80 +56,58 @@ export function ActionConfirmSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={closeDismiss}>
-      <Pressable style={s.backdrop} onPress={closeDismiss} accessibilityRole="button" accessibilityLabel="Закрыть подтверждение">
-        <Pressable style={s.sheet} onStartShouldSetResponder={() => true}>
-          <View style={s.handle} />
-          <Text style={s.title}>{title}</Text>
-          {message ? <Text style={s.message}>{message}</Text> : null}
-          <ScrollView style={s.scroll} bounces={false} keyboardShouldPersistTaps="handled">
-            <View style={s.actions}>
-              {multi
-                ? actions!.map((action, index) => (
-                    <PrimaryButton
-                      key={`${action.label}-${index}`}
-                      title={action.label}
-                      variant={action.destructive ? 'dangerOutline' : index === 0 ? 'primary' : 'outline'}
-                      onPress={() => runThenClose(action.onPress)}
-                    />
-                  ))
-                : (
-                  <>
-                    {primaryLabel && onPrimary ? (
-                      <PrimaryButton
-                        title={primaryLabel}
-                        variant={primaryDestructive ? 'danger' : 'primary'}
-                        onPress={() => runThenClose(onPrimary)}
-                      />
-                    ) : null}
-                    {secondaryLabel && onSecondary ? (
-                      <PrimaryButton
-                        title={secondaryLabel}
-                        variant="outline"
-                        onPress={() => runThenClose(onSecondary)}
-                      />
-                    ) : null}
-                  </>
-                )}
-              <Pressable accessibilityRole="button" accessibilityLabel="Закрыть" onPress={closeDismiss} style={s.dismiss}>
-                <Text style={s.dismissT}>Закрыть</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <SheetSurface
+      visible={visible}
+      title={title}
+      subtitle={message || undefined}
+      onClose={closeDismiss}
+      accessibilityLabel={`Подтверждение: ${title}`}
+      footer={
+        <>
+          {multi
+            ? actions!.map((action, index) => (
+                <PrimaryButton
+                  key={`${action.label}-${index}`}
+                  title={action.label}
+                  variant={action.destructive ? 'dangerOutline' : index === 0 ? 'primary' : 'outline'}
+                  accessibilityLabel={action.label}
+                  onPress={() => runThenClose(action.onPress)}
+                  fullWidth
+                />
+              ))
+            : (
+              <>
+                {primaryLabel && onPrimary ? (
+                  <PrimaryButton
+                    title={primaryLabel}
+                    variant={primaryDestructive ? 'danger' : 'primary'}
+                    accessibilityLabel={primaryLabel}
+                    onPress={() => runThenClose(onPrimary)}
+                    fullWidth
+                  />
+                ) : null}
+                {secondaryLabel && onSecondary ? (
+                  <PrimaryButton
+                    title={secondaryLabel}
+                    variant="outline"
+                    accessibilityLabel={secondaryLabel}
+                    onPress={() => runThenClose(onSecondary)}
+                    fullWidth
+                  />
+                ) : null}
+              </>
+            )}
+          <PrimaryButton
+            title="Закрыть"
+            variant="ghost"
+            accessibilityLabel="Закрыть подтверждение"
+            onPress={closeDismiss}
+            fullWidth
+          />
+        </>
+      }
+    >
+      {null}
+    </SheetSurface>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
-  },
-  sheet: {
-    backgroundColor: RenovaTheme.colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 28,
-    gap: 10,
-    maxHeight: '78%',
-  },
-  scroll: { flexGrow: 0 },
-  handle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: RenovaTheme.colors.border,
-    marginBottom: 8,
-  },
-  title: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },
-  message: { fontSize: 14, color: RenovaTheme.colors.textMuted, lineHeight: 20 },
-  actions: { gap: 8, marginTop: 8 },
-  dismiss: { alignItems: 'center', minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
-  dismissT: { fontSize: 14, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-});
