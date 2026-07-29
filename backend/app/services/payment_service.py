@@ -1,11 +1,22 @@
 """Платежи: авансы, этапы, закупка материалов."""
 from app.core.timeutil import utc_now
-from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Payment, PaymentStatus, PaymentType, Project
+from app.models.entities import (
+    Payment,
+    PaymentEvent,
+    PaymentStatus,
+    PaymentType,
+    Project,
+    _uuid,
+)
+from app.services.client_write_side_effects import (
+    PreparedSideEffect,
+    activate_client_write_side_effects,
+    suppress_payment_transition_side_effects,
+)
 
 
 async def prepare_payment(
@@ -18,7 +29,6 @@ async def prepare_payment(
     stage_id: str | None = None,
     notes: str | None = None,
 ) -> Payment:
-    """Add and flush a payment without committing the surrounding transaction."""
     payment = Payment(
         project_id=project_id,
         stage_id=stage_id,
@@ -58,6 +68,87 @@ async def create_payment(
     return payment
 
 
+async def _prepare_transition_side_effects(
+    db: AsyncSession,
+    *,
+    payment: Payment,
+    project: Project | None,
+    unverified: bool,
+    machine_settlement: bool,
+) -> list[PreparedSideEffect]:
+    if not project:
+        return []
+    from app.services import outbox_service as outbox
+
+    actor_user_id = project.customer_id
+    activity_title = (
+        f"Оплата (ЮKassa): {payment.title}"
+        if machine_settlement
+        else f"Оплата: {payment.title}"
+    )
+    activity_row = await outbox.enqueue(
+        db,
+        aggregate_type="payment",
+        aggregate_id=payment.id,
+        event_type=outbox.RECEIPT_CREATED_EVENT,
+        payload={
+            "project_id": payment.project_id,
+            "user_id": actor_user_id,
+            "kind": "PaymentApproved",
+            "title": activity_title,
+            "body": str(payment.amount),
+            "link_path": "/(customer)/(tabs)/budget",
+        },
+    )
+    effects = [PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id)]
+
+    notification_type = "payment_pending" if unverified else "payment_confirmed"
+    if machine_settlement:
+        notification_title = f"Оплата через ЮKassa: {payment.title}"
+    elif unverified:
+        notification_title = f"Перевод отмечен (без чека): {payment.title}"
+    else:
+        notification_title = f"Оплата подтверждена: {payment.title}"
+
+    for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+        if not member_id:
+            continue
+        if not machine_settlement and member_id == actor_user_id:
+            continue
+        customer_link = member_id == project.customer_id
+        notification_row = await outbox.enqueue(
+            db,
+            aggregate_type="payment",
+            aggregate_id=payment.id,
+            event_type=outbox.PAYMENT_CREATED_EVENT,
+            payload={
+                "user_id": member_id,
+                "project_id": payment.project_id,
+                "notification_type": notification_type,
+                "title": notification_title,
+                "body": str(payment.amount),
+                "link_path": "/(customer)/(tabs)/budget" if customer_link else "/(contractor)/(tabs)/budget",
+                "return_to": None
+                if machine_settlement
+                else ("/(customer)/(tabs)/home" if customer_link else "/(contractor)/(tabs)/home"),
+            },
+        )
+        effects.append(
+            PreparedSideEffect(
+                effect_type="notification",
+                outbox_id=notification_row.id,
+                match_key=member_id,
+            )
+        )
+    return effects
+
+
+def _transition_replay(payment: Payment, target_status: PaymentStatus) -> bool:
+    if payment.status == PaymentStatus.confirmed:
+        return True
+    return target_status == PaymentStatus.paid_unverified and payment.status == PaymentStatus.paid_unverified
+
+
 async def confirm_payment(
     db: AsyncSession,
     payment_id: str,
@@ -67,23 +158,34 @@ async def confirm_payment(
     transfer_ack: bool = False,
     allow_without_settlement: bool = False,
 ) -> Payment | None:
-    """Confirm pending payment.
-
-    Manual customer settlement proof (W138):
-    - linked receipt_id, OR
-    - transfer_ack=True (клиент: «я перевёл»).
-    YuKassa checkout id НЕ считается proof — только webhook с allow_without_settlement.
-    Machine paths (webhook / bank match): allow_without_settlement=True.
-    """
+    """Move a payment once; retries of an achieved state return the same row."""
     payment = await db.get(Payment, payment_id)
-    confirmable = {
-        PaymentStatus.pending,
-        PaymentStatus.processing,
-        PaymentStatus.paid_unverified,
-    }
-    if not payment or payment.status not in confirmable:
+    if not payment or (project_id is not None and payment.project_id != project_id):
         return None
-    if project_id is not None and payment.project_id != project_id:
+
+    receipt_id = None
+    if not allow_without_settlement:
+        receipt_id = await receipt_id_for_payment(db, payment.id)
+
+    unverified_only = (
+        not allow_without_settlement
+        and not receipt_id
+        and bool(transfer_ack)
+    )
+    target_status = (
+        PaymentStatus.paid_unverified
+        if unverified_only
+        else PaymentStatus.confirmed
+    )
+
+    if _transition_replay(payment, target_status):
+        suppress_payment_transition_side_effects()
+        return payment
+    if payment.status in {
+        PaymentStatus.cancelled,
+        PaymentStatus.disputed,
+        PaymentStatus.refunded,
+    }:
         return None
 
     if payment.payment_type == PaymentType.stage and payment.stage_id and not allow_without_acceptance:
@@ -93,73 +195,93 @@ async def confirm_payment(
         if not stage or stage.project_id != payment.project_id or not stage.customer_accepted_at:
             return None
 
-    receipt_id = None
-    if not allow_without_settlement:
-        # YuKassa id at checkout ≠ paid; only webhook uses allow_without_settlement
-        receipt_id = await receipt_id_for_payment(db, payment.id)
-        if not (receipt_id or transfer_ack):
-            return None
+    if not allow_without_settlement and not (receipt_id or transfer_ack):
+        return None
 
-    old_status = payment.status.value if hasattr(payment.status, "value") else str(payment.status)
-
-    # transfer_ack alone → paid_unverified (не финансовый факт в budget_spent)
-    unverified_only = (
-        not allow_without_settlement
-        and not receipt_id
-        and bool(transfer_ack)
+    allowed_from = (
+        {PaymentStatus.pending, PaymentStatus.processing}
+        if target_status == PaymentStatus.paid_unverified
+        else {PaymentStatus.pending, PaymentStatus.processing, PaymentStatus.paid_unverified}
     )
-    if unverified_only:
-        payment.status = PaymentStatus.paid_unverified
-        payment.payment_method = payment.payment_method or "bank_transfer"
-        try:
-            from app.models.entities import PaymentEvent, _uuid as _pay_uuid
-            db.add(PaymentEvent(
-                id=_pay_uuid(),
-                payment_id=payment.id,
-                source="manual",
-                old_status=old_status,
-                new_status=PaymentStatus.paid_unverified.value,
-                evidence_type="transfer_ack",
-                evidence_ref=None,
-                note="ack_without_receipt",
-            ))
-        except Exception:
-            pass
-        await db.commit()
-        await db.refresh(payment)
-        return payment
+    old_status = payment.status.value
+    desired_method = payment.payment_method or (
+        "yookassa" if allow_without_settlement else "bank_transfer"
+    )
+    confirmed_at = utc_now() if target_status == PaymentStatus.confirmed else payment.confirmed_at
 
-    payment.status = PaymentStatus.confirmed
-    payment.confirmed_at = utc_now()
-    if allow_without_settlement:
-        payment.payment_method = payment.payment_method or "yookassa"
-        evidence_type, evidence_ref, source = "yookassa", payment.yookassa_payment_id, "webhook"
+    result = await db.execute(
+        update(Payment)
+        .where(
+            Payment.id == payment.id,
+            Payment.project_id == payment.project_id,
+            Payment.status.in_(allowed_from),
+        )
+        .values(
+            status=target_status,
+            payment_method=desired_method,
+            confirmed_at=confirmed_at,
+        )
+    )
+
+    if result.rowcount != 1:
+        await db.rollback()
+        current = await db.get(Payment, payment_id)
+        if current and _transition_replay(current, target_status):
+            suppress_payment_transition_side_effects()
+            return current
+        if (
+            current
+            and target_status == PaymentStatus.confirmed
+            and current.status == PaymentStatus.paid_unverified
+        ):
+            return await confirm_payment(
+                db,
+                payment_id,
+                project_id=project_id,
+                allow_without_acceptance=allow_without_acceptance,
+                transfer_ack=transfer_ack,
+                allow_without_settlement=allow_without_settlement,
+            )
+        return None
+
+    await db.refresh(payment)
+    if target_status == PaymentStatus.paid_unverified:
+        evidence_type, evidence_ref, source, note = "transfer_ack", None, "manual", "ack_without_receipt"
+    elif allow_without_settlement:
+        evidence_type, evidence_ref, source, note = "yookassa", payment.yookassa_payment_id, "webhook", "confirm_payment"
     else:
-        payment.payment_method = payment.payment_method or "bank_transfer"
-        evidence_type, evidence_ref, source = "receipt", receipt_id, "manual"
-    try:
-        from app.models.entities import PaymentEvent, _uuid as _pay_uuid
-        db.add(PaymentEvent(
-            id=_pay_uuid(),
+        evidence_type, evidence_ref, source, note = "receipt", receipt_id, "manual", "confirm_payment"
+
+    db.add(
+        PaymentEvent(
+            id=_uuid(),
             payment_id=payment.id,
             source=source,
             old_status=old_status,
-            new_status=PaymentStatus.confirmed.value,
+            new_status=target_status.value,
             evidence_type=evidence_type,
             evidence_ref=evidence_ref,
-            note="confirm_payment",
-        ))
-    except Exception:
-        pass
+            note=note,
+        )
+    )
+
+    if target_status == PaymentStatus.confirmed:
+        from app.services import budget_service as budget
+
+        await budget.expense_from_payment(db, payment)
+        await budget.refresh_budget_facts(db, payment.project_id)
+
     project = await db.get(Project, payment.project_id)
-    if project:
-        project.budget_spent = round(project.budget_spent + payment.amount, 2)
-
-    from app.services import budget_service as budget
-
-    await budget.expense_from_payment(db, payment)
+    effects = await _prepare_transition_side_effects(
+        db,
+        payment=payment,
+        project=project,
+        unverified=target_status == PaymentStatus.paid_unverified,
+        machine_settlement=allow_without_settlement,
+    )
     await db.commit()
     await db.refresh(payment)
+    activate_client_write_side_effects(effects)
     return payment
 
 
