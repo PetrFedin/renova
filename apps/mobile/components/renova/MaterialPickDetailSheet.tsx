@@ -1,23 +1,21 @@
-/** Sheet детали подбора материала — паттерн как ExpenseDetailSheet */
-import { useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Linking } from 'react-native';
+/** Sheet детали подбора материала — shared operational sheet */
+import { useRef, useState } from 'react';
+import { Linking, Pressable, Text, View } from 'react-native';
 import { usePathname } from 'expo-router';
-import { pushOsNav } from '@/lib/pushOsNav';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { api, type MaterialPick, type Room, type Stage } from '@/lib/api';
+import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
+import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { api, type MaterialPick, type Purchase, type Room, type Stage } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { OsRole } from '@/constants/osSections';
 import { MATERIAL_PICK_STATUS_LABEL } from '@/constants/labels';
 import { pushRoomDetail, pushStageDetail } from '@/lib/navigation';
+import { pushOsNav } from '@/lib/pushOsNav';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
 import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
-import type { Purchase } from '@/lib/api';
-import {
-  alertMaterialPickApproved,
-  alertMaterialPickSubmitted,
-} from '@/lib/procurementNav';
+import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
 
@@ -47,31 +45,46 @@ export function MaterialPickDetailSheet({
   const { user, activeProject } = useRenova();
   const pathname = usePathname();
   const [busyAction, setBusyAction] = useState<'approve' | 'submit' | 'rollback' | null>(null);
+  const mutationRef = useRef(false);
 
   if (!pick) return null;
 
-  const room = rooms.find((r) => r.id === pick.room_id);
-  const stage = stages.find((st) => st.id === pick.stage_id);
+  const room = rooms.find((candidate) => candidate.id === pick.room_id);
+  const stage = stages.find((candidate) => candidate.id === pick.stage_id);
   const isCustomer = role === 'customer';
   const isContractor = role === 'contractor';
   const deliveredPurchase = findDeliveredPurchaseForPick(purchases, pick.id);
   const cancelStatus = deliveredPurchase ? purchaseCancelStatus(deliveredPurchase.status) : null;
   const busy = busyAction !== null;
+  const statusLabel = MATERIAL_PICK_STATUS_LABEL[pick.status] || pick.status;
+
   const closeSafely = () => {
-    if (!busy) onClose();
+    if (!mutationRef.current) onClose();
+  };
+
+  const beginMutation = (action: Exclude<typeof busyAction, null>): boolean => {
+    if (mutationRef.current) return false;
+    mutationRef.current = true;
+    setBusyAction(action);
+    return true;
+  };
+
+  const endMutation = () => {
+    mutationRef.current = false;
+    setBusyAction(null);
   };
 
   const syncAfterMutation = async () => {
     await syncProjectSideEffects({
-      user: user ?? ({ id: userId } as any),
-      project: activeProject ?? ({ id: projectId } as any),
+      user: user ?? ({ id: userId } as never),
+      project: activeProject ?? ({ id: projectId } as never),
       role,
     });
     onChanged?.();
   };
 
   const openShop = async () => {
-    if (busy) return;
+    if (mutationRef.current) return;
     const safeUrl = resolveSafeDocumentUrl(pick.shop_url);
     if (!safeUrl) {
       showActionConfirm({
@@ -95,29 +108,28 @@ export function MaterialPickDetailSheet({
   };
 
   const approve = () => {
-    if (busy) return;
+    if (mutationRef.current) return;
     showActionConfirm({
       title: 'Согласовать материал?',
       message: `«${pick.name}» · ${formatRub(pick.price)}. После согласия подрядчик сможет закупить.`,
       primaryLabel: 'Согласовать',
       onPrimary: () => {
         void (async () => {
-          if (busyAction) return;
-          setBusyAction('approve');
+          if (!beginMutation('approve')) return;
           try {
             await api.approveMaterialPick(userId, projectId, pick.id);
             await syncAfterMutation();
             onClose();
             alertMaterialPickApproved(role);
-          } catch (e: unknown) {
+          } catch (error: unknown) {
             showActionConfirm({
-              title: 'Ошибка',
-              message: e instanceof Error ? e.message : 'Не удалось согласовать',
+              title: 'Материал не согласован',
+              message: error instanceof Error ? error.message : 'Повторите операцию.',
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
             });
           } finally {
-            setBusyAction(null);
+            endMutation();
           }
         })();
       },
@@ -126,28 +138,39 @@ export function MaterialPickDetailSheet({
     });
   };
 
-  const submit = async () => {
-    if (busy) return;
-    setBusyAction('submit');
-    try {
-      await api.submitMaterialPick(userId, projectId, pick.id);
-      await syncAfterMutation();
-      onClose();
-      alertMaterialPickSubmitted(role);
-    } catch (e: unknown) {
-      showActionConfirm({
-        title: 'Ошибка',
-        message: e instanceof Error ? e.message : 'Не удалось отправить на согласование',
-        primaryLabel: 'Понятно',
-        onPrimary: () => undefined,
-      });
-    } finally {
-      setBusyAction(null);
-    }
+  const submit = () => {
+    if (mutationRef.current) return;
+    showActionConfirm({
+      title: 'Отправить материал на согласование?',
+      message: `Заказчик получит позицию «${pick.name}» для решения.`,
+      primaryLabel: 'Отправить',
+      onPrimary: () => {
+        void (async () => {
+          if (!beginMutation('submit')) return;
+          try {
+            await api.submitMaterialPick(userId, projectId, pick.id);
+            await syncAfterMutation();
+            onClose();
+            alertMaterialPickSubmitted(role);
+          } catch (error: unknown) {
+            showActionConfirm({
+              title: 'Не отправлено',
+              message: error instanceof Error ? error.message : 'Повторите операцию.',
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
+          } finally {
+            endMutation();
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   };
 
   const rollbackFact = () => {
-    if (busy || !cancelStatus || !deliveredPurchase) return;
+    if (mutationRef.current || !cancelStatus || !deliveredPurchase) return;
     showActionConfirm({
       title: 'Убрать закупку из факта?',
       message: 'Сумма будет исключена из факта бюджета, а статус доставки изменится. Операцию можно восстановить позже через закупку.',
@@ -155,21 +178,20 @@ export function MaterialPickDetailSheet({
       primaryDestructive: true,
       onPrimary: () => {
         void (async () => {
-          if (busyAction) return;
-          setBusyAction('rollback');
+          if (!beginMutation('rollback')) return;
           try {
             await api.updatePurchaseStatus(userId, projectId, deliveredPurchase.id, cancelStatus);
             await syncAfterMutation();
             onClose();
-          } catch (e: unknown) {
+          } catch (error: unknown) {
             showActionConfirm({
-              title: 'Ошибка',
-              message: e instanceof Error ? e.message : 'Не удалось обновить закупку',
+              title: 'Закупка не изменена',
+              message: error instanceof Error ? error.message : 'Повторите операцию.',
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
             });
           } finally {
-            setBusyAction(null);
+            endMutation();
           }
         })();
       },
@@ -179,124 +201,124 @@ export function MaterialPickDetailSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={closeSafely}>
-      <Pressable style={s.backdrop} onPress={closeSafely}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={s.head}>{pick.name}</Text>
-          <Text style={s.status}>{MATERIAL_PICK_STATUS_LABEL[pick.status] || pick.status}</Text>
-
-          <View style={s.block}>
-            <View style={s.row}><Text style={s.label}>Кол-во</Text><Text style={s.val}>{pick.qty} {pick.unit}</Text></View>
-            <View style={s.row}><Text style={s.label}>Цена</Text><Text style={s.val}>{formatRub(pick.price)}</Text></View>
-            <View style={s.row}><Text style={s.label}>Итого</Text><Text style={s.val}>{formatRub(pick.total)}</Text></View>
-            <View style={s.row}><Text style={s.label}>Кто платит</Text><Text style={s.val}>Подрядчик</Text></View>
-            {pick.work_type ? <View style={s.row}><Text style={s.label}>Тип работ</Text><Text style={s.val}>{pick.work_type}</Text></View> : null}
-          </View>
-
-          {room && (
-            <Pressable
-              style={s.linkRow}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={`Открыть комнату ${room.name}`}
-              onPress={() => { onClose(); pushRoomDetail(room.id, pathname); }}
-            >
-              <Text style={s.label}>Комната</Text>
-              <Text style={s.link}>{room.name} →</Text>
-            </Pressable>
-          )}
-          {stage && (
-            <Pressable
-              style={s.linkRow}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={`Открыть этап ${stage.name}`}
-              onPress={() => { onClose(); pushStageDetail(stage.id, pathname); }}
-            >
-              <Text style={s.label}>Этап</Text>
-              <Text style={s.link}>{stage.name} →</Text>
-            </Pressable>
-          )}
-          {pick.shop_url && (
-            <Pressable
-              style={s.linkRow}
-              disabled={busy}
-              accessibilityRole="link"
-              accessibilityLabel={`Открыть магазин ${pick.shop_name || pick.name}`}
-              onPress={() => { void openShop(); }}
-            >
-              <Text style={s.label}>Магазин</Text>
-              <Text style={s.link}>{pick.shop_name || 'Открыть ссылку'} →</Text>
-            </Pressable>
-          )}
-
-          {pick.status === 'approved' && (
-            <Text style={s.note}>Согласовано — в факт бюджета попадёт после «Куплено». Оплата: подрядчик.</Text>
-          )}
-          {pick.status === 'purchased' && (
-            <Text style={s.note}>Оплата: подрядчик · учтено в факте. «Убрать из факта» — отмена доставки закупки.</Text>
-          )}
-          {pick.status === 'pending' && isCustomer && (
-            <Text style={s.note}>После согласования подрядчик отметит покупку — тогда сумма войдёт в факт.</Text>
-          )}
-
-          {!readOnly && isCustomer && pick.status === 'pending' && (
+    <SheetSurface
+      visible
+      value={formatRub(pick.total)}
+      title={pick.name}
+      subtitle={statusLabel}
+      busy={busy}
+      onClose={closeSafely}
+      accessibilityLabel="Детали материала"
+      footer={
+        <>
+          {!readOnly && isCustomer && pick.status === 'pending' ? (
             <PrimaryButton
               title="Согласовать"
               onPress={approve}
               loading={busyAction === 'approve'}
               disabled={busy && busyAction !== 'approve'}
+              fullWidth
             />
-          )}
-          {!readOnly && isContractor && pick.status === 'draft' && (
+          ) : null}
+          {!readOnly && isContractor && pick.status === 'draft' ? (
             <PrimaryButton
               title="На согласование"
               variant="outline"
-              onPress={() => { void submit(); }}
+              onPress={submit}
               loading={busyAction === 'submit'}
               disabled={busy && busyAction !== 'submit'}
+              fullWidth
             />
-          )}
-          {!readOnly && cancelStatus && deliveredPurchase && (
+          ) : null}
+          {!readOnly && cancelStatus && deliveredPurchase ? (
             <PrimaryButton
               title={purchaseAdvanceLabel(cancelStatus)}
               variant="dangerOutline"
               onPress={rollbackFact}
               loading={busyAction === 'rollback'}
               disabled={busy && busyAction !== 'rollback'}
+              fullWidth
             />
-          )}
-
+          ) : null}
           <PrimaryButton
             title="Полная карточка"
             variant="outline"
             disabled={busy}
             onPress={() => {
               onClose();
-              pushOsNav(
-                { pathname: '/material/[id]', params: { id: pick.id } },
-                pathname,
-                role,
-              );
+              pushOsNav({ pathname: '/material/[id]', params: { id: pick.id } }, pathname, role);
             }}
+            fullWidth
           />
-          <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} />
+          <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+        </>
+      }
+    >
+      <View style={sheetContentStyles.row}>
+        <Text style={sheetContentStyles.label}>Количество</Text>
+        <Text style={sheetContentStyles.value}>{pick.qty} {pick.unit}</Text>
+      </View>
+      <View style={sheetContentStyles.row}>
+        <Text style={sheetContentStyles.label}>Цена</Text>
+        <Text style={sheetContentStyles.value}>{formatRub(pick.price)}</Text>
+      </View>
+      <View style={sheetContentStyles.row}>
+        <Text style={sheetContentStyles.label}>Кто платит</Text>
+        <Text style={sheetContentStyles.value}>Подрядчик</Text>
+      </View>
+      {pick.work_type ? (
+        <View style={sheetContentStyles.row}>
+          <Text style={sheetContentStyles.label}>Тип работ</Text>
+          <Text style={sheetContentStyles.value}>{pick.work_type}</Text>
+        </View>
+      ) : null}
+      {room ? (
+        <Pressable
+          style={sheetContentStyles.row}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть комнату ${room.name}`}
+          onPress={() => { onClose(); pushRoomDetail(room.id, pathname); }}
+        >
+          <Text style={sheetContentStyles.label}>Комната</Text>
+          <Text style={sheetContentStyles.link}>{room.name} →</Text>
         </Pressable>
-      </Pressable>
-    </Modal>
+      ) : null}
+      {stage ? (
+        <Pressable
+          style={sheetContentStyles.row}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть этап ${stage.name}`}
+          onPress={() => { onClose(); pushStageDetail(stage.id, pathname); }}
+        >
+          <Text style={sheetContentStyles.label}>Этап</Text>
+          <Text style={sheetContentStyles.link}>{stage.name} →</Text>
+        </Pressable>
+      ) : null}
+      {pick.shop_url ? (
+        <Pressable
+          style={sheetContentStyles.row}
+          disabled={busy}
+          accessibilityRole="link"
+          accessibilityLabel={`Открыть магазин ${pick.shop_name || pick.name}`}
+          onPress={() => { void openShop(); }}
+        >
+          <Text style={sheetContentStyles.label}>Магазин</Text>
+          <Text style={sheetContentStyles.link}>{pick.shop_name || 'Открыть ссылку'} →</Text>
+        </Pressable>
+      ) : null}
+      {pick.status === 'approved' ? (
+        <Text style={sheetContentStyles.note}>Согласовано — в факт бюджета позиция попадёт после покупки.</Text>
+      ) : null}
+      {pick.status === 'purchased' ? (
+        <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>
+          Учтено в факте. «Убрать из факта» изменит статус связанной закупки.
+        </Text>
+      ) : null}
+      {pick.status === 'pending' && isCustomer ? (
+        <Text style={sheetContentStyles.note}>После согласования подрядчик сможет закупить материал.</Text>
+      ) : null}
+    </SheetSurface>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
-  head: { fontSize: 17, fontWeight: '800' },
-  status: { fontSize: 13, color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 12 },
-  block: { ...card, marginBottom: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  label: { fontSize: 12, color: RenovaTheme.colors.textMuted, fontWeight: '600' },
-  val: { fontSize: 14, fontWeight: '600' },
-  linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: RenovaTheme.minTouch, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  link: { fontSize: 14, color: RenovaTheme.colors.primary, fontWeight: '600' },
-  note: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 10 },
-});
