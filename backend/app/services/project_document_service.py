@@ -16,7 +16,11 @@ from app.models.project_documents import (
 )
 
 
-def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, signatures: list[DocumentSignature] | None = None) -> dict:
+def document_dict(
+    doc: ProjectDocument,
+    version: DocumentVersion | None = None,
+    signatures: list[DocumentSignature] | None = None,
+) -> dict:
     from app.services.document_ocr_service import ocr_dict
 
     return {
@@ -35,25 +39,28 @@ def document_dict(doc: ProjectDocument, version: DocumentVersion | None = None, 
             "stage_id": doc.stage_id,
             "payment_id": doc.payment_id,
             "receipt_id": doc.receipt_id,
+            "change_order_id": doc.change_order_id,
             "work_acceptance_id": doc.work_acceptance_id,
             "current_version_id": doc.current_version_id,
             "notes": doc.notes,
             "legal_hold": bool(getattr(doc, "legal_hold", False)),
-            "retention_until": doc.retention_until.isoformat() if getattr(doc, "retention_until", None) else None,
+            "retention_until": doc.retention_until.isoformat()
+            if getattr(doc, "retention_until", None)
+            else None,
             "ocr": ocr_dict(version),
             "signatures": [
                 {
-                    "id": s.id,
-                    "signer_user_id": s.signer_user_id,
-                    "signer_role": s.signer_role,
-                    "signed_at": s.signed_at.isoformat() if s.signed_at else None,
-                    "status": s.status,
-                    "provider": getattr(s, "provider_name", None) or s.signature_type,
-                    "provider_name": getattr(s, "provider_name", None) or s.signature_type,
-                    "signature_type": s.signature_type,
-                    "provider_external_id": getattr(s, "provider_external_id", None),
+                    "id": signature.id,
+                    "signer_user_id": signature.signer_user_id,
+                    "signer_role": signature.signer_role,
+                    "signed_at": signature.signed_at.isoformat() if signature.signed_at else None,
+                    "status": signature.status,
+                    "provider": getattr(signature, "provider_name", None) or signature.signature_type,
+                    "provider_name": getattr(signature, "provider_name", None) or signature.signature_type,
+                    "signature_type": signature.signature_type,
+                    "provider_external_id": getattr(signature, "provider_external_id", None),
                 }
-                for s in (signatures or [])
+                for signature in (signatures or [])
             ],
         },
     }
@@ -80,14 +87,14 @@ async def list_canonical_documents(db: AsyncSession, project_id: str) -> list[di
     result: list[dict] = []
     for doc in rows:
         version = await get_current_version(db, doc.id)
-        sigs = list(
+        signatures = list(
             (
                 await db.execute(
                     select(DocumentSignature).where(DocumentSignature.document_id == doc.id)
                 )
             ).scalars().all()
         )
-        result.append(document_dict(doc, version, sigs))
+        result.append(document_dict(doc, version, signatures))
     return result
 
 
@@ -101,6 +108,7 @@ async def create_document(
     stage_id: str | None = None,
     payment_id: str | None = None,
     receipt_id: str | None = None,
+    change_order_id: str | None = None,
     work_acceptance_id: str | None = None,
     notes: str | None = None,
     href: str | None = None,
@@ -114,6 +122,7 @@ async def create_document(
         stage_id=stage_id,
         payment_id=payment_id,
         receipt_id=receipt_id,
+        change_order_id=change_order_id,
         work_acceptance_id=work_acceptance_id,
         document_type=document_type,
         title=title,
@@ -156,7 +165,6 @@ async def add_version(
     current = await get_current_version(db, doc.id)
     next_number = (current.version_number + 1) if current else 1
     if current:
-        # mark doc active; previous versions stay for history
         pass
     version = DocumentVersion(
         document_id=doc.id,
@@ -200,8 +208,8 @@ async def sign_document(
     provider_name = provider or signature_type or "in_app"
     try:
         esign = get_provider(provider_name)
-    except KeyError as e:
-        raise ValueError(str(e)) from e
+    except KeyError as error:
+        raise ValueError(str(error)) from error
 
     if not esign.is_available():
         raise ValueError(f"provider_unavailable:{esign.name}")
@@ -220,7 +228,7 @@ async def sign_document(
     if result.status not in ("signed", "pending"):
         raise ValueError(result.error or f"sign_failed:{result.status}")
 
-    sig = DocumentSignature(
+    signature = DocumentSignature(
         document_id=doc.id,
         version_id=version.id,
         signer_user_id=signer_user_id,
@@ -229,16 +237,16 @@ async def sign_document(
         provider_name=result.provider_name,
         provider_external_id=result.external_id,
         content_hash=content_hash or version.checksum_sha256,
-        status=result.status,  # signed | pending (Wave 3f external)
+        status=result.status,
         signed_at=utc_now() if result.status == "signed" else None,
         meta_json=json.dumps(result.meta, ensure_ascii=False) if result.meta else None,
     )
-    db.add(sig)
+    db.add(signature)
     await db.flush()
     if result.status == "signed" and doc.status == DocumentStatus.draft.value:
         doc.status = DocumentStatus.active.value
         await db.flush()
-    return sig
+    return signature
 
 
 async def archive_document(db: AsyncSession, doc: ProjectDocument) -> ProjectDocument:
@@ -337,14 +345,13 @@ async def set_legal_hold(
     return doc
 
 
-
-
-
-
-async def ensure_contract_draft(db: AsyncSession, *, project_id: str, created_by: str | None) -> dict:
+async def ensure_contract_draft(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    created_by: str | None,
+) -> dict:
     """P3-W10: создать draft contract если есть неподписанный договор или его нет."""
-    from app.models.project_documents import DocumentType
-
     gate = await project_contract_gate(db, project_id)
     if gate.get("ok") and gate.get("reason") != "no_contract_required":
         return {"created": False, "document_id": gate.get("document_id"), "pending_titles": []}
@@ -359,11 +366,19 @@ async def ensure_contract_draft(db: AsyncSession, *, project_id: str, created_by
             )
         ).scalars().all()
     )
-    pending = [d for d in contracts if d.status == DocumentStatus.draft.value]
+    pending = [document for document in contracts if document.status == DocumentStatus.draft.value]
     if pending:
-        return {"created": False, "document_id": pending[0].id, "pending_titles": [d.title for d in pending[:3]]}
-    if contracts and not pending:
-        return {"created": False, "document_id": contracts[0].id, "pending_titles": [contracts[0].title]}
+        return {
+            "created": False,
+            "document_id": pending[0].id,
+            "pending_titles": [document.title for document in pending[:3]],
+        }
+    if contracts:
+        return {
+            "created": False,
+            "document_id": contracts[0].id,
+            "pending_titles": [contracts[0].title],
+        }
     doc = await create_document(
         db,
         project_id=project_id,
@@ -379,8 +394,6 @@ async def ensure_contract_draft(db: AsyncSession, *, project_id: str, created_by
 
 async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
     """P3-W7: estimate → eSign → work unlock — блок start_stage без подписанного договора."""
-    from app.models.project_documents import DocumentType
-
     contracts = list(
         (
             await db.execute(
@@ -395,7 +408,7 @@ async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
     if not contracts:
         return {"ok": True, "reason": "no_contract_required"}
     for doc in contracts:
-        sigs = list(
+        signatures = list(
             (
                 await db.execute(
                     select(DocumentSignature).where(
@@ -405,15 +418,16 @@ async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
                 )
             ).scalars().all()
         )
-        if sigs:
+        if signatures:
             return {"ok": True, "document_id": doc.id}
-    pending = [d.title for d in contracts if d.status == DocumentStatus.draft.value]
+    pending = [document.title for document in contracts if document.status == DocumentStatus.draft.value]
     return {
         "ok": False,
         "code": "contract_not_signed",
         "message": "Подпишите договор перед началом работ",
         "pending_titles": pending[:3],
     }
+
 
 async def complete_external_signature(
     db: AsyncSession,
@@ -423,7 +437,7 @@ async def complete_external_signature(
     status: str = "signed",
 ) -> DocumentSignature | None:
     """Wave 3f: webhook завершает pending подпись внешнего провайдера + activate doc."""
-    row = (
+    signature = (
         await db.execute(
             select(DocumentSignature).where(
                 DocumentSignature.provider_name == provider_name,
@@ -431,17 +445,17 @@ async def complete_external_signature(
             )
         )
     ).scalar_one_or_none()
-    if not row:
+    if not signature:
         return None
-    if status == "signed" and row.status == "signed" and row.signed_at:
-        return row
-    row.status = status
-    if status == "signed" and not row.signed_at:
-        row.signed_at = utc_now()
-        doc = await db.get(ProjectDocument, row.document_id)
+    if status == "signed" and signature.status == "signed" and signature.signed_at:
+        return signature
+    signature.status = status
+    if status == "signed" and not signature.signed_at:
+        signature.signed_at = utc_now()
+        doc = await db.get(ProjectDocument, signature.document_id)
         if doc and doc.status == DocumentStatus.draft.value:
             doc.status = DocumentStatus.active.value
-    elif status == "failed" and not row.revoked_at:
-        row.revoked_at = utc_now()
+    elif status == "failed" and not signature.revoked_at:
+        signature.revoked_at = utc_now()
     await db.flush()
-    return row
+    return signature
