@@ -47,7 +47,7 @@ async def prepare_client_write_side_effect(
             db,
             aggregate_type="payment",
             aggregate_id=payment.id,
-            event_type=outbox.NOTIFICATION_EVENT,
+            event_type=outbox.PAYMENT_CREATED_EVENT,
             payload={
                 "user_id": project.customer_id,
                 "project_id": project_id,
@@ -82,7 +82,7 @@ async def prepare_client_write_side_effect(
             db,
             aggregate_type="receipt",
             aggregate_id=receipt.id,
-            event_type=outbox.ACTIVITY_EVENT,
+            event_type=outbox.RECEIPT_CREATED_EVENT,
             payload={
                 "project_id": project_id,
                 "user_id": user_id,
