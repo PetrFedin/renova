@@ -4,7 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from difflib import SequenceMatcher
 
 _AMOUNT_RE = re.compile(r"-?\d+[.,]?\d*")
@@ -14,7 +14,6 @@ def _parse_amount(raw: str) -> float | None:
     s = (raw or "").strip().replace(" ", "").replace("\u00a0", "")
     if not s:
         return None
-    # 1 500,50 or 1500.50
     if "," in s and "." in s:
         s = s.replace(".", "").replace(",", ".")
     elif "," in s:
@@ -62,7 +61,6 @@ def parse_bank_statement_csv(text: str) -> list[dict]:
 
     start = 1
     if date_i is None and amount_i is None:
-        # без заголовка: date;amount;desc
         date_i, amount_i, desc_i = 0, 1, 2
         start = 0
 
@@ -70,6 +68,7 @@ def parse_bank_statement_csv(text: str) -> list[dict]:
     for row in rows[start:]:
         if not row or all(not (c or "").strip() for c in row):
             continue
+
         def cell(i: int | None) -> str:
             if i is None or i >= len(row):
                 return ""
@@ -97,7 +96,13 @@ async def match_bank_rows_to_payments(
     amount_tol: float = 1.0,
     day_window: int = 3,
 ) -> dict:
-    """Матчит строки выписки к платежам проекта по сумме (±tol) и дате (±window)."""
+    """
+    Матчит строки выписки к платежам проекта.
+
+    В пределах окна дата участвует в confidence score. За пределами окна exact-amount
+    матч допускается только при единственном кандидате; несколько одинаковых сумм
+    остаются unmatched, чтобы не подтвердить не тот платёж.
+    """
     from sqlalchemy import select
     from app.models.entities import Payment, PaymentStatus
 
@@ -111,44 +116,72 @@ async def match_bank_rows_to_payments(
     unmatched_rows: list[dict] = []
 
     for row in rows:
-        best = None
-        best_score = 0.0
         row_date = None
         if row.get("date"):
             try:
                 row_date = datetime.strptime(row["date"], "%Y-%m-%d").date()
             except ValueError:
                 row_date = None
-        for p in payments:
-            if p.id in used:
+
+        description = (row.get("description") or "").lower()
+        candidates: list[dict] = []
+        for payment in payments:
+            if payment.id in used:
                 continue
-            if abs(float(p.amount) - float(row["amount"])) > amount_tol:
+            if abs(float(payment.amount) - float(row["amount"])) > amount_tol:
                 continue
+
+            payment_date = (
+                (payment.confirmed_at or payment.created_at).date()
+                if (payment.confirmed_at or payment.created_at)
+                else None
+            )
+            date_match: bool | None = None
             score = 1.0
-            p_date = (p.confirmed_at or p.created_at).date() if (p.confirmed_at or p.created_at) else None
-            if row_date and p_date:
-                delta = abs((row_date - p_date).days)
-                if delta > day_window:
-                    continue
-                score += max(0.0, (day_window - delta) / day_window)
-            desc = (row.get("description") or "").lower()
-            title = (p.title or "").lower()
-            if desc and title:
-                score += SequenceMatcher(None, desc, title).ratio()
-            if score > best_score:
-                best_score = score
-                best = p
-        if best:
-            used.add(best.id)
-            st = best.status.value if hasattr(best.status, "value") else str(best.status)
+            if row_date and payment_date:
+                delta = abs((row_date - payment_date).days)
+                date_match = delta <= day_window
+                if date_match:
+                    score += max(0.0, (day_window - delta) / max(day_window, 1))
+                else:
+                    score -= min(0.5, (delta - day_window) / max(day_window, 1) * 0.1)
+
+            title = (payment.title or "").lower()
+            description_score = SequenceMatcher(None, description, title).ratio() if description and title else 0.0
+            score += description_score
+            candidates.append(
+                {
+                    "payment": payment,
+                    "score": score,
+                    "date_match": date_match,
+                    "description_score": description_score,
+                }
+            )
+
+        dated_candidates = [candidate for candidate in candidates if candidate["date_match"] is not False]
+        selected = None
+        match_basis = None
+        if dated_candidates:
+            selected = max(dated_candidates, key=lambda candidate: candidate["score"])
+            match_basis = "amount_date_description" if selected["date_match"] is True else "amount_description"
+        elif len(candidates) == 1:
+            selected = candidates[0]
+            match_basis = "unique_amount"
+
+        if selected:
+            payment = selected["payment"]
+            used.add(payment.id)
+            status = payment.status.value if hasattr(payment.status, "value") else str(payment.status)
             matches.append(
                 {
                     "row": row,
-                    "payment_id": best.id,
-                    "payment_title": best.title,
-                    "payment_status": st,
-                    "payment_amount": best.amount,
-                    "score": round(best_score, 3),
+                    "payment_id": payment.id,
+                    "payment_title": payment.title,
+                    "payment_status": status,
+                    "payment_amount": payment.amount,
+                    "score": round(float(selected["score"]), 3),
+                    "date_match": selected["date_match"],
+                    "match_basis": match_basis,
                 }
             )
         else:
@@ -156,13 +189,13 @@ async def match_bank_rows_to_payments(
 
     unmatched_payments = [
         {
-            "id": p.id,
-            "title": p.title,
-            "amount": p.amount,
-            "status": p.status.value if hasattr(p.status, "value") else str(p.status),
+            "id": payment.id,
+            "title": payment.title,
+            "amount": payment.amount,
+            "status": payment.status.value if hasattr(payment.status, "value") else str(payment.status),
         }
-        for p in payments
-        if p.id not in used and p.status == PaymentStatus.pending
+        for payment in payments
+        if payment.id not in used and payment.status == PaymentStatus.pending
     ]
     return {
         "matched": len(matches),
@@ -174,7 +207,6 @@ async def match_bank_rows_to_payments(
     }
 
 
-
 async def create_expenses_from_unmatched(
     db,
     *,
@@ -183,7 +215,6 @@ async def create_expenses_from_unmatched(
     limit: int = 50,
 ) -> dict:
     """W74: несматченные строки выписки → Expense + refresh budget facts."""
-    from datetime import datetime
     from app.services import budget_service as bud
 
     created: list[str] = []
