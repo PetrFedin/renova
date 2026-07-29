@@ -20,6 +20,7 @@ from app.db.session import init_db, SessionLocal
 import app.models.entities  # noqa: F401
 import app.models.work_schedule  # noqa: F401
 import app.models.project_documents  # noqa: F401
+import app.models.outbox_runtime  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

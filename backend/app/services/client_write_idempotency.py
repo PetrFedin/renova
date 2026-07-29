@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.models.outbox_runtime  # noqa: F401 — register tables before test create_all
 from app.models.client_write_request import ClientWriteRequest
 
 
@@ -86,14 +87,28 @@ async def commit_client_write(
     payload: dict[str, Any],
     entity_id: str,
 ) -> tuple[bool, str]:
-    """Commit the pending entity/side effects and its request ledger atomically.
+    """Commit entity, request ledger and required domain-outbox row atomically.
 
     Returns ``(created, entity_id)``. If another transaction won the same
     request ID, this transaction is rolled back and the winner's entity ID is
     returned. A reused ID with another payload raises ``IdempotencyConflict``.
     """
+    from app.services.client_write_side_effects import (
+        activate_client_write_side_effect,
+        prepare_client_write_side_effect,
+    )
+
+    prepared_side_effect = await prepare_client_write_side_effect(
+        db,
+        scope=scope,
+        project_id=project_id,
+        user_id=user_id,
+        entity_id=entity_id,
+    )
+
     if not request_id:
         await db.commit()
+        activate_client_write_side_effect(prepared_side_effect)
         return True, entity_id
 
     expected_hash = canonical_payload_hash(payload)
@@ -109,6 +124,7 @@ async def commit_client_write(
     )
     try:
         await db.commit()
+        activate_client_write_side_effect(prepared_side_effect)
         return True, entity_id
     except IntegrityError:
         await db.rollback()
