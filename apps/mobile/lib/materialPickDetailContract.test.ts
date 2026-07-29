@@ -3,14 +3,23 @@ import { join } from 'path';
 
 const mobile = join(__dirname, '..');
 const sheet = readFileSync(join(mobile, 'components/renova/MaterialPickDetailSheet.tsx'), 'utf8');
+const surface = readFileSync(join(mobile, 'components/renova/SheetSurface.tsx'), 'utf8');
+const must = (condition: boolean, message: string) => {
+  if (!condition) throw new Error(message);
+};
 
-console.assert(sheet.includes("variant=\"dangerOutline\""), 'fact rollback uses danger outline');
-console.assert(sheet.includes('primaryDestructive: true'), 'rollback confirmation is destructive');
-console.assert(sheet.includes("const [busyAction, setBusyAction]"), 'material actions have busy state');
-console.assert(sheet.includes("if (busyAction) return"), 'duplicate material mutations guarded');
-console.assert(sheet.includes('onRequestClose={closeSafely}'), 'sheet dismissal guarded while busy');
-console.assert(sheet.includes('resolveSafeDocumentUrl(pick.shop_url)'), 'shop URL is validated');
-console.assert(sheet.includes('title="Закрыть" variant="ghost"'), 'close remains tertiary');
-console.assert(sheet.includes('minHeight: RenovaTheme.minTouch'), 'linked rows meet touch target');
+must(sheet.includes('variant="dangerOutline"'), 'fact rollback uses danger outline');
+must(sheet.includes('primaryDestructive: true'), 'rollback confirmation is destructive');
+must(sheet.includes("const [busyAction, setBusyAction]"), 'material actions have exact busy state');
+must(sheet.includes('const mutationRef = useRef(false)'), 'material duplicate mutation ref');
+must(sheet.includes('if (mutationRef.current) return false'), 'duplicate material mutations guarded');
+must(sheet.includes('SheetSurface'), 'material uses shared surface');
+must(surface.includes('if (!busy) onClose()'), 'sheet dismissal guarded while busy');
+must(sheet.includes('resolveSafeDocumentUrl(pick.shop_url)'), 'shop URL is validated');
+must(sheet.includes('title="Закрыть"') && sheet.includes('variant="ghost"'), 'close remains tertiary');
+must(sheet.includes('sheetContentStyles.row'), 'linked rows use shared touch-safe rows');
+must(sheet.includes('accessibilityLabel={`Открыть комнату ${room.name}`}'), 'room link accessible');
+must(sheet.includes('accessibilityLabel={`Открыть этап ${stage.name}`}'), 'stage link accessible');
+must(sheet.includes('accessibilityRole="link"'), 'shop link accessible');
 
 console.log('materialPickDetailContract.test OK');
