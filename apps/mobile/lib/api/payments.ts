@@ -56,4 +56,15 @@ export const paymentsApi = {
       throw new Error('offline_queued');
     }
   },
+  /** Спор — только online: финансовый статус нельзя ставить в локальную очередь. */
+  disputePayment: (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body: { reason: string },
+  ) => req<{ payment: Payment; changed: boolean; replayed: boolean }>(
+    `/api/v1/projects/${projectId}/payments/${paymentId}/dispute`,
+    { method: 'POST', body: JSON.stringify(body) },
+    userId,
+  ),
 };
