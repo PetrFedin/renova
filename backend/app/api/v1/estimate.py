@@ -3,12 +3,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import User, UserRole
+from app.models.entities import EstimateLine, User, UserRole
 from app.models.entities import Project
-from app.services import project_service as proj_svc
-from app.services.estimate_service import add_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
+from app.services.estimate_service import prepare_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
+from app.services.client_write_idempotency import IdempotencyConflict, commit_client_write, replay_entity_id
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
+ESTIMATE_LINE_CREATE_SCOPE = "estimate_line.create"
+
+
+def _idempotency_http_error() -> HTTPException:
+    return HTTPException(
+        409,
+        detail={
+            "code": "idempotency_conflict",
+            "message": "Этот запрос уже использован с другими данными",
+        },
+    )
 
 
 class LinePatch(BaseModel):
@@ -23,19 +34,27 @@ class LineCreate(BaseModel):
     unit: str = "pcs"
     quantity_planned: float = Field(gt=0)
     unit_price: float = Field(ge=0)
+    room_id: str | None = None
     room_name: str | None = None
+    category: str | None = None
+    notes: str | None = None
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 async def _require_estimate_editable(db, project_id: str):
-    proj = await db.get(Project, project_id)
-    if proj and proj.estimate_locked_at:
+    project = await db.get(Project, project_id)
+    if project and project.estimate_locked_at:
         raise HTTPException(409, detail={"code": "estimate_locked", "message": "Смета зафиксирована — правки через изменение сметы (CO)"})
 
 
-
-
 @router.patch("/lines/{line_id}")
-async def patch_line(project_id: str, line_id: str, body: LinePatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def patch_line(
+    project_id: str,
+    line_id: str,
+    body: LinePatch,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
@@ -47,13 +66,56 @@ async def patch_line(project_id: str, line_id: str, body: LinePatch, user: User 
 
 
 @router.post("/lines")
-async def create_line(project_id: str, body: LineCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_line(
+    project_id: str,
+    body: LineCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
-    line = await add_line(db, project_id, body.model_dump())
-    return {"ok": True, "id": line.id}
+
+    payload = body.model_dump(exclude={"client_request_id"})
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=ESTIMATE_LINE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as exc:
+        raise _idempotency_http_error() from exc
+
+    if replay_id:
+        line = await db.get(EstimateLine, replay_id)
+        if not line or line.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        return {"ok": True, "id": line.id, "idempotent_replay": True}
+
+    line = await prepare_line(db, project_id, payload)
+    from app.services.budget_service import sync_project_budget_planned
+    await sync_project_budget_planned(db, project_id)
+    try:
+        created, entity_id = await commit_client_write(
+            db,
+            scope=ESTIMATE_LINE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+            entity_id=line.id,
+        )
+    except IdempotencyConflict as exc:
+        raise _idempotency_http_error() from exc
+    if not created:
+        line = await db.get(EstimateLine, entity_id)
+        if not line:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+    return {"ok": True, "id": line.id, "idempotent_replay": not created}
 
 
 class EstimateCsvImport(BaseModel):
@@ -74,15 +136,15 @@ async def import_csv_lines(
     await _require_estimate_editable(db, project_id)
     try:
         result = await import_estimate_csv(db, project_id, body.csv_text)
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from e
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     return {"ok": True, **result}
 
 
 @router.get("/materials-stats")
 async def materials_stats(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await require_project(db, project_id, user, write=False)
-    return material_stats(p.estimate_lines)
+    project = await require_project(db, project_id, user, write=False)
+    return material_stats(project.estimate_lines)
 
 
 @router.get("/lock-diff")
@@ -101,7 +163,6 @@ async def propose_project_estimate_lock(project_id: str, user: User = Depends(ge
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Предложить фиксацию может только исполнитель")
     project = await require_project(db, project_id, user, write=True)
-    # W68 #43: только назначенный исполнитель (owner), не member/foreman бригады
     if project.contractor_id and project.contractor_id != user.id:
         raise HTTPException(
             403,
@@ -110,8 +171,8 @@ async def propose_project_estimate_lock(project_id: str, user: User = Depends(ge
                 "message": "Отправить смету на фиксацию может только главный исполнитель объекта",
             },
         )
-    proj, result = await propose_estimate_lock(db, project_id, proposed_by=user.id)
-    if not proj:
+    project, result = await propose_estimate_lock(db, project_id, proposed_by=user.id)
+    if not project:
         code = result.get("code")
         if code == "empty_estimate":
             raise HTTPException(400, detail=result)
@@ -121,7 +182,7 @@ async def propose_project_estimate_lock(project_id: str, user: User = Depends(ge
     return {
         "ok": True,
         "code": "proposed",
-        "estimate_lock_proposed_at": proj.estimate_lock_proposed_at.isoformat() if proj.estimate_lock_proposed_at else None,
+        "estimate_lock_proposed_at": project.estimate_lock_proposed_at.isoformat() if project.estimate_lock_proposed_at else None,
         "estimate_locked_at": None,
     }
 
@@ -132,8 +193,8 @@ async def lock_project_estimate(project_id: str, user: User = Depends(get_curren
     if user.role != UserRole.customer:
         raise HTTPException(403, detail={"code": "customer_lock_required", "message": "Фиксацию сметы подтверждает заказчик"})
     await require_project(db, project_id, user, write=True)
-    proj, result = await lock_estimate(db, project_id, locked_by=user.id)
-    if not proj:
+    project, result = await lock_estimate(db, project_id, locked_by=user.id)
+    if not project:
         code = result.get("code")
         if code == "empty_estimate":
             raise HTTPException(400, detail=result)
@@ -146,7 +207,7 @@ async def lock_project_estimate(project_id: str, user: User = Depends(get_curren
         raise HTTPException(409, detail=result)
     return {
         "ok": True,
-        "estimate_locked_at": proj.estimate_locked_at.isoformat() if proj.estimate_locked_at else None,
+        "estimate_locked_at": project.estimate_locked_at.isoformat() if project.estimate_locked_at else None,
         "contract": result.get("contract"),
     }
 
@@ -166,10 +227,10 @@ async def reject_project_estimate_lock(
     if user.role != UserRole.customer:
         raise HTTPException(403, detail={"code": "customer_reject_required"})
     await require_project(db, project_id, user, write=True)
-    proj, result = await clear_estimate_proposal(
+    project, result = await clear_estimate_proposal(
         db, project_id, cleared_by=user.id, reason=(body.reason if body else None), mode="reject",
     )
-    if not proj:
+    if not project:
         raise HTTPException(404, "Проект не найден")
     if result.get("code") == "already_locked":
         raise HTTPException(409, detail=result)
@@ -191,10 +252,10 @@ async def withdraw_project_estimate_lock(
     if user.role != UserRole.contractor:
         raise HTTPException(403, detail={"code": "contractor_withdraw_required"})
     await require_project(db, project_id, user, write=True)
-    proj, result = await clear_estimate_proposal(
+    project, result = await clear_estimate_proposal(
         db, project_id, cleared_by=user.id, reason=(body.reason if body else None), mode="withdraw",
     )
-    if not proj:
+    if not project:
         raise HTTPException(404, "Проект не найден")
     if result.get("code") in ("already_locked", "no_proposal"):
         raise HTTPException(409, detail=result)

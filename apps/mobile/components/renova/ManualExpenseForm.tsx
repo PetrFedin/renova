@@ -14,6 +14,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportCatch } from '@/lib/reportError';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export function ManualExpenseForm({
   userId,
@@ -41,11 +42,16 @@ export function ManualExpenseForm({
   const [stageId, setStageId] = useState<string | null>(initialStageId ?? null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const requestIdRef = useRef(createClientRequestId('receipt-manual'));
   const [open, setOpen] = useState(!collapsed);
 
   const clearDraft = () => {
     setAmount('');
     setDescription('');
+  };
+
+  const rotateRequestId = () => {
+    requestIdRef.current = createClientRequestId('receipt-manual');
   };
 
   const submit = async () => {
@@ -68,11 +74,14 @@ export function ManualExpenseForm({
         category,
         roomId,
         stageId,
+        null,
+        requestIdRef.current,
       );
       saved = true;
     } catch (error) {
       if (isOfflineQueued(error)) {
         notifyOfflineQueued('Расход без чека');
+        rotateRequestId();
         clearDraft();
         if (collapsed) setOpen(false);
       } else {
@@ -87,6 +96,7 @@ export function ManualExpenseForm({
     }
 
     if (!saved) return;
+    rotateRequestId();
     clearDraft();
     if (collapsed) setOpen(false);
     onSaved?.();

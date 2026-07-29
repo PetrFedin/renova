@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import Payment, PaymentStatus, PaymentType, Project
 
 
-async def create_payment(
+async def prepare_payment(
     db: AsyncSession,
     project_id: str,
     user_id: str,
@@ -18,6 +18,7 @@ async def create_payment(
     stage_id: str | None = None,
     notes: str | None = None,
 ) -> Payment:
+    """Add and flush a payment without committing the surrounding transaction."""
     payment = Payment(
         project_id=project_id,
         stage_id=stage_id,
@@ -28,6 +29,30 @@ async def create_payment(
         notes=notes,
     )
     db.add(payment)
+    await db.flush()
+    return payment
+
+
+async def create_payment(
+    db: AsyncSession,
+    project_id: str,
+    user_id: str,
+    title: str,
+    amount: float,
+    payment_type: str,
+    stage_id: str | None = None,
+    notes: str | None = None,
+) -> Payment:
+    payment = await prepare_payment(
+        db,
+        project_id,
+        user_id,
+        title,
+        amount,
+        payment_type,
+        stage_id,
+        notes,
+    )
     await db.commit()
     await db.refresh(payment)
     return payment
@@ -179,5 +204,4 @@ def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
         "confirmed_at": payment.confirmed_at.isoformat() if payment.confirmed_at else None,
         "created_at": payment.created_at.isoformat(),
         "receipt_id": receipt_id,
-        "yookassa_payment_id": payment.yookassa_payment_id,
     }

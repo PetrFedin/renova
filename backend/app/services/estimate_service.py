@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import EstimateLine, LineType, Project
 
 
-
 def serialize_estimate_lines(lines) -> list[dict]:
     """W68 #39: компактный снимок строк сметы."""
     out = []
@@ -84,17 +83,27 @@ async def update_line(
     return line
 
 
-async def add_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLine:
+async def prepare_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLine:
+    """Add and flush the complete form payload without committing."""
     line = EstimateLine(
         project_id=project_id,
+        room_id=data.get("room_id"),
         line_type=LineType(data["line_type"]),
         name=data["name"],
         unit=data.get("unit", "pcs"),
         quantity_planned=data["quantity_planned"],
         unit_price=data["unit_price"],
         room_name=data.get("room_name"),
+        category=data.get("category"),
+        notes=data.get("notes"),
     )
     db.add(line)
+    await db.flush()
+    return line
+
+
+async def add_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLine:
+    line = await prepare_line(db, project_id, data)
     await db.commit()
     await recalc_budget(db, project_id)
     await db.refresh(line)
@@ -107,7 +116,6 @@ def material_stats(lines: list[EstimateLine]) -> dict:
     actual = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
     overrun = ((actual - planned) / planned * 100) if planned else 0
     return {"planned": round(planned, 2), "actual": round(actual, 2), "overrun_percent": round(overrun, 1)}
-
 
 
 async def get_estimate_lock_diff(db: AsyncSession, project_id: str) -> dict | None:
@@ -278,10 +286,6 @@ async def clear_estimate_proposal(
     await db.commit()
     await db.refresh(proj)
     return proj, {"code": "cleared", "mode": mode}
-
-
-
-
 
 
 async def import_estimate_csv(db: AsyncSession, project_id: str, csv_text: str) -> dict:

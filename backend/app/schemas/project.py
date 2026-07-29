@@ -33,8 +33,6 @@ class RoomUpdate(BaseModel):
     is_archived: bool | None = None
 
 
-
-
 class ProjectUpdate(BaseModel):
     """Редактируемый профиль проекта — без пересчёта комнат/сметы."""
     name: str | None = None
@@ -44,6 +42,7 @@ class ProjectUpdate(BaseModel):
     property_type: str | None = None
     planned_start_date: date | None = None
     planned_end_date: date | None = None
+
 
 class ProjectCreate(BaseModel):
     name: str
@@ -123,6 +122,7 @@ class PaymentCreate(BaseModel):
     payment_type: str
     stage_id: str | None = None
     notes: str | None = None
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 class PaymentOut(BaseModel):
