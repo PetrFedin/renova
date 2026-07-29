@@ -1,6 +1,6 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -48,7 +48,7 @@ function confirmAcceptanceFirst(goToAcceptance: () => void) {
 }
 
 type PayStep = 'info' | 'transfer' | 'confirm';
-type PaymentMutation = 'card' | 'confirm' | null;
+type PaymentMutation = 'card' | 'confirm' | 'dispute' | null;
 
 export function PaymentDetailSheet({
   payment,
@@ -79,6 +79,8 @@ export function PaymentDetailSheet({
   const [reqText, setReqText] = useState('');
   const [reqMissing, setReqMissing] = useState<string | null>(null);
   const [reqLoaded, setReqLoaded] = useState(false);
+  const [disputeOpen, setDisputeOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
@@ -105,6 +107,8 @@ export function PaymentDetailSheet({
     setStep('info');
     setTransferAck(false);
     setReceiptAttached(false);
+    setDisputeOpen(false);
+    setDisputeReason('');
     void reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
   }, [payment?.id, reloadReceiptFlag]);
 
@@ -154,6 +158,7 @@ export function PaymentDetailSheet({
   const stage = stages.find((candidate) => candidate.id === payment.stage_id);
   const isCustomer = role === 'customer';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
+  const canDispute = isCustomer && !readOnly && ['confirmed', 'paid_unverified'].includes(payment.status);
   const stageNeedsAcceptance = Boolean(stage && stage.status !== 'done');
   const statusLabel = PAYMENT_STATUS_LABEL[payment.status] || payment.status;
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
@@ -377,6 +382,58 @@ export function PaymentDetailSheet({
     });
   };
 
+  const submitDispute = () => {
+    if (mutationRef.current) return;
+    const reason = disputeReason.trim().replace(/\s+/g, ' ');
+    if (reason.length < 10) {
+      showActionConfirm({
+        title: 'Укажите причину',
+        message: 'Опишите основание спора минимум десятью символами.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+      return;
+    }
+    showActionConfirm({
+      title: 'Оспорить оплату?',
+      message: `${formatRub(payment.amount)} будет исключено из подтверждённого факта бюджета до разрешения спора. Причина: ${reason}`,
+      primaryLabel: 'Оспорить',
+      primaryDestructive: true,
+      onPrimary: () => {
+        void (async () => {
+          if (!beginMutation('dispute')) return;
+          try {
+            await api.disputePayment(userId, projectId, payment.id, { reason });
+            await syncProjectSideEffects({
+              user: user ?? ({ id: userId, role } as never),
+              project: activeProject ?? ({ id: projectId } as never),
+              role,
+            }).catch(reportCatch('payment.dispute.sync'));
+            onChanged?.();
+            onClose();
+            showActionConfirm({
+              title: 'Спор открыт',
+              message: 'Оплата помечена как оспоренная и исключена из подтверждённого факта бюджета.',
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
+          } catch (error: unknown) {
+            showActionConfirm({
+              title: 'Спор не открыт',
+              message: apiErrorMessage(error, 'Проверьте статус оплаты и повторите операцию.'),
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
+          } finally {
+            endMutation();
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
   const footer = canConfirm ? (
     <>
       {step === 'info' ? (
@@ -441,6 +498,37 @@ export function PaymentDetailSheet({
       ) : null}
       <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
     </>
+  ) : canDispute ? (
+    <>
+      {disputeOpen ? (
+        <>
+          <PrimaryButton
+            title="Подтвердить спор"
+            variant="danger"
+            onPress={submitDispute}
+            loading={mutation === 'dispute'}
+            disabled={busy && mutation !== 'dispute'}
+            fullWidth
+          />
+          <PrimaryButton
+            title="Отмена"
+            variant="ghost"
+            onPress={() => { setDisputeOpen(false); setDisputeReason(''); }}
+            disabled={busy}
+            fullWidth
+          />
+        </>
+      ) : (
+        <PrimaryButton
+          title="Оспорить оплату"
+          variant="dangerOutline"
+          onPress={() => setDisputeOpen(true)}
+          disabled={busy}
+          fullWidth
+        />
+      )}
+      <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+    </>
   ) : (
     <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
   );
@@ -501,6 +589,37 @@ export function PaymentDetailSheet({
         <Text style={formMetaText.caption}>
           {transferAck ? 'Перевод отмечен.' : ''}{receiptAttached ? ' Чек будет в расходах.' : ''} Подтвердите оплату для исполнителя.
         </Text>
+      ) : null}
+
+      {canDispute && disputeOpen ? (
+        <View style={sheetContentStyles.section}>
+          <InfoBanner
+            tone="warning"
+            title="Финансовый спор"
+            message="После подтверждения оплата и связанный расход перестанут учитываться как подтверждённый факт бюджета. Причина сохранится в истории."
+          />
+          <Text style={sheetContentStyles.fieldLabel}>Причина спора</Text>
+          <TextInput
+            value={disputeReason}
+            onChangeText={setDisputeReason}
+            editable={!busy}
+            multiline
+            maxLength={1000}
+            textAlignVertical="top"
+            placeholder="Опишите недостатки, расхождение суммы или отсутствие подтверждения"
+            accessibilityLabel="Причина спора по оплате"
+            style={[sheetContentStyles.input, { minHeight: 96 }]}
+          />
+          <Text style={formMetaText.caption}>{disputeReason.trim().length}/1000 · минимум 10 символов</Text>
+        </View>
+      ) : null}
+
+      {payment.status === 'disputed' ? (
+        <InfoBanner
+          tone="warning"
+          title="Оплата оспорена"
+          message="Сумма не учитывается как подтверждённый факт бюджета до разрешения спора или возврата."
+        />
       ) : null}
 
       <View style={sheetContentStyles.row}>
