@@ -68,10 +68,11 @@ export const receiptsApi = {
     receiptId: string,
     body: { expense_category?: string; room_id?: string | null; stage_id?: string | null; amount?: number; description?: string | null },
   ) => {
+    const serialized = JSON.stringify(body);
     try {
       return await req(
         `/api/v1/projects/${projectId}/receipts/${receiptId}`,
-        { method: 'PATCH', body: JSON.stringify(body) },
+        { method: 'PATCH', body: serialized },
         userId,
       );
     } catch (error) {
@@ -80,7 +81,7 @@ export const receiptsApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/receipts/${receiptId}`,
         method: 'PATCH',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
@@ -114,7 +115,7 @@ export const receiptsApi = {
   budgetScenario: (userId: string, projectId: string, pct?: number) => req<{ materials_plan: number; delta: number; new_total: number }>(`/api/v1/projects/${projectId}/analytics/budget-scenario?materials_pct=${pct || 10}`, {}, userId),
   budgetBreakdown: (userId: string, projectId: string) => req<BudgetBreakdown>(`/api/v1/projects/${projectId}/analytics/budget-breakdown`, {}, userId),
   reverifyReceipt: (userId: string, projectId: string, receiptId: string) =>
-    req<{ id: string; verified: boolean; message?: string; mode?: string }>(
+    req<{ id: string; verified: boolean; verification_status: string; message?: string; mode?: string; replayed?: boolean }>(
       `/api/v1/projects/${projectId}/receipts/${receiptId}/reverify`,
       { method: 'POST' },
       userId,
