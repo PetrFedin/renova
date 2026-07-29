@@ -226,6 +226,8 @@ async def test_submit_approve_and_reject_are_replay_safe(material_db, monkeypatc
 @pytest.mark.asyncio
 async def test_invalid_transitions_and_active_purchase_lock(material_db):
     customer, _, project, room = await seed_project(material_db, "301")
+    project_id = project.id
+    customer_id = customer.id
     draft = await seed_pick(
         material_db,
         project=project,
@@ -237,10 +239,10 @@ async def test_invalid_transitions_and_active_purchase_lock(material_db):
     with pytest.raises(ValueError, match="material_pick_transition_invalid"):
         await material_pick_service.transition_pick(
             material_db,
-            project_id=project.id,
+            project_id=project_id,
             pick_id=draft_id,
             action="approve",
-            actor_id=customer.id,
+            actor_id=customer_id,
         )
     await material_db.rollback()
 
@@ -248,7 +250,7 @@ async def test_invalid_transitions_and_active_purchase_lock(material_db):
     stored_draft.status = MaterialPickStatus.approved
     purchase = Purchase(
         id="material-active-purchase",
-        project_id=project.id,
+        project_id=project_id,
         status=PurchaseStatus.draft,
         total_amount=10000,
     )
@@ -268,13 +270,13 @@ async def test_invalid_transitions_and_active_purchase_lock(material_db):
     with pytest.raises(ValueError, match="material_pick_not_editable"):
         await material_pick_service.require_editable_pick(
             material_db,
-            project_id=project.id,
+            project_id=project_id,
             pick_id=draft_id,
         )
     await material_db.rollback()
     assert await material_pick_service.material_pick_has_active_purchase(
         material_db,
-        project_id=project.id,
+        project_id=project_id,
         pick_id=draft_id,
     )
 
