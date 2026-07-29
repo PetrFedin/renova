@@ -20,6 +20,23 @@ async def log_event(
     link_path: str | None = None,
     stage_id: str | None = None,
 ):
+    from app.services.client_write_side_effects import take_client_write_side_effect
+
+    outbox_id = take_client_write_side_effect("activity")
+    if outbox_id:
+        return await log_event_from_outbox(
+            db,
+            outbox_id=outbox_id,
+            project_id=project_id,
+            user_id=user_id,
+            kind=kind,
+            title=title,
+            body=body,
+            room_id=room_id,
+            work_type=work_type,
+            link_path=link_path,
+        )
+
     event = ActivityEvent(
         project_id=project_id,
         user_id=user_id,
