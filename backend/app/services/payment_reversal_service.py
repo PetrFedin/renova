@@ -109,11 +109,17 @@ async def apply_provider_cancellation(
     payment_id: str,
     project_id: str,
     provider_id: str | None,
+    amount: float,
+    currency: str,
     reason: str | None,
 ) -> ReversalResult:
     payment = await _locked_payment_by_id(db, payment_id=payment_id, project_id=project_id)
     if not payment:
         return ReversalResult(handled=False, reason="payment_not_found")
+    if currency != "RUB":
+        return ReversalResult(handled=False, payment_id=payment.id, reason="currency_mismatch")
+    if round(float(payment.amount or 0), 2) != round(float(amount or 0), 2):
+        return ReversalResult(handled=False, payment_id=payment.id, reason="amount_mismatch")
     if payment.yookassa_payment_id and provider_id and payment.yookassa_payment_id != provider_id:
         return ReversalResult(handled=False, payment_id=payment.id, reason="yookassa_id_mismatch")
     if payment.status == PaymentStatus.cancelled:
@@ -226,12 +232,15 @@ async def process_provider_reversal(body: dict[str, Any], db: AsyncSession) -> R
         project_id = str(metadata.get("project_id") or "")
         if not payment_id or not project_id:
             return ReversalResult(handled=False, reason="missing_metadata")
+        amount, currency = _money(obj)
         cancellation = obj.get("cancellation_details") or {}
         return await apply_provider_cancellation(
             db,
             payment_id=payment_id,
             project_id=project_id,
             provider_id=str(obj.get("id") or "") or None,
+            amount=amount,
+            currency=currency,
             reason=str(cancellation.get("reason") or "payment.canceled"),
         )
     if event == "refund.succeeded" and obj.get("status") == "succeeded":
