@@ -28,6 +28,11 @@ jobs:
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/financialCreateIdempotency.test.ts
           npx tsx apps/mobile/lib/changeOrderCreateIdempotency.test.ts
+      - name: Purchase and material create contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/purchaseCreateIdempotency.test.ts
+          npx tsx apps/mobile/lib/materialPickLifecycleIntegrity.test.ts
       - name: Purchase transition integrity contracts
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
@@ -72,7 +77,7 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py tests/test_financial_side_effect_outbox.py tests/test_payment_transition_idempotency.py tests/test_change_order_approval_atomicity.py tests/test_change_order_rejection_idempotency.py tests/test_change_order_create_idempotency.py tests/test_purchase_transition_integrity.py -q
+          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py tests/test_financial_side_effect_outbox.py tests/test_payment_transition_idempotency.py tests/test_change_order_approval_atomicity.py tests/test_change_order_rejection_idempotency.py tests/test_change_order_create_idempotency.py tests/test_purchase_transition_integrity.py tests/test_purchase_create_idempotency.py tests/test_material_pick_lifecycle_integrity.py -q
           export ENVIRONMENT=development
           export DATABASE_URL=sqlite+aiosqlite:///./ci.db
           export PUBLIC_BASE_URL=http://127.0.0.1:8100

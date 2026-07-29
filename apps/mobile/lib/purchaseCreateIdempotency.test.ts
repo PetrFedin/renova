@@ -34,6 +34,11 @@ must(helper.includes('query = query.with_for_update()'), 'material picks are loc
 must(helper.includes('len(picks) != len(canonical_ids)'), 'foreign or missing picks reject entire request');
 must(helper.includes('Purchase.status.in_(_ACTIVE_PURCHASE_STATUSES)'), 'active purchase membership blocks duplicate order');
 must(helper.includes('await db.flush()') && !helper.includes('await db.commit()'), 'purchase is prepared inside caller transaction');
-must(helper.includes('PurchaseStatus.cancelled') && helper.includes('PurchaseStatus.returned'), 'terminal purchases release picks for reorder');
+const activeStart = helper.indexOf('_ACTIVE_PURCHASE_STATUSES = {');
+const activeEnd = helper.indexOf('}', activeStart);
+const activeStatuses = helper.slice(activeStart, activeEnd + 1);
+must(activeStart >= 0 && activeEnd > activeStart, 'active purchase status set exists');
+must(activeStatuses.includes('PurchaseStatus.draft') && activeStatuses.includes('PurchaseStatus.delivered'), 'all live purchase states keep picks locked');
+must(!activeStatuses.includes('PurchaseStatus.cancelled') && !activeStatuses.includes('PurchaseStatus.returned'), 'terminal purchases release picks for reorder');
 
 console.log('purchaseCreateIdempotency.test OK');
