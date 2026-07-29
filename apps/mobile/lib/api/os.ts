@@ -67,7 +67,7 @@ export const osApi = {
   reportFinal: (userId: string, projectId: string) => req<OsReport>(`/api/v1/projects/${projectId}/reports/final`, {}, userId),
   exportReportPdf: async (userId: string, projectId: string, kind: 'daily' | 'weekly' | 'final') => {
     const { downloadReportPdf } = await import('@/lib/reports/reportPdf');
-    await downloadReportPdf(userId, `/api/v1/projects/${projectId}/reports/${kind}.pdf`, `report-${kind}.pdf`);
+    await downloadReportPdf(userId, projectId, kind);
   },
   osRisks: (userId: string, projectId: string) => req<{ count: number; items: OsRisk[] }>(`/api/v1/projects/${projectId}/os/risks`, {}, userId),
   osInsights: (userId: string, projectId: string) => req<{ count: number; items: OsInsight[] }>(`/api/v1/projects/${projectId}/os/insights`, {}, userId),
