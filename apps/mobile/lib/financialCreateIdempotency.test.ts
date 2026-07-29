@@ -22,9 +22,11 @@ for (const [name, body, scope] of [
   ['estimate line', estimateForm, 'estimate-line'],
 ] as const) {
   must(body.includes('requestIdRef = useRef(createClientRequestId'), `${name} keeps request id in ref`);
-  must(body.includes('client_request_id: requestIdRef.current'), `${name} sends request id`);
   must(body.includes(`createClientRequestId('${scope}')`), `${name} rotates scoped request id`);
 }
+must(paymentForm.includes('client_request_id: requestIdRef.current'), 'payment sends request id');
+must(estimateForm.includes('client_request_id: requestIdRef.current'), 'estimate line sends request id');
+must(expenseForm.includes('null,\n        requestIdRef.current,'), 'manual expense sends typed request id argument');
 must(expenseForm.indexOf('rotateRequestId();') > expenseForm.indexOf("notifyOfflineQueued('Расход без чека')"), 'manual expense rotates after durable queue');
 must(estimateForm.indexOf('rotateRequestId();') > estimateForm.indexOf("notifyOfflineQueued('Строка сметы')"), 'estimate rotates after durable queue');
 must(receiptsApi.includes("client_request_id: client_request_id ?? createClientRequestId('receipt-manual')"), 'manual API fallback request id');
