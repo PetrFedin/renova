@@ -1,6 +1,7 @@
-"""ЮKassa: создание платежа, webhook idempotency, project checkout."""
+"""ЮKassa: создание платежа, webhook delivery integrity, project checkout."""
 from __future__ import annotations
 
+import hashlib
 import uuid
 from typing import Any
 
@@ -121,8 +122,59 @@ def check_webhook_ip(client_ip: str | None) -> bool:
     return False
 
 
+def webhook_event_key(body: dict[str, Any]) -> str | None:
+    """A provider object may emit multiple event types; identity must include both."""
+    event = str(body.get("event") or "").strip()
+    obj = body.get("object") or {}
+    if not isinstance(obj, dict):
+        return None
+    object_id = str(obj.get("id") or obj.get("payment_id") or "").strip()
+    if not event or not object_id:
+        return None
+    raw = f"{event}:{object_id}"
+    if len(raw) <= 128:
+        return raw
+    return f"yk:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
+
+
+async def was_webhook_processed(db: AsyncSession, event_key: str) -> bool:
+    """Read-only duplicate check. It never claims or consumes an event early."""
+    from app.models.entities import PaymentWebhookEvent
+
+    if event_key in _seen_keys:
+        return True
+    row = await db.get(PaymentWebhookEvent, event_key)
+    if row:
+        _seen_keys.add(event_key)
+        return True
+    return False
+
+
+async def record_webhook_processed(
+    db: AsyncSession,
+    event_key: str,
+    *,
+    kind: str | None = None,
+) -> bool:
+    """Persist completion after the business transition; conflict means another worker won."""
+    from sqlalchemy.exc import IntegrityError
+    from app.models.entities import PaymentWebhookEvent
+
+    if event_key in _seen_keys:
+        return False
+    db.add(PaymentWebhookEvent(event_id=event_key, provider="yookassa", payload_kind=kind))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        _seen_keys.add(event_key)
+        return False
+    _seen_keys.add(event_key)
+    return True
+
+
 def remember_webhook(event_id: str) -> bool:
-    """In-memory fast path (single process). Prefer remember_webhook_durable in handlers."""
+    """Legacy single-process helper; production handlers use completion recording."""
     if event_id in _seen_keys:
         return False
     _seen_keys.add(event_id)
@@ -130,22 +182,10 @@ def remember_webhook(event_id: str) -> bool:
 
 
 async def remember_webhook_durable(db, event_id: str, *, kind: str | None = None) -> bool:
-    """True = first time (process). False = duplicate. Survives restart via payment_webhook_events."""
-    from sqlalchemy.exc import IntegrityError
-    from app.models.entities import PaymentWebhookEvent
-
-    if event_id in _seen_keys:
+    """Compatibility wrapper. New handlers must call it only after successful processing."""
+    if await was_webhook_processed(db, event_id):
         return False
-    row = PaymentWebhookEvent(event_id=event_id, provider="yookassa", payload_kind=kind)
-    db.add(row)
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        _seen_keys.add(event_id)
-        return False
-    _seen_keys.add(event_id)
-    return True
+    return await record_webhook_processed(db, event_id, kind=kind)
 
 
 async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
@@ -166,7 +206,7 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         }
 
     if event != "payment.succeeded" or obj.get("status") != "succeeded":
-        return {"ok": True, "handled": False}
+        return {"ok": True, "handled": False, "reason": "unsupported_event"}
 
     metadata = obj.get("metadata") or {}
     kind = metadata.get("kind", "pro_subscription")
@@ -191,7 +231,7 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         if not existing or existing.project_id != project_id:
             return {"ok": True, "handled": False, "reason": "payment_not_found"}
         if existing.status.value not in ("pending", "processing", "paid_unverified"):
-            return {"ok": True, "handled": True, "duplicate": True}
+            return {"ok": True, "handled": True, "duplicate": True, "payment_id": payment_id}
 
         amount_obj = obj.get("amount") or {}
         try:
@@ -222,7 +262,13 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
             allow_without_settlement=True,
         )
         if not confirmed:
-            return {"ok": True, "handled": True, "blocked": "acceptance_required"}
+            return {
+                "ok": True,
+                "handled": False,
+                "retryable": True,
+                "blocked": "acceptance_required",
+                "payment_id": payment_id,
+            }
 
         # confirm_payment already committed PaymentEvent, Expense, budget and durable side effects.
         return {
@@ -238,4 +284,4 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
 
         await activate_pro(db, uid)
         return {"ok": True, "handled": True, "pro_user_id": uid}
-    return {"ok": True, "handled": False}
+    return {"ok": True, "handled": False, "reason": "missing_user_id"}
