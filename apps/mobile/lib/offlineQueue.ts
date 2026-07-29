@@ -4,7 +4,11 @@
  * Все API enqueue и layout flush идут сюда; UI читает тот же статус.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { decideFlushOutcome } from '@/lib/offline/flushPolicy';
+import { decideFlushOutcome, parseRetryAfterMs } from '@/lib/offline/flushPolicy';
+import {
+  mergeQueueFlushMutations,
+  type QueueFlushMutation,
+} from '@/lib/offline/queueMerge';
 import { filterJobsExceptProject } from '@/lib/offline/projectQueueFilter';
 import { authHeaders } from '@/lib/api/client';
 
@@ -12,6 +16,7 @@ const KEY = 'renova_offline_queue';
 /** Legacy keys from parallel outbox stacks — migrate once into KEY. */
 const LEGACY_KEYS = ['renova_offline_outbox:v1', 'renova_offline_outbox_v1'] as const;
 const MAX_ATTEMPTS = 5;
+const REQUEST_TIMEOUT_MS = 15_000;
 
 export type OfflineJob = {
   path: string;
@@ -22,9 +27,14 @@ export type OfflineJob = {
   id: string;
   attempts?: number;
   blocked?: boolean;
-  /** 409 Conflict — остаётся в очереди до ручного разбора */
+  /** 409 Conflict — остаётся в очереди до ручного разбора. */
   conflict?: boolean;
   lastError?: string;
+  /** Не отправлять раньше этого времени после временной ошибки. */
+  nextAttemptAt?: number;
+  lastAttemptAt?: number;
+  /** Защита от overwrite, если задание изменили во время network flush. */
+  version?: number;
 };
 
 export type OfflineFlushResult = {
@@ -33,14 +43,29 @@ export type OfflineFlushResult = {
   failed: number;
   pending: number;
   blocked: number;
+  deferred: number;
 };
 
 export type OfflineQueueStatus = {
   total: number;
   pending: number;
+  ready: number;
+  deferred: number;
   blocked: number;
   conflicts: number;
 };
+
+let queueMutationChain: Promise<void> = Promise.resolve();
+let activeFlush: Promise<OfflineFlushResult> | null = null;
+
+function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
+  const run = queueMutationChain.then(operation, operation);
+  queueMutationChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
 
 function normalizeJob(raw: Record<string, unknown>): OfflineJob | null {
   const path = typeof raw.path === 'string' ? raw.path : '';
@@ -89,6 +114,9 @@ function normalizeJob(raw: Record<string, unknown>): OfflineJob | null {
     blocked: Boolean(raw.blocked),
     conflict: Boolean(raw.conflict),
     lastError: typeof raw.lastError === 'string' ? raw.lastError : typeof raw.last_error === 'string' ? raw.last_error : undefined,
+    nextAttemptAt: typeof raw.nextAttemptAt === 'number' ? raw.nextAttemptAt : undefined,
+    lastAttemptAt: typeof raw.lastAttemptAt === 'number' ? raw.lastAttemptAt : undefined,
+    version: typeof raw.version === 'number' ? raw.version : 0,
   };
 }
 
@@ -104,7 +132,7 @@ async function readRaw(key: string): Promise<unknown[]> {
 }
 
 async function migrateLegacyQueues(existing: OfflineJob[]): Promise<OfflineJob[]> {
-  const byId = new Map(existing.map((j) => [j.id, j]));
+  const byId = new Map(existing.map((job) => [job.id, job]));
   let changed = false;
 
   for (const key of LEGACY_KEYS) {
@@ -126,12 +154,35 @@ async function migrateLegacyQueues(existing: OfflineJob[]): Promise<OfflineJob[]
   return merged;
 }
 
-export async function getQueue(): Promise<OfflineJob[]> {
+async function getQueueUnlocked(): Promise<OfflineJob[]> {
   const raw = await readRaw(KEY);
   const jobs = raw
     .map((item) => (item && typeof item === 'object' ? normalizeJob(item as Record<string, unknown>) : null))
-    .filter((j): j is OfflineJob => Boolean(j));
+    .filter((job): job is OfflineJob => Boolean(job));
   return migrateLegacyQueues(jobs);
+}
+
+async function setQueueUnlocked(jobs: OfflineJob[]): Promise<void> {
+  await AsyncStorage.setItem(KEY, JSON.stringify(jobs));
+}
+
+function queueStatusFromJobs(jobs: OfflineJob[], now = Date.now()): OfflineQueueStatus {
+  const blocked = jobs.filter((job) => job.blocked).length;
+  const conflicts = jobs.filter((job) => job.conflict && !job.blocked).length;
+  const active = jobs.filter((job) => !job.blocked && !job.conflict);
+  const deferred = active.filter((job) => (job.nextAttemptAt ?? 0) > now).length;
+  return {
+    total: jobs.length,
+    blocked,
+    conflicts,
+    pending: active.length,
+    ready: active.length - deferred,
+    deferred,
+  };
+}
+
+export function getQueue(): Promise<OfflineJob[]> {
+  return withQueueLock(getQueueUnlocked);
 }
 
 export async function queueStats() {
@@ -140,15 +191,7 @@ export async function queueStats() {
 }
 
 export async function getQueueStatus(): Promise<OfflineQueueStatus> {
-  const q = await getQueue();
-  const blocked = q.filter((j) => j.blocked).length;
-  const conflicts = q.filter((j) => j.conflict && !j.blocked).length;
-  return {
-    total: q.length,
-    blocked,
-    conflicts,
-    pending: q.length - blocked,
-  };
+  return queueStatusFromJobs(await getQueue());
 }
 
 async function emitQueueChanged(): Promise<void> {
@@ -161,155 +204,259 @@ async function emitQueueChanged(): Promise<void> {
   }
 }
 
-export async function enqueue(job: Omit<OfflineJob, 'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError'>) {
-  const q = await getQueue();
-  q.push({
-    ...job,
-    ts: Date.now(),
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    attempts: 0,
-    blocked: false,
-    conflict: false,
+export async function enqueue(job: Omit<OfflineJob, 'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError' | 'nextAttemptAt' | 'lastAttemptAt' | 'version'>) {
+  const length = await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    queue.push({
+      ...job,
+      ts: Date.now(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      attempts: 0,
+      blocked: false,
+      conflict: false,
+      version: 0,
+    });
+    await setQueueUnlocked(queue);
+    return queue.length;
   });
-  await AsyncStorage.setItem(KEY, JSON.stringify(q));
   await emitQueueChanged();
-  return q.length;
+  return length;
 }
 
 export async function removeJob(id: string) {
-  const q = (await getQueue()).filter((j) => j.id !== id);
-  await AsyncStorage.setItem(KEY, JSON.stringify(q));
+  const length = await withQueueLock(async () => {
+    const queue = (await getQueueUnlocked()).filter((job) => job.id !== id);
+    await setQueueUnlocked(queue);
+    return queue.length;
+  });
   await emitQueueChanged();
-  return q.length;
+  return length;
 }
 
 export async function retryJob(id: string) {
-  const q = await getQueue();
-  await AsyncStorage.setItem(
-    KEY,
-    JSON.stringify(
-      q.map((j) =>
-        j.id === id
-          ? { ...j, attempts: 0, blocked: false, conflict: false, lastError: undefined }
-          : j,
+  await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    await setQueueUnlocked(
+      queue.map((job) =>
+        job.id === id
+          ? {
+              ...job,
+              attempts: 0,
+              blocked: false,
+              conflict: false,
+              lastError: undefined,
+              nextAttemptAt: undefined,
+              lastAttemptAt: undefined,
+              version: (job.version ?? 0) + 1,
+            }
+          : job,
       ),
-    ),
-  );
+    );
+  });
   await emitQueueChanged();
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-/**
- * Replay queue against API.
- * - 2xx → remove
- * - 409 → keep as conflict (manual)
- * - permanent 4xx → block (no auto retry)
- * - 5xx / network / temp 4xx → attempts++, block after MAX_ATTEMPTS
- */
-export async function flush(apiBase: string): Promise<OfflineFlushResult> {
-  const q = await getQueue();
-  if (!q.length) {
-    return { synced: 0, conflicts: 0, failed: 0, pending: 0, blocked: 0 };
+async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
+  const snapshot = await getQueue();
+  if (!snapshot.length) {
+    return { synced: 0, conflicts: 0, failed: 0, pending: 0, blocked: 0, deferred: 0 };
   }
 
-  const sorted = [...q].sort((a, b) => a.ts - b.ts);
-  const left: OfflineJob[] = [];
+  const sorted = [...snapshot].sort((a, b) => a.ts - b.ts);
+  const mutations: QueueFlushMutation<OfflineJob>[] = [];
   let synced = 0;
   let conflicts = 0;
   let failed = 0;
+  let deferred = 0;
 
-  for (const j of sorted) {
-    if (j.blocked) {
-      left.push(j);
+  for (const job of sorted) {
+    if (job.blocked || job.conflict) continue;
+    const now = Date.now();
+    if ((job.nextAttemptAt ?? 0) > now) {
+      deferred += 1;
       continue;
     }
 
+    const expectedVersion = job.version ?? 0;
     try {
-      const r = await fetch(`${apiBase}${j.path}`, {
-        method: j.method,
+      const response = await fetchWithTimeout(`${apiBase}${job.path}`, {
+        method: job.method,
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(j.userId),
-          'X-Offline-Id': j.id,
+          ...authHeaders(job.userId),
+          'X-Offline-Id': job.id,
         },
-        body: j.body,
+        body: job.body,
       });
 
-      const errText = r.ok ? '' : await r.text().catch(() => '');
-      const message = errText || (r.ok ? 'ok' : `HTTP ${r.status}`);
-      const decision = decideFlushOutcome(r.status, message, j.attempts ?? 0);
+      const errorText = response.ok ? '' : await response.text().catch(() => '');
+      const message = errorText || (response.ok ? 'ok' : `HTTP ${response.status}`);
+      const attemptedAt = Date.now();
+      const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'), attemptedAt);
+      const decision = decideFlushOutcome(
+        response.status,
+        message,
+        job.attempts ?? 0,
+        attemptedAt,
+        retryAfterMs,
+      );
 
       if (decision.action === 'drop') {
         synced += 1;
+        mutations.push({ id: job.id, expectedVersion, next: null });
         continue;
       }
       if (decision.action === 'conflict') {
         conflicts += 1;
-        left.push({ ...j, conflict: true, lastError: decision.message });
+        mutations.push({
+          id: job.id,
+          expectedVersion,
+          next: {
+            ...job,
+            conflict: true,
+            blocked: false,
+            nextAttemptAt: undefined,
+            lastAttemptAt: attemptedAt,
+            lastError: decision.message,
+          },
+        });
         continue;
       }
       if (decision.action === 'block') {
         failed += 1;
-        left.push({
-          ...j,
-          attempts: (j.attempts ?? 0) + 1,
-          blocked: true,
-          lastError: decision.message,
+        mutations.push({
+          id: job.id,
+          expectedVersion,
+          next: {
+            ...job,
+            attempts: decision.attempts,
+            blocked: true,
+            conflict: false,
+            nextAttemptAt: undefined,
+            lastAttemptAt: attemptedAt,
+            lastError: decision.message,
+          },
         });
         continue;
       }
+
       failed += 1;
-      left.push({
-        ...j,
-        attempts: decision.attempts,
-        blocked: decision.blocked,
-        conflict: false,
-        lastError: decision.message,
+      mutations.push({
+        id: job.id,
+        expectedVersion,
+        next: {
+          ...job,
+          attempts: decision.attempts,
+          blocked: decision.blocked,
+          conflict: false,
+          nextAttemptAt: decision.nextAttemptAt,
+          lastAttemptAt: attemptedAt,
+          lastError: decision.message,
+        },
       });
-    } catch (e) {
+    } catch (error) {
       failed += 1;
+      const attemptedAt = Date.now();
+      const message = error instanceof Error
+        ? error.name === 'AbortError'
+          ? 'request_timeout'
+          : error.message
+        : 'network_error';
       const decision = decideFlushOutcome(
         null,
-        e instanceof Error ? e.message : 'network_error',
-        j.attempts ?? 0,
+        message,
+        job.attempts ?? 0,
+        attemptedAt,
       );
-      left.push({
-        ...j,
-        attempts: decision.action === 'retry' ? decision.attempts : (j.attempts ?? 0) + 1,
-        blocked: decision.action === 'retry' ? decision.blocked : true,
-        lastError: decision.action === 'retry' ? decision.message : 'network_error',
+      mutations.push({
+        id: job.id,
+        expectedVersion,
+        next: {
+          ...job,
+          attempts: decision.action === 'retry' ? decision.attempts : (job.attempts ?? 0) + 1,
+          blocked: decision.action === 'retry' ? decision.blocked : true,
+          conflict: false,
+          nextAttemptAt: decision.action === 'retry' ? decision.nextAttemptAt : undefined,
+          lastAttemptAt: attemptedAt,
+          lastError: decision.action === 'retry' ? decision.message : message,
+        },
       });
     }
   }
 
-  await AsyncStorage.setItem(KEY, JSON.stringify(left));
-  const blocked = left.filter((j) => j.blocked).length;
+  let finalQueue = snapshot;
+  if (mutations.length > 0) {
+    finalQueue = await withQueueLock(async () => {
+      const current = await getQueueUnlocked();
+      const merged = mergeQueueFlushMutations(current, mutations);
+      await setQueueUnlocked(merged);
+      return merged;
+    });
+    await emitQueueChanged();
+  }
+
+  const status = queueStatusFromJobs(finalQueue);
   return {
     synced,
     conflicts,
     failed,
-    pending: left.length - blocked,
-    blocked,
+    pending: status.pending,
+    blocked: status.blocked,
+    deferred: Math.max(deferred, status.deferred),
   };
 }
 
+/**
+ * Replay queue against API.
+ * - 2xx → remove
+ * - 409 → conflict, manual retry only
+ * - permanent 4xx → block (no auto retry)
+ * - 5xx / network / temp 4xx → exponential backoff, block after MAX_ATTEMPTS
+ */
+export function flush(apiBase: string): Promise<OfflineFlushResult> {
+  if (activeFlush) return activeFlush;
+  activeFlush = flushOnce(apiBase).finally(() => {
+    activeFlush = null;
+  });
+  return activeFlush;
+}
 
 export async function writeQueue(jobs: OfflineJob[]) {
-  await AsyncStorage.setItem(KEY, JSON.stringify(jobs));
+  await withQueueLock(async () => {
+    const current = await getQueueUnlocked();
+    const currentById = new Map(current.map((job) => [job.id, job]));
+    const next = jobs.map((job) => ({
+      ...job,
+      version: (currentById.get(job.id)?.version ?? job.version ?? 0) + 1,
+    }));
+    await setQueueUnlocked(next);
+  });
   await emitQueueChanged();
 }
 
 /** После archive/trash/purge — не replay мутации по этому project_id. */
 export async function dropJobsForProject(projectId: string): Promise<number> {
-  const q = await getQueue();
-  const next = filterJobsExceptProject(q, projectId);
-  const dropped = q.length - next.length;
-  if (dropped > 0) {
-    await AsyncStorage.setItem(KEY, JSON.stringify(next));
-    await emitQueueChanged();
-  }
+  const dropped = await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    const next = filterJobsExceptProject(queue, projectId);
+    const count = queue.length - next.length;
+    if (count > 0) await setQueueUnlocked(next);
+    return count;
+  });
+  if (dropped > 0) await emitQueueChanged();
   return dropped;
 }
 
 export const OFFLINE_QUEUE_KEY = KEY;
 export const OFFLINE_MAX_ATTEMPTS = MAX_ATTEMPTS;
+export const OFFLINE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;

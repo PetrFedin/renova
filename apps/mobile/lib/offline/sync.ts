@@ -11,6 +11,7 @@ import {
 } from '@/lib/offlineQueue';
 import { notifyOfflineFlush } from '@/lib/offline/flushBus';
 import { notifyProjectDataChanged } from '@/lib/projectDataBus';
+
 export type OfflineSyncResult = {
   total: number;
   synced: number;
@@ -21,35 +22,50 @@ export type OfflineSyncResult = {
 
 export type OfflineOutboxStatus = OfflineQueueStatus;
 
-let running = false;
+let activeRun: Promise<OfflineSyncResult> | null = null;
+let trailingRequested = false;
 
-export async function flushOfflineOutbox(apiBase: string = API_BASE): Promise<OfflineSyncResult> {
-  if (running) {
-    return { total: 0, synced: 0, failed: 0, skipped: 1, conflicts: 0 };
-  }
-
-  running = true;
+async function runOfflineFlush(apiBase: string): Promise<OfflineSyncResult> {
+  let total = 0;
   let synced = 0;
-  try {
+  let failed = 0;
+  let conflicts = 0;
+
+  do {
+    trailingRequested = false;
     const before = await getQueueStatus();
+    total = Math.max(total, before.total);
     const result: OfflineFlushResult = await flush(apiBase);
-    synced = result.synced;
-    return {
-      total: before.total,
-      synced: result.synced,
-      failed: result.failed,
-      skipped: result.blocked,
-      conflicts: result.conflicts,
-    };
-  } finally {
-    running = false;
-    // W79: inbox/home перечитывают очередь (без прямого import inboxSyncStore)
-    notifyOfflineFlush();
-    // W92: после успешного flush — golden-path экраны через projectDataBus
-    if (synced > 0) {
-      notifyProjectDataChanged();
-    }
+    synced += result.synced;
+    failed += result.failed;
+    conflicts += result.conflicts;
+  } while (trailingRequested);
+
+  const after = await getQueueStatus();
+  return {
+    total,
+    synced,
+    failed,
+    skipped: after.blocked + after.conflicts + after.deferred,
+    conflicts,
+  };
+}
+
+export function flushOfflineOutbox(apiBase: string = API_BASE): Promise<OfflineSyncResult> {
+  if (activeRun) {
+    trailingRequested = true;
+    return activeRun;
   }
+
+  activeRun = runOfflineFlush(apiBase).finally(() => {
+    activeRun = null;
+    notifyOfflineFlush();
+  });
+
+  return activeRun.then((result) => {
+    if (result.synced > 0) notifyProjectDataChanged();
+    return result;
+  });
 }
 
 export async function getOfflineOutboxStatus(): Promise<OfflineOutboxStatus> {
@@ -62,5 +78,5 @@ export async function getOfflineOutboxSize() {
 }
 
 export function isOfflineSyncRunning() {
-  return running;
+  return activeRun !== null;
 }
