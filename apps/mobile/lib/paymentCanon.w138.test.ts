@@ -48,7 +48,6 @@ must(paymentsSection.includes('accessibilityState={{ selected }}'), 'filter sele
 must(paymentsSection.includes('Показать все счета'), 'filtered empty state recovery');
 must(paymentsSection.includes('formatConfirmedDate'), 'payment dates fail safely');
 
-// Create form preserves drafts on failed writes and separates durable write from side effects.
 must(createForm.includes('const busyRef = useRef(false)'), 'create payment ref guard');
 must(createForm.includes('if (busyRef.current) return'), 'create payment duplicate submit guard');
 must(createForm.includes('filterChipStyles') && createForm.includes('formSurfaceStyles'), 'payment form shared UI');
@@ -92,9 +91,12 @@ for (const file of walk(join(mobile, 'components'))) {
 must(offenders.length === 0, 'confirmPayment only in sheet: ' + offenders.join(', '));
 
 must(!/has_yk|yookassa_payment_id.*transfer_ack|receipt_id or has_yk/.test(
-  svc.slice(svc.indexOf('allow_without_settlement'), svc.indexOf('allow_without_settlement') + 400),
+  svc.slice(svc.indexOf('allow_without_settlement'), svc.indexOf('allow_without_settlement') + 500),
 ), 'manual confirm must not treat yookassa_id as proof');
-must(svc.includes('if not (receipt_id or transfer_ack)'), 'manual proof = receipt or ack');
+must(svc.includes('if not allow_without_settlement') && svc.includes('not (receipt_id or transfer_ack)'), 'manual proof = receipt or ack');
+must(svc.includes('update(Payment)') && svc.includes('Payment.status.in_(allowed_from)'), 'payment transition has one conditional DB winner');
+must(svc.includes('suppress_payment_transition_side_effects'), 'replayed transition suppresses duplicate effects');
+must(svc.includes('refresh_budget_facts'), 'confirmed transition recalculates canonical budget fact');
 must(yk.includes('allow_without_settlement=True'), 'webhook uses machine settlement');
 
 console.log('paymentCanon.w138.test OK');
