@@ -53,7 +53,12 @@ if (home.includes('Alert.alert') || home.includes('Alert.')) throw new Error('ho
 if (!home.includes("title: 'Дайджест'")) throw new Error('digest sheet');
 
 if (qc.includes("Alert.alert('Спор'")) throw new Error('QC escalate Alert');
-if (!qc.includes("title: 'Спор'")) throw new Error('QC escalate sheet');
+if (!qc.includes("title: 'Эскалировать в спор?'") || !qc.includes('api.escalateIssue')) {
+  throw new Error('QC escalation must use confirmed API flow');
+}
+if (!qc.includes('Стороны получат уведомление') || !qc.includes("'Эскалация'")) {
+  throw new Error('QC escalation feedback/notification copy');
+}
 
 if (decisions.includes("textTransform: 'uppercase'")) throw new Error('decision badge uppercase');
 if (!decisions.includes('screenTypography') || !decisions.includes('listRowStyles')) {
