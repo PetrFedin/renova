@@ -144,29 +144,42 @@ async def reject_co(project_id: str, order_id: str, user: User = Depends(get_cur
     project = await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
         raise HTTPException(403)
-    co = await co_svc.reject(db, order_id)
-    if not co:
-        raise HTTPException(404)
-    await act.log_event(
+    co, replayed = await co_svc.reject_with_effects(
         db,
         project_id=project_id,
-        user_id=user.id,
-        kind="ChangeOrderRejected",
-        title=f"Доп. работы отклонены: {co.title}",
-        body=co.description,
-        link_path="/(customer)/(tabs)/budget",
+        order_id=order_id,
+        rejected_by=user.id,
     )
-    for member_id in _member_ids(project):
-        if member_id == user.id:
-            continue
-        await notif.notify(
-            db,
-            user_id=member_id,
-            project_id=project_id,
-            notification_type="change_order",
-            title=f"Доп. работы отклонены: {co.title}",
-            body=co.description or "",
-            link_path="/(contractor)/(tabs)/budget",
-            return_to="/(contractor)/(tabs)/home",
-        )
-    return {"ok": True, "status": co.status.value}
+    if not co:
+        raise HTTPException(404)
+
+    if not replayed:
+        from app.services.client_write_side_effects import clear_request_side_effect_context
+
+        try:
+            await act.log_event(
+                db,
+                project_id=project_id,
+                user_id=user.id,
+                kind="ChangeOrderRejected",
+                title=f"Доп. работы отклонены: {co.title}",
+                body=co.description,
+                link_path="/(customer)/(tabs)/budget",
+            )
+            for member_id in _member_ids(project):
+                if member_id == user.id:
+                    continue
+                await notif.notify(
+                    db,
+                    user_id=member_id,
+                    project_id=project_id,
+                    notification_type="change_order",
+                    title=f"Доп. работы отклонены: {co.title}",
+                    body=co.description or "",
+                    link_path="/(contractor)/(tabs)/budget",
+                    return_to="/(contractor)/(tabs)/home",
+                )
+        finally:
+            clear_request_side_effect_context()
+
+    return {"ok": True, "status": co.status.value, "replayed": replayed}
