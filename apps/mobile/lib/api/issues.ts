@@ -1,5 +1,5 @@
 /** API: issues */
-import { req, cachedGet, API_BASE, ApiError } from './client';
+import { req, ApiError } from './client';
 import type { ProjectIssue } from './types';
 
 async function enqueueOffline(path: string, method: string, body: string | undefined, userId: string) {
@@ -26,6 +26,17 @@ export const issuesApi = {
       await enqueueOffline(`/api/v1/projects/${projectId}/issues/${issueId}/escalate`, 'POST', undefined, userId);
     }
   },
+  transitionIssue: async (userId: string, projectId: string, issueId: string, status: string) => {
+    const path = `/api/v1/projects/${projectId}/issues/${issueId}/transition`;
+    const body = JSON.stringify({ status });
+    try {
+      return await req<ProjectIssue>(path, { method: 'POST', body }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      await enqueueOffline(path, 'POST', body, userId);
+    }
+  },
+  /** @deprecated use transitionIssue for QC lifecycle; kept for legacy warranty/old clients. */
   closeIssue: async (userId: string, projectId: string, issueId: string) => {
     try {
       return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues/${issueId}/close`, { method: 'POST' }, userId);
