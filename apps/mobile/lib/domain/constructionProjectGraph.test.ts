@@ -108,7 +108,6 @@ const documents = [{ id: 'document-receipt', title: 'Чек на кабель', 
 {
   const graph = buildConstructionProjectGraph({
     documents: [{ id: 'orphan-document', title: 'Файл без владельца' }],
-    documents: [{ id: 'orphan-document', title: 'Файл без владельца' }],
   });
   const integrity = inspectConstructionProjectGraph(graph);
   check(!integrity.isHealthy, 'document without project or owner is unhealthy');
