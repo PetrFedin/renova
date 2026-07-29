@@ -34,20 +34,25 @@ def upgrade() -> None:
         unique=True,
     )
 
-    # Best-effort backfill from the historical notes marker CO:<uuid>.
+    # Historical notes may contain duplicate CO markers. Link only the oldest
+    # document for each order so the new one-to-one constraint remains valid.
     op.execute(
         sa.text(
             """
+            WITH candidates AS (
+                SELECT DISTINCT ON (change_order.id)
+                    document.id AS document_id,
+                    change_order.id AS change_order_id
+                FROM project_documents AS document
+                JOIN change_orders AS change_order
+                  ON document.notes LIKE ('CO:' || change_order.id || ';%')
+                WHERE document.change_order_id IS NULL
+                ORDER BY change_order.id, document.created_at ASC, document.id ASC
+            )
             UPDATE project_documents AS document
-            SET change_order_id = change_order.id
-            FROM change_orders AS change_order
-            WHERE document.change_order_id IS NULL
-              AND document.notes LIKE ('CO:' || change_order.id || ';%')
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM project_documents AS existing
-                  WHERE existing.change_order_id = change_order.id
-              )
+            SET change_order_id = candidates.change_order_id
+            FROM candidates
+            WHERE document.id = candidates.document_id
             """
         )
     )
