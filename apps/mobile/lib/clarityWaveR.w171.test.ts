@@ -39,6 +39,9 @@ if (!expense.includes('const busyRef = useRef(false)') || !expense.includes('if 
 if (!expense.includes("notifyOfflineQueued('Расход без чека')") || !expense.includes('Введённые данные сохранены в форме')) {
   throw new Error('manual expense offline/error preservation');
 }
+if (!expense.includes('let saved = false') || !expense.includes('void syncProjectSideEffects')) {
+  throw new Error('manual expense durable write boundary');
+}
 if (!expense.includes('ExpenseContextPickers') || !expense.includes('roomId') || !expense.includes('stageId')) {
   throw new Error('manual expense context links');
 }
@@ -48,8 +51,13 @@ if (payReturn.includes('Alert.alert') || !payReturn.includes("primaryLabel: 'К 
   throw new Error('payment-return sheet');
 }
 
+if (!addLine.includes('formSurfaceStyles') || !addLine.includes('filterChipStyles')) {
+  throw new Error('AddEstimateLineForm shared form/chips');
+}
+if (!addLine.includes('const busyRef = useRef(false)') || addLine.includes('Alert.alert')) {
+  throw new Error('AddEstimateLineForm mutation/error contract');
+}
 for (const [name, body] of [
-  ['AddEstimateLineForm', addLine],
   ['GlobalFilterBar', filterBar],
   ['PaymentDetailSheet', paySheet],
   ['OsProjectPicker', picker],

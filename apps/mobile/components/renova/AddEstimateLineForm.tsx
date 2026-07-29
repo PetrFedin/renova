@@ -1,21 +1,23 @@
 /** Добавление строки в смету — работа или материал */
-import { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Pressable, ScrollView } from 'react-native';
-import { RenovaTheme } from '@/constants/Theme';
-import { screenTypography } from '@/constants/screenTypography';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
+
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
+import { formSurfaceStyles } from '@/constants/formStyles';
+import { filterChipStyles } from '@/constants/screenTypography';
+import { EXPENSE_CATEGORIES } from '@/constants/expenseCategories';
+import { WORK_TYPES_FALLBACK, type WorkTypeOption } from '@/constants/workCatalog';
+import { api, type ProjectDetail } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
-import { api, type ProjectDetail } from '@/lib/api';
-import { EXPENSE_CATEGORIES } from '@/constants/expenseCategories';
-import { WORK_TYPES_FALLBACK, type WorkTypeOption } from '@/constants/workCatalog';
 import { alertEstimateLineAdded } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
-import { reportError } from '@/lib/reportError';
+import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
-const UNITS = ['pcs', 'm2', 'm', 'kg', 'l', 'компл'];
+const UNITS = ['pcs', 'm2', 'm', 'kg', 'l', 'компл'] as const;
 
 export function AddEstimateLineForm({
   userId,
@@ -34,12 +36,13 @@ export function AddEstimateLineForm({
   const [name, setName] = useState('');
   const [qty, setQty] = useState('1');
   const [price, setPrice] = useState('');
-  const [unit, setUnit] = useState('pcs');
+  const [unit, setUnit] = useState<(typeof UNITS)[number]>('pcs');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [category, setCategory] = useState('custom');
   const [notes, setNotes] = useState('');
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>(WORK_TYPES_FALLBACK);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   useEffect(() => {
     api.listWorkTypes().then(setWorkTypes).catch(() => setWorkTypes(WORK_TYPES_FALLBACK));
@@ -50,110 +53,223 @@ export function AddEstimateLineForm({
     else setCategory('custom');
   }, [lineType]);
 
+  const clearDraft = () => {
+    setName('');
+    setQty('1');
+    setPrice('');
+    setNotes('');
+    setRoomId(null);
+  };
+
   async function submit() {
-    const quantity_planned = parseFloat(qty.replace(',', '.'));
-    const unit_price = parseFloat(price.replace(',', '.'));
-    if (!name.trim()) { Alert.alert('Смета', 'Укажите название'); return; }
-    if (!quantity_planned || quantity_planned <= 0) { Alert.alert('Смета', 'Укажите количество'); return; }
+    if (busyRef.current) return;
+    const quantityPlanned = Number.parseFloat(qty.replace(',', '.'));
+    const parsedPrice = Number.parseFloat(price.replace(',', '.'));
+    const unitPrice = Number.isFinite(parsedPrice) ? parsedPrice : 0;
+
+    if (!name.trim()) {
+      showActionConfirm({ title: 'Название строки', message: 'Укажите работу или материал.' });
+      return;
+    }
+    if (!Number.isFinite(quantityPlanned) || quantityPlanned <= 0) {
+      showActionConfirm({ title: 'Количество', message: 'Укажите количество больше 0.' });
+      return;
+    }
+    if (unitPrice < 0) {
+      showActionConfirm({ title: 'Цена', message: 'Цена не может быть отрицательной.' });
+      return;
+    }
+
+    const room = project.rooms?.find((candidate) => candidate.id === roomId);
+    busyRef.current = true;
     setBusy(true);
+    let saved = false;
     try {
-      const room = project.rooms?.find((r) => r.id === roomId);
       await api.addEstimateLine(userId, project.id, {
         line_type: lineType,
         name: name.trim(),
         unit,
-        quantity_planned,
-        unit_price: unit_price || 0,
+        quantity_planned: quantityPlanned,
+        unit_price: unitPrice,
         room_id: roomId,
         room_name: room?.name || null,
         category,
         notes: notes.trim() || null,
       });
-      setName('');
-      setQty('1');
-      setPrice('');
-      setNotes('');
-      setRoomId(null);
-      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
-      onSaved?.();
-      alertEstimateLineAdded((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
-    } catch (e: unknown) {
-      if (isOfflineQueued(e)) {
+      saved = true;
+    } catch (error: unknown) {
+      if (isOfflineQueued(error)) {
         notifyOfflineQueued('Строка сметы');
+        clearDraft();
+        if (collapsed) setOpen(false);
       } else {
-        Alert.alert('Ошибка', 'Не удалось добавить строку');
+        showActionConfirm({
+          title: 'Строка не добавлена',
+          message: 'Введённые данные сохранены в форме. Проверьте сеть и повторите.',
+        });
       }
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
+
+    if (!saved) return;
+    clearDraft();
+    if (collapsed) setOpen(false);
+    onSaved?.();
+    alertEstimateLineAdded((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
+    void syncProjectSideEffects({ user: user ?? ({ id: userId } as never), project })
+      .catch(reportCatch('AddEstimateLineForm.sideEffects'));
   }
 
   if (collapsed && !open) {
     return (
-      <PrimaryButton title="+ Строка сметы" variant="outline" onPress={() => setOpen(true)} />
+      <PrimaryButton
+        title="+ Строка сметы"
+        variant="outline"
+        onPress={() => setOpen(true)}
+        accessibilityLabel="Добавить строку сметы"
+        fullWidth
+      />
     );
   }
 
   const categoryOptions = lineType === 'work'
     ? workTypes
-    : EXPENSE_CATEGORIES.map((c) => ({ code: c.id, name: c.label, category: c.id }));
+    : EXPENSE_CATEGORIES.map((item) => ({ code: item.id, name: item.label, category: item.id }));
 
   return (
-    <View style={s.box}>
-      <Pressable onPress={() => collapsed && setOpen(false)}>
-        <Text style={s.head}>+ Строка сметы · подрядчик</Text>
-      </Pressable>
-      <View style={s.typeRow}>
-        <PrimaryButton title="Работа" compact variant={lineType === 'work' ? 'primary' : 'outline'} onPress={() => setLineType('work')} />
-        <PrimaryButton title="Материал" compact variant={lineType === 'material' ? 'primary' : 'outline'} onPress={() => setLineType('material')} />
+    <View style={formSurfaceStyles.container}>
+      <Text style={formSurfaceStyles.title}>Новая строка сметы</Text>
+      <Text style={formSurfaceStyles.hint}>Работа или материал с количеством, ценой и привязкой к комнате.</Text>
+
+      <Text style={formSurfaceStyles.label}>Тип строки</Text>
+      <View style={filterChipStyles.row}>
+        {(['work', 'material'] as const).map((type) => {
+          const selected = lineType === type;
+          const label = type === 'work' ? 'Работа' : 'Материал';
+          return (
+            <Pressable
+              key={type}
+              accessibilityRole="button"
+              accessibilityLabel={`Тип строки: ${label}`}
+              accessibilityState={{ selected, disabled: busy }}
+              disabled={busy}
+              style={[filterChipStyles.chip, formSurfaceStyles.chipTouch, selected && filterChipStyles.chipOn]}
+              onPress={() => setLineType(type)}
+            >
+              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>{label}</Text>
+            </Pressable>
+          );
+        })}
       </View>
-      <TextInput style={s.inp} value={name} onChangeText={setName} placeholder="Название" />
-      <View style={s.row2}>
-        <TextInput style={[s.inp, s.half]} value={qty} onChangeText={setQty} placeholder="Кол-во" keyboardType="decimal-pad" />
-        <TextInput style={[s.inp, s.half]} value={price} onChangeText={setPrice} placeholder="Цена, ₽" keyboardType="decimal-pad" />
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.unitRow}>
-        {UNITS.map((u) => (
-          <Pressable key={u} style={[s.unitChip, unit === u && s.unitOn]} onPress={() => setUnit(u)}>
-            <Text style={[s.unitT, unit === u && s.unitTOn]}>{u}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      <Text style={s.lbl}>Статья</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.unitRow}>
-        {categoryOptions.slice(0, 12).map((c) => (
-          <Pressable key={c.code} style={[s.unitChip, category === c.code && s.unitOn]} onPress={() => setCategory(c.code)}>
-            <Text style={[s.unitT, category === c.code && s.unitTOn]} numberOfLines={1}>{c.name}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      {(project.rooms?.length ?? 0) > 0 && (
-        <RoomPickerChips rooms={project.rooms!} value={roomId} onChange={setRoomId} optional />
-      )}
+
+      <Text style={formSurfaceStyles.label}>Название</Text>
       <TextInput
-        style={[s.inp, s.notes]}
+        style={formSurfaceStyles.input}
+        value={name}
+        onChangeText={setName}
+        placeholder="Название работы или материала"
+        editable={!busy}
+        accessibilityLabel="Название строки сметы"
+      />
+
+      <View style={formSurfaceStyles.splitRow}>
+        <View style={formSurfaceStyles.splitCell}>
+          <Text style={formSurfaceStyles.label}>Количество</Text>
+          <TextInput
+            style={formSurfaceStyles.input}
+            value={qty}
+            onChangeText={setQty}
+            placeholder="Количество"
+            keyboardType="decimal-pad"
+            editable={!busy}
+            accessibilityLabel="Количество"
+          />
+        </View>
+        <View style={formSurfaceStyles.splitCell}>
+          <Text style={formSurfaceStyles.label}>Цена, ₽</Text>
+          <TextInput
+            style={formSurfaceStyles.input}
+            value={price}
+            onChangeText={setPrice}
+            placeholder="0"
+            keyboardType="decimal-pad"
+            editable={!busy}
+            accessibilityLabel="Цена за единицу"
+          />
+        </View>
+      </View>
+
+      <Text style={formSurfaceStyles.label}>Единица</Text>
+      <View style={filterChipStyles.row}>
+        {UNITS.map((option) => {
+          const selected = unit === option;
+          return (
+            <Pressable
+              key={option}
+              accessibilityRole="button"
+              accessibilityLabel={`Единица измерения: ${option}`}
+              accessibilityState={{ selected, disabled: busy }}
+              disabled={busy}
+              style={[filterChipStyles.chip, formSurfaceStyles.chipTouch, selected && filterChipStyles.chipOn]}
+              onPress={() => setUnit(option)}
+            >
+              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>{option}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={formSurfaceStyles.label}>Статья</Text>
+      <View style={filterChipStyles.row}>
+        {categoryOptions.slice(0, 12).map((option) => {
+          const selected = category === option.code;
+          return (
+            <Pressable
+              key={option.code}
+              accessibilityRole="button"
+              accessibilityLabel={`Статья: ${option.name}`}
+              accessibilityState={{ selected, disabled: busy }}
+              disabled={busy}
+              style={[filterChipStyles.chip, formSurfaceStyles.chipTouch, selected && filterChipStyles.chipOn]}
+              onPress={() => setCategory(option.code)}
+            >
+              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]} numberOfLines={1}>
+                {option.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {(project.rooms?.length ?? 0) > 0 ? (
+        <RoomPickerChips rooms={project.rooms!} value={roomId} onChange={setRoomId} optional disabled={busy} />
+      ) : null}
+
+      <Text style={formSurfaceStyles.label}>Заметка</Text>
+      <TextInput
+        style={[formSurfaceStyles.input, formSurfaceStyles.multilineInput]}
         value={notes}
         onChangeText={setNotes}
-        placeholder="Заметка: бренд, артикул, условия…"
+        placeholder="Бренд, артикул, условия…"
         multiline
+        editable={!busy}
+        accessibilityLabel="Заметка к строке сметы"
       />
-      <PrimaryButton title={busy ? 'Сохранение…' : 'Добавить в смету'} onPress={submit} disabled={busy} />
+
+      <View style={formSurfaceStyles.actionStack}>
+        <PrimaryButton
+          title="Добавить в смету"
+          onPress={() => { void submit(); }}
+          loading={busy}
+          disabled={busy}
+          fullWidth
+        />
+        {collapsed ? (
+          <PrimaryButton title="Отмена" variant="ghost" onPress={() => setOpen(false)} disabled={busy} fullWidth />
+        ) : null}
+      </View>
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: RenovaTheme.colors.border },
-  head: { fontWeight: '800', marginBottom: 8 },
-  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  row2: { flexDirection: 'row', gap: 8 },
-  half: { flex: 1 },
-  unitRow: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  unitChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: RenovaTheme.colors.border },
-  unitOn: { backgroundColor: RenovaTheme.colors.primary },
-  unitT: { fontSize: 11, fontWeight: '600', color: '#334155' },
-  unitTOn: { color: RenovaTheme.colors.surface },
-  lbl: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
-  inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },
-  notes: { minHeight: 56, textAlignVertical: 'top' },
-});

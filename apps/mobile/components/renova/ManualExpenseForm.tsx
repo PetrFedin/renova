@@ -1,22 +1,28 @@
 /** Ручной расход: наличные, перевод, без QR */
 import { useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
-import { RenovaTheme } from '@/constants/Theme';
-import { screenTypography } from '@/constants/screenTypography';
+import { Pressable, Text, TextInput, View } from 'react-native';
+
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
+import { formSurfaceStyles } from '@/constants/formStyles';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
-import { api } from '@/lib/api';
-import type { ProjectDetail } from '@/lib/api';
+import { api, type ProjectDetail } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertManualExpenseSaved } from '@/lib/receiptNav';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { reportCatch } from '@/lib/reportError';
 
 export function ManualExpenseForm({
-  userId, project, readOnly, onSaved, initialRoomId, initialStageId, collapsed,
+  userId,
+  project,
+  readOnly,
+  onSaved,
+  initialRoomId,
+  initialStageId,
+  collapsed,
 }: {
   userId: string;
   project: ProjectDetail;
@@ -37,6 +43,11 @@ export function ManualExpenseForm({
   const busyRef = useRef(false);
   const [open, setOpen] = useState(!collapsed);
 
+  const clearDraft = () => {
+    setAmount('');
+    setDescription('');
+  };
+
   const submit = async () => {
     if (busyRef.current || readOnly) return;
     const normalizedAmount = Number.parseFloat(amount.replace(',', '.'));
@@ -47,6 +58,7 @@ export function ManualExpenseForm({
 
     busyRef.current = true;
     setBusy(true);
+    let saved = false;
     try {
       await api.addManualReceipt(
         userId,
@@ -57,18 +69,11 @@ export function ManualExpenseForm({
         roomId,
         stageId,
       );
-      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
-      setAmount('');
-      setDescription('');
-      onSaved?.();
-      if (collapsed) setOpen(false);
-      const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
-      alertManualExpenseSaved(role, normalizedAmount);
+      saved = true;
     } catch (error) {
       if (isOfflineQueued(error)) {
         notifyOfflineQueued('Расход без чека');
-        setAmount('');
-        setDescription('');
+        clearDraft();
         if (collapsed) setOpen(false);
       } else {
         showActionConfirm({
@@ -80,6 +85,15 @@ export function ManualExpenseForm({
       busyRef.current = false;
       setBusy(false);
     }
+
+    if (!saved) return;
+    clearDraft();
+    if (collapsed) setOpen(false);
+    onSaved?.();
+    const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+    alertManualExpenseSaved(role, normalizedAmount);
+    void syncProjectSideEffects({ user: user ?? ({ id: userId } as never), project })
+      .catch(reportCatch('ManualExpenseForm.sideEffects'));
   };
 
   if (collapsed && !open) {
@@ -87,38 +101,41 @@ export function ManualExpenseForm({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Добавить расход без чека"
-        style={s.collapsedButton}
+        accessibilityState={{ disabled: Boolean(readOnly) }}
+        style={formSurfaceStyles.collapsedAction}
         disabled={readOnly}
         onPress={() => setOpen(true)}
       >
-        <Text style={s.link}>+ Расход без чека</Text>
-        <Text style={s.collapsedMeta}>Наличные, перевод или расход без QR</Text>
+        <Text style={formSurfaceStyles.collapsedTitle}>+ Расход без чека</Text>
+        <Text style={formSurfaceStyles.collapsedMeta}>Наличные, перевод или расход без QR</Text>
       </Pressable>
     );
   }
 
   return (
-    <View style={s.box}>
-      <Text style={s.head}>Расход без чека</Text>
-      <Text style={s.hint}>Наличные, перевод или доставка. Привязка к комнате и этапу улучшает фактическую себестоимость.</Text>
+    <View style={formSurfaceStyles.container}>
+      <Text style={formSurfaceStyles.title}>Расход без чека</Text>
+      <Text style={formSurfaceStyles.hint}>Наличные, перевод или доставка. Привязка к комнате и этапу улучшает фактическую себестоимость.</Text>
 
-      <Text style={s.label}>Сумма</Text>
+      <Text style={formSurfaceStyles.label}>Сумма</Text>
       <TextInput
-        style={s.inp}
+        style={formSurfaceStyles.input}
         value={amount}
         onChangeText={setAmount}
         placeholder="Сумма, ₽"
         keyboardType="decimal-pad"
         editable={!readOnly && !busy}
+        accessibilityLabel="Сумма расхода"
       />
 
-      <Text style={s.label}>Описание</Text>
+      <Text style={formSurfaceStyles.label}>Описание</Text>
       <TextInput
-        style={s.inp}
+        style={formSurfaceStyles.input}
         value={description}
         onChangeText={setDescription}
         placeholder="Магазин, работа или назначение"
         editable={!readOnly && !busy}
+        accessibilityLabel="Описание расхода"
       />
 
       <ExpenseContextPickers
@@ -129,58 +146,21 @@ export function ManualExpenseForm({
         onRoomChange={setRoomId}
         onStageChange={setStageId}
         onCategoryChange={setCategory}
-        disabled={readOnly || busy}
+        disabled={Boolean(readOnly || busy)}
       />
 
-      <PrimaryButton
-        disabled={readOnly || busy}
-        loading={busy}
-        title="Добавить расход"
-        onPress={() => { void submit(); }}
-        fullWidth
-      />
-      {collapsed ? (
+      <View style={formSurfaceStyles.actionStack}>
         <PrimaryButton
-          title="Отмена"
-          variant="ghost"
-          disabled={busy}
-          onPress={() => setOpen(false)}
+          disabled={Boolean(readOnly || busy)}
+          loading={busy}
+          title="Добавить расход"
+          onPress={() => { void submit(); }}
           fullWidth
         />
-      ) : null}
+        {collapsed ? (
+          <PrimaryButton title="Отмена" variant="ghost" disabled={busy} onPress={() => setOpen(false)} fullWidth />
+        ) : null}
+      </View>
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  box: {
-    paddingVertical: 14,
-    marginBottom: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: RenovaTheme.colors.border,
-    gap: 8,
-  },
-  head: { ...screenTypography.listTitle, fontSize: 16 },
-  hint: { ...screenTypography.listMeta, marginBottom: 4 },
-  label: { ...screenTypography.section, marginTop: 4, marginBottom: 2 },
-  collapsedButton: {
-    minHeight: RenovaTheme.minTouch,
-    justifyContent: 'center',
-    paddingVertical: 8,
-    marginTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: RenovaTheme.colors.border,
-  },
-  link: { ...screenTypography.listLink, marginTop: 0 },
-  collapsedMeta: { ...screenTypography.listMeta },
-  inp: {
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    borderRadius: RenovaTheme.radius.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: RenovaTheme.minTouch,
-    color: RenovaTheme.colors.text,
-    backgroundColor: RenovaTheme.colors.surface,
-  },
-});

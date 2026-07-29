@@ -29,7 +29,6 @@ must(payApi.includes('transfer_ack'), 'API sends transfer_ack');
 must(sheet.includes('transfer_ack'), 'sheet passes transfer_ack');
 must(sheet.includes('внешнего перевода') || sheet.includes('внешний перевод'), 'honest external-transfer copy');
 
-// Money-critical UI must prevent duplicate mutations and accidental dismissal.
 must(sheet.includes('const mutationRef = useRef(false)'), 'payment mutation ref');
 must(sheet.includes("type PaymentMutation = 'card' | 'confirm' | null"), 'exact payment mutation state');
 must(sheet.includes('if (mutationRef.current) return false'), 'duplicate payment mutation guard');
@@ -40,7 +39,6 @@ must(surface.includes('if (!busy) onClose()'), 'modal close guarded while busy')
 must(sheet.includes('title="Закрыть"') && sheet.includes('variant="ghost"'), 'close remains tertiary');
 must(!sheet.includes('Alert.alert'), 'payment has no Alert fallback');
 
-// Payments list uses shared filters and a single create action hierarchy.
 must(paymentsSection.includes('filterChipStyles'), 'payment filters use shared chips');
 must(paymentsSection.includes('const [createOpen, setCreateOpen]'), 'create form is progressively disclosed');
 must(paymentsSection.includes("title={createOpen ? 'Скрыть форму' : 'Выставить счёт'}"), 'single create action');
@@ -50,16 +48,19 @@ must(paymentsSection.includes('accessibilityState={{ selected }}'), 'filter sele
 must(paymentsSection.includes('Показать все счета'), 'filtered empty state recovery');
 must(paymentsSection.includes('formatConfirmedDate'), 'payment dates fail safely');
 
-// Create form keeps drafts on error and blocks duplicate submissions.
+// Create form preserves drafts on failed writes and separates durable write from side effects.
 must(createForm.includes('const busyRef = useRef(false)'), 'create payment ref guard');
 must(createForm.includes('if (busyRef.current) return'), 'create payment duplicate submit guard');
-must(createForm.includes('filterChipStyles'), 'payment type/percent shared chips');
+must(createForm.includes('filterChipStyles') && createForm.includes('formSurfaceStyles'), 'payment form shared UI');
 must(createForm.includes('loading={busy}'), 'create payment shared loading');
 must(createForm.includes('Введённые данные сохранены в форме'), 'create payment preserves draft on error');
 must(createForm.includes('title="Отмена"') && createForm.includes('variant="ghost"'), 'create payment cancel tertiary');
-must(createForm.includes("setTitle('')") && createForm.indexOf("setTitle('')") > createForm.indexOf('await syncProjectSideEffects'), 'form clears after confirmed save');
+must(createForm.includes('let created = false') && createForm.includes('if (!created) return'), 'payment durable write boundary');
+must(createForm.indexOf('if (!created) return') < createForm.indexOf('clearDraft();', createForm.indexOf('if (!created) return')), 'payment clears only after durable write');
+must(createForm.includes('void syncProjectSideEffects') && createForm.includes("reportCatch('CreatePaymentForm.sideEffects')"), 'payment side effects best effort');
+must(createForm.includes("stage_id: paymentType === 'stage' ? stageId : null"), 'material payment has no hidden stage');
+must(createForm.includes("if (next !== 'stage')") && createForm.includes('setStageId(null)'), 'payment type switch clears stage');
 
-// Shared confirmation layer must preserve destructive intent.
 must(actionBus.includes('primaryDestructive?: boolean'), 'confirm payload destructive flag');
 must(actionSheet.includes("primaryDestructive ? 'danger' : 'primary'"), 'destructive primary uses danger');
 must(actionSheet.includes("action.destructive ? 'dangerOutline'"), 'destructive menu action uses danger outline');
@@ -72,7 +73,6 @@ must(kpi.includes("openPayment: '1'"), 'KPI Оплатить opens sheet');
 must(chat.includes("openPayment: '1'"), 'chat pay opens sheet');
 must(push.includes("case 'payment_pending'") && push.includes("openPayment: '1'"), 'push pending opens sheet');
 
-// No other component calls confirmPayment(
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name.startsWith('.')) continue;
@@ -91,7 +91,6 @@ for (const file of walk(join(mobile, 'components'))) {
 }
 must(offenders.length === 0, 'confirmPayment only in sheet: ' + offenders.join(', '));
 
-// YuKassa id at checkout must NOT be manual settlement proof
 must(!/has_yk|yookassa_payment_id.*transfer_ack|receipt_id or has_yk/.test(
   svc.slice(svc.indexOf('allow_without_settlement'), svc.indexOf('allow_without_settlement') + 400),
 ), 'manual confirm must not treat yookassa_id as proof');

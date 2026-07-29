@@ -26,7 +26,6 @@ if (!portal.includes("title: 'Demo-оплата'") || !portal.includes("title: '
 if (!portal.includes('runPortalMutation') || !portal.includes('api.portalSignDocument')) {
   throw new Error('portal demo/sign mutations must use shared guard');
 }
-// no multi-button Alert left in portal
 if (portal.includes("text: 'Продолжить demo'") || portal.includes("text: 'К оплате', onPress: goPayments")) {
   throw new Error('portal still Alert buttons');
 }
@@ -39,10 +38,15 @@ for (const [name, body] of [
   ['PostCreateSheet', post],
   ['PlanTabOverview', plan],
   ['WeekTimeline', week],
-  ['StagePickerChips', chips],
   ['HomeSetupChecklist', setup],
 ] as const) {
   if (!body.includes('screenTypography')) throw new Error(`${name} missing SoT`);
+}
+if (!chips.includes('formSurfaceStyles') || !chips.includes('filterChipStyles')) {
+  throw new Error('StagePickerChips missing shared form/chip SoT');
+}
+if (!chips.includes('accessibilityState={{ selected, disabled }}')) {
+  throw new Error('StagePickerChips missing accessibility state');
 }
 if (plan.includes('...card') || plan.includes('{ ...card')) throw new Error('plan still card hero');
 if (week.includes("fontWeight:'800'")) throw new Error('week old head');

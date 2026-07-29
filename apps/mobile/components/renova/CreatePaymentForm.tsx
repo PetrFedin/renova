@@ -1,10 +1,11 @@
 /** Создание счёта на оплату — исполнитель в «Бюджет → Оплаты» */
 import { useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
-import { RenovaTheme } from '@/constants/Theme';
-import { screenTypography, filterChipStyles } from '@/constants/screenTypography';
+import { Pressable, Text, TextInput, View } from 'react-native';
+
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StagePickerChips } from '@/components/renova/StagePickerChips';
+import { formSurfaceStyles } from '@/constants/formStyles';
+import { filterChipStyles } from '@/constants/screenTypography';
 import { api, type ProjectDetail } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -12,6 +13,8 @@ import { alertPaymentCreated } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import type { OsRole } from '@/constants/osSections';
+import { OFFLINE_MESSAGES, OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
+import { reportCatch } from '@/lib/reportError';
 
 /** Backend: contractor может создавать только stage/material (payments.py). */
 const PAY_TYPES = [
@@ -20,6 +23,8 @@ const PAY_TYPES = [
 ] as const;
 
 const STAGE_PERCENTS = [30, 50, 70, 100] as const;
+
+type PaymentTypeId = (typeof PAY_TYPES)[number]['id'];
 
 export function CreatePaymentForm({
   userId,
@@ -35,12 +40,20 @@ export function CreatePaymentForm({
   const { user } = useRenova();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [paymentType, setPaymentType] = useState<(typeof PAY_TYPES)[number]['id']>('stage');
+  const [paymentType, setPaymentType] = useState<PaymentTypeId>('stage');
   const [stageId, setStageId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [percent, setPercent] = useState<number | null>(null);
+
+  const clearDraft = () => {
+    setTitle('');
+    setAmount('');
+    setNotes('');
+    setPercent(null);
+    setStageId(null);
+  };
 
   const submit = async () => {
     if (busyRef.current) return;
@@ -58,52 +71,59 @@ export function CreatePaymentForm({
       return;
     }
 
+    const stage = project.stages?.find((item) => item.id === stageId);
     busyRef.current = true;
     setBusy(true);
+    let created = false;
     try {
-      const stage = project.stages?.find((item) => item.id === stageId);
       await api.createPayment(userId, project.id, {
         title: title.trim() || (stage && percent ? `${stage.name}: ${percent}%` : 'Оплата этапа'),
         amount: percent != null ? undefined : normalizedAmount,
         percent: percent ?? undefined,
         payment_type: paymentType,
-        stage_id: stageId,
+        stage_id: paymentType === 'stage' ? stageId : null,
         notes: notes.trim() || null,
       });
-      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project });
-      setTitle('');
-      setAmount('');
-      setNotes('');
-      setPercent(null);
-      setStageId(null);
-      onSaved?.();
-      alertPaymentCreated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
+      created = true;
     } catch (error: unknown) {
-      const message = apiErrorMessage(error, 'Не удалось создать счёт');
+      const offlineBlocked = error instanceof Error && error.message === OFFLINE_PAYMENT_CREATE_BLOCKED;
+      const message = offlineBlocked
+        ? OFFLINE_MESSAGES[OFFLINE_PAYMENT_CREATE_BLOCKED]
+        : apiErrorMessage(error, 'Не удалось создать счёт');
       showActionConfirm({
         title: 'Не удалось создать счёт',
         message: message.includes('403') || message.includes('Forbidden')
           ? 'Этот тип счёта недоступен исполнителю. Используйте «Этап» или «Материалы».'
-          : `${message}. Введённые данные сохранены в форме.`,
+          : `${message} Введённые данные сохранены в форме.`,
       });
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
+
+    if (!created) return;
+    clearDraft();
+    onSaved?.();
+    alertPaymentCreated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
+    void syncProjectSideEffects({ user: user ?? ({ id: userId } as never), project })
+      .catch(reportCatch('CreatePaymentForm.sideEffects'));
   };
 
-  const selectPaymentType = (next: (typeof PAY_TYPES)[number]['id']) => {
-    if (busy) return;
+  const selectPaymentType = (next: PaymentTypeId) => {
+    if (busyRef.current) return;
     setPaymentType(next);
-    if (next !== 'stage') setPercent(null);
+    if (next !== 'stage') {
+      setPercent(null);
+      setStageId(null);
+    }
   };
 
   return (
-    <View style={s.box}>
-      <Text style={s.head}>Новый счёт</Text>
-      <Text style={s.hint}>Выставьте счёт за этап или материалы. Для этапа можно выбрать долю от его стоимости.</Text>
+    <View style={formSurfaceStyles.container}>
+      <Text style={formSurfaceStyles.title}>Новый счёт</Text>
+      <Text style={formSurfaceStyles.hint}>Выставьте счёт за этап или материалы. Для этапа можно выбрать долю от его стоимости.</Text>
 
-      <Text style={s.label}>Тип счёта</Text>
+      <Text style={formSurfaceStyles.label}>Тип счёта</Text>
       <View style={filterChipStyles.row}>
         {PAY_TYPES.map((type) => {
           const selected = paymentType === type.id;
@@ -113,7 +133,7 @@ export function CreatePaymentForm({
               accessibilityRole="button"
               accessibilityState={{ selected, disabled: busy }}
               accessibilityLabel={`Тип счёта: ${type.label}`}
-              style={[filterChipStyles.chip, s.chipTouch, selected && filterChipStyles.chipOn]}
+              style={[filterChipStyles.chip, formSurfaceStyles.chipTouch, selected && filterChipStyles.chipOn]}
               disabled={busy}
               onPress={() => selectPaymentType(type.id)}
             >
@@ -123,24 +143,31 @@ export function CreatePaymentForm({
         })}
       </View>
 
-      <Text style={s.label}>Название</Text>
+      <Text style={formSurfaceStyles.label}>Название</Text>
       <TextInput
-        style={s.inp}
+        style={formSurfaceStyles.input}
         value={title}
         onChangeText={setTitle}
         placeholder="Например: Штукатурка"
         editable={!busy}
+        accessibilityLabel="Название счёта"
       />
 
       {paymentType === 'stage' ? (
         <>
-          <Text style={s.label}>Этап</Text>
           {project.stages?.length ? (
-            <StagePickerChips stages={project.stages} value={stageId} onChange={setStageId} />
+            <StagePickerChips
+              stages={project.stages}
+              value={stageId}
+              onChange={setStageId}
+              optional={false}
+              disabled={busy}
+              label="Этап"
+            />
           ) : (
-            <Text style={s.hint}>Сначала добавьте этап проекта.</Text>
+            <Text style={formSurfaceStyles.hint}>Сначала добавьте этап проекта.</Text>
           )}
-          <Text style={s.label}>Доля этапа</Text>
+          <Text style={formSurfaceStyles.label}>Доля этапа</Text>
           <View style={filterChipStyles.row}>
             {STAGE_PERCENTS.map((value) => {
               const selected = percent === value;
@@ -150,7 +177,7 @@ export function CreatePaymentForm({
                   accessibilityRole="button"
                   accessibilityState={{ selected, disabled: busy }}
                   accessibilityLabel={`${value} процентов от этапа`}
-                  style={[filterChipStyles.chip, s.chipTouch, selected && filterChipStyles.chipOn]}
+                  style={[filterChipStyles.chip, formSurfaceStyles.chipTouch, selected && filterChipStyles.chipOn]}
                   disabled={busy}
                   onPress={() => { setPercent(value); setAmount(''); }}
                 >
@@ -162,64 +189,39 @@ export function CreatePaymentForm({
         </>
       ) : null}
 
-      <Text style={s.label}>{percent != null ? 'Сумма рассчитывается автоматически' : 'Сумма'}</Text>
+      <Text style={formSurfaceStyles.label}>{percent != null ? 'Сумма рассчитывается автоматически' : 'Сумма'}</Text>
       <TextInput
-        style={s.inp}
+        style={formSurfaceStyles.input}
         value={amount}
-        onChangeText={(value: string) => { setAmount(value); setPercent(null); }}
+        onChangeText={(value) => { setAmount(value); setPercent(null); }}
         placeholder={percent != null ? `${percent}% от стоимости этапа` : 'Сумма, ₽'}
         keyboardType="decimal-pad"
         editable={!busy && percent == null}
+        accessibilityLabel="Сумма счёта"
       />
 
-      <Text style={s.label}>Комментарий</Text>
+      <Text style={formSurfaceStyles.label}>Комментарий</Text>
       <TextInput
-        style={s.inp}
+        style={[formSurfaceStyles.input, formSurfaceStyles.multilineInput]}
         value={notes}
         onChangeText={setNotes}
         placeholder="Необязательно"
         editable={!busy}
+        multiline
+        accessibilityLabel="Комментарий к счёту"
       />
-      <PrimaryButton
-        title="Выставить счёт"
-        onPress={() => { void submit(); }}
-        loading={busy}
-        disabled={busy}
-        fullWidth
-      />
-      {onCancel ? (
+      <View style={formSurfaceStyles.actionStack}>
         <PrimaryButton
-          title="Отмена"
-          variant="ghost"
-          onPress={onCancel}
+          title="Выставить счёт"
+          onPress={() => { void submit(); }}
+          loading={busy}
           disabled={busy}
           fullWidth
         />
-      ) : null}
+        {onCancel ? (
+          <PrimaryButton title="Отмена" variant="ghost" onPress={onCancel} disabled={busy} fullWidth />
+        ) : null}
+      </View>
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  box: {
-    gap: 8,
-    marginBottom: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: RenovaTheme.colors.border,
-  },
-  head: { ...screenTypography.listTitle, fontSize: 16 },
-  hint: { ...screenTypography.listMeta, marginBottom: 4 },
-  label: { ...screenTypography.section, marginTop: 6, marginBottom: 2 },
-  chipTouch: { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
-  inp: {
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    borderRadius: RenovaTheme.radius.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: RenovaTheme.minTouch,
-    color: RenovaTheme.colors.text,
-    backgroundColor: RenovaTheme.colors.surface,
-  },
-});

@@ -19,6 +19,10 @@ jobs:
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/sheetChromeContract.test.ts
+      - name: Financial form write contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/financialFormIntegrity.test.ts
 
   e2e:
     runs-on: ubuntu-latest

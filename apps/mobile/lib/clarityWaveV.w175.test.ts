@@ -15,7 +15,7 @@ const sel = src('components/screens/OsSelectionsScreen.tsx');
 if (!sel.includes("title: 'Согласовать подбор?'")) throw new Error('selection approve confirm');
 
 const rooms = src('components/screens/OsRoomsScreen.tsx');
-if (!rooms.includes("title: 'Согласовать запрос?'") || !rooms.includes("title: archived ? 'В архив?'")) {
+if (!rooms.includes("title: 'Согласовать запрос?'" ) || !rooms.includes("title: archived ? 'В архив?'")) {
   throw new Error('rooms approve/archive confirm');
 }
 if (rooms.includes('function DimRow') || rooms.includes('Сохранить и пересчитать смету')) {
@@ -47,8 +47,8 @@ if (!roomDetail.includes("loading={mutation === 'save'}")) throw new Error('room
 const mats = src('components/renova/MaterialPickList.tsx');
 const matSheet = src('components/renova/MaterialPickDetailSheet.tsx');
 const matPage = src('app/material/[id].tsx');
-for (const [n, b] of [['list', mats], ['sheet', matSheet], ['page', matPage]] as const) {
-  if (!b.includes("title: 'Согласовать материал?'")) throw new Error(`material approve ${n}`);
+for (const [name, body] of [['list', mats], ['sheet', matSheet], ['page', matPage]] as const) {
+  if (!body.includes("title: 'Согласовать материал?'")) throw new Error(`material approve ${name}`);
 }
 if (!matSheet.includes("title: 'Убрать закупку из факта?'")) throw new Error('purchase rollback confirm');
 if (!matSheet.includes('primaryDestructive: true') || !matSheet.includes('variant="dangerOutline"')) {
@@ -60,9 +60,6 @@ if (!matSheet.includes('api.updatePurchaseStatus') || !matSheet.includes("loadin
 
 const pay = src('components/renova/PaymentDetailSheet.tsx');
 if (!pay.includes("title: 'Подтвердить оплату?'")) throw new Error('payment confirm');
-if (pay.includes('onConfirmed?.(') && pay.includes('await syncProjectSideEffects') && pay.split('const confirm').length > 2) {
-  // orphan guard soft — ensure single confirm fn
-}
 
 const viewers = src('components/renova/ViewerSharePanel.tsx');
 if (!viewers.includes("title: 'Удалить гостя?'")) throw new Error('viewer remove confirm');
@@ -108,6 +105,7 @@ if (emptyBudget.state !== 'empty' || emptyBudget.pendingAmount !== 0 || emptyBud
 const expenseSection = src('components/screens/budget/BudgetExpensesSection.tsx');
 const manualExpense = src('components/renova/ManualExpenseForm.tsx');
 const expensePickers = src('components/renova/ExpenseContextPickers.tsx');
+const formStyles = src('constants/formStyles.ts');
 if (expenseSection.indexOf('<UnifiedExpenseList') > expenseSection.indexOf('<ReceiptBulkLinkPanel')) {
   throw new Error('expense list must precede bulk tools');
 }
@@ -123,8 +121,11 @@ if (!manualExpense.includes('const busyRef = useRef(false)') || !manualExpense.i
 if (!manualExpense.includes('loading={busy}') || !manualExpense.includes('title="Добавить расход"')) {
   throw new Error('manual expense primary loading action');
 }
-if (!manualExpense.includes('Введённые данные сохранены в форме') || !manualExpense.includes('minHeight: RenovaTheme.minTouch')) {
+if (!manualExpense.includes('Введённые данные сохранены в форме') || !formStyles.includes('minHeight: RenovaTheme.minTouch')) {
   throw new Error('manual expense draft/touch contract');
+}
+if (!manualExpense.includes('let saved = false') || !manualExpense.includes('void syncProjectSideEffects')) {
+  throw new Error('manual expense durable write contract');
 }
 if (!expensePickers.includes('filterChipStyles') || expensePickers.includes('backgroundColor: RenovaTheme.colors.primary')) {
   throw new Error('expense categories not on shared chips');
@@ -133,29 +134,29 @@ if (!expensePickers.includes('accessibilityState={{ selected, disabled: Boolean(
   throw new Error('expense category accessibility state');
 }
 
-const typo = src('constants/screenTypography.ts');
-if (!typo.includes('export const filterChipStyles')) throw new Error('filterChipStyles SoT');
+const typography = src('constants/screenTypography.ts');
+if (!typography.includes('export const filterChipStyles')) throw new Error('filterChipStyles SoT');
 
-const schedChips = src('components/renova/schedule/ScheduleFilterChips.tsx');
-if (!schedChips.includes('filterChipStyles') || schedChips.includes('accent')) {
+const scheduleChips = src('components/renova/schedule/ScheduleFilterChips.tsx');
+if (!scheduleChips.includes('filterChipStyles') || scheduleChips.includes('accent')) {
   throw new Error('ScheduleFilterChips not on SoT');
 }
 
-const estBar = src('components/renova/estimate/EstimateFilterBar.tsx');
-if (!estBar.includes('filterChipStyles')) throw new Error('EstimateFilterBar chips');
+const estimateBar = src('components/renova/estimate/EstimateFilterBar.tsx');
+if (!estimateBar.includes('filterChipStyles')) throw new Error('EstimateFilterBar chips');
 
 const search = src('components/renova/SearchFilter.tsx');
 if (!search.includes('filterChipStyles') || search.includes('colors.primary }')) {
   throw new Error('SearchFilter chips');
 }
 
-const dash = src('components/screens/ManagerDashboardScreen.tsx');
-if (!dash.includes('listRowStyles.metricCell') || dash.includes('...card')) {
+const dashboard = src('components/screens/ManagerDashboardScreen.tsx');
+if (!dashboard.includes('listRowStyles.metricCell') || dashboard.includes('...card')) {
   throw new Error('ManagerDashboard still Theme.card');
 }
 
-const bb = src('components/renova/BudgetBreakdown.tsx');
-if (!bb.includes('screenTypography') || bb.includes("fontWeight:'800'") || bb.includes("fontWeight: '800'")) {
+const breakdown = src('components/renova/BudgetBreakdown.tsx');
+if (!breakdown.includes('screenTypography') || breakdown.includes("fontWeight:'800'") || breakdown.includes("fontWeight: '800'")) {
   throw new Error('BudgetBreakdown SoT');
 }
 
