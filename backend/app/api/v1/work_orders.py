@@ -52,44 +52,64 @@ async def list_work_orders(project_id: str, user: User = Depends(get_current_use
 @router.post("/{project_id}/work-orders")
 async def create_work_order(project_id: str, body: WorkOrderCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    w = await wo_svc.create_work_order(
-        db, project_id=project_id, user_id=user.id, title=body.title, work_type=body.work_type,
-        room_id=body.room_id, stage_id=body.stage_id, planned_start=body.planned_start,
-        planned_end=body.planned_end, budget_planned=body.budget_planned, notes=body.notes, publish=body.publish,
+    work_order = await wo_svc.create_work_order(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        title=body.title,
+        work_type=body.work_type,
+        room_id=body.room_id,
+        stage_id=body.stage_id,
+        planned_start=body.planned_start,
+        planned_end=body.planned_end,
+        budget_planned=body.budget_planned,
+        notes=body.notes,
+        publish=body.publish,
     )
-    return wo_svc.wo_dict(w)
+    return wo_svc.wo_dict(work_order)
 
 
 @router.get("/{project_id}/work-orders/{work_order_id}")
 async def get_work_order(project_id: str, work_order_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
-    w = await wo_svc.get_work_order(db, work_order_id)
-    if not w or w.project_id != project_id:
+    work_order = await wo_svc.get_work_order(db, work_order_id)
+    if not work_order or work_order.project_id != project_id:
         raise HTTPException(404)
-    return wo_svc.wo_dict(w)
+    return wo_svc.wo_dict(work_order)
 
 
 @router.patch("/{project_id}/work-orders/{work_order_id}")
 async def patch_work_order(project_id: str, work_order_id: str, body: WorkOrderPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    w = await wo_svc.get_work_order(db, work_order_id)
-    if not w or w.project_id != project_id:
+    work_order = await wo_svc.get_work_order(db, work_order_id)
+    if not work_order or work_order.project_id != project_id:
         raise HTTPException(404)
-    w = await wo_svc.update_work_order(db, w, body.model_dump(exclude_unset=True))
-    return wo_svc.wo_dict(w)
+    work_order = await wo_svc.update_work_order(db, work_order, body.model_dump(exclude_unset=True))
+    return wo_svc.wo_dict(work_order)
 
 
 @router.post("/{project_id}/work-orders/{work_order_id}/transition")
 async def transition_work_order(project_id: str, work_order_id: str, body: WorkOrderTransition, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     project = await require_project(db, project_id, user, write=True)
-    w = await wo_svc.get_work_order(db, work_order_id)
-    if not w or w.project_id != project_id:
+    work_order = await wo_svc.get_work_order(db, work_order_id)
+    if not work_order or work_order.project_id != project_id:
         raise HTTPException(404)
     try:
-        w = await wo_svc.transition(db, w, body.status, user.id, project=project)
-    except ValueError as e:
-        code = str(e)
-        if code in ("only_customer_can_accept_work_order", "only_customer_can_confirm_work_payment"):
-            raise HTTPException(403, code) from e
-        raise HTTPException(400, code) from e
-    return wo_svc.wo_dict(w)
+        work_order = await wo_svc.transition(
+            db,
+            work_order,
+            body.status,
+            user.id,
+            user.role,
+            project=project,
+        )
+    except ValueError as error:
+        code = str(error)
+        if code in ("only_customer_can_accept_work_order", "work_order_role_forbidden"):
+            raise HTTPException(403, code) from error
+        if code == "payment_transition_required":
+            raise HTTPException(409, code) from error
+        if code == "work_order_project_missing":
+            raise HTTPException(409, code) from error
+        raise HTTPException(400, code) from error
+    return wo_svc.wo_dict(work_order)
