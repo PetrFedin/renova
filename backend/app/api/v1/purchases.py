@@ -1,6 +1,6 @@
 """API закупок Renova OS."""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
@@ -11,11 +11,13 @@ from app.services import notification_service as notif
 from app.services import purchase_service as pur
 
 router = APIRouter(prefix="/projects", tags=["purchases"])
+PURCHASE_CREATE_SCOPE = "purchase.create"
 
 
 class CreatePurchaseIn(BaseModel):
     material_pick_ids: list[str]
     supplier_name: str | None = None
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 class StatusIn(BaseModel):
@@ -82,35 +84,159 @@ async def create_purchase(
     db: AsyncSession = Depends(get_db),
 ):
     await require_project(db, project_id, user, write=True)
+    from app.services import outbox_service as outbox
+    from app.services.client_write_idempotency import (
+        IdempotencyConflict,
+        commit_client_write,
+        replay_entity_id,
+    )
+    from app.services.client_write_side_effects import (
+        PreparedSideEffect,
+        activate_client_write_side_effects,
+        clear_request_side_effect_context,
+    )
+    from app.services.purchase_create_service import (
+        get_purchase_with_items,
+        prepare_purchase_from_picks,
+    )
+
+    canonical_pick_ids = sorted(set(body.material_pick_ids))
+    payload = {
+        "material_pick_ids": canonical_pick_ids,
+        "supplier_name": (body.supplier_name or "").strip() or None,
+    }
     try:
-        purchase = await pur.create_from_picks(
+        replay_id = await replay_entity_id(
             db,
-            project_id,
-            body.material_pick_ids,
-            body.supplier_name,
+            scope=PURCHASE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор запроса уже использован для другой закупки",
+            },
+        ) from error
+    if replay_id:
+        existing = await get_purchase_with_items(
+            db,
+            project_id=project_id,
+            purchase_id=replay_id,
+        )
+        if not existing:
+            raise HTTPException(409, detail={"code": "idempotency_entity_missing"})
+        response = pur.purchase_dict(existing)
+        response["replayed"] = True
+        return response
+
+    try:
+        purchase = await prepare_purchase_from_picks(
+            db,
+            project_id=project_id,
+            pick_ids=canonical_pick_ids,
+            supplier_name=payload["supplier_name"],
         )
     except ValueError as error:
-        if str(error) == "picks_not_approved":
-            raise HTTPException(
-                409,
-                detail={
-                    "code": "picks_not_approved",
-                    "message": "Сначала согласуйте материалы с заказчиком",
-                },
-            ) from error
-        raise
-    if not purchase:
-        raise HTTPException(400, "Нет материалов для закупки")
-    await act.log_event(
+        code = str(error)
+        if code == "picks_already_in_active_purchase" and body.client_request_id:
+            concurrent_replay_id = await replay_entity_id(
+                db,
+                scope=PURCHASE_CREATE_SCOPE,
+                project_id=project_id,
+                user_id=user.id,
+                request_id=body.client_request_id,
+                payload=payload,
+            )
+            if concurrent_replay_id:
+                existing = await get_purchase_with_items(
+                    db,
+                    project_id=project_id,
+                    purchase_id=concurrent_replay_id,
+                )
+                if existing:
+                    response = pur.purchase_dict(existing)
+                    response["replayed"] = True
+                    return response
+        messages = {
+            "purchase_picks_required": "Выберите материалы для закупки",
+            "purchase_picks_not_found": "Часть материалов не найдена в этом проекте",
+            "picks_not_approved": "Сначала согласуйте материалы с заказчиком",
+            "picks_already_in_active_purchase": "Один из материалов уже включён в активную закупку",
+            "purchase_pick_quantity_invalid": "У материала должно быть положительное количество",
+        }
+        raise HTTPException(
+            409 if code in {"picks_not_approved", "picks_already_in_active_purchase"} else 422,
+            detail={"code": code, "message": messages.get(code, "Закупку нельзя создать")},
+        ) from error
+
+    activity_row = await outbox.enqueue(
         db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="MaterialOrdered",
-        title=f"Закупка создана: {len(body.material_pick_ids)} поз.",
-        body=purchase.supplier_name,
-        link_path="/(customer)/(tabs)/repair?tab=materials",
+        aggregate_type="purchase",
+        aggregate_id=purchase.id,
+        event_type=outbox.RECEIPT_CREATED_EVENT,
+        payload={
+            "project_id": project_id,
+            "user_id": user.id,
+            "kind": "MaterialOrdered",
+            "title": f"Закупка создана: {len(canonical_pick_ids)} поз.",
+            "body": purchase.supplier_name,
+            "link_path": "/(customer)/(tabs)/repair?tab=materials",
+        },
     )
-    return pur.purchase_dict(purchase)
+    try:
+        created, entity_id = await commit_client_write(
+            db,
+            scope=PURCHASE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+            entity_id=purchase.id,
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор запроса уже использован для другой закупки",
+            },
+        ) from error
+
+    if not created:
+        existing = await get_purchase_with_items(
+            db,
+            project_id=project_id,
+            purchase_id=entity_id,
+        )
+        if not existing:
+            raise HTTPException(409, detail={"code": "idempotency_entity_missing"})
+        response = pur.purchase_dict(existing)
+        response["replayed"] = True
+        return response
+
+    activate_client_write_side_effects(
+        [PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id)]
+    )
+    try:
+        await act.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="MaterialOrdered",
+            title=f"Закупка создана: {len(canonical_pick_ids)} поз.",
+            body=purchase.supplier_name,
+            link_path="/(customer)/(tabs)/repair?tab=materials",
+        )
+    finally:
+        clear_request_side_effect_context()
+    response = pur.purchase_dict(purchase)
+    response["replayed"] = False
+    return response
 
 
 @router.post("/{project_id}/purchases/{purchase_id}/status")
