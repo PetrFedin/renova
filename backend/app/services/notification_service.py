@@ -47,6 +47,22 @@ async def notify(
     link_path: str | None = None,
     return_to: str | None = None,
 ) -> AppNotification:
+    from app.services.client_write_side_effects import take_client_write_side_effect
+
+    outbox_id = take_client_write_side_effect("notification")
+    if outbox_id:
+        return await notify_from_outbox(
+            db,
+            outbox_id=outbox_id,
+            user_id=user_id,
+            project_id=project_id,
+            notification_type=notification_type,
+            title=title,
+            body=body,
+            link_path=link_path,
+            return_to=return_to,
+        )
+
     notification = AppNotification(
         user_id=user_id,
         project_id=project_id,
