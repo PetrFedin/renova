@@ -8,7 +8,11 @@ export function subscribeInboxWs(listener: Listener): () => void {
 }
 
 export function emitInboxWs(): void {
-  listeners.forEach((fn) => {
-    try { fn(); } catch { /* noop */ }
+  Array.from(listeners).forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      /* noop */
+    }
   });
 }
