@@ -6,11 +6,22 @@ import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
+import { createTrailingReloadScheduler } from '@/lib/trailingReloadScheduler';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
+type ReloadOpts = {
+  userId?: string;
+  userRole?: UserRole;
+  projectId?: string;
+  project?: ProjectDetail | null;
+  osRole?: OsRole;
+};
 
-const POLL_MS = 25_000;
+const POLL_DISCONNECTED_MS = 25_000;
+const POLL_CONNECTED_MS = 60_000;
+const WS_RELOAD_DEBOUNCE_MS = 180;
+const WS_RELOAD_MAX_WAIT_MS = 900;
 const listeners = new Set<Listener>();
 
 let chatCount = 0;
@@ -35,7 +46,7 @@ export function subscribeInboxSync(listener: Listener): () => void {
 }
 
 function notify() {
-  listeners.forEach((fn) => {
+  Array.from(listeners).forEach((fn) => {
     try {
       fn();
     } catch {
@@ -46,13 +57,13 @@ function notify() {
 
 function sumChatUnread(threads: ChatThread[]): number {
   return threads
-    .filter((t) => !t.is_archived)
-    .reduce((sum, t) => sum + (t.unread_count || 0), 0);
+    .filter((thread) => !thread.is_archived)
+    .reduce((sum, thread) => sum + (thread.unread_count || 0), 0);
 }
 
 function applyLocalThreadUnread(threadId: string, unread = 0) {
-  chatThreads = chatThreads.map((t) =>
-    t.id === threadId ? { ...t, unread_count: unread } : t,
+  chatThreads = chatThreads.map((thread) =>
+    thread.id === threadId ? { ...thread, unread_count: unread } : thread,
   );
   chatCount = sumChatUnread(chatThreads);
 }
@@ -89,13 +100,17 @@ export function getInboxItemsSnapshot() {
   return inboxItems;
 }
 
-function notifyIfChanged(prev: {
-  chatCount: number;
-  chatFailed: boolean;
-  inboxBadge: number;
-  inboxItems: InboxItem[];
-  inboxWsConnected: boolean;
-}) {
+function snapshotState() {
+  return {
+    chatCount,
+    chatFailed,
+    inboxBadge,
+    inboxItems,
+    inboxWsConnected,
+  };
+}
+
+function notifyIfChanged(prev: ReturnType<typeof snapshotState>) {
   if (
     prev.chatCount === chatCount
     && prev.chatFailed === chatFailed
@@ -130,13 +145,7 @@ let cachedFullSync: {
   project?: ProjectDetail | null;
 } | null = null;
 
-function mergeReloadOpts(opts: {
-  userId?: string;
-  userRole?: UserRole;
-  projectId?: string;
-  project?: ProjectDetail | null;
-  osRole?: OsRole;
-}) {
+function mergeReloadOpts(opts: ReloadOpts): ReloadOpts {
   if (opts.userId && opts.projectId && opts.osRole) {
     cachedFullSync = {
       userId: opts.userId,
@@ -160,30 +169,29 @@ function mergeReloadOpts(opts: {
 
 /** После markChatRead / partial reload — синхронизировать строку чата и inboxBadge с chatCount */
 function refreshInboxChatRow(nextChat: number) {
-  const n = Math.max(0, nextChat || 0);
-  if (n <= 0) {
-    inboxItems = inboxItems.filter((i) => i.kind !== 'chat');
-  } else if (inboxItems.some((i) => i.kind === 'chat')) {
-    inboxItems = inboxItems.map((i) =>
-      i.kind === 'chat' ? { ...i, sub: `${n} непрочитанных` } : i,
+  const unread = Math.max(0, nextChat || 0);
+  if (unread <= 0) {
+    inboxItems = inboxItems.filter((item) => item.kind !== 'chat');
+  } else if (inboxItems.some((item) => item.kind === 'chat')) {
+    inboxItems = inboxItems.map((item) =>
+      item.kind === 'chat' ? { ...item, sub: `${unread} непрочитанных` } : item,
     );
   } else {
-    // Upsert: иначе dock уже показывает N, а «Входящие» без строки чата / со старым sub.
     const role = cachedFullSync?.osRole ?? 'customer';
     inboxItems = [
       {
         id: 'chat',
         kind: 'chat',
         title: 'Непрочитанные сообщения',
-        sub: `${n} непрочитанных`,
+        sub: `${unread} непрочитанных`,
         href: role === 'contractor' ? '/(contractor)/(tabs)/chat' : '/(customer)/(tabs)/chat',
         priority: 90,
       },
       ...inboxItems,
     ];
   }
-  const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
-  inboxBadge = taskRows + n;
+  const taskRows = inboxItems.filter((item) => item.kind !== 'chat').length;
+  inboxBadge = taskRows + unread;
 }
 
 /** Прочитать тред: optimistic local + API + полный resync */
@@ -194,13 +202,8 @@ export async function markChatReadAndSync(
   userRole?: UserRole,
   knownUnread = 0,
 ): Promise<void> {
-  const prev = {
-    chatCount,
-    chatFailed,
-    inboxBadge,
-    inboxItems,
-    inboxWsConnected,
-  };
+  const prev = snapshotState();
+  void knownUnread;
 
   applyLocalThreadUnread(threadId, 0);
   refreshInboxChatRow(chatCount);
@@ -231,29 +234,14 @@ export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: Us
   emitInboxWs();
 }
 
-export async function reloadInboxSync(
-  opts: {
-    userId?: string;
-    userRole?: UserRole;
-    projectId?: string;
-    project?: ProjectDetail | null;
-    osRole?: OsRole;
-  },
-  force = false,
-): Promise<void> {
+export async function reloadInboxSync(opts: ReloadOpts, force = false): Promise<void> {
   const merged = mergeReloadOpts(opts);
   const key = [merged.userId, merged.userRole, merged.projectId, merged.osRole].join(':');
   if (!force && reloadInflight && lastReloadKey === key) return reloadInflight;
 
   lastReloadKey = key;
   reloadInflight = (async () => {
-    const prev = {
-      chatCount,
-      chatFailed,
-      inboxBadge,
-      inboxItems,
-      inboxWsConnected,
-    };
+    const prev = snapshotState();
 
     if (!merged.userId) {
       chatCount = 0;
@@ -288,20 +276,18 @@ export async function reloadInboxSync(
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
-        // W78: локальная offline-очередь в том же inbox, что оплаты/приёмка
         try {
-          const off = await getOfflineOutboxStatus();
-          inboxItems = mergeOfflineInboxItem(inboxItems, off);
-        } catch { /* noop */ }
-        const taskRows = inboxItems.filter((i) => i.kind !== 'chat').length;
+          const offline = await getOfflineOutboxStatus();
+          inboxItems = mergeOfflineInboxItem(inboxItems, offline);
+        } catch {
+          /* noop */
+        }
+        const taskRows = inboxItems.filter((item) => item.kind !== 'chat').length;
         inboxBadge = taskRows + chatCount;
       } catch {
-        if (!inboxItems.length) {
-          inboxBadge = chatCount;
-        }
+        if (!inboxItems.length) inboxBadge = chatCount;
       }
     } else {
-      // Нет projectId в этом вызове — не затираем задачи: только выравниваем чат с chatCount.
       refreshInboxChatRow(chatCount);
     }
 
@@ -315,19 +301,16 @@ export async function reloadInboxSync(
   }
 }
 
-function ensurePoll(userId: string, reload: () => void) {
-  if (pollTimer) clearInterval(pollTimer);
-  const ms = inboxWsConnected ? 60_000 : POLL_MS;
-  pollTimer = setInterval(() => {
-    reload();
-  }, ms);
+function stopPoll() {
+  if (!pollTimer) return;
+  clearInterval(pollTimer);
+  pollTimer = null;
 }
 
-function stopPoll() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
+function ensurePoll(reload: () => void) {
+  stopPoll();
+  const intervalMs = inboxWsConnected ? POLL_CONNECTED_MS : POLL_DISCONNECTED_MS;
+  pollTimer = setInterval(reload, intervalMs);
 }
 
 function stopInboxWebSocket() {
@@ -339,27 +322,46 @@ function stopInboxWebSocket() {
   stopPoll();
 }
 
-function startInboxWebSocket(userId: string, onReload: () => void) {
+function startInboxWebSocket(userId: string, onReload: () => void | Promise<void>) {
   let alive = true;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
+
+  const reloadScheduler = createTrailingReloadScheduler(
+    async () => {
+      await onReload();
+      emitInboxWs();
+    },
+    {
+      debounceMs: WS_RELOAD_DEBOUNCE_MS,
+      maxWaitMs: WS_RELOAD_MAX_WAIT_MS,
+    },
+  );
+
+  const refreshPollCadence = () => {
+    if (alive) ensurePoll(reloadScheduler.flush);
+  };
 
   const connect = () => {
     if (!alive || !userId) return;
     const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
     void (async () => {
       try {
-        const qs = await buildWsAuthQuery();
+        const query = await buildWsAuthQuery();
         if (!alive) return;
-        const ws = new WebSocket(`${base}/ws/inbox/${userId}${qs}`);
+        const ws = new WebSocket(`${base}/ws/inbox/${userId}${query}`);
+
         ws.onopen = () => {
           attempt = 0;
-          if (alive) {
-            const prev = inboxWsConnected;
-            inboxWsConnected = true;
-            if (!prev) notify();
-          }
+          if (!alive) return;
+          const prev = inboxWsConnected;
+          inboxWsConnected = true;
+          if (!prev) notify();
+          refreshPollCadence();
+          reloadScheduler.flush();
+
+          if (pingTimer) clearInterval(pingTimer);
           pingTimer = setInterval(() => {
             try {
               if (ws.readyState === WebSocket.OPEN) ws.send('ping');
@@ -368,19 +370,21 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
             }
           }, 25_000);
         };
-        ws.onmessage = (e) => {
-          if (e.data === 'ping' || e.data === 'pong') return;
+
+        ws.onmessage = (event) => {
+          if (event.data === 'ping' || event.data === 'pong') return;
           try {
-            JSON.parse(e.data) as InboxWsPayload;
+            JSON.parse(event.data) as InboxWsPayload;
           } catch {
-            /* noop */
+            /* server may send a non-JSON invalidation token */
           }
-          onReload();
-          emitInboxWs();
+          reloadScheduler.schedule();
         };
+
         ws.onerror = () => {
           ws.close();
         };
+
         ws.onclose = () => {
           if (pingTimer) clearInterval(pingTimer);
           pingTimer = null;
@@ -388,45 +392,49 @@ function startInboxWebSocket(userId: string, onReload: () => void) {
             const prev = inboxWsConnected;
             inboxWsConnected = false;
             if (prev) notify();
+            refreshPollCadence();
           }
           if (!alive) return;
           attempt += 1;
-          const delay = Math.min(30_000, 2000 * 2 ** Math.min(attempt - 1, 4));
-          timer = setTimeout(connect, delay);
+          const delay = Math.min(30_000, 2_000 * 2 ** Math.min(attempt - 1, 4));
+          reconnectTimer = setTimeout(connect, delay);
         };
       } catch {
         if (alive) {
           const prev = inboxWsConnected;
           inboxWsConnected = false;
           if (prev) notify();
+          refreshPollCadence();
         }
         attempt += 1;
-        timer = setTimeout(connect, 4000);
+        reconnectTimer = setTimeout(connect, 4_000);
       }
     })();
   };
 
   connect();
-  ensurePoll(userId, onReload);
+  refreshPollCadence();
 
   return () => {
     alive = false;
-    if (timer) clearTimeout(timer);
+    reloadScheduler.cancel();
+    if (reconnectTimer) clearTimeout(reconnectTimer);
     if (pingTimer) clearInterval(pingTimer);
     stopPoll();
   };
 }
 
 /** Одно WS на пользователя — ref-counted */
-export function ensureInboxWebSocket(userId: string | undefined, onReload: () => void) {
+export function ensureInboxWebSocket(
+  userId: string | undefined,
+  onReload: () => void | Promise<void>,
+) {
   if (!userId) {
     stopInboxWebSocket();
     return () => {};
   }
 
-  if (wsUserId && wsUserId !== userId) {
-    stopInboxWebSocket();
-  }
+  if (wsUserId && wsUserId !== userId) stopInboxWebSocket();
 
   if (!wsCleanup || wsUserId !== userId) {
     wsUserId = userId;
