@@ -1,26 +1,64 @@
 /** API: receipts */
-import { req, cachedGet, API_BASE, ApiError } from './client';
-import type { BudgetBreakdown, ReceiptItem, User } from './types';
+import { req, ApiError } from './client';
+import type { BudgetBreakdown, ReceiptItem } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
+
 export const receiptsApi = {
-  addManualReceipt: async (userId: string, projectId: string, amount: number, description: string, expense_category = 'materials', room_id?: string | null, stage_id?: string | null, payment_id?: string | null) => {
-    const body = { amount, description, expense_category, room_id, stage_id, payment_id };
+  addManualReceipt: async (
+    userId: string,
+    projectId: string,
+    amount: number,
+    description: string,
+    expense_category = 'materials',
+    room_id?: string | null,
+    stage_id?: string | null,
+    payment_id?: string | null,
+    client_request_id?: string,
+  ) => {
+    const body = {
+      amount,
+      description,
+      expense_category,
+      room_id,
+      stage_id,
+      payment_id,
+      client_request_id: client_request_id ?? createClientRequestId('receipt-manual'),
+    };
+    const serialized = JSON.stringify(body);
     try {
-      return await req(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: JSON.stringify(body) }, userId);
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
+      return await req(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: serialized }, userId);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/receipts/manual`, method: 'POST', body: JSON.stringify(body), userId });
+      await enqueue({ path: `/api/v1/projects/${projectId}/receipts/manual`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
     }
   },
-  scanReceipt: async (userId: string, projectId: string, qr_raw: string, expense_category = 'materials', room_id?: string | null, stage_id?: string | null, payment_id?: string | null) => {
-    const body = { qr_raw, expense_category, room_id, stage_id, payment_id };
+  scanReceipt: async (
+    userId: string,
+    projectId: string,
+    qr_raw: string,
+    expense_category = 'materials',
+    room_id?: string | null,
+    stage_id?: string | null,
+    payment_id?: string | null,
+    client_request_id?: string,
+  ) => {
+    const body = {
+      qr_raw,
+      expense_category,
+      room_id,
+      stage_id,
+      payment_id,
+      client_request_id: client_request_id ?? createClientRequestId('receipt-scan'),
+    };
+    const serialized = JSON.stringify(body);
     try {
-      return await req(`/api/v1/projects/${projectId}/receipts/scan`, { method: 'POST', body: JSON.stringify(body) }, userId);
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
+      return await req(`/api/v1/projects/${projectId}/receipts/scan`, { method: 'POST', body: serialized }, userId);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/receipts/scan`, method: 'POST', body: JSON.stringify(body), userId });
+      await enqueue({ path: `/api/v1/projects/${projectId}/receipts/scan`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
     }
   },
@@ -36,8 +74,8 @@ export const receiptsApi = {
         { method: 'PATCH', body: JSON.stringify(body) },
         userId,
       );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/receipts/${receiptId}`,
@@ -51,8 +89,8 @@ export const receiptsApi = {
   deleteReceipt: async (userId: string, projectId: string, receiptId: string) => {
     try {
       return await req<void>(`/api/v1/projects/${projectId}/receipts/${receiptId}`, { method: 'DELETE' }, userId);
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/receipts/${receiptId}`,
@@ -69,11 +107,11 @@ export const receiptsApi = {
     await exportExpensesCsvFile(userId, projectId);
   },
   expensesSummary: (userId: string, projectId: string) => req<{ by_room: { room_id: string; room_name: string; plan: number; receipts_spent: number; expense_spent?: number; total_spent: number }[]; by_stage: { stage_id: string; stage_name: string; plan: number; receipts_spent: number; expense_spent?: number }[]; receipts_total: number; expenses_total?: number }>(`/api/v1/projects/${projectId}/analytics/expenses-summary`, {}, userId),
-  budgetAlerts: async (userId: string, projectId: string) => { const { getBudgetThreshold } = await import('@/lib/budgetThreshold'); const t = await getBudgetThreshold(); return req<{ room_id: string; room_name: string; plan: number; fact: number; over_pct?: number }[]>(`/api/v1/projects/${projectId}/analytics/budget-alerts?threshold_pct=${t}`, {}, userId); },
+  budgetAlerts: async (userId: string, projectId: string) => { const { getBudgetThreshold } = await import('@/lib/budgetThreshold'); const threshold = await getBudgetThreshold(); return req<{ room_id: string; room_name: string; plan: number; fact: number; over_pct?: number }[]>(`/api/v1/projects/${projectId}/analytics/budget-alerts?threshold_pct=${threshold}`, {}, userId); },
   budgetRoomLines: (userId: string, projectId: string, roomId: string) => req<{ id: string; name: string; plan: number; fact: number; over: number }[]>(`/api/v1/projects/${projectId}/analytics/budget-room-lines/${roomId}`, {}, userId),
   budgetCategoryAlerts: (userId: string, projectId: string) => req<{ category: string; plan: number; fact: number; over_pct: number }[]>(`/api/v1/projects/${projectId}/analytics/budget-category-alerts`, {}, userId),
   budgetForecast: (userId: string, projectId: string) => req<{ forecast_total: number; forecast_over: number; risk: string }>(`/api/v1/projects/${projectId}/analytics/budget-forecast`, {}, userId),
-  budgetScenario: (userId: string, projectId: string, pct?: number) => req<{ materials_plan: number; delta: number; new_total: number }>(`/api/v1/projects/${projectId}/analytics/budget-scenario?materials_pct=${pct||10}`, {}, userId),
+  budgetScenario: (userId: string, projectId: string, pct?: number) => req<{ materials_plan: number; delta: number; new_total: number }>(`/api/v1/projects/${projectId}/analytics/budget-scenario?materials_pct=${pct || 10}`, {}, userId),
   budgetBreakdown: (userId: string, projectId: string) => req<BudgetBreakdown>(`/api/v1/projects/${projectId}/analytics/budget-breakdown`, {}, userId),
   reverifyReceipt: (userId: string, projectId: string, receiptId: string) =>
     req<{ id: string; verified: boolean; message?: string; mode?: string }>(
