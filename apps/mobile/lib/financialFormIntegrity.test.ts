@@ -28,6 +28,7 @@ must(payment.includes("stage_id: paymentType === 'stage' ? stageId : null"), 'ma
 must(payment.includes('setStageId(null)') && payment.includes("if (next !== 'stage')"), 'hidden stage state cleared');
 must(payment.includes('OFFLINE_PAYMENT_CREATE_BLOCKED') && payment.includes('Введённые данные сохранены в форме'), 'payment offline/error draft preservation');
 must(payment.includes('void syncProjectSideEffects') && payment.includes("reportCatch('CreatePaymentForm.sideEffects')"), 'payment best-effort side effects');
+must(!payment.includes('await syncProjectSideEffects'), 'payment secondary sync must not control durable write result');
 must(payment.includes('optional={false}') && payment.includes('disabled={busy}'), 'payment requires stage and disables picker');
 must(payment.includes('formSurfaceStyles') && !payment.includes('StyleSheet.create'), 'payment shared form surface');
 
@@ -37,6 +38,7 @@ must(expense.includes('let saved = false') && expense.includes('if (!saved) retu
 must(expense.indexOf('if (!saved) return') < expense.indexOf('onSaved?.()'), 'manual expense callback after write');
 must(expense.includes("notifyOfflineQueued('Расход без чека')") && expense.includes('clearDraft();'), 'manual expense queued draft handling');
 must(expense.includes('void syncProjectSideEffects') && expense.includes("reportCatch('ManualExpenseForm.sideEffects')"), 'manual expense best-effort side effects');
+must(!expense.includes('await syncProjectSideEffects'), 'manual expense secondary sync must not control durable write result');
 must(expense.includes('formSurfaceStyles') && !expense.includes('StyleSheet.create'), 'manual expense shared form surface');
 
 const estimate = src('components/renova/AddEstimateLineForm.tsx');
@@ -46,6 +48,7 @@ must(estimate.includes("title: 'Цена'") && estimate.includes('unitPrice < 0'
 must(!estimate.includes('Alert.alert'), 'estimate no Alert fallback');
 must(estimate.includes("notifyOfflineQueued('Строка сметы')") && estimate.includes('clearDraft();'), 'estimate offline queued handling');
 must(estimate.includes('void syncProjectSideEffects') && estimate.includes("reportCatch('AddEstimateLineForm.sideEffects')"), 'estimate best-effort side effects');
+must(!estimate.includes('await syncProjectSideEffects'), 'estimate secondary sync must not control durable write result');
 must(estimate.includes('filterChipStyles') && estimate.includes('accessibilityState={{ selected, disabled: busy }}'), 'estimate accessible shared chips');
 must(estimate.includes('<RoomPickerChips') && estimate.includes('disabled={busy}'), 'estimate room picker guarded');
 must(estimate.includes('formSurfaceStyles') && !estimate.includes('StyleSheet.create'), 'estimate shared form surface');
