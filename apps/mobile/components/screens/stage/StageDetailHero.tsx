@@ -1,6 +1,6 @@
 /** Верх экрана этапа: статус, главное действие, краткий прогресс */
 import { View, Text, StyleSheet } from 'react-native';
-import { RenovaTheme, formatRub, card } from '@/constants/Theme';
+import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { api, type StageDetail, type WorkSnapshot, ApiError } from '@/lib/api';
@@ -11,6 +11,7 @@ import type { OsRole } from '@/constants/osSections';
 import { alertStageStarted } from '@/lib/jobLeadNav';
 import { alertStageSubmittedForAcceptance } from '@/lib/fieldCreateNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { StageContextSummary } from '@/components/screens/stage/StageContextSummary';
 
 type Props = {
   stage: StageDetail;
@@ -42,6 +43,8 @@ export function StageDetailHero({
   const role: OsRole = isContractor ? 'contractor' : 'customer';
   const stageReturn = `/stage/${stage.id}`;
   const statusLabel = STAGE_STATUS_LABEL[stage.status] || stage.status;
+  const hasPrimaryFlowAction = (isContractor && (stage.status === 'planned' || stage.status === 'active'))
+    || (!isContractor && stage.status === 'review');
 
   const openDocs = () => pushOsNav('/documents', stageReturn, role);
 
@@ -55,11 +58,17 @@ export function StageDetailHero({
           {' · '}{workSnap.percent_complete}%
         </Text>
       ) : null}
-      <Text style={s.meta}>К оплате: {formatRub(stage.payment_amount)}</Text>
       {stage.planned_start ? (
         <Text style={s.meta}>План: {stage.planned_start} → {stage.planned_end || '—'}</Text>
       ) : null}
       {stage.contractor_ready ? <Text style={s.ok}>Исполнитель отметил готовность</Text> : null}
+
+      <StageContextSummary
+        stage={stage}
+        role={role}
+        returnTo={stageReturn}
+        showAction={!hasPrimaryFlowAction}
+      />
 
       {workSnap && !workSnap.completion.ok && workSnap.completion.failed.length > 0 && isContractor ? (
         <View style={s.warnBox}>
@@ -99,7 +108,6 @@ export function StageDetailHero({
                 user: { id: userId } as any,
                 project: { id: projectId } as any,
               });
-              // W130: старт этапа → график / работы
               alertStageStarted(role);
             } catch (e: unknown) {
               if (isOfflineQueued(e)) {
@@ -146,7 +154,6 @@ export function StageDetailHero({
               await onSubmitStage(stage.id);
               await onReload();
               await onProjectReload();
-              // W133: сдача → приёмка / inbox
               alertStageSubmittedForAcceptance(role);
             } catch (e: unknown) {
               if (isOfflineQueued(e)) {
