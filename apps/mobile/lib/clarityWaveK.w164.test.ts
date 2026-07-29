@@ -94,8 +94,11 @@ if (!qc.includes('LoadErrorState') || !qc.includes('loadError')) {
   throw new Error('qc load error UI');
 }
 const roomDetail = src('components/screens/RoomDetailScreen.tsx');
-if (!roomDetail.includes("notifyOfflineQueued('Архив комнаты')")) {
-  throw new Error('room archive offline sheet');
+if (
+  !roomDetail.includes("'Архивирование комнаты'")
+  || !roomDetail.includes("'Восстановление комнаты'")
+) {
+  throw new Error('room archive and restore offline notices');
 }
 const dock = src('constants/dockBar.ts');
 if (!dock.includes("label: 'Профиль'") || dock.includes("label: 'Ещё'")) {
