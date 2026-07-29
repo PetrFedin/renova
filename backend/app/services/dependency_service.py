@@ -14,71 +14,86 @@ def _uuid():
 
 
 async def list_dependencies(db: AsyncSession, project_id: str, stage_id: str | None = None) -> list[WorkDependency]:
-    q = select(WorkDependency).where(WorkDependency.project_id == project_id)
+    query = select(WorkDependency).where(WorkDependency.project_id == project_id)
     if stage_id:
-        q = q.where(WorkDependency.stage_id == stage_id)
-    r = await db.execute(q.order_by(WorkDependency.created_at.desc()))
-    return list(r.scalars().all())
+        query = query.where(WorkDependency.stage_id == stage_id)
+    result = await db.execute(query.order_by(WorkDependency.created_at.desc()))
+    return list(result.scalars().all())
 
 
-def dependency_dict(d: WorkDependency, *, stage_name: str | None = None, dep_stage_name: str | None = None, material_name: str | None = None) -> dict:
+def dependency_dict(
+    dependency: WorkDependency,
+    *,
+    stage_name: str | None = None,
+    dep_stage_name: str | None = None,
+    material_name: str | None = None,
+) -> dict:
     return {
-        "id": d.id,
-        "stage_id": d.stage_id,
+        "id": dependency.id,
+        "stage_id": dependency.stage_id,
         "stage_name": stage_name,
-        "depends_on_stage_id": d.depends_on_stage_id,
+        "depends_on_stage_id": dependency.depends_on_stage_id,
         "depends_on_stage_name": dep_stage_name,
-        "depends_on_material_pick_id": d.depends_on_material_pick_id,
+        "depends_on_material_pick_id": dependency.depends_on_material_pick_id,
         "material_name": material_name,
-        "dependency_type": d.dependency_type,
-        "criticality": d.criticality,
-        "status": d.status,
+        "dependency_type": dependency.dependency_type,
+        "criticality": dependency.criticality,
+        "status": dependency.status,
     }
 
 
-async def evaluate_stage(db: AsyncSession, stage: Stage) -> dict:
+async def evaluate_stage(
+    db: AsyncSession,
+    stage: Stage,
+    *,
+    commit: bool = True,
+) -> dict:
     """Проверить все зависимости этапа + legacy depends_on_stage_id."""
     reasons: list[dict] = []
     blocked = False
 
     if stage.depends_on_stage_id:
-        dep = await db.get(Stage, stage.depends_on_stage_id)
-        if dep and dep.status != StageStatus.done:
+        predecessor = await db.get(Stage, stage.depends_on_stage_id)
+        if predecessor and predecessor.status != StageStatus.done:
             blocked = True
             reasons.append({
                 "type": "work",
-                "title": f"Ждёт этап: {dep.name}",
+                "title": f"Ждёт этап: {predecessor.name}",
                 "severity": "high",
-                "ref_id": dep.id,
+                "ref_id": predecessor.id,
             })
 
-    deps = await list_dependencies(db, stage.project_id, stage.id)
-    for d in deps:
-        ok = await _is_satisfied(db, d)
-        d.status = "satisfied" if ok else "pending"
-        if not ok:
-            blocked = True
-            if d.dependency_type == "work" and d.depends_on_stage_id:
-                dep = await db.get(Stage, d.depends_on_stage_id)
-                reasons.append({
-                    "type": "work",
-                    "title": f"Завершите: {dep.name if dep else 'этап'}",
-                    "severity": d.criticality,
-                    "ref_id": d.depends_on_stage_id,
-                })
-            elif d.dependency_type == "material" and d.depends_on_material_pick_id:
-                pick = await db.get(MaterialPick, d.depends_on_material_pick_id)
-                reasons.append({
-                    "type": "material",
-                    "title": f"Доставьте: {pick.name if pick else 'материал'}",
-                    "severity": d.criticality,
-                    "ref_id": d.depends_on_material_pick_id,
-                })
-    await db.commit()
+    dependencies = await list_dependencies(db, stage.project_id, stage.id)
+    for dependency in dependencies:
+        satisfied = await _is_satisfied(db, dependency)
+        dependency.status = "satisfied" if satisfied else "pending"
+        if satisfied:
+            continue
+        blocked = True
+        if dependency.dependency_type == "work" and dependency.depends_on_stage_id:
+            predecessor = await db.get(Stage, dependency.depends_on_stage_id)
+            reasons.append({
+                "type": "work",
+                "title": f"Завершите: {predecessor.name if predecessor else 'этап'}",
+                "severity": dependency.criticality,
+                "ref_id": dependency.depends_on_stage_id,
+            })
+        elif dependency.dependency_type == "material" and dependency.depends_on_material_pick_id:
+            pick = await db.get(MaterialPick, dependency.depends_on_material_pick_id)
+            reasons.append({
+                "type": "material",
+                "title": f"Доставьте: {pick.name if pick else 'материал'}",
+                "severity": dependency.criticality,
+                "ref_id": dependency.depends_on_material_pick_id,
+            })
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
 
     status_label = "blocked" if blocked else ("ready" if stage.status == StageStatus.planned else stage.status.value)
     if blocked and stage.status == StageStatus.planned:
-        status_label = "waiting_material" if any(r["type"] == "material" for r in reasons) else "waiting_work"
+        status_label = "waiting_material" if any(reason["type"] == "material" for reason in reasons) else "waiting_work"
 
     return {
         "blocked": blocked,
@@ -89,74 +104,76 @@ async def evaluate_stage(db: AsyncSession, stage: Stage) -> dict:
     }
 
 
-async def _is_satisfied(db: AsyncSession, d: WorkDependency) -> bool:
-    if d.dependency_type == "work" and d.depends_on_stage_id:
-        dep = await db.get(Stage, d.depends_on_stage_id)
-        return bool(dep and dep.status == StageStatus.done)
-    if d.dependency_type == "material" and d.depends_on_material_pick_id:
-        pick = await db.get(MaterialPick, d.depends_on_material_pick_id)
+async def _is_satisfied(db: AsyncSession, dependency: WorkDependency) -> bool:
+    if dependency.dependency_type == "work" and dependency.depends_on_stage_id:
+        predecessor = await db.get(Stage, dependency.depends_on_stage_id)
+        return bool(predecessor and predecessor.status == StageStatus.done)
+    if dependency.dependency_type == "material" and dependency.depends_on_material_pick_id:
+        pick = await db.get(MaterialPick, dependency.depends_on_material_pick_id)
         return bool(pick and pick.status == MaterialPickStatus.purchased)
     return True
 
 
 async def sync_from_workflow(db: AsyncSession, project_id: str) -> int:
     """Создать зависимости из шаблонов workflow по work_type этапов."""
-    r = await db.execute(select(Stage).where(Stage.project_id == project_id))
-    stages = list(r.scalars().all())
+    result = await db.execute(select(Stage).where(Stage.project_id == project_id))
+    stages = list(result.scalars().all())
     by_type: dict[str, Stage] = {}
-    for s in stages:
-        wt = resolve_work_type(s.work_type, s.name)
-        if wt not in by_type or s.sort_order < by_type[wt].sort_order:
-            by_type[wt] = s
+    for stage in stages:
+        work_type = resolve_work_type(stage.work_type, stage.name)
+        if work_type not in by_type or stage.sort_order < by_type[work_type].sort_order:
+            by_type[work_type] = stage
 
     created = 0
-    for s in stages:
-        wt = resolve_work_type(s.work_type, s.name)
-        tpl = WORKFLOW_TEMPLATES.get(wt, {})
-        for dep_type in tpl.get("depends_on", []):
-            pred = by_type.get(dep_type)
-            if not pred or pred.id == s.id:
+    for stage in stages:
+        work_type = resolve_work_type(stage.work_type, stage.name)
+        template = WORKFLOW_TEMPLATES.get(work_type, {})
+        for dependency_type in template.get("depends_on", []):
+            predecessor = by_type.get(dependency_type)
+            if not predecessor or predecessor.id == stage.id:
                 continue
-            ex = await db.execute(
+            existing = await db.execute(
                 select(WorkDependency).where(
-                    WorkDependency.stage_id == s.id,
-                    WorkDependency.depends_on_stage_id == pred.id,
+                    WorkDependency.stage_id == stage.id,
+                    WorkDependency.depends_on_stage_id == predecessor.id,
                 )
             )
-            if ex.scalar_one_or_none():
+            if existing.scalar_one_or_none():
                 continue
             db.add(
                 WorkDependency(
                     id=_uuid(),
                     project_id=project_id,
-                    stage_id=s.id,
-                    depends_on_stage_id=pred.id,
+                    stage_id=stage.id,
+                    depends_on_stage_id=predecessor.id,
                     dependency_type="work",
                     criticality="high",
                 )
             )
             created += 1
-            if not s.depends_on_stage_id:
-                s.depends_on_stage_id = pred.id
+            if not stage.depends_on_stage_id:
+                stage.depends_on_stage_id = predecessor.id
 
-        # материалы этапа
-        picks_r = await db.execute(
-            select(MaterialPick).where(MaterialPick.project_id == project_id, MaterialPick.stage_id == s.id)
+        picks_result = await db.execute(
+            select(MaterialPick).where(
+                MaterialPick.project_id == project_id,
+                MaterialPick.stage_id == stage.id,
+            )
         )
-        for pick in picks_r.scalars().all():
-            ex = await db.execute(
+        for pick in picks_result.scalars().all():
+            existing = await db.execute(
                 select(WorkDependency).where(
-                    WorkDependency.stage_id == s.id,
+                    WorkDependency.stage_id == stage.id,
                     WorkDependency.depends_on_material_pick_id == pick.id,
                 )
             )
-            if ex.scalar_one_or_none():
+            if existing.scalar_one_or_none():
                 continue
             db.add(
                 WorkDependency(
                     id=_uuid(),
                     project_id=project_id,
-                    stage_id=s.id,
+                    stage_id=stage.id,
                     depends_on_material_pick_id=pick.id,
                     dependency_type="material",
                     criticality="high",
@@ -168,22 +185,30 @@ async def sync_from_workflow(db: AsyncSession, project_id: str) -> int:
     return created
 
 
-async def on_material_delivered(db: AsyncSession, material_pick_id: str) -> list[str]:
+async def on_material_delivered(
+    db: AsyncSession,
+    material_pick_id: str,
+    *,
+    commit: bool = True,
+) -> list[str]:
     """Разблокировать работы после доставки материала."""
-    r = await db.execute(
+    result = await db.execute(
         select(WorkDependency).where(
             WorkDependency.depends_on_material_pick_id == material_pick_id,
             WorkDependency.dependency_type == "material",
         )
     )
     unlocked: list[str] = []
-    for d in r.scalars().all():
-        d.status = "satisfied"
-        stage = await db.get(Stage, d.stage_id)
+    for dependency in result.scalars().all():
+        dependency.status = "satisfied"
+        stage = await db.get(Stage, dependency.stage_id)
         if stage and stage.status == StageStatus.planned:
-            ev = await evaluate_stage(db, stage)
-            if not ev["blocked"]:
+            evaluation = await evaluate_stage(db, stage, commit=False)
+            if not evaluation["blocked"]:
                 stage.status = StageStatus.active
                 unlocked.append(stage.id)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return unlocked
