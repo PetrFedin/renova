@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1 import portal
 from app.api.v1 import selections
+from app.api.v1 import bank_statements
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -68,6 +69,8 @@ api_router.include_router(chats.router)
 api_router.include_router(payments.router)
 api_router.include_router(estimate.router)
 api_router.include_router(change_orders.router)
+# Canonical bank routes must precede the legacy export module routes with the same paths.
+api_router.include_router(bank_statements.router)
 api_router.include_router(export.router)
 api_router.include_router(receipts.router)
 api_router.include_router(purchases.router)
