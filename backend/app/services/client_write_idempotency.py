@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.models.outbox_runtime  # noqa: F401 — register tables before test create_all
 from app.models.client_write_request import ClientWriteRequest
 
 
