@@ -58,6 +58,10 @@ jobs:
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/yookassaWebhookDeliveryIntegrity.test.ts
+      - name: Payment dispute integrity contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/paymentDisputeIntegrity.test.ts
       - name: Offline outbox reliability contracts
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
@@ -98,7 +102,7 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py tests/test_financial_side_effect_outbox.py tests/test_payment_transition_idempotency.py tests/test_yookassa_reversal_integrity.py tests/test_yookassa_webhook_delivery_integrity.py tests/test_change_order_approval_atomicity.py tests/test_change_order_rejection_idempotency.py tests/test_change_order_create_idempotency.py tests/test_purchase_transition_integrity.py tests/test_purchase_create_idempotency.py tests/test_material_pick_lifecycle_integrity.py tests/test_receipt_financial_integrity.py tests/test_fiscal_receipt_deduplication.py tests/test_bank_statement_integrity.py tests/test_expense_mutation_integrity.py -q
+          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py tests/test_financial_side_effect_outbox.py tests/test_payment_transition_idempotency.py tests/test_yookassa_reversal_integrity.py tests/test_yookassa_webhook_delivery_integrity.py tests/test_payment_dispute_integrity.py tests/test_change_order_approval_atomicity.py tests/test_change_order_rejection_idempotency.py tests/test_change_order_create_idempotency.py tests/test_purchase_transition_integrity.py tests/test_purchase_create_idempotency.py tests/test_material_pick_lifecycle_integrity.py tests/test_receipt_financial_integrity.py tests/test_fiscal_receipt_deduplication.py tests/test_bank_statement_integrity.py tests/test_expense_mutation_integrity.py -q
           export ENVIRONMENT=development
           export DATABASE_URL=sqlite+aiosqlite:///./ci.db
           export PUBLIC_BASE_URL=http://127.0.0.1:8100
