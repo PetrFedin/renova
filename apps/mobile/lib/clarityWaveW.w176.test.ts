@@ -107,7 +107,7 @@ if (!workService.includes('payment_transition_required') || !workService.include
 if (!workService.includes('kind="work_status"') || !workService.includes('actor_role=')) {
   throw new Error('backend WO audit evidence');
 }
-if (!workApi.includes('user.role') || !workApi.includes('status_code=409')) {
+if (!workApi.includes('user.role') || !workApi.includes('HTTPException(409, code)')) {
   throw new Error('WO API role/payment enforcement');
 }
 
