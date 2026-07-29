@@ -6,14 +6,40 @@ from app.models.entities import PushToken
 
 EXPO_URL = "https://exp.host/--/api/v2/push/send"
 
-async def send_push(db: AsyncSession, user_id: str, title: str, body: str, data: dict | None = None) -> None:
-    r = await db.execute(select(PushToken).where(PushToken.user_id == user_id))
-    tokens = [t.token for t in r.scalars().all()]
+
+async def send_push(
+    db: AsyncSession,
+    user_id: str,
+    title: str,
+    body: str,
+    data: dict | None = None,
+) -> bool:
+    """Return whether push delivery was accepted or no device token exists."""
+    result = await db.execute(select(PushToken).where(PushToken.user_id == user_id))
+    tokens = [token.token for token in result.scalars().all()]
     if not tokens:
-        return
-    msgs = [{"to": t, "title": title, "body": body, "data": {**(data or {}), "mutableContent": True, "_displayInForeground": True}} for t in tokens]
+        return True
+    messages = [
+        {
+            "to": token,
+            "title": title,
+            "body": body,
+            "data": {
+                **(data or {}),
+                "mutableContent": True,
+                "_displayInForeground": True,
+            },
+        }
+        for token in tokens
+    ]
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            await c.post(EXPO_URL, json=msgs, headers={"Accept": "application/json"})
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                EXPO_URL,
+                json=messages,
+                headers={"Accept": "application/json"},
+            )
+            response.raise_for_status()
+        return True
     except Exception:
-        pass
+        return False
