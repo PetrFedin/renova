@@ -50,7 +50,13 @@ async def seed_project(db, suffix: str):
         customer_id=customer.id,
         contractor_id=contractor.id,
     )
-    room = Room(id=f"material-room-{suffix}", project_id=project.id, name="Кухня")
+    room = Room(
+        id=f"material-room-{suffix}",
+        project_id=project.id,
+        name="Кухня",
+        length_m=4,
+        width_m=3,
+    )
     db.add_all([customer, contractor, project, room])
     await db.commit()
     return customer, contractor, project, room
@@ -227,17 +233,19 @@ async def test_invalid_transitions_and_active_purchase_lock(material_db):
         pick_id="invalid-transition-pick",
         status=MaterialPickStatus.draft,
     )
+    draft_id = draft.id
     with pytest.raises(ValueError, match="material_pick_transition_invalid"):
         await material_pick_service.transition_pick(
             material_db,
             project_id=project.id,
-            pick_id=draft.id,
+            pick_id=draft_id,
             action="approve",
             actor_id=customer.id,
         )
     await material_db.rollback()
 
-    draft.status = MaterialPickStatus.approved
+    stored_draft = await material_db.get(MaterialPick, draft_id)
+    stored_draft.status = MaterialPickStatus.approved
     purchase = Purchase(
         id="material-active-purchase",
         project_id=project.id,
@@ -247,11 +255,11 @@ async def test_invalid_transitions_and_active_purchase_lock(material_db):
     item = PurchaseItem(
         id="material-active-purchase-item",
         purchase=purchase,
-        material_pick_id=draft.id,
-        name=draft.name,
+        material_pick_id=stored_draft.id,
+        name=stored_draft.name,
         qty=4,
-        unit=draft.unit,
-        unit_price=draft.price,
+        unit=stored_draft.unit,
+        unit_price=stored_draft.price,
     )
     purchase.items = [item]
     material_db.add(purchase)
@@ -261,19 +269,18 @@ async def test_invalid_transitions_and_active_purchase_lock(material_db):
         await material_pick_service.require_editable_pick(
             material_db,
             project_id=project.id,
-            pick_id=draft.id,
+            pick_id=draft_id,
         )
     await material_db.rollback()
     assert await material_pick_service.material_pick_has_active_purchase(
         material_db,
         project_id=project.id,
-        pick_id=draft.id,
+        pick_id=draft_id,
     )
 
 
 @pytest.mark.asyncio
 async def test_create_request_replays_same_material_and_validates_links(material_db):
-    contractor = None
     _, contractor, project, room = await seed_project(material_db, "401")
     payload = {
         "name": "Краска",
