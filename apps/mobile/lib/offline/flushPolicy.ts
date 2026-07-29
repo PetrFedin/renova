@@ -47,7 +47,7 @@ export function decideFlushOutcome(
   now = Date.now(),
   retryAfterMs?: number,
 ): FlushDecision {
-  if (status >= 200 && status < 300) return { action: 'drop' };
+  if (status !== null && status >= 200 && status < 300) return { action: 'drop' };
   if (status === 409) return { action: 'conflict', message };
 
   const attempts = currentAttempts + 1;
