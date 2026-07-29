@@ -87,18 +87,13 @@ async def commit_client_write(
     payload: dict[str, Any],
     entity_id: str,
 ) -> tuple[bool, str]:
-    """Commit entity, request ledger and required domain-outbox row atomically.
-
-    Returns ``(created, entity_id)``. If another transaction won the same
-    request ID, this transaction is rolled back and the winner's entity ID is
-    returned. A reused ID with another payload raises ``IdempotencyConflict``.
-    """
+    """Commit entity, request ledger and all required outbox rows atomically."""
     from app.services.client_write_side_effects import (
-        activate_client_write_side_effect,
-        prepare_client_write_side_effect,
+        activate_client_write_side_effects,
+        prepare_client_write_side_effects,
     )
 
-    prepared_side_effect = await prepare_client_write_side_effect(
+    prepared_side_effects = await prepare_client_write_side_effects(
         db,
         scope=scope,
         project_id=project_id,
@@ -108,7 +103,7 @@ async def commit_client_write(
 
     if not request_id:
         await db.commit()
-        activate_client_write_side_effect(prepared_side_effect)
+        activate_client_write_side_effects(prepared_side_effects)
         return True, entity_id
 
     expected_hash = canonical_payload_hash(payload)
@@ -124,7 +119,7 @@ async def commit_client_write(
     )
     try:
         await db.commit()
-        activate_client_write_side_effect(prepared_side_effect)
+        activate_client_write_side_effects(prepared_side_effects)
         return True, entity_id
     except IntegrityError:
         await db.rollback()
