@@ -90,7 +90,7 @@ async def _prepare_approval_side_effects(
     from app.services import outbox_service as outbox
 
     effects: list[PreparedSideEffect] = []
-    activity_payloads = [
+    for payload in [
         {
             "kind": "DocumentDraftForSign",
             "title": f"Подпишите доп. работы: {order.title}",
@@ -103,8 +103,7 @@ async def _prepare_approval_side_effects(
             "body": str(order.amount),
             "link_path": "/(customer)/(tabs)/budget",
         },
-    ]
-    for payload in activity_payloads:
+    ]:
         row = await outbox.enqueue(
             db,
             aggregate_type="change_order",
@@ -170,6 +169,58 @@ async def _prepare_approval_side_effects(
     return effects
 
 
+async def _prepare_rejection_side_effects(
+    db: AsyncSession,
+    *,
+    project: Project,
+    order: ChangeOrder,
+    rejected_by: str,
+) -> list[PreparedSideEffect]:
+    from app.services import outbox_service as outbox
+
+    activity_row = await outbox.enqueue(
+        db,
+        aggregate_type="change_order",
+        aggregate_id=order.id,
+        event_type=outbox.RECEIPT_CREATED_EVENT,
+        payload={
+            "project_id": project.id,
+            "user_id": rejected_by,
+            "kind": "ChangeOrderRejected",
+            "title": f"Доп. работы отклонены: {order.title}",
+            "body": order.description,
+            "link_path": "/(customer)/(tabs)/budget",
+        },
+    )
+    effects = [PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id)]
+    for member_id in _member_ids(project):
+        if member_id == rejected_by:
+            continue
+        row = await outbox.enqueue(
+            db,
+            aggregate_type="change_order",
+            aggregate_id=order.id,
+            event_type=outbox.PAYMENT_CREATED_EVENT,
+            payload={
+                "user_id": member_id,
+                "project_id": project.id,
+                "notification_type": "change_order",
+                "title": f"Доп. работы отклонены: {order.title}",
+                "body": order.description or "",
+                "link_path": "/(contractor)/(tabs)/budget",
+                "return_to": "/(contractor)/(tabs)/home",
+            },
+        )
+        effects.append(
+            PreparedSideEffect(
+                effect_type="notification",
+                outbox_id=row.id,
+                match_key=member_id,
+            )
+        )
+    return effects
+
+
 async def approve_with_sign_draft(
     db: AsyncSession,
     *,
@@ -205,7 +256,6 @@ async def approve_with_sign_draft(
     if newly_approved:
         order.status = ChangeOrderStatus.approved
 
-    # Also repairs pre-existing approved rows that missed their budget/document.
     await apply_change_order_to_budget(db, order)
     await sync_project_budget_planned(db, order.project_id)
 
@@ -246,13 +296,17 @@ async def approve_with_sign_draft(
         schedule_synced = False
 
     project = await db.get(Project, project_id)
-    effects = await _prepare_approval_side_effects(
-        db,
-        project=project,
-        order=order,
-        approved_by=created_by,
-        document_id=draft.id,
-    ) if project else []
+    effects = (
+        await _prepare_approval_side_effects(
+            db,
+            project=project,
+            order=order,
+            approved_by=created_by,
+            document_id=draft.id,
+        )
+        if project
+        else []
+    )
 
     await db.commit()
     await db.refresh(order)
@@ -267,19 +321,56 @@ async def approve_with_sign_draft(
     }
 
 
-async def reject(db: AsyncSession, order_id: str) -> ChangeOrder | None:
-    query = select(ChangeOrder).where(ChangeOrder.id == order_id)
+async def reject_with_effects(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    order_id: str,
+    rejected_by: str,
+) -> tuple[ChangeOrder | None, bool]:
+    """Reject once and commit durable activity/notifications with the state."""
+    query = select(ChangeOrder).where(
+        ChangeOrder.id == order_id,
+        ChangeOrder.project_id == project_id,
+    )
     try:
         query = query.with_for_update()
     except Exception:
         pass
     order = (await db.execute(query)).scalar_one_or_none()
     if not order or order.status == ChangeOrderStatus.approved:
-        return None
+        return None, False
     if order.status == ChangeOrderStatus.rejected:
         await db.commit()
-        return order
+        return order, True
+
     order.status = ChangeOrderStatus.rejected
+    project = await db.get(Project, project_id)
+    effects = (
+        await _prepare_rejection_side_effects(
+            db,
+            project=project,
+            order=order,
+            rejected_by=rejected_by,
+        )
+        if project
+        else []
+    )
     await db.commit()
     await db.refresh(order)
-    return order
+    activate_client_write_side_effects(effects)
+    return order, False
+
+
+async def reject(db: AsyncSession, order_id: str) -> ChangeOrder | None:
+    """Compatibility path for callers that do not need delivery metadata."""
+    order = await db.get(ChangeOrder, order_id)
+    if not order:
+        return None
+    result, _ = await reject_with_effects(
+        db,
+        project_id=order.project_id,
+        order_id=order.id,
+        rejected_by=order.created_by,
+    )
+    return result
