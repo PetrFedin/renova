@@ -141,18 +141,24 @@ async def test_partial_patch_preserves_links_updates_budget_and_replays_without_
 async def test_room_and_stage_links_are_project_scoped(expense_db):
     customer, project_a, _, _ = await seed_project(expense_db, "201")
     _, project_b, room_b, stage_b = await seed_project(expense_db, "202")
-    expense = await add_expense(
+    project_a_id = project_a.id
+    project_b_id = project_b.id
+    customer_id = customer.id
+    room_b_id = room_b.id
+    stage_b_id = stage_b.id
+    expense_id = "scoped-expense"
+    await add_expense(
         expense_db,
-        expense_id="scoped-expense",
-        project_id=project_a.id,
+        expense_id=expense_id,
+        project_id=project_a_id,
     )
 
     with pytest.raises(ValueError, match="expense_room_not_found"):
         await integrity.patch_expense(
             expense_db,
-            project_id=project_a.id,
-            expense_id=expense.id,
-            actor_id=customer.id,
+            project_id=project_a_id,
+            expense_id=expense_id,
+            actor_id=customer_id,
             amount_supplied=False,
             amount=None,
             title_supplied=False,
@@ -160,7 +166,7 @@ async def test_room_and_stage_links_are_project_scoped(expense_db):
             category_supplied=False,
             category=None,
             room_id_supplied=True,
-            room_id=room_b.id,
+            room_id=room_b_id,
             stage_id_supplied=False,
             stage_id=None,
         )
@@ -168,9 +174,9 @@ async def test_room_and_stage_links_are_project_scoped(expense_db):
     with pytest.raises(ValueError, match="expense_stage_not_found"):
         await integrity.patch_expense(
             expense_db,
-            project_id=project_a.id,
-            expense_id=expense.id,
-            actor_id=customer.id,
+            project_id=project_a_id,
+            expense_id=expense_id,
+            actor_id=customer_id,
             amount_supplied=False,
             amount=None,
             title_supplied=False,
@@ -180,23 +186,28 @@ async def test_room_and_stage_links_are_project_scoped(expense_db):
             room_id_supplied=False,
             room_id=None,
             stage_id_supplied=True,
-            stage_id=stage_b.id,
+            stage_id=stage_b_id,
         )
     await expense_db.rollback()
     assert await integrity.get_expense(
         expense_db,
-        project_id=project_b.id,
-        expense_id=expense.id,
+        project_id=project_b_id,
+        expense_id=expense_id,
     ) is None
 
 
 @pytest.mark.asyncio
 async def test_bank_expense_allows_classification_but_not_source_field_tampering(expense_db):
     customer, project, room, stage = await seed_project(expense_db, "301")
-    expense = await add_expense(
+    project_id = project.id
+    customer_id = customer.id
+    room_id = room.id
+    stage_id = stage.id
+    expense_id = "bank-expense"
+    await add_expense(
         expense_db,
-        expense_id="bank-expense",
-        project_id=project.id,
+        expense_id=expense_id,
+        project_id=project_id,
         amount=3200,
         title="оплата доставки",
         comment="bank_statement:v1:row-301",
@@ -205,9 +216,9 @@ async def test_bank_expense_allows_classification_but_not_source_field_tampering
 
     mutation = await integrity.patch_expense(
         expense_db,
-        project_id=project.id,
-        expense_id=expense.id,
-        actor_id=customer.id,
+        project_id=project_id,
+        expense_id=expense_id,
+        actor_id=customer_id,
         amount_supplied=False,
         amount=None,
         title_supplied=False,
@@ -215,21 +226,21 @@ async def test_bank_expense_allows_classification_but_not_source_field_tampering
         category_supplied=True,
         category="delivery",
         room_id_supplied=True,
-        room_id=room.id,
+        room_id=room_id,
         stage_id_supplied=True,
-        stage_id=stage.id,
+        stage_id=stage_id,
     )
     assert mutation and mutation.changed is True
     assert mutation.expense.category == "delivery"
-    assert mutation.expense.room_id == room.id
-    assert mutation.expense.stage_id == stage.id
+    assert mutation.expense.room_id == room_id
+    assert mutation.expense.stage_id == stage_id
 
     with pytest.raises(ValueError, match="bank_expense_amount_immutable"):
         await integrity.patch_expense(
             expense_db,
-            project_id=project.id,
-            expense_id=expense.id,
-            actor_id=customer.id,
+            project_id=project_id,
+            expense_id=expense_id,
+            actor_id=customer_id,
             amount_supplied=True,
             amount=1,
             title_supplied=False,
@@ -245,9 +256,9 @@ async def test_bank_expense_allows_classification_but_not_source_field_tampering
     with pytest.raises(ValueError, match="bank_expense_title_immutable"):
         await integrity.patch_expense(
             expense_db,
-            project_id=project.id,
-            expense_id=expense.id,
-            actor_id=customer.id,
+            project_id=project_id,
+            expense_id=expense_id,
+            actor_id=customer_id,
             amount_supplied=False,
             amount=None,
             title_supplied=True,
@@ -273,18 +284,21 @@ async def test_bank_expense_allows_classification_but_not_source_field_tampering
 )
 async def test_source_linked_expenses_cannot_be_patched_or_deleted(expense_db, field, source):
     customer, project, _, _ = await seed_project(expense_db, f"4{len(source)}")
-    expense = await add_expense(
+    project_id = project.id
+    customer_id = customer.id
+    expense_id = f"linked-{source}"
+    await add_expense(
         expense_db,
-        expense_id=f"linked-{source}",
-        project_id=project.id,
+        expense_id=expense_id,
+        project_id=project_id,
         **{field: f"source-{source}"},
     )
     with pytest.raises(ValueError, match=f"expense_source_locked:{source}"):
         await integrity.patch_expense(
             expense_db,
-            project_id=project.id,
-            expense_id=expense.id,
-            actor_id=customer.id,
+            project_id=project_id,
+            expense_id=expense_id,
+            actor_id=customer_id,
             amount_supplied=True,
             amount=2000,
             title_supplied=False,
@@ -300,9 +314,9 @@ async def test_source_linked_expenses_cannot_be_patched_or_deleted(expense_db, f
     with pytest.raises(ValueError, match=f"expense_source_locked:{source}"):
         await integrity.delete_expense(
             expense_db,
-            project_id=project.id,
-            expense_id=expense.id,
-            actor_id=customer.id,
+            project_id=project_id,
+            expense_id=expense_id,
+            actor_id=customer_id,
         )
 
 
