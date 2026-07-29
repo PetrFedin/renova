@@ -8,6 +8,12 @@ import { RenovaTheme } from '@/constants/Theme';
 const c = RenovaTheme.colors;
 
 export const screenTypography = StyleSheet.create({
+  /** Заголовок экрана */
+  hero: {
+    fontSize: RenovaTheme.fontSize.h1,
+    fontWeight: RenovaTheme.fontWeight.bold,
+    color: c.text,
+  },
   /** Заголовок секции — sentence case */
   section: {
     fontSize: 13,
