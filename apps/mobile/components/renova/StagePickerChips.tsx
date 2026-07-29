@@ -1,40 +1,63 @@
-/** Выбор этапа для чека */
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Stage } from '@/lib/api';
-import { RenovaTheme } from '@/constants/Theme';
-import { screenTypography } from '@/constants/screenTypography';
+/** Выбор этапа для финансовых и операционных форм */
+import { Pressable, Text, View } from 'react-native';
 
-export function StagePickerChips({ stages, value, onChange }: { stages: Stage[]; value?: string | null; onChange: (id: string | null) => void }) {
+import { formSurfaceStyles } from '@/constants/formStyles';
+import { filterChipStyles } from '@/constants/screenTypography';
+import type { Stage } from '@/lib/api';
+
+export function StagePickerChips({
+  stages,
+  value,
+  onChange,
+  optional = true,
+  disabled = false,
+  label,
+}: {
+  stages: Stage[];
+  value?: string | null;
+  onChange: (id: string | null) => void;
+  optional?: boolean;
+  disabled?: boolean;
+  label?: string;
+}) {
   if (!stages.length) return null;
+  const resolvedLabel = label ?? (optional ? 'Этап (необязательно)' : 'Этап');
+
   return (
-    <View style={s.wrap}>
-      <Text style={s.lbl}>Этап (необязательно)</Text>
-      <View style={s.row}>
-        <Pressable style={[s.chip, !value && s.on]} onPress={() => onChange(null)}>
-          <Text style={[s.txt, !value && s.txtOn]}>Без этапа</Text>
-        </Pressable>
-        {stages.map((st) => (
-          <Pressable key={st.id} style={[s.chip, value === st.id && s.on]} onPress={() => onChange(st.id)}>
-            <Text style={[s.txt, value === st.id && s.txtOn]} numberOfLines={1}>{st.name}</Text>
+    <View>
+      <Text style={formSurfaceStyles.label}>{resolvedLabel}</Text>
+      <View style={filterChipStyles.row}>
+        {optional ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Без этапа"
+            accessibilityState={{ selected: !value, disabled }}
+            disabled={disabled}
+            style={[filterChipStyles.chip, formSurfaceStyles.chipTouch, !value && filterChipStyles.chipOn]}
+            onPress={() => onChange(null)}
+          >
+            <Text style={[filterChipStyles.chipT, !value && filterChipStyles.chipTOn]}>Без этапа</Text>
           </Pressable>
-        ))}
+        ) : null}
+        {stages.map((stage) => {
+          const selected = value === stage.id;
+          return (
+            <Pressable
+              key={stage.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Этап: ${stage.name}`}
+              accessibilityState={{ selected, disabled }}
+              disabled={disabled}
+              style={[filterChipStyles.chip, formSurfaceStyles.chipTouch, selected && filterChipStyles.chipOn]}
+              onPress={() => onChange(stage.id)}
+            >
+              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]} numberOfLines={1}>
+                {stage.name}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
 }
-const s = StyleSheet.create({
-  wrap: { marginBottom: 10 },
-  // Clarity T: section SoT
-  lbl: { ...screenTypography.section, marginTop: 0, marginBottom: 6 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: RenovaTheme.colors.border,
-    maxWidth: 140,
-  },
-  on: { backgroundColor: RenovaTheme.colors.primary },
-  txt: { ...screenTypography.listTitle, fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.text },
-  txtOn: { color: RenovaTheme.colors.surface },
-});
