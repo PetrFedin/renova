@@ -11,6 +11,7 @@ const must = (condition: boolean, message: string) => {
 const webhook = readBackend('app/services/yookassa_service.py');
 const reversal = readBackend('app/services/payment_reversal_service.py');
 const budget = readBackend('app/services/budget_service.py');
+const budgetLegacy = readBackend('app/services/budget_service_legacy.py');
 const ledger = readBackend('app/services/expense_ledger_service.py');
 
 must(webhook.includes('{"payment.canceled", "refund.succeeded"}'), 'webhook routes provider reversals');
@@ -31,6 +32,7 @@ must(!reversal.includes('budget.refresh_budget_facts'), 'refund must not re-hydr
 must(reversal.includes('outbox.enqueue('), 'reversal effects are durable');
 must(ledger.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'ledger excludes disputed/refund expenses from budget fact');
 must(!ledger.includes('expense_from_receipt') && !ledger.includes('expense_from_payment'), 'ledger cannot resurrect reversed source facts');
-must(budget.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'canonical budget also excludes refund expenses');
+must(budgetLegacy.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'preserved canonical aggregation excludes refund expenses');
+must(budget.includes('_legacy.refresh_budget_facts = refresh_budget_facts'), 'canonical wrapper routes all refresh callers through protected hydration');
 
 console.log('yookassaReversalIntegrity.test OK');
