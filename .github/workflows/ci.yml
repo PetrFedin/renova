@@ -27,6 +27,12 @@ jobs:
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/financialCreateIdempotency.test.ts
+      - name: Offline outbox reliability contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/offline/flushPolicy.runtime.test.ts
+          npx tsx apps/mobile/lib/offline/queueMerge.test.ts
+          npx tsx apps/mobile/lib/offlineOutboxReliabilityContract.test.ts
       - name: Focus-aware reload contracts
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
