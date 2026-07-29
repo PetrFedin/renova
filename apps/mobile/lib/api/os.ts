@@ -44,10 +44,11 @@ export const osApi = {
     expenseId: string,
     body: { amount?: number; title?: string; category?: string; room_id?: string | null; stage_id?: string | null },
   ) => {
+    const serialized = JSON.stringify(body);
     try {
       return await req<import('./types').OsExpense>(
         `/api/v1/projects/${projectId}/os/expenses/${expenseId}`,
-        { method: 'PATCH', body: JSON.stringify(body) },
+        { method: 'PATCH', body: serialized },
         userId,
       );
     } catch (e) {
@@ -56,7 +57,7 @@ export const osApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`,
         method: 'PATCH',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
