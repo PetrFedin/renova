@@ -232,16 +232,19 @@ async def test_invalid_dispute_transitions_are_blocked(dispute_db, status):
         status=status,
         with_expense=False,
     )
+    project_id = project.id
+    payment_id = payment.id
+    customer_id = customer.id
     with pytest.raises(ValueError, match=f"payment_dispute_transition_blocked:{status.value}"):
         await disputes.dispute_payment(
             dispute_db,
-            project_id=project.id,
-            payment_id=payment.id,
-            actor_user_id=customer.id,
+            project_id=project_id,
+            payment_id=payment_id,
+            actor_user_id=customer_id,
             reason="Этот переход должен быть запрещён финансовой машиной состояний",
         )
     await dispute_db.rollback()
-    assert (await dispute_db.get(Payment, payment.id)).status == status
+    assert (await dispute_db.get(Payment, payment_id)).status == status
     assert (await dispute_db.scalar(select(func.count()).select_from(PaymentEvent))) == 0
 
 
