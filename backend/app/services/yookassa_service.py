@@ -24,11 +24,10 @@ def yookassa_configured() -> bool:
     return bool(settings.yookassa_shop_id and settings.yookassa_secret)
 
 
-
-
 def demo_allowed() -> bool:
     """Demo instant pay только development/test — не staging/production."""
     return settings.normalized_environment in ("development", "test")
+
 
 def yookassa_health() -> dict[str, Any]:
     """P4 staging probe — без секретов, только флаги готовности."""
@@ -51,7 +50,6 @@ def yookassa_health() -> dict[str, Any]:
             else "Задайте YOOKASSA_SHOP_ID + YOOKASSA_SECRET (и YOOKASSA_WEBHOOK_SECRET) для staging/production"
         ),
     }
-
 
 
 async def create_payment(
@@ -151,9 +149,22 @@ async def remember_webhook_durable(db, event_id: str, *, kind: str | None = None
 
 
 async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
-    """Единый обработчик: Pro subscription и project payment."""
-    event = body.get("event")
+    """Единый обработчик: подписка, project payment, provider cancellation/refund."""
+    event = str(body.get("event") or "")
     obj = body.get("object") or {}
+
+    if event in {"payment.canceled", "refund.succeeded"}:
+        from app.services.payment_reversal_service import process_provider_reversal
+
+        reversal = await process_provider_reversal(body, db)
+        return {
+            "ok": True,
+            "handled": reversal.handled,
+            "changed": reversal.changed,
+            "payment_id": reversal.payment_id,
+            "reason": reversal.reason,
+        }
+
     if event != "payment.succeeded" or obj.get("status") != "succeeded":
         return {"ok": True, "handled": False}
 
@@ -171,7 +182,6 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         if not payment_id or not project_id:
             return {"ok": True, "handled": False, "reason": "missing_metadata"}
 
-        # P0: lock row (PG); SQLite ignores / best-effort
         q = select(Payment).where(Payment.id == payment_id)
         try:
             q = q.with_for_update()
@@ -183,7 +193,6 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         if existing.status.value not in ("pending", "processing", "paid_unverified"):
             return {"ok": True, "handled": True, "duplicate": True}
 
-        # Verify amount / currency against provider payload
         amount_obj = obj.get("amount") or {}
         try:
             remote_amount = float(amount_obj.get("value") or 0)
@@ -193,7 +202,13 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         if remote_currency != "RUB":
             return {"ok": True, "handled": False, "reason": "currency_mismatch"}
         if abs(remote_amount - float(existing.amount)) > 0.01:
-            return {"ok": True, "handled": False, "reason": "amount_mismatch", "expected": existing.amount, "got": remote_amount}
+            return {
+                "ok": True,
+                "handled": False,
+                "reason": "amount_mismatch",
+                "expected": existing.amount,
+                "got": remote_amount,
+            }
         if existing.yookassa_payment_id and yk_id and existing.yookassa_payment_id != yk_id:
             return {"ok": True, "handled": False, "reason": "yookassa_id_mismatch"}
 
@@ -204,41 +219,18 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
             payment_id,
             project_id=project_id,
             allow_without_acceptance=False,
-            allow_without_settlement=True,  # payment.succeeded — machine settlement
+            allow_without_settlement=True,
         )
         if not confirmed:
             return {"ok": True, "handled": True, "blocked": "acceptance_required"}
 
-        from app.models.entities import Project
-        from app.services import activity_service as act
-        from app.services import notification_service as notif
-
-        project = await db.get(Project, project_id)
-        if project:
-            await act.log_event(
-                db,
-                project_id=project_id,
-                user_id=metadata.get("user_id") or project.customer_id,
-                kind="PaymentApproved",
-                title=f"Оплата (ЮKassa): {confirmed.title}",
-                body=str(confirmed.amount),
-                link_path="/(customer)/(tabs)/budget",
-            )
-            for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
-                if not member_id:
-                    continue
-                await notif.notify(
-                    db,
-                    user_id=member_id,
-                    project_id=project_id,
-                    notification_type="payment_pending",
-                    title=f"Оплата через ЮKassa: {confirmed.title}",
-                    body=str(confirmed.amount),
-                    link_path="/(customer)/(tabs)/budget"
-                    if member_id == project.customer_id
-                    else "/(contractor)/(tabs)/budget",
-                )
-        return {"ok": True, "handled": True, "payment_id": payment_id, "confirmed": True}
+        # confirm_payment already committed PaymentEvent, Expense, budget and durable side effects.
+        return {
+            "ok": True,
+            "handled": True,
+            "payment_id": payment_id,
+            "confirmed": True,
+        }
 
     uid = metadata.get("user_id")
     if uid:
