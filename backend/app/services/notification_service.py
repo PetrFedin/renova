@@ -11,7 +11,6 @@ from app.models.entities import AppNotification, NotificationType
 from app.models.outbox_runtime import SideEffectDelivery
 from app.services.push_service import send_push
 
-# Исторические строки из callers → канон enum (CI/prod не падают на опечатках/алиасах).
 _TYPE_ALIASES: dict[str, str] = {
     "material": "materials",
     "budget": "budget_alert",
@@ -20,7 +19,6 @@ _TYPE_ALIASES: dict[str, str] = {
 
 
 def resolve_notification_type(raw: str) -> NotificationType:
-    """Маппинг строки caller → NotificationType; неизвестное → other."""
     key = (raw or "").strip()
     key = _TYPE_ALIASES.get(key, key)
     try:
@@ -46,10 +44,19 @@ async def notify(
     body: str,
     link_path: str | None = None,
     return_to: str | None = None,
-) -> AppNotification:
-    from app.services.client_write_side_effects import take_client_write_side_effect
+) -> AppNotification | None:
+    from app.services.client_write_side_effects import (
+        payment_transition_side_effects_suppressed,
+        take_client_write_side_effect,
+    )
 
-    outbox_id = take_client_write_side_effect("notification")
+    if (
+        payment_transition_side_effects_suppressed()
+        and notification_type in {"payment_pending", "payment_confirmed"}
+    ):
+        return None
+
+    outbox_id = take_client_write_side_effect("notification", match_key=user_id)
     if outbox_id:
         return await notify_from_outbox(
             db,
@@ -96,7 +103,6 @@ async def notify_from_outbox(
     link_path: str | None = None,
     return_to: str | None = None,
 ) -> AppNotification:
-    """Create one in-app notification and retry only the unfinished push step."""
     delivery = (
         await db.execute(
             select(SideEffectDelivery).where(SideEffectDelivery.outbox_id == outbox_id)
