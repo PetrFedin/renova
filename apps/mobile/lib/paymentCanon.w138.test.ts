@@ -3,91 +3,99 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 const mobile = join(__dirname, '..');
-const sheet = readFileSync(join(mobile, 'components/renova/PaymentDetailSheet.tsx'), 'utf8');
-const budget = readFileSync(join(mobile, 'components/screens/OsBudgetScreen.tsx'), 'utf8');
-const paymentsSection = readFileSync(join(mobile, 'components/screens/budget/BudgetPaymentsSection.tsx'), 'utf8');
-const createForm = readFileSync(join(mobile, 'components/renova/CreatePaymentForm.tsx'), 'utf8');
-const payApi = readFileSync(join(mobile, 'lib/api/payments.ts'), 'utf8');
-const push = readFileSync(join(mobile, 'lib/pushLinks.ts'), 'utf8');
-const catchAll = readFileSync(join(mobile, 'lib/resolveCatchAllSlug.ts'), 'utf8');
-const snap = readFileSync(join(mobile, 'lib/domain/buildProjectOsSnapshot.ts'), 'utf8');
-const kpi = readFileSync(join(mobile, 'lib/domain/buildHomeKpiDetail.ts'), 'utf8');
-const chat = readFileSync(join(mobile, 'components/renova/chat/ChatThreadView.tsx'), 'utf8');
-const actionBus = readFileSync(join(mobile, 'lib/actionConfirmBus.ts'), 'utf8');
-const actionSheet = readFileSync(join(mobile, 'components/renova/ActionConfirmSheet.tsx'), 'utf8');
-const svc = readFileSync(join(mobile, '../../backend/app/services/payment_service.py'), 'utf8');
-const yk = readFileSync(join(mobile, '../../backend/app/services/yookassa_service.py'), 'utf8');
+const read = (relativePath: string) => readFileSync(join(mobile, relativePath), 'utf8');
+const must = (condition: boolean, message: string) => {
+  if (!condition) throw new Error(message);
+};
 
-console.assert((sheet.match(/confirmPayment\(/g) || []).length >= 1, 'sheet calls confirmPayment');
-console.assert(payApi.includes('transfer_ack'), 'API sends transfer_ack');
-console.assert(sheet.includes('transfer_ack'), 'sheet passes transfer_ack');
-console.assert(sheet.includes('внешнего перевода') || sheet.includes('внешний перевод'), 'honest external-transfer copy');
+const sheet = read('components/renova/PaymentDetailSheet.tsx');
+const surface = read('components/renova/SheetSurface.tsx');
+const budget = read('components/screens/OsBudgetScreen.tsx');
+const paymentsSection = read('components/screens/budget/BudgetPaymentsSection.tsx');
+const createForm = read('components/renova/CreatePaymentForm.tsx');
+const payApi = read('lib/api/payments.ts');
+const push = read('lib/pushLinks.ts');
+const catchAll = read('lib/resolveCatchAllSlug.ts');
+const snap = read('lib/domain/buildProjectOsSnapshot.ts');
+const kpi = read('lib/domain/buildHomeKpiDetail.ts');
+const chat = read('components/renova/chat/ChatThreadView.tsx');
+const actionBus = read('lib/actionConfirmBus.ts');
+const actionSheet = read('components/renova/ActionConfirmSheet.tsx');
+const svc = read('../../backend/app/services/payment_service.py');
+const yk = read('../../backend/app/services/yookassa_service.py');
+
+must((sheet.match(/confirmPayment\(/g) || []).length >= 1, 'sheet calls confirmPayment');
+must(payApi.includes('transfer_ack'), 'API sends transfer_ack');
+must(sheet.includes('transfer_ack'), 'sheet passes transfer_ack');
+must(sheet.includes('внешнего перевода') || sheet.includes('внешний перевод'), 'honest external-transfer copy');
 
 // Money-critical UI must prevent duplicate mutations and accidental dismissal.
-console.assert(sheet.includes("const [confirmBusy, setConfirmBusy] = useState(false)"), 'confirm busy state');
-console.assert(sheet.includes('if (confirmBusy) return'), 'duplicate confirm guard');
-console.assert(sheet.includes('loading={confirmBusy}'), 'confirm button loading state');
-console.assert(sheet.includes('const busy = cardBusy || confirmBusy'), 'shared payment busy state');
-console.assert(sheet.includes('onRequestClose={closeSafely}'), 'modal close guarded while busy');
-console.assert(sheet.includes('title="Закрыть" variant="ghost"'), 'close remains tertiary');
-console.assert(!sheet.includes("title={cardBusy ? 'Открываем ЮKassa…'"), 'card loading uses shared button state');
+must(sheet.includes('const mutationRef = useRef(false)'), 'payment mutation ref');
+must(sheet.includes("type PaymentMutation = 'card' | 'confirm' | null"), 'exact payment mutation state');
+must(sheet.includes('if (mutationRef.current) return false'), 'duplicate payment mutation guard');
+must(sheet.includes("loading={mutation === 'confirm'}"), 'confirm button loading state');
+must(sheet.includes("loading={mutation === 'card'}"), 'card button loading state');
+must(sheet.includes('SheetSurface'), 'payment uses shared surface');
+must(surface.includes('if (!busy) onClose()'), 'modal close guarded while busy');
+must(sheet.includes('title="Закрыть"') && sheet.includes('variant="ghost"'), 'close remains tertiary');
+must(!sheet.includes('Alert.alert'), 'payment has no Alert fallback');
 
 // Payments list uses shared filters and a single create action hierarchy.
-console.assert(paymentsSection.includes('filterChipStyles'), 'payment filters use shared chips');
-console.assert(paymentsSection.includes('const [createOpen, setCreateOpen]'), 'create form is progressively disclosed');
-console.assert(paymentsSection.includes("title={createOpen ? 'Скрыть форму' : 'Выставить счёт'}"), 'single create action');
-console.assert(paymentsSection.includes('title="Импорт выписки"') && paymentsSection.includes('variant="outline"'), 'bank import is secondary');
-console.assert(!paymentsSection.includes('variant={payFilter ==='), 'filters are not primary buttons');
-console.assert(paymentsSection.includes('accessibilityState={{ selected }}'), 'filter selected state');
-console.assert(paymentsSection.includes('Показать все счета'), 'filtered empty state recovery');
-console.assert(paymentsSection.includes('formatConfirmedDate'), 'payment dates fail safely');
+must(paymentsSection.includes('filterChipStyles'), 'payment filters use shared chips');
+must(paymentsSection.includes('const [createOpen, setCreateOpen]'), 'create form is progressively disclosed');
+must(paymentsSection.includes("title={createOpen ? 'Скрыть форму' : 'Выставить счёт'}"), 'single create action');
+must(paymentsSection.includes('title="Импорт выписки"') && paymentsSection.includes('variant="outline"'), 'bank import is secondary');
+must(!paymentsSection.includes('variant={payFilter ==='), 'filters are not primary buttons');
+must(paymentsSection.includes('accessibilityState={{ selected }}'), 'filter selected state');
+must(paymentsSection.includes('Показать все счета'), 'filtered empty state recovery');
+must(paymentsSection.includes('formatConfirmedDate'), 'payment dates fail safely');
 
 // Create form keeps drafts on error and blocks duplicate submissions.
-console.assert(createForm.includes('const busyRef = useRef(false)'), 'create payment ref guard');
-console.assert(createForm.includes('if (busyRef.current) return'), 'create payment duplicate submit guard');
-console.assert(createForm.includes('filterChipStyles'), 'payment type/percent shared chips');
-console.assert(createForm.includes('loading={busy}'), 'create payment shared loading');
-console.assert(createForm.includes('Введённые данные сохранены в форме'), 'create payment preserves draft on error');
-console.assert(createForm.includes('title="Отмена"') && createForm.includes('variant="ghost"'), 'create payment cancel tertiary');
-console.assert(createForm.includes('setTitle(\'\')') && createForm.indexOf("setTitle('')") > createForm.indexOf('await syncProjectSideEffects'), 'form clears after confirmed save');
+must(createForm.includes('const busyRef = useRef(false)'), 'create payment ref guard');
+must(createForm.includes('if (busyRef.current) return'), 'create payment duplicate submit guard');
+must(createForm.includes('filterChipStyles'), 'payment type/percent shared chips');
+must(createForm.includes('loading={busy}'), 'create payment shared loading');
+must(createForm.includes('Введённые данные сохранены в форме'), 'create payment preserves draft on error');
+must(createForm.includes('title="Отмена"') && createForm.includes('variant="ghost"'), 'create payment cancel tertiary');
+must(createForm.includes("setTitle('')") && createForm.indexOf("setTitle('')") > createForm.indexOf('await syncProjectSideEffects'), 'form clears after confirmed save');
 
 // Shared confirmation layer must preserve destructive intent.
-console.assert(actionBus.includes('primaryDestructive?: boolean'), 'confirm payload destructive flag');
-console.assert(actionSheet.includes("primaryDestructive ? 'danger' : 'primary'"), 'destructive primary uses danger');
-console.assert(actionSheet.includes("a.destructive ? 'dangerOutline'"), 'destructive menu action uses danger outline');
+must(actionBus.includes('primaryDestructive?: boolean'), 'confirm payload destructive flag');
+must(actionSheet.includes("primaryDestructive ? 'danger' : 'primary'"), 'destructive primary uses danger');
+must(actionSheet.includes("action.destructive ? 'dangerOutline'"), 'destructive menu action uses danger outline');
 
-console.assert(budget.includes('openPaymentParam'), 'budget auto-opens sheet');
-console.assert(push.includes("openPayment: '1'"), 'finance-center opens sheet');
-console.assert(catchAll.includes("openPayment: '1'"), 'slug finance-center opens sheet');
-console.assert(snap.includes("openPayment: '1'"), 'home Оплатить opens sheet');
-console.assert(kpi.includes("openPayment: '1'"), 'KPI Оплатить opens sheet');
-console.assert(chat.includes("openPayment: '1'"), 'chat pay opens sheet');
-console.assert(push.includes("case 'payment_pending'") && push.includes("openPayment: '1'"), 'push pending opens sheet');
+must(budget.includes('openPaymentParam'), 'budget auto-opens sheet');
+must(push.includes("openPayment: '1'"), 'finance-center opens sheet');
+must(catchAll.includes("openPayment: '1'"), 'slug finance-center opens sheet');
+must(snap.includes("openPayment: '1'"), 'home Оплатить opens sheet');
+must(kpi.includes("openPayment: '1'"), 'KPI Оплатить opens sheet');
+must(chat.includes("openPayment: '1'"), 'chat pay opens sheet');
+must(push.includes("case 'payment_pending'") && push.includes("openPayment: '1'"), 'push pending opens sheet');
 
 // No other component calls confirmPayment(
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name.startsWith('.')) continue;
-    const p = join(dir, name);
-    const st = statSync(p);
-    if (st.isDirectory()) walk(p, out);
-    else if (/\.(tsx|ts)$/.test(name)) out.push(p);
+    const path = join(dir, name);
+    const stat = statSync(path);
+    if (stat.isDirectory()) walk(path, out);
+    else if (/\.(tsx|ts)$/.test(name)) out.push(path);
   }
   return out;
 }
 const offenders: string[] = [];
 for (const file of walk(join(mobile, 'components'))) {
   if (file.endsWith('PaymentDetailSheet.tsx')) continue;
-  const src = readFileSync(file, 'utf8');
-  if (/confirmPayment\s*\(/.test(src)) offenders.push(file);
+  const body = readFileSync(file, 'utf8');
+  if (/confirmPayment\s*\(/.test(body)) offenders.push(file);
 }
-console.assert(offenders.length === 0, 'confirmPayment only in sheet: ' + offenders.join(', '));
+must(offenders.length === 0, 'confirmPayment only in sheet: ' + offenders.join(', '));
 
 // YuKassa id at checkout must NOT be manual settlement proof
-console.assert(!/has_yk|yookassa_payment_id.*transfer_ack|receipt_id or has_yk/.test(
+must(!/has_yk|yookassa_payment_id.*transfer_ack|receipt_id or has_yk/.test(
   svc.slice(svc.indexOf('allow_without_settlement'), svc.indexOf('allow_without_settlement') + 400),
 ), 'manual confirm must not treat yookassa_id as proof');
-console.assert(svc.includes('if not (receipt_id or transfer_ack)'), 'manual proof = receipt or ack');
-console.assert(yk.includes('allow_without_settlement=True'), 'webhook uses machine settlement');
+must(svc.includes('if not (receipt_id or transfer_ack)'), 'manual proof = receipt or ack');
+must(yk.includes('allow_without_settlement=True'), 'webhook uses machine settlement');
 
 console.log('paymentCanon.w138.test OK');
