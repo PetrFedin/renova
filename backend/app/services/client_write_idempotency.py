@@ -77,6 +77,50 @@ async def replay_entity_id(
     return existing.entity_id
 
 
+async def _commit_duplicate_mapping(
+    db: AsyncSession,
+    *,
+    scope: str,
+    project_id: str,
+    user_id: str,
+    request_id: str | None,
+    payload: dict[str, Any],
+    canonical_entity_id: str,
+) -> tuple[bool, str]:
+    """Commit duplicate collapse without preparing another side effect."""
+    if not request_id:
+        await db.commit()
+        return False, canonical_entity_id
+
+    expected_hash = canonical_payload_hash(payload)
+    db.add(
+        ClientWriteRequest(
+            scope=scope,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=request_id,
+            payload_hash=expected_hash,
+            entity_id=canonical_entity_id,
+        )
+    )
+    try:
+        await db.commit()
+        return False, canonical_entity_id
+    except IntegrityError:
+        await db.rollback()
+        existing = await _find_request(
+            db,
+            scope=scope,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=request_id,
+        )
+        if not existing:
+            raise
+        _assert_payload(existing, expected_hash)
+        return False, existing.entity_id
+
+
 async def commit_client_write(
     db: AsyncSession,
     *,
@@ -88,6 +132,28 @@ async def commit_client_write(
     entity_id: str,
 ) -> tuple[bool, str]:
     """Commit entity, request ledger and all required outbox rows atomically."""
+    if scope == "receipt.scan":
+        from app.services.fiscal_receipt_dedup_service import collapse_duplicate_scan_candidate
+
+        try:
+            duplicate_id = await collapse_duplicate_scan_candidate(
+                db,
+                project_id=project_id,
+                receipt_id=entity_id,
+            )
+        except ValueError as error:
+            raise IdempotencyConflict(str(error)) from error
+        if duplicate_id:
+            return await _commit_duplicate_mapping(
+                db,
+                scope=scope,
+                project_id=project_id,
+                user_id=user_id,
+                request_id=request_id,
+                payload=payload,
+                canonical_entity_id=duplicate_id,
+            )
+
     from app.services.client_write_side_effects import (
         activate_client_write_side_effects,
         prepare_client_write_side_effects,
