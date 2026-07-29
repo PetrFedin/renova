@@ -7,6 +7,11 @@ import {
   isTransitionAllowedForRole,
   workActions,
 } from './domain/workLifecycle';
+import {
+  isIssueTransitionAllowed,
+  issueActions,
+  issueWaitingHint,
+} from './domain/issueLifecycle';
 
 const mobile = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(mobile, rel), 'utf8');
@@ -40,10 +45,54 @@ if (!purchaseList.includes('disabled={busy}')) throw new Error('purchase navigat
 const waste = src('components/renova/WasteOrderList.tsx');
 if (!waste.includes("title: 'Согласовать вывоз?'")) throw new Error('waste approve confirm');
 
+// QC lifecycle: contractor fixes, customer verifies or returns, customer may reopen.
+if (!isIssueTransitionAllowed('open', 'in_progress', 'contractor')) throw new Error('contractor starts issue fix');
+if (!isIssueTransitionAllowed('in_progress', 'fixed', 'contractor')) throw new Error('contractor marks issue fixed');
+if (isIssueTransitionAllowed('open', 'closed', 'customer')) throw new Error('customer cannot close unresolved issue');
+if (isIssueTransitionAllowed('fixed', 'closed', 'contractor')) throw new Error('contractor cannot self-verify');
+if (!isIssueTransitionAllowed('fixed', 'closed', 'customer')) throw new Error('customer verifies fixed issue');
+if (!isIssueTransitionAllowed('fixed', 'open', 'customer')) throw new Error('customer returns fixed issue');
+if (!isIssueTransitionAllowed('closed', 'open', 'customer')) throw new Error('customer reopens closed issue');
+const customerFixedActions = issueActions('fixed', 'customer');
+if (customerFixedActions.find((action) => action.target === 'closed')?.intent !== 'primary') {
+  throw new Error('QC verify is primary');
+}
+if (customerFixedActions.find((action) => action.target === 'open')?.intent !== 'secondary') {
+  throw new Error('QC rework is secondary');
+}
+if (issueActions('closed', 'customer')[0]?.label !== 'Открыть снова') throw new Error('QC reopen action');
+if (issueWaitingHint('fixed', 'contractor') !== 'Ждёт подтверждения заказчика') throw new Error('QC contractor waiting hint');
+
 const qc = src('components/screens/QualityControlScreen.tsx');
+const issueDomain = src('lib/domain/issueLifecycle.ts');
+const issueApi = src('lib/api/issues.ts');
+const issueService = src('../../backend/app/services/issue_service.py');
+const issueTransitionsApi = src('../../backend/app/api/v1/issue_transitions.py');
 if (!qc.includes("title: 'Эскалировать в спор?'")) throw new Error('qc escalate pre-confirm');
-if (!qc.includes("'Отметить исправленным?'") && !qc.includes("'Закрыть замечание?'")) {
-  throw new Error('qc close pre-confirm');
+if (!qc.includes('const mutationRef = useRef(false)') || !qc.includes('mutationRef.current')) {
+  throw new Error('QC duplicate mutation guard');
+}
+if (!qc.includes('api.transitionIssue') || !qc.includes('loading={mutationKey === key}')) {
+  throw new Error('QC transition API/exact loading');
+}
+if (!qc.includes('Подтвердить исправление') || !qc.includes('Вернуть на доработку') || !qc.includes('Открыть снова')) {
+  // Labels live in the imported domain and must remain in the bundled source contract.
+  if (!issueDomain.includes('Подтвердить исправление') || !issueDomain.includes('Вернуть на доработку') || !issueDomain.includes('Открыть снова')) {
+    throw new Error('QC verify/rework/reopen copy');
+  }
+}
+if (!issueApi.includes('transitionIssue') || !issueApi.includes('/transition')) throw new Error('QC mobile transition API');
+if (!issueService.includes('ISSUE_ROLE_ALLOWED') || !issueService.includes('validate_issue_transition')) {
+  throw new Error('QC backend role matrix');
+}
+if (!issueService.includes('validate_issue_status_change') || !issueService.includes('closed_at =')) {
+  throw new Error('QC legacy fail-closed/timestamp');
+}
+if (!issueTransitionsApi.includes('issue_transition_role_forbidden') || !issueTransitionsApi.includes('act.log_event')) {
+  throw new Error('QC API role/audit enforcement');
+}
+if (!issueTransitionsApi.includes('notif_svc.notify') || !issueTransitionsApi.includes('warranty_transition_separate')) {
+  throw new Error('QC notifications/warranty boundary');
 }
 
 const cust = src('components/screens/control/CustomerControlView.tsx');
