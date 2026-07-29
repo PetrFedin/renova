@@ -20,7 +20,13 @@ async def log_event(
     link_path: str | None = None,
     stage_id: str | None = None,
 ):
-    from app.services.client_write_side_effects import take_client_write_side_effect
+    from app.services.client_write_side_effects import (
+        payment_transition_side_effects_suppressed,
+        take_client_write_side_effect,
+    )
+
+    if payment_transition_side_effects_suppressed() and kind == "PaymentApproved":
+        return None
 
     outbox_id = take_client_write_side_effect("activity")
     if outbox_id:
@@ -78,7 +84,6 @@ async def log_event_from_outbox(
     work_type: str | None = None,
     link_path: str | None = None,
 ) -> ActivityEvent:
-    """Create one activity row even if the outbox event is handled repeatedly."""
     delivery = (
         await db.execute(
             select(SideEffectDelivery).where(SideEffectDelivery.outbox_id == outbox_id)
