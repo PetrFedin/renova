@@ -1,4 +1,4 @@
-/** Жизненный цикл детальной работы (WorkOrder) — единый для календаря, чата, бюджета */
+/** Жизненный цикл детальной работы (WorkOrder) — единый для mobile и backend. */
 export type WorkOrderStatus =
   | 'draft'
   | 'published'
@@ -9,6 +9,14 @@ export type WorkOrderStatus =
   | 'done'
   | 'paid'
   | 'cancelled';
+
+export type WorkActionIntent = 'primary' | 'secondary' | 'destructive';
+
+export type WorkTransitionAction = {
+  label: string;
+  next: WorkOrderStatus;
+  intent: WorkActionIntent;
+};
 
 export const WORK_STATUS_LABEL: Record<WorkOrderStatus, string> = {
   draft: 'Черновик',
@@ -22,7 +30,10 @@ export const WORK_STATUS_LABEL: Record<WorkOrderStatus, string> = {
   cancelled: 'Отменено',
 };
 
-/** Допустимые переходы — зеркало backend work_order_service */
+/**
+ * Только операционные переходы. `paid` не выставляется generic transition:
+ * деньги подтверждаются в PaymentDetailSheet и банковском/чековом контуре.
+ */
 export const WORK_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   draft: ['published', 'cancelled'],
   published: ['negotiating', 'approved', 'cancelled'],
@@ -30,27 +41,23 @@ export const WORK_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   approved: ['in_progress', 'cancelled'],
   in_progress: ['review', 'cancelled'],
   review: ['done', 'in_progress'],
-  done: ['paid'],
+  done: [],
   paid: [],
   cancelled: [],
 };
 
-/**
- * Кнопки по роли.
- * P0: done/paid — только заказчик (нельзя «принять свою работу» с графика).
- */
 export function workActions(
   status: WorkOrderStatus,
   role: 'customer' | 'contractor',
-): { label: string; next: WorkOrderStatus }[] {
-  const next = WORK_TRANSITIONS[status] || [];
-  return next
-    .filter((n) => isTransitionAllowedForRole(status, n, role))
-    .map((n) => ({
-      next: n,
-      label: actionLabel(status, n, role),
+): WorkTransitionAction[] {
+  return (WORK_TRANSITIONS[status] || [])
+    .filter((next) => isTransitionAllowedForRole(status, next, role))
+    .map((next) => ({
+      next,
+      label: actionLabel(status, next, role),
+      intent: actionIntent(status, next, role),
     }))
-    .filter((a) => a.label);
+    .filter((action) => action.label);
 }
 
 export function isTransitionAllowedForRole(
@@ -58,26 +65,44 @@ export function isTransitionAllowedForRole(
   to: WorkOrderStatus,
   role: 'customer' | 'contractor',
 ): boolean {
-  if (to === 'done' || to === 'paid') return role === 'customer';
+  if (!(WORK_TRANSITIONS[from] || []).includes(to)) return false;
+  if (to === 'done') return role === 'customer';
   if (to === 'review') return role === 'contractor';
   if (to === 'approved') return role === 'customer';
-  if (from === 'review' && to === 'in_progress') return true; // возврат на доработку — обе роли
-  if (to === 'in_progress' && from === 'approved') return role === 'contractor';
-  if (to === 'published' || to === 'negotiating' || to === 'cancelled') {
-    return role === 'contractor' || role === 'customer';
-  }
-  return true;
+  if (from === 'review' && to === 'in_progress') return true;
+  if (from === 'approved' && to === 'in_progress') return role === 'contractor';
+  if (to === 'published' || to === 'negotiating' || to === 'cancelled') return true;
+  return false;
+}
+
+export function hasCanonicalPaymentAction(
+  status: WorkOrderStatus,
+  role: 'customer' | 'contractor',
+): boolean {
+  return status === 'done' && role === 'customer';
 }
 
 function actionLabel(from: WorkOrderStatus, to: WorkOrderStatus, role: 'customer' | 'contractor'): string {
   if (to === 'published') return 'Опубликовать';
   if (to === 'negotiating') return 'Обсудить в чате';
   if (to === 'approved') return 'Согласовать';
-  if (from === 'review' && to === 'in_progress') return 'Вернуть на доработку';
+  if (from === 'review' && to === 'in_progress') {
+    return role === 'customer' ? 'Вернуть на доработку' : 'Вернуть в работу';
+  }
   if (to === 'in_progress') return 'Начать работу';
-  if (to === 'review') return 'На приёмку';
+  if (to === 'review') return 'Передать на приёмку';
   if (to === 'done') return 'Принять результат';
-  if (to === 'paid') return 'Подтвердить оплату';
-  if (to === 'cancelled') return 'Отменить';
+  if (to === 'cancelled') return 'Отменить работу';
   return to;
+}
+
+function actionIntent(
+  from: WorkOrderStatus,
+  to: WorkOrderStatus,
+  role: 'customer' | 'contractor',
+): WorkActionIntent {
+  if (to === 'cancelled') return 'destructive';
+  if (to === 'negotiating') return 'secondary';
+  if (from === 'review' && to === 'in_progress' && role === 'customer') return 'secondary';
+  return 'primary';
 }
