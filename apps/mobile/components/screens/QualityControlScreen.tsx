@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -16,9 +16,14 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { objectTabRoute, tabsRoute, type OsRole } from '@/constants/osSections';
-import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
+import { alertWarrantyClosed } from '@/lib/warrantyNav';
 import { reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import {
+  issueActions,
+  issueWaitingHint,
+  type IssueTransitionAction,
+} from '@/lib/domain/issueLifecycle';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -33,7 +38,7 @@ function statusLabel(status: string) {
     case 'open': return 'Открыто';
     case 'assigned': return 'Назначено';
     case 'in_progress': return 'В работе';
-    case 'fixed': return 'Исправлено';
+    case 'fixed': return 'Исправлено · ждёт проверки';
     case 'review': return 'Проверка';
     case 'closed': return 'Закрыто';
     case 'rejected': return 'Отклонено';
@@ -66,48 +71,62 @@ function dueLabel(value?: string | null) {
 
 function IssueCard({
   item,
-  onClose,
-  acting,
-  focused,
-  canClose,
-  closeHint,
-  closeLabel = 'Закрыть',
+  actions,
+  onTransition,
+  onWarrantyClose,
   onEscalate,
-  role = 'customer',
+  mutationKey,
+  busy,
+  focused,
+  waitingHint,
+  role,
 }: {
   item: ProjectIssue;
-  onClose: (issue: ProjectIssue) => void;
+  actions: IssueTransitionAction[];
+  onTransition: (issue: ProjectIssue, action: IssueTransitionAction) => void;
+  onWarrantyClose?: (issue: ProjectIssue) => void;
   onEscalate?: (issue: ProjectIssue) => void;
-  acting: boolean;
+  mutationKey: string | null;
+  busy: boolean;
   focused?: boolean;
-  canClose: boolean;
-  closeHint?: string;
-  closeLabel?: string;
-  role?: OsRole;
+  waitingHint?: string | null;
+  role: OsRole;
 }) {
   const isClosed = item.status === 'closed';
   const tone = severityTone(item.severity);
+  const isWarranty = (item.title || '').startsWith('[Гарантия]');
+  const dateLabel = dueLabel(item.due_at);
+
   return (
     <View style={[styles.issueCard, isClosed && styles.closedCard, focused && styles.focusedCard]}>
       <View style={styles.issueHeader}>
         <View style={styles.issueMain}>
           <Text style={styles.issueTitle}>{item.title}</Text>
-          <Text style={styles.issueMeta}>{statusLabel(item.status)} · {severityLabel(item.severity)}{item.floor_plan_id ? ' · на плане' : ''}{dueLabel(item.due_at) ? ` · до ${dueLabel(item.due_at)}` : ''}</Text>
+          <Text style={styles.issueMeta}>
+            {statusLabel(item.status)} · {severityLabel(item.severity)}
+            {item.floor_plan_id ? ' · на плане' : ''}
+            {dateLabel ? ` · до ${dateLabel}` : ''}
+          </Text>
         </View>
-        <View style={[styles.badge, { borderColor: tone }]}> 
+        <View style={[styles.badge, { borderColor: tone }]}>
           <Text style={[styles.badgeText, { color: tone }]}>{severityLabel(item.severity)}</Text>
         </View>
       </View>
+
       {item.description ? <Text style={styles.issueText}>{item.description}</Text> : null}
       {mediaUrl(item.photo_url) ? (
         <Image source={{ uri: mediaUrl(item.photo_url)! }} style={styles.issuePhoto} resizeMode="cover" />
       ) : null}
+
+      {waitingHint ? <Text style={styles.waitingHint}>{waitingHint}</Text> : null}
+
       <View style={styles.issueFooter}>
         {item.stage_id ? (
           <PrimaryButton
             title="Этап"
             variant="outline"
             compact
+            disabled={busy}
             onPress={() =>
               pushOsNav(
                 { pathname: '/stage/[id]', params: { id: item.stage_id! } },
@@ -122,19 +141,46 @@ function IssueCard({
             title="План"
             variant="outline"
             compact
-            onPress={() =>
-              // W121 + Investor P2: слой «Планировка» (пины punch видны)
-              pushOsNav(objectTabRoute(role, 'plan', 'floor'), '/quality-control', role)
-            }
+            disabled={busy}
+            onPress={() => pushOsNav(objectTabRoute(role, 'plan', 'floor'), '/quality-control', role)}
           />
         ) : null}
-        {!isClosed && canClose ? (
-          <PrimaryButton title={closeLabel} compact onPress={() => onClose(item)} loading={acting} disabled={acting} />
+
+        {actions.map((action) => {
+          const key = `${item.id}:${action.target}`;
+          return (
+            <PrimaryButton
+              key={action.target}
+              title={action.label}
+              variant={action.intent === 'secondary' ? 'outline' : 'primary'}
+              compact
+              loading={mutationKey === key}
+              disabled={busy && mutationKey !== key}
+              onPress={() => onTransition(item, action)}
+            />
+          );
+        })}
+
+        {isWarranty && onWarrantyClose ? (
+          <PrimaryButton
+            title="Закрыть гарантию"
+            compact
+            loading={mutationKey === `${item.id}:warranty-close`}
+            disabled={busy && mutationKey !== `${item.id}:warranty-close`}
+            onPress={() => onWarrantyClose(item)}
+          />
         ) : null}
+
         {!isClosed && onEscalate && !(item.title || '').startsWith('[Спор]') ? (
-          <PrimaryButton title="Спор" variant="outline" compact onPress={() => onEscalate(item)} disabled={acting} />
+          <PrimaryButton
+            title="В спор"
+            variant="outline"
+            compact
+            loading={mutationKey === `${item.id}:escalate`}
+            disabled={busy && mutationKey !== `${item.id}:escalate`}
+            onPress={() => onEscalate(item)}
+          />
         ) : null}
-        {!isClosed && !canClose && closeHint ? <Text style={styles.issueMeta}>{closeHint}</Text> : null}
       </View>
     </View>
   );
@@ -142,14 +188,16 @@ function IssueCard({
 
 export function QualityControlScreen() {
   const { user, activeProject, readOnly } = useRenova();
-  const isCustomer = user?.role === 'customer';
   const params = useLocalSearchParams<{ issueId?: string }>();
   const focusIssueId = Array.isArray(params.issueId) ? params.issueId[0] : params.issueId;
   const [items, setItems] = useState<ProjectIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [actingId, setActingId] = useState<string | null>(null);
+  const [mutationKey, setMutationKey] = useState<string | null>(null);
+  const mutationRef = useRef(false);
+  const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
+  const busy = mutationKey !== null;
 
   const load = useCallback(async () => {
     if (!user || !activeProject) return;
@@ -157,17 +205,17 @@ export function QualityControlScreen() {
       const result = await api.listIssues(user.id, activeProject.id);
       setItems(result);
       setLoadError(false);
-    } catch (e) {
-      reportError('QualityControl.load', e);
+    } catch (error) {
+      reportError('QualityControl.load', error);
       setLoadError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, activeProject]);
-  useProjectDataReload(load);
+  }, [user?.id, activeProject?.id]);
 
-  useEffect(() => { load(); }, [load]);
+  useProjectDataReload(load);
+  useEffect(() => { void load(); }, [load]);
 
   const openIssues = useMemo(() => {
     const open = items.filter((item) => item.status !== 'closed');
@@ -175,53 +223,76 @@ export function QualityControlScreen() {
     return [...open].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId));
   }, [items, focusIssueId]);
   const closedIssues = useMemo(() => items.filter((item) => item.status === 'closed'), [items]);
-  const criticalIssues = useMemo(() => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'), [openIssues]);
+  const criticalIssues = useMemo(
+    () => openIssues.filter((item) => item.severity === 'critical' || item.severity === 'high'),
+    [openIssues],
+  );
+  const waitingVerification = useMemo(
+    () => openIssues.filter((item) => item.status === 'fixed' || item.status === 'review').length,
+    [openIssues],
+  );
 
-  const createWarranty = async () => {
-    if (!user || !activeProject || readOnly || !isCustomer) return;
-    setActingId('warranty-new');
+  const runMutation = async (
+    key: string,
+    offlineLabel: string,
+    operation: () => Promise<unknown>,
+  ): Promise<boolean> => {
+    if (!user || !activeProject || mutationRef.current) return false;
+    mutationRef.current = true;
+    setMutationKey(key);
     try {
-      const wRes = await api.createWarrantyClaim(user.id, activeProject.id, {
-        title: 'Гарантийное обращение',
-        description: 'Создано из Контроля качества',
-      });
+      await operation();
       await load();
       await syncProjectSideEffects({ user, project: activeProject });
-      alertWarrantyCreated(isCustomer ? 'customer' : 'contractor', wRes);
-    } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Гарантийный тикет');
-      else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать');
+      return true;
+    } catch (error: unknown) {
+      if (isOfflineQueued(error)) {
+        notifyOfflineQueued(offlineLabel);
+        return true;
+      }
+      showActionConfirm({
+        title: 'Статус не изменён',
+        message: error instanceof Error ? error.message : 'Повторите операцию ещё раз.',
+      });
+      return false;
     } finally {
-      setActingId(null);
+      mutationRef.current = false;
+      setMutationKey(null);
     }
   };
 
-  const escalateIssue = (issue: ProjectIssue) => {
-    if (!user || !activeProject || readOnly) return;
-    // Clarity W: pre-confirm (раньше sheet был только post-success)
+  const transitionIssue = (issue: ProjectIssue, action: IssueTransitionAction) => {
+    if (readOnly || !user || !activeProject || mutationRef.current) return;
     showActionConfirm({
-      title: 'Эскалировать в спор?',
-      message: `«${issue.title}». Стороны получат уведомление.`,
-      primaryLabel: 'В спор',
+      title: action.confirmTitle,
+      message: `«${issue.title}» → ${statusLabel(action.target)}`,
+      primaryLabel: action.label,
+      onPrimary: () => {
+        void runMutation(
+          `${issue.id}:${action.target}`,
+          'Изменение замечания',
+          () => api.transitionIssue(user.id, activeProject.id, issue.id, action.target),
+        );
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const closeWarranty = (issue: ProjectIssue) => {
+    if (readOnly || role !== 'customer' || !user || !activeProject || mutationRef.current) return;
+    showActionConfirm({
+      title: 'Закрыть гарантию?',
+      message: `«${issue.title}»`,
+      primaryLabel: 'Закрыть',
       onPrimary: () => {
         void (async () => {
-          try {
-            await api.escalateIssue(user.id, activeProject.id, issue.id);
-            await load();
-            await syncProjectSideEffects({ user, project: activeProject });
-            showActionConfirm({
-              title: 'Спор',
-              message: 'Замечание эскалировано — стороны уведомлены',
-            });
-          } catch (e) {
-            if (isOfflineQueued(e)) notifyOfflineQueued('Эскалация');
-            else {
-              showActionConfirm({
-                title: 'Ошибка',
-                message: e instanceof Error ? e.message : 'Не удалось эскалировать',
-              });
-            }
-          }
+          const changed = await runMutation(
+            `${issue.id}:warranty-close`,
+            'Закрытие гарантии',
+            () => api.closeWarrantyClaim(user.id, activeProject.id, issue.id),
+          );
+          if (changed) alertWarrantyClosed('customer');
         })();
       },
       secondaryLabel: 'Отмена',
@@ -229,36 +300,18 @@ export function QualityControlScreen() {
     });
   };
 
-  const closeIssue = (issue: ProjectIssue) => {
-    // W46/W62: гарантию закрывает только заказчик
-    if (!user || !activeProject || readOnly) return;
-    if ((issue.title || '').startsWith('[Гарантия]') && user.role !== 'customer') return;
-    const isWarranty = (issue.title || '').startsWith('[Гарантия]');
-    const isContractorFix = !isCustomer && !isWarranty && !(issue.title || '').startsWith('[Спор]');
+  const escalateIssue = (issue: ProjectIssue) => {
+    if (readOnly || !user || !activeProject || mutationRef.current) return;
     showActionConfirm({
-      title: isWarranty ? 'Закрыть гарантию?' : isContractorFix ? 'Отметить исправленным?' : 'Закрыть замечание?',
-      message: `«${issue.title}»`,
-      primaryLabel: isContractorFix ? 'Исправлено' : 'Закрыть',
+      title: 'Эскалировать в спор?',
+      message: `«${issue.title}». Стороны получат уведомление.`,
+      primaryLabel: 'В спор',
       onPrimary: () => {
-        void (async () => {
-          setActingId(issue.id);
-          try {
-            if (isWarranty) {
-              await api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
-              await load();
-              await syncProjectSideEffects({ user, project: activeProject });
-              alertWarrantyClosed(user.role === 'contractor' ? 'contractor' : 'customer');
-            } else {
-              await api.closeIssue(user.id, activeProject.id, issue.id);
-              await load();
-              await syncProjectSideEffects({ user, project: activeProject });
-            }
-          } catch (e) {
-            if (isOfflineQueued(e)) notifyOfflineQueued('Закрытие замечания');
-          } finally {
-            setActingId(null);
-          }
-        })();
+        void runMutation(
+          `${issue.id}:escalate`,
+          'Эскалация',
+          () => api.escalateIssue(user.id, activeProject.id, issue.id),
+        );
       },
       secondaryLabel: 'Отмена',
       onSecondary: () => undefined,
@@ -266,7 +319,6 @@ export function QualityControlScreen() {
   };
 
   if (!user || !activeProject) {
-    const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
     return (
       <View style={styles.center}>
         <EmptyActionState
@@ -290,7 +342,6 @@ export function QualityControlScreen() {
   }
 
   if (loadError) {
-    const role: OsRole = user.role === 'contractor' ? 'contractor' : 'customer';
     return (
       <View style={styles.center}>
         <LoadErrorState
@@ -307,81 +358,80 @@ export function QualityControlScreen() {
     );
   }
 
+  const renderIssue = (item: ProjectIssue) => {
+    const isWarranty = (item.title || '').startsWith('[Гарантия]');
+    const actions = readOnly ? [] : issueActions(item.status, role, isWarranty);
+    return (
+      <IssueCard
+        key={item.id}
+        focused={item.id === focusIssueId}
+        item={item}
+        actions={actions}
+        onTransition={transitionIssue}
+        onWarrantyClose={!readOnly && role === 'customer' && isWarranty ? closeWarranty : undefined}
+        onEscalate={!readOnly && item.status !== 'closed' ? escalateIssue : undefined}
+        mutationKey={mutationKey}
+        busy={busy}
+        waitingHint={issueWaitingHint(item.status, role, isWarranty)}
+        role={role}
+      />
+    );
+  };
+
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}
     >
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}><Text style={styles.back}>‹ Назад</Text></Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Назад"
+          onPress={() => router.back()}
+          style={styles.backAction}
+        >
+          <Text style={styles.back}>‹ Назад</Text>
+        </Pressable>
         <Text style={styles.title}>Контроль качества</Text>
-        <Text style={styles.subtitle}>Замечания, дефекты и контроль устранения по проекту.</Text>
+        <Text style={styles.subtitle}>Исправление → проверка заказчика → закрытие или доработка.</Text>
         <OfflineSyncStatus compact />
       </View>
 
       {readOnly ? (
         <View style={styles.noteCard}>
-          <Text style={styles.noteText}>Режим просмотра: можно анализировать замечания, но нельзя закрывать их.</Text>
+          <Text style={styles.noteText}>Режим просмотра: можно анализировать замечания, но нельзя менять их статус.</Text>
         </View>
       ) : null}
 
       <View style={styles.summaryGrid}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryValue}>{openIssues.length}</Text>
-          <Text style={styles.summaryLabel}>открыто</Text>
+          <Text style={styles.summaryLabel}>в работе</Text>
         </View>
         <View style={styles.summaryCard}>
-          <Text style={[styles.summaryValue, { color: criticalIssues.length ? RenovaTheme.colors.dangerText : RenovaTheme.colors.successText }]}>{criticalIssues.length}</Text>
+          <Text style={[styles.summaryValue, { color: criticalIssues.length ? RenovaTheme.colors.dangerText : RenovaTheme.colors.successText }]}>
+            {criticalIssues.length}
+          </Text>
           <Text style={styles.summaryLabel}>критично</Text>
         </View>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{closedIssues.length}</Text>
-          <Text style={styles.summaryLabel}>закрыто</Text>
+          <Text style={styles.summaryValue}>{waitingVerification}</Text>
+          <Text style={styles.summaryLabel}>на проверке</Text>
         </View>
       </View>
 
       <View style={styles.cardBlock}>
         <Text style={styles.sectionTitle}>Требуют внимания</Text>
-        {openIssues.length ? openIssues.map((item) => (
-          <IssueCard
-            key={item.id}
-            focused={item.id === focusIssueId}
-            item={item}
-            onClose={closeIssue} onEscalate={escalateIssue}
-            acting={actingId === item.id}
-            canClose={
-              !readOnly
-              && item.status !== 'fixed'
-              && (!(item.title || '').startsWith('[Гарантия]') || Boolean(isCustomer))
-            }
-            closeHint={
-              (item.title || '').startsWith('[Гарантия]') && !isCustomer
-                ? 'Гарантию закрывает заказчик'
-                : item.status === 'fixed' && !isCustomer
-                  ? 'Ждёт подтверждения заказчика'
-                  : undefined
-            }
-            closeLabel={!isCustomer && !(item.title || '').startsWith('[Гарантия]') ? 'Исправлено' : 'Закрыть'}
-            role={isCustomer ? 'customer' : 'contractor'}
-          />
-        )) : <Text style={styles.emptyText}>Открытых замечаний нет. Редкий случай, когда тишина — хороший KPI.</Text>}
+        {openIssues.length
+          ? openIssues.map(renderIssue)
+          : <Text style={styles.emptyText}>Открытых замечаний нет.</Text>}
       </View>
 
       {closedIssues.length ? (
         <View style={styles.cardBlock}>
           <Text style={styles.sectionTitle}>Закрытые</Text>
-          {closedIssues.slice(0, 5).map((item) => (
-            <IssueCard
-              key={item.id}
-              focused={item.id === focusIssueId}
-              item={item}
-              onClose={closeIssue} onEscalate={escalateIssue}
-              acting={false}
-              canClose={false}
-              role={isCustomer ? 'customer' : 'contractor'}
-            />
-          ))}
+          {closedIssues.slice(0, 5).map(renderIssue)}
         </View>
       ) : null}
     </ScrollView>
@@ -393,10 +443,10 @@ const styles = StyleSheet.create({
   content: { padding: RenovaTheme.spacing.lg, paddingBottom: 32, gap: RenovaTheme.spacing.md },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8, backgroundColor: RenovaTheme.colors.background },
   header: { gap: 4 },
-  back: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.primaryMuted, fontWeight: RenovaTheme.fontWeight.semibold },
-  title: { fontSize: RenovaTheme.fontSize.h1, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
-  subtitle: { fontSize: RenovaTheme.fontSize.body, lineHeight: 20, color: RenovaTheme.colors.textMuted },
-  /** Clarity K: спокойные контейнеры вместо card-стека */
+  backAction: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', alignSelf: 'flex-start' },
+  back: { ...screenTypography.listLink, marginTop: 0 },
+  title: { ...screenTypography.hero },
+  subtitle: { ...screenTypography.listMeta, lineHeight: 20 },
   noteCard: { ...listRowStyles.metricCell, alignItems: 'stretch', backgroundColor: RenovaTheme.colors.surfaceMuted, padding: RenovaTheme.spacing.md },
   noteText: { ...screenTypography.empty },
   summaryGrid: { ...listRowStyles.summaryRow },
@@ -416,19 +466,20 @@ const styles = StyleSheet.create({
   focusedCard: {
     borderColor: RenovaTheme.colors.primary,
     borderWidth: 2,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: RenovaTheme.colors.infoBg,
+    paddingHorizontal: RenovaTheme.spacing.sm,
   },
-  closedCard: { opacity: 0.7 },
+  closedCard: { opacity: 0.78 },
   issuePhoto: { width: '100%', height: 160, borderRadius: RenovaTheme.radius.md, backgroundColor: RenovaTheme.colors.surfaceMuted },
   issueHeader: { flexDirection: 'row', gap: RenovaTheme.spacing.sm, justifyContent: 'space-between', alignItems: 'flex-start' },
   issueMain: { flex: 1, minWidth: 0 },
-  issueTitle: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.text, fontWeight: RenovaTheme.fontWeight.extrabold },
-  issueMeta: { marginTop: 3, fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted },
-  issueText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
+  issueTitle: { ...screenTypography.listTitle },
+  issueMeta: { ...screenTypography.listMeta },
+  issueText: { ...screenTypography.listMeta, lineHeight: 18 },
+  waitingHint: { ...screenTypography.empty, color: RenovaTheme.colors.warningText },
   issueFooter: { flexDirection: 'row', flexWrap: 'wrap', gap: RenovaTheme.spacing.sm },
   badge: { borderWidth: 1, borderRadius: RenovaTheme.radius.pill, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: RenovaTheme.colors.surface },
-  badgeText: { fontSize: RenovaTheme.fontSize.tiny, fontWeight: RenovaTheme.fontWeight.extrabold },
-  emptyText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  stateTitle: { fontSize: RenovaTheme.fontSize.h3, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text, textAlign: 'center' },
-  stateText: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, textAlign: 'center', lineHeight: 18 },
+  badgeText: { ...screenTypography.metricLabel },
+  emptyText: { ...screenTypography.empty, lineHeight: 18 },
+  stateText: { ...screenTypography.empty, textAlign: 'center', lineHeight: 18 },
 });

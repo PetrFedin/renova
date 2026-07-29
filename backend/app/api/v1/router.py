@@ -8,7 +8,7 @@ from app.api.v1 import (
     project_checklists, checklist_templates, stage_reactions, articles, analytics, admin,
     audit, subscription, teams, export, push, articles_admin, calendar, change_orders,
     chats, estimate, fns, media, notifications, payments, projects, receipts, room_requests,
-    rooms, stages_ext, project_work_schedule,
+    rooms, stages_ext, project_work_schedule, issue_transitions,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -26,6 +26,7 @@ api_router.include_router(work_types.router)
 # --- project execution ---
 api_router.include_router(work_orders.router)
 api_router.include_router(work_acceptances.router)
+api_router.include_router(issue_transitions.router)
 api_router.include_router(budget_planner.router)
 api_router.include_router(activity.router)
 api_router.include_router(rework_sla.router)
