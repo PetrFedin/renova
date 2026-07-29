@@ -23,6 +23,10 @@ jobs:
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/financialFormIntegrity.test.ts
+      - name: Financial create idempotency contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/financialCreateIdempotency.test.ts
       - name: Focus-aware reload contracts
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
@@ -57,7 +61,7 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-          poetry run pytest tests/test_issue_transition_integrity.py -q
+          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py -q
           export ENVIRONMENT=development
           export DATABASE_URL=sqlite+aiosqlite:///./ci.db
           export PUBLIC_BASE_URL=http://127.0.0.1:8100
