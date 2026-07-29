@@ -61,9 +61,10 @@ export function BankStatementImportSheet({
         api.importBankStatement(userId, projectId, csvText, { create_expenses: true })
           .then(async (r2) => {
             await sync();
+            const replayed = r2.expenses_replayed ?? 0;
             showActionConfirm({
               title: 'Бюджет',
-              message: `Создано расходов: ${r2.expenses_created ?? 0}.`,
+              message: `Создано расходов: ${r2.expenses_created ?? 0} · уже были учтены: ${replayed}.`,
               primaryLabel: 'К расходам',
               onPrimary: goExpenses,
               secondaryLabel: 'Готово',
@@ -102,13 +103,14 @@ export function BankStatementImportSheet({
       const pendingIds = (res.matches || [])
         .filter((m) => m.payment_status === 'pending')
         .map((m) => m.payment_id);
+      const confirmableIds = role === 'customer' ? pendingIds : [];
       const unmatched = res.unmatched_rows || 0;
       const summary = `Строк: ${res.parsed_rows} · совпало: ${res.matched} · без пары: ${unmatched}`;
 
-      if (!pendingIds.length) {
+      if (!confirmableIds.length) {
         showActionConfirm({
           title: 'Импорт выписки',
-          message: summary,
+          message: role === 'customer' ? summary : `${summary}\n\nПодтверждает оплаты заказчик.`,
           actions: [
             ...(res.matched > 0
               ? [{ label: 'К оплатам', onPress: goPayments }]
@@ -119,22 +121,31 @@ export function BankStatementImportSheet({
         return;
       }
 
+      const matchToken = res.match_token;
+      if (!matchToken) {
+        showActionConfirm({
+          title: 'Импорт выписки',
+          message: 'Сервер не выдал подтверждение матча. Загрузите выписку снова.',
+        });
+        return;
+      }
+
       showActionConfirm({
         title: 'Подтвердить оплаты?',
-        message: `${summary}\n\nПодтвердить ${pendingIds.length} pending-оплат(ы)? Требуется приёмка этапа (gate).`,
+        message: `${summary}\n\nПодтвердить ${confirmableIds.length} pending-оплат(ы)? Требуется приёмка этапа (gate).`,
         actions: [
           {
             label: 'Подтвердить',
             onPress: () => {
               setBusy('confirm');
-              api.confirmBankStatementMatches(userId, projectId, pendingIds)
+              api.confirmBankStatementMatches(userId, projectId, confirmableIds, matchToken)
                 .then(async (r) => {
                   await sync();
                   showActionConfirm({
                     title: 'Выписка → оплаты',
-                    message: `Подтверждено: ${r.confirmed_count} · заблокировано gate: ${r.blocked_count}`,
+                    message: `Подтверждено: ${r.confirmed_count} · уже подтверждено: ${r.replayed_count} · заблокировано gate: ${r.blocked_count}`,
                     actions: [
-                      ...(r.confirmed_count > 0
+                      ...(r.confirmed_count > 0 || r.replayed_count > 0
                         ? [{ label: 'К оплатам', onPress: goPayments }]
                         : []),
                       { label: 'Дальше', onPress: () => askExpenses(text, unmatched) },
