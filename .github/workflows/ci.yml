@@ -31,6 +31,11 @@ jobs:
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/projectSideEffectsCoalescing.test.ts
+      - name: Inbox websocket reload contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/trailingReloadScheduler.test.ts
+          npx tsx apps/mobile/lib/inboxWsReloadContract.test.ts
 
   e2e:
     runs-on: ubuntu-latest
