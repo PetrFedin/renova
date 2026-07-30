@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User
 from app.services.fns import FnsNpdError, check_taxpayer_npd_status
@@ -47,8 +48,8 @@ async def fns_health(_user: User = Depends(get_current_user)):
     readiness = oauth.oauth_readiness()
     return {
         **receipt,
-        "npd_status_url_https": str(receipt.get("npd_status_url_set", False)),
-        "moy_nalog_enabled": bool(readiness.ready),
+        "npd_status_url_https": (settings.fns_npd_status_url or "").strip().lower().startswith("https://"),
+        "moy_nalog_enabled": readiness.ready,
         "moy_nalog_missing": list(readiness.missing),
     }
 
@@ -68,17 +69,12 @@ class CheckNpdResponse(BaseModel):
 
 
 @router.post("/check-npd", response_model=CheckNpdResponse)
-async def check_npd(
-    body: CheckNpdRequest,
-    _user: User = Depends(get_current_user),
-) -> CheckNpdResponse:
-    """Live NPD check. Unknown provider values never become a verified badge."""
+async def check_npd(body: CheckNpdRequest, _user: User = Depends(get_current_user)) -> CheckNpdResponse:
     try:
         result = await check_taxpayer_npd_status(body.inn, body.request_date)
     except FnsNpdError as error:
         raise _fns_error(error) from error
-    badge = "verified" if result["is_npd"] else "not_npd"
-    return CheckNpdResponse(**result, badge=badge)
+    return CheckNpdResponse(**result, badge="verified" if result["is_npd"] else "not_npd")
 
 
 @router.post("/verify-me", response_model=CheckNpdResponse)
@@ -87,7 +83,6 @@ async def verify_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> CheckNpdResponse:
-    """Persist status only after a schema-valid live FNS response."""
     try:
         result = await check_taxpayer_npd_status(body.inn, body.request_date)
     except FnsNpdError as error:
@@ -95,8 +90,7 @@ async def verify_me(
     user.inn = result["inn"]
     user.npd_verified = result["is_npd"] is True
     await db.commit()
-    badge = "verified" if result["is_npd"] else "not_npd"
-    return CheckNpdResponse(**result, badge=badge)
+    return CheckNpdResponse(**result, badge="verified" if result["is_npd"] else "not_npd")
 
 
 class MoyNalogLinkResponse(BaseModel):
@@ -108,7 +102,6 @@ class MoyNalogLinkResponse(BaseModel):
 
 @router.post("/moy-nalog/link", response_model=MoyNalogLinkResponse)
 async def link_moy_nalog(_user: User = Depends(get_current_user)):
-    """Deprecated legacy route: a flag cannot replace provider OAuth."""
     raise HTTPException(
         410,
         detail={
@@ -123,7 +116,6 @@ async def unlink_moy_nalog(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove the local encrypted token before claiming the connection is revoked."""
     from app.services import moy_nalog_oauth as oauth
 
     if oauth.oauth_ready():
@@ -136,7 +128,6 @@ async def unlink_moy_nalog(
     await db.commit()
     return MoyNalogLinkResponse(
         linked=False,
-        mode="enabled",
         status="revoked",
         message="Локальная OAuth-связь и сохранённые токены удалены.",
     )
@@ -161,7 +152,6 @@ async def moy_nalog_oauth_start(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a one-time shared OAuth state only when the full integration is ready."""
     from app.services import moy_nalog_oauth as oauth
 
     readiness = oauth.oauth_readiness()
@@ -203,7 +193,6 @@ async def moy_nalog_oauth_callback(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Set connected only after one-time state, token exchange, encryption and storage."""
     from app.services import moy_nalog_oauth as oauth
 
     if body.demo_complete:
@@ -217,8 +206,7 @@ async def moy_nalog_oauth_callback(
             raise oauth.MoyNalogStateError("OAuth state недействителен, истёк или принадлежит другому пользователю")
         tokens = await oauth.exchange_code_for_tokens(body.code)
         await oauth.store_tokens(user.id, tokens)
-        active = await oauth.connection_active(user.id)
-        if not active:
+        if not await oauth.connection_active(user.id):
             raise oauth.MoyNalogStoreUnavailable("Сохранённый OAuth token не подтверждён")
     except oauth.MoyNalogOAuthError as error:
         user.moy_nalog_linked = False
@@ -231,7 +219,6 @@ async def moy_nalog_oauth_callback(
     await db.commit()
     return MoyNalogLinkResponse(
         linked=True,
-        mode="enabled",
         status="connected",
         message="OAuth подтверждён; access token зашифрован и сохранён с ограниченным TTL.",
     )
