@@ -10,6 +10,10 @@ PRODUCTION_SETTINGS = {
     "database_url": "postgresql+asyncpg://renova:password@db.example.com/renova",
     "public_base_url": "https://api.example.com",
     "secret_key": "production-unique-secret-32-characters",
+    "redis_url": "rediss://redis.example.com:6379/0",
+    "twilio_sid": "synthetic-account-id-for-tests",
+    "twilio_token": "synthetic-provider-token-for-tests",
+    "twilio_from": "+74951234567",
 }
 
 STAGING_SETTINGS = {
@@ -88,6 +92,7 @@ def test_runtime_paths_use_fail_closed_policy_resolution():
     backend = Path(__file__).resolve().parents[1]
     main_source = (backend / "app" / "main.py").read_text(encoding="utf-8")
     session_source = (backend / "app" / "db" / "session.py").read_text(encoding="utf-8")
+    auth_source = (backend / "app" / "api" / "v1" / "auth.py").read_text(encoding="utf-8")
 
     assert "resolve_policy_flag(" in main_source
     assert "policy_allows=policy.allow_demo_seed" in main_source
@@ -98,3 +103,7 @@ def test_runtime_paths_use_fail_closed_policy_resolution():
     assert "policy_allows=policy.allow_create_all" in session_source
     assert "return bool(settings.allow_create_all)" not in session_source
     assert "return bool(settings.allow_demo_seed)" not in main_source
+
+    assert "resolve_policy_flag(" in auth_source
+    assert "policy_allows=policy.allow_demo_seed" in auth_source
+    assert "return bool(settings.allow_demo_seed)" not in auth_source
