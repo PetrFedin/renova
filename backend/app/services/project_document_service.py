@@ -195,7 +195,7 @@ async def sign_document(
     content_hash: str | None = None,
     provider: str | None = None,
 ) -> DocumentSignature:
-    """Подпись через e-sign registry (in_app сегодня; внешние → unavailable)."""
+    """Create one canonical signature request for a signer/version/provider."""
     import json
 
     from app.services.esign.base import SignRequest
@@ -205,7 +205,7 @@ async def sign_document(
     if not version:
         raise ValueError("document_has_no_version")
 
-    provider_name = provider or signature_type or "in_app"
+    provider_name = (provider or signature_type or "in_app").strip().lower()
     try:
         esign = get_provider(provider_name)
     except KeyError as error:
@@ -214,19 +214,40 @@ async def sign_document(
     if not esign.is_available():
         raise ValueError(f"provider_unavailable:{esign.name}")
 
+    resolved_hash = content_hash or version.checksum_sha256
+    if esign.name != "in_app" and not resolved_hash:
+        raise ValueError("external_signature_content_hash_required")
+
+    existing_query = select(DocumentSignature).where(
+        DocumentSignature.document_id == doc.id,
+        DocumentSignature.version_id == version.id,
+        DocumentSignature.signer_user_id == signer_user_id,
+        DocumentSignature.provider_name == esign.name,
+        DocumentSignature.status.in_(("pending", "signed")),
+    )
+    try:
+        existing_query = existing_query.with_for_update()
+    except Exception:
+        pass
+    existing = (await db.execute(existing_query)).scalars().first()
+    if existing:
+        return existing
+
     result = await esign.create_signature(
         SignRequest(
             document_id=doc.id,
             version_id=version.id,
             signer_user_id=signer_user_id,
             signer_role=signer_role,
-            content_hash=content_hash or version.checksum_sha256,
+            content_hash=resolved_hash,
             title=doc.title,
             mime_type=version.mime_type,
         )
     )
     if result.status not in ("signed", "pending"):
         raise ValueError(result.error or f"sign_failed:{result.status}")
+    if result.status == "pending" and not result.external_id:
+        raise ValueError("external_signature_id_required")
 
     signature = DocumentSignature(
         document_id=doc.id,
@@ -236,7 +257,7 @@ async def sign_document(
         signature_type=result.signature_type or signature_type,
         provider_name=result.provider_name,
         provider_external_id=result.external_id,
-        content_hash=content_hash or version.checksum_sha256,
+        content_hash=resolved_hash,
         status=result.status,
         signed_at=utc_now() if result.status == "signed" else None,
         meta_json=json.dumps(result.meta, ensure_ascii=False) if result.meta else None,
@@ -434,28 +455,42 @@ async def complete_external_signature(
     *,
     provider_name: str,
     external_id: str,
-    status: str = "signed",
+    status: str,
 ) -> DocumentSignature | None:
-    """Wave 3f: webhook завершает pending подпись внешнего провайдера + activate doc."""
-    signature = (
-        await db.execute(
-            select(DocumentSignature).where(
-                DocumentSignature.provider_name == provider_name,
-                DocumentSignature.provider_external_id == external_id,
-            )
-        )
-    ).scalar_one_or_none()
+    """Apply one monotonic provider transition to a pending external signature."""
+    if status not in {"pending", "signed", "failed"}:
+        raise ValueError("invalid_external_signature_status")
+    query = select(DocumentSignature).where(
+        DocumentSignature.provider_name == provider_name,
+        DocumentSignature.provider_external_id == external_id,
+    )
+    try:
+        query = query.with_for_update()
+    except Exception:
+        pass
+    signature = (await db.execute(query)).scalar_one_or_none()
     if not signature:
         return None
-    if status == "signed" and signature.status == "signed" and signature.signed_at:
+
+    current = str(signature.status or "")
+    if current in {"signed", "failed"}:
+        if current == status:
+            return signature
+        raise ValueError("signature_final_state_conflict")
+    if current != "pending":
+        raise ValueError("signature_not_pending")
+    if status == "pending":
         return signature
+
     signature.status = status
-    if status == "signed" and not signature.signed_at:
+    if status == "signed":
         signature.signed_at = utc_now()
+        signature.revoked_at = None
         doc = await db.get(ProjectDocument, signature.document_id)
         if doc and doc.status == DocumentStatus.draft.value:
             doc.status = DocumentStatus.active.value
-    elif status == "failed" and not signature.revoked_at:
+    else:
         signature.revoked_at = utc_now()
+        signature.signed_at = None
     await db.flush()
     return signature
