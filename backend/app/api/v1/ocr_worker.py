@@ -1,4 +1,4 @@
-"""OCR worker ops endpoints (Wave 3c)."""
+"""Metadata-classification compatibility worker endpoints."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,24 +13,33 @@ router = APIRouter(prefix="/ocr", tags=["ocr"])
 
 @router.get("/worker")
 async def ocr_worker_status(
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Read queue status without claiming or mutating rows."""
     queued = await list_queued_versions(db, limit=100)
     return {
         "mode": settings.document_ocr_mode,
-        "interval_sec": settings.document_ocr_worker_interval_sec,
+        "engine_available": False,
+        "source": "metadata",
+        "content_read": False,
+        "background_worker_enabled": False,
         "queued_count": len(queued),
-        "queued_version_ids": [v.id for v in queued[:20]],
+        "queued_version_ids": [version.id for version in queued[:20]],
     }
 
 
 @router.post("/worker/tick")
 async def ocr_worker_tick(
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Слить очередь queued → done (stub runner). Нужен для async-режима и e2e."""
+    """Drain only legacy metadata jobs; never claim completed OCR."""
     result = await process_queued_batch(db, limit=50)
     await db.commit()
-    return {"ok": True, "mode": settings.document_ocr_mode, **result}
+    return {
+        "ok": True,
+        "mode": settings.document_ocr_mode,
+        "engine_available": False,
+        **result,
+    }
