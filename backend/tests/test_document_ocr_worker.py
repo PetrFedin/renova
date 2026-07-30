@@ -11,7 +11,7 @@ import app.models.entities  # noqa: F401
 import app.models.outbox_runtime  # noqa: F401
 import app.models.work_schedule  # noqa: F401
 from app.services.document_ocr_service import OCR_SUGGESTED, enqueue_ocr
-from app.services.document_ocr_worker import process_queued_batch
+from app.services.document_ocr_worker import list_queued_versions, process_queued_batch
 from app.services.project_document_service import create_document, get_current_version
 
 
@@ -40,6 +40,11 @@ async def test_worker_converts_queue_to_metadata_suggestion_without_auto_type(wo
     assert version is not None
     await enqueue_ocr(worker_db, version)
     await worker_db.commit()
+    assert version.ocr_status == "queued"
+
+    inspected = await list_queued_versions(worker_db, limit=10)
+    assert [row.id for row in inspected] == [version.id]
+    await worker_db.refresh(version)
     assert version.ocr_status == "queued"
 
     result = await process_queued_batch(worker_db, limit=10, apply_type=True)
