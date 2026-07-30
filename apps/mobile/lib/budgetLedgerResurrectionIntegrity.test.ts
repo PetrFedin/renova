@@ -11,6 +11,10 @@ assert.match(service, /if is_source_protected_expense\(existing\):\s*return exis
 assert.match(service, /if expense and is_source_protected_expense\(expense\):\s*return expense/, 'Purchase hydration must stop at protected evidence');
 assert.match(service, /not is_source_protected_expense\(row\)/, 'Stale purchase cleanup must retain protected evidence');
 assert.match(service, /_SOURCE_STATUS_PRIORITY/, 'Duplicate resolution must be status aware');
+assert.match(service, /def _canonical_created_at\(created_at: datetime \| None\) -> float:/, 'Canonical ordering must normalize mixed timestamp awareness');
+assert.match(service, /created_at = created_at\.replace\(tzinfo=timezone\.utc\)/, 'Naive database timestamps must be interpreted deterministically');
+assert.match(service, /created_at\.astimezone\(timezone\.utc\)\.timestamp\(\)/, 'Aware timestamps must be normalized to UTC');
+assert.doesNotMatch(service, /expense\.created_at or datetime\.min/, 'Canonical ordering must not compare naive datetime.min with aware timestamps');
 assert.match(service, /keep = min\(rows, key=_expense_canonical_key\)/, 'Canonical duplicate selection must use evidence priority');
 assert.match(service, /_merge_source_links\(keep, duplicate\)/, 'Canonical row must retain all source identities');
 assert.match(service, /_legacy\._dedupe_linked_expenses = _dedupe_linked_expenses/, 'Legacy internal calls must use protected dedupe');
