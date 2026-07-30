@@ -30,7 +30,8 @@ from app.services.project_document_service import create_document, get_current_v
 
 
 @pytest_asyncio.fixture
-async def ocr_db():
+async def ocr_db(monkeypatch):
+    monkeypatch.setattr(settings, "document_ocr_mode", "metadata")
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -54,6 +55,7 @@ async def test_metadata_suggestion_never_claims_content_ocr_or_auto_applies(ocr_
     version = await get_current_version(ocr_db, doc.id)
     assert version is not None
 
+    # Upload still passes apply_type=True in the legacy route. First call must suggest only.
     await enqueue_and_run(ocr_db, doc, version, apply_type=True)
 
     assert version.ocr_status == OCR_SUGGESTED
@@ -69,7 +71,7 @@ async def test_metadata_suggestion_never_claims_content_ocr_or_auto_applies(ocr_
 
 
 @pytest.mark.asyncio
-async def test_explicit_confirmation_is_the_only_type_transition(ocr_db):
+async def test_second_explicit_apply_request_is_the_only_type_transition(ocr_db):
     doc = await create_document(
         ocr_db,
         project_id="ocr-project-2",
@@ -80,9 +82,12 @@ async def test_explicit_confirmation_is_the_only_type_transition(ocr_db):
         mime_type="application/pdf",
     )
     version = await get_current_version(ocr_db, doc.id)
-    await enqueue_and_run(ocr_db, doc, version)
+    await enqueue_and_run(ocr_db, doc, version, apply_type=False)
+    assert doc.document_type == DocumentType.upload.value
+    assert version.ocr_status == OCR_SUGGESTED
 
-    await confirm_metadata_suggestion(ocr_db, doc, version)
+    # This represents an authenticated second POST with apply_type=true.
+    await enqueue_and_run(ocr_db, doc, version, apply_type=True)
 
     assert doc.document_type == DocumentType.estimate.value
     assert version.ocr_status == OCR_CONFIRMED
@@ -98,6 +103,29 @@ async def test_explicit_confirmation_is_the_only_type_transition(ocr_db):
 
 
 @pytest.mark.asyncio
+async def test_off_mode_does_not_compute_or_apply_suggestions(ocr_db, monkeypatch):
+    monkeypatch.setattr(settings, "document_ocr_mode", "off")
+    doc = await create_document(
+        ocr_db,
+        project_id="ocr-project-off",
+        created_by="ocr-user-off",
+        title="Договор который нельзя анализировать",
+        document_type=DocumentType.upload.value,
+        storage_key="documents/ocr-project-off/contract.pdf",
+        mime_type="application/pdf",
+    )
+    version = await get_current_version(ocr_db, doc.id)
+
+    await enqueue_and_run(ocr_db, doc, version, apply_type=True)
+
+    assert version.ocr_status == OCR_UNAVAILABLE
+    assert version.ocr_suggested_type is None
+    assert version.ocr_confidence is None
+    assert version.ocr_error == "ocr_engine_not_configured"
+    assert doc.document_type == DocumentType.upload.value
+
+
+@pytest.mark.asyncio
 async def test_legacy_stub_states_are_downgraded_idempotently(ocr_db):
     done = DocumentVersion(
         document_id="legacy-doc-done",
@@ -106,16 +134,8 @@ async def test_legacy_stub_states_are_downgraded_idempotently(ocr_db):
         ocr_suggested_type=DocumentType.invoice.value,
         ocr_confidence=0.75,
     )
-    queued = DocumentVersion(
-        document_id="legacy-doc-queued",
-        version_number=1,
-        ocr_status="queued",
-    )
-    processing = DocumentVersion(
-        document_id="legacy-doc-processing",
-        version_number=1,
-        ocr_status="processing",
-    )
+    queued = DocumentVersion(document_id="legacy-doc-queued", version_number=1, ocr_status="queued")
+    processing = DocumentVersion(document_id="legacy-doc-processing", version_number=1, ocr_status="processing")
     ocr_db.add_all([done, queued, processing])
     await ocr_db.flush()
 
