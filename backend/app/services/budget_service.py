@@ -1,7 +1,7 @@
 """Source-hydration integrity layer over the existing budget implementation."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,10 +25,19 @@ def is_source_protected_expense(expense: Expense) -> bool:
     return str(expense.status or "") in SOURCE_PROTECTED_EXPENSE_STATUSES
 
 
-def _expense_canonical_key(expense: Expense) -> tuple[int, datetime, str]:
+def _canonical_created_at(created_at: datetime | None) -> float:
+    """Return a deterministic UTC ordering value for naive, aware, or missing timestamps."""
+    if created_at is None:
+        return float("-inf")
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return created_at.astimezone(timezone.utc).timestamp()
+
+
+def _expense_canonical_key(expense: Expense) -> tuple[int, float, str]:
     return (
         _SOURCE_STATUS_PRIORITY.get(str(expense.status or ""), 5),
-        expense.created_at or datetime.min,
+        _canonical_created_at(expense.created_at),
         expense.id,
     )
 
