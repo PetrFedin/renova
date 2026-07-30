@@ -26,16 +26,16 @@ class DocumentVersionIn(BaseModel):
 
 class DocumentSignIn(BaseModel):
     signature_type: str = "in_app"
-    provider: str | None = None  # Wave 3b: in_app | kontur | goskey
+    provider: str | None = None
     content_hash: str | None = None
 
 
 class OcrRunIn(BaseModel):
-    """Запуск OCR classify (stub sync в MVP)."""
-    apply_type: bool = True  # применить suggested_type к document_type при conf≥0.7
+    """Refresh metadata suggestion; apply_type is explicit user confirmation."""
+
+    apply_type: bool = False
 
 
 class LegalHoldIn(BaseModel):
-    """Wave 3: включить/снять legal hold на документе."""
     enabled: bool = True
-    retention_until: str | None = None  # ISO datetime optional
+    retention_until: str | None = None
