@@ -2,8 +2,9 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -18,6 +19,11 @@ from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.audit import AuditMiddleware
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.db.session import init_db, SessionLocal
+from app.services.storage_service import (
+    InvalidStorageKey,
+    StorageConfigurationError,
+    StorageUnavailable,
+)
 import app.models.entities  # noqa: F401
 import app.models.work_schedule  # noqa: F401
 import app.models.project_documents  # noqa: F401
@@ -164,6 +170,22 @@ if settings.sentry_dsn:
         pass
 
 app = FastAPI(title=settings.app_name, version="0.3.7", lifespan=lifespan)
+
+
+@app.exception_handler(InvalidStorageKey)
+async def invalid_storage_key_handler(_: Request, __: InvalidStorageKey):
+    return JSONResponse(status_code=400, content={"detail": "Некорректный ключ файла"})
+
+
+async def storage_unavailable_handler(_: Request, __: Exception):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Хранилище временно недоступно. Повторите попытку позже."},
+    )
+
+
+app.add_exception_handler(StorageConfigurationError, storage_unavailable_handler)
+app.add_exception_handler(StorageUnavailable, storage_unavailable_handler)
 
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(AuditMiddleware)
