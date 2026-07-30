@@ -13,7 +13,11 @@ const screen = read('apps/mobile/components/screens/schedule/UnifiedScheduleView
 
 assert.match(client, /cacheFallback\?: boolean/, 'truth-sensitive GET must be able to disable durable fallback');
 assert.match(client, /if \(isGet && cacheFallback && canFallbackToCache\(error\)\)/, 'cache fallback must be explicit');
-assert.match(client, /if \(fetchOpts\.signal\?\.aborted\) throw error/, 'project-switch abort must remain cancellable');
+assert.match(client, /let externallyAborted = Boolean\(fetchOpts\.signal\?\.aborted\)/, 'external cancellation must be tracked');
+assert.match(client, /signal: controller\.signal/, 'timeout and external cancellation must use one request signal');
+assert.match(client, /if \(externallyAborted \|\| fetchOpts\.signal\?\.aborted\) throw error/, 'project-switch abort must remain cancellable');
+assert.match(client, /setTimeout\(\(\) => controller\.abort\(\), REQUEST_TIMEOUT_MS\)/, 'external signal must not disable timeout');
+assert.match(client, /removeEventListener\('abort', onExternalAbort\)/, 'abort listener must be cleaned up');
 assert.doesNotMatch(client, /Запустите backend|uvicorn|npm run backend:dev/, 'production errors must not expose developer commands');
 
 assert.match(api, /fetchActiveSchedulePlan/, 'schedule API must expose an explicit truth result');
