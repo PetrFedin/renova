@@ -15,7 +15,7 @@ import { ScheduleIconToolbar } from '@/components/renova/schedule/ScheduleIconTo
 import { ScheduleFilterChips } from '@/components/renova/schedule/ScheduleFilterChips';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useNavFromHere } from '@/lib/navigation';
-import { api, CalendarData, CalendarEvent, WorkOrder, Purchase, type WorkSchedule } from '@/lib/api';
+import { api, CalendarData, CalendarEvent, WorkOrder, Purchase } from '@/lib/api';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { buildDayMarks } from '@/lib/domain/scheduleMarks';
 import { calendarEventInRange, calendarEventOnDate, formatCalendarEventDates, filterCalendarEventsForRole, isStageCalendarEvent, isWorkCalendarEvent, sortDayCalendarEvents } from '@/lib/domain/calendarEvents';
@@ -29,6 +29,8 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { useSchedulePlanState } from '@/lib/hooks/useSchedulePlanState';
+import { schedulePlanStatusLabel } from '@/lib/domain/schedulePlanState';
 import {
   alertScheduleConfirmed,
   alertScheduleRejected,
@@ -71,7 +73,6 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
     await syncProjectSideEffects({ user, project: activeProject, role });
   }, [user, activeProject, role]);
 
-  // W72: график правят owner/foreman бригады (заказчик — отдельно через agree)
   const canManageSchedulePlan =
     !readOnly &&
     (user?.role === 'customer' || !teamRole || teamRole === 'owner' || teamRole === 'foreman');
@@ -87,11 +88,24 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
   const [cursor, setCursor] = useState(() => new Date());
   const [planBusy, setPlanBusy] = useState(false);
-  const [planHint, setPlanHint] = useState<string | null>(null);
-  const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
-  /** Clarity D: план/фильтры — secondary, не конкурируют с днём */
   const [planExpanded, setPlanExpanded] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const {
+    state: planState,
+    plan: schedule,
+    reload: reloadSchedule,
+    applyPlan: setSchedule,
+    actionsFor,
+  } = useSchedulePlanState({
+    userId: user?.id,
+    projectId: activeProject?.id,
+    enabled: Boolean(user?.id && activeProject?.id),
+  });
+  const planActions = actionsFor(role, {
+    readOnly,
+    canManageSchedule: canManageSchedulePlan,
+  });
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
@@ -106,13 +120,16 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
         setCal(null);
         setCalLoadState('error');
       });
-    api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch((e) => { reportError('components.screens.schedule.UnifiedSched.WorkOrders', e); setWorkOrders([]); });
-    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch((e) => { reportError('components.screens.schedule.UnifiedSched.Purchases', e); setPurchases([]); });
-    api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => {
-      setSchedule(s);
-      setPlanHint(s ? `План: ${s.status}` : null);
-    }).catch(() => { setSchedule(null); setPlanHint(null); });
-  }, [user?.id, activeProject?.id]);
+    api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch((e) => {
+      reportError('components.screens.schedule.UnifiedSched.WorkOrders', e);
+      setWorkOrders([]);
+    });
+    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch((e) => {
+      reportError('components.screens.schedule.UnifiedSched.Purchases', e);
+      setPurchases([]);
+    });
+    void reloadSchedule({ soft: true });
+  }, [user?.id, activeProject?.id, reloadSchedule]);
   useProjectDataReload(reload);
 
   useEffect(() => {
@@ -128,7 +145,6 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
       setDayDetailOpen(true);
       return;
     }
-    // Clarity D: день = список дел по умолчанию (сегодня)
     const t = new Date().toISOString().slice(0, 10);
     setSelectedDate(t);
     setDayDetailOpen(true);
@@ -239,22 +255,22 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
         {dayDetailOpen && selectedDate ? (
           <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 8 }}>
             <ScheduleDayDetail
-            date={selectedDate}
-            events={dayEvents}
-            onBack={() => {
-              setDayDetailOpen(false);
-              setPlanExpanded(true);
-            }}
-            onEventPress={openEvent}
-            onCreateWork={() => { setDayDetailOpen(false); setShowCreate(true); }}
-            readOnly={readOnly}
-            canCreateWork={canAddTask}
-            addTaskLabel={role === 'customer' ? 'Добавить задачу' : 'Назначить работу'}
-            role={role}
-            userId={user.id}
-            projectId={activeProject.id}
-            workOrders={workOrders}
-            onChanged={reload}
+              date={selectedDate}
+              events={dayEvents}
+              onBack={() => {
+                setDayDetailOpen(false);
+                setPlanExpanded(true);
+              }}
+              onEventPress={openEvent}
+              onCreateWork={() => { setDayDetailOpen(false); setShowCreate(true); }}
+              readOnly={readOnly}
+              canCreateWork={canAddTask}
+              addTaskLabel={role === 'customer' ? 'Добавить задачу' : 'Назначить работу'}
+              role={role}
+              userId={user.id}
+              projectId={activeProject.id}
+              workOrders={workOrders}
+              onChanged={reload}
             />
           </View>
         ) : (
@@ -271,7 +287,6 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
         )}
       </View>
 
-      {/* Clarity D: в режиме дня план свёрнут — день читается как todo-list */}
       {dayDetailOpen && !planExpanded ? (
         <Pressable
           style={s.planToggle}
@@ -282,284 +297,304 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
           <Text style={s.planToggleT}>План-график и задачи · развернуть</Text>
         </Pressable>
       ) : (
-      <ScrollView style={s.planPane} contentContainerStyle={s.planContent}>
-        {dayDetailOpen ? (
-          <Pressable
-            style={s.planToggle}
-            onPress={() => setPlanExpanded(false)}
-            accessibilityRole="button"
-          >
-            <Text style={s.planToggleT}>Свернуть план</Text>
-          </Pressable>
-        ) : null}
-        <Text style={s.planTitle}>Расписание и задачи</Text>
-        <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
-        <View style={s.agreeBox}>
-          <Text style={s.agreeTitle}>План-график</Text>
-          <Text style={s.planSub}>
-            {schedule
-              ? `Статус: ${schedule.status}${schedule.items?.length ? ` · ${schedule.items.length} этапов` : ''}`
-              : 'План ещё не создан'}
-          </Text>
-          {/* W66 #16: причина отклонения видна обеим ролям */}
-          {schedule?.status === 'rejected' && schedule.rejection_reason ? (
-            <Text style={[s.planSub, { color: '#b45309' }]}>
-              Причина: {schedule.rejection_reason}
-            </Text>
-          ) : null}
-          {!readOnly && role === 'contractor' && !schedule ? (
+        <ScrollView style={s.planPane} contentContainerStyle={s.planContent}>
+          {dayDetailOpen ? (
             <Pressable
-              style={s.planCta}
-              disabled={planBusy}
-              onPress={async () => {
-                setPlanBusy(true);
-                try {
-                  if (!canManageSchedulePlan) {
-                    showActionConfirm({
-                      title: 'График',
-                      message: 'Создать план может владелец или прораб бригады',
-                    });
-                    return;
-                  }
-                  const created = await api.createWorkSchedule(user.id, activeProject.id, { title: 'План-график работ' });
-                  setSchedule(created);
-                  setPlanHint(`План создан · ${created.status}`);
-                  reload();
-                } catch (e) {
-                  if (isOfflineQueued(e)) {
-                    notifyOfflineQueued('Создание графика');
-                    setPlanHint('План в офлайн-очереди');
-                  } else {
-                    setPlanHint('Не удалось создать план из этапов');
-                  }
-                } finally {
-                  setPlanBusy(false);
-                }
-              }}
+              style={s.planToggle}
+              onPress={() => setPlanExpanded(false)}
+              accessibilityRole="button"
             >
-              <Text style={s.planCtaT}>{planBusy ? 'Создаём…' : 'Создать план-график из этапов'}</Text>
+              <Text style={s.planToggleT}>Свернуть план</Text>
             </Pressable>
           ) : null}
-          {!readOnly && role === 'contractor' && schedule && (schedule.status === 'draft' || schedule.status === 'rejected') ? (
-            <Pressable
-              style={s.planCta}
-              disabled={planBusy}
-              onPress={async () => {
-                setPlanBusy(true);
-                try {
-                  if (!canManageSchedulePlan) {
-                    showActionConfirm({
-                      title: 'График',
-                      message: 'На согласование отправляет владелец или прораб',
-                    });
-                    return;
-                  }
-                  const next = await api.submitWorkSchedule(user.id, activeProject.id, schedule.id);
-                  setSchedule(next);
-                  reload();
-                  await syncScheduleSideEffects();
-                  // W132: график → inbox заказчика
-                  alertScheduleSubmitted(role);
-                } catch (e: unknown) {
-                  if (isOfflineQueued(e)) notifyOfflineQueued('Отправка графика');
-                  else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
-                } finally {
-                  setPlanBusy(false);
-                }
-              }}
-            >
-              <Text style={s.planCtaT}>{planBusy ? '…' : 'Отправить заказчику на согласование'}</Text>
-            </Pressable>
-          ) : null}
-          {!readOnly && role === 'customer' && schedule?.status === 'submitted' ? (
-            <View style={s.agreeActions}>
-              <Pressable
-                style={[s.planCta, s.agreeConfirm]}
-                disabled={planBusy}
-                onPress={() => {
-                  // Clarity U: зеркало reject — confirm перед фиксацией сроков
-                  showActionConfirm({
-                    title: 'Согласовать график?',
-                    message: 'Сроки этапов станут рабочим планом. Изменения — через новый график.',
-                    primaryLabel: 'Согласовать',
-                    onPrimary: () => {
-                      void (async () => {
-                        setPlanBusy(true);
-                        try {
-                          const next = await api.confirmWorkSchedule(user.id, activeProject.id, schedule.id);
-                          setSchedule(next);
-                          reload();
-                          await syncScheduleSideEffects();
-                          alertScheduleConfirmed(role);
-                        } catch (e: unknown) {
-                          if (isOfflineQueued(e)) notifyOfflineQueued('Согласование графика');
-                          else {
-                            showActionConfirm({
-                              title: 'Ошибка',
-                              message: e instanceof Error ? e.message : 'Не удалось согласовать',
-                            });
-                          }
-                        } finally {
-                          setPlanBusy(false);
-                        }
-                      })();
-                    },
-                    secondaryLabel: 'Отмена',
-                    onSecondary: () => undefined,
-                  });
-                }}
-              >
-                <Text style={s.planCtaT}>{planBusy ? '…' : 'Согласовать график'}</Text>
-              </Pressable>
+          <Text style={s.planTitle}>Расписание и задачи</Text>
+          <Text style={s.planSub}>{formatScheduleRange(cal.planned_start, cal.planned_end)}</Text>
+          <View style={s.agreeBox}>
+            <Text style={s.agreeTitle}>План-график</Text>
+            <Text style={s.planSub}>{schedulePlanStatusLabel(planState)}</Text>
+
+            {planState.status === 'error' || planState.status === 'forbidden' ? (
+              <View style={s.planErrorBox}>
+                <Text style={s.errorHint}>{planState.error.message}</Text>
+                {planState.error.retryable ? (
+                  <Pressable
+                    style={s.retryBtn}
+                    onPress={() => void reloadSchedule({ soft: false })}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.retryT}>Повторить загрузку</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
+            {planState.status === 'stale' ? (
+              <View style={s.planErrorBox}>
+                <Text style={s.errorHint}>Показан последний полученный план. Действия временно заблокированы до синхронизации.</Text>
+                <Pressable
+                  style={s.retryBtn}
+                  onPress={() => void reloadSchedule({ soft: true })}
+                  accessibilityRole="button"
+                >
+                  <Text style={s.retryT}>Обновить план</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {schedule?.status === 'rejected' && schedule.rejection_reason ? (
+              <Text style={[s.planSub, { color: '#b45309' }]}>
+                Причина: {schedule.rejection_reason}
+              </Text>
+            ) : null}
+
+            {planState.status === 'not_created' && role === 'customer' ? (
+              <Text style={s.errorHint}>Исполнитель создаст план и отправит его на согласование.</Text>
+            ) : null}
+            {planState.status === 'not_created' && role === 'contractor' && !canManageSchedulePlan ? (
+              <Text style={s.errorHint}>Создать план может владелец или прораб бригады.</Text>
+            ) : null}
+
+            {planActions.canCreate ? (
               <Pressable
                 style={s.planCta}
                 disabled={planBusy}
-                onPress={() => {
-                  // Clarity Q: единый sheet вместо Alert.prompt / Alert.alert
-                  showActionConfirm({
-                    title: 'Отклонить график?',
-                    message: 'Исполнитель получит уведомление. Причину можно уточнить в чате.',
-                    primaryLabel: 'Отклонить',
-                    onPrimary: () => {
-                      void (async () => {
-                        setPlanBusy(true);
-                        try {
-                          const next = await api.rejectWorkSchedule(
-                            user.id,
-                            activeProject.id,
-                            schedule.id,
-                            'Нужна правка сроков',
-                          );
-                          setSchedule(next);
-                          reload();
-                          await syncScheduleSideEffects();
-                          alertScheduleRejected(role);
-                        } catch (e: unknown) {
-                          if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
-                          else {
-                            showActionConfirm({
-                              title: 'Ошибка',
-                              message: e instanceof Error ? e.message : 'Не удалось отклонить',
-                            });
-                          }
-                        } finally {
-                          setPlanBusy(false);
-                        }
-                      })();
-                    },
-                    secondaryLabel: 'Отмена',
-                    onSecondary: () => undefined,
-                  });
+                onPress={async () => {
+                  setPlanBusy(true);
+                  try {
+                    const created = await api.createWorkSchedule(user.id, activeProject.id, { title: 'План-график работ' });
+                    setSchedule(created);
+                    reload();
+                  } catch (e) {
+                    if (isOfflineQueued(e)) {
+                      notifyOfflineQueued('Создание графика');
+                    } else {
+                      showActionConfirm({
+                        title: 'Не удалось создать план',
+                        message: e instanceof Error ? e.message : 'Повторите попытку после обновления',
+                      });
+                    }
+                  } finally {
+                    setPlanBusy(false);
+                  }
                 }}
               >
-                <Text style={s.planCtaT}>Отклонить</Text>
+                <Text style={s.planCtaT}>{planBusy ? 'Создаём…' : 'Создать план-график из этапов'}</Text>
               </Pressable>
+            ) : null}
+
+            {planActions.canSubmit && schedule ? (
+              <Pressable
+                style={s.planCta}
+                disabled={planBusy}
+                onPress={async () => {
+                  setPlanBusy(true);
+                  try {
+                    const next = await api.submitWorkSchedule(user.id, activeProject.id, schedule.id);
+                    setSchedule(next);
+                    reload();
+                    await syncScheduleSideEffects();
+                    alertScheduleSubmitted(role);
+                  } catch (e: unknown) {
+                    if (isOfflineQueued(e)) notifyOfflineQueued('Отправка графика');
+                    else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
+                  } finally {
+                    setPlanBusy(false);
+                  }
+                }}
+              >
+                <Text style={s.planCtaT}>{planBusy ? '…' : 'Отправить заказчику на согласование'}</Text>
+              </Pressable>
+            ) : null}
+
+            {planActions.canConfirm && schedule ? (
+              <View style={s.agreeActions}>
+                <Pressable
+                  style={[s.planCta, s.agreeConfirm]}
+                  disabled={planBusy}
+                  onPress={() => {
+                    showActionConfirm({
+                      title: 'Согласовать график?',
+                      message: 'Сроки этапов станут рабочим планом. Изменения — через новый график.',
+                      primaryLabel: 'Согласовать',
+                      onPrimary: () => {
+                        void (async () => {
+                          setPlanBusy(true);
+                          try {
+                            const next = await api.confirmWorkSchedule(user.id, activeProject.id, schedule.id);
+                            setSchedule(next);
+                            reload();
+                            await syncScheduleSideEffects();
+                            alertScheduleConfirmed(role);
+                          } catch (e: unknown) {
+                            if (isOfflineQueued(e)) notifyOfflineQueued('Согласование графика');
+                            else {
+                              showActionConfirm({
+                                title: 'Ошибка',
+                                message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                              });
+                            }
+                          } finally {
+                            setPlanBusy(false);
+                          }
+                        })();
+                      },
+                      secondaryLabel: 'Отмена',
+                      onSecondary: () => undefined,
+                    });
+                  }}
+                >
+                  <Text style={s.planCtaT}>{planBusy ? '…' : 'Согласовать график'}</Text>
+                </Pressable>
+                {planActions.canReject ? (
+                  <Pressable
+                    style={s.planCta}
+                    disabled={planBusy}
+                    onPress={() => {
+                      showActionConfirm({
+                        title: 'Отклонить график?',
+                        message: 'Исполнитель получит уведомление. Причину можно уточнить в чате.',
+                        primaryLabel: 'Отклонить',
+                        onPrimary: () => {
+                          void (async () => {
+                            setPlanBusy(true);
+                            try {
+                              const next = await api.rejectWorkSchedule(
+                                user.id,
+                                activeProject.id,
+                                schedule.id,
+                                'Нужна правка сроков',
+                              );
+                              setSchedule(next);
+                              reload();
+                              await syncScheduleSideEffects();
+                              alertScheduleRejected(role);
+                            } catch (e: unknown) {
+                              if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
+                              else {
+                                showActionConfirm({
+                                  title: 'Ошибка',
+                                  message: e instanceof Error ? e.message : 'Не удалось отклонить',
+                                });
+                              }
+                            } finally {
+                              setPlanBusy(false);
+                            }
+                          })();
+                        },
+                        secondaryLabel: 'Отмена',
+                        onSecondary: () => undefined,
+                      });
+                    }}
+                  >
+                    <Text style={s.planCtaT}>Отклонить</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
+            {role === 'customer' && planState.status === 'confirmed' ? (
+              <Text style={s.planSub}>График согласован — сроки зафиксированы</Text>
+            ) : null}
+            {schedule && (schedule.items?.length ?? 0) > 0 ? (
+              <SchedulePlanItems
+                schedule={schedule}
+                role={role}
+                userId={user.id}
+                projectId={activeProject.id}
+                canManage={canManageSchedulePlan && planState.status !== 'stale'}
+                readOnly={readOnly || planState.status === 'stale'}
+                onChanged={(next) => {
+                  setSchedule(next);
+                  void syncScheduleSideEffects();
+                }}
+              />
+            ) : null}
+          </View>
+          <ScheduleExecutionStrip stats={executionStats} />
+
+          <ScheduleIconToolbar
+            readOnly={readOnly}
+            canManageWorks={canManageWorks}
+            canAddTask={canAddTask}
+            userId={user.id}
+            projectId={activeProject.id}
+            onCreateWork={() => setShowCreate(true)}
+            onStages={() => replaceOsNav(repairTabRoute(role, 'works'), nav.from)}
+            onMaterials={() => replaceOsNav(repairTabRoute(role, 'materials'), nav.from)}
+            onImported={reload}
+          />
+
+          <Pressable
+            style={s.filtersToggle}
+            onPress={() => setFiltersOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: filtersOpen }}
+          >
+            <Text style={s.filtersToggleT}>
+              Фильтры{filtersOpen ? '' : filter !== 'all' || workFilter !== 'active' ? ' · заданы' : ''}
+              {filtersOpen ? ' · скрыть' : ' · показать'}
+            </Text>
+          </Pressable>
+          {filtersOpen ? (
+            <View style={s.filtersBox}>
+              <Text style={s.filterLabel}>{role === 'customer' ? 'Задачи' : 'Работы'}</Text>
+              <ScheduleFilterChips
+                items={[
+                  { key: 'active', label: 'Активные' },
+                  { key: 'archive', label: 'Архив' },
+                ]}
+                value={workFilter}
+                onChange={(k) => setWorkFilter(k as 'active' | 'archive')}
+              />
+              <Text style={[s.filterLabel, { marginTop: 8 }]}>События</Text>
+              <ScheduleFilterChips items={EVENT_FILTERS} value={filter} onChange={setFilter} />
             </View>
           ) : null}
-          {role === 'customer' && schedule?.status === 'confirmed' ? (
-            <Text style={s.planSub}>График согласован — сроки зафиксированы</Text>
-          ) : null}
-          {schedule && (schedule.items?.length ?? 0) > 0 ? (
-            <SchedulePlanItems
-              schedule={schedule}
-              role={role}
-              userId={user.id}
-              projectId={activeProject.id}
-              canManage={canManageSchedulePlan}
-              readOnly={readOnly}
-              onChanged={(next) => {
-                setSchedule(next);
-                void syncScheduleSideEffects();
-              }}
-            />
-          ) : null}
-        </View>
-        <ScheduleExecutionStrip stats={executionStats} />
 
-        <ScheduleIconToolbar
-          readOnly={readOnly}
-          canManageWorks={canManageWorks}
-          canAddTask={canAddTask}
-          userId={user.id}
-          projectId={activeProject.id}
-          onCreateWork={() => setShowCreate(true)}
-          onStages={() => replaceOsNav(repairTabRoute(role, 'works'), nav.from)}
-          onMaterials={() => replaceOsNav(repairTabRoute(role, 'materials'), nav.from)}
-          onImported={reload}
-        />
-
-        {/* Clarity D: фильтры secondary — не в first viewport дня */}
-        <Pressable
-          style={s.filtersToggle}
-          onPress={() => setFiltersOpen((v) => !v)}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: filtersOpen }}
-        >
-          <Text style={s.filtersToggleT}>
-            Фильтры{filtersOpen ? '' : filter !== 'all' || workFilter !== 'active' ? ' · заданы' : ''}
-            {filtersOpen ? ' · скрыть' : ' · показать'}
-          </Text>
-        </Pressable>
-        {filtersOpen ? (
-          <View style={s.filtersBox}>
-            <Text style={s.filterLabel}>{role === 'customer' ? 'Задачи' : 'Работы'}</Text>
-            <ScheduleFilterChips
-              items={[
-                { key: 'active', label: 'Активные' },
-                { key: 'archive', label: 'Архив' },
-              ]}
-              value={workFilter}
-              onChange={(k) => setWorkFilter(k as 'active' | 'archive')}
-            />
-            <Text style={[s.filterLabel, { marginTop: 8 }]}>События</Text>
-            <ScheduleFilterChips items={EVENT_FILTERS} value={filter} onChange={setFilter} />
+          <View style={s.sectionHead}>
+            <Text style={s.sectionTitle}>{role === 'customer' ? 'Задачи на день' : 'Работы'}</Text>
           </View>
-        ) : null}
-
-        <View style={s.sectionHead}>
-          <Text style={s.sectionTitle}>{role === 'customer' ? 'Задачи на день' : 'Работы'}</Text>
-        </View>
-        {!upcomingWorks.length ? (
-          <View style={s.emptyBox}>
-            <Text style={s.emptyT}>
-              {workFilter === 'archive'
-                ? 'В архиве пока пусто'
-                : canAddTask
-                  ? 'Нет задач — добавьте через «+» или иконку календаря'
-                  : 'Задач на этот период пока нет'}
-            </Text>
-          </View>
-        ) : (
-          upcomingWorks.map((wo) => (
-            <WorkOrderCard key={wo.id} wo={wo} rooms={activeProject.rooms} compact />
-          ))
-        )}
-        {filteredWorks.length > 5 && (
-          <Pressable onPress={() => replaceOsNav(repairTabRoute(role, 'works'), nav.from)}>
-            <Text style={s.link}>Все работы ({filteredWorks.length}) →</Text>
-          </Pressable>
-        )}
-
-        <View style={[s.sectionHead, { marginTop: 14 }]}>
-          <Text style={s.sectionTitle}>События</Text>
-        </View>
-        {!events.length ? (
-          <Text style={s.emptyT}>Нет событий по выбранному фильтру</Text>
-        ) : (
-          events.slice(0, 20).map((e) => (
-            <Pressable key={e.id} style={s.event} onPress={() => openEvent(e)}>
-              <Text style={s.eventDate} numberOfLines={1}>{formatCalendarEventDates(e)}</Text>
-              <View style={s.eventBody}>
-                <Text style={s.eventKind}>{KIND[e.kind] || e.kind}</Text>
-                <Text style={s.eventTitle} numberOfLines={2}>{e.title}</Text>
-              </View>
+          {!upcomingWorks.length ? (
+            <View style={s.emptyBox}>
+              <Text style={s.emptyT}>
+                {workFilter === 'archive'
+                  ? 'В архиве пока пусто'
+                  : canAddTask
+                    ? 'Нет задач — добавьте через «+» или иконку календаря'
+                    : 'Задач на этот период пока нет'}
+              </Text>
+            </View>
+          ) : (
+            upcomingWorks.map((wo) => (
+              <WorkOrderCard key={wo.id} wo={wo} rooms={activeProject.rooms} compact />
+            ))
+          )}
+          {filteredWorks.length > 5 && (
+            <Pressable onPress={() => replaceOsNav(repairTabRoute(role, 'works'), nav.from)}>
+              <Text style={s.link}>Все работы ({filteredWorks.length}) →</Text>
             </Pressable>
-          ))
-        )}
-        {events.length > 20 && (
-          <Text style={s.moreEvents}>Показано 20 из {events.length} — уточните фильтр</Text>
-        )}
-      </ScrollView>
+          )}
+
+          <View style={[s.sectionHead, { marginTop: 14 }]}>
+            <Text style={s.sectionTitle}>События</Text>
+          </View>
+          {!events.length ? (
+            <Text style={s.emptyT}>Нет событий по выбранному фильтру</Text>
+          ) : (
+            events.slice(0, 20).map((e) => (
+              <Pressable key={e.id} style={s.event} onPress={() => openEvent(e)}>
+                <Text style={s.eventDate} numberOfLines={1}>{formatCalendarEventDates(e)}</Text>
+                <View style={s.eventBody}>
+                  <Text style={s.eventKind}>{KIND[e.kind] || e.kind}</Text>
+                  <Text style={s.eventTitle} numberOfLines={2}>{e.title}</Text>
+                </View>
+              </Pressable>
+            ))
+          )}
+          {events.length > 20 && (
+            <Text style={s.moreEvents}>Показано 20 из {events.length} — уточните фильтр</Text>
+          )}
+        </ScrollView>
       )}
 
       {canAddTask ? (
@@ -590,8 +625,10 @@ const s = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: RenovaTheme.colors.primary,
+    alignSelf: 'center',
   },
   retryT: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.primary },
+  planErrorBox: { marginBottom: 8, padding: 10, borderRadius: 10, backgroundColor: RenovaTheme.colors.surfaceMuted },
   calendarPane: { flexShrink: 0, minHeight: 200, paddingBottom: 4 },
   planPane: { flex: 1, minHeight: 0 },
   planContent: { padding: 16, paddingBottom: 32 },
