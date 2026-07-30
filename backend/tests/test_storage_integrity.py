@@ -1,7 +1,11 @@
 import base64
+import json
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from app.services import storage_service as storage
 
@@ -147,6 +151,45 @@ def test_cloudfront_configured_signing_never_falls_back_unsigned(monkeypatch, lo
 
     with pytest.raises(storage.StorageConfigurationError, match="cloudfront_private_key_missing"):
         storage.generate_cloudfront_signed_url("private/document.pdf")
+
+
+def test_cloudfront_canned_policy_signature_is_valid(monkeypatch, local_storage):
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    key_path = local_storage.parent / "cloudfront-private-key.pem"
+    key_path.write_bytes(pem)
+    monkeypatch.setattr(storage.settings, "cloudfront_domain", "https://private.example.com")
+    monkeypatch.setattr(storage.settings, "cloudfront_key_id", "KEY 123")
+
+    signed_url = storage.generate_cloudfront_signed_url("private/документ 1.pdf", expires=600)
+    parsed = urlparse(signed_url)
+    query = parse_qs(parsed.query)
+
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "private.example.com"
+    assert parsed.path == "/private/%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%201.pdf"
+    assert query["Key-Pair-Id"] == ["KEY 123"]
+    expires_at = int(query["Expires"][0])
+    encoded_signature = query["Signature"][0].replace("-", "+").replace("_", "=").replace("~", "/")
+    signature = base64.b64decode(encoded_signature)
+    unsigned_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    policy = json.dumps(
+        {
+            "Statement": [
+                {
+                    "Resource": unsigned_url,
+                    "Condition": {"DateLessThan": {"AWS:EpochTime": expires_at}},
+                }
+            ]
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    private_key.public_key().verify(signature, policy, padding.PKCS1v15(), hashes.SHA1())
 
 
 def test_api_has_safe_storage_error_mapping():
