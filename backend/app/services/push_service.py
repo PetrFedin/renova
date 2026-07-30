@@ -127,7 +127,7 @@ async def send_push(
                 break
 
             if not isinstance(payload, dict) or payload.get("errors"):
-                logger.error("Expo push request-level error", extra={"payload": payload})
+                logger.error("Expo push request-level error", extra={"provider_payload": payload})
                 all_deliverable_accepted = False
                 break
 
@@ -159,7 +159,7 @@ async def send_push(
                     "Expo push ticket rejected",
                     extra={
                         "error_code": error_code,
-                        "message": ticket.get("message"),
+                        "provider_message": ticket.get("message"),
                     },
                 )
                 all_deliverable_accepted = False
