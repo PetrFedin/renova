@@ -24,7 +24,7 @@ _TRANSLIT: dict[str, str] = {
 }
 
 _READABLE_FALLBACKS: dict[str, str] = {
-    "₽": " руб.",
+    "₽": "руб.",
     "•": "-",
     "—": "-",
     "–": "-",
