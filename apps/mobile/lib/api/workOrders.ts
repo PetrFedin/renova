@@ -5,6 +5,15 @@ import type { WorkOrder } from './types';
 export const workOrdersApi = {
   listWorkOrders: (userId: string, projectId: string) =>
     req<WorkOrder[]>(`/api/v1/projects/${projectId}/work-orders`, {}, userId),
+  listWorkOrdersFresh: (
+    userId: string,
+    projectId: string,
+    options?: { signal?: AbortSignal },
+  ) => req<WorkOrder[]>(
+    `/api/v1/projects/${projectId}/work-orders`,
+    { signal: options?.signal, cacheFallback: false },
+    userId,
+  ),
   getWorkOrder: (userId: string, projectId: string, workOrderId: string) =>
     req<WorkOrder>(`/api/v1/projects/${projectId}/work-orders/${workOrderId}`, {}, userId),
   createWorkOrder: async (userId: string, projectId: string, body: object) => {

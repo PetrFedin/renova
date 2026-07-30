@@ -53,6 +53,15 @@ export const materialsApi = {
   },
   syncMaterialPrice: (userId: string, projectId: string, pickId: string) => req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks/${pickId}/sync-price`, { method: 'POST' }, userId),
   listPurchases: (userId: string, projectId: string) => req<Purchase[]>(`/api/v1/projects/${projectId}/purchases`, {}, userId),
+  listPurchasesFresh: (
+    userId: string,
+    projectId: string,
+    options?: { signal?: AbortSignal },
+  ) => req<Purchase[]>(
+    `/api/v1/projects/${projectId}/purchases`,
+    { signal: options?.signal, cacheFallback: false },
+    userId,
+  ),
   createPurchase: async (userId: string, projectId: string, material_pick_ids: string[], supplier_name?: string) => {
     const requestBody = {
       material_pick_ids,

@@ -13,6 +13,7 @@ import { ScheduleCalendar, type CalendarViewMode } from '@/components/renova/sch
 import { ScheduleDayDetail } from '@/components/renova/schedule/ScheduleDayDetail';
 import { ScheduleIconToolbar } from '@/components/renova/schedule/ScheduleIconToolbar';
 import { ScheduleFilterChips } from '@/components/renova/schedule/ScheduleFilterChips';
+import { ScheduleDataStateNotice } from '@/components/renova/schedule/ScheduleDataStateNotice';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useNavFromHere } from '@/lib/navigation';
 import { api, CalendarData, CalendarEvent, WorkOrder, Purchase } from '@/lib/api';
@@ -27,10 +28,11 @@ import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExe
 import { SchedulePlanItems } from '@/components/renova/schedule/SchedulePlanItems';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
-import { reportError } from '@/lib/reportError';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useSchedulePlanState } from '@/lib/hooks/useSchedulePlanState';
 import { schedulePlanStatusLabel } from '@/lib/domain/schedulePlanState';
+import { useAsyncResource } from '@/lib/async/useAsyncResource';
+import { asyncIsLoading, asyncShowError } from '@/lib/async/asyncResource';
 import {
   alertScheduleConfirmed,
   alertScheduleRejected,
@@ -67,6 +69,8 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const { height } = useWindowDimensions();
   const calendarMaxH = Math.round(height * 0.59);
   const { user, activeProject, teamRole, readOnly } = useRenova();
+  const dataEnabled = Boolean(user?.id && activeProject?.id);
+  const dataContext = `${user?.id || ''}:${activeProject?.id || ''}`;
 
   /** W81/W82: после submit/confirm/reject графика — inbox + home nextAction */
   const syncScheduleSideEffects = useCallback(async () => {
@@ -76,10 +80,55 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const canManageSchedulePlan =
     !readOnly &&
     (user?.role === 'customer' || !teamRole || teamRole === 'owner' || teamRole === 'foreman');
-  const [cal, setCal] = useState<CalendarData | null>(null);
-  const [calLoadState, setCalLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
+
+  const {
+    resource: calendarResource,
+    data: cal,
+    reload: reloadCalendar,
+  } = useAsyncResource<CalendarData>({
+    contextKey: `schedule-calendar:${dataContext}`,
+    enabled: dataEnabled,
+    autoLoad: false,
+    scope: 'components.screens.schedule.calendar',
+    isEmpty: () => false,
+    fetcher: async (signal) => {
+      if (!user || !activeProject) throw new Error('schedule_context_missing');
+      return { data: await api.getCalendarFresh(user.id, activeProject.id, { signal }) };
+    },
+  });
+  const {
+    resource: workOrdersResource,
+    data: workOrdersData,
+    reload: reloadWorkOrders,
+  } = useAsyncResource<WorkOrder[]>({
+    contextKey: `schedule-work-orders:${dataContext}`,
+    enabled: dataEnabled,
+    autoLoad: false,
+    scope: 'components.screens.schedule.workOrders',
+    isEmpty: (rows) => rows.length === 0,
+    fetcher: async (signal) => {
+      if (!user || !activeProject) throw new Error('schedule_context_missing');
+      return { data: await api.listWorkOrdersFresh(user.id, activeProject.id, { signal }) };
+    },
+  });
+  const {
+    resource: purchasesResource,
+    data: purchasesData,
+    reload: reloadPurchases,
+  } = useAsyncResource<Purchase[]>({
+    contextKey: `schedule-purchases:${dataContext}`,
+    enabled: dataEnabled,
+    autoLoad: false,
+    scope: 'components.screens.schedule.purchases',
+    isEmpty: (rows) => rows.length === 0,
+    fetcher: async (signal) => {
+      if (!user || !activeProject) throw new Error('schedule_context_missing');
+      return { data: await api.listPurchasesFresh(user.id, activeProject.id, { signal }) };
+    },
+  });
+  const workOrders = workOrdersData ?? [];
+  const purchases = purchasesData ?? [];
+
   const [filter, setFilter] = useState('all');
   const [workFilter, setWorkFilter] = useState<'active' | 'archive'>('active');
   const [showCreate, setShowCreate] = useState(false);
@@ -100,7 +149,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   } = useSchedulePlanState({
     userId: user?.id,
     projectId: activeProject?.id,
-    enabled: Boolean(user?.id && activeProject?.id),
+    enabled: dataEnabled,
   });
   const planActions = actionsFor(role, {
     readOnly,
@@ -109,31 +158,14 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
-    api
-      .getCalendar(user.id, activeProject.id)
-      .then((data) => {
-        setCal(data);
-        setCalLoadState('loaded');
-      })
-      .catch((e) => {
-        reportError('components.screens.schedule.UnifiedSched.Cal', e);
-        setCal(null);
-        setCalLoadState('error');
-      });
-    api.listWorkOrders(user.id, activeProject.id).then(setWorkOrders).catch((e) => {
-      reportError('components.screens.schedule.UnifiedSched.WorkOrders', e);
-      setWorkOrders([]);
-    });
-    api.listPurchases(user.id, activeProject.id).then(setPurchases).catch((e) => {
-      reportError('components.screens.schedule.UnifiedSched.Purchases', e);
-      setPurchases([]);
-    });
+    void reloadCalendar({ soft: true });
+    void reloadWorkOrders({ soft: true });
+    void reloadPurchases({ soft: true });
     void reloadSchedule({ soft: true });
-  }, [user?.id, activeProject?.id, reloadSchedule]);
+  }, [user?.id, activeProject?.id, reloadCalendar, reloadWorkOrders, reloadPurchases, reloadSchedule]);
   useProjectDataReload(reload);
 
   useEffect(() => {
-    setCalLoadState('loading');
     reload();
   }, [reload]);
 
@@ -209,6 +241,8 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
     () => buildScheduleExecutionStats(workOrders, today),
     [workOrders, today],
   );
+  const purchasesLoading = purchasesData == null && asyncIsLoading(purchasesResource);
+  const purchasesUnavailable = purchasesData == null && asyncShowError(purchasesResource);
 
   const openEvent = useCallback((e: CalendarEvent & { purchase_id?: string }) => {
     if (e.purchase_id) {
@@ -230,27 +264,46 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   if (!user || !activeProject) {
     return <ProjectEmptyState role={role} />;
   }
-  if (calLoadState === 'error' && !cal) {
+  if (asyncShowError(calendarResource) && !cal) {
     return (
       <View style={s.center}>
         <LoadErrorState
           title="Не удалось загрузить календарь"
-          onRetry={() => {
-            setCalLoadState('loading');
-            reload();
-          }}
+          onRetry={() => void reloadCalendar({ soft: false })}
           role={role}
         />
       </View>
     );
   }
-  if (!cal || calLoadState === 'loading') {
+  if (!cal || asyncIsLoading(calendarResource)) {
     return <View style={s.center}><Text>Загрузка календаря…</Text></View>;
   }
 
   return (
     <View style={s.root}>
       <ReadOnlyBanner />
+      <ScheduleDataStateNotice
+        items={[
+          {
+            key: 'calendar',
+            label: 'календарь',
+            resource: calendarResource,
+            onRetry: () => void reloadCalendar({ soft: true }),
+          },
+          {
+            key: 'work-orders',
+            label: 'задачи и работы',
+            resource: workOrdersResource,
+            onRetry: () => void reloadWorkOrders({ soft: true }),
+          },
+          {
+            key: 'purchases',
+            label: 'закупки и поставки',
+            resource: purchasesResource,
+            onRetry: () => void reloadPurchases({ soft: true }),
+          },
+        ]}
+      />
       <View style={[s.calendarPane, { maxHeight: calendarMaxH }]}>
         {dayDetailOpen && selectedDate ? (
           <View style={{ flex: 1, paddingHorizontal: 12, paddingTop: 8 }}>
@@ -510,7 +563,15 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
               />
             ) : null}
           </View>
-          <ScheduleExecutionStrip stats={executionStats} />
+          {workOrdersData != null ? (
+            <ScheduleExecutionStrip stats={executionStats} />
+          ) : (
+            <Text style={s.dataPending}>
+              {asyncIsLoading(workOrdersResource)
+                ? 'Загрузка показателей исполнения…'
+                : 'Показатели исполнения появятся после загрузки задач'}
+            </Text>
+          )}
 
           <ScheduleIconToolbar
             readOnly={readOnly}
@@ -554,7 +615,11 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
           <View style={s.sectionHead}>
             <Text style={s.sectionTitle}>{role === 'customer' ? 'Задачи на день' : 'Работы'}</Text>
           </View>
-          {!upcomingWorks.length ? (
+          {workOrdersData == null && asyncIsLoading(workOrdersResource) ? (
+            <View style={s.emptyBox}><Text style={s.emptyT}>Загрузка задач…</Text></View>
+          ) : workOrdersData == null && asyncShowError(workOrdersResource) ? (
+            <View style={s.emptyBox}><Text style={s.emptyT}>Задачи временно недоступны. Используйте кнопку «Обновить» выше.</Text></View>
+          ) : !upcomingWorks.length ? (
             <View style={s.emptyBox}>
               <Text style={s.emptyT}>
                 {workFilter === 'archive'
@@ -569,7 +634,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
               <WorkOrderCard key={wo.id} wo={wo} rooms={activeProject.rooms} compact />
             ))
           )}
-          {filteredWorks.length > 5 && (
+          {workOrdersData != null && filteredWorks.length > 5 && (
             <Pressable onPress={() => replaceOsNav(repairTabRoute(role, 'works'), nav.from)}>
               <Text style={s.link}>Все работы ({filteredWorks.length}) →</Text>
             </Pressable>
@@ -578,7 +643,11 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
           <View style={[s.sectionHead, { marginTop: 14 }]}>
             <Text style={s.sectionTitle}>События</Text>
           </View>
-          {!events.length ? (
+          {!events.length && purchasesLoading && (filter === 'all' || filter === 'materials') ? (
+            <Text style={s.emptyT}>Загрузка поставок и событий…</Text>
+          ) : !events.length && purchasesUnavailable && (filter === 'all' || filter === 'materials') ? (
+            <Text style={s.emptyT}>Список событий загружен не полностью: поставки временно недоступны.</Text>
+          ) : !events.length ? (
             <Text style={s.emptyT}>Нет событий по выбранному фильтру</Text>
           ) : (
             events.slice(0, 20).map((e) => (
@@ -629,6 +698,7 @@ const s = StyleSheet.create({
   },
   retryT: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.primary },
   planErrorBox: { marginBottom: 8, padding: 10, borderRadius: 10, backgroundColor: RenovaTheme.colors.surfaceMuted },
+  dataPending: { marginBottom: 10, fontSize: 12, color: RenovaTheme.colors.textMuted },
   calendarPane: { flexShrink: 0, minHeight: 200, paddingBottom: 4 },
   planPane: { flex: 1, minHeight: 0 },
   planContent: { padding: 16, paddingBottom: 32 },

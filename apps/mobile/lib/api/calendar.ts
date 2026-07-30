@@ -6,6 +6,17 @@ export const calendarApi = {
   getCalendar: (userId: string, projectId: string) =>
     cachedGet<CalendarData>(`/api/v1/projects/${projectId}/calendar`, userId),
 
+  /** State-sensitive screens preserve their own stale data and must see real load errors. */
+  getCalendarFresh: (
+    userId: string,
+    projectId: string,
+    options?: { signal?: AbortSignal },
+  ) => req<CalendarData>(
+    `/api/v1/projects/${projectId}/calendar`,
+    { signal: options?.signal, cacheFallback: false },
+    userId,
+  ),
+
   /** W116: перенос дат этапа — очередь офлайн */
   updateStageDates: async (userId: string, projectId: string, body: object) => {
     const payload = JSON.stringify(body);
