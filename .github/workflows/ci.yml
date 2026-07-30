@@ -15,6 +15,11 @@ jobs:
         run: npm run typecheck:mobile
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
+      - name: Schedule plan truth contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/domain/schedulePlanState.test.ts
+          npx tsx apps/mobile/lib/schedulePlanTruthIntegrity.test.ts
       - name: Shared sheet chrome contracts
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
