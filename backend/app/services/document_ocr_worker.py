@@ -22,14 +22,23 @@ from app.services.document_ocr_service import (
 logger = logging.getLogger(__name__)
 
 
-async def claim_queued_versions(db: AsyncSession, *, limit: int = 20) -> list[DocumentVersion]:
-    """Claim rows transactionally; PostgreSQL workers skip already locked rows."""
-    query = (
+def _queue_query(*, limit: int):
+    return (
         select(DocumentVersion)
         .where(DocumentVersion.ocr_status == OCR_QUEUED)
         .order_by(DocumentVersion.created_at.asc(), DocumentVersion.id.asc())
         .limit(max(1, min(int(limit), 100)))
     )
+
+
+async def list_queued_versions(db: AsyncSession, *, limit: int = 20) -> list[DocumentVersion]:
+    """Inspect queued rows without locks or state mutation."""
+    return list((await db.execute(_queue_query(limit=limit))).scalars().all())
+
+
+async def claim_queued_versions(db: AsyncSession, *, limit: int = 20) -> list[DocumentVersion]:
+    """Claim rows transactionally; PostgreSQL workers skip already locked rows."""
+    query = _queue_query(limit=limit)
     try:
         query = query.with_for_update(skip_locked=True)
     except Exception:
@@ -40,11 +49,6 @@ async def claim_queued_versions(db: AsyncSession, *, limit: int = 20) -> list[Do
     if versions:
         await db.flush()
     return versions
-
-
-async def list_queued_versions(db: AsyncSession, *, limit: int = 20) -> list[DocumentVersion]:
-    """Backward-compatible alias that now performs a real claim."""
-    return await claim_queued_versions(db, limit=limit)
 
 
 async def process_queued_batch(
