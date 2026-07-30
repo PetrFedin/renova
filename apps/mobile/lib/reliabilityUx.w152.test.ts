@@ -1,4 +1,4 @@
-/** Investor: code-only reliability — bare hubs, calendar error, schedule dedupe, offline CTA */
+/** Investor: code-only reliability — bare hubs, truthful calendar error, schedule dedupe, offline CTA */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { resolvePushLink } from './pushLinks';
@@ -27,13 +27,21 @@ console.assert(
 const nav = readFileSync(join(mobile, 'lib/navigation.ts'), 'utf8');
 const offline = readFileSync(join(mobile, 'lib/offlineUi.ts'), 'utf8');
 const sched = readFileSync(join(mobile, 'components/screens/schedule/UnifiedScheduleView.tsx'), 'utf8');
+const asyncResource = readFileSync(join(mobile, 'lib/async/asyncResource.ts'), 'utf8');
 const planTab = readFileSync(join(mobile, 'components/screens/OsPlanTabScreen.tsx'), 'utf8');
 const hub = readFileSync(join(mobile, 'components/renova/os/OsHubTabs.tsx'), 'utf8');
 const status = readFileSync(join(mobile, 'components/renova/OfflineSyncStatus.tsx'), 'utf8');
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
-console.assert(sched.includes("calLoadState === 'error'") && sched.includes('LoadErrorState'), 'calendar error UI');
+console.assert(
+  sched.includes('asyncShowError(calendarResource)') && sched.includes('LoadErrorState'),
+  'calendar error UI',
+);
+console.assert(
+  sched.includes('useAsyncResource<CalendarData>') && asyncResource.includes("status: 'stale'"),
+  'calendar truth state',
+);
 console.assert(!planTab.includes("label: 'График'") && planTab.includes("subParam === 'schedule'"), 'schedule subtab removed');
 console.assert(hub.includes('secondary.reduce') && !hub.includes("badgeT}>·"), 'hub badge number');
 console.assert(status.includes('Открыть конфликты'), 'offline status CTA');
@@ -42,7 +50,8 @@ const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
   Boolean(repair?.params?.tab === 'control') &&
   offline.includes('/conflicts') &&
-  sched.includes('calLoadState');
+  sched.includes('asyncShowError(calendarResource)') &&
+  sched.includes('useAsyncResource<CalendarData>');
 
 if (!ok) process.exit(1);
 console.log('reliabilityUx.w152.test OK');
