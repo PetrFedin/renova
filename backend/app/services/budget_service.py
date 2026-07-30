@@ -348,7 +348,7 @@ async def sync_budget_lines_from_estimate(db: AsyncSession, project_id: str) -> 
     if reserve_lines:
         keep_reserve = min(reserve_lines, key=lambda line: line.id)
         subtotal = sum(
-            _money(row.quantity_planned) * _money(row.unit_price)
+            Decimal(str(row.quantity_planned or 0)) * Decimal(str(row.unit_price or 0))
             for row in estimate_rows
         )
         keep_reserve.planned_amount = _money_float(
