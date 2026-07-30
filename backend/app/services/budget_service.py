@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import (
     BudgetLine,
+    ChangeOrder,
+    ChangeOrderStatus,
     EstimateLine,
     Expense,
     Payment,
@@ -37,12 +39,20 @@ _ORIGINAL_SYNC_BUDGET_LINES_FROM_ESTIMATE = _legacy.sync_budget_lines_from_estim
 _ORIGINAL_REFRESH_BUDGET_FACTS = _legacy.refresh_budget_facts
 
 
+def _decimal(value: float | int | Decimal | None) -> Decimal:
+    return Decimal(str(value or 0))
+
+
 def _money(value: float | int | Decimal | None) -> Decimal:
-    return Decimal(str(value or 0)).quantize(_CENT, rounding=ROUND_HALF_UP)
+    return _decimal(value).quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
 def _money_float(value: Decimal) -> float:
     return float(value.quantize(_CENT, rounding=ROUND_HALF_UP))
+
+
+def _estimate_amount(line: EstimateLine) -> Decimal:
+    return _decimal(line.quantity_planned) * _decimal(line.unit_price)
 
 
 def _budget_category(value: str | None) -> str:
@@ -219,11 +229,13 @@ async def expense_from_purchase(db: AsyncSession, purchase: Purchase) -> Expense
     if purchase.status not in (PurchaseStatus.paid, PurchaseStatus.delivered):
         return None
 
-    amount = round(float(purchase.total_amount or 0), 2)
+    amount = _money(purchase.total_amount)
     if amount <= 0:
-        amount = round(
-            sum(float(item.qty or 0) * float(item.unit_price or 0) for item in (purchase.items or [])),
-            2,
+        amount = _money(
+            sum(
+                (_decimal(item.qty) * _decimal(item.unit_price) for item in (purchase.items or [])),
+                Decimal("0"),
+            )
         )
     if amount <= 0:
         return None
@@ -242,7 +254,7 @@ async def expense_from_purchase(db: AsyncSession, purchase: Purchase) -> Expense
             purchase_id=purchase.id,
             title=_legacy._purchase_title(purchase),
             category="materials",
-            amount=amount,
+            amount=_money_float(amount),
             status="confirmed",
             payment_method="transfer",
             expense_date=purchase.paid_at or purchase.delivered_at or purchase.created_at or _legacy.utc_now(),
@@ -257,7 +269,7 @@ async def expense_from_purchase(db: AsyncSession, purchase: Purchase) -> Expense
     expense.material_pick_id = _legacy._single_purchase_field(purchase, "material_pick_id")
     expense.title = _legacy._purchase_title(purchase)
     expense.category = "materials"
-    expense.amount = amount
+    expense.amount = _money_float(amount)
     expense.status = "confirmed"
     expense.payment_method = expense.payment_method or "transfer"
     expense.supplier_name = purchase.supplier_name
@@ -301,7 +313,8 @@ async def sync_budget_lines_from_estimate(db: AsyncSession, project_id: str) -> 
     estimate_rows = list(
         (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
     )
-    estimate_ids = {row.id for row in estimate_rows}
+    estimate_by_id = {row.id: row for row in estimate_rows}
+    estimate_ids = set(estimate_by_id)
     lines = list(
         (await db.execute(select(BudgetLine).where(BudgetLine.project_id == project_id))).scalars().all()
     )
@@ -330,6 +343,8 @@ async def sync_budget_lines_from_estimate(db: AsyncSession, project_id: str) -> 
             duplicates,
             key=lambda line: line.id,
         )
+        estimate = estimate_by_id[estimate_line_id]
+        keep.planned_amount = _money_float(_estimate_amount(estimate))
         for duplicate in duplicates:
             if duplicate.id == keep.id:
                 continue
@@ -347,12 +362,9 @@ async def sync_budget_lines_from_estimate(db: AsyncSession, project_id: str) -> 
     ]
     if reserve_lines:
         keep_reserve = min(reserve_lines, key=lambda line: line.id)
-        subtotal = sum(
-            Decimal(str(row.quantity_planned or 0)) * Decimal(str(row.unit_price or 0))
-            for row in estimate_rows
-        )
+        subtotal = sum((_estimate_amount(row) for row in estimate_rows), Decimal("0"))
         keep_reserve.planned_amount = _money_float(
-            subtotal * Decimal(str(_legacy.RESERVE_PCT))
+            subtotal * _decimal(_legacy.RESERVE_PCT)
         )
         for duplicate in reserve_lines:
             if duplicate.id == keep_reserve.id:
@@ -363,6 +375,70 @@ async def sync_budget_lines_from_estimate(db: AsyncSession, project_id: str) -> 
     if changed:
         await db.flush()
     return out
+
+
+async def sync_project_budget_planned(db: AsyncSession, project_id: str) -> float:
+    """Write project plan from exact estimate and approved change-order values."""
+    estimate_rows = list(
+        (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
+    )
+    approved_orders = list(
+        (
+            await db.execute(
+                select(ChangeOrder).where(
+                    ChangeOrder.project_id == project_id,
+                    ChangeOrder.status == ChangeOrderStatus.approved,
+                )
+            )
+        ).scalars().all()
+    )
+    total = sum((_estimate_amount(row) for row in estimate_rows), Decimal("0")) + sum(
+        (_decimal(order.amount) for order in approved_orders),
+        Decimal("0"),
+    )
+    value = _money_float(total)
+    project = await db.get(Project, project_id)
+    if project:
+        project.budget_planned = value
+    await db.flush()
+    return value
+
+
+async def apply_change_order_to_budget(db: AsyncSession, co: ChangeOrder) -> BudgetLine:
+    """Maintain exactly one precise planned line for an approved change order."""
+    marker = f"[co:{co.id}]"
+    lines = list(
+        (
+            await db.execute(
+                select(BudgetLine).where(
+                    BudgetLine.project_id == co.project_id,
+                    BudgetLine.description.contains(marker),
+                )
+            )
+        ).scalars().all()
+    )
+    if lines:
+        line = min(lines, key=lambda row: row.id)
+        for duplicate in lines:
+            if duplicate.id != line.id:
+                await db.delete(duplicate)
+    else:
+        line = BudgetLine(
+            project_id=co.project_id,
+            category="works",
+            description="",
+            planned_amount=0,
+            expense_type="works",
+            status="active",
+        )
+        db.add(line)
+    line.category = "works"
+    line.description = f"Доп. работы: {co.title} {marker}"
+    line.planned_amount = _money_float(_decimal(co.amount))
+    line.expense_type = "works"
+    line.status = "active"
+    await db.flush()
+    return line
 
 
 async def _reconcile_budget_line_actuals(db: AsyncSession, project_id: str) -> None:
@@ -492,6 +568,8 @@ async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
 # Legacy functions resolve their globals at call time. Installing protected implementations
 # keeps budget_summary/update/delete and every existing caller on one integrity path.
 _legacy.sync_budget_lines_from_estimate = sync_budget_lines_from_estimate
+_legacy.sync_project_budget_planned = sync_project_budget_planned
+_legacy.apply_change_order_to_budget = apply_change_order_to_budget
 _legacy._dedupe_linked_expenses = _dedupe_linked_expenses
 _legacy.expense_from_receipt = expense_from_receipt
 _legacy.expense_from_payment = expense_from_payment
