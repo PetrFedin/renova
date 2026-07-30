@@ -11,13 +11,15 @@ from app.services.fns.status_npd import check_taxpayer_npd_status
 from app.core.security import create_access_token
 from app.services.auth_audit import log_auth_event
 from app.core.config import settings
-from app.core.environment import policy_for
+from app.core.environment import policy_for, resolve_policy_flag
 
 
 def _demo_endpoints_allowed() -> bool:
-    if settings.allow_demo_seed is not None:
-        return bool(settings.allow_demo_seed)
-    return policy_for(settings.normalized_environment).allow_demo_seed
+    policy = policy_for(settings.normalized_environment)
+    return resolve_policy_flag(
+        policy_allows=policy.allow_demo_seed,
+        override=settings.allow_demo_seed,
+    )
 
 
 def _open_registration_allowed() -> bool:
@@ -26,6 +28,7 @@ def _open_registration_allowed() -> bool:
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
 
 async def user_out_with_token(
     user: User,
@@ -50,9 +53,10 @@ async def user_out_with_token(
 async def export_my_data(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
     from app.models.entities import Project
-    r = await db.execute(select(Project).where((Project.customer_id == user.id) | (Project.contractor_id == user.id)))
-    projects = [{"id": p.id, "name": p.name} for p in r.scalars().all()]
+    result = await db.execute(select(Project).where((Project.customer_id == user.id) | (Project.contractor_id == user.id)))
+    projects = [{"id": project.id, "name": project.name} for project in result.scalars().all()]
     return {"user": {"id": user.id, "phone": user.phone, "role": user.role.value}, "projects": projects}
+
 
 @router.post("/anonymize")
 async def anonymize_me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -62,10 +66,11 @@ async def anonymize_me(user: User = Depends(get_current_user), db: AsyncSession 
     await db.commit()
     return {"ok": True}
 
+
 @router.delete("/me")
 async def delete_me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Soft-delete + anonymize + revoke sessions (P2.21). Hard purge = retention job later."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     from app.services import session_service as sess_svc
 
     now = utc_now()
@@ -95,23 +100,31 @@ async def mint_ws_ticket(user: User = Depends(get_current_user)):
     return {"ticket": ticket, "expires_in": ttl, "token_type": "ws_ticket"}
 
 
-
-
-
 @router.post("/sms/send")
 async def sms_send(body: SmsSendRequest):
     from app.services.otp_service import send_otp
+
     result = await send_otp(body.phone)
     if not result.get("ok"):
-        code = 429 if result.get("rate_limited") or result.get("locked") else 400
-        raise HTTPException(code, result.get("message") or "otp_send_failed")
+        if result.get("service_unavailable"):
+            status_code = 503
+        elif result.get("rate_limited") or result.get("locked"):
+            status_code = 429
+        else:
+            status_code = 400
+        raise HTTPException(status_code, result.get("message") or "otp_send_failed")
     return result
 
 
 @router.post("/sms/verify", response_model=UserOut)
 async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
-    from app.services.otp_service import verify_otp
-    if not verify_otp(body.phone, body.code):
+    from app.services.otp_service import OtpStoreUnavailable, verify_otp
+
+    try:
+        verified = verify_otp(body.phone, body.code)
+    except OtpStoreUnavailable as exc:
+        raise HTTPException(503, "Сервис кодов временно недоступен") from exc
+    if not verified:
         await log_auth_event(db, user_id=None, path="/auth/sms/verify", status_code=400, note="bad_otp")
         raise HTTPException(400, "Неверный или просроченный код")
     result = await db.execute(select(User).where(User.phone == body.phone))
@@ -122,11 +135,17 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
         npd_verified = False
         if body.role == "contractor" and body.inn and len(body.inn) == 12:
             try:
-                r = await check_taxpayer_npd_status(body.inn)
-                npd_verified = r["is_npd"]
+                npd_result = await check_taxpayer_npd_status(body.inn)
+                npd_verified = npd_result["is_npd"]
             except Exception:
                 npd_verified = False
-        user = User(phone=body.phone, role=UserRole(body.role), full_name=body.full_name, inn=body.inn, npd_verified=npd_verified)
+        user = User(
+            phone=body.phone,
+            role=UserRole(body.role),
+            full_name=body.full_name,
+            inn=body.inn,
+            npd_verified=npd_verified,
+        )
         db.add(user)
         await db.commit()
         await db.refresh(user)
@@ -138,6 +157,7 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
     out = await user_out_with_token(user, db)
     await log_auth_event(db, user_id=user.id, path="/auth/sms/verify", status_code=200, note="login_ok")
     return out
+
 
 @router.post("/register", response_model=UserOut)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> UserOut:
@@ -152,8 +172,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
     npd_verified = False
     if body.role == "contractor" and body.inn and len(body.inn) == 12:
         try:
-            r = await check_taxpayer_npd_status(body.inn)
-            npd_verified = r["is_npd"]
+            npd_result = await check_taxpayer_npd_status(body.inn)
+            npd_verified = npd_result["is_npd"]
         except Exception:
             npd_verified = False
 
@@ -218,8 +238,8 @@ async def refresh_tokens(body: RefreshRequest, db: AsyncSession = Depends(get_db
     if not rotated:
         await log_auth_event(db, user_id=None, path="/auth/refresh", status_code=401, note="bad_refresh")
         raise HTTPException(401, "invalid_or_expired_refresh")
-    sess, raw = rotated
-    user = await db.get(User, sess.user_id)
+    session, raw = rotated
+    user = await db.get(User, session.user_id)
     if not user:
         raise HTTPException(401, "user_not_found")
     if getattr(user, "deleted_at", None):
@@ -242,13 +262,12 @@ async def logout_session(body: RefreshRequest, db: AsyncSession = Depends(get_db
 @router.post("/sessions/revoke-all")
 async def revoke_all_sessions(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """P1.8: выйти на всех устройствах (revoke refresh + invalidate access via epoch)."""
-    from datetime import datetime
     from app.services import session_service as sess_svc
 
-    n = await sess_svc.revoke_all_user_sessions(db, user.id)
+    revoked = await sess_svc.revoke_all_user_sessions(db, user.id)
     user.tokens_invalid_before = utc_now()
     await db.commit()
-    return {"ok": True, "revoked": n, "access_invalidated": True}
+    return {"ok": True, "revoked": revoked, "access_invalidated": True}
 
 
 @router.post("/admin/purge-deleted-accounts")
@@ -257,14 +276,16 @@ async def purge_deleted_accounts(
     db: AsyncSession = Depends(get_db),
 ):
     """Ops: hard-delete users soft-deleted >30d. Only staging/prod with ALLOW_ACCOUNT_PURGE=1."""
-    from app.core.config import settings
     if not getattr(settings, "allow_account_purge", False):
         raise HTTPException(403, "account_purge_disabled")
-    # Restrict to same phone pattern as demo admin — require contractor+explicit flag is weak;
-    # use env gate only + caller must be authenticated (audit log).
     from app.services.account_purge_service import purge_deleted_users
-    from app.services.auth_audit import log_auth_event
 
-    n = await purge_deleted_users(db)
-    await log_auth_event(db, user_id=user.id, path="/auth/admin/purge-deleted-accounts", status_code=200, note=f"purged={n}")
-    return {"ok": True, "purged": n, "retention_days": 30}
+    purged = await purge_deleted_users(db)
+    await log_auth_event(
+        db,
+        user_id=user.id,
+        path="/auth/admin/purge-deleted-accounts",
+        status_code=200,
+        note=f"purged={purged}",
+    )
+    return {"ok": True, "purged": purged, "retention_days": 30}
