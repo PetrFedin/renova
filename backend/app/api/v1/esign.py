@@ -1,76 +1,108 @@
-"""E-sign providers catalog + webhooks (Wave 3f)."""
+"""E-sign providers catalog and fail-closed external webhooks."""
+from __future__ import annotations
+
+import hmac
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User
+from app.models.project_documents import DocumentSignature
 from app.services import project_document_service as docs_svc
 from app.services.esign import list_providers
 
 router = APIRouter(prefix="/esign", tags=["esign"])
 
+_SIGNED_STATUSES = frozenset({"completed", "done", "success", "signed", "signature.completed"})
+_FAILED_STATUSES = frozenset({"failed", "error", "rejected", "cancelled", "canceled", "signature.failed"})
+_PENDING_STATUSES = frozenset({
+    "pending",
+    "created",
+    "accepted",
+    "sent",
+    "processing",
+    "awaiting_signature",
+    "signature.pending",
+})
+
 
 class EsignWebhookIn(BaseModel):
     external_id: str = Field(min_length=4, max_length=128)
-    status: str = "signed"  # signed | failed | pending
+    status: str
     meta: dict | None = None
 
 
-def _check_webhook_secret(x_esign_secret: str | None) -> None:
-    """Staging/prod + kontur/goskey on → secret обязателен. Dev — soft."""
+def _mapping(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _provider_mode(provider: str) -> str:
+    if provider == "kontur":
+        return (settings.kontur_mode or "off").strip().lower()
+    if provider == "goskey":
+        return (settings.goskey_mode or "off").strip().lower()
+    return "off"
+
+
+def _check_webhook_secret(provider: str, supplied: str | None) -> None:
+    """External callbacks always require an explicitly configured shared secret."""
     expected = (settings.esign_webhook_secret or "").strip()
-    mode = (settings.kontur_mode or "off").strip().lower()
-    env = settings.normalized_environment
-    require = env in ("staging", "production") and mode in ("sandbox", "live")
-    if require and not expected:
-        raise HTTPException(
-            503,
-            "ESIGN_WEBHOOK_SECRET required when KONTUR_MODE=sandbox|live on staging/production",
-        )
     if not expected:
-        # Dev-friendly: allow without secret when not configured
-        return
-    if not x_esign_secret or x_esign_secret != expected:
+        raise HTTPException(503, "esign_webhook_secret_missing")
+    candidate = supplied or ""
+    if not hmac.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(401, "invalid_webhook_secret")
+    if _provider_mode(provider) not in {"sandbox", "live"}:
+        raise HTTPException(409, f"provider_{provider}_disabled")
 
 
 def parse_esign_webhook_payload(raw: dict) -> tuple[str, str]:
-    """Normalize Renova + Kontur-like payloads → (external_id, status)."""
+    """Normalize only explicit, known provider statuses to a safe state."""
+    payload = _mapping(raw)
+    object_data = _mapping(payload.get("object"))
+    data = _mapping(payload.get("data"))
+    signature_data = _mapping(payload.get("signature"))
     external_id = (
-        raw.get("external_id")
-        or raw.get("id")
-        or (raw.get("object") or {}).get("id")
-        or (raw.get("data") or {}).get("id")
-        or (raw.get("signature") or {}).get("id")
+        payload.get("external_id")
+        or payload.get("id")
+        or object_data.get("id")
+        or data.get("id")
+        or signature_data.get("id")
     )
-    status_raw = (
-        raw.get("status")
-        or (raw.get("object") or {}).get("status")
-        or raw.get("event")
-        or "signed"
-    )
-    status = str(status_raw).lower()
-    if status in ("completed", "done", "success", "signed", "signature.completed"):
-        status = "signed"
-    elif status in ("failed", "error", "rejected", "signature.failed"):
-        status = "failed"
-    elif status not in ("signed", "failed", "pending"):
-        status = "signed" if "sign" in status else status
-    if not external_id or not isinstance(external_id, str) or len(external_id) < 4:
+    if (
+        not isinstance(external_id, str)
+        or not 4 <= len(external_id) <= 128
+        or any(char in external_id for char in "\r\n\x00")
+    ):
         raise HTTPException(400, "external_id_required")
+
+    status_raw = payload.get("status") or object_data.get("status") or payload.get("event")
+    if not isinstance(status_raw, str) or not status_raw.strip():
+        raise HTTPException(400, "status_required")
+    provider_status = status_raw.strip().lower()
+    if provider_status in _SIGNED_STATUSES:
+        status = "signed"
+    elif provider_status in _FAILED_STATUSES:
+        status = "failed"
+    elif provider_status in _PENDING_STATUSES:
+        status = "pending"
+    else:
+        raise HTTPException(400, "unsupported_esign_status")
     return external_id, status
 
 
 async def _side_effects_after_external_sign(
-    db,
+    db: AsyncSession,
     *,
-    sig,
+    sig: DocumentSignature,
     provider: str,
 ) -> None:
-    """Activity + notify when webhook sets signed_at."""
+    """Activity + notification only after a first valid transition to signed."""
     if sig.status != "signed" or not sig.signed_at:
         return
     from app.models.entities import Project
@@ -90,10 +122,10 @@ async def _side_effects_after_external_sign(
         body=sig.provider_external_id or "",
         link_path="/documents",
     )
-    proj = await db.get(Project, doc.project_id)
-    if not proj:
+    project = await db.get(Project, doc.project_id)
+    if not project:
         return
-    for recipient_id in {proj.customer_id, proj.contractor_id, proj.foreman_id}:
+    for recipient_id in {project.customer_id, project.contractor_id, project.foreman_id}:
         if not recipient_id or recipient_id == sig.signer_user_id:
             continue
         await notif.notify(
@@ -108,13 +140,19 @@ async def _side_effects_after_external_sign(
         )
 
 
-
-async def _signature_webhook_payload(db, sig, *, provider: str, duplicate: bool) -> dict:
+async def _signature_webhook_payload(
+    db: AsyncSession,
+    sig: DocumentSignature,
+    *,
+    provider: str,
+    duplicate: bool,
+) -> dict:
     from app.models.project_documents import ProjectDocument
-    doc = await db.get(ProjectDocument, sig.document_id) if sig else None
-    st = None
+
+    doc = await db.get(ProjectDocument, sig.document_id)
+    document_status = None
     if doc is not None:
-        st = doc.status.value if hasattr(doc.status, "value") else str(doc.status)
+        document_status = doc.status.value if hasattr(doc.status, "value") else str(doc.status)
     return {
         "ok": True,
         "duplicate": duplicate,
@@ -124,40 +162,91 @@ async def _signature_webhook_payload(db, sig, *, provider: str, duplicate: bool)
         "provider": provider,
         "external_id": sig.provider_external_id,
         "document_id": sig.document_id,
-        "document_status": st,
+        "document_status": document_status,
     }
+
+
+async def _process_provider_webhook(
+    db: AsyncSession,
+    *,
+    provider: str,
+    body: dict,
+    supplied_secret: str | None,
+) -> dict:
+    _check_webhook_secret(provider, supplied_secret)
+    external_id, status = parse_esign_webhook_payload(body if isinstance(body, dict) else {})
+    existing_query = select(DocumentSignature).where(
+        DocumentSignature.provider_name == provider,
+        DocumentSignature.provider_external_id == external_id,
+    )
+    try:
+        existing_query = existing_query.with_for_update()
+    except Exception:
+        pass
+    rows = list((await db.execute(existing_query)).scalars().all())
+    if not rows:
+        raise HTTPException(404, "signature_not_found")
+    if len(rows) != 1:
+        raise HTTPException(409, "duplicate_provider_external_id")
+    existing = rows[0]
+    duplicate = status == existing.status and (
+        status != "signed" or bool(existing.signed_at)
+    )
+    try:
+        signature = await docs_svc.complete_external_signature(
+            db,
+            provider_name=provider,
+            external_id=external_id,
+            status=status,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if not signature:
+        raise HTTPException(404, "signature_not_found")
+    if status == "signed" and not duplicate:
+        await _side_effects_after_external_sign(db, sig=signature, provider=provider)
+    await db.commit()
+    return await _signature_webhook_payload(
+        db,
+        signature,
+        provider=provider,
+        duplicate=duplicate,
+    )
 
 
 @router.get("/health")
 async def esign_health(_user: User = Depends(get_current_user)):
-    """P3-W11: staging probe — kontur mode + webhook URLs для DevOps."""
     base = (settings.public_base_url or "http://127.0.0.1:8100").rstrip("/")
-    secret_set = bool(settings.esign_webhook_secret)
-    mode = (settings.kontur_mode or "off").strip().lower()
-    env = settings.normalized_environment
-    configured = bool(settings.kontur_api_key) and mode in ("sandbox", "live")
-    live_ready = configured and secret_set and env in ("staging", "production", "development", "test")
+    secret_set = bool((settings.esign_webhook_secret or "").strip())
+    kontur_mode = _provider_mode("kontur")
+    kontur_configured = (
+        kontur_mode in {"sandbox", "live"}
+        and bool((settings.kontur_api_key or "").strip())
+        and bool((settings.kontur_api_url or "").strip())
+        and secret_set
+    )
     return {
-        "environment": env,
-        "kontur_mode": mode,
-        "kontur_configured": configured,
-        "live_webhook_ready": bool(configured and secret_set),
+        "environment": settings.normalized_environment,
+        "kontur_mode": kontur_mode,
+        "kontur_configured": kontur_configured,
+        "goskey_mode": _provider_mode("goskey"),
+        "goskey_configured": False,
+        "live_webhook_ready": kontur_configured,
         "webhook_kontur": f"{base}/api/v1/esign/webhooks/kontur",
         "webhook_goskey": f"{base}/api/v1/esign/webhooks/goskey",
         "esign_webhook_secret_set": secret_set,
-        "dev_simulate": f"{base}/api/v1/esign/dev/kontur/simulate",
-        "hint": (
-            None
-            if live_ready or mode in ("", "off")
-            else "Задайте KONTUR_API_KEY + KONTUR_MODE + ESIGN_WEBHOOK_SECRET"
+        "dev_simulate": (
+            f"{base}/api/v1/esign/dev/kontur/simulate"
+            if settings.normalized_environment in {"development", "test"}
+            else None
         ),
+        "hint": None if kontur_configured or kontur_mode == "off" else "Проверьте Kontur API URL/key и webhook secret",
         "providers": list_providers(),
     }
 
 
 @router.get("/providers")
 async def esign_providers(_user: User = Depends(get_current_user)):
-    """Список провайдеров подписи: available зависит от env (KONTUR_*/GOSKEY_*)."""
     return {"providers": list_providers()}
 
 
@@ -167,34 +256,11 @@ async def kontur_webhook(
     db: AsyncSession = Depends(get_db),
     x_esign_secret: str | None = Header(default=None, alias="X-Esign-Secret"),
 ):
-    """Accept Renova EsignWebhookIn or Kontur-like {id,status,object}."""
-    _check_webhook_secret(x_esign_secret)
-    from sqlalchemy import select
-    from app.models.project_documents import DocumentSignature
-
-    external_id, status = parse_esign_webhook_payload(body if isinstance(body, dict) else {})
-    existing = (
-        await db.execute(
-            select(DocumentSignature).where(
-                DocumentSignature.provider_name == "kontur",
-                DocumentSignature.provider_external_id == external_id,
-            )
-        )
-    ).scalar_one_or_none()
-    already_signed = bool(existing and existing.status == "signed" and existing.signed_at)
-    sig = await docs_svc.complete_external_signature(
+    return await _process_provider_webhook(
         db,
-        provider_name="kontur",
-        external_id=external_id,
-        status=status,
-    )
-    if not sig:
-        raise HTTPException(404, "signature_not_found")
-    if status == "signed" and not already_signed:
-        await _side_effects_after_external_sign(db, sig=sig, provider="kontur")
-    await db.commit()
-    return await _signature_webhook_payload(
-        db, sig, provider="kontur", duplicate=already_signed and status == "signed"
+        provider="kontur",
+        body=body,
+        supplied_secret=x_esign_secret,
     )
 
 
@@ -204,51 +270,37 @@ async def goskey_webhook(
     db: AsyncSession = Depends(get_db),
     x_esign_secret: str | None = Header(default=None, alias="X-Esign-Secret"),
 ):
-    _check_webhook_secret(x_esign_secret)
-    external_id, status = parse_esign_webhook_payload(body if isinstance(body, dict) else {})
-    already = False
-    from sqlalchemy import select
-    from app.models.project_documents import DocumentSignature
-    existing = (
-        await db.execute(
-            select(DocumentSignature).where(
-                DocumentSignature.provider_name == "goskey",
-                DocumentSignature.provider_external_id == external_id,
-            )
-        )
-    ).scalar_one_or_none()
-    already = bool(existing and existing.status == "signed" and existing.signed_at)
-    sig = await docs_svc.complete_external_signature(
+    return await _process_provider_webhook(
         db,
-        provider_name="goskey",
-        external_id=external_id,
-        status=status,
+        provider="goskey",
+        body=body,
+        supplied_secret=x_esign_secret,
     )
-    if not sig:
-        raise HTTPException(404, "signature_not_found")
-    if status == "signed" and not already:
-        await _side_effects_after_external_sign(db, sig=sig, provider="goskey")
-    await db.commit()
-    return await _signature_webhook_payload(
-        db, sig, provider="goskey", duplicate=already and status == "signed"
-    )
+
 
 @router.post("/dev/kontur/simulate")
 async def dev_kontur_simulate(
     body: EsignWebhookIn,
     db: AsyncSession = Depends(get_db),
 ):
-    """Development only: завершить pending подпись без внешнего Kontur."""
-    if settings.normalized_environment not in ("development", "test"):
+    if settings.normalized_environment not in {"development", "test"}:
         raise HTTPException(404, "not_available")
-    sig = await docs_svc.complete_external_signature(
-        db,
-        provider_name="kontur",
-        external_id=body.external_id,
-        status=body.status or "signed",
-    )
-    if not sig:
+    external_id, status = parse_esign_webhook_payload(body.model_dump(exclude_none=True))
+    try:
+        signature = await docs_svc.complete_external_signature(
+            db,
+            provider_name="kontur",
+            external_id=external_id,
+            status=status,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if not signature:
         raise HTTPException(404, "signature_not_found")
     await db.commit()
-    return {"ok": True, "signature_id": sig.id, "simulated": True}
-
+    return {
+        "ok": True,
+        "signature_id": signature.id,
+        "status": signature.status,
+        "simulated": True,
+    }

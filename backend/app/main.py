@@ -81,8 +81,10 @@ async def lifespan(app: FastAPI):
     ):
         logger.warning(warning)
 
+    from app.services.esign.runtime import validate_esign_runtime
     from app.services.otp_runtime import validate_otp_runtime
 
+    validate_esign_runtime()
     await validate_otp_runtime()
     await init_db()
     from app.services.storage_service import ensure_bucket
