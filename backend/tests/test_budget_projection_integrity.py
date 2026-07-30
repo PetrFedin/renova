@@ -57,7 +57,15 @@ async def seed_project_room(db, suffix: str):
     return project, room
 
 
-def estimate_line(*, line_id: str, project_id: str, room_id: str, name: str, price: float):
+def estimate_line(
+    *,
+    line_id: str,
+    project_id: str,
+    room_id: str,
+    name: str,
+    price: float,
+    quantity: float = 1,
+):
     return EstimateLine(
         id=line_id,
         project_id=project_id,
@@ -65,7 +73,7 @@ def estimate_line(*, line_id: str, project_id: str, room_id: str, name: str, pri
         line_type=LineType.material,
         name=name,
         unit="шт",
-        quantity_planned=1,
+        quantity_planned=quantity,
         unit_price=price,
     )
 
@@ -329,3 +337,34 @@ async def test_expense_amounts_use_half_up_cent_rounding(projection_db):
     )
     assert budget_line.actual_amount == 10.01
     assert (await projection_db.get(Project, project.id)).budget_spent == 10.01
+
+
+@pytest.mark.asyncio
+async def test_reserve_uses_full_fractional_quantity_before_money_rounding(projection_db):
+    project, room = await seed_project_room(projection_db, "fractional")
+    line = estimate_line(
+        line_id="estimate-fractional",
+        project_id=project.id,
+        room_id=room.id,
+        name="Дробное количество",
+        quantity=1.125,
+        price=100,
+    )
+    projection_db.add(line)
+    await projection_db.commit()
+
+    await budget_service.refresh_budget_facts(projection_db, project.id)
+    await projection_db.commit()
+
+    reserve = await projection_db.scalar(
+        select(BudgetLine).where(
+            BudgetLine.project_id == project.id,
+            BudgetLine.category == "reserve",
+        )
+    )
+    estimate_projection = await projection_db.scalar(
+        select(BudgetLine).where(BudgetLine.estimate_line_id == line.id)
+    )
+
+    assert estimate_projection.planned_amount == 112.5
+    assert reserve.planned_amount == 13.5
