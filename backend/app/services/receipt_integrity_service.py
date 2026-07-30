@@ -140,13 +140,32 @@ async def patch_receipt(
 
 
 def verification_status(*, verified: bool, mode: str) -> str:
-    if verified and mode == "live":
+    """Map provider outcome to the exact persisted state.
+
+    A boolean alone is never enough to create live fiscal evidence. Legacy demo
+    outcomes are intentionally downgraded to saved_unverified.
+    """
+    normalized = str(mode or "offline").strip().lower()
+    if verified and normalized == "live":
         return "verified_live"
-    if verified and mode == "demo":
-        return "demo_verified"
-    if mode == "live" and not verified:
+    if normalized in {"pending", "verification_pending"}:
+        return "verification_pending"
+    if normalized in {"failed", "verification_failed"}:
+        return "verification_failed"
+    if normalized == "invalid":
+        return "invalid"
+    if normalized == "live" and not verified:
         return "verification_failed"
     return "saved_unverified"
+
+
+def _preserve_verified_live(current_status: str, next_status: str) -> bool:
+    """Transient/provider configuration failures cannot revoke prior evidence."""
+    return current_status == "verified_live" and next_status in {
+        "verification_pending",
+        "verification_failed",
+        "saved_unverified",
+    }
 
 
 async def apply_verification_result(
@@ -170,24 +189,36 @@ async def apply_verification_result(
     if receipt.fn == "MANUAL":
         raise ValueError("manual_receipt_not_reverifiable")
 
+    current_status = str(receipt.verification_status or "saved_unverified")
     next_status = verification_status(verified=bool(verified), mode=mode)
+    if _preserve_verified_live(current_status, next_status):
+        return ReceiptMutation(receipt=receipt, changed=False)
+
+    next_verified = next_status == "verified_live"
     changed = (
-        bool(receipt.fns_verified) != bool(verified)
-        or (receipt.verification_status or "saved_unverified") != next_status
+        bool(receipt.fns_verified) != next_verified
+        or current_status != next_status
     )
-    receipt.fns_verified = bool(verified)
+    receipt.fns_verified = next_verified
     receipt.verification_status = next_status
 
     from app.services import budget_service as budget
     from app.services import outbox_service as outbox
 
-    expense = await budget.expense_from_receipt(db, receipt)
+    await budget.expense_from_receipt(db, receipt)
     await budget.refresh_budget_facts(db, project_id)
 
     outbox_id: str | None = None
     if changed:
-        kind = "ReceiptVerified" if verified else "ReceiptVerificationFailed"
-        title = "Чек подтверждён ФНС" if verified else "Проверка чека не пройдена"
+        if next_verified:
+            kind = "ReceiptVerified"
+            title = "Чек подтверждён ФНС"
+        elif next_status == "verification_pending":
+            kind = "ReceiptVerificationPending"
+            title = "Проверка чека ожидает ответа ФНС"
+        else:
+            kind = "ReceiptVerificationFailed"
+            title = "Проверка чека не пройдена"
         row = await outbox.enqueue(
             db,
             aggregate_type="receipt",
