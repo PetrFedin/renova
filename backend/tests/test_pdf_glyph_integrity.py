@@ -19,8 +19,8 @@ def test_missing_currency_glyph_has_readable_fallback(monkeypatch):
     monkeypatch.setattr(pdf_helper, "_USE_UNICODE", True)
     monkeypatch.setattr(pdf_helper, "_FONT_CODEPOINTS", frozenset(range(128)))
 
-    assert pdf_helper.pdf_safe("ИТОГО 100 ₽") == "?Т??? 100 руб."
-    assert pdf_helper.pdf_safe("№1 • 2 × 3 — готово") == "No.1 - 2 x 3 - ??????"
+    assert pdf_helper.pdf_safe("ИТОГО 100 ₽") == "ITOGO 100 rub."
+    assert pdf_helper.pdf_safe("№1 • 2 × 3 — готово") == "No.1 - 2 x 3 - gotovo"
 
 
 def test_selected_font_text_contains_only_renderable_codepoints():
