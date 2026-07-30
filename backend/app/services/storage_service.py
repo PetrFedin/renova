@@ -5,9 +5,11 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import json
 import logging
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
@@ -318,36 +320,56 @@ def _cloudfront_domain() -> str:
     return domain.rstrip("/")
 
 
+def _cloudfront_signature(value: bytes) -> str:
+    """Encode a CloudFront RSA signature using AWS URL-safe substitutions."""
+    return (
+        base64.b64encode(value)
+        .decode("ascii")
+        .replace("+", "-")
+        .replace("=", "_")
+        .replace("/", "~")
+    )
+
+
 def generate_cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
     normalized = normalize_storage_key(key)
     domain = _cloudfront_domain()
     if not domain:
         return None
     unsigned_url = f"https://{domain}/{_encoded_key(normalized)}"
-    if not settings.cloudfront_key_id:
+    key_pair_id = (settings.cloudfront_key_id or "").strip()
+    if not key_pair_id:
         return unsigned_url
+
+    private_key_path = Path(settings.uploads_dir).expanduser().resolve().parent / "cloudfront-private-key.pem"
+    if not private_key_path.is_file():
+        raise StorageConfigurationError("cloudfront_private_key_missing")
+
     try:
-        from datetime import datetime, timedelta, timezone
-        from pathlib import Path as P
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
 
-        import rsa
-        from botocore.signers import CloudFrontSigner
-
-        pk_path = P(settings.uploads_dir).parent / "cloudfront-private-key.pem"
-        if not pk_path.is_file():
-            raise StorageConfigurationError("cloudfront_private_key_missing")
-        key_data = pk_path.read_bytes()
-        signer = CloudFrontSigner(
-            settings.cloudfront_key_id,
-            lambda message: rsa.sign(
-                message,
-                rsa.PrivateKey.load_pkcs1(key_data),
-                "SHA-1",
-            ),
+        private_key = serialization.load_pem_private_key(
+            private_key_path.read_bytes(),
+            password=None,
         )
-        return signer.generate_presigned_url(
-            unsigned_url,
-            date_less_than=datetime.now(timezone.utc) + timedelta(seconds=expires),
+        expires_at = int((datetime.now(timezone.utc) + timedelta(seconds=max(1, expires))).timestamp())
+        policy = json.dumps(
+            {
+                "Statement": [
+                    {
+                        "Resource": unsigned_url,
+                        "Condition": {"DateLessThan": {"AWS:EpochTime": expires_at}},
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        signature = private_key.sign(policy, padding.PKCS1v15(), hashes.SHA1())
+        return (
+            f"{unsigned_url}?Expires={expires_at}"
+            f"&Signature={_cloudfront_signature(signature)}"
+            f"&Key-Pair-Id={quote(key_pair_id, safe='')}"
         )
     except StorageConfigurationError:
         raise
