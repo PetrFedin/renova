@@ -1,4 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.phone import normalize_phone
+
+
+def _canonical_phone(value: str) -> str:
+    return normalize_phone(value)
 
 
 class RegisterRequest(BaseModel):
@@ -6,6 +12,8 @@ class RegisterRequest(BaseModel):
     role: str = Field(pattern="^(customer|contractor)$")
     full_name: str | None = None
     inn: str | None = None
+
+    _normalize_phone = field_validator("phone")(_canonical_phone)
 
 
 class UserOut(BaseModel):
@@ -31,6 +39,8 @@ class DemoLoginRequest(BaseModel):
 class SmsSendRequest(BaseModel):
     phone: str = Field(min_length=10, max_length=20)
 
+    _normalize_phone = field_validator("phone")(_canonical_phone)
+
 
 class SmsVerifyRequest(BaseModel):
     phone: str = Field(min_length=10, max_length=20)
@@ -38,6 +48,8 @@ class SmsVerifyRequest(BaseModel):
     role: str = Field(pattern="^(customer|contractor)$")
     full_name: str | None = None
     inn: str | None = None
+
+    _normalize_phone = field_validator("phone")(_canonical_phone)
 
 
 class RefreshRequest(BaseModel):

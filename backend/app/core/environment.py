@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.core.phone import InvalidPhoneNumber, normalize_phone
+
 ALLOWED_ENVIRONMENTS = frozenset({"development", "test", "staging", "production"})
 
 
@@ -146,6 +148,10 @@ def _looks_like_email(value: str | None) -> bool:
     return bool(local and domain and "." in domain)
 
 
+def _unsafe_secret(value: str, max_length: int) -> bool:
+    return not value or len(value) > max_length or any(char in value for char in "\r\n\x00")
+
+
 def validate_runtime_settings(
     *,
     environment: str,
@@ -161,6 +167,10 @@ def validate_runtime_settings(
     smtp_user: str | None = None,
     smtp_password: str | None = None,
     smtp_from: str | None = None,
+    redis_url: str | None = None,
+    twilio_sid: str | None = None,
+    twilio_token: str | None = None,
+    twilio_from: str | None = None,
 ) -> EnvironmentPolicy:
     """Raise ValueError before traffic if settings violate the environment policy."""
     policy = policy_for(environment)
@@ -202,31 +212,64 @@ def validate_runtime_settings(
             f"{policy.name}: SECRET_KEY должен быть уникальным (≥16 символов, не default)"
         )
 
-    ops_to = (ops_alert_email or "").strip()
-    host = (smtp_host or "").strip()
-    user = (smtp_user or "").strip()
-    password = smtp_password or ""
-    sender = (smtp_from or "").strip()
     working_environment = policy.name in {"staging", "production"}
+
+    ops_to = (ops_alert_email or "").strip()
+    smtp_server = (smtp_host or "").strip()
+    smtp_login = (smtp_user or "").strip()
+    smtp_secret = smtp_password or ""
+    smtp_sender = (smtp_from or "").strip()
 
     if ops_to and not _looks_like_email(ops_to):
         errors.append(f"{policy.name}: OPS_ALERT_EMAIL имеет некорректный формат")
-    if sender and not _looks_like_email(sender):
+    if smtp_sender and not _looks_like_email(smtp_sender):
         errors.append(f"{policy.name}: SMTP_FROM имеет некорректный формат")
-    if host and ("\r" in host or "\n" in host or len(host) > 255):
+    if smtp_server and ("\r" in smtp_server or "\n" in smtp_server or len(smtp_server) > 255):
         errors.append(f"{policy.name}: SMTP_HOST имеет некорректный формат")
     if smtp_port < 1 or smtp_port > 65535:
         errors.append(f"{policy.name}: SMTP_PORT должен быть в диапазоне 1..65535")
-    if user and not password:
+    if smtp_login and not smtp_secret:
         errors.append(f"{policy.name}: SMTP_USER задан без SMTP_PASSWORD")
-    if working_environment and ops_to and not host:
+    if working_environment and ops_to and not smtp_server:
         errors.append(
             f"{policy.name}: OPS_ALERT_EMAIL задан, но SMTP_HOST отсутствует — alert не может быть log-only"
         )
-    if working_environment and host and not (sender or user):
+    if working_environment and smtp_server and not (smtp_sender or smtp_login):
         errors.append(
             f"{policy.name}: SMTP_FROM или SMTP_USER обязателен для рабочей SMTP-доставки"
         )
+
+    redis = (redis_url or "").strip()
+    if redis and not redis.lower().startswith(("redis://", "rediss://")):
+        errors.append(f"{policy.name}: REDIS_URL должен начинаться с redis:// или rediss://")
+    if redis and any(char in redis for char in "\r\n\x00"):
+        errors.append(f"{policy.name}: REDIS_URL имеет некорректный формат")
+    if working_environment and not redis:
+        errors.append(
+            f"{policy.name}: REDIS_URL обязателен для общего OTP store и защиты от дублей"
+        )
+
+    twilio_account = (twilio_sid or "").strip()
+    twilio_secret = (twilio_token or "").strip()
+    twilio_sender = (twilio_from or "").strip()
+    twilio_configured = [bool(twilio_account), bool(twilio_secret), bool(twilio_sender)]
+    if any(twilio_configured) and not all(twilio_configured):
+        errors.append(
+            f"{policy.name}: TWILIO_SID, TWILIO_TOKEN и TWILIO_FROM должны быть заданы вместе"
+        )
+    if working_environment and not all(twilio_configured):
+        errors.append(
+            f"{policy.name}: полная Twilio-конфигурация обязательна — SMS не может быть demo-success"
+        )
+    if twilio_account and _unsafe_secret(twilio_account, 128):
+        errors.append(f"{policy.name}: TWILIO_SID имеет некорректный формат")
+    if twilio_secret and _unsafe_secret(twilio_secret, 256):
+        errors.append(f"{policy.name}: TWILIO_TOKEN имеет некорректный формат")
+    if twilio_sender:
+        try:
+            normalize_phone(twilio_sender)
+        except InvalidPhoneNumber:
+            errors.append(f"{policy.name}: TWILIO_FROM должен быть корректным номером")
 
     if errors:
         raise ValueError("Environment guard failed:\n- " + "\n- ".join(errors))
@@ -247,6 +290,10 @@ def collect_warnings(
     yookassa_webhook_secret: str | None = None,
     ops_alert_email: str | None = None,
     smtp_host: str | None = None,
+    redis_url: str | None = None,
+    twilio_sid: str | None = None,
+    twilio_token: str | None = None,
+    twilio_from: str | None = None,
 ) -> list[str]:
     """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
@@ -260,6 +307,16 @@ def collect_warnings(
             warnings.append(
                 "development: OPS_ALERT_EMAIL configured without SMTP_HOST — email is preview only"
             )
+        if not (redis_url or "").strip():
+            warnings.append("development: OTP uses process memory — not suitable for multiple instances")
+        if not all(
+            (
+                (twilio_sid or "").strip(),
+                (twilio_token or "").strip(),
+                (twilio_from or "").strip(),
+            )
+        ):
+            warnings.append("development: Twilio is not configured — OTP SMS is preview only")
     mode = (kontur_mode or "off").strip().lower()
     if name == "staging" and mode in ("sandbox", "live") and not (kontur_api_key or "").strip():
         warnings.append(
