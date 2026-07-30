@@ -57,6 +57,10 @@ async def lifespan(app: FastAPI):
         smtp_user=settings.smtp_user,
         smtp_password=settings.smtp_password,
         smtp_from=settings.smtp_from,
+        redis_url=settings.redis_url,
+        twilio_sid=settings.twilio_sid,
+        twilio_token=settings.twilio_token,
+        twilio_from=settings.twilio_from,
     )
     for warning in collect_warnings(
         environment=settings.environment,
@@ -70,9 +74,16 @@ async def lifespan(app: FastAPI):
         yookassa_webhook_secret=settings.yookassa_webhook_secret,
         ops_alert_email=settings.ops_alert_email,
         smtp_host=settings.smtp_host,
+        redis_url=settings.redis_url,
+        twilio_sid=settings.twilio_sid,
+        twilio_token=settings.twilio_token,
+        twilio_from=settings.twilio_from,
     ):
         logger.warning(warning)
 
+    from app.services.otp_runtime import validate_otp_runtime
+
+    await validate_otp_runtime()
     await init_db()
     from app.services.storage_service import ensure_bucket
     ensure_bucket()
