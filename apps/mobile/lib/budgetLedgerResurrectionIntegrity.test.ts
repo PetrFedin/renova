@@ -23,6 +23,8 @@ assert.match(service, /\[actual-unallocated:/, 'Ambiguous actuals must be repres
 assert.match(service, /_legacy\.sync_budget_lines_from_estimate = sync_budget_lines_from_estimate/, 'Legacy estimate projection must use stale-line cleanup');
 assert.match(service, /await _reconcile_budget_line_actuals\(db, project_id\)/, 'Every budget refresh must finish with exact actual reconciliation');
 assert.match(service, /ROUND_HALF_UP/, 'Financial projection must use explicit cent rounding');
+assert.match(service, /Decimal\(str\(row\.quantity_planned or 0\)\) \* Decimal\(str\(row\.unit_price or 0\)\)/, 'Reserve calculation must preserve full fractional quantity before money rounding');
+assert.doesNotMatch(service, /_money\(row\.quantity_planned\)/, 'Physical quantity must never be quantized as currency');
 assert.match(service, /_legacy\._dedupe_linked_expenses = _dedupe_linked_expenses/, 'Legacy internal calls must use protected dedupe');
 assert.match(service, /_legacy\.refresh_budget_facts = refresh_budget_facts/, 'All legacy callers must use the protected refresh entrypoint');
 assert.match(service, /_ORIGINAL_REFRESH_BUDGET_FACTS/, 'Existing source hydration must remain the base implementation');
