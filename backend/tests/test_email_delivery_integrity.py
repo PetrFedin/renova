@@ -160,6 +160,10 @@ def production_settings(**overrides):
         "smtp_user": None,
         "smtp_password": None,
         "smtp_from": None,
+        "redis_url": "rediss://redis.example.com:6379/0",
+        "twilio_sid": "synthetic-account-id-for-tests",
+        "twilio_token": "synthetic-provider-token-for-tests",
+        "twilio_from": "+74951234567",
     }
     values.update(overrides)
     return values
