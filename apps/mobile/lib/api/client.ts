@@ -34,7 +34,6 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     const j = JSON.parse(txt) as { detail?: unknown; code?: string; message?: string };
     detail = j.detail;
     if (typeof j.detail === 'string') {
-      // FastAPI часто шлёт detail="rate_limit" — не отдаём сырой код в UI
       if (j.detail === 'rate_limit' || status === 429) {
         return {
           message: 'Слишком много запросов. Подождите несколько секунд и повторите.',
@@ -293,12 +292,21 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
     while (attempt < 3) {
       attempt += 1;
       const controller = new AbortController();
+      let externallyAborted = Boolean(fetchOpts.signal?.aborted);
+      const onExternalAbort = () => {
+        externallyAborted = true;
+        controller.abort();
+      };
+      if (fetchOpts.signal && !fetchOpts.signal.aborted) {
+        fetchOpts.signal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+      if (externallyAborted) controller.abort();
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
         const res = await fetch(`${API_BASE}${path}`, {
           ...fetchOpts,
           headers,
-          signal: fetchOpts.signal ?? controller.signal,
+          signal: controller.signal,
         });
         if (!res.ok) {
           const txt = await res.text();
@@ -325,7 +333,7 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
         return data as T;
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          if (fetchOpts.signal?.aborted) throw error;
+          if (externallyAborted || fetchOpts.signal?.aborted) throw error;
           throw new ApiError(0, 'Сервер не ответил вовремя. Попробуйте ещё раз.', 'timeout');
         }
         if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
@@ -339,6 +347,7 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
         throw error;
       } finally {
         clearTimeout(timeoutId);
+        fetchOpts.signal?.removeEventListener('abort', onExternalAbort);
       }
     }
     throw lastError instanceof Error
