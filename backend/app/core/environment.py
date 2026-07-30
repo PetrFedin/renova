@@ -6,7 +6,6 @@ Staging/production forbid SQLite, create_all, demo seed, and default secrets.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
 
 ALLOWED_ENVIRONMENTS = frozenset({"development", "test", "staging", "production"})
 
@@ -21,7 +20,7 @@ class EnvironmentPolicy:
     forbid_localhost_public_url: bool
     require_non_default_secret: bool
     require_https_public_url: bool
-    # P0 auth: X-User-Id без JWT только local/test
+    # P0 auth: X-User-Id without JWT is local/test only.
     allow_header_user_id: bool
 
 
@@ -56,7 +55,7 @@ POLICIES: dict[str, EnvironmentPolicy] = {
         require_public_base_url=True,
         forbid_localhost_public_url=True,
         require_non_default_secret=True,
-        require_https_public_url=True,  # P1: staging = реальный пилот / TestFlight
+        require_https_public_url=True,
         allow_header_user_id=False,
     ),
     "production": EnvironmentPolicy(
@@ -102,6 +101,13 @@ def policy_for(environment: str) -> EnvironmentPolicy:
     return POLICIES[name]
 
 
+def resolve_policy_flag(*, policy_allows: bool, override: bool | None) -> bool:
+    """An override may disable an allowed capability, but can never enable a forbidden one."""
+    if override is None:
+        return policy_allows
+    return policy_allows and bool(override)
+
+
 def _is_sqlite(database_url: str) -> bool:
     return database_url.strip().lower().startswith("sqlite")
 
@@ -127,7 +133,6 @@ def _is_default_secret(secret: str) -> bool:
     s = secret.strip().lower()
     if len(s) < 16:
         return True
-    # Exact weak values only — не банить ключи, где случайно есть слово "secret"
     return s in DEFAULT_SECRETS
 
 
@@ -138,16 +143,27 @@ def validate_runtime_settings(
     public_base_url: str,
     secret_key: str,
     auth_allow_header_user_id: bool | None = None,
+    allow_create_all: bool | None = None,
+    allow_demo_seed: bool | None = None,
 ) -> EnvironmentPolicy:
-    """Raise ValueError if settings violate profile policy."""
+    """Raise ValueError before traffic if settings violate the environment policy."""
     policy = policy_for(environment)
 
     errors: list[str] = []
 
-    # P0 auth: нельзя форсировать X-User-Id в staging/production
     if not policy.allow_header_user_id and auth_allow_header_user_id is True:
         errors.append(
             f"{policy.name}: AUTH_ALLOW_HEADER_USER_ID=true запрещён — только Authorization Bearer"
+        )
+
+    if not policy.allow_create_all and allow_create_all is True:
+        errors.append(
+            f"{policy.name}: ALLOW_CREATE_ALL=true запрещён — схема только через Alembic"
+        )
+
+    if not policy.allow_demo_seed and allow_demo_seed is True:
+        errors.append(
+            f"{policy.name}: ALLOW_DEMO_SEED=true запрещён — demo-данные не могут попасть в рабочую среду"
         )
 
     if not policy.allow_sqlite and _is_sqlite(database_url):
