@@ -71,13 +71,24 @@ _FONT_CODEPOINTS = _font_codepoints(str(_FONT_PATH)) if _FONT_PATH else frozense
 _USE_UNICODE = bool(_FONT_PATH and _FONT_CODEPOINTS)
 
 
+def _sanitize_fragment(fragment: str, *, unicode_font: bool) -> str:
+    """Sanitize replacement text too; a fallback must not contain another missing glyph."""
+    output: list[str] = []
+    for char in fragment:
+        if char in "\n\r\t" or ord(char) < 128:
+            output.append(char)
+        elif unicode_font and ord(char) in _FONT_CODEPOINTS:
+            output.append(char)
+        else:
+            output.append(_TRANSLIT.get(char, "?"))
+    return "".join(output)
+
+
 def _unicode_safe_char(char: str) -> str:
     if char in "\n\r\t" or ord(char) < 128 or ord(char) in _FONT_CODEPOINTS:
         return char
-    replacement = _READABLE_FALLBACKS.get(char)
-    if replacement is not None:
-        return replacement
-    return _TRANSLIT.get(char, "?")
+    replacement = _READABLE_FALLBACKS.get(char, _TRANSLIT.get(char, "?"))
+    return _sanitize_fragment(replacement, unicode_font=True)
 
 
 def pdf_safe(text: str | None) -> str:
@@ -88,7 +99,10 @@ def pdf_safe(text: str | None) -> str:
     if _USE_UNICODE:
         return "".join(_unicode_safe_char(char) for char in value)
     return "".join(
-        _READABLE_FALLBACKS.get(char, _TRANSLIT.get(char, char if ord(char) < 128 else "?"))
+        _sanitize_fragment(
+            _READABLE_FALLBACKS.get(char, _TRANSLIT.get(char, char if ord(char) < 128 else "?")),
+            unicode_font=False,
+        )
         for char in value
     )
 
