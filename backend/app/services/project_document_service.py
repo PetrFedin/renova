@@ -229,9 +229,12 @@ async def sign_document(
         existing_query = existing_query.with_for_update()
     except Exception:
         pass
-    existing = (await db.execute(existing_query)).scalars().first()
-    if existing:
-        return existing
+    existing_rows = list((await db.execute(existing_query)).scalars().all())
+    if existing_rows:
+        return min(
+            existing_rows,
+            key=lambda row: (0 if row.status == "signed" else 1, row.id),
+        )
 
     result = await esign.create_signature(
         SignRequest(
@@ -468,9 +471,12 @@ async def complete_external_signature(
         query = query.with_for_update()
     except Exception:
         pass
-    signature = (await db.execute(query)).scalar_one_or_none()
-    if not signature:
+    rows = list((await db.execute(query)).scalars().all())
+    if not rows:
         return None
+    if len(rows) != 1:
+        raise ValueError("duplicate_provider_external_id")
+    signature = rows[0]
 
     current = str(signature.status or "")
     if current in {"signed", "failed"}:
