@@ -50,7 +50,6 @@ def classify_metadata(*, title: str, filename: str | None, mime_type: str | None
     return DocumentType.upload.value, 0.25
 
 
-# Compatibility name for callers/tests. Its result is explicitly metadata-only.
 classify_heuristic = classify_metadata
 
 
@@ -104,7 +103,7 @@ async def suggest_from_metadata(
         version.ocr_completed_at = None
         version.ocr_error = None
         await db.flush()
-    except Exception as exc:  # defensive: metadata analysis must not break upload
+    except Exception as exc:
         version.ocr_status = OCR_FAILED
         version.ocr_error = f"metadata_classification_failed:{type(exc).__name__}"[:255]
         version.ocr_completed_at = None
@@ -140,7 +139,6 @@ async def mark_ocr_unavailable(db: AsyncSession, version: DocumentVersion) -> Do
 
 
 async def enqueue_ocr(db: AsyncSession, version: DocumentVersion) -> DocumentVersion:
-    """Compatibility queue entry for legacy rows; no engine means no fake done status."""
     version.ocr_status = OCR_QUEUED
     version.ocr_job_id = f"metadata-{uuid.uuid4().hex[:20]}"
     version.ocr_error = None
@@ -156,8 +154,9 @@ async def run_ocr_stub(
     *,
     apply_type: bool = False,
 ) -> DocumentVersion:
-    """Deprecated compatibility path: metadata suggestion only, never OCR or auto-apply."""
-    _ = apply_type
+    """Deprecated path: first request suggests; a later explicit request may confirm."""
+    if apply_type and version.ocr_status == OCR_SUGGESTED:
+        return await confirm_metadata_suggestion(db, doc, version)
     return await suggest_from_metadata(db, doc, version)
 
 
@@ -168,7 +167,8 @@ async def enqueue_and_run(
     *,
     apply_type: bool = False,
 ) -> DocumentVersion:
-    """Compatibility path used by upload: metadata suggestion only."""
-    _ = apply_type
+    """First call suggests only; apply_type confirms only an already visible suggestion."""
+    if apply_type and version.ocr_status == OCR_SUGGESTED:
+        return await confirm_metadata_suggestion(db, doc, version)
     await enqueue_ocr(db, version)
     return await suggest_from_metadata(db, doc, version)
