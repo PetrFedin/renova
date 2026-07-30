@@ -34,7 +34,6 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     const j = JSON.parse(txt) as { detail?: unknown; code?: string; message?: string };
     detail = j.detail;
     if (typeof j.detail === 'string') {
-      // FastAPI часто шлёт detail="rate_limit" — не отдаём сырой код в UI
       if (j.detail === 'rate_limit' || status === 429) {
         return {
           message: 'Слишком много запросов. Подождите несколько секунд и повторите.',
@@ -49,7 +48,6 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     }
     if (typeof j.detail === 'object' && j.detail) {
       const d = j.detail as { code?: string; message?: string };
-      // W67 #28: FastAPI detail={message,code} → человекочитаемый текст
       if (typeof d.message === 'string' && d.message) {
         return { message: d.message, code: d.code || j.code, detail };
       }
@@ -87,7 +85,6 @@ function canUseDurableCache(opts: RequestInit) {
 
 function canFallbackToCache(error: unknown) {
   if (!(error instanceof ApiError)) return true;
-  // 429 / rate_limit — безопасный fallback на последний успешный GET (аналитика/проект не падают)
   if (error.status === 429 || error.code === 'rate_limit') return true;
   return error.status >= 500;
 }
@@ -173,7 +170,6 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) {
         const status = error instanceof ApiError ? error.status : undefined;
-        // Do not silently swallow — mark stale for UI + report
         try {
           const { reportError } = await import('@/lib/reportError');
           reportError('api.cachedGet.staleFallback', error, { path, status });
@@ -258,16 +254,13 @@ export async function refreshAccessToken(): Promise<boolean> {
   return _refreshInflight;
 }
 
-
 /** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
 export function authHeaders(userId?: string | null): Record<string, string> {
   const h: Record<string, string> = {};
   if (_accessToken) {
     h.Authorization = `Bearer ${_accessToken}`;
-    // JWT present → do not also send X-User-Id (prod must not rely on header)
     return h;
   }
-  // X-User-Id только local/test — staging/production клиент не задаёт identity header
   const env = (process.env.EXPO_PUBLIC_APP_ENV || process.env.APP_ENV || 'development').toLowerCase();
   const allowHeader = env === 'development' || env === 'test';
   if (userId && allowHeader) h['X-User-Id'] = userId;
@@ -276,37 +269,49 @@ export function authHeaders(userId?: string | null): Record<string, string> {
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-export async function req<T>(path: string, opts: RequestInit = {}, userId?: string): Promise<T> {
-  const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
+export type ReqOptions = RequestInit & {
+  /** Disable durable cache when absence itself controls a write action. */
+  cacheFallback?: boolean;
+};
+
+export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
+  const { cacheFallback = true, ...fetchOpts } = opts;
+  const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(opts.headers as object),
+    ...(fetchOpts.headers as object),
   };
   Object.assign(headers, authHeaders(userId));
-  // FormData must manage its own multipart boundary — drop forced JSON content-type
   if (isFormData) delete headers['Content-Type'];
 
-  const isGet = canUseDurableCache(opts);
+  const isGet = canUseDurableCache(fetchOpts);
   let attempt = 0;
   let lastError: unknown;
 
   try {
-    // GET: до 3 попыток при 429 (storm reload stage/home)
     while (attempt < 3) {
       attempt += 1;
       const controller = new AbortController();
+      let externallyAborted = Boolean(fetchOpts.signal?.aborted);
+      const onExternalAbort = () => {
+        externallyAborted = true;
+        controller.abort();
+      };
+      if (fetchOpts.signal && !fetchOpts.signal.aborted) {
+        fetchOpts.signal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+      if (externallyAborted) controller.abort();
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
         const res = await fetch(`${API_BASE}${path}`, {
-          ...opts,
+          ...fetchOpts,
           headers,
-          signal: opts.signal ?? controller.signal,
+          signal: controller.signal,
         });
         if (!res.ok) {
           const txt = await res.text();
           const parsed = parseApiErrorBody(txt, res.status);
           const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
-          // Access expired → one refresh rotation, then retry once
           if (res.status === 401 && attempt < 2 && !path.includes('/auth/refresh') && getRefreshToken()) {
             const ok = await refreshAccessToken();
             if (ok) {
@@ -328,12 +333,12 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
         return data as T;
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          throw new ApiError(0, 'Сервер не отвечает. Проверьте, что backend запущен (npm run backend:dev).');
+          if (externallyAborted || fetchOpts.signal?.aborted) throw error;
+          throw new ApiError(0, 'Сервер не ответил вовремя. Попробуйте ещё раз.', 'timeout');
         }
         if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
-          throw new ApiError(0, 'Сервер недоступен. Запустите backend на порту 8100: cd renova && backend/.venv/bin/uvicorn app.main:app --reload --port 8100');
+          throw new ApiError(0, 'Сервер временно недоступен. Проверьте соединение и повторите.', 'network');
         }
-        // rate_limit retry already handled above; other errors exit
         if (isGet && isRateLimitError(error) && attempt < 3) {
           lastError = error;
           await sleep(1200);
@@ -342,13 +347,14 @@ export async function req<T>(path: string, opts: RequestInit = {}, userId?: stri
         throw error;
       } finally {
         clearTimeout(timeoutId);
+        fetchOpts.signal?.removeEventListener('abort', onExternalAbort);
       }
     }
     throw lastError instanceof Error
       ? lastError
       : new ApiError(429, 'Слишком много запросов. Подождите несколько секунд и повторите.', 'rate_limit');
   } catch (error) {
-    if (isGet && canFallbackToCache(error)) {
+    if (isGet && cacheFallback && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
       if (fallback !== null) return fallback;
     }

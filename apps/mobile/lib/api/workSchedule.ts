@@ -56,12 +56,42 @@ export type WorkSchedule = {
   items: WorkScheduleItem[];
 };
 
+export type ActiveWorkScheduleResult =
+  | { kind: 'absent' }
+  | { kind: 'plan'; plan: WorkSchedule };
+
 export const workScheduleApi = {
   listWorkSchedules: (userId: string, projectId: string) =>
     req<WorkSchedule[]>(`/api/v1/projects/${projectId}/work-schedules`, {}, userId),
 
-  getActiveWorkSchedule: (userId: string, projectId: string) =>
-    req<WorkSchedule | null>(`/api/v1/projects/${projectId}/work-schedules/active`, {}, userId),
+  getActiveWorkSchedule: (
+    userId: string,
+    projectId: string,
+    opts?: { signal?: AbortSignal },
+  ) => req<WorkSchedule | null>(
+    `/api/v1/projects/${projectId}/work-schedules/active`,
+    { signal: opts?.signal, cacheFallback: false },
+    userId,
+  ),
+
+  /** Absence is accepted only from a successful null response or a real 404. */
+  fetchActiveSchedulePlan: async (
+    userId: string,
+    projectId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<ActiveWorkScheduleResult> => {
+    try {
+      const data = await req<WorkSchedule | null>(
+        `/api/v1/projects/${projectId}/work-schedules/active`,
+        { signal: opts?.signal, cacheFallback: false },
+        userId,
+      );
+      return data == null ? { kind: 'absent' } : { kind: 'plan', plan: data };
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return { kind: 'absent' };
+      throw error;
+    }
+  },
 
   createWorkSchedule: async (userId: string, projectId: string, body: Partial<WorkSchedule> = {}) => {
     const payload = JSON.stringify(body);
@@ -147,7 +177,6 @@ export const workScheduleApi = {
     itemId: string,
     body: { status: WorkScheduleItemStatus; blocking_reason?: string; progress_percent?: number },
   ) => {
-    // W109: статус дня графика — очередь офлайн (поле)
     try {
       return await req<WorkScheduleItem>(
         `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
