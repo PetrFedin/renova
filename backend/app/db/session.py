@@ -38,12 +38,14 @@ async def init_db() -> None:
             settings.normalized_environment,
         )
 
+    from app.services.document_ocr_truth_repair import repair_legacy_ocr_truth
     from app.services.fns.receipt_truth_repair import repair_legacy_receipt_truth
     from app.services.moy_nalog_truth_repair import repair_legacy_moy_nalog_truth
 
     async with SessionLocal() as db:
         receipts = await repair_legacy_receipt_truth(db)
         moy_nalog = await repair_legacy_moy_nalog_truth(db)
+        ocr = await repair_legacy_ocr_truth(db)
         await db.commit()
 
     if receipts["receipts_repaired"] or receipts["expenses_repaired"]:
@@ -57,6 +59,12 @@ async def init_db() -> None:
             "legacy Moy Nalog truth repaired users=%s preserved=%s",
             moy_nalog["users_repaired"],
             moy_nalog["connections_preserved"],
+        )
+    if ocr["suggestions_repaired"] or ocr["jobs_marked_unavailable"]:
+        logger.warning(
+            "legacy OCR truth repaired suggestions=%s unavailable=%s",
+            ocr["suggestions_repaired"],
+            ocr["jobs_marked_unavailable"],
         )
 
 
