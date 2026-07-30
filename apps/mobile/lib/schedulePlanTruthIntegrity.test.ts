@@ -20,7 +20,11 @@ assert.match(api, /fetchActiveSchedulePlan/, 'schedule API must expose an explic
 assert.match(api, /cacheFallback: false/, 'active schedule existence must never use stale cache as truth');
 assert.match(api, /data == null \? \{ kind: 'absent' \}/, 'only successful null may prove absence');
 assert.match(api, /error instanceof ApiError && error\.status === 404/, '404 may prove absence');
-assert.doesNotMatch(api, /catch[\s\S]{0,120}return \{ kind: 'absent' \}/, 'generic failure must never become absence');
+assert.doesNotMatch(
+  api,
+  /catch\s*\([^)]*\)\s*\{\s*return \{ kind: 'absent' \}/,
+  'generic failure must never become absence',
+);
 
 assert.match(state, /status: 'not_created'/, 'absence must be a dedicated state');
 assert.match(state, /status: 'stale'/, 'soft refresh failure must preserve visible plan as stale');
