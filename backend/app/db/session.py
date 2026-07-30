@@ -23,12 +23,7 @@ def _create_all_allowed() -> bool:
 
 
 async def init_db() -> None:
-    """Initialize permitted local schemas and repair legacy receipt truth.
-
-    `ALLOW_CREATE_ALL` may disable local create_all, but can never enable it in
-    staging or production. Those environments must apply Alembic before start.
-    The receipt repair is idempotent and runs only after the schema is ready.
-    """
+    """Initialize permitted schemas and run idempotent truth repairs."""
     from app.db.sqlite_compat import ensure_os_schema
 
     if settings.database_url.strip().lower().startswith("sqlite"):
@@ -44,15 +39,24 @@ async def init_db() -> None:
         )
 
     from app.services.fns.receipt_truth_repair import repair_legacy_receipt_truth
+    from app.services.moy_nalog_truth_repair import repair_legacy_moy_nalog_truth
 
     async with SessionLocal() as db:
-        repaired = await repair_legacy_receipt_truth(db)
+        receipts = await repair_legacy_receipt_truth(db)
+        moy_nalog = await repair_legacy_moy_nalog_truth(db)
         await db.commit()
-    if repaired["receipts_repaired"] or repaired["expenses_repaired"]:
+
+    if receipts["receipts_repaired"] or receipts["expenses_repaired"]:
         logger.warning(
             "legacy receipt truth repaired receipts=%s expenses=%s",
-            repaired["receipts_repaired"],
-            repaired["expenses_repaired"],
+            receipts["receipts_repaired"],
+            receipts["expenses_repaired"],
+        )
+    if moy_nalog["users_repaired"]:
+        logger.warning(
+            "legacy Moy Nalog truth repaired users=%s preserved=%s",
+            moy_nalog["users_repaired"],
+            moy_nalog["connections_preserved"],
         )
 
 
