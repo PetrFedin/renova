@@ -1,0 +1,44 @@
+name: FNS Receipt Integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/services/fns/**"
+      - "backend/app/services/receipt_integrity_service.py"
+      - "backend/tests/test_fns_receipt_verification_integrity.py"
+      - "backend/conftest.py"
+      - "backend/tests/conftest.py"
+      - ".github/workflows/fns-receipt-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/services/fns/**"
+      - "backend/app/services/receipt_integrity_service.py"
+      - "backend/tests/test_fns_receipt_verification_integrity.py"
+      - "backend/conftest.py"
+      - "backend/tests/conftest.py"
+      - ".github/workflows/fns-receipt-integrity.yml"
+
+jobs:
+  fns-receipt-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+      - name: Run FNS receipt truth tests
+        working-directory: backend
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          PUBLIC_BASE_URL: http://127.0.0.1:8100
+          SECRET_KEY: test-secret-key-at-least-16
+        run: |
+          set -euo pipefail
+          poetry run pytest tests/test_fns_receipt_verification_integrity.py -q
