@@ -42,7 +42,6 @@ def _demo_seed_allowed() -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Hard fail before accepting traffic when the profile is invalid.
     policy = validate_runtime_settings(
         environment=settings.environment,
         database_url=settings.database_url,
@@ -81,13 +80,16 @@ async def lifespan(app: FastAPI):
     ):
         logger.warning(warning)
 
+    from app.services.document_ocr_runtime import validate_document_ocr_runtime
     from app.services.esign.runtime import validate_esign_runtime
     from app.services.otp_runtime import validate_otp_runtime
 
     validate_esign_runtime()
+    validate_document_ocr_runtime()
     await validate_otp_runtime()
     await init_db()
     from app.services.storage_service import ensure_bucket
+
     ensure_bucket()
 
     if _demo_seed_allowed():
@@ -101,22 +103,12 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("demo seed skipped (environment=%s)", policy.name)
 
-    ocr_stop: asyncio.Event | None = None
-    ocr_task: asyncio.Task | None = None
     reminder_stop: asyncio.Event | None = None
     reminder_task: asyncio.Task | None = None
     redis_stop: asyncio.Event | None = None
     redis_task: asyncio.Task | None = None
     outbox_stop: asyncio.Event | None = None
     outbox_task: asyncio.Task | None = None
-    if (settings.document_ocr_mode or "sync").strip().lower() == "async":
-        from app.services.document_ocr_worker import ocr_worker_loop
-
-        ocr_stop = asyncio.Event()
-        ocr_task = asyncio.create_task(
-            ocr_worker_loop(ocr_stop, interval_sec=float(settings.document_ocr_worker_interval_sec))
-        )
-        logger.info("OCR async worker enabled")
 
     if settings.automation_reminders_enabled:
         from app.services.automation_reminders_worker import automation_reminders_loop
@@ -148,8 +140,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if ocr_stop is not None:
-        ocr_stop.set()
     if reminder_stop is not None:
         reminder_stop.set()
     if outbox_stop is not None:
@@ -161,11 +151,6 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(reminder_task, timeout=5)
         except Exception:
             reminder_task.cancel()
-    if ocr_task is not None:
-        try:
-            await asyncio.wait_for(ocr_task, timeout=5)
-        except Exception:
-            ocr_task.cancel()
     if outbox_task is not None:
         try:
             await asyncio.wait_for(outbox_task, timeout=5)
@@ -186,6 +171,7 @@ except Exception:
 if settings.sentry_dsn:
     try:
         import sentry_sdk
+
         sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1)
     except Exception:
         pass
@@ -243,6 +229,7 @@ if FastAPIInstrumentor:
         pass
 app.include_router(api_router)
 from app.api.v1 import ws
+
 app.include_router(ws.router)
 
 
