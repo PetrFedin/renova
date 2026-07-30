@@ -6,8 +6,10 @@ import base64
 import binascii
 import hashlib
 import logging
+import os
 import uuid
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 from app.core.config import settings
 
@@ -46,10 +48,7 @@ def normalize_storage_key(key: str) -> str:
     parts = PurePosixPath(raw).parts
     if not parts or any(part in {"", ".", ".."} for part in parts):
         raise InvalidStorageKey("invalid_storage_key")
-    normalized = "/".join(parts)
-    if normalized.startswith("../") or "/../" in f"/{normalized}/":
-        raise InvalidStorageKey("invalid_storage_key")
-    return normalized
+    return "/".join(parts)
 
 
 def _local_root() -> Path:
@@ -70,16 +69,16 @@ def _local_path(key: str) -> Path:
 
 
 def _s3_config_state() -> str:
-    required = (
+    """Bucket default alone does not enable S3; connection credentials do."""
+    connection = (
         settings.s3_endpoint,
         settings.s3_access_key,
         settings.s3_secret_key,
-        settings.s3_bucket,
     )
-    configured = [bool((value or "").strip()) for value in required]
+    configured = [bool((value or "").strip()) for value in connection]
     if not any(configured):
         return "disabled"
-    if all(configured):
+    if all(configured) and bool((settings.s3_bucket or "").strip()):
         return "configured"
     return "partial"
 
@@ -107,16 +106,19 @@ def _s3_client():
         raise StorageUnavailable("s3_client_unavailable") from exc
 
 
+def _encoded_key(key: str) -> str:
+    return quote(normalize_storage_key(key), safe="/")
+
+
 def _local_url(key: str) -> str:
-    normalized = normalize_storage_key(key)
-    return f"{settings.public_base_url.rstrip('/')}/api/v1/media/{normalized}"
+    return f"{settings.public_base_url.rstrip('/')}/api/v1/media/{_encoded_key(key)}"
 
 
 def _s3_public_url(key: str) -> str:
-    normalized = normalize_storage_key(key)
+    encoded = _encoded_key(key)
     if settings.s3_public_url:
-        return f"{settings.s3_public_url.rstrip('/')}/{settings.s3_bucket}/{normalized}"
-    return _local_url(normalized)
+        return f"{settings.s3_public_url.rstrip('/')}/{settings.s3_bucket}/{encoded}"
+    return _local_url(key)
 
 
 def _decode_image(payload: str) -> tuple[bytes, str, str]:
@@ -146,6 +148,16 @@ def _decode_image(payload: str) -> tuple[bytes, str, str]:
     return data, extension, normalized_content_type
 
 
+def _write_local_sync(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp.write_bytes(data)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 async def _put_s3(client, *, key: str, data: bytes, content_type: str) -> None:
     try:
         await asyncio.to_thread(
@@ -161,9 +173,7 @@ async def _put_s3(client, *, key: str, data: bytes, content_type: str) -> None:
 
 
 async def _write_local(key: str, data: bytes) -> None:
-    path = _local_path(key)
-    await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
-    await asyncio.to_thread(path.write_bytes, data)
+    await asyncio.to_thread(_write_local_sync, _local_path(key), data)
 
 
 async def save_image(base64_or_data_url: str, *, folder: str = "photos") -> tuple[str, str]:
@@ -206,6 +216,17 @@ async def read_bytes(key: str) -> bytes | None:
     return await read_image(key)
 
 
+def _is_missing_s3_object(error: Exception) -> bool:
+    response = getattr(error, "response", None)
+    if not isinstance(response, dict):
+        return False
+    error_data = response.get("Error") or {}
+    metadata = response.get("ResponseMetadata") or {}
+    code = str(error_data.get("Code") or "")
+    status = metadata.get("HTTPStatusCode")
+    return code in {"NoSuchKey", "NotFound", "404"} or status == 404
+
+
 async def read_image(key: str) -> bytes | None:
     normalized = normalize_storage_key(key)
     client = _s3_client()
@@ -218,6 +239,8 @@ async def read_image(key: str) -> bytes | None:
             )
             return await asyncio.to_thread(response["Body"].read)
         except Exception as exc:
+            if _is_missing_s3_object(exc):
+                return None
             logger.exception("S3 get_object failed", extra={"storage_key": normalized})
             raise StorageUnavailable("s3_read_failed") from exc
     path = _local_path(normalized)
@@ -244,12 +267,12 @@ def ensure_bucket() -> None:
 
 def presigned_url(key: str, expires: int = 3600) -> str | None:
     normalized = normalize_storage_key(key)
-    cf = generate_cloudfront_signed_url(normalized, expires)
-    if cf:
-        return cf
     client = _s3_client()
     if client is None:
         return None
+    cf = generate_cloudfront_signed_url(normalized, expires)
+    if cf:
+        return cf
     try:
         return client.generate_presigned_url(
             "get_object",
@@ -300,7 +323,7 @@ def generate_cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
     domain = _cloudfront_domain()
     if not domain:
         return None
-    unsigned_url = f"https://{domain}/{normalized}"
+    unsigned_url = f"https://{domain}/{_encoded_key(normalized)}"
     if not settings.cloudfront_key_id:
         return unsigned_url
     try:
