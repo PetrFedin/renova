@@ -37,6 +37,10 @@ class EsignWebhookIn(BaseModel):
     meta: dict | None = None
 
 
+def _mapping(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
 def _provider_mode(provider: str) -> str:
     if provider == "kontur":
         return (settings.kontur_mode or "off").strip().lower()
@@ -59,12 +63,16 @@ def _check_webhook_secret(provider: str, supplied: str | None) -> None:
 
 def parse_esign_webhook_payload(raw: dict) -> tuple[str, str]:
     """Normalize only explicit, known provider statuses to a safe state."""
+    payload = _mapping(raw)
+    object_data = _mapping(payload.get("object"))
+    data = _mapping(payload.get("data"))
+    signature_data = _mapping(payload.get("signature"))
     external_id = (
-        raw.get("external_id")
-        or raw.get("id")
-        or (raw.get("object") or {}).get("id")
-        or (raw.get("data") or {}).get("id")
-        or (raw.get("signature") or {}).get("id")
+        payload.get("external_id")
+        or payload.get("id")
+        or object_data.get("id")
+        or data.get("id")
+        or signature_data.get("id")
     )
     if (
         not isinstance(external_id, str)
@@ -73,7 +81,7 @@ def parse_esign_webhook_payload(raw: dict) -> tuple[str, str]:
     ):
         raise HTTPException(400, "external_id_required")
 
-    status_raw = raw.get("status") or (raw.get("object") or {}).get("status") or raw.get("event")
+    status_raw = payload.get("status") or object_data.get("status") or payload.get("event")
     if not isinstance(status_raw, str) or not status_raw.strip():
         raise HTTPException(400, "status_required")
     provider_status = status_raw.strip().lower()
@@ -175,9 +183,12 @@ async def _process_provider_webhook(
         existing_query = existing_query.with_for_update()
     except Exception:
         pass
-    existing = (await db.execute(existing_query)).scalar_one_or_none()
-    if not existing:
+    rows = list((await db.execute(existing_query)).scalars().all())
+    if not rows:
         raise HTTPException(404, "signature_not_found")
+    if len(rows) != 1:
+        raise HTTPException(409, "duplicate_provider_external_id")
+    existing = rows[0]
     duplicate = status == existing.status and (
         status != "signed" or bool(existing.signed_at)
     )
