@@ -6,6 +6,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.timeutil import utc_now
 from app.models.project_documents import DocumentType, DocumentVersion, ProjectDocument
 
@@ -16,7 +17,7 @@ OCR_SUGGESTED = "suggested"
 OCR_CONFIRMED = "confirmed"
 OCR_UNAVAILABLE = "unavailable"
 OCR_FAILED = "failed"
-OCR_DONE = "done"  # reserved for a future engine that reads document content
+OCR_DONE = "done"
 
 _RULES: list[tuple[re.Pattern[str], str, float]] = [
     (re.compile(r"договор|contract|соглашен", re.I), DocumentType.contract.value, 0.82),
@@ -81,12 +82,7 @@ def _filename(version: DocumentVersion) -> str | None:
     return version.storage_key.rsplit("/", 1)[-1]
 
 
-async def suggest_from_metadata(
-    db: AsyncSession,
-    doc: ProjectDocument,
-    version: DocumentVersion,
-) -> DocumentVersion:
-    """Record a non-authoritative suggestion; never mutate document_type."""
+async def suggest_from_metadata(db: AsyncSession, doc: ProjectDocument, version: DocumentVersion) -> DocumentVersion:
     version.ocr_status = OCR_PROCESSING
     version.ocr_error = None
     await db.flush()
@@ -111,12 +107,7 @@ async def suggest_from_metadata(
     return version
 
 
-async def confirm_metadata_suggestion(
-    db: AsyncSession,
-    doc: ProjectDocument,
-    version: DocumentVersion,
-) -> DocumentVersion:
-    """Apply a metadata suggestion only after an explicit authenticated action."""
+async def confirm_metadata_suggestion(db: AsyncSession, doc: ProjectDocument, version: DocumentVersion) -> DocumentVersion:
     if version.ocr_status != OCR_SUGGESTED or not version.ocr_suggested_type:
         raise ValueError("metadata_suggestion_not_ready")
     if version.ocr_suggested_type not in {item.value for item in DocumentType}:
@@ -132,6 +123,8 @@ async def confirm_metadata_suggestion(
 async def mark_ocr_unavailable(db: AsyncSession, version: DocumentVersion) -> DocumentVersion:
     version.ocr_status = OCR_UNAVAILABLE
     version.ocr_job_id = None
+    version.ocr_suggested_type = None
+    version.ocr_confidence = None
     version.ocr_completed_at = None
     version.ocr_error = "ocr_engine_not_configured"
     await db.flush()
@@ -139,6 +132,8 @@ async def mark_ocr_unavailable(db: AsyncSession, version: DocumentVersion) -> Do
 
 
 async def enqueue_ocr(db: AsyncSession, version: DocumentVersion) -> DocumentVersion:
+    if normalize_ocr_mode(settings.document_ocr_mode) == "off":
+        return await mark_ocr_unavailable(db, version)
     version.ocr_status = OCR_QUEUED
     version.ocr_job_id = f"metadata-{uuid.uuid4().hex[:20]}"
     version.ocr_error = None
@@ -154,7 +149,8 @@ async def run_ocr_stub(
     *,
     apply_type: bool = False,
 ) -> DocumentVersion:
-    """Deprecated path: first request suggests; a later explicit request may confirm."""
+    if normalize_ocr_mode(settings.document_ocr_mode) == "off":
+        return await mark_ocr_unavailable(db, version)
     if apply_type and version.ocr_status == OCR_SUGGESTED:
         return await confirm_metadata_suggestion(db, doc, version)
     return await suggest_from_metadata(db, doc, version)
@@ -168,6 +164,8 @@ async def enqueue_and_run(
     apply_type: bool = False,
 ) -> DocumentVersion:
     """First call suggests only; apply_type confirms only an already visible suggestion."""
+    if normalize_ocr_mode(settings.document_ocr_mode) == "off":
+        return await mark_ocr_unavailable(db, version)
     if apply_type and version.ocr_status == OCR_SUGGESTED:
         return await confirm_metadata_suggestion(db, doc, version)
     await enqueue_ocr(db, version)
