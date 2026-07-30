@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.environment import (
     collect_warnings,
     policy_for,
+    resolve_policy_flag,
     validate_runtime_settings,
 )
 from app.core.logging_config import setup_logging
@@ -27,20 +28,23 @@ logger = logging.getLogger(__name__)
 
 def _demo_seed_allowed() -> bool:
     policy = policy_for(settings.normalized_environment)
-    if settings.allow_demo_seed is not None:
-        return bool(settings.allow_demo_seed)
-    return policy.allow_demo_seed
+    return resolve_policy_flag(
+        policy_allows=policy.allow_demo_seed,
+        override=settings.allow_demo_seed,
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Hard fail до приёма трафика при неверном профиле
+    # Hard fail before accepting traffic when the profile is invalid.
     policy = validate_runtime_settings(
         environment=settings.environment,
         database_url=settings.database_url,
         public_base_url=settings.public_base_url,
         secret_key=settings.secret_key,
         auth_allow_header_user_id=settings.auth_allow_header_user_id,
+        allow_create_all=settings.allow_create_all,
+        allow_demo_seed=settings.allow_demo_seed,
     )
     for warning in collect_warnings(
         environment=settings.environment,
@@ -102,14 +106,12 @@ async def lifespan(app: FastAPI):
             settings.automation_reminders_interval_sec,
         )
 
-    # P1.16: always run outbox poller (cheap; no-op when empty)
     from app.services.outbox_worker import outbox_worker_loop
 
     outbox_stop = asyncio.Event()
     outbox_task = asyncio.create_task(outbox_worker_loop(outbox_stop, interval_sec=15.0))
     logger.info("domain outbox worker enabled")
 
-    # Multi-instance WS: subscribe when REDIS_URL set (publish already in ws.broadcast)
     if (settings.redis_url or "").strip():
         from app.services.ws_redis_bridge import redis_subscriber_loop
 
@@ -166,14 +168,15 @@ app = FastAPI(title=settings.app_name, version="0.3.7", lifespan=lifespan)
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware)
+
+
 def _cors_origins() -> tuple[list[str], bool]:
     raw = (settings.cors_allowed_origins or "").strip()
     origins = [o.strip() for o in raw.split(",") if o.strip()]
     env = settings.normalized_environment
     if not origins:
         if env in ("development", "test"):
-            return ["*"], False  # * + credentials=True запрещено браузерами
-        # staging/prod: только public_base_url если список пуст
+            return ["*"], False
         base = (settings.public_base_url or "").rstrip("/")
         return ([base] if base else []), True
     if origins == ["*"]:
