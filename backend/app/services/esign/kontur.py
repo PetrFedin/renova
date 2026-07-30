@@ -1,8 +1,8 @@
 """Контур.Сайн provider with fail-closed request acceptance."""
 from __future__ import annotations
 
+import hashlib
 import logging
-import uuid
 
 import httpx
 
@@ -17,6 +17,19 @@ _REJECTED_STATUSES = frozenset({"failed", "error", "rejected", "cancelled", "can
 
 class KonturProviderError(RuntimeError):
     pass
+
+
+def _idempotency_id(request: SignRequest) -> str:
+    material = "|".join(
+        [
+            request.document_id,
+            request.version_id,
+            request.signer_user_id,
+            request.signer_role,
+            request.content_hash or "",
+        ]
+    ).encode("utf-8")
+    return f"renova-{hashlib.sha256(material).hexdigest()[:48]}"
 
 
 class KonturESignProvider:
@@ -101,7 +114,7 @@ class KonturESignProvider:
                 meta={"hint": "Kontur requires mode, API key, API URL and webhook secret"},
             )
         mode = (settings.kontur_mode or "off").strip().lower()
-        idempotency_id = f"kontur-{uuid.uuid4().hex}"
+        idempotency_id = _idempotency_id(request)
         try:
             accepted = await self._submit_http(request, idempotency_id, mode)
         except KonturProviderError as exc:
