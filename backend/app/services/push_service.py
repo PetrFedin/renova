@@ -14,7 +14,7 @@ from app.models.entities import PushToken
 
 EXPO_URL = "https://exp.host/--/api/v2/push/send"
 MAX_MESSAGES_PER_REQUEST = 100
-_TOKEN_RE = re.compile(r"^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]{6,480}\]$")
+_TOKEN_RE = re.compile(r"^(?:ExponentPushToken|ExpoPushToken)\[[^\[\]\s]{6,480}\]$")
 
 logger = logging.getLogger(__name__)
 
