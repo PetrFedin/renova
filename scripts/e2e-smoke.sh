@@ -52,7 +52,6 @@ if [ "$STATUS" = "active" ]; then
     -H "X-User-Id: $CID" | grep -q 'confirmed'
   echo "E2E acceptance/payment: blocked-before, accepted, next-stage-active, single-payment, confirmed-after OK"
 
-  # D-07: canonical / legacy acceptance act visible in Document Center
   DOCS=$(curl -sf "$API/api/v1/projects/$PID/documents" -H "X-User-Id: $CID")
   echo "$DOCS" | python3 -c "import json,sys; d=json.load(sys.stdin); kinds={i.get('kind') for i in d.get('items',[])}; assert 'acceptance_act' in kinds or 'stage_acceptance_act' in kinds, kinds"
   echo "E2E documents: acceptance act present OK"
@@ -80,7 +79,6 @@ VIEWER=$(curl -sf -X POST "$API/api/v1/auth/demo/guest" -H 'Content-Type: applic
 VP=$(curl -sf "$API/api/v1/projects" -H "X-User-Id: $VIEWER" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d))")
 test "$VP" -ge 1 && echo "E2E guest: projects=$VP OK"
 
-# --- Document Center wave-2 (D-04/D-06/D-07) ---
 UPLOAD=$(curl -sf -X POST "$API/api/v1/projects/$PID/documents/upload" \
   -H "X-User-Id: $CID" \
   -F "file=@/etc/hosts;type=text/plain;filename=hosts-note.txt" \
@@ -94,7 +92,6 @@ curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/archive" -H "X-Use
 curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/restore" -H "X-User-Id: $CID" | grep -q active
 echo "E2E documents: archive/restore OK"
 
-# Completely foreign user (fresh register, not shared) → 404
 FOREIGN_PHONE="+7999$(date +%s | tail -c 8)"
 curl -sf -X POST "$API/api/v1/auth/sms/send" -H 'Content-Type: application/json' -d "{\"phone\":\"$FOREIGN_PHONE\"}" >/dev/null || true
 FOREIGN=$(curl -sf -X POST "$API/api/v1/auth/register" -H 'Content-Type: application/json' \
@@ -106,7 +103,6 @@ FOREIGN_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/v1/projects/$PID
 test "$FOREIGN_CODE" = "404"
 echo "E2E documents: foreign access 404 OK"
 
-# Read-only viewer by shared phone +70000000003
 VIEWER_RO=$(curl -sf "$API/api/v1/projects/$PID/viewers" -H "X-User-Id: $CID" | python3 -c "import json,sys; rows=json.load(sys.stdin); print(rows[0]['user_id'] if rows else '')")
 if [ -z "$VIEWER_RO" ]; then
   SHARE=$(curl -sf -X POST "$API/api/v1/projects/$PID/viewers" -H "X-User-Id: $CID" -H 'Content-Type: application/json' -d '{"phone":"+70000000003"}')
@@ -122,7 +118,6 @@ VIEWER_WRITE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/v1/proje
 test "$VIEWER_WRITE" = "403" -o "$VIEWER_WRITE" = "404"
 echo "E2E documents: viewer read-only OK (get=$VIEWER_GET write=$VIEWER_WRITE viewer=$VIEWER_RO)"
 
-# --- Wave 3: media membership ACL + legal hold ---
 MEDIA_PATH=$(echo "$UPLOAD" | python3 -c "import json,sys,re; u=json.load(sys.stdin).get('href') or ''; u=re.sub(r'^https?://[^/]+','',u); print(u.split('/api/v1/media/',1)[-1] if '/api/v1/media/' in u or u.startswith('api/v1/media/') else '')")
 if [ -n "$MEDIA_PATH" ]; then
   NOAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/v1/media/$MEDIA_PATH")
@@ -147,7 +142,6 @@ curl -sf -X POST "$API/api/v1/projects/$PID/documents/$DOC_ID/legal-hold" \
   -d '{"enabled":false}' >/dev/null
 echo "E2E legal hold: block-delete=$DEL_HOLD OK"
 
-# --- Wave 3b: metadata suggestion, explicit confirmation, e-sign providers ---
 OCR_GET=$(curl -sf "$API/api/v1/projects/$PID/documents/$DOC_ID/ocr" -H "X-User-Id: $CID")
 echo "$OCR_GET" | python3 -c "import json,sys; d=json.load(sys.stdin)['ocr']; assert d['status']=='suggested', d; assert d['source']=='metadata'; assert d['content_read'] is False; assert d['engine_available'] is False; assert d['requires_confirmation'] is True; assert d.get('suggested_type')"
 
@@ -162,7 +156,7 @@ echo "$UP2" | python3 -c "import json,sys; d=json.load(sys.stdin); o=d['meta']['
 OCR_CONFIRM=$(curl -sf -X POST "$API/api/v1/projects/$PID/documents/$UP2_ID/ocr" \
   -H "X-User-Id: $CID" -H 'Content-Type: application/json' \
   -d '{"apply_type":true}')
-echo "$OCR_CONFIRM" | python3 -c "import json,sys; d=json.load(sys.stdin); o=d['ocr']; assert d['document_type']=='contract', d; assert o['status']=='confirmed'; assert o['source']=='metadata'; assert o['content_read'] is False; assert o['applied'] is True; assert o['requires_confirmation'] is False"
+echo "$OCR_CONFIRM" | python3 -c "import json,sys; d=json.load(sys.stdin); o=d['meta']['ocr']; assert d['kind']=='contract', d; assert o['status']=='confirmed'; assert o['source']=='metadata'; assert o['content_read'] is False; assert o['applied'] is True; assert o['requires_confirmation'] is False"
 echo "E2E metadata classification: suggested then explicitly confirmed OK"
 
 PROVS=$(curl -sf "$API/api/v1/esign/providers" -H "X-User-Id: $CID")
@@ -186,7 +180,6 @@ K501=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/v1/projects/$PID
 test "$K501" = "501"
 echo "E2E e-sign: providers+in_app+kontur501=$K501 OK"
 
-# --- Wave 3c: read-only queue status + metadata compatibility tick ---
 WORKER=$(curl -sf "$API/api/v1/ocr/worker" -H "X-User-Id: $CID")
 echo "$WORKER" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['mode']=='metadata'; assert d['source']=='metadata'; assert d['content_read'] is False; assert d['engine_available'] is False; assert d['background_worker_enabled'] is False; assert 'queued_count' in d"
 TICK=$(curl -sf -X POST "$API/api/v1/ocr/worker/tick" -H "X-User-Id: $CID")
