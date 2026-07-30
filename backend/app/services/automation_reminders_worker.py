@@ -1,15 +1,15 @@
 """Periodic automation tick — project reminders + waste pickup + health metrics."""
 from __future__ import annotations
 
-from app.core.timeutil import utc_now
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import utc_now
 from app.models.entities import Project, WasteOrder, WasteOrderStatus
 from app.services import notification_service as notif_svc
 from app.services.automation_engine import scan_project_reminders
@@ -25,17 +25,27 @@ _METRICS: dict[str, Any] = {
     "ticks_total": 0,
     "ticks_ok": 0,
     "last_result": None,
+    "ops_alert_last_status": None,
+    "ops_alert_last_at": None,
+    "ops_alert_last_error": None,
 }
 
 
 def automation_worker_metrics() -> dict[str, Any]:
     return dict(_METRICS)
 
+
 _ops_alert_sent_for_streak = False
 
 
+def _record_ops_alert(status: str, error: str | None = None) -> None:
+    _METRICS["ops_alert_last_status"] = status
+    _METRICS["ops_alert_last_at"] = utc_now().isoformat(timespec="seconds") + "Z"
+    _METRICS["ops_alert_last_error"] = error[:500] if error else None
+
+
 async def _maybe_ops_alert() -> None:
-    """P4.2a: при 3+ consecutive failures — один email на streak (если ops_alert_email)."""
+    """After 3+ failures, retry until SMTP confirms provider acceptance."""
     global _ops_alert_sent_for_streak
     fails = int(_METRICS["consecutive_failures"])
     if fails < 3:
@@ -43,24 +53,34 @@ async def _maybe_ops_alert() -> None:
         return
     if _ops_alert_sent_for_streak:
         return
+
     from app.core.config import settings
+
     to = (settings.ops_alert_email or "").strip()
     if not to:
+        _record_ops_alert("not_configured", "ops_alert_email_missing")
         return
+
     try:
-        from app.services.email_stub import send_ops_alert_email
-        await send_ops_alert_email(
+        from app.services.email_service import send_ops_alert_email
+
+        delivered = await send_ops_alert_email(
             to,
             f"Renova ALERT: automation worker ({fails} fails)",
             f"consecutive_failures={fails}\nlast_error={_METRICS.get('last_error')}\n"
             f"last_tick_at={_METRICS.get('last_tick_at')}\n"
             "Check GET /api/v1/automation/worker",
         )
+        if not delivered:
+            _record_ops_alert("preview", "smtp_not_configured_local_preview")
+            logger.warning("ops alert preview only; SMTP did not accept delivery to %s", to)
+            return
         _ops_alert_sent_for_streak = True
-        logger.error("ops alert email queued to %s", to)
-    except Exception:
+        _record_ops_alert("sent")
+        logger.error("ops alert email delivered to SMTP for %s", to)
+    except Exception as exc:  # noqa: BLE001 — health loop must continue and retry next tick
+        _record_ops_alert("failed", f"{type(exc).__name__}: {exc}")
         logger.exception("ops alert email failed")
-
 
 
 def _record_ok(result: dict) -> None:
@@ -94,23 +114,23 @@ def _record_fail(exc: BaseException) -> None:
 async def scan_waste_reminders(db: AsyncSession, *, on_date: date | None = None) -> int:
     """Notify customers about waste pickup scheduled for tomorrow."""
     tomorrow = (on_date or date.today()) + timedelta(days=1)
-    r = await db.execute(
+    result = await db.execute(
         select(WasteOrder).where(
             WasteOrder.scheduled_date == tomorrow,
             WasteOrder.status == WasteOrderStatus.scheduled,
         )
     )
     sent = 0
-    for w in r.scalars().all():
-        p = await db.get(Project, w.project_id)
-        if p and p.customer_id:
+    for waste_order in result.scalars().all():
+        project = await db.get(Project, waste_order.project_id)
+        if project and project.customer_id:
             await notif_svc.notify(
                 db,
-                user_id=p.customer_id,
-                project_id=w.project_id,
+                user_id=project.customer_id,
+                project_id=waste_order.project_id,
                 notification_type="waste_reminder",
                 title="Завтра вывоз мусора",
-                body=f"{w.volume_m3} м³",
+                body=f"{waste_order.volume_m3} м³",
                 link_path="/(customer)/(tabs)/calendar",
             )
             sent += 1
@@ -142,12 +162,12 @@ async def automation_reminders_loop(stop: asyncio.Event, *, interval_sec: float)
             _record_ok(result)
             if result["project_actions"] or result["waste_sent"]:
                 logger.info("automation tick: %s", result)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — keep the health loop alive
             _record_fail(exc)
             logger.exception("automation reminders tick failed")
             try:
                 await _maybe_ops_alert()
-            except Exception:
+            except Exception:  # pragma: no cover — defensive hook isolation
                 logger.exception("ops alert hook failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=max(60.0, interval_sec))

@@ -113,9 +113,9 @@ def _is_sqlite(database_url: str) -> bool:
 
 
 def _is_localhost_url(url: str) -> bool:
-    u = url.strip().lower()
+    value = url.strip().lower()
     return any(
-        host in u
+        host in value
         for host in (
             "://127.0.0.1",
             "://localhost",
@@ -130,10 +130,20 @@ def _is_https(url: str) -> bool:
 
 
 def _is_default_secret(secret: str) -> bool:
-    s = secret.strip().lower()
-    if len(s) < 16:
+    value = secret.strip().lower()
+    if len(value) < 16:
         return True
-    return s in DEFAULT_SECRETS
+    return value in DEFAULT_SECRETS
+
+
+def _looks_like_email(value: str | None) -> bool:
+    candidate = (value or "").strip()
+    if not candidate or len(candidate) > 320 or "\r" in candidate or "\n" in candidate:
+        return False
+    if candidate.count("@") != 1 or " " in candidate:
+        return False
+    local, domain = candidate.rsplit("@", 1)
+    return bool(local and domain and "." in domain)
 
 
 def validate_runtime_settings(
@@ -145,10 +155,15 @@ def validate_runtime_settings(
     auth_allow_header_user_id: bool | None = None,
     allow_create_all: bool | None = None,
     allow_demo_seed: bool | None = None,
+    ops_alert_email: str | None = None,
+    smtp_host: str | None = None,
+    smtp_port: int = 587,
+    smtp_user: str | None = None,
+    smtp_password: str | None = None,
+    smtp_from: str | None = None,
 ) -> EnvironmentPolicy:
     """Raise ValueError before traffic if settings violate the environment policy."""
     policy = policy_for(environment)
-
     errors: list[str] = []
 
     if not policy.allow_header_user_id and auth_allow_header_user_id is True:
@@ -187,6 +202,32 @@ def validate_runtime_settings(
             f"{policy.name}: SECRET_KEY должен быть уникальным (≥16 символов, не default)"
         )
 
+    ops_to = (ops_alert_email or "").strip()
+    host = (smtp_host or "").strip()
+    user = (smtp_user or "").strip()
+    password = smtp_password or ""
+    sender = (smtp_from or "").strip()
+    working_environment = policy.name in {"staging", "production"}
+
+    if ops_to and not _looks_like_email(ops_to):
+        errors.append(f"{policy.name}: OPS_ALERT_EMAIL имеет некорректный формат")
+    if sender and not _looks_like_email(sender):
+        errors.append(f"{policy.name}: SMTP_FROM имеет некорректный формат")
+    if host and ("\r" in host or "\n" in host or len(host) > 255):
+        errors.append(f"{policy.name}: SMTP_HOST имеет некорректный формат")
+    if smtp_port < 1 or smtp_port > 65535:
+        errors.append(f"{policy.name}: SMTP_PORT должен быть в диапазоне 1..65535")
+    if user and not password:
+        errors.append(f"{policy.name}: SMTP_USER задан без SMTP_PASSWORD")
+    if working_environment and ops_to and not host:
+        errors.append(
+            f"{policy.name}: OPS_ALERT_EMAIL задан, но SMTP_HOST отсутствует — alert не может быть log-only"
+        )
+    if working_environment and host and not (sender or user):
+        errors.append(
+            f"{policy.name}: SMTP_FROM или SMTP_USER обязателен для рабочей SMTP-доставки"
+        )
+
     if errors:
         raise ValueError("Environment guard failed:\n- " + "\n- ".join(errors))
 
@@ -204,6 +245,8 @@ def collect_warnings(
     yookassa_secret: str | None = None,
     esign_webhook_secret: str | None = None,
     yookassa_webhook_secret: str | None = None,
+    ops_alert_email: str | None = None,
+    smtp_host: str | None = None,
 ) -> list[str]:
     """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
@@ -213,6 +256,10 @@ def collect_warnings(
             warnings.append("development: SECRET_KEY is default — OK for local only")
         if _is_sqlite(database_url):
             warnings.append("development: using SQLite — switch to Postgres before staging")
+        if (ops_alert_email or "").strip() and not (smtp_host or "").strip():
+            warnings.append(
+                "development: OPS_ALERT_EMAIL configured without SMTP_HOST — email is preview only"
+            )
     mode = (kontur_mode or "off").strip().lower()
     if name == "staging" and mode in ("sandbox", "live") and not (kontur_api_key or "").strip():
         warnings.append(

@@ -51,6 +51,12 @@ async def lifespan(app: FastAPI):
         auth_allow_header_user_id=settings.auth_allow_header_user_id,
         allow_create_all=settings.allow_create_all,
         allow_demo_seed=settings.allow_demo_seed,
+        ops_alert_email=settings.ops_alert_email,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_user=settings.smtp_user,
+        smtp_password=settings.smtp_password,
+        smtp_from=settings.smtp_from,
     )
     for warning in collect_warnings(
         environment=settings.environment,
@@ -62,6 +68,8 @@ async def lifespan(app: FastAPI):
         yookassa_secret=settings.yookassa_secret,
         esign_webhook_secret=settings.esign_webhook_secret,
         yookassa_webhook_secret=settings.yookassa_webhook_secret,
+        ops_alert_email=settings.ops_alert_email,
+        smtp_host=settings.smtp_host,
     ):
         logger.warning(warning)
 
@@ -194,10 +202,10 @@ app.add_middleware(RateLimitMiddleware)
 
 def _cors_origins() -> tuple[list[str], bool]:
     raw = (settings.cors_allowed_origins or "").strip()
-    origins = [o.strip() for o in raw.split(",") if o.strip()]
-    env = settings.normalized_environment
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    environment = settings.normalized_environment
     if not origins:
-        if env in ("development", "test"):
+        if environment in ("development", "test"):
             return ["*"], False
         base = (settings.public_base_url or "").rstrip("/")
         return ([base] if base else []), True
