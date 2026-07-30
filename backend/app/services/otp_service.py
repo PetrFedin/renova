@@ -9,6 +9,8 @@ import secrets
 import time
 from collections import defaultdict
 
+from redis.exceptions import RedisError
+
 from app.core.config import settings
 from app.core.phone import InvalidPhoneNumber, normalize_phone
 from app.services.sms_service import SmsConfigurationError, SmsDeliveryFailed, send_sms
@@ -50,6 +52,13 @@ def _digest(phone: str, code: str) -> str:
     return hmac.new(settings.secret_key.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
+def _mark_redis_unavailable() -> OtpStoreUnavailable:
+    global _redis, _redis_failed
+    _redis = None
+    _redis_failed = True
+    return OtpStoreUnavailable("redis_unavailable_for_otp")
+
+
 def _redis_client():
     global _redis, _redis_failed
     url = (settings.redis_url or "").strip()
@@ -77,6 +86,7 @@ def _redis_client():
         return _redis
     except Exception as exc:
         _redis_failed = True
+        _redis = None
         if _working_environment():
             raise OtpStoreUnavailable("redis_unavailable_for_otp") from exc
         logger.warning("otp store: redis unavailable — local memory preview only", exc_info=True)
@@ -358,10 +368,19 @@ async def send_otp(phone: str) -> dict:
                 "message": "Сервис кодов временно недоступен",
                 "service_unavailable": True,
             }
+        except RedisError:
+            logger.exception("otp Redis operation failed")
+            _mark_redis_unavailable()
+            return {
+                "ok": False,
+                "message": "Сервис кодов временно недоступен",
+                "service_unavailable": True,
+            }
         finally:
             try:
                 _release_distributed_send_claim(normalized, claim)
-            except OtpStoreUnavailable:
+            except (OtpStoreUnavailable, RedisError):
+                _mark_redis_unavailable()
                 logger.warning("otp send claim release failed")
 
 
@@ -370,23 +389,29 @@ def verify_otp(phone: str, code: str) -> bool:
         normalized = _norm(phone)
     except InvalidPhoneNumber:
         return False
-    now = time.time()
-    if _lock_left(normalized, now) > 0:
-        return False
-    record = _get_code(normalized)
-    if not record:
-        _bump_fail(normalized, now)
-        return False
-    stored_digest, expires_at = record
-    if now > expires_at:
-        _clear_code(normalized)
-        return False
-    candidate = _digest(normalized, code.strip())
-    if not hmac.compare_digest(stored_digest, candidate):
-        _bump_fail(normalized, now)
-        if _lock_left(normalized, time.time()) > 0:
+    try:
+        now = time.time()
+        if _lock_left(normalized, now) > 0:
+            return False
+        record = _get_code(normalized)
+        if not record:
+            _bump_fail(normalized, now)
+            return False
+        stored_digest, expires_at = record
+        if now > expires_at:
             _clear_code(normalized)
-        return False
-    _clear_code(normalized)
-    _clear_fails(normalized)
-    return True
+            return False
+        candidate = _digest(normalized, code.strip())
+        if not hmac.compare_digest(stored_digest, candidate):
+            _bump_fail(normalized, now)
+            if _lock_left(normalized, time.time()) > 0:
+                _clear_code(normalized)
+            return False
+        _clear_code(normalized)
+        _clear_fails(normalized)
+        return True
+    except OtpStoreUnavailable:
+        raise
+    except RedisError as exc:
+        logger.exception("otp Redis verification failed")
+        raise _mark_redis_unavailable() from exc
