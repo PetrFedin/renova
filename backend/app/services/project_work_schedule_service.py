@@ -1,5 +1,5 @@
 from app.core.timeutil import utc_now
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import HTTPException
 from sqlalchemy import delete, select
@@ -13,6 +13,7 @@ from app.models.work_schedule import (
     WorkScheduleStatus,
 )
 from app.schemas.project_work_schedule import WorkScheduleCreateIn, WorkScheduleItemIn, WorkScheduleUpdateIn
+from app.services import outbox_service as outbox
 
 
 def is_project_member(user: User, project: Project) -> bool:
@@ -21,7 +22,6 @@ def is_project_member(user: User, project: Project) -> bool:
 
 def is_project_customer(user: User, project: Project) -> bool:
     return user.id == project.customer_id
-
 
 
 async def can_manage_schedule(db: AsyncSession, user: User, project: Project) -> bool:
@@ -42,7 +42,10 @@ async def load_items(db: AsyncSession, schedule_id: str) -> list[ProjectWorkSche
             await db.execute(
                 select(ProjectWorkScheduleItem)
                 .where(ProjectWorkScheduleItem.schedule_id == schedule_id)
-                .order_by(ProjectWorkScheduleItem.sort_order.asc(), ProjectWorkScheduleItem.planned_start_date.asc())
+                .order_by(
+                    ProjectWorkScheduleItem.sort_order.asc(),
+                    ProjectWorkScheduleItem.planned_start_date.asc(),
+                )
             )
         ).scalars().all()
     )
@@ -83,6 +86,11 @@ def calculate_delay(item: ProjectWorkScheduleItem) -> int:
 
 
 async def sync_items_from_stages(db: AsyncSession, schedule: ProjectWorkSchedule) -> None:
+    """Populate or refresh editable draft items from stages.
+
+    This helper is intentionally called only by explicit write paths. Read endpoints
+    must never rewrite a submitted or confirmed schedule behind the user's back.
+    """
     stages = list(
         (
             await db.execute(
@@ -127,7 +135,12 @@ async def sync_items_from_stages(db: AsyncSession, schedule: ProjectWorkSchedule
             )
 
 
-async def create_item(db: AsyncSession, schedule: ProjectWorkSchedule, body: WorkScheduleItemIn, index: int) -> None:
+async def create_item(
+    db: AsyncSession,
+    schedule: ProjectWorkSchedule,
+    body: WorkScheduleItemIn,
+    index: int,
+) -> None:
     db.add(
         ProjectWorkScheduleItem(
             schedule_id=schedule.id,
@@ -164,6 +177,7 @@ async def list_schedules(db: AsyncSession, project_id: str) -> list[ProjectWorkS
 
 
 async def get_active_schedule(db: AsyncSession, project: Project) -> ProjectWorkSchedule | None:
+    """Return the current schedule without mutating schedule or stage truth."""
     schedule = (
         await db.execute(
             select(ProjectWorkSchedule)
@@ -174,14 +188,15 @@ async def get_active_schedule(db: AsyncSession, project: Project) -> ProjectWork
         )
     ).scalars().first()
     if schedule:
-        await sync_items_from_stages(db, schedule)
-        await db.commit()
-        await db.refresh(schedule)
         await attach_items(db, schedule)
     return schedule
 
 
-async def get_schedule(db: AsyncSession, project_id: str, schedule_id: str) -> ProjectWorkSchedule | None:
+async def get_schedule(
+    db: AsyncSession,
+    project_id: str,
+    schedule_id: str,
+) -> ProjectWorkSchedule | None:
     schedule = (
         await db.execute(
             select(ProjectWorkSchedule)
@@ -194,7 +209,12 @@ async def get_schedule(db: AsyncSession, project_id: str, schedule_id: str) -> P
     return schedule
 
 
-async def create_schedule(db: AsyncSession, project: Project, user: User, body: WorkScheduleCreateIn) -> ProjectWorkSchedule:
+async def create_schedule(
+    db: AsyncSession,
+    project: Project,
+    user: User,
+    body: WorkScheduleCreateIn,
+) -> ProjectWorkSchedule:
     from app.services.team_service import can_access_project
 
     if not await can_access_project(db, user, project, write=True):
@@ -223,7 +243,12 @@ async def create_schedule(db: AsyncSession, project: Project, user: User, body: 
     return await attach_items(db, schedule)
 
 
-async def update_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User, body: WorkScheduleUpdateIn) -> ProjectWorkSchedule:
+async def update_schedule(
+    db: AsyncSession,
+    schedule: ProjectWorkSchedule,
+    user: User,
+    body: WorkScheduleUpdateIn,
+) -> ProjectWorkSchedule:
     # P0: submitted/confirmed frozen until reject→draft
     if schedule.status == WorkScheduleStatus.confirmed:
         raise HTTPException(status_code=409, detail="confirmed_schedule_cannot_be_edited")
@@ -241,18 +266,28 @@ async def update_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
     if body.planned_finish_date is not None:
         schedule.planned_finish_date = body.planned_finish_date
     if body.items is not None:
-        await db.execute(delete(ProjectWorkScheduleItem).where(ProjectWorkScheduleItem.schedule_id == schedule.id))
+        await db.execute(
+            delete(ProjectWorkScheduleItem).where(
+                ProjectWorkScheduleItem.schedule_id == schedule.id
+            )
+        )
         for index, item in enumerate(body.items):
             await create_item(db, schedule, item, index)
-    schedule.status = WorkScheduleStatus.draft if schedule.status == WorkScheduleStatus.rejected else schedule.status
+    schedule.status = (
+        WorkScheduleStatus.draft
+        if schedule.status == WorkScheduleStatus.rejected
+        else schedule.status
+    )
     schedule.updated_at = utc_now()
     await db.commit()
     await db.refresh(schedule)
     return await attach_items(db, schedule)
 
 
-
-async def sync_stages_from_schedule_items(db: AsyncSession, schedule: ProjectWorkSchedule) -> int:
+async def sync_stages_from_schedule_items(
+    db: AsyncSession,
+    schedule: ProjectWorkSchedule,
+) -> int:
     """W46: после confirm даты items → stages (одно направление, SCHEDULE-SOT)."""
     items = await load_items(db, schedule.id)
     updated = 0
@@ -269,18 +304,75 @@ async def sync_stages_from_schedule_items(db: AsyncSession, schedule: ProjectWor
     return updated
 
 
-async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user: User) -> ProjectWorkSchedule:
+async def _prepare_schedule_effects(
+    db: AsyncSession,
+    *,
+    schedule: ProjectWorkSchedule,
+    actor_id: str,
+    activity_kind: str,
+    activity_title: str,
+    activity_body: str | None,
+    link_path: str,
+    notification_target: str | None,
+    notification_type: str,
+    notification_title: str,
+    notification_body: str,
+    return_to: str,
+) -> None:
+    await outbox.enqueue(
+        db,
+        aggregate_type="work_schedule",
+        aggregate_id=schedule.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": schedule.project_id,
+            "user_id": actor_id,
+            "kind": activity_kind,
+            "title": activity_title,
+            "body": activity_body,
+            "link_path": link_path,
+        },
+    )
+    if notification_target and notification_target != actor_id:
+        await outbox.enqueue(
+            db,
+            aggregate_type="work_schedule",
+            aggregate_id=schedule.id,
+            event_type=outbox.NOTIFICATION_EVENT,
+            payload={
+                "user_id": notification_target,
+                "project_id": schedule.project_id,
+                "notification_type": notification_type,
+                "title": notification_title,
+                "body": notification_body,
+                "link_path": link_path,
+                "return_to": return_to,
+            },
+        )
+
+
+async def _dispatch_schedule_effects(db: AsyncSession, *, source: str) -> None:
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(db, source=source, limit=10)
+
+
+async def submit_schedule(
+    db: AsyncSession,
+    schedule: ProjectWorkSchedule,
+    user: User,
+) -> ProjectWorkSchedule:
     from app.services.team_service import can_access_project
 
-    project_gate = await db.get(Project, schedule.project_id)
-    if not project_gate or not await can_access_project(db, user, project_gate, write=True):
+    project = await db.get(Project, schedule.project_id)
+    if not project or not await can_access_project(db, user, project, write=True):
         raise HTTPException(status_code=403, detail="project_forbidden")
-    if not await can_manage_schedule(db, user, project_gate):
+    if not await can_manage_schedule(db, user, project):
         raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_submit_schedule")
     items = await load_items(db, schedule.id)
     if not items:
         raise HTTPException(status_code=409, detail="schedule_items_required")
-    # E5: each submit after draft/reject bumps version (first submit stays v1)
+
     prev = int(getattr(schedule, "schedule_version", None) or 1)
     if schedule.status == WorkScheduleStatus.rejected or (
         schedule.submitted_at is not None and schedule.status == WorkScheduleStatus.draft
@@ -292,115 +384,122 @@ async def submit_schedule(db: AsyncSession, schedule: ProjectWorkSchedule, user:
     schedule.submitted_by = user.id
     schedule.submitted_at = utc_now()
     schedule.updated_at = utc_now()
-    await db.commit()
-    await db.refresh(schedule)
 
-    from app.services import activity_service as act
-    from app.services import notification_service as notif
-
-    # Project already imported at module level — local import would UnboundLocalError above.
-    project = await db.get(Project, schedule.project_id)
-    await act.log_event(
-        db,
-        project_id=schedule.project_id,
-        user_id=user.id,
-        kind="ScheduleSubmitted",
-        title=f"График на согласование: {schedule.title}",
-        link_path="/(customer)/(tabs)/calendar",
-    )
-    if project and project.customer_id and project.customer_id != user.id:
-        await notif.notify(
+    try:
+        await _prepare_schedule_effects(
             db,
-            user_id=project.customer_id,
-            project_id=schedule.project_id,
-            notification_type="schedule_review",
-            title="Согласуйте план-график",
-            body=schedule.title,
+            schedule=schedule,
+            actor_id=user.id,
+            activity_kind="ScheduleSubmitted",
+            activity_title=f"График на согласование: {schedule.title}",
+            activity_body=None,
             link_path="/(customer)/(tabs)/calendar",
+            notification_target=project.customer_id,
+            notification_type="schedule_review",
+            notification_title="Согласуйте план-график",
+            notification_body=schedule.title,
             return_to="/(customer)/(tabs)/home",
         )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+
+    await db.refresh(schedule)
+    await _dispatch_schedule_effects(db, source="work_schedule.submit")
     return await attach_items(db, schedule)
 
 
-async def confirm_schedule(db: AsyncSession, project: Project, schedule: ProjectWorkSchedule, user: User) -> ProjectWorkSchedule:
+async def confirm_schedule(
+    db: AsyncSession,
+    project: Project,
+    schedule: ProjectWorkSchedule,
+    user: User,
+) -> ProjectWorkSchedule:
     if not is_project_customer(user, project):
         raise HTTPException(status_code=403, detail="only_customer_can_confirm_schedule")
     if schedule.status != WorkScheduleStatus.submitted:
         raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_confirm")
+
     schedule.status = WorkScheduleStatus.confirmed
     schedule.confirmed_by = user.id
     schedule.confirmed_at = utc_now()
     schedule.updated_at = utc_now()
-    await sync_stages_from_schedule_items(db, schedule)
-    await db.commit()
-    await db.refresh(schedule)
 
-    from app.services import activity_service as act
-    from app.services import notification_service as notif
-
-    await act.log_event(
-        db,
-        project_id=schedule.project_id,
-        user_id=user.id,
-        kind="ScheduleConfirmed",
-        title=f"График согласован: {schedule.title}",
-        link_path="/(contractor)/(tabs)/calendar",
-    )
-    if project.contractor_id and project.contractor_id != user.id:
-        await notif.notify(
+    try:
+        await sync_stages_from_schedule_items(db, schedule)
+        await _prepare_schedule_effects(
             db,
-            user_id=project.contractor_id,
-            project_id=schedule.project_id,
-            notification_type="schedule_confirmed",
-            title="План-график согласован",
-            body=schedule.title,
+            schedule=schedule,
+            actor_id=user.id,
+            activity_kind="ScheduleConfirmed",
+            activity_title=f"График согласован: {schedule.title}",
+            activity_body=None,
             link_path="/(contractor)/(tabs)/calendar",
+            notification_target=project.contractor_id,
+            notification_type="schedule_confirmed",
+            notification_title="План-график согласован",
+            notification_body=schedule.title,
             return_to="/(contractor)/(tabs)/home",
         )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+
+    await db.refresh(schedule)
+    await _dispatch_schedule_effects(db, source="work_schedule.confirm")
     return await attach_items(db, schedule)
 
 
-async def reject_schedule(db: AsyncSession, project: Project, schedule: ProjectWorkSchedule, user: User, reason: str | None) -> ProjectWorkSchedule:
+async def reject_schedule(
+    db: AsyncSession,
+    project: Project,
+    schedule: ProjectWorkSchedule,
+    user: User,
+    reason: str | None,
+) -> ProjectWorkSchedule:
     if not is_project_customer(user, project):
         raise HTTPException(status_code=403, detail="only_customer_can_reject_schedule")
     if schedule.status != WorkScheduleStatus.submitted:
         raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_reject")
+
     schedule.status = WorkScheduleStatus.rejected
     schedule.rejection_reason = reason
     schedule.rejected_by = user.id
     schedule.rejected_at = utc_now()
     schedule.updated_at = utc_now()
-    await db.commit()
-    await db.refresh(schedule)
 
-    from app.services import activity_service as act
-    from app.services import notification_service as notif
-
-    await act.log_event(
-        db,
-        project_id=schedule.project_id,
-        user_id=user.id,
-        kind="ScheduleRejected",
-        title=f"График отклонён: {schedule.title}",
-        body=reason,
-        link_path="/(contractor)/(tabs)/calendar",
-    )
-    if project.contractor_id and project.contractor_id != user.id:
-        await notif.notify(
+    try:
+        await _prepare_schedule_effects(
             db,
-            user_id=project.contractor_id,
-            project_id=schedule.project_id,
-            notification_type="schedule_rejected",
-            title="План-график на доработку",
-            body=reason or schedule.title,
+            schedule=schedule,
+            actor_id=user.id,
+            activity_kind="ScheduleRejected",
+            activity_title=f"График отклонён: {schedule.title}",
+            activity_body=reason,
             link_path="/(contractor)/(tabs)/calendar",
+            notification_target=project.contractor_id,
+            notification_type="schedule_rejected",
+            notification_title="План-график на доработку",
+            notification_body=reason or schedule.title,
             return_to="/(contractor)/(tabs)/home",
         )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+
+    await db.refresh(schedule)
+    await _dispatch_schedule_effects(db, source="work_schedule.reject")
     return await attach_items(db, schedule)
 
 
 async def mark_schedule_items_accepted_for_stage(
-    db: AsyncSession, *, project_id: str, stage_id: str
+    db: AsyncSession,
+    *,
+    project_id: str,
+    stage_id: str,
 ) -> int:
     """После finalize_work_acceptance — отразить приёмку в SoT графика (не наоборот)."""
     rows = list(
@@ -429,7 +528,11 @@ async def mark_schedule_items_accepted_for_stage(
     return updated
 
 
-async def sync_stage_from_item_status(db: AsyncSession, item: ProjectWorkScheduleItem, status: WorkScheduleItemStatus) -> None:
+async def sync_stage_from_item_status(
+    db: AsyncSession,
+    item: ProjectWorkScheduleItem,
+    status: WorkScheduleItemStatus,
+) -> None:
     if not item.stage_id:
         return
     stage = await db.get(Stage, item.stage_id)
@@ -476,12 +579,15 @@ async def update_item_status(
     from app.services.schedule_item_transitions import assert_item_transition
 
     await assert_item_transition(
-        db, user=user, project=project, from_status=item.status, to_status=body_status,
+        db,
+        user=user,
+        project=project,
+        from_status=item.status,
+        to_status=body_status,
     )
     if body_status == WorkScheduleItemStatus.accepted:
         if not is_project_customer(user, project):
             raise HTTPException(status_code=403, detail="only_customer_can_set_schedule_item_accepted")
-        # P0 harden: accepted в графике только после единой приёмки (или без привязки к этапу)
         if item.stage_id:
             stage = await db.get(Stage, item.stage_id)
             if not stage or stage.project_id != project.id:
@@ -509,7 +615,10 @@ async def update_item_status(
         item.progress_percent = progress_percent
     if body_status == WorkScheduleItemStatus.in_progress and not item.actual_start_date:
         item.actual_start_date = date.today()
-    if body_status in [WorkScheduleItemStatus.accepted, WorkScheduleItemStatus.cancelled] and not item.actual_finish_date:
+    if (
+        body_status in [WorkScheduleItemStatus.accepted, WorkScheduleItemStatus.cancelled]
+        and not item.actual_finish_date
+    ):
         item.actual_finish_date = date.today()
     if body_status == WorkScheduleItemStatus.accepted:
         item.progress_percent = max(item.progress_percent or 0, 100)
