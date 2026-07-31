@@ -12,7 +12,9 @@ from app.models.entities import PaymentWebhookEvent
 import app.models.client_write_request  # noqa: F401
 import app.models.outbox_runtime  # noqa: F401
 import app.models.project_documents  # noqa: F401
+import app.models.webhook_runtime  # noqa: F401
 import app.models.work_schedule  # noqa: F401
+from app.models.webhook_runtime import PaymentWebhookDelivery
 from app.services import yookassa_service
 
 
@@ -80,6 +82,18 @@ async def test_processing_failure_does_not_consume_delivery(webhook_db, monkeypa
         await subscription.yookassa_webhook(FakeRequest(body), webhook_db)
 
     assert (await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent))) == 0
+    attempts, locked_by, completed_at = (
+        await webhook_db.execute(
+            select(
+                PaymentWebhookDelivery.attempts,
+                PaymentWebhookDelivery.locked_by,
+                PaymentWebhookDelivery.completed_at,
+            ).where(PaymentWebhookDelivery.event_id == "payment.succeeded:yk-failure")
+        )
+    ).one()
+    assert attempts == 1
+    assert locked_by is None
+    assert completed_at is None
     assert not await yookassa_service.was_webhook_processed(
         webhook_db,
         "payment.succeeded:yk-failure",
@@ -105,6 +119,12 @@ async def test_retryable_result_returns_non_2xx_without_consuming_event(webhook_
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail["code"] == "webhook_processing_deferred"
     assert (await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent))) == 0
+    attempts = await webhook_db.scalar(
+        select(PaymentWebhookDelivery.attempts).where(
+            PaymentWebhookDelivery.event_id == "payment.succeeded:yk-deferred"
+        )
+    )
+    assert attempts == 1
 
 
 @pytest.mark.asyncio
@@ -122,8 +142,12 @@ async def test_success_records_completion_and_replay_skips_business_logic(webhoo
     second = await subscription.yookassa_webhook(FakeRequest(body), webhook_db)
 
     assert first["event_key"] == "payment.succeeded:yk-once"
+    assert first["accepted"] is True
+    assert first["business_applied"] is True
     assert second == {
         "ok": True,
+        "accepted": True,
+        "business_applied": False,
         "duplicate": True,
         "event_key": "payment.succeeded:yk-once",
     }
@@ -131,6 +155,12 @@ async def test_success_records_completion_and_replay_skips_business_logic(webhoo
     rows = (await webhook_db.execute(select(PaymentWebhookEvent))).scalars().all()
     assert len(rows) == 1
     assert rows[0].payload_kind == "payment.succeeded"
+    outcome = await webhook_db.scalar(
+        select(PaymentWebhookDelivery.outcome).where(
+            PaymentWebhookDelivery.event_id == "payment.succeeded:yk-once"
+        )
+    )
+    assert outcome == "handled"
 
 
 @pytest.mark.asyncio

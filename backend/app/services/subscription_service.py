@@ -8,14 +8,28 @@ PRO_PRICE = 990.0
 TRIAL_DAYS = 14
 
 
-async def get_sub(db: AsyncSession, user_id: str) -> Subscription:
-    r = await db.execute(select(Subscription).where(Subscription.user_id == user_id))
+async def get_sub(
+    db: AsyncSession,
+    user_id: str,
+    *,
+    commit: bool = True,
+    for_update: bool = False,
+) -> Subscription:
+    query = select(Subscription).where(Subscription.user_id == user_id)
+    if for_update:
+        try:
+            query = query.with_for_update()
+        except Exception:
+            pass
+    r = await db.execute(query)
     s = r.scalar_one_or_none()
     if not s:
         s = Subscription(user_id=user_id, status=SubscriptionStatus.free, plan="free")
         db.add(s)
-        await db.commit()
-        await db.refresh(s)
+        await db.flush()
+        if commit:
+            await db.commit()
+            await db.refresh(s)
     return s
 
 
@@ -42,13 +56,21 @@ async def is_pro(db: AsyncSession, user_id: str) -> bool:
     return not s.expires_at or s.expires_at > utc_now()
 
 
-async def activate_pro(db: AsyncSession, user_id: str, days: int = 30) -> Subscription:
-    s = await get_sub(db, user_id)
+async def activate_pro(
+    db: AsyncSession,
+    user_id: str,
+    days: int = 30,
+    *,
+    commit: bool = True,
+) -> Subscription:
+    s = await get_sub(db, user_id, commit=False, for_update=True)
     s.status = SubscriptionStatus.active
     s.plan = "pro"
     s.expires_at = utc_now() + timedelta(days=days)
-    await db.commit()
-    await db.refresh(s)
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(s)
     return s
 
 
