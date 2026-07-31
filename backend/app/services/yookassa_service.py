@@ -256,7 +256,7 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         payment_id = str(metadata.get("payment_id") or "")
         project_id = str(metadata.get("project_id") or "")
         provider_user_id = str(metadata.get("user_id") or "")
-        if not payment_id or not project_id or not provider_user_id:
+        if not payment_id or not project_id:
             return {"ok": True, "handled": False, "reason": "missing_metadata"}
 
         q = select(Payment).where(Payment.id == payment_id)
@@ -268,7 +268,9 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         if not existing or existing.project_id != project_id:
             return {"ok": True, "handled": False, "reason": "payment_not_found"}
         project = await db.get(Project, project_id)
-        if not project or provider_user_id != project.customer_id:
+        if not project:
+            return {"ok": True, "handled": False, "reason": "project_not_found"}
+        if provider_user_id and provider_user_id != project.customer_id:
             return {"ok": True, "handled": False, "reason": "payer_mismatch"}
         if existing.status.value not in ("pending", "processing", "paid_unverified"):
             return {"ok": True, "handled": True, "duplicate": True, "payment_id": payment_id}
