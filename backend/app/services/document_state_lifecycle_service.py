@@ -150,6 +150,10 @@ async def delete_document(
             document=document,
             source="document.delete",
         )
+    except ValueError:
+        # Guard failures (legal hold / existing signature) happen before mutation.
+        # Keep the caller's loaded identity map usable and return the domain error.
+        raise
     except BaseException:
         await db.rollback()
         raise
