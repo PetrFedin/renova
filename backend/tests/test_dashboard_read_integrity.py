@@ -93,6 +93,24 @@ def test_completed_dashboard_has_terminal_action_type():
     assert dashboard["next_action_type"] == "completed"
 
 
+def test_planned_only_dashboard_is_not_marked_completed():
+    planned = _stage("planned", status=StageStatus.planned, percent=0, order=1)
+    dashboard = dashboard_svc.build_dashboard_read_model(
+        _project([planned]),
+        stages=[planned],
+    )
+
+    assert dashboard["next_action_title"] == "Следующий этап: Stage planned"
+    assert dashboard["next_action_type"] == "review_estimate"
+
+
+def test_empty_dashboard_is_not_marked_completed():
+    dashboard = dashboard_svc.build_dashboard_read_model(_project([]), stages=[])
+
+    assert dashboard["next_action_title"] == "Добавьте этапы и смету"
+    assert dashboard["next_action_type"] == "review_estimate"
+
+
 @pytest.mark.asyncio
 async def test_enrichment_failure_is_explicit(monkeypatch):
     class BrokenSession:
