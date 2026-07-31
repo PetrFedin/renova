@@ -359,7 +359,7 @@ async def test_delete_is_replay_safe_reverses_budget_and_emits_one_audit(expense
     assert (await expense_db.scalar(select(func.count()).select_from(ActivityEvent))) == 1
 
 
-def test_canonical_expense_routes_precede_legacy_os_routes():
+def test_expense_mutation_routes_are_single_and_canonical():
     path = "/api/v1/projects/{project_id}/os/expenses/{expense_id}"
     for method in ("PATCH", "DELETE"):
         matching = [
@@ -367,5 +367,5 @@ def test_canonical_expense_routes_precede_legacy_os_routes():
             for route in api_router.routes
             if getattr(route, "path", None) == path and method in (getattr(route, "methods", set()) or set())
         ]
-        assert len(matching) >= 2
+        assert len(matching) == 1
         assert matching[0].endpoint.__module__ == "app.api.v1.expense_mutations"
