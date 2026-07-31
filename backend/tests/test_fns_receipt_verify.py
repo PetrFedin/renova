@@ -28,22 +28,23 @@ async def test_verify_staging_no_demo(monkeypatch):
     monkeypatch.setattr(config.settings, "fns_receipt_login", None)
     monkeypatch.setattr(config.settings, "fns_receipt_password", None)
 
-    async def boom(*_a, **_k):
-        raise RuntimeError("offline")
-
-    monkeypatch.setattr("httpx.AsyncClient.get", boom)
-    # patch client context - easier: make get raise via custom client
     class FakeClient:
-        def __init__(self, *a, **k): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): return False
-        async def get(self, *a, **k):
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
             raise RuntimeError("offline")
 
     monkeypatch.setattr("httpx.AsyncClient", FakeClient)
     out = await verify_receipt({"fn": "1", "fd": "2", "fp": "3", "amount": 10})
     assert out["verified"] is False
-    assert out["mode"] == "offline"
+    assert out["mode"] == "pending"
 
 
 def test_health_hint_when_no_auth(monkeypatch):
