@@ -6,9 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import ProjectIssue, User
-from app.services import activity_service as act
 from app.services import issue_service as issue_svc
-from app.services import notification_service as notif_svc
 
 router = APIRouter(tags=["issue-transitions"])
 
@@ -30,53 +28,61 @@ async def transition_issue(
     if not issue or issue.project_id != project_id:
         raise HTTPException(404)
     if (issue.title or "").startswith("[Гарантия]"):
-        raise HTTPException(409, detail={
-            "code": "warranty_transition_separate",
-            "message": "Гарантийные обращения закрываются через гарантийный контур.",
-        })
+        raise HTTPException(
+            409,
+            detail={
+                "code": "warranty_transition_separate",
+                "message": "Гарантийные обращения закрываются через гарантийный контур.",
+            },
+        )
 
     current = issue.status
     try:
-        issue = await issue_svc.transition_issue(db, issue, body.status, user.role)
+        issue = await issue_svc.transition_issue(
+            db,
+            issue,
+            body.status,
+            user.role,
+            commit=False,
+        )
     except ValueError as error:
         code = str(error)
         if code == "issue_transition_role_forbidden":
-            raise HTTPException(403, detail={
+            raise HTTPException(
+                403,
+                detail={
+                    "code": code,
+                    "message": "Этот переход недоступен для вашей роли.",
+                },
+            ) from error
+        raise HTTPException(
+            409,
+            detail={
                 "code": code,
-                "message": "Этот переход недоступен для вашей роли.",
-            }) from error
-        raise HTTPException(409, detail={
-            "code": code,
-            "message": "Статус замечания уже изменился или переход недоступен.",
-        }) from error
+                "message": "Статус замечания уже изменился или переход недоступен.",
+            },
+        ) from error
 
-    event_kind, event_body = issue_svc.issue_transition_event(current, issue.status)
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind=event_kind,
-        title=issue.title,
-        body=f"{current} → {issue.status}. {event_body}",
-        room_id=issue.room_id,
-        stage_id=issue.stage_id,
-        link_path="/control",
-    )
-
-    notification_type, title, message = issue_svc.issue_transition_notification(
-        current,
-        issue.status,
-        issue.title,
-    )
-    for target_id in issue_svc.issue_transition_targets(project, user.id):
-        await notif_svc.notify(
+    try:
+        await issue_svc.prepare_issue_transition_effects(
             db,
-            user_id=target_id,
-            project_id=project_id,
-            notification_type=notification_type,
-            title=title,
-            body=message,
-            link_path="/control",
+            project=project,
+            issue=issue,
+            actor_id=user.id,
+            previous_status=current,
         )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
 
+    await db.refresh(issue)
+
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(
+        db,
+        source="issue.transition",
+        limit=10,
+    )
     return issue_svc.issue_dict(issue)

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, ProjectIssue, UserRole
+from app.services import outbox_service as outbox
 
 ISSUE_TRANSITIONS: dict[str, set[str]] = {
     "open": {"in_progress", "fixed"},
@@ -59,7 +60,11 @@ def issue_dict(issue: ProjectIssue) -> dict:
     }
 
 
-async def list_issues(db: AsyncSession, project_id: str, status: str | None = None) -> list[ProjectIssue]:
+async def list_issues(
+    db: AsyncSession,
+    project_id: str,
+    status: str | None = None,
+) -> list[ProjectIssue]:
     query = select(ProjectIssue).where(ProjectIssue.project_id == project_id)
     if status:
         query = query.where(ProjectIssue.status == status)
@@ -102,7 +107,11 @@ async def create_issue(
     return issue
 
 
-def validate_issue_transition(current: str, target: str, actor_role: UserRole | str) -> None:
+def validate_issue_transition(
+    current: str,
+    target: str,
+    actor_role: UserRole | str,
+) -> None:
     if target not in ISSUE_TRANSITIONS.get(current, set()):
         raise ValueError(f"invalid_issue_transition:{current}:{target}")
     if role_value(actor_role) not in ISSUE_ROLE_ALLOWED.get((current, target), set()):
@@ -119,16 +128,24 @@ async def transition_issue(
     issue: ProjectIssue,
     target: str,
     actor_role: UserRole | str,
+    *,
+    commit: bool = True,
 ) -> ProjectIssue:
+    """Apply a valid transition; callers may compose it into a wider transaction."""
     validate_issue_transition(issue.status, target, actor_role)
     issue.status = target
     issue.closed_at = datetime.now(timezone.utc) if target == "closed" else None
-    await db.commit()
-    await db.refresh(issue)
+    if commit:
+        await db.commit()
+        await db.refresh(issue)
     return issue
 
 
-async def update_issue_status(db: AsyncSession, issue_id: str, status: str) -> ProjectIssue | None:
+async def update_issue_status(
+    db: AsyncSession,
+    issue_id: str,
+    status: str,
+) -> ProjectIssue | None:
     """Legacy status write, но только по допустимому графу — без bypass open → closed."""
     issue = await db.get(ProjectIssue, issue_id)
     if not issue or not validate_issue_status_change(issue.status, status):
@@ -141,11 +158,13 @@ async def update_issue_status(db: AsyncSession, issue_id: str, status: str) -> P
 
 
 def issue_transition_targets(project: Project, actor_id: str) -> list[str]:
-    return sorted({
-        user_id
-        for user_id in (project.customer_id, project.contractor_id, project.foreman_id)
-        if user_id and user_id != actor_id
-    })
+    return sorted(
+        {
+            user_id
+            for user_id in (project.customer_id, project.contractor_id, project.foreman_id)
+            if user_id and user_id != actor_id
+        }
+    )
 
 
 def issue_transition_event(current: str, target: str) -> tuple[str, str]:
@@ -162,7 +181,11 @@ def issue_transition_event(current: str, target: str) -> tuple[str, str]:
     return "IssueUpdated", f"Статус: {current} → {target}"
 
 
-def issue_transition_notification(current: str, target: str, title: str) -> tuple[str, str, str]:
+def issue_transition_notification(
+    current: str,
+    target: str,
+    title: str,
+) -> tuple[str, str, str]:
     if target == "in_progress":
         return "issue", f"Исправление начато: {title}", "Исполнитель приступил к устранению замечания."
     if target == "fixed":
@@ -174,3 +197,53 @@ def issue_transition_notification(current: str, target: str, title: str) -> tupl
     if target == "open":
         return "issue", f"На доработку: {title}", "Заказчик не подтвердил исправление."
     return "issue", f"Статус замечания: {title}", f"{current} → {target}"
+
+
+async def prepare_issue_transition_effects(
+    db: AsyncSession,
+    *,
+    project: Project,
+    issue: ProjectIssue,
+    actor_id: str,
+    previous_status: str,
+) -> None:
+    """Enqueue audit and member notifications in the issue state transaction."""
+    event_kind, event_body = issue_transition_event(previous_status, issue.status)
+    await outbox.enqueue(
+        db,
+        aggregate_type="project_issue",
+        aggregate_id=issue.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": issue.project_id,
+            "user_id": actor_id,
+            "kind": event_kind,
+            "title": issue.title,
+            "body": f"{previous_status} → {issue.status}. {event_body}",
+            "room_id": issue.room_id,
+            "stage_id": issue.stage_id,
+            "link_path": "/control",
+        },
+    )
+
+    notification_type, title, message = issue_transition_notification(
+        previous_status,
+        issue.status,
+        issue.title,
+    )
+    for target_id in issue_transition_targets(project, actor_id):
+        await outbox.enqueue(
+            db,
+            aggregate_type="project_issue",
+            aggregate_id=issue.id,
+            event_type=outbox.NOTIFICATION_EVENT,
+            payload={
+                "user_id": target_id,
+                "project_id": issue.project_id,
+                "notification_type": notification_type,
+                "title": title,
+                "body": message,
+                "link_path": "/control",
+                "return_to": None,
+            },
+        )

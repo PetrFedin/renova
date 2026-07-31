@@ -93,11 +93,22 @@ if (!issueService.includes('ISSUE_ROLE_ALLOWED') || !issueService.includes('vali
 if (!issueService.includes('validate_issue_status_change') || !issueService.includes('closed_at =')) {
   throw new Error('QC legacy fail-closed/timestamp');
 }
-if (!issueTransitionsApi.includes('issue_transition_role_forbidden') || !issueTransitionsApi.includes('act.log_event')) {
-  throw new Error('QC API role/audit enforcement');
+if (
+  !issueTransitionsApi.includes('issue_transition_role_forbidden') ||
+  !issueTransitionsApi.includes('commit=False') ||
+  !issueTransitionsApi.includes('dispatch_best_effort')
+) {
+  throw new Error('QC API role/atomic commit enforcement');
 }
-if (!issueTransitionsApi.includes('notif_svc.notify') || !issueTransitionsApi.includes('warranty_transition_separate')) {
-  throw new Error('QC notifications/warranty boundary');
+if (
+  !issueService.includes('prepare_issue_transition_effects') ||
+  !issueService.includes('event_type=outbox.ACTIVITY_EVENT') ||
+  !issueService.includes('event_type=outbox.NOTIFICATION_EVENT') ||
+  issueTransitionsApi.includes('act.log_event') ||
+  issueTransitionsApi.includes('notif_svc.notify') ||
+  !issueTransitionsApi.includes('warranty_transition_separate')
+) {
+  throw new Error('QC durable audit/notification/warranty boundary');
 }
 
 const cust = src('components/screens/control/CustomerControlView.tsx');
