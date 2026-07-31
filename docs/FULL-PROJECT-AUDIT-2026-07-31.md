@@ -1,214 +1,228 @@
 # Renova — актуальный полный аудит и рабочая матрица
 
 **Дата среза:** 2026-07-31  
-**Канонический кодовый baseline:** `main` после PR #109 · `153dedf9c6a615d6b03e6e4421d50e47f1b4fa55`  
-**Текущая волна:** payment webhooks and direct commit boundaries  
+**Канонический кодовый baseline:** `main` после PR #110 · `c9c6c48e8356cf5316e6918744087a451f537b5b`  
+**Текущая волна:** direct API commit boundaries  
 **Назначение:** единый источник истины для продолжения разработки, проверки закрытия аудитов и подготовки staging/pilot.
 
-> Этот документ заменяет использование старых аудитов как текущего backlog. Старые файлы сохраняются как доказательная и продуктовая база, но их статусы необходимо сверять здесь с актуальным `main`.
+> Старые аудиты сохраняются как доказательная и продуктовая база, но их статусы необходимо сверять с этим документом и актуальным `main`.
 
 ## 1. Источники, объединённые в аудит
 
 - `MARKET-COMPETITIVE-AUDIT-2026-07-15.md` — рынок, конкурентный паритет, продуктовые разрывы.
-- `P3-W43-journey-audit-fixes.md` — сквозные пути приёмки, оплаты, гарантии.
+- `P3-W43-journey-audit-fixes.md` — сквозные пути приёмки, оплаты и гарантии.
 - `PRODUCT-AUDIT-DEEP-2026-07-19.md` — глубокий продуктовый и UX-аудит.
 - `PRODUCT-AUDIT-SYNTHESIS-2026-07-19.md` — синтез приоритетов Trust / IA / Field.
 - `SECURITY-AUDIT-REMEDIATION-PLAN-2026-07-21.md` — security/product remediation.
 - `ARCHITECTURE-AUDIT-RU.md` — архитектурные дубли, SoT и инфраструктурный долг.
 - `AUDIT-CLOSURE-MATRIX-2026-07-21.md` — историческая closure-матрица wave 1–6.
 - `FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — исполняемый чеклист текущей волны.
-- `OTP-ATOMIC-CONSUME-2026-07-31.md` — доказательство single-winner OTP consume.
-- `ACCOUNT-LIFECYCLE-INTEGRITY-2026-07-31.md` — транзакционный контракт удаления аккаунта и ops-защита hard purge.
-- `OUTBOX-FENCING-AND-FANOUT-2026-07-31.md` — owner-fenced lease, cancellation recovery и replay-safe acceptance fan-out.
+- `OTP-ATOMIC-CONSUME-2026-07-31.md` — single-winner OTP consume.
+- `ACCOUNT-LIFECYCLE-INTEGRITY-2026-07-31.md` — atomic account deletion и hard-purge guard.
+- `OUTBOX-FENCING-AND-FANOUT-2026-07-31.md` — owner-fenced outbox и replay-safe fan-out.
+- `YOOKASSA-DELIVERY-INTEGRITY-2026-07-31.md` — durable webhook claim, atomic settlement и Alembic graph guard.
 
 ## 2. Правило доверия к статусам
 
 Статус считается `CLOSED` только когда одновременно есть:
 
-1. изменение в актуальной ветке от `main`;
-2. автоматический тест или проверяемый source/runtime guard;
-3. успешный CI;
+1. изменение от актуального `main`;
+2. автоматический runtime/concurrent test или проверяемый guard;
+3. полностью успешный CI;
 4. merge в `main` с зафиксированным SHA.
 
 | Статус | Значение |
 |---|---|
-| `CLOSED MAIN` | исправление уже в `main`, есть тесты/CI |
-| `DONE BRANCH` | исправление реализовано в ветке, ожидает PR/CI/merge |
+| `CLOSED MAIN` | исправление в `main`, есть тесты и green CI |
+| `DONE BRANCH` | исправление в ветке, ожидает CI/merge |
 | `OPEN CODE` | подтверждённая проблема в актуальном коде |
-| `REVERIFY` | находка старого аудита; требуется повторная проверка на текущем `main` |
-| `OPS` | зависит от staging, домена, секретов или внешнего провайдера |
-| `NOT PRESENT` | ожидаемый surface отсутствует в текущем продукте; требования фиксируются до его появления |
+| `REVERIFY` | находка старого аудита; требуется повторная проверка |
+| `OPS` | зависит от staging, секретов, домена или внешнего провайдера |
+| `NOT PRESENT` | ожидаемый surface отсутствует; требования фиксируются заранее |
 | `NOT TARGET` | сознательно не входит в текущую стратегию продукта |
 
 ## 3. Почему старая feature-ветка не переносится целиком
 
-`feature/renova-product-excellence-pass` расходилась с актуальным `main`: была **на 15 коммитов впереди, но на 202 коммита позади**. Её нельзя merge/rebase вслепую как источник истины.
+`feature/renova-product-excellence-pass` была на 15 коммитов впереди, но на 202 коммита позади актуального `main`. Она не является источником истины и не должна merge/rebase вслепую.
 
 Из неё используются только:
 
-- полезные формулировки и продуктовая карта;
+- продуктовые формулировки и карта разрывов;
 - отдельные изменения, повторно подтверждённые на актуальном `main`;
-- исторический audit snapshot, переписанный в эту актуальную матрицу.
-
-Код из старой ветки переносится только отдельными PR после проверки конфликтов, расчётов, ACL, transaction boundaries и тестов.
+- исторические audit-находки после нового воспроизведения.
 
 ## 4. Подтверждённо закрыто в актуальном `main`
 
 | Блок | Статус | Доказательство |
 |---|---|---|
 | ФНС: честный статус проверки чеков | `CLOSED MAIN` | PR #95 |
-| НПД / «Мой налог»: разделение live/scaffold | `CLOSED MAIN` | PR #96 |
+| НПД / «Мой налог»: live/scaffold truth | `CLOSED MAIN` | PR #96 |
 | OCR metadata truth | `CLOSED MAIN` | PR #97 · `71b4a7c7...` |
-| PDF: кириллица и glyph integrity | `CLOSED MAIN` | PR #98 · `7703abc3...` |
-| Dashboard read integrity / degraded state | `CLOSED MAIN` | PR #99 · `374a3a52...` |
-| Один канонический dashboard route | `CLOSED MAIN` | PR #100 · `3cbc8bb3...` |
+| PDF glyph integrity | `CLOSED MAIN` | PR #98 · `7703abc3...` |
+| Dashboard read integrity | `CLOSED MAIN` | PR #99 · `374a3a52...` |
+| Один canonical dashboard route | `CLOSED MAIN` | PR #100 · `3cbc8bb3...` |
 | Project viewer idempotency | `CLOSED MAIN` | PR #101 · `ec4d1fc0...` |
 | Access-token revocation fail-closed | `CLOSED MAIN` | PR #102 · `ac5630af...` |
-| ACL для проектов без назначенного подрядчика | `CLOSED MAIN` | PR #103 · `63823803...` |
+| ACL для unassigned проектов | `CLOSED MAIN` | PR #103 · `63823803...` |
 | Atomic team invites | `CLOSED MAIN` | PR #104 · `07cde6f2...` |
 | Atomic refresh-token rotation | `CLOSED MAIN` | PR #105 · `63f3d258...` |
-| Portal change-order scope isolation | `CLOSED MAIN` | PR #106 · `6547630b...` · CI #1635 |
-| OTP atomic single-winner consume | `CLOSED MAIN` | PR #107 · `e54581a7...` · CI #1643 |
-| Atomic account soft-delete and revoke-all | `CLOSED MAIN` | PR #108 · `c8974894...` · CI #1660 |
+| Portal CO scope isolation | `CLOSED MAIN` | PR #106 · `6547630b...` · CI #1635 |
+| OTP single-winner consume | `CLOSED MAIN` | PR #107 · `e54581a7...` · CI #1643 |
+| Atomic account soft-delete / revoke-all | `CLOSED MAIN` | PR #108 · `c8974894...` · CI #1660 |
 | Hard purge fail-closed authorization | `CLOSED MAIN` | PR #108 · `c8974894...` · CI #1660 |
-| Owner-fenced outbox claims and cancellation release | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
-| Replay-safe acceptance side-effect fan-out | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
-| Outbox poison/backlog/lease observability | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
+| Owner-fenced outbox claims | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
+| Replay-safe acceptance fan-out | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
+| Outbox backlog/poison/lease observability | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
+| YooKassa durable delivery claim | `CLOSED MAIN` | PR #110 · `c9c6c48e...` · CI #1712 |
+| Atomic YooKassa project/subscription settlement | `CLOSED MAIN` | PR #110 · `c9c6c48e...` · CI #1712 |
+| YooKassa mismatch/reversal/replay integrity | `CLOSED MAIN` | PR #110 · `c9c6c48e...` · CI #1712 |
+| Single Alembic head guard | `CLOSED MAIN` | `w6webhookdelivery01` · CI #1712 |
 | Полный mobile contract gate | `CLOSED MAIN` | CI job `mobile-contracts` |
 
-Эти темы не должны возвращаться в backlog без нового воспроизводимого дефекта.
+Закрытые темы не возвращаются в backlog без нового воспроизводимого дефекта.
 
 ## 5. Закрытая Wave X.1 — portal change-order authorization
 
-### Подтверждённый дефект
+### Дефект
 
-Portal-token с правом только `pay` мог вызвать approve/reject допработ, потому что legacy endpoint проверял пользователя-заказчика, но не требовал scope `accept_stage`.
-
-У reject-пути был дополнительный риск: compatibility service получал только `order_id`; принадлежность проекту проверялась после вызова, а автором отказа мог становиться создатель допработы вместо фактического заказчика.
+Pay-only portal token мог вызвать approve/reject допработ; reject-путь не был достаточно project-scoped и мог записать неверного автора отказа.
 
 ### Закрытие
 
-- `accept_stage` проверяется до первого DB access;
-- wrong-project token отклоняется до DB access;
+- `accept_stage` и project token проверяются до DB access;
 - approve/reject используют project-scoped services;
-- reject записывает фактического customer как `rejected_by`;
-- runtime/OpenAPI содержит ровно один approve и один reject route;
-- pay-only token получает 403;
+- reject получает фактического customer как `rejected_by`;
+- runtime/OpenAPI содержит ровно по одному маршруту;
 - functional/source/runtime tests обязательны в CI;
 - PR #106 merged: `6547630ba8f4ff06fb2be9607fe5eb7f658d9ee7`;
-- CI run #1635: e2e/PostgreSQL, Playwright и mobile-contracts — success.
+- CI #1635 полностью зелёный.
 
 ### Остаточный долг
 
-Legacy определения физически остаются в большом `portal.py`, хотя исключены из runtime registry. Их необходимо удалить в отдельной безопасной декомпозиционной волне.
+Legacy definitions физически остаются в большом `portal.py`, хотя исключены из runtime registry.
 
 ## 6. Закрытая Wave X.2 — OTP atomic consume
 
-### Подтверждённый дефект
+### Дефект
 
-Legacy verify выполнял Redis `GET → compare → DELETE` отдельными командами. Два worker/process могли прочитать один digest до удаления и оба успешно принять один OTP. Attempts, lockout и invalidation также не образовывали единой операции.
+Legacy Redis verify выполнял `GET → compare → DELETE`; несколько процессов могли успешно принять один OTP.
 
 ### Закрытие
 
-- Redis verify, attempts, lockout и consume выполняются одним Lua script;
-- successful OTP удаляется в той же атомарной операции;
-- при пяти неверных попытках lock устанавливается вместе с удалением текущего кода;
-- staging/production не переходят на process-memory при недоступном Redis;
-- development-memory использует per-phone sync lock;
+- verify, attempts, lockout и consume выполняются одним Lua script;
+- development-memory защищён per-phone lock;
+- staging/production fail closed без Redis;
 - 16 конкурентных verify дают ровно один success;
-- source guard запрещает возврат к read-then-delete;
 - PR #107 merged: `e54581a76e6c2255cb65dce28e6743f3236e0fcb`;
-- CI run #1643: e2e/PostgreSQL, Playwright и mobile-contracts — success.
+- CI #1643 полностью зелёный.
 
-### Остаточные задачи OTP surface
+### Остаточный долг
 
-- TTL boundary и Redis clock/expiry semantics;
-- rate-limit dimensions по phone/IP/device;
-- enumeration resistance send/verify ответов;
-- ограничение роста local per-phone lock registry в development;
-- recovery/reset tokens рассматриваются отдельно при появлении такого flow.
+TTL boundary, Redis clock semantics, rate limits phone/IP/device, enumeration resistance и local lock cleanup.
 
 ## 7. Закрытая Wave X.3 — account lifecycle integrity
 
-### Подтверждённые дефекты
+### Дефекты
 
-1. `DELETE /auth/me` подготавливал поля soft-delete, затем вызывал `revoke_all_user_sessions`. Если активных refresh-сессий не было, legacy service выполнял `rollback()`. Endpoint после этого мог вернуть `soft_deleted=true`, хотя удаление пользователя было фактически отменено.
-2. `/auth/anonymize` удалял часть персональных полей, но не выставлял `deleted_at`, не инвалидировал access JWT и не отзывал refresh-сессии. Получался активный анонимизированный zombie-account.
-3. `/auth/sessions/revoke-all` и обновление `tokens_invalid_before` имели раздельные commit boundaries.
-4. При `ALLOW_ACCOUNT_PURGE=true` hard purge требовал обычную пользовательскую авторизацию, но не отдельную ops-авторизацию и не явное подтверждение необратимой операции.
+- soft-delete мог быть откатан zero-row revoke-all, хотя endpoint возвращал success;
+- `/auth/anonymize` оставлял активный zombie-account;
+- access epoch и refresh revoke имели разные commit boundaries;
+- hard purge при feature flag не имел отдельной ops-авторизации.
 
 ### Закрытие
 
-- создан единый `soft_delete_account` service;
-- anonymization, `deleted_at`, `deletion_requested_at`, access-token epoch и refresh-session revoke коммитятся одной транзакцией;
-- zero active sessions является корректным результатом и больше не вызывает rollback чужих pending mutations;
-- `revoke_all_user_sessions(..., commit=False)` позволяет caller владеть transaction boundary;
-- `/auth/anonymize` переведён на полноценный soft-delete;
-- hard purge доступен только в staging/production;
-- одновременно требуются feature flag, contractor identity, отдельный ops-secret длиной не менее 32 символов, constant-time compare и exact confirmation phrase;
-- legacy lifecycle handlers исключены из runtime registry по точному path+method, `GET /auth/me` сохранён;
-- SQLite transaction/runtime tests и source guards включены в обязательный backend gate;
+- account anonymization, delete markers, access invalidation и refresh revoke коммитятся одной транзакцией;
+- zero active sessions не вызывает rollback;
+- hard purge требует staging/production, flag, contractor identity, ops-secret и exact confirmation;
+- legacy routes исключены по path+method, `GET /auth/me` сохранён;
 - PR #108 merged: `c89748944e5bbbe62587f8706ec3d26133d1a649`;
-- CI run #1660: e2e/PostgreSQL, Playwright и mobile-contracts — success.
+- CI #1660 полностью зелёный.
 
-### Честная граница закрытия
+### Граница закрытия
 
-В текущем API нет отдельного password/reset/recovery credential flow. Поэтому replay такого токена не «исправлен», а помечен `NOT PRESENT`. При добавлении flow обязательны persisted single-use token, atomic consume, expiry и revoke-all после recovery.
-
-### Остаточный долг account lifecycle
-
-- нет first-class admin/ops role; текущая defense-in-depth схема использует contractor identity плюс независимый ops-secret;
-- hard purge может быть заблокирован FK-связанной финансовой и проектной историей;
-- запрещено решать это безусловным cascade-delete бизнес-данных: требуется отдельная retention/anonymization policy;
-- legacy определения физически остаются в `auth.py`, но удалены из runtime registry.
+Password/reset flow в API отсутствует (`NOT PRESENT`). First-class admin role и FK-safe retention policy остаются открытыми.
 
 ## 8. Закрытая Wave X.4 — outbox fencing and replay-safe fan-out
 
-### Подтверждённые дефекты
+### Дефекты
 
-1. Lease completion не проверял владельца. Worker мог получить claim, превысить TTL, после чего другой worker повторно забирал событие. Первый worker всё ещё мог отметить событие успешным, записать ошибку или очистить уже чужой lease.
-2. `asyncio.CancelledError` обходил обычную ветку failure и оставлял committed claim заблокированным до полного lease TTL.
-3. `acceptance.side_effects` был агрегатным handler с несколькими внутренними commit. Crash после части activity/notification операций приводил к повтору уже выполненных side-effects и push при retry parent-event.
-4. `MAX_ATTEMPTS` существовал, но pending/poison/stale lease/oldest age не были видны операторам.
+- stale worker мог завершить новый claim;
+- cancellation оставляла committed lease до TTL;
+- агрегатный acceptance handler делал несколько commit и дублировал уже выполненные эффекты после crash/retry;
+- poison/backlog/lease age не были видны операторам.
 
 ### Закрытие
 
-- каждый claim получает уникальный owner token;
-- success, failure, abandoned и cancellation release выполняются только при точном совпадении `locked_by`;
-- stale worker не может изменить `attempts`, `last_error`, `processed_at` или lease нового владельца;
-- cancellation сразу освобождает принадлежащий worker lease и не расходует attempt;
-- parent acceptance-event только формирует детерминированные child events;
-- UUIDv5 каждого child строится из `parent_outbox_id + effect_key`, поэтому parent replay переиспользует те же rows;
-- activity/notification leaf-events используют существующий `SideEffectDelivery` ledger;
-- bounded dispatcher перечитывает candidates и может доставить новые leaf-events в том же tick;
-- release health показывает pending, retryable, poisoned, active leases, stale leases и oldest pending age без раскрытия payload;
-- concurrent/replay/runtime tests включены в обязательный backend gate;
+- каждый claim имеет owner token;
+- success/failure/abandon/cancel owner-fenced;
+- acceptance parent формирует deterministic UUIDv5 leaf-events;
+- leaf activity/notification используют `SideEffectDelivery`;
+- parent replay не дублирует activity, notification и push ledger;
+- release health показывает pending/retryable/poison/leases/oldest age;
 - PR #109 merged: `153dedf9c6a615d6b03e6e4421d50e47f1b4fa55`;
-- CI run #1674: 336 backend tests, API smoke, PostgreSQL Alembic, Playwright и mobile-contracts — success.
+- CI #1674 полностью зелёный.
+
+### Граница закрытия
+
+External push остаётся at-least-once. Некоторые inline callers всё ещё маскируют dispatch outcome через silent catch.
+
+## 9. Закрытая Wave X.5 — YooKassa webhook delivery integrity
+
+### Подтверждённые дефекты
+
+1. Durable completion создавался только после business transition, поэтому параллельные одинаковые deliveries могли одновременно войти в обработку.
+2. Event без provider object/payment ID мог изменить business state без устойчивого replay key.
+3. Pro webhook не требовал точный `kind`, сумму 990 RUB, существующего non-deleted contractor.
+4. Project payment привязывал `yookassa_payment_id` отдельным commit до подтверждения.
+5. Business state, PaymentEvent, budget/outbox и webhook completion имели разные transaction boundaries.
+6. Stale delivery owner не был fenced.
+7. Out-of-order refund мог быть признан окончательно обработанным до локального success transition.
+8. Secret comparison не был constant-time; production alias не всегда включал IP policy.
+9. Новая migration первоначально выявила существующую развилку Alembic graph; до merge граф был выстроен в одну линию.
+
+### Закрытие
+
+- IP policy, shared secret и envelope проверяются до DB claim;
+- secret сравнивается `secrets.compare_digest`;
+- event key строится из event type и provider object/payment ID;
+- missing provider identity получает 400 до mutation;
+- `payment_webhook_deliveries` хранит owner token, attempts, retry schedule, outcome, completion и last error;
+- concurrent active delivery получает 503 и не запускает business logic второй раз;
+- stale owner не может завершить reclaimed event;
+- cancellation освобождает только свой claim без attempt;
+- project settlement проверяет payment/project, amount, RUB, provider ID и payer metadata при наличии;
+- Pro settlement требует `kind=pro_subscription`, 990 RUB, existing non-deleted contractor;
+- provider-ID attach, confirm/reversal/subscription, financial events, budget, outbox и completion коммитятся одной транзакцией;
+- crash после attach откатывает payment в `pending`, provider ID и completion отсутствуют;
+- permanent mismatch не меняет ledger и сохраняется как `business_applied=false`, `ignored:<reason>`;
+- временный ordering/availability conflict возвращает 503 и остаётся retryable;
+- refund/cancel transitions монотонны и идемпотентны;
+- migration `w6webhookdelivery01` продолжает текущий head `w7codoclink001`;
+- CI test требует ровно один Alembic head;
+- PR #110 merged: `c9c6c48e8356cf5316e6918744087a451f537b5b`;
+- CI #1712: 349 backend tests, API smoke, PostgreSQL Alembic, Playwright и весь mobile gate — success.
 
 ### Честная граница закрытия
 
-Database side-effects защищены per leaf-event. Внешний push остаётся at-least-once: процесс теоретически может остановиться после принятия push провайдером, но до commit `delivered_at`. `outbox_id` уже включён в payload и должен использоваться как provider/client dedup key там, где это поддерживается.
+- transport acknowledgement и business application разделены намеренно;
+- provider/network delivery остаётся at-least-once, DB transition — single-winner;
+- важные settlement желательно дополнительно reconcile через provider API после настройки live credentials;
+- ignored/poison outcomes пока не выведены в отдельную payment-ops панель;
+- cleanup/retention для delivery rows ещё не определены;
+- legacy compatibility helpers остаются в service, но canonical endpoint их не использует.
 
-### Остаточный долг outbox
-
-- некоторые inline callers всё ещё используют `except Exception: pass`; durable event не теряется, но telemetry результата должна стать явной;
-- lease fencing не останавливает stale handler физически, поэтому каждый новый handler всё равно обязан быть идемпотентным;
-- многоэффектные handlers нельзя добавлять напрямую: они должны раскладываться в детерминированные leaf-events;
-- provider-level exactly-once для push не гарантируется.
-
-## 9. Активная очередь проверки и исправлений
+## 10. Активная очередь проверки и исправлений
 
 ### P0 — Security / transaction integrity
 
 | Приоритет | Зона | Что доказать |
 |---|---|---|
-| P0.1 | Payment webhooks | signature, mismatch, replay и failure не превращаются в ложный success |
-| P0.2 | Direct API commits | состояние и side-effects не расходятся при исключении после commit |
-| P0.3 | OTP abuse surface | TTL boundary, phone/IP/device rate limits, enumeration resistance |
-| P0.4 | Account retention | FK-safe anonymization/retention без потери обязательной финансовой истории |
-| P0.5 | Future recovery flow | single-use atomic token и revoke-all до появления endpoint в production |
-| P0.6 | Outbox telemetry | убрать silent inline catches и связать poison/backlog с alerting |
+| P0.1 | Direct API commits | state и обязательные side-effects не расходятся после commit/exception |
+| P0.2 | OTP abuse surface | TTL boundary, phone/IP/device rate limits, enumeration resistance |
+| P0.3 | Account retention | FK-safe anonymization без потери обязательной финансовой истории |
+| P0.4 | Outbox telemetry | убрать silent inline catches и подключить poison/backlog alerting |
+| P0.5 | Payment operations | ignored/poison webhook outcomes, reconciliation и retention |
+| P0.6 | Future recovery flow | single-use atomic token и revoke-all до production endpoint |
 
 ### P1 — Product journey / dead ends
 
@@ -216,74 +230,74 @@ Database side-effects защищены per leaf-event. Внешний push ос�
 |---|---|---|
 | Комната ↔ этап ↔ материалы ↔ оплаты ↔ документы | `REVERIFY` | пройти customer/contractor journey на текущем mobile |
 | Approvals network/403 states | `REVERIFY` | отсутствие silent empty и понятный retry |
-| Manual money actions | `REVERIFY` | confirm, proof, idempotency, возврат к канону бюджета |
+| Manual money actions | `REVERIFY` | confirm, proof, idempotency и возврат к budget SoT |
 | Work order paid transition | `REVERIFY` | статус и финансовый факт не расходятся |
-| Portal sign/pay UX | `REVERIFY` | pre-confirm, scope, replay, honest live/demo mode |
-| Offline field acceptance | `REVERIFY` | очередь, merge, 409 policy и видимый статус синхронизации |
+| Portal sign/pay UX | `REVERIFY` | pre-confirm, scope, replay и honest live/demo mode |
+| Offline field acceptance | `REVERIFY` | очередь, merge, 409 policy и видимый sync state |
 
 ### P2 — Архитектура и поддерживаемость
 
 | Зона | Статус | Цель |
 |---|---|---|
-| Декомпозиция большого `portal.py` | `OPEN CODE` | переносить bounded routes по одному без runtime-дублей |
-| Legacy route/source debt | `OPEN CODE` | после миграции удалить мёртвые определения, не только исключать из router registry |
-| First-class admin/ops identity | `OPEN CODE` | исключить долгосрочную зависимость ops endpoints от contractor role |
-| Единство service transaction boundaries | `REVERIFY` | route не должен сам собирать частичную транзакцию |
-| Source guards vs runtime tests | `REVERIFY` | критические деньги/ACL подтверждать функционально и конкурентно |
+| Декомпозиция `portal.py` | `OPEN CODE` | переносить bounded routes без runtime-дублей |
+| Legacy route/source debt | `OPEN CODE` | удалить мёртвые definitions после безопасной миграции |
+| First-class admin/ops identity | `OPEN CODE` | заменить contractor role на явную ops-модель |
+| Service transaction boundaries | `REVERIFY` | route не собирает частичную транзакцию вручную |
+| Alembic graph integrity | `CLOSED MAIN` | один head контролируется CI; сохранять линейность |
 
-## 10. OPS-блокеры, которые код не может закрыть самостоятельно
+## 11. OPS-блокеры, которые код не закрывает самостоятельно
 
 | Блокер | Статус | DoD |
 |---|---|---|
-| Реальный staging URL и HTTPS | `OPS` | приложение обращается к доступному API, не placeholder |
-| PostgreSQL staging + migrations | `OPS` | Alembic head, smoke и backup/restore procedure |
-| YuKassa live/test credentials | `OPS` | реальный sandbox/live checkout + webhook delivery |
-| Контур/подпись credentials | `OPS` | provider health + callback/webhook smoke |
+| Реальный staging URL и HTTPS | `OPS` | mobile использует доступный API, не placeholder |
+| PostgreSQL staging + migrations | `OPS` | upgrade head, backup/restore и runbook |
+| YooKassa credentials | `OPS` | sandbox/live checkout, webhook и provider reconciliation |
+| Контур/подпись credentials | `OPS` | provider health + callback smoke |
 | ФНС/Мой налог credentials | `OPS` | live integration отдельно от scaffold/demo |
-| Sentry/alerts | `OPS` | DSN, release SHA, alert routing и проверка события |
-| Account purge secret and runbook | `OPS` | отдельный secret, restricted operator access, dry-run/backup и audit trail |
+| Sentry/alerts | `OPS` | DSN, release SHA, alert routing и тестовое событие |
+| Account purge runbook | `OPS` | restricted operator, backup/dry-run и audit trail |
 
-## 11. Конкурентная стратегия
+## 12. Конкурентная стратегия
 
 ### Сохранять как moat
 
-- единый путь смета → lock → график → приёмка → gate оплаты → документы;
+- единый путь смета → lock → график → приёмка → payment gate → документы;
 - dual-role customer/contractor;
-- честные статусы money/integration, без подмены demo на live;
+- честные money/integration statuses без demo-as-live;
 - ФНС/НПД для российского рынка;
-- Documents Hub и доказательная история действий;
-- field/offline только с наблюдаемой очередью и разрешением конфликтов.
+- Documents Hub и доказательная история;
+- field/offline только с наблюдаемой очередью и conflict policy.
 
-### Не тащить в текущий scope
+### Не расширять до закрытия Trust и transaction integrity
 
 - Procore-подобные BIM/RFI enterprise-модули;
 - marketplace внутри project chat;
 - AI-chat на каждом экране;
-- новые витринные экраны до закрытия Trust, transaction integrity и dead ends.
+- новые витринные surfaces без доказанного end-to-end пути.
 
-## 12. Порядок дальнейшей работы
+## 13. Порядок дальнейшей работы
 
-1. Проверить payment webhooks: signature, provider event replay, mismatch и монотонность статусов.
-2. Проверить оставшиеся direct commits и переносить подтверждённые side-effects в unit-of-work/outbox.
-3. Закрыть OTP abuse surface: TTL boundary, multi-dimensional rate limit, enumeration resistance.
-4. Повторно пройти product journeys из старых аудитов на текущем `main`.
+1. Найти оставшиеся direct `commit()` перед обязательными side-effects и закрыть подтверждённые разрывы через unit-of-work/outbox.
+2. Убрать silent inline outbox catches и связать poison/backlog с alerting.
+3. Закрыть OTP abuse surface.
+4. Повторно пройти ключевые product journeys на текущем `main`.
 5. Спроектировать FK-safe retention и first-class admin/ops identity.
-6. Убрать silent inline outbox catches и подключить poison/backlog alerting.
-7. Отдельно выполнить staging OPS checklist с реальными credentials.
-8. После каждой волны обновлять эту матрицу, а не создавать независимый противоречащий документ.
+6. Вывести payment webhook ignored/poison outcomes и добавить provider reconciliation.
+7. Выполнить staging OPS checklist с реальными credentials.
+8. После каждой волны обновлять эту матрицу, а не создавать независимый противоречащий backlog.
 
-## 13. Definition of Done проекта перед pilot
+## 14. Definition of Done проекта перед pilot
 
-Pilot-ready означает не наличие экранов, а доказанный путь:
+Pilot-ready означает доказанный путь:
 
 `создание объекта → смета → фиксация → график → выполнение → приёмка → подтверждённая оплата → документ/подпись → история/уведомления`
 
-Для каждого перехода должны быть:
+Для каждого перехода обязательны:
 
 - ACL и explicit scope;
-- идемпотентность/replay policy;
-- единая транзакция состояния и durable side-effects;
+- idempotency/replay policy;
+- единая транзакция state + durable side-effects;
 - fail-closed поведение;
 - user-visible error/retry;
-- автоматический тест;
+- runtime/concurrent test;
 - green CI на PostgreSQL/API/mobile.
