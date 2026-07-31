@@ -10,6 +10,8 @@ class FakeSession:
         self.project = project
         self.stage = stage
         self.commits = 0
+        self.rollbacks = 0
+        self.added: list[object] = []
 
     async def get(self, model, object_id):
         if model is Payment and object_id == self.payment.id:
@@ -19,6 +21,15 @@ class FakeSession:
         if model is Stage and self.stage and object_id == self.stage.id:
             return self.stage
         return None
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def flush(self):
+        return None
+
+    async def rollback(self):
+        self.rollbacks += 1
 
     async def commit(self):
         self.commits += 1
@@ -112,8 +123,8 @@ async def test_confirm_requires_settlement_proof(monkeypatch):
         session, payment.id, project_id="project-a", transfer_ack=True
     )
     assert ok is not None
-    # W143: ack без чека/выписки → paid_unverified (не budget fact)
     assert ok.status == PaymentStatus.paid_unverified
+    assert session.added
 
 
 @pytest.mark.asyncio
@@ -141,3 +152,4 @@ async def test_yookassa_id_alone_is_not_settlement_proof(monkeypatch):
         session, payment.id, project_id="project-a", allow_without_settlement=True
     )
     assert via_webhook is not None
+    assert session.added
