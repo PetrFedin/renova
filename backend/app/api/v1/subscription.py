@@ -1,3 +1,6 @@
+import asyncio
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
@@ -9,9 +12,13 @@ from app.services.yookassa_service import (
     check_webhook_ip,
     process_webhook,
     demo_allowed,
-    record_webhook_processed,
-    was_webhook_processed,
-    webhook_event_key,
+    validate_webhook_envelope,
+)
+from app.services.webhook_delivery_service import (
+    abandon_delivery,
+    claim_delivery,
+    complete_delivery,
+    fail_delivery,
 )
 from app.core.config import settings
 
@@ -75,41 +82,111 @@ async def checkout(user: User = Depends(get_current_user), db: AsyncSession = De
 
 @router.post("/webhook")
 async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """ЮKassa delivery: authenticate, process atomically, then persist event completion."""
+    """Authenticate, claim, apply and complete one provider event."""
     ip = request.client.host if request.client else None
     if not check_webhook_ip(ip):
         raise HTTPException(403, "ip denied")
-    env = settings.normalized_environment
-    secret = (settings.yookassa_webhook_secret or "").strip()
-    # P0: staging/production — secret обязателен (нельзя skip)
-    if env in ("staging", "production"):
-        if not secret:
-            raise HTTPException(503, "yookassa_webhook_secret_not_configured")
-        if request.headers.get("X-Webhook-Secret") != secret:
-            raise HTTPException(401, "invalid webhook")
-    elif secret and request.headers.get("X-Webhook-Secret") != secret:
+
+    environment = settings.normalized_environment
+    configured_secret = (settings.yookassa_webhook_secret or "").strip()
+    provided_secret = request.headers.get("X-Webhook-Secret") or ""
+    if environment in ("staging", "production") and not configured_secret:
+        raise HTTPException(503, "yookassa_webhook_secret_not_configured")
+    if configured_secret and not secrets.compare_digest(provided_secret, configured_secret):
         raise HTTPException(401, "invalid webhook")
 
-    body = await request.json()
-    event_kind = str((body or {}).get("event") or "")
-    event_key = webhook_event_key(body)
-    if event_key and await was_webhook_processed(db, event_key):
-        return {"ok": True, "duplicate": True, "event_key": event_key}
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, "invalid_webhook_json") from exc
+    try:
+        event_kind, _provider_object, event_key = validate_webhook_envelope(body)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
 
-    result = await process_webhook(body, db)
-    if result.get("retryable"):
-        # Non-2xx is intentional: the provider must redeliver after the temporary block clears.
+    claim = await claim_delivery(
+        db,
+        event_id=event_key,
+        event_kind=event_kind,
+        worker_id=request.headers.get("X-Correlation-ID") or "api-webhook",
+    )
+    if claim.status == "completed":
+        return {
+            "ok": True,
+            "accepted": True,
+            "business_applied": False,
+            "duplicate": True,
+            "event_key": event_key,
+        }
+    if claim.status == "poisoned":
         raise HTTPException(
             503,
             detail={
-                "code": "webhook_processing_deferred",
-                "reason": result.get("blocked") or result.get("reason"),
+                "code": "webhook_delivery_poisoned",
+                "event_key": event_key,
+                "attempts": claim.attempts,
             },
         )
+    if claim.status != "acquired" or not claim.token:
+        raise HTTPException(
+            503,
+            detail={"code": "webhook_delivery_busy", "event_key": event_key},
+        )
 
-    if result.get("handled") and event_key:
-        recorded = await record_webhook_processed(db, event_key, kind=event_kind)
-        if not recorded:
-            return {**result, "duplicate": True, "event_key": event_key}
-        return {**result, "event_key": event_key}
-    return result
+    try:
+        result = await process_webhook(body, db)
+        if result.get("retryable"):
+            await db.rollback()
+            await fail_delivery(
+                db,
+                event_id=event_key,
+                claim_token=claim.token,
+                error=str(result.get("blocked") or result.get("reason") or "retryable"),
+            )
+            raise HTTPException(
+                503,
+                detail={
+                    "code": "webhook_processing_deferred",
+                    "reason": result.get("blocked") or result.get("reason"),
+                },
+            )
+
+        handled = bool(result.get("handled"))
+        reason = str(result.get("reason") or "")
+        outcome = "handled" if handled else f"ignored:{reason or 'unhandled'}"
+        if not await complete_delivery(
+            db,
+            event_id=event_key,
+            claim_token=claim.token,
+            event_kind=event_kind,
+            outcome=outcome,
+        ):
+            raise HTTPException(
+                503,
+                detail={"code": "webhook_claim_lost", "event_key": event_key},
+            )
+        return {
+            **result,
+            "accepted": True,
+            "business_applied": handled,
+            "event_key": event_key,
+        }
+    except asyncio.CancelledError:
+        await db.rollback()
+        await abandon_delivery(
+            db,
+            event_id=event_key,
+            claim_token=claim.token,
+        )
+        raise
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        await fail_delivery(
+            db,
+            event_id=event_key,
+            claim_token=claim.token,
+            error=f"{type(exc).__name__}:{exc}",
+        )
+        raise
