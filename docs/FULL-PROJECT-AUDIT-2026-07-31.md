@@ -1,8 +1,8 @@
 # Renova — актуальный полный аудит и рабочая матрица
 
 **Дата среза:** 2026-07-31  
-**Канонический кодовый baseline:** `main` после PR #107 · `e54581a76e6c2255cb65dce28e6743f3236e0fcb`  
-**Текущая волна:** recovery/account lifecycle  
+**Канонический кодовый baseline:** `main` после PR #108 · `c89748944e5bbbe62587f8706ec3d26133d1a649`  
+**Текущая волна:** outbox and background effects  
 **Назначение:** единый источник истины для продолжения разработки, проверки закрытия аудитов и подготовки staging/pilot.
 
 > Этот документ заменяет использование старых аудитов как текущего backlog. Старые файлы сохраняются как доказательная и продуктовая база, но их статусы необходимо сверять здесь с актуальным `main`.
@@ -18,6 +18,7 @@
 - `AUDIT-CLOSURE-MATRIX-2026-07-21.md` — историческая closure-матрица wave 1–6.
 - `FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — исполняемый чеклист текущей волны.
 - `OTP-ATOMIC-CONSUME-2026-07-31.md` — доказательство single-winner OTP consume.
+- `ACCOUNT-LIFECYCLE-INTEGRITY-2026-07-31.md` — транзакционный контракт удаления аккаунта и ops-защита hard purge.
 
 ## 2. Правило доверия к статусам
 
@@ -35,6 +36,7 @@
 | `OPEN CODE` | подтверждённая проблема в актуальном коде |
 | `REVERIFY` | находка старого аудита; требуется повторная проверка на текущем `main` |
 | `OPS` | зависит от staging, домена, секретов или внешнего провайдера |
+| `NOT PRESENT` | ожидаемый surface отсутствует в текущем продукте; требования фиксируются до его появления |
 | `NOT TARGET` | сознательно не входит в текущую стратегию продукта |
 
 ## 3. Почему старая feature-ветка не переносится целиком
@@ -66,6 +68,8 @@
 | Atomic refresh-token rotation | `CLOSED MAIN` | PR #105 · `63f3d258...` |
 | Portal change-order scope isolation | `CLOSED MAIN` | PR #106 · `6547630b...` · CI #1635 |
 | OTP atomic single-winner consume | `CLOSED MAIN` | PR #107 · `e54581a7...` · CI #1643 |
+| Atomic account soft-delete and revoke-all | `CLOSED MAIN` | PR #108 · `c8974894...` · CI #1660 |
+| Hard purge fail-closed authorization | `CLOSED MAIN` | PR #108 · `c8974894...` · CI #1660 |
 | Полный mobile contract gate | `CLOSED MAIN` | CI job `mobile-contracts` |
 
 Эти темы не должны возвращаться в backlog без нового воспроизводимого дефекта.
@@ -118,20 +122,54 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 - rate-limit dimensions по phone/IP/device;
 - enumeration resistance send/verify ответов;
 - ограничение роста local per-phone lock registry в development;
-- recovery/reset tokens рассматриваются отдельно.
+- recovery/reset tokens рассматриваются отдельно при появлении такого flow.
 
-## 7. Активная очередь проверки и исправлений
+## 7. Закрытая Wave X.3 — account lifecycle integrity
+
+### Подтверждённые дефекты
+
+1. `DELETE /auth/me` подготавливал поля soft-delete, затем вызывал `revoke_all_user_sessions`. Если активных refresh-сессий не было, legacy service выполнял `rollback()`. Endpoint после этого мог вернуть `soft_deleted=true`, хотя удаление пользователя было фактически отменено.
+2. `/auth/anonymize` удалял часть персональных полей, но не выставлял `deleted_at`, не инвалидировал access JWT и не отзывал refresh-сессии. Получался активный анонимизированный zombie-account.
+3. `/auth/sessions/revoke-all` и обновление `tokens_invalid_before` имели раздельные commit boundaries.
+4. При `ALLOW_ACCOUNT_PURGE=true` hard purge требовал обычную пользовательскую авторизацию, но не отдельную ops-авторизацию и не явное подтверждение необратимой операции.
+
+### Закрытие
+
+- создан единый `soft_delete_account` service;
+- anonymization, `deleted_at`, `deletion_requested_at`, access-token epoch и refresh-session revoke коммитятся одной транзакцией;
+- zero active sessions является корректным результатом и больше не вызывает rollback чужих pending mutations;
+- `revoke_all_user_sessions(..., commit=False)` позволяет caller владеть transaction boundary;
+- `/auth/anonymize` переведён на полноценный soft-delete;
+- hard purge доступен только в staging/production;
+- одновременно требуются feature flag, contractor identity, отдельный ops-secret длиной не менее 32 символов, constant-time compare и exact confirmation phrase;
+- legacy lifecycle handlers исключены из runtime registry по точному path+method, `GET /auth/me` сохранён;
+- SQLite transaction/runtime tests и source guards включены в обязательный backend gate;
+- PR #108 merged: `c89748944e5bbbe62587f8706ec3d26133d1a649`;
+- CI run #1660: e2e/PostgreSQL, Playwright и mobile-contracts — success.
+
+### Честная граница закрытия
+
+В текущем API нет отдельного password/reset/recovery credential flow. Поэтому replay такого токена не «исправлен», а помечен `NOT PRESENT`. При добавлении flow обязательны persisted single-use token, atomic consume, expiry и revoke-all после recovery.
+
+### Остаточный долг account lifecycle
+
+- нет first-class admin/ops role; текущая defense-in-depth схема использует contractor identity плюс независимый ops-secret;
+- hard purge может быть заблокирован FK-связанной финансовой и проектной историей;
+- запрещено решать это безусловным cascade-delete бизнес-данных: требуется отдельная retention/anonymization policy;
+- legacy определения физически остаются в `auth.py`, но удалены из runtime registry.
+
+## 8. Активная очередь проверки и исправлений
 
 ### P0 — Security / transaction integrity
 
 | Приоритет | Зона | Что доказать |
 |---|---|---|
-| P0.1 | Recovery/reset tokens | одноразовость, expiry, revocation и отсутствие replay |
-| P0.2 | Account deletion | подтверждение, ACL, очистка/анонимизация и идемпотентность |
-| P0.3 | Outbox/background effects | unknown event не помечается успешно обработанным; retry/poison policy наблюдаемы |
-| P0.4 | Payment webhooks | mismatch/replay/failure не превращаются в ложный success |
-| P0.5 | Direct API commits | состояние и side-effects не расходятся при исключении после commit |
-| P0.6 | OTP abuse surface | TTL boundary, phone/IP/device rate limits, enumeration resistance |
+| P0.1 | Outbox/background effects | unknown event не помечается успешно обработанным; claim/retry/poison policy наблюдаемы |
+| P0.2 | Payment webhooks | mismatch/replay/failure не превращаются в ложный success |
+| P0.3 | Direct API commits | состояние и side-effects не расходятся при исключении после commit |
+| P0.4 | OTP abuse surface | TTL boundary, phone/IP/device rate limits, enumeration resistance |
+| P0.5 | Account retention | FK-safe anonymization/retention без потери обязательной финансовой истории |
+| P0.6 | Future recovery flow | single-use atomic token и revoke-all до появления endpoint в production |
 
 ### P1 — Product journey / dead ends
 
@@ -150,10 +188,11 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 |---|---|---|
 | Декомпозиция большого `portal.py` | `OPEN CODE` | переносить bounded routes по одному без runtime-дублей |
 | Legacy route/source debt | `OPEN CODE` | после миграции удалить мёртвые определения, не только исключать из router registry |
+| First-class admin/ops identity | `OPEN CODE` | исключить долгосрочную зависимость ops endpoints от contractor role |
 | Единство service transaction boundaries | `REVERIFY` | route не должен сам собирать частичную транзакцию |
 | Source guards vs runtime tests | `REVERIFY` | критические деньги/ACL подтверждать функционально и конкурентно |
 
-## 8. OPS-блокеры, которые код не может закрыть самостоятельно
+## 9. OPS-блокеры, которые код не может закрыть самостоятельно
 
 | Блокер | Статус | DoD |
 |---|---|---|
@@ -163,8 +202,9 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 | Контур/подпись credentials | `OPS` | provider health + callback/webhook smoke |
 | ФНС/Мой налог credentials | `OPS` | live integration отдельно от scaffold/demo |
 | Sentry/alerts | `OPS` | DSN, release SHA, alert routing и проверка события |
+| Account purge secret and runbook | `OPS` | отдельный secret, restricted operator access, dry-run/backup и audit trail |
 
-## 9. Конкурентная стратегия
+## 10. Конкурентная стратегия
 
 ### Сохранять как moat
 
@@ -182,16 +222,17 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 - AI-chat на каждом экране;
 - новые витринные экраны до закрытия Trust, transaction integrity и dead ends.
 
-## 10. Порядок дальнейшей работы
+## 11. Порядок дальнейшей работы
 
-1. Проверить recovery/reset token replay и account lifecycle.
-2. Проверить outbox/worker fail semantics и poison events.
-3. Проверить payment webhooks и оставшиеся direct commits.
+1. Проверить outbox/worker fail semantics, конкурентный claim и poison events.
+2. Проверить payment webhooks и оставшиеся direct commits.
+3. Закрыть OTP abuse surface: TTL boundary, multi-dimensional rate limit, enumeration resistance.
 4. Повторно пройти product journeys из старых аудитов на текущем `main`.
-5. Отдельно выполнить staging OPS checklist с реальными credentials.
-6. После каждой волны обновлять эту матрицу, а не создавать независимый противоречащий документ.
+5. Спроектировать FK-safe retention и first-class admin/ops identity.
+6. Отдельно выполнить staging OPS checklist с реальными credentials.
+7. После каждой волны обновлять эту матрицу, а не создавать независимый противоречащий документ.
 
-## 11. Definition of Done проекта перед pilot
+## 12. Definition of Done проекта перед pilot
 
 Pilot-ready означает не наличие экранов, а доказанный путь:
 
