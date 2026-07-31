@@ -75,11 +75,12 @@ async def test_bank_confirm_pending_after_acceptance():
         assert body["matched"] >= 1
         ids = [m["payment_id"] for m in body["matches"] if m.get("payment_status") == "pending"]
         assert pay_id in ids
+        assert body.get("match_token")
 
         conf = await client.post(
             f"/api/v1/projects/{pid}/import/bank-statement/confirm",
             headers=h_cust,
-            json={"payment_ids": [pay_id]},
+            json={"payment_ids": [pay_id], "match_token": body["match_token"]},
         )
         assert conf.status_code == 200, conf.text
         assert conf.json()["confirmed_count"] == 1
