@@ -1,16 +1,18 @@
 """Wave 3b: e-sign registry."""
+from unittest.mock import AsyncMock
+
 import pytest
 
-from app.services.esign.registry import get_provider, list_providers
+from app.services.esign.registry import list_providers
 from app.services.project_document_service import create_document, sign_document
 
 
-def test_list_providers_includes_in_app_and_stubs():
-    names = {p["name"] for p in list_providers()}
+def test_list_providers_includes_in_app_and_external_providers():
+    names = {provider["name"] for provider in list_providers()}
     assert names >= {"in_app", "kontur", "goskey"}
-    by = {p["name"]: p for p in list_providers()}
-    assert by["in_app"]["available"] is True
-    assert by["kontur"]["available"] is False
+    by_name = {provider["name"]: provider for provider in list_providers()}
+    assert by_name["in_app"]["available"] is True
+    assert by_name["kontur"]["available"] is False
 
 
 @pytest.mark.asyncio
@@ -22,15 +24,15 @@ async def test_sign_in_app_via_registry(db):
         title="Договор",
         document_type="contract",
     )
-    sig = await sign_document(
+    signature = await sign_document(
         db,
         doc,
         signer_user_id="u1",
         signer_role="customer",
         provider="in_app",
     )
-    assert sig.provider_name == "in_app"
-    assert sig.provider_external_id and sig.provider_external_id.startswith("inapp-")
+    assert signature.provider_name == "in_app"
+    assert signature.provider_external_id and signature.provider_external_id.startswith("inapp-")
 
 
 @pytest.mark.asyncio
@@ -52,21 +54,35 @@ async def test_sign_kontur_unavailable(db):
         )
 
 
-@pytest.mark.asyncio
-async def test_kontur_sandbox_pending_and_webhook(db, monkeypatch):
+def configure_kontur(monkeypatch):
     from app.core import config as cfg
-    from app.services.esign.registry import get_provider, list_providers
-    from app.services.project_document_service import (
-        complete_external_signature,
-        create_document,
-        sign_document,
-    )
+    from app.services.esign.registry import get_provider
 
     monkeypatch.setattr(cfg.settings, "kontur_mode", "sandbox")
     monkeypatch.setattr(cfg.settings, "kontur_api_key", "test-key-not-secret")
+    monkeypatch.setattr(cfg.settings, "kontur_api_url", "https://kontur.test/api")
+    monkeypatch.setattr(cfg.settings, "esign_webhook_secret", "webhook-secret")
+    provider = get_provider("kontur")
+    submit = AsyncMock(
+        return_value={
+            "external_id": "kontur-test-signature",
+            "status": "accepted",
+            "signing_url": "https://kontur.test/sign/1",
+            "provider_request_id": "request-1",
+        }
+    )
+    monkeypatch.setattr(provider, "_submit_http", submit)
+    return provider, submit
 
-    by = {p["name"]: p for p in list_providers()}
-    assert by["kontur"]["available"] is True
+
+@pytest.mark.asyncio
+async def test_kontur_sandbox_pending_and_webhook(db, monkeypatch):
+    from app.services.esign.registry import list_providers
+    from app.services.project_document_service import complete_external_signature
+
+    provider, submit = configure_kontur(monkeypatch)
+    by_name = {item["name"]: item for item in list_providers()}
+    assert by_name["kontur"]["available"] is True
 
     doc = await create_document(
         db,
@@ -74,50 +90,47 @@ async def test_kontur_sandbox_pending_and_webhook(db, monkeypatch):
         created_by="u1",
         title="Договор kontur",
         document_type="contract",
+        checksum_sha256="a" * 64,
     )
-    sig = await sign_document(
+    signature = await sign_document(
         db,
         doc,
         signer_user_id="u1",
         signer_role="customer",
         provider="kontur",
     )
-    assert sig.status == "pending"
-    assert sig.provider_external_id and sig.provider_external_id.startswith("kontur-")
-    assert sig.signed_at is None
+    submit.assert_awaited_once()
+    assert provider.is_available() is True
+    assert signature.status == "pending"
+    assert signature.provider_external_id == "kontur-test-signature"
+    assert signature.signed_at is None
 
-    done = await complete_external_signature(
+    completed = await complete_external_signature(
         db,
         provider_name="kontur",
-        external_id=sig.provider_external_id,
+        external_id=signature.provider_external_id,
         status="signed",
     )
-    assert done is not None
-    assert done.status == "signed"
-    assert done.signed_at is not None
+    assert completed is not None
+    assert completed.status == "signed"
+    assert completed.signed_at is not None
 
 
 @pytest.mark.asyncio
 async def test_kontur_webhook_idempotent(db, monkeypatch):
-    """P3.1d: повторный webhook не перезаписывает signed_at."""
-    from app.core import config as cfg
-    from app.services.project_document_service import (
-        complete_external_signature,
-        create_document,
-        sign_document,
-    )
+    """Repeated webhook delivery must not rewrite signed_at."""
+    from app.services.project_document_service import complete_external_signature
 
-    monkeypatch.setattr(cfg.settings, "kontur_mode", "sandbox")
-    monkeypatch.setattr(cfg.settings, "kontur_api_key", "test-key-not-secret")
-
+    configure_kontur(monkeypatch)
     doc = await create_document(
         db,
         project_id="p1",
         created_by="u1",
         title="Договор kontur dup",
         document_type="contract",
+        checksum_sha256="b" * 64,
     )
-    sig = await sign_document(
+    signature = await sign_document(
         db,
         doc,
         signer_user_id="u1",
@@ -127,7 +140,7 @@ async def test_kontur_webhook_idempotent(db, monkeypatch):
     first = await complete_external_signature(
         db,
         provider_name="kontur",
-        external_id=sig.provider_external_id,
+        external_id=signature.provider_external_id,
         status="signed",
     )
     assert first is not None
@@ -137,7 +150,7 @@ async def test_kontur_webhook_idempotent(db, monkeypatch):
     second = await complete_external_signature(
         db,
         provider_name="kontur",
-        external_id=sig.provider_external_id,
+        external_id=signature.provider_external_id,
         status="signed",
     )
     assert second is not None
@@ -147,14 +160,15 @@ async def test_kontur_webhook_idempotent(db, monkeypatch):
 @pytest.mark.asyncio
 async def test_esign_health_endpoint():
     from httpx import ASGITransport, AsyncClient
+
     from app.main import app
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         user = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
-        r = await client.get("/api/v1/esign/health", headers={"X-User-Id": user["id"]})
-        assert r.status_code == 200
-        body = r.json()
+        response = await client.get("/api/v1/esign/health", headers={"X-User-Id": user["id"]})
+        assert response.status_code == 200
+        body = response.json()
         assert "webhook_kontur" in body
         assert body["webhook_kontur"].endswith("/api/v1/esign/webhooks/kontur")
         assert "kontur_mode" in body
