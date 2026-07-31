@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import logging
 import secrets
+import threading
 import time
 from collections import defaultdict
 
@@ -25,11 +26,58 @@ _MAX_VERIFY_FAILS = 5
 _LOCK_SECONDS = 900
 _SEND_CLAIM_SECONDS = 30
 
+# One Redis script owns verify, attempts, lockout and consume. A successful code
+# is deleted in the same atomic operation, so two workers cannot both accept it.
+_VERIFY_OTP_SCRIPT = """
+local lock_key = KEYS[1]
+local code_key = KEYS[2]
+local fails_key = KEYS[3]
+local candidate = ARGV[1]
+local max_fails = tonumber(ARGV[2])
+local lock_seconds = tonumber(ARGV[3])
+local lock_until = ARGV[4]
+
+if redis.call('exists', lock_key) == 1 then
+    return 'locked'
+end
+
+local stored = redis.call('get', code_key)
+if not stored then
+    local failures = redis.call('incr', fails_key)
+    redis.call('expire', fails_key, lock_seconds)
+    if failures >= max_fails then
+        redis.call('set', lock_key, lock_until, 'EX', lock_seconds)
+        redis.call('del', fails_key)
+        return 'locked'
+    end
+    return 'missing'
+end
+
+if stored ~= candidate then
+    local failures = redis.call('incr', fails_key)
+    redis.call('expire', fails_key, lock_seconds)
+    if failures >= max_fails then
+        redis.call('set', lock_key, lock_until, 'EX', lock_seconds)
+        redis.call('del', fails_key)
+        redis.call('del', code_key)
+        return 'locked'
+    end
+    return 'mismatch'
+end
+
+redis.call('del', code_key)
+redis.call('del', fails_key)
+redis.call('del', lock_key)
+return 'ok'
+"""
+
 _store: dict[str, tuple[str, float]] = {}
 _send_log: dict[str, list[float]] = defaultdict(list)
 _fail_count: dict[str, int] = defaultdict(int)
 _lock_until: dict[str, float] = {}
 _send_locks: dict[str, asyncio.Lock] = {}
+_verify_locks: dict[str, threading.Lock] = {}
+_verify_locks_guard = threading.Lock()
 
 _redis = None
 _redis_failed = False
@@ -103,6 +151,15 @@ def _local_send_lock(phone: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _send_locks[phone] = lock
     return lock
+
+
+def _local_verify_lock(phone: str) -> threading.Lock:
+    with _verify_locks_guard:
+        lock = _verify_locks.get(phone)
+        if lock is None:
+            lock = threading.Lock()
+            _verify_locks[phone] = lock
+        return lock
 
 
 def _acquire_distributed_send_claim(phone: str) -> str | None:
@@ -384,34 +441,65 @@ async def send_otp(phone: str) -> dict:
                 logger.warning("otp send claim release failed")
 
 
+def _verify_local(phone: str, candidate: str, now: float) -> bool:
+    with _local_verify_lock(phone):
+        if _lock_until.get(phone, 0) > now:
+            return False
+
+        record = _store.get(phone)
+        if not record:
+            _fail_count[phone] += 1
+            if _fail_count[phone] >= _MAX_VERIFY_FAILS:
+                _lock_until[phone] = now + _LOCK_SECONDS
+                _fail_count[phone] = 0
+            return False
+
+        stored_digest, expires_at = record
+        if now > expires_at:
+            _store.pop(phone, None)
+            return False
+
+        if not hmac.compare_digest(stored_digest, candidate):
+            _fail_count[phone] += 1
+            if _fail_count[phone] >= _MAX_VERIFY_FAILS:
+                _lock_until[phone] = now + _LOCK_SECONDS
+                _fail_count[phone] = 0
+                _store.pop(phone, None)
+            return False
+
+        _store.pop(phone, None)
+        _fail_count.pop(phone, None)
+        _lock_until.pop(phone, None)
+        return True
+
+
 def verify_otp(phone: str, code: str) -> bool:
     try:
         normalized = _norm(phone)
     except InvalidPhoneNumber:
         return False
+
     try:
         now = time.time()
-        if _lock_left(normalized, now) > 0:
-            return False
-        record = _get_code(normalized)
-        if not record:
-            _bump_fail(normalized, now)
-            return False
-        stored_digest, expires_at = record
-        if now > expires_at:
-            _clear_code(normalized)
-            return False
         candidate = _digest(normalized, code.strip())
-        if not hmac.compare_digest(stored_digest, candidate):
-            _bump_fail(normalized, now)
-            if _lock_left(normalized, time.time()) > 0:
-                _clear_code(normalized)
-            return False
-        _clear_code(normalized)
-        _clear_fails(normalized)
-        return True
+        redis_client = _redis_client()
+        if redis_client is None:
+            return _verify_local(normalized, candidate, now)
+
+        result = redis_client.eval(
+            _VERIFY_OTP_SCRIPT,
+            3,
+            _rk("lock", normalized),
+            _rk("code", normalized),
+            _rk("fails", normalized),
+            candidate,
+            _MAX_VERIFY_FAILS,
+            _LOCK_SECONDS,
+            str(now + _LOCK_SECONDS),
+        )
+        return str(result) == "ok"
     except OtpStoreUnavailable:
         raise
-    except RedisError as exc:
-        logger.exception("otp Redis verification failed")
+    except (RedisError, AttributeError) as exc:
+        logger.exception("otp Redis atomic verification failed")
         raise _mark_redis_unavailable() from exc
