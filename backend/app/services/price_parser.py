@@ -5,16 +5,14 @@ import asyncio
 import ipaddress
 import re
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 
-SHOPS = {
-    "lemanapro": "lemanapro",
-    "lemana": "lemanapro",
-    "leroymerlin": "leroymerlin",
-    "leroy": "leroymerlin",
-    "petrovich": "petrovich",
-    "obi": "obi",
+SHOP_HOSTS = {
+    "lemanapro.ru": "lemanapro",
+    "leroymerlin.ru": "leroymerlin",
+    "petrovich.ru": "petrovich",
+    "obi.ru": "obi",
 }
 
 _STRUCTURED_PRICE_PATTERNS = (
@@ -29,6 +27,8 @@ _STRUCTURED_PRICE_PATTERNS = (
     ),
     re.compile(r'data-price=["\'](\d+(?:[.,]\d{1,2})?)["\']', re.I),
 )
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_MAX_REDIRECTS = 3
 
 
 class PriceUnavailable(RuntimeError):
@@ -40,9 +40,9 @@ class PriceUnavailable(RuntimeError):
 
 
 def _shop_for_url(url: str) -> str:
-    lowered = url.lower()
-    for marker, canonical in SHOPS.items():
-        if marker in lowered:
+    hostname = (urlparse(url).hostname or "").rstrip(".").lower()
+    for domain, canonical in SHOP_HOSTS.items():
+        if hostname == domain or hostname.endswith(f".{domain}"):
             return canonical
     return "generic"
 
@@ -110,22 +110,38 @@ async def fetch_price(url: str, current: float = 0) -> tuple[float, str, str]:
     """Return a verified live price or raise without changing the current price.
 
     `current` is accepted for backward compatibility and is never used as a
-    fabricated success fallback.
+    fabricated success fallback. Every redirect target is revalidated so a public
+    product URL cannot redirect the server into a private network.
     """
     del current
-    await _validate_public_http_url(url)
-    shop = _shop_for_url(url)
+    current_url = url
 
     try:
         import httpx
+    except Exception as error:  # noqa: BLE001 - explicit dependency failure
+        raise PriceUnavailable("price_client_unavailable") from error
 
-        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-            response = await client.get(
-                url,
-                headers={"User-Agent": "RenovaBot/1.0"},
-            )
-    except Exception as error:  # noqa: BLE001 - converted into explicit domain failure
-        raise PriceUnavailable("price_request_failed") from error
+    async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+        for redirect_count in range(_MAX_REDIRECTS + 1):
+            await _validate_public_http_url(current_url)
+            try:
+                response = await client.get(
+                    current_url,
+                    headers={"User-Agent": "RenovaBot/1.0"},
+                )
+            except Exception as error:  # noqa: BLE001 - explicit domain failure
+                raise PriceUnavailable("price_request_failed") from error
+
+            if response.status_code not in _REDIRECT_STATUSES:
+                break
+            location = response.headers.get("location")
+            if not location:
+                raise PriceUnavailable("price_redirect_without_location")
+            if redirect_count >= _MAX_REDIRECTS:
+                raise PriceUnavailable("price_too_many_redirects")
+            current_url = urljoin(current_url, location)
+        else:  # pragma: no cover - loop always exits via break or explicit error
+            raise PriceUnavailable("price_too_many_redirects")
 
     if response.status_code != 200:
         raise PriceUnavailable(f"price_http_{response.status_code}")
@@ -135,4 +151,4 @@ async def fetch_price(url: str, current: float = 0) -> tuple[float, str, str]:
 
     # Structured product pages may repeat the same offer in JSON-LD and meta tags.
     # The first structured occurrence is preferable to arbitrary min/max selection.
-    return prices[0], shop, "live_structured"
+    return prices[0], _shop_for_url(current_url), "live_structured"
