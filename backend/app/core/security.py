@@ -29,7 +29,9 @@ def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> st
     expire = now + timedelta(minutes=effective_access_expire_minutes())
     payload: dict[str, Any] = {
         "sub": subject,
-        "iat": int(now.timestamp()),
+        # NumericDate permits fractions; retaining microseconds removes the
+        # same-second ambiguity around tokens_invalid_before.
+        "iat": now.timestamp(),
         "exp": int(expire.timestamp()),
         "typ": "access",
         "jti": secrets.token_urlsafe(16),  # P1.8 — unique access id
