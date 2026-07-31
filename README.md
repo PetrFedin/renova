@@ -37,6 +37,8 @@ npm run ci:playwright              # api + ui — как job playwright в CI
 
 ## Документация
 
+- `docs/FULL-PROJECT-AUDIT-2026-07-31.md` — актуальный источник истины по аудитам, закрытиям и очереди исправлений
+- `docs/FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — исполняемый checklist текущих security/product/ops волн
 - `docs/MVP-SPEC-RU.md` — полная спецификация MVP
 - `docs/FNS-INTEGRATION-RU.md` — интеграция с ФНС и «Мой налог»
 - `docs/UX-FLOWS-RU.md` — экраны и сценарии

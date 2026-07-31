@@ -1,12 +1,14 @@
 # Audit closure matrix — develop HEAD (wave-6)
 
-Ответ на «всё ли внесено?»: **весь code-embed backlog аудита P0–P2 → wave-1…6 — да**.  
-Осталось только **ops/credentials** (не код без staging/секретов).
+> **Исторический документ.** Эта матрица фиксирует состояние старого `develop` на 2026-07-21 и больше не является текущим источником истины. Формулировка «весь code backlog закрыт» была опровергнута повторной проверкой актуального `main`: найден portal change-order scope defect и продолжается аудит transaction/replay integrity. Текущий статус: [`FULL-PROJECT-AUDIT-2026-07-31.md`](FULL-PROJECT-AUDIT-2026-07-31.md).
 
-## P0–P2 claims → статус
+Ответ на «всё ли внесено?» на момент wave-6: **весь известный тогда code-embed backlog аудита P0–P2 → wave-1…6 считался закрытым**.  
+Оставались **ops/credentials**, однако последующие проверки могут повторно открыть code-risk.
 
-| # | Находка аудита | Статус | Где |
-|---|----------------|--------|-----|
+## P0–P2 claims → исторический статус
+
+| # | Находка аудита | Статус на 2026-07-21 | Где |
+|---|----------------|------------------------|-----|
 | 1 | main ≠ develop / release | **OPS** | PR #3 + `SPLIT-RELEASE-PR-PLAN` + `scripts/split-release-status.sh` (~209 commits) |
 | 2 | Auth только X-User-Id | **DONE** | JWT Bearer SoT + refresh/`user_sessions`; X-User-Id forbid staging/prod |
 | 3 | Staging без SHA | **DONE tooling / OPS live** | H0 `git_sha`; `staging:readiness-report`; live check нужен HTTPS |
@@ -18,8 +20,8 @@
 | 9 | Мой налог fake linked | **DONE scaffold** | status enum + OAuth start/callback; live credentials = OPS |
 | 10 | FNS verification_status | **DONE** | receipts.verification_status |
 | 11 | DC badges honesty | **DONE** | Document Center mode chips |
-| 12–15 | Chat amount / portal / correlation | **DONE** | wave-1 |
-| OTP brute-force | **DONE** | wave-3 |
+| 12–15 | Chat amount / portal / correlation | **DONE на старом срезе** | wave-1; portal scopes повторно проверяются в Wave X |
+| OTP brute-force | **DONE на старом срезе** | wave-3; atomic consume/replay требует отдельной повторной проверки |
 | SecureStore | **DONE** | expo-secure-store + secureTokenStore |
 | Silent `.catch(()=>{})` | **DONE wave-6** | reportCatch sweep (~89) + list-load reportError |
 | Sentry | **DONE wiring / OPS SDK** | initSentry + DSN; native `@sentry/react-native` install optional |
@@ -35,12 +37,14 @@
 | 5 | a44cf22 | Sentry init, OAuth scaffold, reportCatch helper |
 | 6 | (this) | full silent-catch sweep + closure matrix |
 
-## Осталось (не код)
+## Осталось на момент документа
 
 1. Исполнить split PR slices develop→main  
 2. `npm run h0:check:live` / `staging:readiness-report` на реальном staging  
 3. Выдать `MOY_NALOG_CLIENT_ID` + `TOKEN_URL` + secret  
 4. При DSN: `npx expo install @sentry/react-native` и rebuild native  
+
+Текущие задачи и новые подтверждённые риски ведутся только в `FULL-PROJECT-AUDIT-2026-07-31.md`.
 
 ```bash
 bash scripts/split-release-status.sh

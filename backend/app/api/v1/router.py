@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1 import portal
+from app.api.v1 import portal_change_order_decisions
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -46,6 +47,19 @@ api_router.include_router(automation_worker.router)
 # Canonical direct expense writes must precede the legacy OS routes with the same paths.
 api_router.include_router(expense_mutations.router)
 api_router.include_router(os.router)
+
+# Replace the two legacy portal CO routes at runtime. This keeps one OpenAPI/runtime
+# endpoint per path while the large portal module is being decomposed safely.
+_PORTAL_CHANGE_ORDER_PATHS = {
+    "/portal/projects/{project_id}/change-orders/{order_id}/approve",
+    "/portal/projects/{project_id}/change-orders/{order_id}/reject",
+}
+portal.router.routes[:] = [
+    route
+    for route in portal.router.routes
+    if getattr(route, "path", None) not in _PORTAL_CHANGE_ORDER_PATHS
+]
+api_router.include_router(portal_change_order_decisions.router)
 api_router.include_router(portal.router)
 api_router.include_router(reports.router)
 
