@@ -157,6 +157,7 @@ async def confirm_payment(
     allow_without_acceptance: bool = False,
     transfer_ack: bool = False,
     allow_without_settlement: bool = False,
+    commit: bool = True,
 ) -> Payment | None:
     """Move a payment once; retries of an achieved state return the same row."""
     payment = await db.get(Payment, payment_id)
@@ -241,6 +242,7 @@ async def confirm_payment(
                 allow_without_acceptance=allow_without_acceptance,
                 transfer_ack=transfer_ack,
                 allow_without_settlement=allow_without_settlement,
+                commit=commit,
             )
         return None
 
@@ -279,19 +281,29 @@ async def confirm_payment(
         unverified=target_status == PaymentStatus.paid_unverified,
         machine_settlement=allow_without_settlement,
     )
-    await db.commit()
-    await db.refresh(payment)
-    activate_client_write_side_effects(effects)
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(payment)
+        activate_client_write_side_effects(effects)
     return payment
 
 
-async def attach_yookassa_id(db: AsyncSession, payment_id: str, yookassa_id: str) -> None:
+async def attach_yookassa_id(
+    db: AsyncSession,
+    payment_id: str,
+    yookassa_id: str,
+    *,
+    commit: bool = True,
+) -> None:
     payment = await db.get(Payment, payment_id)
     if payment:
         payment.yookassa_payment_id = yookassa_id
         if payment.status == PaymentStatus.pending:
             payment.status = PaymentStatus.processing
-        await db.commit()
+        await db.flush()
+        if commit:
+            await db.commit()
 
 
 async def get_payment(db: AsyncSession, payment_id: str) -> Payment | None:
