@@ -28,8 +28,11 @@ class FakeSession:
 
     async def execute(self, _stmt):
         class _Result:
+            rowcount = 1
+
             def scalar_one_or_none(self):
                 return None
+
         return _Result()
 
 
@@ -86,6 +89,7 @@ async def test_confirm_stage_payment_requires_customer_acceptance():
 @pytest.mark.asyncio
 async def test_confirm_requires_settlement_proof(monkeypatch):
     """Manual confirm without receipt/ack/YuKassa must not succeed."""
+
     async def _noop_expense(_db, _payment):
         return None
 
@@ -115,6 +119,7 @@ async def test_confirm_requires_settlement_proof(monkeypatch):
 @pytest.mark.asyncio
 async def test_yookassa_id_alone_is_not_settlement_proof(monkeypatch):
     """Checkout attach must not unlock manual confirm without webhook/ack/receipt."""
+
     async def _noop_expense(_db, _payment):
         return None
 
