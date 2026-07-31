@@ -13,6 +13,23 @@ logger = logging.getLogger(__name__)
 _DEGRADED_ALERT = "Часть данных панели временно недоступна"
 
 
+def stages_for_user(project, user) -> list:
+    """Return a role-scoped stage list without assigning to the ORM relationship."""
+    stages = sorted(getattr(project, "stages", None) or [], key=lambda item: item.sort_order)
+    role = getattr(getattr(user, "role", None), "value", None) or str(getattr(user, "role", "") or "")
+    if role != "contractor":
+        return stages
+    return [
+        stage
+        for stage in stages
+        if getattr(stage, "assignee_id", None) == user.id
+        or (
+            getattr(stage, "assignee_id", None) is None
+            and getattr(project, "contractor_id", None) == user.id
+        )
+    ]
+
+
 def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
     """Build dashboard from a detached projection without mutating ORM relationships."""
     scoped_stages = list(stages)
