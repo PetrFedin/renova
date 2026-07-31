@@ -75,6 +75,8 @@ async def test_legacy_payment_creation_commits_entity_and_outbox_atomically(outb
 @pytest.mark.asyncio
 async def test_legacy_payment_creation_rolls_back_when_outbox_prepare_fails(outbox_db, monkeypatch):
     _, contractor, project = await seed_project(outbox_db)
+    project_id = project.id
+    contractor_id = contractor.id
     await outbox_db.commit()
     monkeypatch.setattr(
         outbox_service,
@@ -85,14 +87,14 @@ async def test_legacy_payment_creation_rolls_back_when_outbox_prepare_fails(outb
     with pytest.raises(RuntimeError, match="outbox_prepare_failed"):
         await create_payment(
             outbox_db,
-            project.id,
-            contractor.id,
+            project_id,
+            contractor_id,
             "Штукатурка",
             125000,
             "stage",
         )
 
-    assert await outbox_db.get(Project, project.id) is not None
+    assert await outbox_db.get(Project, project_id) is not None
     assert (await outbox_db.scalar(select(func.count()).select_from(Payment))) == 0
     assert (await outbox_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
     assert (await outbox_db.scalar(select(func.count()).select_from(DomainOutboxLease))) == 0
