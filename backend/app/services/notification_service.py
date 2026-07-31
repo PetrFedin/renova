@@ -15,6 +15,9 @@ _TYPE_ALIASES: dict[str, str] = {
     "material": "materials",
     "budget": "budget_alert",
     "stage_start": "stage_started",
+    "schedule_review": "approval",
+    "schedule_confirmed": "approval",
+    "schedule_rejected": "issue",
 }
 
 
