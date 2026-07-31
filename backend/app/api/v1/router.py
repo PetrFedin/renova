@@ -3,6 +3,7 @@ from app.api.v1 import portal
 from app.api.v1 import portal_change_order_decisions
 from app.api.v1 import account_lifecycle
 from app.api.v1 import document_lifecycle
+from app.api.v1 import material_price_sync
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -23,6 +24,25 @@ api_router = APIRouter(prefix="/api/v1")
 # --- content / design ---
 api_router.include_router(design_packages.router)
 api_router.include_router(marketplace.router)
+
+# Price refresh must never fabricate a value or fetch private network targets.
+_MATERIAL_PRICE_SYNC_ROUTE = (
+    "/projects/{project_id}/material-picks/{pick_id}/sync-price",
+    "POST",
+)
+
+
+def _is_replaced_material_price_route(route) -> bool:
+    path = getattr(route, "path", None)
+    methods = set(getattr(route, "methods", set()) or set())
+    target_path, method = _MATERIAL_PRICE_SYNC_ROUTE
+    return path == target_path and method in methods
+
+
+materials.router.routes[:] = [
+    route for route in materials.router.routes if not _is_replaced_material_price_route(route)
+]
+api_router.include_router(material_price_sync.router)
 api_router.include_router(materials.router)
 api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
