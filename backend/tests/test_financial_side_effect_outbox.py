@@ -198,20 +198,37 @@ async def test_failed_outbox_event_is_deferred_instead_of_hot_looping(outbox_db)
         event_type="unknown.event",
         payload={"project_id": project.id, "user_id": contractor.id},
     )
-    # Dispatcher commits can expire ORM state through bulk UPDATE synchronization.
-    # Keep the immutable scalar key rather than coupling this test to the identity map.
     row_id = row.id
     await outbox_db.commit()
 
     assert await outbox_service.dispatch_pending(outbox_db, worker_id="worker-a") == 0
-    failed = await outbox_db.get(DomainOutbox, row_id)
-    lease = await outbox_db.get(DomainOutboxLease, row_id)
-    assert failed.attempts == 1
-    assert failed.processed_at is None
-    assert "unknown_outbox_event_type" in (failed.last_error or "")
-    assert lease.locked_at is None
-    assert lease.next_attempt_at is not None
+    # Bulk UPDATE intentionally expires matching identity-map instances. Assert the
+    # durable database state through a scalar projection instead of lazy ORM IO.
+    attempts, processed_at, last_error = (
+        await outbox_db.execute(
+            select(
+                DomainOutbox.attempts,
+                DomainOutbox.processed_at,
+                DomainOutbox.last_error,
+            ).where(DomainOutbox.id == row_id)
+        )
+    ).one()
+    locked_at, next_attempt_at = (
+        await outbox_db.execute(
+            select(
+                DomainOutboxLease.locked_at,
+                DomainOutboxLease.next_attempt_at,
+            ).where(DomainOutboxLease.outbox_id == row_id)
+        )
+    ).one()
+    assert attempts == 1
+    assert processed_at is None
+    assert "unknown_outbox_event_type" in (last_error or "")
+    assert locked_at is None
+    assert next_attempt_at is not None
 
     assert await outbox_service.dispatch_pending(outbox_db, worker_id="worker-b") == 0
-    failed = await outbox_db.get(DomainOutbox, row_id)
-    assert failed.attempts == 1
+    attempts = await outbox_db.scalar(
+        select(DomainOutbox.attempts).where(DomainOutbox.id == row_id)
+    )
+    assert attempts == 1
