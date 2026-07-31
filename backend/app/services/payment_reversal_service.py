@@ -112,6 +112,7 @@ async def apply_provider_cancellation(
     amount: float,
     currency: str,
     reason: str | None,
+    commit: bool = True,
 ) -> ReversalResult:
     payment = await _locked_payment_by_id(db, payment_id=payment_id, project_id=project_id)
     if not payment:
@@ -123,10 +124,12 @@ async def apply_provider_cancellation(
     if payment.yookassa_payment_id and provider_id and payment.yookassa_payment_id != provider_id:
         return ReversalResult(handled=False, payment_id=payment.id, reason="yookassa_id_mismatch")
     if payment.status == PaymentStatus.cancelled:
-        await db.commit()
+        if commit:
+            await db.commit()
         return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="replay")
     if payment.status not in {PaymentStatus.pending, PaymentStatus.processing}:
-        await db.commit()
+        if commit:
+            await db.commit()
         return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="terminal_state_conflict")
 
     old_status = payment.status.value
@@ -152,7 +155,9 @@ async def apply_provider_cancellation(
         kind="PaymentCancelled",
         title=f"Оплата отменена ЮKassa: {payment.title}",
     )
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     return ReversalResult(handled=True, changed=True, payment_id=payment.id)
 
 
@@ -163,6 +168,7 @@ async def apply_provider_refund(
     refund_id: str | None,
     amount: float,
     currency: str,
+    commit: bool = True,
 ) -> ReversalResult:
     payment = await _locked_payment_by_provider_id(
         db,
@@ -175,10 +181,12 @@ async def apply_provider_refund(
     if round(float(payment.amount or 0), 2) != round(float(amount or 0), 2):
         return ReversalResult(handled=False, payment_id=payment.id, reason="partial_refund_unsupported")
     if payment.status == PaymentStatus.refunded:
-        await db.commit()
+        if commit:
+            await db.commit()
         return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="replay")
     if payment.status not in {PaymentStatus.confirmed, PaymentStatus.disputed}:
-        await db.commit()
+        if commit:
+            await db.commit()
         return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="refund_source_not_confirmed")
 
     old_status = payment.status.value
@@ -217,11 +225,18 @@ async def apply_provider_refund(
         kind="PaymentRefunded",
         title=f"Возврат оплаты ЮKassa: {payment.title}",
     )
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     return ReversalResult(handled=True, changed=True, payment_id=payment.id)
 
 
-async def process_provider_reversal(body: dict[str, Any], db: AsyncSession) -> ReversalResult:
+async def process_provider_reversal(
+    body: dict[str, Any],
+    db: AsyncSession,
+    *,
+    commit: bool = True,
+) -> ReversalResult:
     event = str(body.get("event") or "")
     obj = body.get("object") or {}
     if event == "payment.canceled" and obj.get("status") == "canceled":
@@ -242,6 +257,7 @@ async def process_provider_reversal(body: dict[str, Any], db: AsyncSession) -> R
             amount=amount,
             currency=currency,
             reason=str(cancellation.get("reason") or "payment.canceled"),
+            commit=commit,
         )
     if event == "refund.succeeded" and obj.get("status") == "succeeded":
         provider_payment_id = str(obj.get("payment_id") or "")
@@ -254,5 +270,6 @@ async def process_provider_reversal(body: dict[str, Any], db: AsyncSession) -> R
             refund_id=str(obj.get("id") or "") or None,
             amount=amount,
             currency=currency,
+            commit=commit,
         )
     return ReversalResult(handled=False, reason="unsupported_event")
