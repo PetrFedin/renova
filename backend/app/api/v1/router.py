@@ -5,6 +5,7 @@ from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
+from app.api.v1 import project_dashboard
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -16,6 +17,25 @@ from app.api.v1 import (
 )
 
 api_router = APIRouter(prefix="/api/v1")
+
+
+def _detach_legacy_project_dashboard_route() -> None:
+    """Fail closed unless exactly one legacy dashboard route is replaced."""
+    matches = [
+        route
+        for route in projects.router.routes
+        if getattr(route, "path", None) == "/projects/{project_id}/dashboard"
+        and "GET" in (getattr(route, "methods", None) or set())
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Expected exactly one legacy project dashboard route, "
+            f"found {len(matches)}"
+        )
+    projects.router.routes.remove(matches[0])
+
+
+_detach_legacy_project_dashboard_route()
 
 # --- content / design ---
 api_router.include_router(design_packages.router)
@@ -63,6 +83,7 @@ api_router.include_router(fns.router)
 api_router.include_router(kpi_history.router)
 api_router.include_router(notifications.router)
 api_router.include_router(media.router)
+api_router.include_router(project_dashboard.router)
 api_router.include_router(projects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
