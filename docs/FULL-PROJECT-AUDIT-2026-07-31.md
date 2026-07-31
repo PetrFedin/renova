@@ -1,8 +1,8 @@
 # Renova — актуальный полный аудит и рабочая матрица
 
 **Дата среза:** 2026-07-31  
-**Каноническая база:** `main` @ `63f3d2585f0781ca22174cb8a3473ce4c9d56f5f`  
-**Рабочая ветка текущей волны:** `agent/audit-wave-x-portal-scope`  
+**Канонический кодовый baseline:** `main` после PR #107 · `e54581a76e6c2255cb65dce28e6743f3236e0fcb`  
+**Текущая волна:** recovery/account lifecycle  
 **Назначение:** единый источник истины для продолжения разработки, проверки закрытия аудитов и подготовки staging/pilot.
 
 > Этот документ заменяет использование старых аудитов как текущего backlog. Старые файлы сохраняются как доказательная и продуктовая база, но их статусы необходимо сверять здесь с актуальным `main`.
@@ -16,7 +16,8 @@
 - `SECURITY-AUDIT-REMEDIATION-PLAN-2026-07-21.md` — security/product remediation.
 - `ARCHITECTURE-AUDIT-RU.md` — архитектурные дубли, SoT и инфраструктурный долг.
 - `AUDIT-CLOSURE-MATRIX-2026-07-21.md` — историческая closure-матрица wave 1–6.
-- `FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — рабочий чеклист текущей волны.
+- `FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — исполняемый чеклист текущей волны.
+- `OTP-ATOMIC-CONSUME-2026-07-31.md` — доказательство single-winner OTP consume.
 
 ## 2. Правило доверия к статусам
 
@@ -27,12 +28,10 @@
 3. успешный CI;
 4. merge в `main` с зафиксированным SHA.
 
-Обозначения:
-
 | Статус | Значение |
 |---|---|
 | `CLOSED MAIN` | исправление уже в `main`, есть тесты/CI |
-| `DONE BRANCH` | исправление реализовано в текущей ветке, ожидает PR/CI/merge |
+| `DONE BRANCH` | исправление реализовано в ветке, ожидает PR/CI/merge |
 | `OPEN CODE` | подтверждённая проблема в актуальном коде |
 | `REVERIFY` | находка старого аудита; требуется повторная проверка на текущем `main` |
 | `OPS` | зависит от staging, домена, секретов или внешнего провайдера |
@@ -40,15 +39,15 @@
 
 ## 3. Почему старая feature-ветка не переносится целиком
 
-`feature/renova-product-excellence-pass` расходится с текущим `main`: она была **на 15 коммитов впереди, но на 202 коммита позади**. Её нельзя merge/rebase вслепую как источник истины.
+`feature/renova-product-excellence-pass` расходилась с актуальным `main`: была **на 15 коммитов впереди, но на 202 коммита позади**. Её нельзя merge/rebase вслепую как источник истины.
 
 Из неё используются только:
 
 - полезные формулировки и продуктовая карта;
-- отдельные изменения, которые повторно подтверждаются на актуальном `main`;
-- `FULL-PROJECT-AUDIT-2026-07-31.md` как исторический снимок, переписанный в этот актуальный документ.
+- отдельные изменения, повторно подтверждённые на актуальном `main`;
+- исторический audit snapshot, переписанный в эту актуальную матрицу.
 
-Кодовые изменения из старой ветки переносятся только отдельными PR после проверки конфликтов, расчётов, ACL и тестов.
+Код из старой ветки переносится только отдельными PR после проверки конфликтов, расчётов, ACL, transaction boundaries и тестов.
 
 ## 4. Подтверждённо закрыто в актуальном `main`
 
@@ -65,51 +64,74 @@
 | ACL для проектов без назначенного подрядчика | `CLOSED MAIN` | PR #103 · `63823803...` |
 | Atomic team invites | `CLOSED MAIN` | PR #104 · `07cde6f2...` |
 | Atomic refresh-token rotation | `CLOSED MAIN` | PR #105 · `63f3d258...` |
-| `npm run mobile:test` в CI | `CLOSED MAIN` | job `mobile-contracts` |
+| Portal change-order scope isolation | `CLOSED MAIN` | PR #106 · `6547630b...` · CI #1635 |
+| OTP atomic single-winner consume | `CLOSED MAIN` | PR #107 · `e54581a7...` · CI #1643 |
+| Полный mobile contract gate | `CLOSED MAIN` | CI job `mobile-contracts` |
 
 Эти темы не должны возвращаться в backlog без нового воспроизводимого дефекта.
 
-## 5. Текущая волна: portal change-order scope
+## 5. Закрытая Wave X.1 — portal change-order authorization
 
-### Подтверждённая проблема
+### Подтверждённый дефект
 
 Portal-token с правом только `pay` мог вызвать approve/reject допработ, потому что legacy endpoint проверял пользователя-заказчика, но не требовал scope `accept_stage`.
 
-У reject-пути был дополнительный риск: legacy compatibility service получал только `order_id`; принадлежность проекту проверялась после вызова, а автором отказа мог становиться создатель допработы вместо фактического заказчика.
+У reject-пути был дополнительный риск: compatibility service получал только `order_id`; принадлежность проекту проверялась после вызова, а автором отказа мог становиться создатель допработы вместо фактического заказчика.
 
-### Реализовано в ветке
+### Закрытие
 
-| Изменение | Статус |
-|---|---|
-| Канонический модуль `portal_change_order_decisions.py` | `DONE BRANCH` |
-| Scope `accept_stage` проверяется до обращения к БД | `DONE BRANCH` |
-| Wrong-project token отклоняется до обращения к БД | `DONE BRANCH` |
-| Reject использует `reject_with_effects(project_id, order_id, rejected_by)` | `DONE BRANCH` |
-| В runtime/OpenAPI остаётся ровно один approve и один reject route | `DONE BRANCH` |
-| Pay-only token → 403 | `DONE BRANCH` |
-| Тест реального `rejected_by` | `DONE BRANCH` |
+- `accept_stage` проверяется до первого DB access;
+- wrong-project token отклоняется до DB access;
+- approve/reject используют project-scoped services;
+- reject записывает фактического customer как `rejected_by`;
+- runtime/OpenAPI содержит ровно один approve и один reject route;
+- pay-only token получает 403;
+- functional/source/runtime tests обязательны в CI;
+- PR #106 merged: `6547630ba8f4ff06fb2be9607fe5eb7f658d9ee7`;
+- CI run #1635: e2e/PostgreSQL, Playwright и mobile-contracts — success.
 
-### Критерий закрытия
+### Остаточный долг
 
-- новый тест включён в CI;
-- e2e, Playwright и mobile-contracts зелёные;
-- PR смержен в `main`;
-- merge SHA записан в этот документ/следующую closure-матрицу.
+Legacy определения физически остаются в большом `portal.py`, хотя исключены из runtime registry. Их необходимо удалить в отдельной безопасной декомпозиционной волне.
 
-## 6. Активная очередь проверки и исправлений
+## 6. Закрытая Wave X.2 — OTP atomic consume
 
-Ниже только приоритеты, которые логично проверять после portal scope. Это не утверждение, что каждый дефект уже подтверждён.
+### Подтверждённый дефект
+
+Legacy verify выполнял Redis `GET → compare → DELETE` отдельными командами. Два worker/process могли прочитать один digest до удаления и оба успешно принять один OTP. Attempts, lockout и invalidation также не образовывали единой операции.
+
+### Закрытие
+
+- Redis verify, attempts, lockout и consume выполняются одним Lua script;
+- successful OTP удаляется в той же атомарной операции;
+- при пяти неверных попытках lock устанавливается вместе с удалением текущего кода;
+- staging/production не переходят на process-memory при недоступном Redis;
+- development-memory использует per-phone sync lock;
+- 16 конкурентных verify дают ровно один success;
+- source guard запрещает возврат к read-then-delete;
+- PR #107 merged: `e54581a76e6c2255cb65dce28e6743f3236e0fcb`;
+- CI run #1643: e2e/PostgreSQL, Playwright и mobile-contracts — success.
+
+### Остаточные задачи OTP surface
+
+- TTL boundary и Redis clock/expiry semantics;
+- rate-limit dimensions по phone/IP/device;
+- enumeration resistance send/verify ответов;
+- ограничение роста local per-phone lock registry в development;
+- recovery/reset tokens рассматриваются отдельно.
+
+## 7. Активная очередь проверки и исправлений
 
 ### P0 — Security / transaction integrity
 
 | Приоритет | Зона | Что доказать |
 |---|---|---|
-| P0.1 | OTP / одноразовые коды | один код нельзя принять дважды при конкурентных запросах; attempts и consume атомарны |
-| P0.2 | Recovery/reset tokens | одноразовость, expiry, revocation и отсутствие replay |
-| P0.3 | Account deletion | подтверждение, ACL, очистка/анонимизация и идемпотентность |
-| P0.4 | Outbox/background effects | unknown event не помечается успешно обработанным; retry/poison policy наблюдаемы |
-| P0.5 | Payment webhooks | mismatch/replay/failure не превращаются в ложный success |
-| P0.6 | Direct API commits | состояние и side-effects не расходятся при исключении после commit |
+| P0.1 | Recovery/reset tokens | одноразовость, expiry, revocation и отсутствие replay |
+| P0.2 | Account deletion | подтверждение, ACL, очистка/анонимизация и идемпотентность |
+| P0.3 | Outbox/background effects | unknown event не помечается успешно обработанным; retry/poison policy наблюдаемы |
+| P0.4 | Payment webhooks | mismatch/replay/failure не превращаются в ложный success |
+| P0.5 | Direct API commits | состояние и side-effects не расходятся при исключении после commit |
+| P0.6 | OTP abuse surface | TTL boundary, phone/IP/device rate limits, enumeration resistance |
 
 ### P1 — Product journey / dead ends
 
@@ -131,7 +153,7 @@ Portal-token с правом только `pay` мог вызвать approve/re
 | Единство service transaction boundaries | `REVERIFY` | route не должен сам собирать частичную транзакцию |
 | Source guards vs runtime tests | `REVERIFY` | критические деньги/ACL подтверждать функционально и конкурентно |
 
-## 7. OPS-блокеры, которые код не может закрыть самостоятельно
+## 8. OPS-блокеры, которые код не может закрыть самостоятельно
 
 | Блокер | Статус | DoD |
 |---|---|---|
@@ -142,7 +164,7 @@ Portal-token с правом только `pay` мог вызвать approve/re
 | ФНС/Мой налог credentials | `OPS` | live integration отдельно от scaffold/demo |
 | Sentry/alerts | `OPS` | DSN, release SHA, alert routing и проверка события |
 
-## 8. Конкурентная стратегия: что сохранять и что не строить
+## 9. Конкурентная стратегия
 
 ### Сохранять как moat
 
@@ -151,7 +173,7 @@ Portal-token с правом только `pay` мог вызвать approve/re
 - честные статусы money/integration, без подмены demo на live;
 - ФНС/НПД для российского рынка;
 - Documents Hub и доказательная история действий;
-- field/offline только там, где есть наблюдаемая очередь и разрешение конфликтов.
+- field/offline только с наблюдаемой очередью и разрешением конфликтов.
 
 ### Не тащить в текущий scope
 
@@ -160,16 +182,16 @@ Portal-token с правом только `pay` мог вызвать approve/re
 - AI-chat на каждом экране;
 - новые витринные экраны до закрытия Trust, transaction integrity и dead ends.
 
-## 9. Порядок дальнейшей работы
+## 10. Порядок дальнейшей работы
 
-1. Закрыть текущую portal-scope волну через PR/CI/merge.
-2. Провести атомарный аудит OTP и recovery tokens.
-3. Проверить outbox/worker fail semantics и poison events.
+1. Проверить recovery/reset token replay и account lifecycle.
+2. Проверить outbox/worker fail semantics и poison events.
+3. Проверить payment webhooks и оставшиеся direct commits.
 4. Повторно пройти product journeys из старых аудитов на текущем `main`.
 5. Отдельно выполнить staging OPS checklist с реальными credentials.
 6. После каждой волны обновлять эту матрицу, а не создавать независимый противоречащий документ.
 
-## 10. Definition of Done проекта перед pilot
+## 11. Definition of Done проекта перед pilot
 
 Pilot-ready означает не наличие экранов, а доказанный путь:
 
