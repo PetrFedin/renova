@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.db.base import Base
 import app.models.entities  # noqa
 import app.models.project_documents  # noqa: F401 — Document Center migrations
+import app.models.webhook_runtime  # noqa: F401 — payment webhook delivery claims
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
