@@ -184,10 +184,28 @@ async def apply_provider_refund(
         if commit:
             await db.commit()
         return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="replay")
+    if payment.status in {
+        PaymentStatus.pending,
+        PaymentStatus.processing,
+        PaymentStatus.paid_unverified,
+    }:
+        if commit:
+            await db.commit()
+        return ReversalResult(
+            handled=False,
+            changed=False,
+            payment_id=payment.id,
+            reason="refund_source_not_confirmed",
+        )
     if payment.status not in {PaymentStatus.confirmed, PaymentStatus.disputed}:
         if commit:
             await db.commit()
-        return ReversalResult(handled=True, changed=False, payment_id=payment.id, reason="refund_source_not_confirmed")
+        return ReversalResult(
+            handled=True,
+            changed=False,
+            payment_id=payment.id,
+            reason="terminal_state_conflict",
+        )
 
     old_status = payment.status.value
     payment.status = PaymentStatus.refunded
