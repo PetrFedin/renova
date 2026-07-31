@@ -12,6 +12,7 @@ from app.services.stage_service import parse_room_ids
 from app.services import room_service as room_svc
 from app.services import project_document_service as docs_svc
 from app.services import dashboard_integrity_service as dashboard_svc
+from app.services import project_viewer_service as viewer_svc
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -366,8 +367,7 @@ async def link_contractor(project_id: str, body: LinkContractorIn, user: User = 
 async def list_viewers(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
     from app.models.entities import ProjectViewer
-    await require_project(db, project_id, user, write=False)
-    p = await svc.get_project(db, project_id)
+    p = await require_project(db, project_id, user, write=False)
     if user.id != p.customer_id:
         raise HTTPException(403, "Только заказчик")
     rows = (await db.execute(select(ProjectViewer, User).join(User, User.id == ProjectViewer.user_id).where(ProjectViewer.project_id == project_id))).all()
@@ -377,7 +377,7 @@ async def list_viewers(project_id: str, user: User = Depends(get_current_user), 
 @router.post("/{project_id}/viewers")
 async def share_viewer(project_id: str, body: ViewerShareIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
-    from app.models.entities import ProjectViewer, User as U
+    from app.models.entities import User as U
     p = await require_project(db, project_id, user, write=True)
     if user.id != p.customer_id:
         raise HTTPException(403, "Только заказчик")
@@ -393,12 +393,16 @@ async def share_viewer(project_id: str, body: ViewerShareIn, user: User = Depend
     if not phone and not code:
         raise HTTPException(400, "Укажите телефон или код профиля")
     if not target:
-        raise HTTPException(404, "Пользователь не найден. Попросите гостя войти в Renova (demo или SMS).")
-    ex = await db.execute(select(ProjectViewer).where(ProjectViewer.project_id == project_id, ProjectViewer.user_id == target.id))
-    if ex.scalar_one_or_none():
+        raise HTTPException(404, "Пользователь не найден. Попросите гостя войти в Renova по SMS.")
+    if viewer_svc.has_intrinsic_project_access(p, target.id):
         return {"ok": True, "message": "Уже имеет доступ", "user_id": target.id}
-    db.add(ProjectViewer(project_id=project_id, user_id=target.id))
-    await db.commit()
+    _viewer, created = await viewer_svc.grant_project_viewer(
+        db,
+        project_id=project_id,
+        user_id=target.id,
+    )
+    if not created:
+        return {"ok": True, "message": "Уже имеет доступ", "user_id": target.id}
     return {"ok": True, "user_id": target.id, "full_name": target.full_name}
 
 
@@ -411,7 +415,7 @@ async def get_contract_gate(project_id: str, user: User = Depends(get_current_us
 
 @router.delete("/{project_id}/viewers/{viewer_user_id}")
 async def remove_viewer(project_id: str, viewer_user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import select, delete
+    from sqlalchemy import delete
     from app.models.entities import ProjectViewer
     p = await require_project(db, project_id, user, write=True)
     if user.id != p.customer_id:
