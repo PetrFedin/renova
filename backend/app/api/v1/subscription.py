@@ -23,6 +23,11 @@ from app.services.webhook_delivery_service import (
 from app.core.config import settings
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
+_RETRYABLE_PROVIDER_REASONS = {
+    "payment_not_found",
+    "project_not_found",
+    "refund_source_not_confirmed",
+}
 
 
 @router.get("/yookassa/health")
@@ -135,24 +140,26 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
 
     try:
         result = await process_webhook(body, db)
+        reason = str(result.get("reason") or "")
+        if reason in _RETRYABLE_PROVIDER_REASONS:
+            result["retryable"] = True
         if result.get("retryable"):
             await db.rollback()
             await fail_delivery(
                 db,
                 event_id=event_key,
                 claim_token=claim.token,
-                error=str(result.get("blocked") or result.get("reason") or "retryable"),
+                error=str(result.get("blocked") or reason or "retryable"),
             )
             raise HTTPException(
                 503,
                 detail={
                     "code": "webhook_processing_deferred",
-                    "reason": result.get("blocked") or result.get("reason"),
+                    "reason": result.get("blocked") or reason,
                 },
             )
 
         handled = bool(result.get("handled"))
-        reason = str(result.get("reason") or "")
         outcome = "handled" if handled else f"ignored:{reason or 'unhandled'}"
         if not await complete_delivery(
             db,
