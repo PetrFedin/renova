@@ -1,8 +1,8 @@
 # Renova — Wave X execution checklist
 
 **Source of truth:** `FULL-PROJECT-AUDIT-2026-07-31.md`  
-**Current `main`:** `e54581a76e6c2255cb65dce28e6743f3236e0fcb`  
-**Current wave:** recovery/account lifecycle audit
+**Current `main`:** `c89748944e5bbbe62587f8706ec3d26133d1a649`  
+**Current wave:** outbox and background effects
 
 ## Wave X.1 — Portal change-order authorization
 
@@ -43,21 +43,33 @@
 
 ## Wave X.3 — Recovery / account lifecycle
 
-- [ ] Проверить reset/recovery token replay.
-- [ ] Проверить token epoch/revocation после смены пароля.
-- [ ] Проверить active sessions revoke-all.
-- [ ] Проверить account deletion confirmation и idempotency.
-- [ ] Определить anonymize/delete policy для финансовых и audit records.
-- [ ] Добавить tests/CI/docs.
+- [x] Проверить наличие reset/recovery token flow: в текущем API отдельного password/reset credential flow нет; будущий flow обязан быть single-use и atomic.
+- [x] Проверить access-token epoch/revocation: delete и revoke-all выставляют `tokens_invalid_before` в одной транзакции с отзывом refresh-сессий.
+- [x] Исправить active sessions revoke-all: zero-row update больше не откатывает pending caller mutations; добавлен `commit=False` contract.
+- [x] Исправить account deletion integrity: soft-delete сохраняется даже без refresh-сессий, повторный service transition идемпотентен.
+- [x] Устранить zombie-account: `/auth/anonymize` теперь выполняет полноценный soft-delete и отзыв токенов.
+- [x] Защитить hard purge: staging/production + feature flag + contractor identity + отдельный ops-secret + exact confirmation phrase.
+- [x] Определить текущую policy: soft-delete сохраняет финансовые/audit records; hard purge не получает опасный cascade-delete и может быть заблокирован FK до отдельной retention policy.
+- [x] Удалить legacy lifecycle routes из runtime registry по path+method, сохранив `GET /auth/me`.
+- [x] Добавить transaction/runtime/source tests и обязательный CI gate.
+- [x] Green `e2e` + PostgreSQL Alembic — CI run #1660.
+- [x] Green `playwright` — CI run #1660.
+- [x] Green `mobile-contracts` — CI run #1660.
+- [x] PR #108 merged в `main`: `c89748944e5bbbe62587f8706ec3d26133d1a649`.
+- [ ] Спроектировать first-class admin/ops role вместо долгосрочного использования contractor + independent ops secret.
+- [ ] Спроектировать retention/anonymization policy для FK-связанных финансовых и проектных записей.
+- [ ] При появлении password/recovery flow добавить single-use persisted token, atomic consume и revoke-all после recovery.
 
 ## Wave X.4 — Outbox and background effects
 
 - [ ] Unknown event не должен считаться успешно обработанным.
-- [ ] Ошибка handler сохраняет retryable state и last_error.
+- [ ] Ошибка handler сохраняет retryable state и `last_error`.
 - [ ] Есть max attempts / poison event policy.
 - [ ] Повторная доставка не дублирует notification/activity/document.
+- [ ] Worker claim конкурентно single-winner между процессами.
 - [ ] Worker shutdown не теряет claimed event.
 - [ ] Метрики backlog/age/failures доступны health/ops.
+- [ ] Inline `dispatch_pending` после route commit не маскирует ошибки и не подменяет durable worker.
 
 ## Wave X.5 — Product journey revalidation
 
