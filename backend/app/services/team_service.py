@@ -110,11 +110,12 @@ async def invite_phone(db: AsyncSession, team_id: str, phone: str, role: str = "
     u = r.scalar_one_or_none()
     if not u or u.role.value != "contractor":
         return {"ok": False, "message": "Исполнитель не найден"}
+    user_id = u.id
 
     _member, created = await ensure_team_membership(
         db,
         team_id=team_id,
-        user_id=u.id,
+        user_id=user_id,
         role=role,
     )
     if not created:
@@ -127,7 +128,7 @@ async def invite_phone(db: AsyncSession, team_id: str, phone: str, role: str = "
 
         await ns.notify(
             db,
-            user_id=u.id,
+            user_id=user_id,
             project_id=None,
             notification_type="chat_message",
             title="Приглашение в бригаду",
@@ -139,9 +140,9 @@ async def invite_phone(db: AsyncSession, team_id: str, phone: str, role: str = "
         logger.exception(
             "team membership notification failed team_id=%s user_id=%s",
             team_id,
-            u.id,
+            user_id,
         )
-    return {"ok": True, "user_id": u.id}
+    return {"ok": True, "user_id": user_id}
 
 
 async def team_owner_ids(db: AsyncSession, user_id: str) -> set[str]:
