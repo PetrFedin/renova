@@ -12,17 +12,17 @@
 - проект только с planned-этапами или без этапов ошибочно назывался завершённым;
 - завершение личных работ исполнителя могло быть показано как завершение всего проекта.
 
-## Новая архитектура
+## Финальная архитектура
 
-1. `project_dashboard.py` является единственным runtime-маршрутом dashboard.
-2. Legacy-маршрут удаляется из `projects.router` до регистрации. Замена fail-closed: приложение не стартует, если найдено не ровно одно legacy-описание.
+1. В `projects.py` существует ровно один `GET /projects/{project_id}/dashboard`.
+2. Отдельный `project_dashboard.py`, router-detach и runtime-подмена маршрута удалены. В репозитории нет второй, мёртвой или опасной реализации endpoint.
 3. `dashboard_integrity_service.stages_for_user` возвращает новый role-scoped список и никогда не присваивает его ORM relationship.
 4. Dashboard строится из detached read projection через `SimpleNamespace`, поэтому построение панели не может изменить объект SQLAlchemy.
 5. Enrichment выполняется в отдельной сессии. Ошибка вторичного чтения не портит request session и явно возвращается как:
    - `degraded=true`;
    - `data_quality.actions=unavailable`;
    - пользовательский alert.
-6. GET dashboard больше не создаёт `MarginSnapshot` и не выполняет commit. Снимки маржи должны формироваться только отдельным write/event/scheduled-процессом.
+6. GET dashboard не создаёт `MarginSnapshot`, не вызывает `db.add` и не выполняет commit. Снимки маржи должны формироваться только отдельным write/event/scheduled-процессом.
 7. Terminal action `completed` для всего проекта возвращается только когда существуют этапы и все project stages имеют статус `done`.
 8. Состояния разделены:
    - planned-only — `Следующий этап: ...`;
@@ -42,9 +42,10 @@
 - завершение assignment не маскируется под global completion;
 - отсутствие назначений не выдаётся за пустой проект;
 - ошибка enrichment не скрывается;
-- в собранном API существует ровно один dashboard-route;
-- endpoint не содержит `db.add`, `db.commit` или `MarginSnapshot`;
-- canonical route регистрируется раньше общего projects router;
-- замена legacy-route остаётся fail-closed.
+- в собранном API существует ровно один dashboard-route из `app.api.v1.projects`;
+- в исходниках существует ровно один dashboard decorator;
+- dashboard-блок не содержит `db.add`, `db.commit`, `MarginSnapshot`, ORM-присваивания или silent exception;
+- отдельный `project_dashboard.py` отсутствует;
+- router не содержит runtime mutation или transitional detach.
 
 Тест включён в обязательный backend CI рядом с финансовыми, OCR, FNS, NPD и PDF integrity checks.

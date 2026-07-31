@@ -11,6 +11,7 @@ from app.services import project_service as svc
 from app.services.stage_service import parse_room_ids
 from app.services import room_service as room_svc
 from app.services import project_document_service as docs_svc
+from app.services import dashboard_integrity_service as dashboard_svc
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -268,24 +269,22 @@ async def get_project(project_id: str, user: User = Depends(get_current_user), d
 
 
 @router.get("/{project_id}/dashboard")
-async def dashboard(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await require_project(db, project_id, user, write=False)
-    if user.role == UserRole.contractor:
-        p.stages = _filter_stages_for_user(p, user)
-    from app.models.entities import MarginSnapshot
-    dash = svc.build_dashboard(p)
-    try:
-        role = getattr(getattr(user, "role", None), "value", None) or str(getattr(user, "role", "") or "")
-        dash = await svc.enrich_dashboard_actions(db, project_id, dash, role=role)
-    except Exception:
-        pass
-    try:
-        margin = p.budget_planned - p.budget_spent
-        db.add(MarginSnapshot(project_id=project_id, margin_estimated=margin))
-        await db.commit()
-    except Exception:
-        pass
-    return dash
+async def dashboard(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await require_project(db, project_id, user, write=False)
+    stages = dashboard_svc.stages_for_user(project, user)
+    result = dashboard_svc.build_dashboard_read_model(project, stages=stages)
+    role = getattr(getattr(user, "role", None), "value", None) or str(
+        getattr(user, "role", "") or ""
+    )
+    return await dashboard_svc.enrich_dashboard_read_only(
+        project_id,
+        result,
+        role=role,
+    )
 
 
 @router.post("/{project_id}/stages/{stage_id}/submit")
@@ -420,4 +419,3 @@ async def remove_viewer(project_id: str, viewer_user_id: str, user: User = Depen
     await db.execute(delete(ProjectViewer).where(ProjectViewer.project_id == project_id, ProjectViewer.user_id == viewer_user_id))
     await db.commit()
     return {"ok": True}
-

@@ -182,28 +182,40 @@ def test_api_router_exposes_exactly_one_canonical_dashboard_route():
     ]
 
     assert len(matches) == 1
-    assert matches[0].endpoint.__module__ == "app.api.v1.project_dashboard"
+    assert matches[0].endpoint.__module__ == "app.api.v1.projects"
 
 
-def test_canonical_dashboard_endpoint_is_read_only_by_source_contract():
+def test_dashboard_endpoint_is_read_only_by_source_contract():
     backend = Path(__file__).resolve().parents[1]
-    source = (backend / "app" / "api" / "v1" / "project_dashboard.py").read_text(
+    source = (backend / "app" / "api" / "v1" / "projects.py").read_text(
+        encoding="utf-8"
+    )
+    start = source.index('@router.get("/{project_id}/dashboard")')
+    end = source.index(
+        '@router.post("/{project_id}/stages/{stage_id}/submit")',
+        start,
+    )
+    block = source[start:end]
+
+    assert "p.stages =" not in block
+    assert "db.commit" not in block
+    assert "db.add" not in block
+    assert "MarginSnapshot" not in block
+    assert "except Exception" not in block
+    assert "build_dashboard_read_model" in block
+    assert "enrich_dashboard_read_only" in block
+
+
+def test_dashboard_route_has_single_source_definition():
+    backend = Path(__file__).resolve().parents[1]
+    projects_source = (backend / "app" / "api" / "v1" / "projects.py").read_text(
+        encoding="utf-8"
+    )
+    router_source = (backend / "app" / "api" / "v1" / "router.py").read_text(
         encoding="utf-8"
     )
 
-    assert "db.commit" not in source
-    assert "db.add" not in source
-    assert "MarginSnapshot" not in source
-    assert "build_dashboard_read_model" in source
-    assert "enrich_dashboard_read_only" in source
-
-
-def test_router_replacement_is_fail_closed():
-    backend = Path(__file__).resolve().parents[1]
-    source = (backend / "app" / "api" / "v1" / "router.py").read_text(encoding="utf-8")
-
-    assert "len(matches) != 1" in source
-    assert "projects.router.routes.remove(matches[0])" in source
-    assert source.index("api_router.include_router(project_dashboard.router)") < source.index(
-        "api_router.include_router(projects.router)"
-    )
+    assert projects_source.count('@router.get("/{project_id}/dashboard")') == 1
+    assert "project_dashboard" not in router_source
+    assert "_detach_legacy_project_dashboard_route" not in router_source
+    assert not (backend / "app" / "api" / "v1" / "project_dashboard.py").exists()
