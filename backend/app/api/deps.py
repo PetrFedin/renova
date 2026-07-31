@@ -1,17 +1,60 @@
 """API dependencies — JWT Bearer (SoT); X-User-Id only in allow_header profiles."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import Depends, Header, HTTPException
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import bearer_user_id
+from app.core.security import bearer_user_id, decode_access_token
 from app.db.session import get_db
 from app.models.entities import Project, User
 from app.services import project_service as proj_svc
 from app.services import team_service as team_svc
+from app.services.access_token_guard import (
+    AccessTokenGuardError,
+    AccessTokenRevoked,
+    assert_access_token_not_revoked,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _bearer_token(authorization: str) -> str:
+    parts = authorization.strip().split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+        raise HTTPException(401, "Недействительный Authorization")
+    return parts[1].strip()
+
+
+def _validate_access_session(
+    authorization: str,
+    *,
+    user_id: str,
+    invalid_before,
+) -> None:
+    token = _bearer_token(authorization)
+    try:
+        payload = decode_access_token(token)
+    except JWTError:
+        raise HTTPException(401, "Недействительный или просроченный токен") from None
+    except Exception:
+        logger.exception("access token validation failed user_id=%s", user_id)
+        raise HTTPException(401, "session_validation_failed") from None
+
+    try:
+        assert_access_token_not_revoked(
+            payload,
+            user_id=user_id,
+            invalid_before=invalid_before,
+        )
+    except AccessTokenRevoked:
+        raise HTTPException(401, "session_revoked") from None
+    except AccessTokenGuardError as exc:
+        raise HTTPException(401, str(exc)) from None
 
 
 async def resolve_user_id(
@@ -24,6 +67,9 @@ async def resolve_user_id(
             uid = bearer_user_id(authorization)
         except JWTError:
             raise HTTPException(401, "Недействительный или просроченный токен") from None
+        except Exception:
+            logger.exception("access token parsing failed")
+            raise HTTPException(401, "token_validation_failed") from None
         if uid:
             return uid
         raise HTTPException(401, "Недействительный Authorization")
@@ -52,27 +98,14 @@ async def get_current_user(
         raise HTTPException(401, "Пользователь не найден")
     if getattr(user, "deleted_at", None):
         raise HTTPException(401, "account_deleted")
-    # P1.8: revoke-all invalidates access JWT issued before tokens_invalid_before
+
     cutoff = getattr(user, "tokens_invalid_before", None)
     if cutoff is not None and authorization:
-        try:
-            from app.core.security import decode_access_token
-            from jose import JWTError
-
-            parts = authorization.strip().split(None, 1)
-            if len(parts) == 2 and parts[0].lower() == "bearer":
-                payload = decode_access_token(parts[1].strip())
-                iat = payload.get("iat")
-                if iat is not None:
-                    from datetime import datetime, timezone
-
-                    iat_dt = datetime.fromtimestamp(int(iat), tz=timezone.utc).replace(tzinfo=None)
-                    if iat_dt < cutoff:
-                        raise HTTPException(401, "session_revoked")
-        except HTTPException:
-            raise
-        except Exception:
-            pass
+        _validate_access_session(
+            authorization,
+            user_id=user.id,
+            invalid_before=cutoff,
+        )
     return user
 
 
