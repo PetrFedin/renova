@@ -1,0 +1,63 @@
+"""Read-only dashboard composition and explicit degradation semantics."""
+from __future__ import annotations
+
+import logging
+from types import SimpleNamespace
+from typing import Iterable
+
+from app.db.session import SessionLocal
+from app.services import project_service as project_svc
+
+logger = logging.getLogger(__name__)
+
+_DEGRADED_ALERT = "Часть данных панели временно недоступна"
+
+
+def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
+    """Build dashboard from a detached projection without mutating ORM relationships."""
+    scoped_stages = list(stages)
+    projection = SimpleNamespace(
+        id=project.id,
+        name=project.name,
+        stages=scoped_stages,
+        estimate_lines=list(getattr(project, "estimate_lines", None) or []),
+        budget_planned=getattr(project, "budget_planned", 0) or 0,
+        budget_spent=getattr(project, "budget_spent", 0) or 0,
+        vat_rate=getattr(project, "vat_rate", 0) or 0,
+        planned_start_date=getattr(project, "planned_start_date", None),
+        planned_end_date=getattr(project, "planned_end_date", None),
+        payments=list(getattr(project, "payments", None) or []),
+    )
+    dashboard = project_svc.build_dashboard(projection)
+    if dashboard.get("next_action_title") == "Проект завершён":
+        dashboard["next_action_type"] = "completed"
+    return dashboard
+
+
+async def enrich_dashboard_read_only(project_id: str, dashboard: dict, *, role: str | None) -> dict:
+    """Enrich in an isolated session so an optional query cannot poison the request session."""
+    result = dict(dashboard)
+    try:
+        async with SessionLocal() as db:
+            result = await project_svc.enrich_dashboard_actions(db, project_id, result, role=role)
+    except Exception:
+        logger.exception("dashboard enrichment unavailable project_id=%s", project_id)
+        alerts = list(result.get("alerts") or [])
+        if _DEGRADED_ALERT not in alerts:
+            alerts.append(_DEGRADED_ALERT)
+        result["alerts"] = alerts
+        result["degraded"] = True
+        result["data_quality"] = {
+            "actions": "unavailable",
+            "dashboard_read": "ready",
+            "margin_snapshot": "read_only_no_write",
+        }
+        return result
+
+    result["degraded"] = False
+    result["data_quality"] = {
+        "actions": "ready",
+        "dashboard_read": "ready",
+        "margin_snapshot": "read_only_no_write",
+    }
+    return result
