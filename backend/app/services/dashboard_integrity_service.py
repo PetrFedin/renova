@@ -37,6 +37,7 @@ def stages_for_user(project, user) -> list:
 
 def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
     """Build dashboard from a detached projection without mutating ORM relationships."""
+    project_stages = list(getattr(project, "stages", None) or [])
     scoped_stages = list(stages)
     projection = SimpleNamespace(
         id=project.id,
@@ -53,15 +54,26 @@ def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
     dashboard = project_svc.build_dashboard(projection)
 
     planned = next((stage for stage in scoped_stages if _status_value(stage) == "planned"), None)
-    all_done = bool(scoped_stages) and all(_status_value(stage) == "done" for stage in scoped_stages)
+    scoped_all_done = bool(scoped_stages) and all(
+        _status_value(stage) == "done" for stage in scoped_stages
+    )
+    project_all_done = bool(project_stages) and all(
+        _status_value(stage) == "done" for stage in project_stages
+    )
 
     if planned is not None:
         dashboard["next_action_title"] = f"Следующий этап: {planned.name}"
         dashboard["next_action_type"] = "review_estimate"
-    elif all_done:
+    elif scoped_all_done and project_all_done:
         dashboard["next_action_title"] = "Проект завершён"
         dashboard["next_action_type"] = "completed"
-    elif not scoped_stages:
+    elif scoped_all_done:
+        dashboard["next_action_title"] = "Назначенные работы выполнены"
+        dashboard["next_action_type"] = "completed"
+    elif not scoped_stages and project_stages:
+        dashboard["next_action_title"] = "Нет назначенных этапов"
+        dashboard["next_action_type"] = "review_estimate"
+    elif not project_stages:
         dashboard["next_action_title"] = "Добавьте этапы и смету"
         dashboard["next_action_type"] = "review_estimate"
     elif dashboard.get("next_action_title") == "Проект завершён":
