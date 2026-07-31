@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI Playwright: API E2E (:8100) and optional UI E2E (+ :8081 Expo web).
+# CI Playwright: API E2E (:8100) and UI E2E (+ :8081 Expo web).
 # Usage: bash scripts/ci-playwright.sh [api|ui|all]
 set -euo pipefail
 
@@ -70,8 +70,10 @@ run_api_e2e() {
 run_ui_e2e() {
   start_api "./ci-playwright-ui.db"
   start_expo_web
-  npm run e2e:portal-ui
-  npm run e2e:contract-gate-ui
+  npx playwright test -c e2e/playwright.config.ts \
+    e2e/portal-documents-ui.spec.ts \
+    e2e/contract-gate-ui.spec.ts \
+    e2e/mobile-surface-integrity.spec.ts
   npm run cleanup:e2e-gate || true
 }
 
