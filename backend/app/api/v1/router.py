@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from app.api.v1 import portal
 from app.api.v1 import portal_change_order_decisions
 from app.api.v1 import account_lifecycle
+from app.api.v1 import document_lifecycle
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -41,6 +42,27 @@ api_router.include_router(stages_ext.router)
 api_router.include_router(project_checklists.router)
 api_router.include_router(checklist_templates.router)
 api_router.include_router(stage_reactions.router)
+
+# Signature/archive state and required side effects must share one transaction.
+_DOCUMENT_LIFECYCLE_ROUTES = {
+    ("/projects/{project_id}/documents/{document_id}/sign", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/archive", "POST"),
+}
+
+
+def _is_replaced_document_route(route) -> bool:
+    path = getattr(route, "path", None)
+    methods = set(getattr(route, "methods", set()) or set())
+    return any(
+        path == target_path and method in methods
+        for target_path, method in _DOCUMENT_LIFECYCLE_ROUTES
+    )
+
+
+documents.router.routes[:] = [
+    route for route in documents.router.routes if not _is_replaced_document_route(route)
+]
+api_router.include_router(document_lifecycle.router)
 api_router.include_router(documents.router)
 api_router.include_router(esign.router)
 api_router.include_router(ocr_worker.router)
