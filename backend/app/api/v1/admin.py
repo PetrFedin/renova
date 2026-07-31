@@ -45,7 +45,10 @@ async def revenue_chart(user: User = Depends(get_current_user), db: AsyncSession
     return out
 
 @router.get("/release-health")
-async def release_health(user: User = Depends(get_current_user)):
+async def release_health(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
     from app.core.config import settings
@@ -53,6 +56,7 @@ async def release_health(user: User = Depends(get_current_user)):
     from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.automation_reminders_worker import automation_worker_metrics
     from app.services.esign import list_providers
+    from app.services.outbox_service import runtime_snapshot as outbox_runtime_snapshot
 
     yk = yookassa_health()
     fns = fns_receipt_health()
@@ -91,6 +95,7 @@ async def release_health(user: User = Depends(get_current_user)):
                 "healthy": int(worker.get("consecutive_failures") or 0) < 3,
                 "consecutive_failures": worker.get("consecutive_failures"),
             },
+            "outbox": await outbox_runtime_snapshot(db),
         },
     }
 
