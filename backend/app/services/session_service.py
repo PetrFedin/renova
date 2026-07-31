@@ -124,7 +124,13 @@ async def revoke_session(db: AsyncSession, refresh_token: str) -> bool:
     return revoked
 
 
-async def revoke_all_user_sessions(db: AsyncSession, user_id: str) -> int:
+async def revoke_all_user_sessions(
+    db: AsyncSession,
+    user_id: str,
+    *,
+    commit: bool = True,
+) -> int:
+    """Revoke every active refresh session, optionally inside the caller transaction."""
     result = await db.execute(
         update(UserSession)
         .where(
@@ -135,8 +141,8 @@ async def revoke_all_user_sessions(db: AsyncSession, user_id: str) -> int:
         .returning(UserSession.id)
     )
     revoked_ids = result.scalars().all()
-    if revoked_ids:
+    if commit:
+        # A zero-row update is still a valid operation. Never rollback unrelated
+        # pending account mutations merely because there were no active sessions.
         await db.commit()
-    else:
-        await db.rollback()
     return len(revoked_ids)
