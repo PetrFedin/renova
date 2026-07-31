@@ -93,6 +93,43 @@ def test_completed_dashboard_has_terminal_action_type():
     assert dashboard["next_action_type"] == "completed"
 
 
+def test_assignment_completion_does_not_claim_global_project_completion():
+    assigned_done = _stage(
+        "assigned",
+        status=StageStatus.done,
+        percent=100,
+        order=1,
+        assignee_id="contractor-1",
+    )
+    hidden_active = _stage(
+        "hidden",
+        status=StageStatus.active,
+        percent=20,
+        order=2,
+        assignee_id="contractor-2",
+    )
+    project = _project([assigned_done, hidden_active])
+
+    dashboard = dashboard_svc.build_dashboard_read_model(project, stages=[assigned_done])
+
+    assert dashboard["next_action_title"] == "Назначенные работы выполнены"
+    assert dashboard["next_action_type"] == "completed"
+
+
+def test_contractor_without_visible_stages_is_not_told_to_add_project_stages():
+    hidden = _stage(
+        "hidden",
+        status=StageStatus.active,
+        percent=20,
+        order=1,
+        assignee_id="contractor-2",
+    )
+    dashboard = dashboard_svc.build_dashboard_read_model(_project([hidden]), stages=[])
+
+    assert dashboard["next_action_title"] == "Нет назначенных этапов"
+    assert dashboard["next_action_type"] == "review_estimate"
+
+
 def test_planned_only_dashboard_is_not_marked_completed():
     planned = _stage("planned", status=StageStatus.planned, percent=0, order=1)
     dashboard = dashboard_svc.build_dashboard_read_model(
