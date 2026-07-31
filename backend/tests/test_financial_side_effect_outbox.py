@@ -24,7 +24,7 @@ import app.models.work_schedule  # noqa: F401
 from app.models.outbox_runtime import DomainOutboxLease, SideEffectDelivery
 from app.services import activity_service, notification_service, outbox_service
 from app.services.client_write_idempotency import commit_client_write
-from app.services.payment_service import prepare_payment
+from app.services.payment_service import create_payment, prepare_payment
 
 
 @pytest_asyncio.fixture
@@ -51,6 +51,51 @@ async def seed_project(db):
     db.add_all([customer, contractor, project])
     await db.flush()
     return customer, contractor, project
+
+
+@pytest.mark.asyncio
+async def test_legacy_payment_creation_commits_entity_and_outbox_atomically(outbox_db):
+    _, contractor, project = await seed_project(outbox_db)
+
+    payment = await create_payment(
+        outbox_db,
+        project.id,
+        contractor.id,
+        "Штукатурка",
+        125000,
+        "stage",
+    )
+
+    assert await outbox_db.get(Payment, payment.id) is not None
+    assert (await outbox_db.scalar(select(func.count()).select_from(Payment))) == 1
+    assert (await outbox_db.scalar(select(func.count()).select_from(DomainOutbox))) == 1
+    assert (await outbox_db.scalar(select(func.count()).select_from(DomainOutboxLease))) == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_payment_creation_rolls_back_when_outbox_prepare_fails(outbox_db, monkeypatch):
+    _, contractor, project = await seed_project(outbox_db)
+    await outbox_db.commit()
+    monkeypatch.setattr(
+        outbox_service,
+        "enqueue",
+        AsyncMock(side_effect=RuntimeError("outbox_prepare_failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="outbox_prepare_failed"):
+        await create_payment(
+            outbox_db,
+            project.id,
+            contractor.id,
+            "Штукатурка",
+            125000,
+            "stage",
+        )
+
+    assert await outbox_db.get(Project, project.id) is not None
+    assert (await outbox_db.scalar(select(func.count()).select_from(Payment))) == 0
+    assert (await outbox_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
+    assert (await outbox_db.scalar(select(func.count()).select_from(DomainOutboxLease))) == 0
 
 
 @pytest.mark.asyncio
