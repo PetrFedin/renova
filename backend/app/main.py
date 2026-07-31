@@ -179,48 +179,66 @@ if settings.sentry_dsn:
 
 app = FastAPI(title=settings.app_name, version="0.3.7", lifespan=lifespan)
 
-# CORS: explicit allowlist in staging/production; localhost defaults only for dev/test.
-_origins = [item.strip() for item in settings.cors_allowed_origins.split(",") if item.strip()]
-if not _origins and settings.normalized_environment in ("development", "test"):
-    _origins = [
-        "http://localhost:8081",
-        "http://127.0.0.1:8081",
-        "http://localhost:19006",
-        "http://127.0.0.1:19006",
-    ]
+
+@app.exception_handler(InvalidStorageKey)
+async def invalid_storage_key_handler(_: Request, __: InvalidStorageKey):
+    return JSONResponse(status_code=400, content={"detail": "Некорректный ключ файла"})
+
+
+async def storage_unavailable_handler(_: Request, __: Exception):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Хранилище временно недоступно. Повторите попытку позже."},
+    )
+
+
+app.add_exception_handler(StorageConfigurationError, storage_unavailable_handler)
+app.add_exception_handler(StorageUnavailable, storage_unavailable_handler)
+
+app.add_middleware(CorrelationIdMiddleware)
+app.add_middleware(AuditMiddleware)
+app.add_middleware(RateLimitMiddleware)
+
+
+def _cors_origins() -> tuple[list[str], bool]:
+    raw = (settings.cors_allowed_origins or "").strip()
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    environment = settings.normalized_environment
+    if not origins:
+        if environment in ("development", "test"):
+            return ["*"], False
+        base = (settings.public_base_url or "").rstrip("/")
+        return ([base] if base else []), True
+    if origins == ["*"]:
+        return ["*"], False
+    return origins, True
+
+
+_cors_origin_list, _cors_credentials = _cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID"],
+    allow_origins=_cors_origin_list,
+    allow_credentials=_cors_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-app.add_middleware(RateLimitMiddleware)
-app.add_middleware(AuditMiddleware)
-app.add_middleware(CorrelationIdMiddleware)
-app.include_router(api_router)
-if FastAPIInstrumentor is not None:
+
+if FastAPIInstrumentor:
     try:
         FastAPIInstrumentor.instrument_app(app)
     except Exception:
         pass
+app.include_router(api_router)
+from app.api.v1 import ws
 
-
-@app.exception_handler(StorageUnavailable)
-async def storage_unavailable_handler(_request: Request, exc: StorageUnavailable):
-    return JSONResponse(status_code=503, content={"detail": str(exc)})
-
-
-@app.exception_handler(StorageConfigurationError)
-async def storage_configuration_handler(_request: Request, exc: StorageConfigurationError):
-    return JSONResponse(status_code=503, content={"detail": str(exc)})
-
-
-@app.exception_handler(InvalidStorageKey)
-async def invalid_storage_key_handler(_request: Request, exc: InvalidStorageKey):
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+app.include_router(ws.router)
 
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "environment": settings.normalized_environment}
+    return {
+        "status": "ok",
+        "service": "renova-api",
+        "version": "0.3.7",
+        "environment": settings.normalized_environment,
+    }
