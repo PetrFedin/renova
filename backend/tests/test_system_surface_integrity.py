@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 
 from fastapi.routing import APIRoute
 
@@ -8,6 +9,8 @@ from app.main import app
 
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+PATH_PARAMETER_PATTERN = re.compile(r"\{([^{}]+)\}")
 
 
 def _api_routes() -> list[APIRoute]:
@@ -31,7 +34,7 @@ def test_openapi_operation_ids_are_unique_and_present() -> None:
 
     for path, path_item in schema.get("paths", {}).items():
         for method, operation in path_item.items():
-            if method.upper() not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+            if method.upper() not in HTTP_METHODS:
                 continue
             operation_id = operation.get("operationId")
             if not operation_id:
@@ -76,15 +79,17 @@ def test_path_parameters_match_openapi_declarations() -> None:
     violations: list[str] = []
 
     for path, path_item in schema.get("paths", {}).items():
-        declared_in_path = {
-            part[1:-1]
-            for part in path.split("/")
-            if part.startswith("{") and part.endswith("}")
+        declared_in_path = set(PATH_PARAMETER_PATTERN.findall(path))
+        shared_parameters = path_item.get("parameters", [])
+        shared_path_parameters = {
+            parameter.get("name")
+            for parameter in shared_parameters
+            if parameter.get("in") == "path"
         }
         for method, operation in path_item.items():
-            if method.upper() not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+            if method.upper() not in HTTP_METHODS:
                 continue
-            declared_by_operation = {
+            declared_by_operation = shared_path_parameters | {
                 parameter.get("name")
                 for parameter in operation.get("parameters", [])
                 if parameter.get("in") == "path"
