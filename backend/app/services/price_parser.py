@@ -1,33 +1,138 @@
-"""Парсинг цен по URL (Petrovich/Leroy/OBI) с fallback."""
-import re
+"""Fetch verifiable product prices without fabricated fallbacks."""
+from __future__ import annotations
 
-SHOPS = {"lemanapro": (400, 14000), "lemana": (400, 14000), "leroymerlin": (500, 12000), "leroy": (500, 12000), "petrovich": (800, 15000), "obi": (600, 10000)}
-PRICE_RE = re.compile(r"(\d{1,3}(?:[\s\u00a0]?\d{3})*(?:[.,]\d{2})?)\s*(?:₽|руб|RUB)?", re.I)
+import asyncio
+import ipaddress
+import re
+import socket
+from urllib.parse import urlparse
+
+
+SHOPS = {
+    "lemanapro": "lemanapro",
+    "lemana": "lemanapro",
+    "leroymerlin": "leroymerlin",
+    "leroy": "leroymerlin",
+    "petrovich": "petrovich",
+    "obi": "obi",
+}
+
+_STRUCTURED_PRICE_PATTERNS = (
+    re.compile(r'"price"\s*:\s*"?(\d+(?:[.,]\d{1,2})?)"?', re.I),
+    re.compile(
+        r'itemprop=["\']price["\'][^>]{0,300}?content=["\'](\d+(?:[.,]\d{1,2})?)["\']',
+        re.I,
+    ),
+    re.compile(
+        r'content=["\'](\d+(?:[.,]\d{1,2})?)["\'][^>]{0,300}?itemprop=["\']price["\']',
+        re.I,
+    ),
+    re.compile(r'data-price=["\'](\d+(?:[.,]\d{1,2})?)["\']', re.I),
+)
+
+
+class PriceUnavailable(RuntimeError):
+    """A live price could not be verified; callers must preserve existing truth."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def _shop_for_url(url: str) -> str:
+    lowered = url.lower()
+    for marker, canonical in SHOPS.items():
+        if marker in lowered:
+            return canonical
+    return "generic"
+
+
+def _is_public_ip(value: str) -> bool:
+    address = ipaddress.ip_address(value)
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    )
+
+
+async def _validate_public_http_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise PriceUnavailable("invalid_price_url")
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname == "localhost" or hostname.endswith(".localhost") or hostname.endswith(".local"):
+        raise PriceUnavailable("private_price_url")
+
+    try:
+        literal = ipaddress.ip_address(hostname)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        if not _is_public_ip(str(literal)):
+            raise PriceUnavailable("private_price_url")
+        return
+
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        addresses = await asyncio.get_running_loop().getaddrinfo(
+            hostname,
+            port,
+            type=socket.SOCK_STREAM,
+        )
+    except OSError as error:
+        raise PriceUnavailable("price_host_unresolvable") from error
+    if not addresses:
+        raise PriceUnavailable("price_host_unresolvable")
+    for address in addresses:
+        resolved_ip = address[4][0]
+        if not _is_public_ip(resolved_ip):
+            raise PriceUnavailable("private_price_url")
+
+
+def _extract_structured_prices(html: str) -> list[float]:
+    prices: list[float] = []
+    for pattern in _STRUCTURED_PRICE_PATTERNS:
+        for match in pattern.finditer(html[:500_000]):
+            try:
+                value = float(match.group(1).replace(",", "."))
+            except (TypeError, ValueError):
+                continue
+            if 10 < value < 500_000:
+                prices.append(round(value, 2))
+    return prices
+
 
 async def fetch_price(url: str, current: float = 0) -> tuple[float, str, str]:
-    u = url.lower()
-    shop = "generic"
-    for key in SHOPS:
-        if key in u: shop = key; break
+    """Return a verified live price or raise without changing the current price.
+
+    `current` is accepted for backward compatibility and is never used as a
+    fabricated success fallback.
+    """
+    del current
+    await _validate_public_http_url(url)
+    shop = _shop_for_url(url)
+
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-            r = await client.get(url, headers={"User-Agent": "RenovaBot/1.0"})
-            if r.status_code == 200:
-                nums = []
-                for m in PRICE_RE.finditer(r.text[:120000]):
-                    raw = m.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
-                    try:
-                        v = float(raw)
-                        if 10 < v < 500000: nums.append(v)
-                    except ValueError:
-                        pass
-                if nums:
-                    return round(sorted(nums)[0], 2), shop, "live"
-    except Exception:
-        pass
-    # Investor P1 honesty: stub ≠ рынок. Не крутим random ±3% — фиксируем текущую/середину диапазона.
-    if current and current > 0:
-        return round(float(current), 2), shop, "stub"
-    lo, hi = SHOPS.get(shop, (500, 5000))
-    return round((lo + hi) / 2, 2), shop, "stub"
+            response = await client.get(
+                url,
+                headers={"User-Agent": "RenovaBot/1.0"},
+            )
+    except Exception as error:  # noqa: BLE001 - converted into explicit domain failure
+        raise PriceUnavailable("price_request_failed") from error
+
+    if response.status_code != 200:
+        raise PriceUnavailable(f"price_http_{response.status_code}")
+    prices = _extract_structured_prices(response.text)
+    if not prices:
+        raise PriceUnavailable("structured_price_not_found")
+
+    # Structured product pages may repeat the same offer in JSON-LD and meta tags.
+    # The first structured occurrence is preferable to arbitrary min/max selection.
+    return prices[0], shop, "live_structured"
