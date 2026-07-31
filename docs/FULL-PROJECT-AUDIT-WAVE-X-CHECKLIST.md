@@ -1,8 +1,8 @@
 # Renova — Wave X execution checklist
 
 **Source of truth:** `FULL-PROJECT-AUDIT-2026-07-31.md`  
-**Current `main`:** `6547630ba8f4ff06fb2be9607fe5eb7f658d9ee7`  
-**Current branch:** `agent/otp-atomic-consume`
+**Current `main`:** `e54581a76e6c2255cb65dce28e6743f3236e0fcb`  
+**Current wave:** recovery/account lifecycle audit
 
 ## Wave X.1 — Portal change-order authorization
 
@@ -34,10 +34,10 @@
 - [x] Добавить concurrent tests: 16 параллельных verify → ровно один success.
 - [x] Добавить source guard против возврата к read-then-delete.
 - [x] Добавить тест в обязательный backend CI gate.
-- [ ] Получить green `e2e` + PostgreSQL Alembic.
-- [ ] Получить green `playwright`.
-- [ ] Получить green `mobile-contracts`.
-- [ ] Merge PR в `main` и записать SHA.
+- [x] Green `e2e` + PostgreSQL Alembic — CI run #1643.
+- [x] Green `playwright` — CI run #1643.
+- [x] Green `mobile-contracts` — CI run #1643.
+- [x] PR #107 merged в `main`: `e54581a76e6c2255cb65dce28e6743f3236e0fcb`.
 - [ ] Отдельно проверить expiry boundary и Redis clock/TTL semantics.
 - [ ] Отдельно проверить rate-limit dimensions: phone/IP/device и enumeration resistance.
 
