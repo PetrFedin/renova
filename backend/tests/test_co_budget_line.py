@@ -21,7 +21,6 @@ async def test_co_approve_adds_budget_line(db):
         budget_spent=0,
     )
     db.add(project)
-    # W45 SoT: budget_planned = Σ estimate + Σ approved CO (не seed budget_planned)
     db.add(
         EstimateLine(
             project_id=project.id,
@@ -47,7 +46,7 @@ async def test_co_approve_adds_budget_line(db):
     lines = (
         await db.execute(select(BudgetLine).where(BudgetLine.project_id == project.id))
     ).scalars().all()
-    co_lines = [bl for bl in lines if "[co:" in bl.description]
+    co_lines = [line for line in lines if "[co:" in line.description]
     assert len(co_lines) == 1
     assert co_lines[0].planned_amount == 15000.0
     assert co_lines[0].category == "works"
@@ -71,12 +70,15 @@ async def test_co_approve_budget_line_idempotent(db):
     await db.commit()
 
     co = await co_svc.create_order(db, project.id, contractor.id, "Штукатурка", 8000.0, None)
-    await co_svc.approve(db, co.id)
+    first = await co_svc.approve(db, co.id)
     second = await co_svc.approve(db, co.id)
-    assert second is None
+    assert first is not None
+    assert second is not None
+    assert second.id == first.id
+    assert second.status == ChangeOrderStatus.approved
 
     lines = (
         await db.execute(select(BudgetLine).where(BudgetLine.project_id == project.id))
     ).scalars().all()
-    co_lines = [bl for bl in lines if "[co:" in bl.description]
+    co_lines = [line for line in lines if "[co:" in line.description]
     assert len(co_lines) == 1
