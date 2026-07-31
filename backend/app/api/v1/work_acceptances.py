@@ -22,8 +22,6 @@ from app.models.entities import (
     UserRole,
     WorkAcceptance,
 )
-from app.services import activity_service as act
-from app.services import notification_service as notif
 
 router = APIRouter(prefix="/projects", tags=["work-acceptances"])
 
@@ -178,31 +176,32 @@ async def request_acceptance(
     stage.contractor_ready_at = stage.contractor_ready_at or utc_now()
     stage.percent_complete = max(stage.percent_complete or 0, 90)
     db.add(row)
-    await db.commit()
+
+    from app.services.work_acceptance_side_effects import prepare_request_effects
+
+    try:
+        await db.flush()
+        await prepare_request_effects(
+            db,
+            project=project,
+            stage=stage,
+            acceptance=row,
+            requested_by=user.id,
+            comment=body.comment,
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
     await db.refresh(row)
 
-    await act.log_event(
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(
         db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="AcceptanceRequested",
-        title=f"Этап на приёмке: {stage.name}",
-        body=body.comment,
-        link_path=f"/stage/{stage.id}",
+        source="work_acceptance.request",
+        limit=10,
     )
-    for member_id in project_member_ids(project):
-        if member_id == user.id:
-            continue
-        await notif.notify(
-            db,
-            user_id=member_id,
-            project_id=project_id,
-            notification_type="stage_review",
-            title=f"Этап ждёт приёмки: {stage.name}",
-            body=body.comment or "Проверьте результат работ и примите решение.",
-            link_path=f"/stage/{stage.id}",
-            return_to="/(customer)/(tabs)/home",
-        )
     return acceptance_dict(row)
 
 
@@ -285,11 +284,14 @@ async def accept_work(
     )
     await db.commit()
     await db.refresh(result.acceptance)
-    # Best-effort dispatch; failures stay in outbox for retry
-    try:
-        await outbox.dispatch_pending(db, limit=10)
-    except Exception:
-        pass
+
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(
+        db,
+        source="work_acceptance.accept",
+        limit=10,
+    )
     return acceptance_dict(result.acceptance)
 
 
@@ -335,29 +337,29 @@ async def return_work(
             status="open",
             created_at=utc_now(),
         ))
-    await db.commit()
+
+    from app.services.work_acceptance_side_effects import prepare_return_effects
+
+    try:
+        await prepare_return_effects(
+            db,
+            project=project,
+            stage=stage,
+            acceptance=row,
+            returned_by=user.id,
+            comment=body.comment,
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
     await db.refresh(row)
 
-    await act.log_event(
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(
         db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="AcceptanceReturned",
-        title=f"Этап возвращён на доработку: {stage.name}",
-        body=body.comment,
-        link_path=f"/stage/{stage.id}",
+        source="work_acceptance.return",
+        limit=10,
     )
-    for member_id in project_member_ids(project):
-        if member_id == user.id:
-            continue
-        await notif.notify(
-            db,
-            user_id=member_id,
-            project_id=project_id,
-            notification_type="stage_review",
-            title=f"Доработка по этапу: {stage.name}",
-            body=body.comment or "Этап возвращён после проверки.",
-            link_path=f"/stage/{stage.id}",
-            return_to="/(customer)/(tabs)/home",
-        )
     return acceptance_dict(row)

@@ -53,6 +53,9 @@ async def create_payment(
     stage_id: str | None = None,
     notes: str | None = None,
 ) -> Payment:
+    """Compatibility entrypoint with the same atomic outbox contract as the API."""
+    from app.services.client_write_idempotency import commit_client_write
+
     payment = await prepare_payment(
         db,
         project_id,
@@ -63,7 +66,29 @@ async def create_payment(
         stage_id,
         notes,
     )
-    await db.commit()
+    payload = {
+        "title": title,
+        "amount": round(float(amount), 2),
+        "payment_type": payment_type,
+        "stage_id": stage_id,
+        "notes": notes,
+    }
+    try:
+        created, entity_id = await commit_client_write(
+            db,
+            scope="payment.create",
+            project_id=project_id,
+            user_id=user_id,
+            request_id=None,
+            payload=payload,
+            entity_id=payment.id,
+        )
+    except BaseException:
+        await db.rollback()
+        raise
+    if not created or entity_id != payment.id:
+        await db.rollback()
+        raise RuntimeError("payment_create_atomic_contract_failed")
     await db.refresh(payment)
     return payment
 
