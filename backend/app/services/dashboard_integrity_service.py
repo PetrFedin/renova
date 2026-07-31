@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 _DEGRADED_ALERT = "Часть данных панели временно недоступна"
 
 
+def _status_value(stage) -> str:
+    status = getattr(stage, "status", "")
+    return getattr(status, "value", None) or str(status or "")
+
+
 def stages_for_user(project, user) -> list:
     """Return a role-scoped stage list without assigning to the ORM relationship."""
     stages = sorted(getattr(project, "stages", None) or [], key=lambda item: item.sort_order)
@@ -46,8 +51,23 @@ def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
         payments=list(getattr(project, "payments", None) or []),
     )
     dashboard = project_svc.build_dashboard(projection)
-    if dashboard.get("next_action_title") == "Проект завершён":
+
+    planned = next((stage for stage in scoped_stages if _status_value(stage) == "planned"), None)
+    all_done = bool(scoped_stages) and all(_status_value(stage) == "done" for stage in scoped_stages)
+
+    if planned is not None:
+        dashboard["next_action_title"] = f"Следующий этап: {planned.name}"
+        dashboard["next_action_type"] = "review_estimate"
+    elif all_done:
+        dashboard["next_action_title"] = "Проект завершён"
         dashboard["next_action_type"] = "completed"
+    elif not scoped_stages:
+        dashboard["next_action_title"] = "Добавьте этапы и смету"
+        dashboard["next_action_type"] = "review_estimate"
+    elif dashboard.get("next_action_title") == "Проект завершён":
+        dashboard["next_action_title"] = "Проверьте состояние этапов"
+        dashboard["next_action_type"] = "review_estimate"
+
     return dashboard
 
 
