@@ -1,8 +1,8 @@
 # Renova — Wave X execution checklist
 
 **Source of truth:** `FULL-PROJECT-AUDIT-2026-07-31.md`  
-**Base:** `main` @ `63f3d2585f0781ca22174cb8a3473ce4c9d56f5f`  
-**Current branch:** `agent/audit-wave-x-portal-scope`
+**Current `main`:** `6547630ba8f4ff06fb2be9607fe5eb7f658d9ee7`  
+**Current branch:** `agent/otp-atomic-consume`
 
 ## Wave X.1 — Portal change-order authorization
 
@@ -15,23 +15,31 @@
 - [x] Удалить legacy CO routes из runtime registry.
 - [x] Оставить один approve и один reject route в OpenAPI/runtime.
 - [x] Добавить functional/source/runtime tests.
-- [ ] Включить тест в обязательный backend CI gate.
-- [ ] Получить green `e2e`.
-- [ ] Получить green `playwright`.
-- [ ] Получить green `mobile-contracts`.
-- [ ] Merge в `main` и записать SHA.
+- [x] Включить тест в обязательный backend CI gate.
+- [x] Green `e2e` + PostgreSQL Alembic — CI run #1635.
+- [x] Green `playwright` — CI run #1635.
+- [x] Green `mobile-contracts` — CI run #1635.
+- [x] PR #106 merged в `main`: `6547630ba8f4ff06fb2be9607fe5eb7f658d9ee7`.
 - [ ] Отдельной волной удалить мёртвые legacy definitions из большого `portal.py`.
 
 ## Wave X.2 — OTP / one-time token atomicity
 
-- [ ] Проверить issue/verify/consume flow в Redis и fallback storage.
-- [ ] Проверить конкурентную двойную verify одного кода.
-- [ ] Сделать attempts increment атомарным.
-- [ ] Сделать consume single-winner.
-- [ ] Запретить production fallback, если он ослабляет guarantees.
-- [ ] Проверить expiry boundary и clock precision.
-- [ ] Проверить rate-limit отдельно по phone/IP/device.
-- [ ] Добавить concurrent tests и CI gate.
+- [x] Проверить issue/verify/consume flow в Redis и fallback storage.
+- [x] Подтвердить конкурентную двойную verify: legacy `GET → compare → DELETE` не был single-winner.
+- [x] Сделать Redis attempts increment частью одной Lua-операции verify.
+- [x] Сделать Redis consume single-winner: compare и delete в одном Lua script.
+- [x] Сделать development-memory consume single-winner через per-phone sync lock.
+- [x] Production fallback уже запрещён: staging/production требуют Redis и fail closed.
+- [x] При достижении лимита неверных попыток атомарно установить lock и удалить код.
+- [x] Добавить concurrent tests: 16 параллельных verify → ровно один success.
+- [x] Добавить source guard против возврата к read-then-delete.
+- [x] Добавить тест в обязательный backend CI gate.
+- [ ] Получить green `e2e` + PostgreSQL Alembic.
+- [ ] Получить green `playwright`.
+- [ ] Получить green `mobile-contracts`.
+- [ ] Merge PR в `main` и записать SHA.
+- [ ] Отдельно проверить expiry boundary и Redis clock/TTL semantics.
+- [ ] Отдельно проверить rate-limit dimensions: phone/IP/device и enumeration resistance.
 
 ## Wave X.3 — Recovery / account lifecycle
 
