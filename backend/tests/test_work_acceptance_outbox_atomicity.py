@@ -97,6 +97,8 @@ async def test_request_acceptance_rolls_back_state_when_effect_prepare_fails(
     monkeypatch,
 ):
     _, contractor, project, stage = await seed_acceptance_project(acceptance_db)
+    project_id = project.id
+    stage_id = stage.id
     monkeypatch.setattr(
         work_acceptance_side_effects,
         "prepare_request_effects",
@@ -105,15 +107,15 @@ async def test_request_acceptance_rolls_back_state_when_effect_prepare_fails(
 
     with pytest.raises(RuntimeError, match="request_effect_prepare_failed"):
         await request_acceptance(
-            project.id,
-            AcceptanceCreateIn(stage_id=stage.id, comment="Готово к проверке"),
+            project_id,
+            AcceptanceCreateIn(stage_id=stage_id, comment="Готово к проверке"),
             user=contractor,
             db=acceptance_db,
         )
 
     assert await acceptance_db.scalar(select(func.count()).select_from(WorkAcceptance)) == 0
-    assert await acceptance_db.scalar(select(Stage.status).where(Stage.id == stage.id)) == StageStatus.active
-    assert await acceptance_db.scalar(select(Stage.percent_complete).where(Stage.id == stage.id)) == 70
+    assert await acceptance_db.scalar(select(Stage.status).where(Stage.id == stage_id)) == StageStatus.active
+    assert await acceptance_db.scalar(select(Stage.percent_complete).where(Stage.id == stage_id)) == 70
     assert await acceptance_db.scalar(select(func.count()).select_from(DomainOutbox)) == 0
 
 
@@ -123,18 +125,21 @@ async def test_return_acceptance_rolls_back_rework_state_when_effect_prepare_fai
     monkeypatch,
 ):
     customer, contractor, project, stage = await seed_acceptance_project(acceptance_db)
+    project_id = project.id
+    stage_id = stage.id
     stage.status = StageStatus.review
     stage.contractor_ready = True
     acceptance = WorkAcceptance(
         id="acceptance-return",
-        project_id=project.id,
-        stage_id=stage.id,
+        project_id=project_id,
+        stage_id=stage_id,
         requested_by=contractor.id,
         status=AcceptanceStatus.requested.value,
         comment="Проверьте",
     )
     acceptance_db.add(acceptance)
     await acceptance_db.commit()
+    acceptance_id = acceptance.id
     monkeypatch.setattr(
         work_acceptance_side_effects,
         "prepare_return_effects",
@@ -143,8 +148,8 @@ async def test_return_acceptance_rolls_back_rework_state_when_effect_prepare_fai
 
     with pytest.raises(RuntimeError, match="return_effect_prepare_failed"):
         await return_work(
-            project.id,
-            acceptance.id,
+            project_id,
+            acceptance_id,
             AcceptanceDecisionIn(comment="Нужно исправить"),
             user=customer,
             db=acceptance_db,
@@ -152,12 +157,12 @@ async def test_return_acceptance_rolls_back_rework_state_when_effect_prepare_fai
 
     assert (
         await acceptance_db.scalar(
-            select(WorkAcceptance.status).where(WorkAcceptance.id == acceptance.id)
+            select(WorkAcceptance.status).where(WorkAcceptance.id == acceptance_id)
         )
         == AcceptanceStatus.requested.value
     )
-    assert await acceptance_db.scalar(select(Stage.status).where(Stage.id == stage.id)) == StageStatus.review
-    assert await acceptance_db.scalar(select(Stage.contractor_ready).where(Stage.id == stage.id)) is True
+    assert await acceptance_db.scalar(select(Stage.status).where(Stage.id == stage_id)) == StageStatus.review
+    assert await acceptance_db.scalar(select(Stage.contractor_ready).where(Stage.id == stage_id)) is True
     assert await acceptance_db.scalar(select(func.count()).select_from(DomainOutbox)) == 0
 
 
