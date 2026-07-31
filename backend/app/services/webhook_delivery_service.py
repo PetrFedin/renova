@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, func, or_, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -126,23 +126,36 @@ async def claim_delivery(
     acquired = result.first() is not None
     await db.commit()
     if acquired:
-        row = await db.get(PaymentWebhookDelivery, event_id)
-        attempts = int(row.attempts or 0) if row else 0
+        attempts = int(
+            await db.scalar(
+                select(PaymentWebhookDelivery.attempts).where(
+                    PaymentWebhookDelivery.event_id == event_id
+                )
+            )
+            or 0
+        )
         await db.rollback()
         return DeliveryClaim(status="acquired", token=token, attempts=attempts)
 
-    row = await db.get(PaymentWebhookDelivery, event_id)
-    if row is None:
+    snapshot = (
+        await db.execute(
+            select(
+                PaymentWebhookDelivery.completed_at,
+                PaymentWebhookDelivery.attempts,
+            ).where(PaymentWebhookDelivery.event_id == event_id)
+        )
+    ).one_or_none()
+    if snapshot is None:
         await db.rollback()
         return DeliveryClaim(status="busy")
-    if row.completed_at is not None:
-        await db.rollback()
-        return DeliveryClaim(status="completed", attempts=int(row.attempts or 0))
-    if int(row.attempts or 0) >= MAX_ATTEMPTS:
-        await db.rollback()
-        return DeliveryClaim(status="poisoned", attempts=int(row.attempts or 0))
+    completed_at, raw_attempts = snapshot
+    attempts = int(raw_attempts or 0)
     await db.rollback()
-    return DeliveryClaim(status="busy", attempts=int(row.attempts or 0))
+    if completed_at is not None:
+        return DeliveryClaim(status="completed", attempts=attempts)
+    if attempts >= MAX_ATTEMPTS:
+        return DeliveryClaim(status="poisoned", attempts=attempts)
+    return DeliveryClaim(status="busy", attempts=attempts)
 
 
 async def complete_delivery(
