@@ -1,8 +1,8 @@
 # Renova — актуальный полный аудит и рабочая матрица
 
 **Дата среза:** 2026-07-31  
-**Канонический кодовый baseline:** `main` после PR #108 · `c89748944e5bbbe62587f8706ec3d26133d1a649`  
-**Текущая волна:** outbox and background effects  
+**Канонический кодовый baseline:** `main` после PR #109 · `153dedf9c6a615d6b03e6e4421d50e47f1b4fa55`  
+**Текущая волна:** payment webhooks and direct commit boundaries  
 **Назначение:** единый источник истины для продолжения разработки, проверки закрытия аудитов и подготовки staging/pilot.
 
 > Этот документ заменяет использование старых аудитов как текущего backlog. Старые файлы сохраняются как доказательная и продуктовая база, но их статусы необходимо сверять здесь с актуальным `main`.
@@ -19,6 +19,7 @@
 - `FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — исполняемый чеклист текущей волны.
 - `OTP-ATOMIC-CONSUME-2026-07-31.md` — доказательство single-winner OTP consume.
 - `ACCOUNT-LIFECYCLE-INTEGRITY-2026-07-31.md` — транзакционный контракт удаления аккаунта и ops-защита hard purge.
+- `OUTBOX-FENCING-AND-FANOUT-2026-07-31.md` — owner-fenced lease, cancellation recovery и replay-safe acceptance fan-out.
 
 ## 2. Правило доверия к статусам
 
@@ -70,6 +71,9 @@
 | OTP atomic single-winner consume | `CLOSED MAIN` | PR #107 · `e54581a7...` · CI #1643 |
 | Atomic account soft-delete and revoke-all | `CLOSED MAIN` | PR #108 · `c8974894...` · CI #1660 |
 | Hard purge fail-closed authorization | `CLOSED MAIN` | PR #108 · `c8974894...` · CI #1660 |
+| Owner-fenced outbox claims and cancellation release | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
+| Replay-safe acceptance side-effect fan-out | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
+| Outbox poison/backlog/lease observability | `CLOSED MAIN` | PR #109 · `153dedf9...` · CI #1674 |
 | Полный mobile contract gate | `CLOSED MAIN` | CI job `mobile-contracts` |
 
 Эти темы не должны возвращаться в backlog без нового воспроизводимого дефекта.
@@ -158,18 +162,53 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 - запрещено решать это безусловным cascade-delete бизнес-данных: требуется отдельная retention/anonymization policy;
 - legacy определения физически остаются в `auth.py`, но удалены из runtime registry.
 
-## 8. Активная очередь проверки и исправлений
+## 8. Закрытая Wave X.4 — outbox fencing and replay-safe fan-out
+
+### Подтверждённые дефекты
+
+1. Lease completion не проверял владельца. Worker мог получить claim, превысить TTL, после чего другой worker повторно забирал событие. Первый worker всё ещё мог отметить событие успешным, записать ошибку или очистить уже чужой lease.
+2. `asyncio.CancelledError` обходил обычную ветку failure и оставлял committed claim заблокированным до полного lease TTL.
+3. `acceptance.side_effects` был агрегатным handler с несколькими внутренними commit. Crash после части activity/notification операций приводил к повтору уже выполненных side-effects и push при retry parent-event.
+4. `MAX_ATTEMPTS` существовал, но pending/poison/stale lease/oldest age не были видны операторам.
+
+### Закрытие
+
+- каждый claim получает уникальный owner token;
+- success, failure, abandoned и cancellation release выполняются только при точном совпадении `locked_by`;
+- stale worker не может изменить `attempts`, `last_error`, `processed_at` или lease нового владельца;
+- cancellation сразу освобождает принадлежащий worker lease и не расходует attempt;
+- parent acceptance-event только формирует детерминированные child events;
+- UUIDv5 каждого child строится из `parent_outbox_id + effect_key`, поэтому parent replay переиспользует те же rows;
+- activity/notification leaf-events используют существующий `SideEffectDelivery` ledger;
+- bounded dispatcher перечитывает candidates и может доставить новые leaf-events в том же tick;
+- release health показывает pending, retryable, poisoned, active leases, stale leases и oldest pending age без раскрытия payload;
+- concurrent/replay/runtime tests включены в обязательный backend gate;
+- PR #109 merged: `153dedf9c6a615d6b03e6e4421d50e47f1b4fa55`;
+- CI run #1674: 336 backend tests, API smoke, PostgreSQL Alembic, Playwright и mobile-contracts — success.
+
+### Честная граница закрытия
+
+Database side-effects защищены per leaf-event. Внешний push остаётся at-least-once: процесс теоретически может остановиться после принятия push провайдером, но до commit `delivered_at`. `outbox_id` уже включён в payload и должен использоваться как provider/client dedup key там, где это поддерживается.
+
+### Остаточный долг outbox
+
+- некоторые inline callers всё ещё используют `except Exception: pass`; durable event не теряется, но telemetry результата должна стать явной;
+- lease fencing не останавливает stale handler физически, поэтому каждый новый handler всё равно обязан быть идемпотентным;
+- многоэффектные handlers нельзя добавлять напрямую: они должны раскладываться в детерминированные leaf-events;
+- provider-level exactly-once для push не гарантируется.
+
+## 9. Активная очередь проверки и исправлений
 
 ### P0 — Security / transaction integrity
 
 | Приоритет | Зона | Что доказать |
 |---|---|---|
-| P0.1 | Outbox/background effects | unknown event не помечается успешно обработанным; claim/retry/poison policy наблюдаемы |
-| P0.2 | Payment webhooks | mismatch/replay/failure не превращаются в ложный success |
-| P0.3 | Direct API commits | состояние и side-effects не расходятся при исключении после commit |
-| P0.4 | OTP abuse surface | TTL boundary, phone/IP/device rate limits, enumeration resistance |
-| P0.5 | Account retention | FK-safe anonymization/retention без потери обязательной финансовой истории |
-| P0.6 | Future recovery flow | single-use atomic token и revoke-all до появления endpoint в production |
+| P0.1 | Payment webhooks | signature, mismatch, replay и failure не превращаются в ложный success |
+| P0.2 | Direct API commits | состояние и side-effects не расходятся при исключении после commit |
+| P0.3 | OTP abuse surface | TTL boundary, phone/IP/device rate limits, enumeration resistance |
+| P0.4 | Account retention | FK-safe anonymization/retention без потери обязательной финансовой истории |
+| P0.5 | Future recovery flow | single-use atomic token и revoke-all до появления endpoint в production |
+| P0.6 | Outbox telemetry | убрать silent inline catches и связать poison/backlog с alerting |
 
 ### P1 — Product journey / dead ends
 
@@ -192,7 +231,7 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 | Единство service transaction boundaries | `REVERIFY` | route не должен сам собирать частичную транзакцию |
 | Source guards vs runtime tests | `REVERIFY` | критические деньги/ACL подтверждать функционально и конкурентно |
 
-## 9. OPS-блокеры, которые код не может закрыть самостоятельно
+## 10. OPS-блокеры, которые код не может закрыть самостоятельно
 
 | Блокер | Статус | DoD |
 |---|---|---|
@@ -204,7 +243,7 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 | Sentry/alerts | `OPS` | DSN, release SHA, alert routing и проверка события |
 | Account purge secret and runbook | `OPS` | отдельный secret, restricted operator access, dry-run/backup и audit trail |
 
-## 10. Конкурентная стратегия
+## 11. Конкурентная стратегия
 
 ### Сохранять как moat
 
@@ -222,17 +261,18 @@ Legacy verify выполнял Redis `GET → compare → DELETE` отдельн
 - AI-chat на каждом экране;
 - новые витринные экраны до закрытия Trust, transaction integrity и dead ends.
 
-## 11. Порядок дальнейшей работы
+## 12. Порядок дальнейшей работы
 
-1. Проверить outbox/worker fail semantics, конкурентный claim и poison events.
-2. Проверить payment webhooks и оставшиеся direct commits.
+1. Проверить payment webhooks: signature, provider event replay, mismatch и монотонность статусов.
+2. Проверить оставшиеся direct commits и переносить подтверждённые side-effects в unit-of-work/outbox.
 3. Закрыть OTP abuse surface: TTL boundary, multi-dimensional rate limit, enumeration resistance.
 4. Повторно пройти product journeys из старых аудитов на текущем `main`.
 5. Спроектировать FK-safe retention и first-class admin/ops identity.
-6. Отдельно выполнить staging OPS checklist с реальными credentials.
-7. После каждой волны обновлять эту матрицу, а не создавать независимый противоречащий документ.
+6. Убрать silent inline outbox catches и подключить poison/backlog alerting.
+7. Отдельно выполнить staging OPS checklist с реальными credentials.
+8. После каждой волны обновлять эту матрицу, а не создавать независимый противоречащий документ.
 
-## 12. Definition of Done проекта перед pilot
+## 13. Definition of Done проекта перед pilot
 
 Pilot-ready означает не наличие экранов, а доказанный путь:
 
