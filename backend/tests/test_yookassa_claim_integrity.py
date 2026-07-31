@@ -114,7 +114,7 @@ def test_alembic_graph_has_one_head():
     assert script.get_heads() == ["w6webhookdelivery01"]
     revision = script.get_revision("w6webhookdelivery01")
     assert revision is not None
-    assert revision.down_revision == "w6sidefxoutbox1"
+    assert revision.down_revision == "w7codoclink001"
 
 
 @pytest.mark.asyncio
