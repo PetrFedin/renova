@@ -71,6 +71,10 @@ def test_staging_ok():
         database_url="postgresql+asyncpg://u:p@db/renova",
         public_base_url="https://api-staging.example.com",
         secret_key="staging-secret-key-16+",
+        redis_url="rediss://redis.example.com:6380/0",
+        twilio_sid="AC0123456789abcdef",
+        twilio_token="twilio-secret-token",
+        twilio_from="+12025550123",
     )
     assert policy.allow_demo_seed is False
     assert policy.allow_create_all is False
@@ -84,6 +88,7 @@ def test_production_forbids_header_user_id():
 def test_unknown_environment():
     with pytest.raises(ValueError, match="Unknown"):
         policy_for("qa")
+
 
 def test_staging_kontur_missing_api_key_warns():
     warnings = collect_warnings(
