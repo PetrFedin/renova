@@ -20,6 +20,25 @@ from app.api.v1 import (
 
 api_router = APIRouter(prefix="/api/v1")
 
+RouteSignature = tuple[str, str]
+
+
+def _remove_replaced_routes(router: APIRouter, signatures: set[RouteSignature]) -> None:
+    """Remove legacy handlers that would otherwise shadow canonical routes.
+
+    FastAPI resolves duplicate routes by registration order while still exposing both
+    handlers at runtime. Keeping only one exact path+method pair makes execution,
+    OpenAPI generation and tests deterministic.
+    """
+
+    def is_replaced(route) -> bool:
+        path = getattr(route, "path", None)
+        methods = set(getattr(route, "methods", set()) or set())
+        return any(path == target_path and method in methods for target_path, method in signatures)
+
+    router.routes[:] = [route for route in router.routes if not is_replaced(route)]
+
+
 # --- content / design ---
 api_router.include_router(design_packages.router)
 api_router.include_router(marketplace.router)
@@ -44,47 +63,35 @@ api_router.include_router(checklist_templates.router)
 api_router.include_router(stage_reactions.router)
 
 # Document state and required side effects must share one transaction.
-_DOCUMENT_LIFECYCLE_ROUTES = {
+_DOCUMENT_LIFECYCLE_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/documents/{document_id}/sign", "POST"),
     ("/projects/{project_id}/documents/{document_id}/archive", "POST"),
     ("/projects/{project_id}/documents/{document_id}/restore", "POST"),
     ("/projects/{project_id}/documents/{document_id}", "DELETE"),
     ("/projects/{project_id}/documents/{document_id}/legal-hold", "POST"),
 }
-
-
-def _is_replaced_document_route(route) -> bool:
-    path = getattr(route, "path", None)
-    methods = set(getattr(route, "methods", set()) or set())
-    return any(
-        path == target_path and method in methods
-        for target_path, method in _DOCUMENT_LIFECYCLE_ROUTES
-    )
-
-
-documents.router.routes[:] = [
-    route for route in documents.router.routes if not _is_replaced_document_route(route)
-]
+_remove_replaced_routes(documents.router, _DOCUMENT_LIFECYCLE_ROUTES)
 api_router.include_router(document_lifecycle.router)
 api_router.include_router(documents.router)
 api_router.include_router(esign.router)
 api_router.include_router(ocr_worker.router)
 api_router.include_router(automation_worker.router)
-# Canonical direct expense writes must precede the legacy OS routes with the same paths.
+
+# Canonical direct expense writes replace legacy OS handlers with the same paths.
+_EXPENSE_MUTATION_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/os/expenses/{expense_id}", "PATCH"),
+    ("/projects/{project_id}/os/expenses/{expense_id}", "DELETE"),
+}
+_remove_replaced_routes(os.router, _EXPENSE_MUTATION_ROUTES)
 api_router.include_router(expense_mutations.router)
 api_router.include_router(os.router)
 
-# Replace the two legacy portal CO routes at runtime. This keeps one OpenAPI/runtime
-# endpoint per path while the large portal module is being decomposed safely.
-_PORTAL_CHANGE_ORDER_PATHS = {
-    "/portal/projects/{project_id}/change-orders/{order_id}/approve",
-    "/portal/projects/{project_id}/change-orders/{order_id}/reject",
+# Replace the two legacy portal CO routes at runtime while the portal module is decomposed.
+_PORTAL_CHANGE_ORDER_ROUTES: set[RouteSignature] = {
+    ("/portal/projects/{project_id}/change-orders/{order_id}/approve", "POST"),
+    ("/portal/projects/{project_id}/change-orders/{order_id}/reject", "POST"),
 }
-portal.router.routes[:] = [
-    route
-    for route in portal.router.routes
-    if getattr(route, "path", None) not in _PORTAL_CHANGE_ORDER_PATHS
-]
+_remove_replaced_routes(portal.router, _PORTAL_CHANGE_ORDER_ROUTES)
 api_router.include_router(portal_change_order_decisions.router)
 api_router.include_router(portal.router)
 api_router.include_router(reports.router)
@@ -92,23 +99,13 @@ api_router.include_router(reports.router)
 # --- core / identity ---
 # Account lifecycle endpoints are security-sensitive and replace legacy handlers
 # by exact path+method while preserving GET /auth/me.
-_ACCOUNT_LIFECYCLE_ROUTES = {
+_ACCOUNT_LIFECYCLE_ROUTES: set[RouteSignature] = {
     ("/auth/anonymize", "POST"),
     ("/auth/me", "DELETE"),
     ("/auth/sessions/revoke-all", "POST"),
     ("/auth/admin/purge-deleted-accounts", "POST"),
 }
-
-
-def _is_replaced_account_route(route) -> bool:
-    path = getattr(route, "path", None)
-    methods = set(getattr(route, "methods", set()) or set())
-    return any(path == target_path and method in methods for target_path, method in _ACCOUNT_LIFECYCLE_ROUTES)
-
-
-auth.router.routes[:] = [
-    route for route in auth.router.routes if not _is_replaced_account_route(route)
-]
+_remove_replaced_routes(auth.router, _ACCOUNT_LIFECYCLE_ROUTES)
 api_router.include_router(account_lifecycle.router)
 api_router.include_router(auth.router)
 api_router.include_router(push.router)
@@ -133,12 +130,23 @@ api_router.include_router(chats.router)
 # --- finance ---
 # Canonical customer dispute transition must precede general payment routes.
 api_router.include_router(payment_disputes.router)
+
 # Canonical list projection adds evidence history and removes receipt/event N+1 queries.
+_PAYMENT_HISTORY_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/payments", "GET"),
+}
+_remove_replaced_routes(payments.router, _PAYMENT_HISTORY_ROUTES)
 api_router.include_router(payment_history.router)
 api_router.include_router(payments.router)
 api_router.include_router(estimate.router)
 api_router.include_router(change_orders.router)
-# Canonical bank routes must precede the legacy export module routes with the same paths.
+
+# Canonical bank statement writes replace legacy export handlers with the same paths.
+_BANK_STATEMENT_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/import/bank-statement", "POST"),
+    ("/projects/{project_id}/import/bank-statement/confirm", "POST"),
+}
+_remove_replaced_routes(export.router, _BANK_STATEMENT_ROUTES)
 api_router.include_router(bank_statements.router)
 api_router.include_router(export.router)
 api_router.include_router(receipts.router)
