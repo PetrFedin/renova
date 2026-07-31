@@ -5,6 +5,7 @@ on: [push, pull_request]
 jobs:
   mobile-contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,6 +29,7 @@ jobs:
 
   backend-complete:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:17-alpine
@@ -45,6 +47,7 @@ jobs:
       SECRET_KEY: ci-secret-key-at-least-16
       ALLOW_CREATE_ALL: "false"
       ALLOW_DEMO_SEED: "false"
+      PYTHONHASHSEED: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,8 +62,35 @@ jobs:
           poetry run pip install fpdf2 alembic
       - name: Full backend test suite
         working-directory: backend
-        run: poetry run pytest -q
+        run: |
+          set -o pipefail
+          poetry run pytest --tb=short -ra --junitxml=pytest-results.xml 2>&1 | tee pytest-full.log
+      - name: Publish backend test summary
+        if: always()
+        working-directory: backend
+        run: |
+          {
+            echo "## Backend full regression"
+            if [ -f pytest-full.log ]; then
+              echo '```text'
+              grep -E '^(FAILED|ERROR) |^=+ .* (failed|error|errors)' pytest-full.log | tail -n 200 || tail -n 200 pytest-full.log
+              echo '```'
+            else
+              echo "The pytest log was not created. Inspect the dependency-installation step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload backend test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-diagnostics
+          path: |
+            backend/pytest-full.log
+            backend/pytest-results.xml
+          if-no-files-found: warn
+          retention-days: 14
       - name: Alembic upgrade on PostgreSQL
+        if: success()
         working-directory: backend
         env:
           ENVIRONMENT: staging
@@ -73,6 +103,7 @@ jobs:
 
   playwright-api-and-ui:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
