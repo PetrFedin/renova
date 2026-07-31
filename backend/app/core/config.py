@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./renova.db"
     redis_url: str | None = None
     allow_account_purge: bool = False
+    account_purge_ops_secret: str | None = None
     secret_key: str = "dev-secret-change-me"
     access_token_expire_minutes: int = 60 * 24 * 14
     refresh_token_expire_days: int = 30
