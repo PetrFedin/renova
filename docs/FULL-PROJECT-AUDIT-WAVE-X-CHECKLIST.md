@@ -1,8 +1,8 @@
 # Renova — Wave X execution checklist
 
 **Source of truth:** `FULL-PROJECT-AUDIT-2026-07-31.md`  
-**Current `main`:** `c89748944e5bbbe62587f8706ec3d26133d1a649`  
-**Current wave:** outbox and background effects
+**Current `main`:** `153dedf9c6a615d6b03e6e4421d50e47f1b4fa55`  
+**Current wave:** payment webhooks and direct commit boundaries
 
 ## Wave X.1 — Portal change-order authorization
 
@@ -62,16 +62,35 @@
 
 ## Wave X.4 — Outbox and background effects
 
-- [ ] Unknown event не должен считаться успешно обработанным.
-- [ ] Ошибка handler сохраняет retryable state и `last_error`.
-- [ ] Есть max attempts / poison event policy.
-- [ ] Повторная доставка не дублирует notification/activity/document.
-- [ ] Worker claim конкурентно single-winner между процессами.
-- [ ] Worker shutdown не теряет claimed event.
-- [ ] Метрики backlog/age/failures доступны health/ops.
-- [ ] Inline `dispatch_pending` после route commit не маскирует ошибки и не подменяет durable worker.
+- [x] Unknown event не считается успешно обработанным: сохраняются `attempts`, `last_error`, retry schedule.
+- [x] Ошибка handler сохраняет retryable state; после `MAX_ATTEMPTS=8` событие становится poison и не hot-loopится.
+- [x] Claim получает уникальный owner token; stale worker не может завершить или испортить новый claim.
+- [x] Worker cancellation немедленно освобождает принадлежащий ему lease без расходования attempt.
+- [x] `acceptance.side_effects` разворачивается в детерминированные UUIDv5 leaf-events.
+- [x] Повтор parent-event не дублирует activity, notification, push delivery ledger или document notification fan-out.
+- [x] Existing financial leaf-events сохраняют idempotency через `SideEffectDelivery`.
+- [x] Метрики pending/retryable/poisoned/active leases/stale leases/oldest age доступны в `/admin/release-health`.
+- [x] Добавлены concurrent/replay/runtime tests и обязательный CI gate.
+- [x] Green `e2e` + PostgreSQL Alembic — CI run #1674.
+- [x] Green `playwright` — CI run #1674.
+- [x] Green `mobile-contracts` — CI run #1674.
+- [x] PR #109 merged в `main`: `153dedf9c6a615d6b03e6e4421d50e47f1b4fa55`.
+- [x] Inline dispatch failure не теряет событие: durable outbox row остаётся для worker retry.
+- [ ] Удалить silent `except Exception: pass` из inline dispatch callers и писать outcome в telemetry/audit.
+- [ ] Для внешнего push использовать `outbox_id` как provider/client dedup key, где это поддерживается; доставка остаётся at-least-once.
 
-## Wave X.5 — Product journey revalidation
+## Wave X.5 — Payment webhooks and direct commit boundaries
+
+- [ ] Проверить подпись/секрет webhook до DB lookup и mutation.
+- [ ] Проверить provider event id / replay single-winner при конкурентной доставке.
+- [ ] Проверить amount/currency/project/payment mismatch до подтверждения платежа.
+- [ ] Unknown provider status не должен возвращать ложный success и менять ledger.
+- [ ] Failure после provider acceptance не должен оставлять payment status без event/audit/outbox.
+- [ ] Refund/cancel/chargeback transition должен быть монотонным и идемпотентным.
+- [ ] Проверить все route/service `commit()` перед side-effects и перенести подтверждённые дефекты на outbox/unit-of-work.
+- [ ] Добавить concurrent/runtime tests и обязательный CI gate.
+
+## Wave X.6 — Product journey revalidation
 
 - [ ] Комната → этап → материалы → оплаты → документы.
 - [ ] Этап → приёмка → оплата → акт.
