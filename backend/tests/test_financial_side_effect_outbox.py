@@ -198,11 +198,14 @@ async def test_failed_outbox_event_is_deferred_instead_of_hot_looping(outbox_db)
         event_type="unknown.event",
         payload={"project_id": project.id, "user_id": contractor.id},
     )
+    # Dispatcher commits can expire ORM state through bulk UPDATE synchronization.
+    # Keep the immutable scalar key rather than coupling this test to the identity map.
+    row_id = row.id
     await outbox_db.commit()
 
     assert await outbox_service.dispatch_pending(outbox_db, worker_id="worker-a") == 0
-    failed = await outbox_db.get(DomainOutbox, row.id)
-    lease = await outbox_db.get(DomainOutboxLease, row.id)
+    failed = await outbox_db.get(DomainOutbox, row_id)
+    lease = await outbox_db.get(DomainOutboxLease, row_id)
     assert failed.attempts == 1
     assert failed.processed_at is None
     assert "unknown_outbox_event_type" in (failed.last_error or "")
@@ -210,5 +213,5 @@ async def test_failed_outbox_event_is_deferred_instead_of_hot_looping(outbox_db)
     assert lease.next_attempt_at is not None
 
     assert await outbox_service.dispatch_pending(outbox_db, worker_id="worker-b") == 0
-    failed = await outbox_db.get(DomainOutbox, row.id)
+    failed = await outbox_db.get(DomainOutbox, row_id)
     assert failed.attempts == 1
