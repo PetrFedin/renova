@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1 import portal
 from app.api.v1 import portal_change_order_decisions
+from app.api.v1 import account_lifecycle
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -64,6 +65,26 @@ api_router.include_router(portal.router)
 api_router.include_router(reports.router)
 
 # --- core / identity ---
+# Account lifecycle endpoints are security-sensitive and replace legacy handlers
+# by exact path+method while preserving GET /auth/me.
+_ACCOUNT_LIFECYCLE_ROUTES = {
+    ("/auth/anonymize", "POST"),
+    ("/auth/me", "DELETE"),
+    ("/auth/sessions/revoke-all", "POST"),
+    ("/auth/admin/purge-deleted-accounts", "POST"),
+}
+
+
+def _is_replaced_account_route(route) -> bool:
+    path = getattr(route, "path", None)
+    methods = set(getattr(route, "methods", set()) or set())
+    return any(path == target_path and method in methods for target_path, method in _ACCOUNT_LIFECYCLE_ROUTES)
+
+
+auth.router.routes[:] = [
+    route for route in auth.router.routes if not _is_replaced_account_route(route)
+]
+api_router.include_router(account_lifecycle.router)
 api_router.include_router(auth.router)
 api_router.include_router(push.router)
 api_router.include_router(subscription.router)
