@@ -1,19 +1,22 @@
 """Заказы работ — детальные задачи по комнатам, датам, статусам."""
 from __future__ import annotations
 
-import logging
 from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
-from app.models.entities import Project, UserRole, WorkOrder, WorkOrderStatus
-from app.services import activity_service as act
-from app.services import chat_service as chat_svc
-from app.services import notification_service as notif_svc
-
-logger = logging.getLogger(__name__)
+from app.models.entities import (
+    ChatMessage,
+    ChatMessageType,
+    ChatThread,
+    Project,
+    UserRole,
+    WorkOrder,
+    WorkOrderStatus,
+)
+from app.services import outbox_service as outbox
 
 ALLOWED: dict[str, set[str]] = {
     WorkOrderStatus.draft.value: {WorkOrderStatus.published.value, WorkOrderStatus.cancelled.value},
@@ -81,8 +84,62 @@ def wo_dict(w: WorkOrder) -> dict:
 
 
 async def list_work_orders(db: AsyncSession, project_id: str) -> list[dict]:
-    rows = (await db.execute(select(WorkOrder).where(WorkOrder.project_id == project_id).order_by(WorkOrder.planned_start.nullslast()))).scalars().all()
+    rows = (
+        await db.execute(
+            select(WorkOrder)
+            .where(WorkOrder.project_id == project_id)
+            .order_by(WorkOrder.planned_start.nullslast())
+        )
+    ).scalars().all()
     return [wo_dict(w) for w in rows]
+
+
+async def _prepare_work_order_thread(
+    db: AsyncSession,
+    *,
+    work_order: WorkOrder,
+    user_id: str,
+) -> ChatThread:
+    """Create the work-bound thread without committing the surrounding unit of work."""
+    topic = f"work:{work_order.id}"
+    existing = (
+        await db.execute(
+            select(ChatThread)
+            .where(
+                ChatThread.project_id == work_order.project_id,
+                ChatThread.topic == topic,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+
+    thread = ChatThread(
+        project_id=work_order.project_id,
+        title=f"Работа: {work_order.title}",
+        topic=topic,
+        created_by=user_id,
+    )
+    db.add(thread)
+    await db.flush()
+    db.add(
+        ChatMessage(
+            thread_id=thread.id,
+            user_id=user_id,
+            author_role="system",
+            message_type=ChatMessageType.system,
+            text=f"Чат «{thread.title}» создан",
+        )
+    )
+    await db.flush()
+    return thread
+
+
+async def _dispatch_committed_effects(db: AsyncSession, *, source: str) -> None:
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(db, source=source, limit=10)
 
 
 async def create_work_order(
@@ -114,22 +171,38 @@ async def create_work_order(
         created_by=user_id,
     )
     db.add(work_order)
-    await db.flush()
-    thread = await chat_svc.create_thread(db, project_id, user_id, f"Работа: {title}", topic=f"work:{work_order.id}")
-    work_order.chat_thread_id = thread.id
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user_id,
-        kind="work",
-        title=f"Задача: {title}",
-        body=notes,
-        room_id=room_id,
-        work_type=work_type,
-        link_path=f"/work-order/{work_order.id}",
-        stage_id=stage_id,
-    )
+    try:
+        await db.flush()
+        thread = await _prepare_work_order_thread(
+            db,
+            work_order=work_order,
+            user_id=user_id,
+        )
+        work_order.chat_thread_id = thread.id
+        await outbox.enqueue(
+            db,
+            aggregate_type="work_order",
+            aggregate_id=work_order.id,
+            event_type=outbox.ACTIVITY_EVENT,
+            payload={
+                "project_id": project_id,
+                "user_id": user_id,
+                "kind": "work",
+                "title": f"Задача: {title}",
+                "body": notes,
+                "room_id": room_id,
+                "work_type": work_type,
+                "stage_id": stage_id,
+                "link_path": f"/work-order/{work_order.id}",
+            },
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+
     await db.refresh(work_order)
+    await _dispatch_committed_effects(db, source="work_order.create")
     return work_order
 
 
@@ -172,11 +245,13 @@ def validate_transition(current: str, new_status: str, actor_role: UserRole | st
 
 
 def transition_notification_targets(project: Project, actor_id: str) -> list[str]:
-    return sorted({
-        user_id
-        for user_id in (project.customer_id, project.contractor_id, project.foreman_id)
-        if user_id and user_id != actor_id
-    })
+    return sorted(
+        {
+            user_id
+            for user_id in (project.customer_id, project.contractor_id, project.foreman_id)
+            if user_id and user_id != actor_id
+        }
+    )
 
 
 def transition_notification_copy(current: str, new_status: str, title: str) -> tuple[str, str, str]:
@@ -222,40 +297,56 @@ async def transition(
         work_order.actual_end = today
     work_order.updated_at = utc_now()
 
-    await act.log_event(
-        db,
-        project_id=work_order.project_id,
-        user_id=user_id,
-        kind="work_status",
-        title=f"{work_order.title}: {current} → {new_status}",
-        body=f"actor_role={role_value(effective_role)}",
-        room_id=work_order.room_id,
-        work_type=work_order.work_type,
-        link_path=f"/work-order/{work_order.id}",
-        stage_id=work_order.stage_id,
+    notification_type, notification_title, notification_body = transition_notification_copy(
+        current,
+        new_status,
+        work_order.title,
     )
-
-    notification_type, notification_title, notification_body = transition_notification_copy(current, new_status, work_order.title)
-    for target_id in transition_notification_targets(project_row, user_id):
-        try:
-            await notif_svc.notify(
+    try:
+        await outbox.enqueue(
+            db,
+            aggregate_type="work_order",
+            aggregate_id=work_order.id,
+            event_type=outbox.ACTIVITY_EVENT,
+            payload={
+                "project_id": work_order.project_id,
+                "user_id": user_id,
+                "kind": "work_status",
+                "title": f"{work_order.title}: {current} → {new_status}",
+                "body": f"actor_role={role_value(effective_role)}",
+                "room_id": work_order.room_id,
+                "work_type": work_order.work_type,
+                "stage_id": work_order.stage_id,
+                "link_path": f"/work-order/{work_order.id}",
+            },
+        )
+        for target_id in transition_notification_targets(project_row, user_id):
+            await outbox.enqueue(
                 db,
-                user_id=target_id,
-                project_id=work_order.project_id,
-                notification_type=notification_type,
-                title=notification_title,
-                body=notification_body,
-                link_path=f"/work-order/{work_order.id}",
+                aggregate_type="work_order",
+                aggregate_id=work_order.id,
+                event_type=outbox.NOTIFICATION_EVENT,
+                payload={
+                    "user_id": target_id,
+                    "project_id": work_order.project_id,
+                    "notification_type": notification_type,
+                    "title": notification_title,
+                    "body": notification_body,
+                    "link_path": f"/work-order/{work_order.id}",
+                    "return_to": None,
+                },
             )
-        except Exception:
-            logger.exception(
-                "work_order_transition_notification_failed",
-                extra={"work_order_id": work_order.id, "target_id": target_id},
-            )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
 
     await db.refresh(work_order)
+    await _dispatch_committed_effects(db, source="work_order.transition")
     return work_order
 
 
 async def get_work_order(db: AsyncSession, work_order_id: str) -> WorkOrder | None:
-    return (await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id))).scalar_one_or_none()
+    return (
+        await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id))
+    ).scalar_one_or_none()
