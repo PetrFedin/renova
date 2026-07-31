@@ -76,6 +76,7 @@ _send_log: dict[str, list[float]] = defaultdict(list)
 _fail_count: dict[str, int] = defaultdict(int)
 _lock_until: dict[str, float] = {}
 _send_locks: dict[str, asyncio.Lock] = {}
+_send_locks_guard = threading.Lock()
 _verify_locks: dict[str, threading.Lock] = {}
 _verify_locks_guard = threading.Lock()
 
@@ -146,11 +147,14 @@ def _rk(kind: str, phone: str) -> str:
 
 
 def _local_send_lock(phone: str) -> asyncio.Lock:
-    lock = _send_locks.get(phone)
-    if lock is None:
-        lock = asyncio.Lock()
-        _send_locks[phone] = lock
-    return lock
+    # Two coroutines can reach this function before either stores its lock. The
+    # guard makes lock creation atomic so one phone always has one process lock.
+    with _send_locks_guard:
+        lock = _send_locks.get(phone)
+        if lock is None:
+            lock = asyncio.Lock()
+            _send_locks[phone] = lock
+        return lock
 
 
 def _local_verify_lock(phone: str) -> threading.Lock:
