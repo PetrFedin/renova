@@ -1,7 +1,27 @@
-from app.core.timeutil import utc_now
-from sqlalchemy import select
+import logging
+import secrets
+from datetime import timedelta
+
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.entities import Team, TeamMember, User, Project, ProjectViewer
+
+from app.core.timeutil import utc_now
+from app.models.entities import (
+    Project,
+    ProjectViewer,
+    Team,
+    TeamInvite,
+    TeamMember,
+    User,
+)
+
+logger = logging.getLogger(__name__)
+TEAM_MEMBER_ROLES = frozenset({"member", "viewer", "foreman"})
+
+
+def _valid_member_role(role: str) -> bool:
+    return role in TEAM_MEMBER_ROLES
 
 
 async def my_team(db: AsyncSession, user_id: str) -> Team | None:
@@ -42,21 +62,66 @@ async def list_members(db: AsyncSession, team_id: str) -> list[dict]:
     return out
 
 
+async def _find_team_membership(
+    db: AsyncSession,
+    *,
+    team_id: str,
+    user_id: str,
+) -> TeamMember | None:
+    return await db.scalar(
+        select(TeamMember).where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == user_id,
+        )
+    )
+
+
+async def ensure_team_membership(
+    db: AsyncSession,
+    *,
+    team_id: str,
+    user_id: str,
+    role: str,
+) -> tuple[TeamMember, bool]:
+    """Create one membership without committing; concurrent duplicates are idempotent."""
+    if not _valid_member_role(role):
+        raise ValueError("invalid_team_role")
+    existing = await _find_team_membership(db, team_id=team_id, user_id=user_id)
+    if existing is not None:
+        return existing, False
+
+    member = TeamMember(team_id=team_id, user_id=user_id, role=role)
+    try:
+        async with db.begin_nested():
+            db.add(member)
+            await db.flush()
+    except IntegrityError:
+        existing = await _find_team_membership(db, team_id=team_id, user_id=user_id)
+        if existing is None:
+            raise
+        return existing, False
+    return member, True
+
+
 async def invite_phone(db: AsyncSession, team_id: str, phone: str, role: str = "member") -> dict:
+    if not _valid_member_role(role):
+        return {"ok": False, "message": "Некорректная роль"}
     r = await db.execute(select(User).where(User.phone == phone.strip()))
     u = r.scalar_one_or_none()
     if not u or u.role.value != "contractor":
         return {"ok": False, "message": "Исполнитель не найден"}
-    ex = await db.execute(
-        select(TeamMember).where(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == u.id,
-        )
+
+    _member, created = await ensure_team_membership(
+        db,
+        team_id=team_id,
+        user_id=u.id,
+        role=role,
     )
-    if ex.scalar_one_or_none():
+    if not created:
+        await db.rollback()
         return {"ok": False, "message": "Уже в бригаде"}
-    db.add(TeamMember(team_id=team_id, user_id=u.id, role=role))
     await db.commit()
+
     try:
         from app.services import notification_service as ns
 
@@ -71,8 +136,11 @@ async def invite_phone(db: AsyncSession, team_id: str, phone: str, role: str = "
             return_to="/(contractor)/(tabs)/",
         )
     except Exception:
-        # Membership is already committed; notification remains best-effort.
-        pass
+        logger.exception(
+            "team membership notification failed team_id=%s user_id=%s",
+            team_id,
+            u.id,
+        )
     return {"ok": True, "user_id": u.id}
 
 
@@ -138,9 +206,7 @@ async def project_access_mode(db: AsyncSession, user: User, project: Project) ->
 
 async def is_contractor_owner(db: AsyncSession, user: User, project: Project) -> bool:
     """W68 #43: владелец бригады / назначенный contractor_id — не member/foreman."""
-    if project.contractor_id == user.id:
-        return True
-    return False
+    return project.contractor_id == user.id
 
 
 async def team_role_for_project(db: AsyncSession, user: User, project: Project) -> str | None:
@@ -164,11 +230,6 @@ async def can_access_project(db: AsyncSession, user: User, project: Project, wri
     if write and read_only:
         return False
     return True
-
-
-import secrets
-from datetime import timedelta
-from app.models.entities import TeamInvite
 
 
 async def require_capability(
@@ -217,7 +278,14 @@ async def require_capability(
     raise HTTPException(400, f"unknown_capability:{capability}")
 
 
-async def create_invite_link(db: AsyncSession, team_id: str, role: str = "member", hours: int = 72) -> dict:
+async def create_invite_link(
+    db: AsyncSession,
+    team_id: str,
+    role: str = "member",
+    hours: int = 72,
+) -> dict:
+    if not _valid_member_role(role):
+        raise ValueError("invalid_team_role")
     token = secrets.token_urlsafe(16)
     inv = TeamInvite(
         team_id=team_id,
@@ -231,26 +299,39 @@ async def create_invite_link(db: AsyncSession, team_id: str, role: str = "member
 
 
 async def join_by_token(db: AsyncSession, user_id: str, token: str) -> dict:
-    r = await db.execute(
-        select(TeamInvite).where(
-            TeamInvite.token == token,
-            TeamInvite.used.is_(False),
-        )
-    )
-    inv = r.scalar_one_or_none()
-    if not inv or inv.expires_at < utc_now():
+    """Atomically consume a single-use invite and add one idempotent membership."""
+    normalized = token.strip()
+    if not normalized:
         return {"ok": False, "message": "Ссылка недействительна"}
-    ex = await db.execute(
-        select(TeamMember).where(
-            TeamMember.team_id == inv.team_id,
-            TeamMember.user_id == user_id,
+
+    claimed = await db.execute(
+        update(TeamInvite)
+        .where(
+            TeamInvite.token == normalized,
+            TeamInvite.used.is_(False),
+            TeamInvite.expires_at >= utc_now(),
         )
+        .values(used=True)
+        .returning(TeamInvite.team_id, TeamInvite.role)
     )
-    if not ex.scalar_one_or_none():
-        db.add(TeamMember(team_id=inv.team_id, user_id=user_id, role=inv.role))
-    inv.used = True
-    await db.commit()
-    return {"ok": True, "team_id": inv.team_id}
+    row = claimed.first()
+    if row is None:
+        await db.rollback()
+        return {"ok": False, "message": "Ссылка недействительна"}
+
+    team_id, role = row
+    try:
+        await ensure_team_membership(
+            db,
+            team_id=team_id,
+            user_id=user_id,
+            role=role,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    return {"ok": True, "team_id": team_id}
 
 
 async def set_member_role(
@@ -260,6 +341,8 @@ async def set_member_role(
     user_id: str,
     role: str,
 ) -> bool:
+    if not _valid_member_role(role):
+        return False
     t = await db.get(Team, team_id)
     if not t or t.owner_id != owner_id:
         return False
