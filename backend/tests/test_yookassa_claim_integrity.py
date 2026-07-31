@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -105,6 +107,14 @@ async def seed_user(
     async with session_factory() as db:
         db.add(User(id=user_id, phone=phone, role=role))
         await db.commit()
+
+
+def test_alembic_graph_has_one_head():
+    script = ScriptDirectory.from_config(Config("alembic.ini"))
+    assert script.get_heads() == ["w6webhookdelivery01"]
+    revision = script.get_revision("w6webhookdelivery01")
+    assert revision is not None
+    assert revision.down_revision == "w6sidefxoutbox1"
 
 
 @pytest.mark.asyncio
