@@ -1,7 +1,7 @@
 """durable payment webhook delivery claims
 
 Revision ID: w6webhookdelivery01
-Revises: w6sidefxoutbox1
+Revises: w7codoclink001
 """
 
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "w6webhookdelivery01"
-down_revision = "w6sidefxoutbox1"
+down_revision = "w7codoclink001"
 branch_labels = None
 depends_on = None
 
