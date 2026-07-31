@@ -43,10 +43,13 @@ api_router.include_router(project_checklists.router)
 api_router.include_router(checklist_templates.router)
 api_router.include_router(stage_reactions.router)
 
-# Signature/archive state and required side effects must share one transaction.
+# Document state and required side effects must share one transaction.
 _DOCUMENT_LIFECYCLE_ROUTES = {
     ("/projects/{project_id}/documents/{document_id}/sign", "POST"),
     ("/projects/{project_id}/documents/{document_id}/archive", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/restore", "POST"),
+    ("/projects/{project_id}/documents/{document_id}", "DELETE"),
+    ("/projects/{project_id}/documents/{document_id}/legal-hold", "POST"),
 }
 
 
