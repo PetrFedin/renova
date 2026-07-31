@@ -106,13 +106,16 @@ async def create_payment(
 
 
 def check_webhook_ip(client_ip: str | None) -> bool:
-    if settings.environment != "production":
+    if settings.normalized_environment != "production":
         return True
     if not client_ip:
         return False
     import ipaddress
 
-    ip = ipaddress.ip_address(client_ip)
+    try:
+        ip = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return False
     for cidr in YOOKASSA_IPS:
         if "/" in cidr:
             if ip in ipaddress.ip_network(cidr, strict=False):
@@ -137,14 +140,32 @@ def webhook_event_key(body: dict[str, Any]) -> str | None:
     return f"yk:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
 
 
+def validate_webhook_envelope(body: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+    if not isinstance(body, dict):
+        raise ValueError("invalid_webhook_body")
+    event = str(body.get("event") or "").strip()
+    obj = body.get("object")
+    if not event or not isinstance(obj, dict):
+        raise ValueError("invalid_webhook_envelope")
+    event_key = webhook_event_key(body)
+    if not event_key:
+        raise ValueError("missing_provider_object_id")
+    return event, obj, event_key
+
+
 async def was_webhook_processed(db: AsyncSession, event_key: str) -> bool:
-    """Read-only duplicate check. It never claims or consumes an event early."""
+    """Read-only compatibility check for legacy and claimed completions."""
     from app.models.entities import PaymentWebhookEvent
+    from app.models.webhook_runtime import PaymentWebhookDelivery
 
     if event_key in _seen_keys:
         return True
     row = await db.get(PaymentWebhookEvent, event_key)
     if row:
+        _seen_keys.add(event_key)
+        return True
+    delivery = await db.get(PaymentWebhookDelivery, event_key)
+    if delivery and delivery.completed_at is not None:
         _seen_keys.add(event_key)
         return True
     return False
@@ -156,7 +177,7 @@ async def record_webhook_processed(
     *,
     kind: str | None = None,
 ) -> bool:
-    """Persist completion after the business transition; conflict means another worker won."""
+    """Legacy completion helper retained for backward-compatible callers."""
     from sqlalchemy.exc import IntegrityError
     from app.models.entities import PaymentWebhookEvent
 
@@ -188,15 +209,26 @@ async def remember_webhook_durable(db, event_id: str, *, kind: str | None = None
     return await record_webhook_processed(db, event_id, kind=kind)
 
 
+def _remote_money(obj: dict[str, Any]) -> tuple[float, str]:
+    amount_obj = obj.get("amount") or {}
+    try:
+        amount = round(float(amount_obj.get("value") or 0), 2)
+    except (TypeError, ValueError):
+        amount = 0.0
+    return amount, str(amount_obj.get("currency") or "").upper()
+
+
 async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
-    """Единый обработчик: подписка, project payment, provider cancellation/refund."""
+    """Prepare one provider transition; the endpoint owns the final commit."""
     event = str(body.get("event") or "")
     obj = body.get("object") or {}
+    if not isinstance(obj, dict):
+        return {"ok": False, "handled": False, "reason": "invalid_object"}
 
     if event in {"payment.canceled", "refund.succeeded"}:
         from app.services.payment_reversal_service import process_provider_reversal
 
-        reversal = await process_provider_reversal(body, db)
+        reversal = await process_provider_reversal(body, db, commit=False)
         return {
             "ok": True,
             "handled": reversal.handled,
@@ -209,17 +241,22 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         return {"ok": True, "handled": False, "reason": "unsupported_event"}
 
     metadata = obj.get("metadata") or {}
-    kind = metadata.get("kind", "pro_subscription")
+    if not isinstance(metadata, dict):
+        return {"ok": True, "handled": False, "reason": "invalid_metadata"}
+    kind = str(metadata.get("kind") or "")
+    provider_id = str(obj.get("id") or "").strip()
+    if not provider_id:
+        return {"ok": True, "handled": False, "reason": "missing_provider_object_id"}
 
     if kind == "project_payment":
         from app.services import payment_service as pay_svc
         from sqlalchemy import select
-        from app.models.entities import Payment
+        from app.models.entities import Payment, Project
 
-        payment_id = metadata.get("payment_id")
-        project_id = metadata.get("project_id")
-        yk_id = obj.get("id")
-        if not payment_id or not project_id:
+        payment_id = str(metadata.get("payment_id") or "")
+        project_id = str(metadata.get("project_id") or "")
+        provider_user_id = str(metadata.get("user_id") or "")
+        if not payment_id or not project_id or not provider_user_id:
             return {"ok": True, "handled": False, "reason": "missing_metadata"}
 
         q = select(Payment).where(Payment.id == payment_id)
@@ -230,18 +267,16 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
         existing = (await db.execute(q)).scalar_one_or_none()
         if not existing or existing.project_id != project_id:
             return {"ok": True, "handled": False, "reason": "payment_not_found"}
+        project = await db.get(Project, project_id)
+        if not project or provider_user_id != project.customer_id:
+            return {"ok": True, "handled": False, "reason": "payer_mismatch"}
         if existing.status.value not in ("pending", "processing", "paid_unverified"):
             return {"ok": True, "handled": True, "duplicate": True, "payment_id": payment_id}
 
-        amount_obj = obj.get("amount") or {}
-        try:
-            remote_amount = float(amount_obj.get("value") or 0)
-        except (TypeError, ValueError):
-            remote_amount = 0.0
-        remote_currency = str(amount_obj.get("currency") or "RUB").upper()
+        remote_amount, remote_currency = _remote_money(obj)
         if remote_currency != "RUB":
             return {"ok": True, "handled": False, "reason": "currency_mismatch"}
-        if abs(remote_amount - float(existing.amount)) > 0.01:
+        if abs(remote_amount - round(float(existing.amount), 2)) > 0.01:
             return {
                 "ok": True,
                 "handled": False,
@@ -249,17 +284,22 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
                 "expected": existing.amount,
                 "got": remote_amount,
             }
-        if existing.yookassa_payment_id and yk_id and existing.yookassa_payment_id != yk_id:
+        if existing.yookassa_payment_id and existing.yookassa_payment_id != provider_id:
             return {"ok": True, "handled": False, "reason": "yookassa_id_mismatch"}
 
-        if yk_id:
-            await pay_svc.attach_yookassa_id(db, payment_id, yk_id)
+        await pay_svc.attach_yookassa_id(
+            db,
+            payment_id,
+            provider_id,
+            commit=False,
+        )
         confirmed = await pay_svc.confirm_payment(
             db,
             payment_id,
             project_id=project_id,
             allow_without_acceptance=False,
             allow_without_settlement=True,
+            commit=False,
         )
         if not confirmed:
             return {
@@ -269,8 +309,6 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
                 "blocked": "acceptance_required",
                 "payment_id": payment_id,
             }
-
-        # confirm_payment already committed PaymentEvent, Expense, budget and durable side effects.
         return {
             "ok": True,
             "handled": True,
@@ -278,10 +316,32 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
             "confirmed": True,
         }
 
-    uid = metadata.get("user_id")
-    if uid:
-        from app.services.subscription_service import activate_pro
+    if kind != "pro_subscription":
+        return {"ok": True, "handled": False, "reason": "unsupported_payment_kind"}
 
-        await activate_pro(db, uid)
-        return {"ok": True, "handled": True, "pro_user_id": uid}
-    return {"ok": True, "handled": False, "reason": "missing_user_id"}
+    uid = str(metadata.get("user_id") or "")
+    if not uid:
+        return {"ok": True, "handled": False, "reason": "missing_user_id"}
+
+    from app.models.entities import User, UserRole
+    from app.services.subscription_service import PRO_PRICE, activate_pro
+
+    remote_amount, remote_currency = _remote_money(obj)
+    if remote_currency != "RUB":
+        return {"ok": True, "handled": False, "reason": "currency_mismatch"}
+    if abs(remote_amount - round(float(PRO_PRICE), 2)) > 0.01:
+        return {
+            "ok": True,
+            "handled": False,
+            "reason": "amount_mismatch",
+            "expected": PRO_PRICE,
+            "got": remote_amount,
+        }
+    user = await db.get(User, uid)
+    if not user or user.deleted_at is not None:
+        return {"ok": True, "handled": False, "reason": "user_not_found"}
+    if user.role != UserRole.contractor:
+        return {"ok": True, "handled": False, "reason": "subscription_role_forbidden"}
+
+    await activate_pro(db, uid, commit=False)
+    return {"ok": True, "handled": True, "pro_user_id": uid}
