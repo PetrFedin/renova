@@ -45,8 +45,8 @@ jobs:
       DATABASE_URL: sqlite+aiosqlite:///./ci-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
       SECRET_KEY: ci-secret-key-at-least-16
-      ALLOW_CREATE_ALL: "false"
-      ALLOW_DEMO_SEED: "false"
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
     steps:
       - uses: actions/checkout@v4
