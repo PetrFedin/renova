@@ -9,14 +9,16 @@ const must = (condition: boolean, message: string) => {
 };
 
 const webhook = readBackend('app/services/yookassa_service.py');
+const endpoint = readBackend('app/api/v1/subscription.py');
 const reversal = readBackend('app/services/payment_reversal_service.py');
 const budget = readBackend('app/services/budget_service.py');
 const budgetLegacy = readBackend('app/services/budget_service_legacy.py');
 const ledger = readBackend('app/services/expense_ledger_service.py');
 
 must(webhook.includes('{"payment.canceled", "refund.succeeded"}'), 'webhook routes provider reversals');
-must(webhook.includes('process_provider_reversal'), 'webhook delegates to canonical reversal state machine');
-must(webhook.includes('confirm_payment already committed PaymentEvent, Expense, budget and durable side effects'), 'success webhook does not duplicate canonical side effects');
+must(webhook.includes('process_provider_reversal(body, db, commit=False)'), 'webhook prepares reversal without an internal commit');
+must(endpoint.includes('complete_delivery('), 'webhook endpoint commits business transition with durable delivery completion');
+must(endpoint.includes('await db.rollback()'), 'webhook endpoint rolls back failed provider transitions');
 must(!webhook.includes('title=f"Оплата (ЮKassa): {confirmed.title}"'), 'success webhook removed duplicate direct activity');
 
 must(reversal.includes('query = query.with_for_update()'), 'reversal locks payment rows');
@@ -24,6 +26,8 @@ must(reversal.includes('Payment.project_id == project_id'), 'cancellation is pro
 must(reversal.includes('Payment.yookassa_payment_id == yookassa_payment_id'), 'refund resolves canonical provider payment');
 must(reversal.includes('currency != "RUB"'), 'provider currency is verified');
 must(reversal.includes('partial_refund_unsupported'), 'partial refunds fail closed without full reversal');
+must(reversal.includes('refund_source_not_confirmed'), 'out-of-order refund remains retryable until payment confirmation');
+must(reversal.includes('terminal_state_conflict'), 'terminal refund conflicts are monotonic and do not retry forever');
 must(reversal.includes('evidence_type="yookassa_cancellation"'), 'cancellation evidence is recorded');
 must(reversal.includes('evidence_type="yookassa_refund"'), 'refund evidence is recorded');
 must(reversal.includes('expense.status = "refund"'), 'full refund reverses canonical expense');
