@@ -203,10 +203,29 @@ async def sign_document(
     """
     import json
 
+    from app.models.entities import DomainOutbox
     from app.services import outbox_service as outbox
     from app.services.esign.base import SignRequest, signature_idempotency_key
     from app.services.esign.registry import get_provider
     from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    async def raise_inline_submission_error(signature: DocumentSignature) -> None:
+        if signature.status != "submitting":
+            return
+        event = (
+            await db.execute(
+                select(DomainOutbox)
+                .where(
+                    DomainOutbox.aggregate_type == "document_signature",
+                    DomainOutbox.aggregate_id == signature.id,
+                    DomainOutbox.event_type == outbox.ESIGN_SUBMISSION_EVENT,
+                )
+                .order_by(DomainOutbox.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if event is not None and event.last_error:
+            raise ValueError(event.last_error)
 
     version = await get_current_version(db, doc.id)
     if not version:
@@ -248,6 +267,7 @@ async def sign_document(
         if existing.status == "submitting" and esign.name != "in_app":
             await dispatch_best_effort(db, source="esign.submission.retry", limit=10)
             await db.refresh(existing)
+            await raise_inline_submission_error(existing)
         return existing
 
     request = SignRequest(
@@ -324,6 +344,7 @@ async def sign_document(
 
     await dispatch_best_effort(db, source="esign.submission", limit=10)
     await db.refresh(signature)
+    await raise_inline_submission_error(signature)
     return signature
 
 
