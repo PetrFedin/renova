@@ -13,8 +13,8 @@ from app.models.project_documents import (
     DocumentVersion,
     ProjectDocument,
 )
+from app.services.esign import registry
 from app.services.esign.base import SignRequest
-from app.services.esign.registry import get_provider
 
 
 async def process_external_signature_submission(
@@ -54,7 +54,7 @@ async def process_external_signature_submission(
         raise RuntimeError("esign_submission_document_missing")
 
     try:
-        provider = get_provider(provider_name)
+        provider = registry.get_provider(provider_name)
     except KeyError as error:
         raise RuntimeError("esign_submission_provider_unknown") from error
     if not provider.is_available():
