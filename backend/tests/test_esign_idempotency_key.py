@@ -23,6 +23,11 @@ def test_same_signature_intent_has_one_provider_idempotency_identity():
     assert len(_idempotency_id(first)) == len("renova-") + 48
 
 
+def test_persisted_identity_overrides_recalculation_during_reconciliation():
+    retried = replace(request(), idempotency_key="renova-durable-intent-123")
+    assert _idempotency_id(retried) == "renova-durable-intent-123"
+
+
 def test_material_signature_changes_create_distinct_idempotency_identity():
     base = request()
     variants = [
