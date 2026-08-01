@@ -5,7 +5,7 @@ import logging
 from types import SimpleNamespace
 from typing import Iterable
 
-from app.db.session import SessionLocal
+from app.db import session as db_session
 from app.services import project_service as project_svc
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,9 @@ async def enrich_dashboard_read_only(project_id: str, dashboard: dict, *, role: 
     """Enrich in an isolated session so an optional query cannot poison the request session."""
     result = dict(dashboard)
     try:
-        async with SessionLocal() as db:
+        # Resolve the factory at call time. Tests and controlled runtime swaps can
+        # replace the engine/sessionmaker without this module retaining a stale pool.
+        async with db_session.SessionLocal() as db:
             result = await project_svc.enrich_dashboard_actions(db, project_id, result, role=role)
     except Exception:
         logger.exception("dashboard enrichment unavailable project_id=%s", project_id)
