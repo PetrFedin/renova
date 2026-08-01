@@ -2,15 +2,26 @@
 import asyncio
 import time
 
+import pytest
+
 from app.services import otp_service as otp
 
 
-def setup_function():
+@pytest.fixture(autouse=True)
+def reset_otp_state(monkeypatch):
+    """Keep rate-limit tests from leaking mutable module settings into the suite."""
+    monkeypatch.setattr(otp, "_RESEND_COOLDOWN", 0)
     otp._store.clear()
     otp._send_log.clear()
     otp._fail_count.clear()
     otp._lock_until.clear()
-    otp._RESEND_COOLDOWN = 0  # unit test: only exercise max-sends window
+    otp._send_locks.clear()
+    yield
+    otp._store.clear()
+    otp._send_log.clear()
+    otp._fail_count.clear()
+    otp._lock_until.clear()
+    otp._send_locks.clear()
 
 
 def test_send_rate_limit():
@@ -18,11 +29,11 @@ def test_send_rate_limit():
 
     async def run():
         for _ in range(otp._MAX_SENDS):
-            r = await otp.send_otp(phone)
-            assert r["ok"] is True
-        r = await otp.send_otp(phone)
-        assert r["ok"] is False
-        assert r.get("rate_limited") is True
+            result = await otp.send_otp(phone)
+            assert result["ok"] is True
+        result = await otp.send_otp(phone)
+        assert result["ok"] is False
+        assert result.get("rate_limited") is True
 
     asyncio.run(run())
 
@@ -31,27 +42,27 @@ def test_verify_lockout():
     phone = "+79990003344"
 
     async def run():
-        r = await otp.send_otp(phone)
-        assert r["ok"]
+        result = await otp.send_otp(phone)
+        assert result["ok"]
         for _ in range(otp._MAX_VERIFY_FAILS):
             assert otp.verify_otp(phone, "0000") is False
         assert otp._lock_until.get(otp._norm(phone), 0) > time.time()
-        r2 = await otp.send_otp(phone)
-        assert r2["ok"] is False
-        assert r2.get("locked") is True
+        locked = await otp.send_otp(phone)
+        assert locked["ok"] is False
+        assert locked.get("locked") is True
 
     asyncio.run(run())
 
 
-def test_resend_cooldown():
-    otp._RESEND_COOLDOWN = 60
+def test_resend_cooldown(monkeypatch):
+    monkeypatch.setattr(otp, "_RESEND_COOLDOWN", 60)
     phone = "+79990005566"
 
     async def run():
-        r1 = await otp.send_otp(phone)
-        assert r1["ok"] is True
-        r2 = await otp.send_otp(phone)
-        assert r2["ok"] is False
-        assert r2.get("rate_limited") is True
+        first = await otp.send_otp(phone)
+        assert first["ok"] is True
+        second = await otp.send_otp(phone)
+        assert second["ok"] is False
+        assert second.get("rate_limited") is True
 
     asyncio.run(run())
