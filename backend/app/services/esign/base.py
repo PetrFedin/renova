@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -19,6 +20,23 @@ class SignRequest:
     content_hash: str | None = None
     title: str | None = None
     mime_type: str | None = None
+    idempotency_key: str | None = None
+
+
+def signature_idempotency_key(request: SignRequest) -> str:
+    """One stable provider identity for one document/version/signer intent."""
+    if request.idempotency_key:
+        return request.idempotency_key
+    material = "|".join(
+        [
+            request.document_id,
+            request.version_id,
+            request.signer_user_id,
+            request.signer_role,
+            request.content_hash or "",
+        ]
+    ).encode("utf-8")
+    return f"renova-{hashlib.sha256(material).hexdigest()[:48]}"
 
 
 @dataclass
