@@ -8,20 +8,24 @@ from app.services import otp_service as otp
 
 
 @pytest.fixture(autouse=True)
-def reset_otp_state(monkeypatch):
-    """Keep rate-limit tests from leaking mutable module settings into the suite."""
-    monkeypatch.setattr(otp, "_RESEND_COOLDOWN", 0)
+def reset_otp_state():
+    """Isolate local OTP state and restore the production cooldown explicitly."""
+    original_cooldown = otp._RESEND_COOLDOWN
+    otp._RESEND_COOLDOWN = 0
     otp._store.clear()
     otp._send_log.clear()
     otp._fail_count.clear()
     otp._lock_until.clear()
     otp._send_locks.clear()
-    yield
-    otp._store.clear()
-    otp._send_log.clear()
-    otp._fail_count.clear()
-    otp._lock_until.clear()
-    otp._send_locks.clear()
+    try:
+        yield
+    finally:
+        otp._RESEND_COOLDOWN = original_cooldown
+        otp._store.clear()
+        otp._send_log.clear()
+        otp._fail_count.clear()
+        otp._lock_until.clear()
+        otp._send_locks.clear()
 
 
 def test_send_rate_limit():
@@ -54,8 +58,8 @@ def test_verify_lockout():
     asyncio.run(run())
 
 
-def test_resend_cooldown(monkeypatch):
-    monkeypatch.setattr(otp, "_RESEND_COOLDOWN", 60)
+def test_resend_cooldown():
+    otp._RESEND_COOLDOWN = 60
     phone = "+79990005566"
 
     async def run():
