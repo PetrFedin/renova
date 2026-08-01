@@ -6,8 +6,6 @@ import pytest
 from app.models.entities import UserRole, WorkOrderStatus
 from app.services import work_order_service as service
 
-pytestmark = pytest.mark.asyncio
-
 
 def check_denied(current: str, target: str, role: UserRole, code: str):
     with pytest.raises(ValueError, match=code):
@@ -47,22 +45,34 @@ def test_notification_targets_exclude_actor_and_deduplicate():
 
 
 class FakeDb:
+    def __init__(self):
+        self.commits = 0
+        self.rollbacks = 0
+
+    async def commit(self):
+        self.commits += 1
+
+    async def rollback(self):
+        self.rollbacks += 1
+
     async def refresh(self, _row):
         return None
 
 
+@pytest.mark.asyncio
 async def test_transition_writes_audit_and_notifies_counterpart(monkeypatch):
-    audit_events = []
-    notifications = []
+    outbox_events = []
+    dispatched = []
 
-    async def fake_log_event(_db, **payload):
-        audit_events.append(payload)
+    async def fake_enqueue(_db, **payload):
+        outbox_events.append(payload)
+        return SimpleNamespace(id=f"outbox-{len(outbox_events)}")
 
-    async def fake_notify(_db, **payload):
-        notifications.append(payload)
+    async def fake_dispatch(_db, *, source):
+        dispatched.append(source)
 
-    monkeypatch.setattr(service.act, "log_event", fake_log_event)
-    monkeypatch.setattr(service.notif_svc, "notify", fake_notify)
+    monkeypatch.setattr(service.outbox, "enqueue", fake_enqueue)
+    monkeypatch.setattr(service, "_dispatch_committed_effects", fake_dispatch)
 
     project = SimpleNamespace(
         id="project-1",
@@ -82,9 +92,10 @@ async def test_transition_writes_audit_and_notifies_counterpart(monkeypatch):
         actual_end=None,
         updated_at=None,
     )
+    db = FakeDb()
 
     updated = await service.transition(
-        FakeDb(),
+        db,
         work_order,
         WorkOrderStatus.in_progress.value,
         "contractor",
@@ -94,12 +105,21 @@ async def test_transition_writes_audit_and_notifies_counterpart(monkeypatch):
 
     assert updated.status == WorkOrderStatus.in_progress
     assert updated.actual_start == date.today()
-    assert len(audit_events) == 1
-    assert audit_events[0]["kind"] == "work_status"
-    assert "approved → in_progress" in audit_events[0]["title"]
-    assert audit_events[0]["body"] == "actor_role=contractor"
+    assert db.commits == 1
+    assert db.rollbacks == 0
+    assert dispatched == ["work_order.transition"]
 
-    assert len(notifications) == 1
-    assert notifications[0]["user_id"] == "customer"
-    assert notifications[0]["notification_type"] == "stage_started"
-    assert notifications[0]["link_path"] == "/work-order/work-1"
+    assert len(outbox_events) == 2
+    activity = next(event for event in outbox_events if event["event_type"] == service.outbox.ACTIVITY_EVENT)
+    notification = next(event for event in outbox_events if event["event_type"] == service.outbox.NOTIFICATION_EVENT)
+
+    assert activity["aggregate_type"] == "work_order"
+    assert activity["aggregate_id"] == "work-1"
+    assert activity["payload"]["kind"] == "work_status"
+    assert "approved → in_progress" in activity["payload"]["title"]
+    assert activity["payload"]["body"] == "actor_role=contractor"
+    assert activity["payload"]["stage_id"] == "stage-1"
+
+    assert notification["payload"]["user_id"] == "customer"
+    assert notification["payload"]["notification_type"] == "stage_started"
+    assert notification["payload"]["link_path"] == "/work-order/work-1"
