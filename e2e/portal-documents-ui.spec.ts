@@ -12,31 +12,32 @@ test.describe('P3-W14 Portal + documents UI', () => {
   });
 
   test('portal magic link renders snapshot', async ({ page, request }) => {
-    const cust = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
-    const hCust = authHeaders(cust);
-    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: hCust })).json()) as {
+    const customer = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
+    const headers = authHeaders(customer);
+    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers })).json()) as {
       id: string;
       name: string;
     }[];
-    const pid = pickPrimaryDemoProject(projects).id;
+    const project = pickPrimaryDemoProject(projects);
     const link = (await (
-      await request.post(`${API}/api/v1/projects/${pid}/portal-link`, { headers: hCust, data: {} })
+      await request.post(`${API}/api/v1/projects/${project.id}/portal-link`, { headers, data: {} })
     ).json()) as { token: string };
 
     await page.goto(`/portal?token=${encodeURIComponent(link.token)}`);
-    await expect(page.getByText('Renova · портал заказчика')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('RENOVA', { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(project.name, { exact: true })).toBeVisible();
     await expect(page.getByText('Расписание').first()).toBeVisible();
   });
 
   test('documents hub opens after demo session', async ({ page, request }) => {
-    const cust = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
-    const hCust = authHeaders(cust);
-    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: hCust })).json()) as {
+    const customer = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
+    const headers = authHeaders(customer);
+    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers })).json()) as {
       id: string;
       name: string;
     }[];
-    const pid = pickPrimaryDemoProject(projects).id;
-    await seedDemoCustomerSession(page, cust.id, pid, cust.access_token);
+    const projectId = pickPrimaryDemoProject(projects).id;
+    await seedDemoCustomerSession(page, customer.id, projectId, customer.access_token);
     await page.goto('/documents');
     await expect(page.getByText('Документы').first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel('Загрузить документ')).toBeVisible({ timeout: 10_000 });
