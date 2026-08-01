@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 _DEGRADED_ALERT = "Часть данных панели временно недоступна"
 
 
+def SessionLocal():
+    """Resolve the active sessionmaker lazily while retaining a test injection seam."""
+    return db_session.SessionLocal()
+
+
 def _status_value(stage) -> str:
     status = getattr(stage, "status", "")
     return getattr(status, "value", None) or str(status or "")
@@ -87,9 +92,7 @@ async def enrich_dashboard_read_only(project_id: str, dashboard: dict, *, role: 
     """Enrich in an isolated session so an optional query cannot poison the request session."""
     result = dict(dashboard)
     try:
-        # Resolve the factory at call time. Tests and controlled runtime swaps can
-        # replace the engine/sessionmaker without this module retaining a stale pool.
-        async with db_session.SessionLocal() as db:
+        async with SessionLocal() as db:
             result = await project_svc.enrich_dashboard_actions(db, project_id, result, role=role)
     except Exception:
         logger.exception("dashboard enrichment unavailable project_id=%s", project_id)
