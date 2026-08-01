@@ -195,11 +195,18 @@ async def sign_document(
     content_hash: str | None = None,
     provider: str | None = None,
 ) -> DocumentSignature:
-    """Create one canonical signature request for a signer/version/provider."""
+    """Create one canonical signature request for a signer/version/provider.
+
+    External providers are called only after a durable `submitting` signature and
+    outbox event have committed. Inline dispatch preserves the current fast path;
+    the background worker reconciles any interrupted provider/local commit window.
+    """
     import json
 
-    from app.services.esign.base import SignRequest
+    from app.services import outbox_service as outbox
+    from app.services.esign.base import SignRequest, signature_idempotency_key
     from app.services.esign.registry import get_provider
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
 
     version = await get_current_version(db, doc.id)
     if not version:
@@ -223,7 +230,7 @@ async def sign_document(
         DocumentSignature.version_id == version.id,
         DocumentSignature.signer_user_id == signer_user_id,
         DocumentSignature.provider_name == esign.name,
-        DocumentSignature.status.in_(("pending", "signed")),
+        DocumentSignature.status.in_(("submitting", "pending", "signed")),
     )
     try:
         existing_query = existing_query.with_for_update()
@@ -231,45 +238,92 @@ async def sign_document(
         pass
     existing_rows = list((await db.execute(existing_query)).scalars().all())
     if existing_rows:
-        return min(
+        existing = min(
             existing_rows,
-            key=lambda row: (0 if row.status == "signed" else 1, row.id),
+            key=lambda row: (
+                0 if row.status == "signed" else 1 if row.status == "pending" else 2,
+                row.id,
+            ),
         )
+        if existing.status == "submitting" and esign.name != "in_app":
+            await dispatch_best_effort(db, source="esign.submission.retry", limit=10)
+            await db.refresh(existing)
+        return existing
 
-    result = await esign.create_signature(
-        SignRequest(
+    request = SignRequest(
+        document_id=doc.id,
+        version_id=version.id,
+        signer_user_id=signer_user_id,
+        signer_role=signer_role,
+        content_hash=resolved_hash,
+        title=doc.title,
+        mime_type=version.mime_type,
+    )
+
+    if esign.name == "in_app":
+        result = await esign.create_signature(request)
+        if result.status not in ("signed", "pending"):
+            raise ValueError(result.error or f"sign_failed:{result.status}")
+        if result.status == "pending" and not result.external_id:
+            raise ValueError("external_signature_id_required")
+
+        signature = DocumentSignature(
             document_id=doc.id,
             version_id=version.id,
             signer_user_id=signer_user_id,
             signer_role=signer_role,
+            signature_type=result.signature_type or signature_type,
+            provider_name=result.provider_name,
+            provider_external_id=result.external_id,
             content_hash=resolved_hash,
-            title=doc.title,
-            mime_type=version.mime_type,
+            status=result.status,
+            signed_at=utc_now() if result.status == "signed" else None,
+            meta_json=json.dumps(result.meta, ensure_ascii=False) if result.meta else None,
         )
-    )
-    if result.status not in ("signed", "pending"):
-        raise ValueError(result.error or f"sign_failed:{result.status}")
-    if result.status == "pending" and not result.external_id:
-        raise ValueError("external_signature_id_required")
+        db.add(signature)
+        await db.flush()
+        if result.status == "signed" and doc.status == DocumentStatus.draft.value:
+            doc.status = DocumentStatus.active.value
+            await db.flush()
+        return signature
 
+    idempotency_key = signature_idempotency_key(request)
+    queued_meta = {
+        "submission": {
+            "idempotency_key": idempotency_key,
+            "state": "queued",
+        }
+    }
     signature = DocumentSignature(
         document_id=doc.id,
         version_id=version.id,
         signer_user_id=signer_user_id,
         signer_role=signer_role,
-        signature_type=result.signature_type or signature_type,
-        provider_name=result.provider_name,
-        provider_external_id=result.external_id,
+        signature_type=provider_name,
+        provider_name=provider_name,
+        provider_external_id=None,
         content_hash=resolved_hash,
-        status=result.status,
-        signed_at=utc_now() if result.status == "signed" else None,
-        meta_json=json.dumps(result.meta, ensure_ascii=False) if result.meta else None,
+        status="submitting",
+        signed_at=None,
+        meta_json=json.dumps(queued_meta, ensure_ascii=False),
     )
     db.add(signature)
     await db.flush()
-    if result.status == "signed" and doc.status == DocumentStatus.draft.value:
-        doc.status = DocumentStatus.active.value
-        await db.flush()
+    await outbox.enqueue(
+        db,
+        aggregate_type="document_signature",
+        aggregate_id=signature.id,
+        event_type=outbox.ESIGN_SUBMISSION_EVENT,
+        payload={
+            "signature_id": signature.id,
+            "provider_name": provider_name,
+            "idempotency_key": idempotency_key,
+        },
+    )
+    await db.commit()
+
+    await dispatch_best_effort(db, source="esign.submission", limit=10)
+    await db.refresh(signature)
     return signature
 
 
