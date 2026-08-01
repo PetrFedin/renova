@@ -279,7 +279,7 @@ async def test_unaccepted_stage_and_wrong_amount_are_blocked_without_side_effect
     assert (await bank_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
 
 
-def test_canonical_bank_routes_precede_legacy_export_routes():
+def test_bank_statement_routes_are_single_and_canonical():
     paths = {
         "/api/v1/projects/{project_id}/import/bank-statement",
         "/api/v1/projects/{project_id}/import/bank-statement/confirm",
@@ -290,5 +290,5 @@ def test_canonical_bank_routes_precede_legacy_export_routes():
             for route in api_router.routes
             if getattr(route, "path", None) == path and "POST" in (getattr(route, "methods", set()) or set())
         ]
-        assert len(matching) >= 2
+        assert len(matching) == 1
         assert matching[0].endpoint.__module__ == "app.api.v1.bank_statements"

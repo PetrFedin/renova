@@ -76,6 +76,8 @@ _send_log: dict[str, list[float]] = defaultdict(list)
 _fail_count: dict[str, int] = defaultdict(int)
 _lock_until: dict[str, float] = {}
 _send_locks: dict[str, asyncio.Lock] = {}
+_send_inflight: set[str] = set()
+_send_locks_guard = threading.Lock()
 _verify_locks: dict[str, threading.Lock] = {}
 _verify_locks_guard = threading.Lock()
 
@@ -146,11 +148,26 @@ def _rk(kind: str, phone: str) -> str:
 
 
 def _local_send_lock(phone: str) -> asyncio.Lock:
-    lock = _send_locks.get(phone)
-    if lock is None:
-        lock = asyncio.Lock()
-        _send_locks[phone] = lock
-    return lock
+    with _send_locks_guard:
+        lock = _send_locks.get(phone)
+        if lock is None:
+            lock = asyncio.Lock()
+            _send_locks[phone] = lock
+        return lock
+
+
+def _claim_local_send(phone: str) -> bool:
+    """Reject a same-process double tap before either call reaches the provider."""
+    with _send_locks_guard:
+        if phone in _send_inflight:
+            return False
+        _send_inflight.add(phone)
+        return True
+
+
+def _release_local_send(phone: str) -> None:
+    with _send_locks_guard:
+        _send_inflight.discard(phone)
 
 
 def _local_verify_lock(phone: str) -> threading.Lock:
@@ -342,103 +359,113 @@ async def send_otp(phone: str) -> dict:
     except InvalidPhoneNumber:
         return {"ok": False, "message": "Некорректный номер"}
 
-    async with _local_send_lock(normalized):
-        claim: str | None = None
-        try:
-            claim = _acquire_distributed_send_claim(normalized)
-            if claim == "":
-                return {
-                    "ok": False,
-                    "message": "Отправка уже выполняется. Повторите через несколько секунд",
-                    "rate_limited": True,
-                }
+    if not _claim_local_send(normalized):
+        return {
+            "ok": False,
+            "message": "Отправка уже выполняется. Повторите через несколько секунд",
+            "rate_limited": True,
+        }
 
-            now = time.time()
-            lock_left = _lock_left(normalized, now)
-            if lock_left > 0:
-                return {
-                    "ok": False,
-                    "message": f"Слишком много попыток. Повторите через {lock_left // 60 + 1} мин",
-                    "locked": True,
-                }
-            _prune_sends(normalized, now)
-            last = _last_send(normalized)
-            if last and (now - last) < _RESEND_COOLDOWN:
-                wait = int(_RESEND_COOLDOWN - (now - last)) + 1
-                return {
-                    "ok": False,
-                    "message": f"Повторная отправка через {wait} с",
-                    "rate_limited": True,
-                }
-            if _send_count(normalized, now) >= _MAX_SENDS:
-                return {
-                    "ok": False,
-                    "message": "Лимит SMS исчерпан. Подождите 10 минут",
-                    "rate_limited": True,
-                }
-
-            code = f"{secrets.randbelow(1_000_000):06d}"
-            code_digest = _digest(normalized, code)
-            previous = _get_code(normalized)
-            _store_code(normalized, code_digest, now + _TTL)
-            send_record = _record_send(normalized, now)
-
+    try:
+        async with _local_send_lock(normalized):
+            claim: str | None = None
             try:
-                delivery = await send_sms(normalized, f"Renova: код входа {code}")
-            except (SmsConfigurationError, SmsDeliveryFailed) as exc:
-                _clear_code_if_matches(normalized, code_digest)
-                _restore_code(normalized, previous)
-                _remove_send_record(normalized, send_record)
-                logger.warning("otp SMS delivery failed", extra={"error_type": type(exc).__name__})
-                return {
-                    "ok": False,
-                    "message": "SMS временно недоступна. Повторите позже",
-                    "service_unavailable": True,
-                }
+                claim = _acquire_distributed_send_claim(normalized)
+                if claim == "":
+                    return {
+                        "ok": False,
+                        "message": "Отправка уже выполняется. Повторите через несколько секунд",
+                        "rate_limited": True,
+                    }
 
-            if not delivery.delivered and not delivery.preview:
-                _clear_code_if_matches(normalized, code_digest)
-                _restore_code(normalized, previous)
-                _remove_send_record(normalized, send_record)
-                return {
-                    "ok": False,
-                    "message": "SMS временно недоступна. Повторите позже",
-                    "service_unavailable": True,
-                }
+                now = time.time()
+                lock_left = _lock_left(normalized, now)
+                if lock_left > 0:
+                    return {
+                        "ok": False,
+                        "message": f"Слишком много попыток. Повторите через {lock_left // 60 + 1} мин",
+                        "locked": True,
+                    }
+                _prune_sends(normalized, now)
+                last = _last_send(normalized)
+                if last and (now - last) < _RESEND_COOLDOWN:
+                    wait = int(_RESEND_COOLDOWN - (now - last)) + 1
+                    return {
+                        "ok": False,
+                        "message": f"Повторная отправка через {wait} с",
+                        "rate_limited": True,
+                    }
+                if _send_count(normalized, now) >= _MAX_SENDS:
+                    return {
+                        "ok": False,
+                        "message": "Лимит SMS исчерпан. Подождите 10 минут",
+                        "rate_limited": True,
+                    }
 
-            response: dict = {"ok": True, "message": "Код отправлен"}
-            if delivery.preview:
-                if _working_environment():
+                code = f"{secrets.randbelow(1_000_000):06d}"
+                code_digest = _digest(normalized, code)
+                previous = _get_code(normalized)
+                _store_code(normalized, code_digest, now + _TTL)
+                send_record = _record_send(normalized, now)
+
+                try:
+                    delivery = await send_sms(normalized, f"Renova: код входа {code}")
+                except (SmsConfigurationError, SmsDeliveryFailed) as exc:
+                    _clear_code_if_matches(normalized, code_digest)
+                    _restore_code(normalized, previous)
+                    _remove_send_record(normalized, send_record)
+                    logger.warning("otp SMS delivery failed", extra={"error_type": type(exc).__name__})
+                    return {
+                        "ok": False,
+                        "message": "SMS временно недоступна. Повторите позже",
+                        "service_unavailable": True,
+                    }
+
+                if not delivery.delivered and not delivery.preview:
                     _clear_code_if_matches(normalized, code_digest)
                     _restore_code(normalized, previous)
                     _remove_send_record(normalized, send_record)
                     return {
                         "ok": False,
-                        "message": "SMS не настроена",
+                        "message": "SMS временно недоступна. Повторите позже",
                         "service_unavailable": True,
                     }
-                response.update({"preview": True, "demo_code": code})
-            return response
-        except OtpStoreUnavailable:
-            return {
-                "ok": False,
-                "message": "Сервис кодов временно недоступен",
-                "service_unavailable": True,
-            }
-        except RedisError:
-            logger.exception("otp Redis operation failed")
-            _mark_redis_unavailable()
-            return {
-                "ok": False,
-                "message": "Сервис кодов временно недоступен",
-                "service_unavailable": True,
-            }
-        finally:
-            try:
-                _release_distributed_send_claim(normalized, claim)
-            except (OtpStoreUnavailable, RedisError):
+
+                response: dict = {"ok": True, "message": "Код отправлен"}
+                if delivery.preview:
+                    if _working_environment():
+                        _clear_code_if_matches(normalized, code_digest)
+                        _restore_code(normalized, previous)
+                        _remove_send_record(normalized, send_record)
+                        return {
+                            "ok": False,
+                            "message": "SMS не настроена",
+                            "service_unavailable": True,
+                        }
+                    response.update({"preview": True, "demo_code": code})
+                return response
+            except OtpStoreUnavailable:
+                return {
+                    "ok": False,
+                    "message": "Сервис кодов временно недоступен",
+                    "service_unavailable": True,
+                }
+            except RedisError:
+                logger.exception("otp Redis operation failed")
                 _mark_redis_unavailable()
-                logger.warning("otp send claim release failed")
+                return {
+                    "ok": False,
+                    "message": "Сервис кодов временно недоступен",
+                    "service_unavailable": True,
+                }
+            finally:
+                try:
+                    _release_distributed_send_claim(normalized, claim)
+                except (OtpStoreUnavailable, RedisError):
+                    _mark_redis_unavailable()
+                    logger.warning("otp send claim release failed")
+    finally:
+        _release_local_send(normalized)
 
 
 def _verify_local(phone: str, candidate: str, now: float) -> bool:

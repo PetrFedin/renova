@@ -82,12 +82,17 @@ async def test_webhook_confirms_project_payment(db, monkeypatch):
     assert refreshed.status == PaymentStatus.confirmed
     assert refreshed.yookassa_payment_id == "yk-test-123"
 
+
 @pytest.mark.asyncio
 async def test_webhook_idempotent_duplicate_event(db, monkeypatch):
-    """P3.1b: повторный webhook не подтверждает платёж второй раз."""
-    from app.core import config as cfg
+    """Repeated delivery confirms once and prepares one durable approval event."""
     from datetime import datetime
-    from app.models.entities import ActivityEvent
+
+    from sqlalchemy import func, select
+
+    from app.core import config as cfg
+    from app.models.entities import DomainOutbox
+    from app.services import outbox_service as outbox
 
     monkeypatch.setattr(cfg.settings, "environment", "development")
 
@@ -142,12 +147,17 @@ async def test_webhook_idempotent_duplicate_event(db, monkeypatch):
     refreshed = await pay_svc.get_payment(db, payment.id)
     assert refreshed.status == PaymentStatus.confirmed
 
-    from sqlalchemy import select, func
-    from app.models.entities import ActivityEvent as AE
-    events = (
-        await db.execute(select(func.count()).select_from(AE).where(AE.project_id == project.id, AE.kind == "PaymentApproved"))
-    ).scalar()
+    events = await db.scalar(
+        select(func.count())
+        .select_from(DomainOutbox)
+        .where(
+            DomainOutbox.aggregate_type == "payment",
+            DomainOutbox.aggregate_id == payment.id,
+            DomainOutbox.event_type == outbox.RECEIPT_CREATED_EVENT,
+        )
+    )
     assert events == 1
+
 
 @pytest.mark.asyncio
 async def test_demo_not_allowed_in_staging(monkeypatch):

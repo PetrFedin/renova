@@ -1,8 +1,15 @@
 name: CI
+
 on: [push, pull_request]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   mobile-contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -11,135 +18,83 @@ jobs:
           cache: npm
       - name: Install workspace dependencies
         run: npm ci
-      - name: Mobile baseline typecheck
+      - name: Mobile TypeScript integrity
         run: npm run typecheck:mobile
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
-      - name: Schedule state truth contracts
+      - name: Mobile runtime and persistence contracts
         run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/domain/schedulePlanState.test.ts
-          npx tsx apps/mobile/lib/schedulePlanTruthIntegrity.test.ts
-          npx tsx apps/mobile/lib/async/asyncResource.test.ts
-          npx tsx apps/mobile/lib/scheduleDataTruthIntegrity.test.ts
-      - name: Shared sheet chrome contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/sheetChromeContract.test.ts
-      - name: Financial form write contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/financialFormIntegrity.test.ts
-      - name: Financial create idempotency contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/financialCreateIdempotency.test.ts
-          npx tsx apps/mobile/lib/changeOrderCreateIdempotency.test.ts
-      - name: Purchase and material create contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/purchaseCreateIdempotency.test.ts
-          npx tsx apps/mobile/lib/materialPickLifecycleIntegrity.test.ts
-      - name: Purchase transition integrity contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/purchaseTransitionIntegrity.test.ts
-      - name: Receipt financial integrity contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/receiptFinancialIntegrity.test.ts
-          npx tsx apps/mobile/lib/fiscalReceiptDedupIntegrity.test.ts
-      - name: Bank statement integrity contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/bankStatementIntegrity.test.ts
-      - name: Expense mutation integrity contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/expenseMutationIntegrity.test.ts
-      - name: Budget ledger resurrection contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/budgetLedgerResurrectionIntegrity.test.ts
-      - name: YooKassa reversal integrity contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/yookassaReversalIntegrity.test.ts
-      - name: YooKassa webhook delivery contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/yookassaWebhookDeliveryIntegrity.test.ts
-      - name: Payment dispute integrity contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/paymentDisputeIntegrity.test.ts
-      - name: Payment dispute resolution contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/paymentDisputeResolutionIntegrity.test.ts
-      - name: Payment event history contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/paymentEventHistoryIntegrity.test.ts
-      - name: Offline outbox reliability contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/offline/flushPolicy.runtime.test.ts
-          npx tsx apps/mobile/lib/offline/queueMerge.test.ts
-          npx tsx apps/mobile/lib/offlineOutboxReliabilityContract.test.ts
-      - name: Focus-aware reload contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/projectReloadFocusContract.test.ts
-      - name: Project side-effect coalescing contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/projectSideEffectsCoalescing.test.ts
-      - name: Inbox websocket reload contracts
-        run: |
-          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
-          npx tsx apps/mobile/lib/trailingReloadScheduler.test.ts
-          npx tsx apps/mobile/lib/inboxWsReloadContract.test.ts
+          set -euo pipefail
+          npm run test:offline
+          npm run test:routes
+          npm run test:docs-meta
+          npm run test:docs-upload
+          npm run testflight:eas
 
-  e2e:
+  backend-complete:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:17-alpine
-        env: { POSTGRES_USER: renova, POSTGRES_PASSWORD: renova, POSTGRES_DB: renova }
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova
         ports: ["5433:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./ci-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - name: Install backend + start API + e2e-smoke
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
         working-directory: backend
         run: |
           set -euo pipefail
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-          poetry run pytest tests/test_issue_transition_integrity.py tests/test_financial_create_idempotency.py tests/test_financial_side_effect_outbox.py tests/test_work_acceptance_outbox_atomicity.py tests/test_work_order_atomicity.py tests/test_work_schedule_atomicity.py tests/test_waste_order_lifecycle_integrity.py tests/test_document_lifecycle_atomicity.py tests/test_outbox_fencing_integrity.py tests/test_payment_transition_idempotency.py tests/test_yookassa_reversal_integrity.py tests/test_yookassa_webhook_delivery_integrity.py tests/test_yookassa_claim_integrity.py tests/test_payment_dispute_integrity.py tests/test_payment_dispute_resolution_integrity.py tests/test_payment_event_history_integrity.py tests/test_change_order_approval_atomicity.py tests/test_change_order_rejection_idempotency.py tests/test_change_order_create_idempotency.py tests/test_purchase_transition_integrity.py tests/test_purchase_create_idempotency.py tests/test_material_pick_lifecycle_integrity.py tests/test_receipt_financial_integrity.py tests/test_fiscal_receipt_deduplication.py tests/test_bank_statement_integrity.py tests/test_expense_mutation_integrity.py tests/test_budget_ledger_resurrection_integrity.py tests/test_budget_canonical_timezone_integrity.py tests/test_budget_projection_integrity.py tests/test_budget_planned_precision.py tests/test_production_demo_truth_guard.py tests/test_storage_integrity.py tests/test_push_delivery_integrity.py tests/test_email_delivery_integrity.py tests/test_sms_otp_integrity.py tests/test_otp_redis_runtime_integrity.py tests/test_otp_atomic_consume.py tests/test_esign_provider_webhook_integrity.py tests/test_esign_idempotency_key.py tests/test_fns_receipt_verification_integrity.py tests/test_npd_moy_nalog_truth_integrity.py tests/test_moy_nalog_truth_repair.py tests/test_document_ocr_worker.py tests/test_document_ocr_truth_integrity.py tests/test_pdf_glyph_integrity.py tests/test_dashboard_read_integrity.py tests/test_project_viewer_idempotency.py tests/test_access_token_revocation_integrity.py tests/test_unassigned_project_acl.py tests/test_team_invite_atomicity.py tests/test_refresh_token_rotation_atomicity.py tests/test_portal_change_order_scope.py tests/test_account_lifecycle_integrity.py -q
-          export ENVIRONMENT=development
-          export DATABASE_URL=sqlite+aiosqlite:///./ci.db
-          export PUBLIC_BASE_URL=http://127.0.0.1:8100
-          export SECRET_KEY=ci-secret-key-at-least-16
-          poetry run uvicorn app.main:app --host 127.0.0.1 --port 8100 &
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8100/health >/dev/null; then
-              echo "API ready"
-              break
+      - name: Full backend test suite
+        working-directory: backend
+        run: |
+          set -o pipefail
+          poetry run pytest --tb=short -ra --junitxml=pytest-results.xml 2>&1 | tee pytest-full.log
+      - name: Publish backend test summary
+        if: always()
+        working-directory: backend
+        run: |
+          {
+            echo "## Backend full regression"
+            if [ -f pytest-full.log ]; then
+              echo '```text'
+              grep -E '^(FAILED|ERROR) |^=+ .* (failed|error|errors)' pytest-full.log | tail -n 200 || tail -n 200 pytest-full.log
+              echo '```'
+            else
+              echo "The pytest log was not created. Inspect the dependency-installation step."
             fi
-            sleep 1
-            if [ "$i" -eq 30 ]; then
-              echo "API failed to start"
-              exit 1
-            fi
-          done
-          bash ../scripts/e2e-smoke.sh
-      - name: Alembic on Postgres service (smoke)
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload backend test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-diagnostics
+          path: |
+            backend/pytest-full.log
+            backend/pytest-results.xml
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Alembic upgrade on PostgreSQL
+        if: success()
         working-directory: backend
         env:
           ENVIRONMENT: staging
@@ -148,19 +103,21 @@ jobs:
           SECRET_KEY: ci-staging-secret-key-32chars!!
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
-        run: |
-          set -euo pipefail
-          poetry run python -m alembic upgrade head
+        run: poetry run python -m alembic upgrade head
 
-  playwright:
+  playwright-api-and-ui:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with:
+          python-version: "3.12"
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - name: API Playwright (ci-playwright api)
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install test dependencies
         run: |
           set -euo pipefail
           pip install poetry
@@ -168,6 +125,9 @@ jobs:
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
           cd ..
-          npm ci && npx playwright install chromium
-          bash scripts/assert-e2e-bearer.sh
-          bash scripts/ci-playwright.sh api
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Verify bearer-auth E2E contract
+        run: bash scripts/assert-e2e-bearer.sh
+      - name: Run API and complete browser surface E2E
+        run: bash scripts/ci-playwright.sh all

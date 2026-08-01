@@ -169,7 +169,7 @@ async def test_canonical_payment_list_embeds_history_without_raw_evidence(histor
     assert by_id[untouched.id].events == []
 
 
-def test_canonical_payment_history_route_precedes_legacy_list():
+def test_payment_history_route_is_single_and_canonical():
     path = "/api/v1/projects/{project_id}/payments"
     matching = [
         route
@@ -177,5 +177,5 @@ def test_canonical_payment_history_route_precedes_legacy_list():
         if getattr(route, "path", None) == path
         and "GET" in (getattr(route, "methods", set()) or set())
     ]
-    assert len(matching) >= 2
+    assert len(matching) == 1
     assert matching[0].endpoint.__module__ == "app.api.v1.payment_history"

@@ -5,12 +5,17 @@ import logging
 from types import SimpleNamespace
 from typing import Iterable
 
-from app.db.session import SessionLocal
+from app.db import session as db_session
 from app.services import project_service as project_svc
 
 logger = logging.getLogger(__name__)
 
 _DEGRADED_ALERT = "Часть данных панели временно недоступна"
+
+
+def SessionLocal():
+    """Resolve the active sessionmaker lazily while retaining a test injection seam."""
+    return db_session.SessionLocal()
 
 
 def _status_value(stage) -> str:

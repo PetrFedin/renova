@@ -119,8 +119,6 @@ async def test_os_acceptance_proxy_uses_canon():
         assert r.json()["status"] == "accepted"
 
 
-
-
 async def test_w139_accept_without_score_clears_stale():
     """W139: accept/return без quality_score не оставляют stale оценку в БД."""
     from app.db import session as sess
@@ -188,11 +186,9 @@ async def test_w139_os_proxy_and_return_without_fake_scores():
         assert r.status_code == 200, r.text
         assert r.json().get("quality_score") is None
 
-        # fresh acceptance for return path
         stages2 = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
         open2 = next((s for s in stages2 if s.get("status") in ("active", "review")), None)
         if open2 is None:
-            # create next stage path — skip if project fully done
             return
         created2 = await client.post(
             f"/api/v1/projects/{pid}/work-acceptances",
@@ -215,9 +211,13 @@ async def test_w139_os_proxy_and_return_without_fake_scores():
         assert ret.status_code == 200, ret.text
         assert ret.json().get("quality_score") is None
 
-async def test_accept_emits_acceptance_passed_with_stage_context():
-    """W44: AcceptancePassed must carry stage_id into automation via log_event."""
-    from unittest.mock import AsyncMock, patch
+
+async def test_accept_persists_acceptance_passed_with_stage_context():
+    """AcceptancePassed is delivered durably and points to the accepted stage."""
+    from sqlalchemy import select
+
+    from app.db import session as sess
+    from app.models.entities import ActivityEvent
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -233,16 +233,23 @@ async def test_accept_emits_acceptance_passed_with_stage_context():
         acc_id = created.json()["id"]
 
         await complete_stage_checklist(client, pid, open_st["id"], h_cont)
-        with patch("app.services.automation_engine.process_event", new_callable=AsyncMock) as pe:
-            accepted = await client.post(
-                f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
-                headers=h_cust,
-                json={"quality_score": 9, "comment": "ок"},
-            )
-            assert accepted.status_code == 200, accepted.text
-            passed_calls = [c for c in pe.await_args_list if c.kwargs.get("kind") == "AcceptancePassed"]
-            assert passed_calls, pe.await_args_list
-            assert passed_calls[0].kwargs.get("stage_id") == open_st["id"]
+        accepted = await client.post(
+            f"/api/v1/projects/{pid}/work-acceptances/{acc_id}/accept",
+            headers=h_cust,
+            json={"quality_score": 9, "comment": "ок"},
+        )
+        assert accepted.status_code == 200, accepted.text
+
+        async with sess.SessionLocal() as db:
+            event = (
+                await db.execute(
+                    select(ActivityEvent)
+                    .where(ActivityEvent.project_id == pid)
+                    .where(ActivityEvent.kind == "AcceptancePassed")
+                    .where(ActivityEvent.link_path == f"/stage/{open_st['id']}")
+                )
+            ).scalars().first()
+            assert event is not None
 
         detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()
         stage = next(s for s in detail["stages"] if s["id"] == open_st["id"])
@@ -291,7 +298,6 @@ async def test_schedule_item_accepted_does_not_bypass_work_acceptance():
         assert not stage.get("customer_accepted_at")
         assert stage["status"] != "done"
 
-        # Happy path: каноническая приёмка → строка графика accepted
         wa = await client.post(
             f"/api/v1/projects/{pid}/work-acceptances",
             headers=h_cont,
@@ -340,19 +346,12 @@ async def test_contractor_cannot_transition_work_order_to_done():
         wo = created.json()
         wo_id = wo["id"]
 
-        # Двигаем к review от имени исполнителя (допустимые шаги)
-        for status in ("approved", "in_progress", "review"):
-            # published → need negotiating or approved — try transitions until review
-            pass
-
-        # Явно: published → approved (customer), → in_progress, → review (contractor)
         r = await client.post(
             f"/api/v1/projects/{pid}/work-orders/{wo_id}/transition",
             headers=h_cust,
             json={"status": "approved"},
         )
         if r.status_code >= 400:
-            # published may need negotiating first
             await client.post(
                 f"/api/v1/projects/{pid}/work-orders/{wo_id}/transition",
                 headers=h_cont,

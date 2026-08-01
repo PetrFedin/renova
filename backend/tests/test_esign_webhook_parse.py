@@ -24,6 +24,7 @@ def test_parse_requires_id():
 
 def test_document_dict_provider_alias():
     from types import SimpleNamespace
+
     from app.services.project_document_service import document_dict
 
     doc = SimpleNamespace(
@@ -36,6 +37,7 @@ def test_document_dict_provider_alias():
         stage_id=None,
         payment_id=None,
         receipt_id=None,
+        change_order_id=None,
         work_acceptance_id=None,
         current_version_id=None,
         notes=None,
