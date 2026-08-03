@@ -10,10 +10,15 @@ from app.models.entities import MaterialPick, MaterialPickStatus, Stage, StageSt
 
 def _uuid():
     import uuid
+
     return str(uuid.uuid4())
 
 
-async def list_dependencies(db: AsyncSession, project_id: str, stage_id: str | None = None) -> list[WorkDependency]:
+async def list_dependencies(
+    db: AsyncSession,
+    project_id: str,
+    stage_id: str | None = None,
+) -> list[WorkDependency]:
     query = select(WorkDependency).where(WorkDependency.project_id == project_id)
     if stage_id:
         query = query.where(WorkDependency.stage_id == stage_id)
@@ -47,8 +52,14 @@ async def evaluate_stage(
     stage: Stage,
     *,
     commit: bool = True,
+    persist_status: bool = True,
 ) -> dict:
-    """Проверить все зависимости этапа + legacy depends_on_stage_id."""
+    """Проверить зависимости этапа без скрытой записи из read-only вызовов.
+
+    ``persist_status=False`` используется в GET/read-model путях: вычисление остаётся
+    чистым и не выполняет flush/commit. Mutation lifecycles могут передать
+    ``commit=False`` и включить обновление dependency status в свою транзакцию.
+    """
     reasons: list[dict] = []
     blocked = False
 
@@ -56,44 +67,61 @@ async def evaluate_stage(
         predecessor = await db.get(Stage, stage.depends_on_stage_id)
         if predecessor and predecessor.status != StageStatus.done:
             blocked = True
-            reasons.append({
-                "type": "work",
-                "title": f"Ждёт этап: {predecessor.name}",
-                "severity": "high",
-                "ref_id": predecessor.id,
-            })
+            reasons.append(
+                {
+                    "type": "work",
+                    "title": f"Ждёт этап: {predecessor.name}",
+                    "severity": "high",
+                    "ref_id": predecessor.id,
+                }
+            )
 
     dependencies = await list_dependencies(db, stage.project_id, stage.id)
     for dependency in dependencies:
         satisfied = await _is_satisfied(db, dependency)
-        dependency.status = "satisfied" if satisfied else "pending"
+        if persist_status:
+            dependency.status = "satisfied" if satisfied else "pending"
         if satisfied:
             continue
         blocked = True
         if dependency.dependency_type == "work" and dependency.depends_on_stage_id:
             predecessor = await db.get(Stage, dependency.depends_on_stage_id)
-            reasons.append({
-                "type": "work",
-                "title": f"Завершите: {predecessor.name if predecessor else 'этап'}",
-                "severity": dependency.criticality,
-                "ref_id": dependency.depends_on_stage_id,
-            })
+            reasons.append(
+                {
+                    "type": "work",
+                    "title": f"Завершите: {predecessor.name if predecessor else 'этап'}",
+                    "severity": dependency.criticality,
+                    "ref_id": dependency.depends_on_stage_id,
+                }
+            )
         elif dependency.dependency_type == "material" and dependency.depends_on_material_pick_id:
             pick = await db.get(MaterialPick, dependency.depends_on_material_pick_id)
-            reasons.append({
-                "type": "material",
-                "title": f"Доставьте: {pick.name if pick else 'материал'}",
-                "severity": dependency.criticality,
-                "ref_id": dependency.depends_on_material_pick_id,
-            })
-    if commit:
-        await db.commit()
-    else:
-        await db.flush()
+            reasons.append(
+                {
+                    "type": "material",
+                    "title": f"Доставьте: {pick.name if pick else 'материал'}",
+                    "severity": dependency.criticality,
+                    "ref_id": dependency.depends_on_material_pick_id,
+                }
+            )
 
-    status_label = "blocked" if blocked else ("ready" if stage.status == StageStatus.planned else stage.status.value)
+    if persist_status:
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
+
+    status_label = (
+        "blocked"
+        if blocked
+        else ("ready" if stage.status == StageStatus.planned else stage.status.value)
+    )
     if blocked and stage.status == StageStatus.planned:
-        status_label = "waiting_material" if any(reason["type"] == "material" for reason in reasons) else "waiting_work"
+        status_label = (
+            "waiting_material"
+            if any(reason["type"] == "material" for reason in reasons)
+            else "waiting_work"
+        )
 
     return {
         "blocked": blocked,
@@ -114,8 +142,13 @@ async def _is_satisfied(db: AsyncSession, dependency: WorkDependency) -> bool:
     return True
 
 
-async def sync_from_workflow(db: AsyncSession, project_id: str) -> int:
-    """Создать зависимости из шаблонов workflow по work_type этапов."""
+async def sync_from_workflow(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    commit: bool = True,
+) -> int:
+    """Создать зависимости из шаблонов workflow, optionally in caller transaction."""
     result = await db.execute(select(Stage).where(Stage.project_id == project_id))
     stages = list(result.scalars().all())
     by_type: dict[str, Stage] = {}
@@ -181,7 +214,10 @@ async def sync_from_workflow(db: AsyncSession, project_id: str) -> int:
             )
             created += 1
 
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return created
 
 
@@ -203,7 +239,12 @@ async def on_material_delivered(
         dependency.status = "satisfied"
         stage = await db.get(Stage, dependency.stage_id)
         if stage and stage.status == StageStatus.planned:
-            evaluation = await evaluate_stage(db, stage, commit=False)
+            evaluation = await evaluate_stage(
+                db,
+                stage,
+                commit=False,
+                persist_status=True,
+            )
             if not evaluation["blocked"]:
                 stage.status = StageStatus.active
                 unlocked.append(stage.id)
