@@ -1,11 +1,17 @@
-"""Комнаты: габариты, розетки, сантехника → строки сметы."""
+"""Rooms, derived quantities and generated estimate projections."""
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import EstimateLine, LineType, Room
-from app.services.calc.estimate import calc_room_metrics
+from app.models.entities import EstimateLine, LineType, Project, Room
+from app.services.calc.estimate import (
+    calc_room_metrics,
+    effective_renovation_type,
+    generate_lines,
+)
 
 OUTLET_WORK = 850
 OUTLET_MAT = 200
@@ -33,6 +39,38 @@ _COUNT_FIELDS = frozenset({"outlets_count", "switches_count", "plumbing_points"}
 _POSITIVE_FIELDS = frozenset({"length_m", "width_m", "height_m"})
 _NON_NEGATIVE_FIELDS = frozenset({"openings_sq_m", "budget_alert_pct"})
 _NULLABLE_FIELDS = frozenset({"room_type", "notes", "budget_alert_pct"})
+_SYSTEM_FINISH_NAMES = frozenset(
+    {
+        "Фартук плитка",
+        "Напольное покрытие",
+        "Электромонтаж кухни",
+        "Плитка фартук",
+        "Ламинат/кварц-винил",
+        "Демонтаж покрытий",
+        "Штукатурка стен",
+        "Штукатурная смесь",
+        "Гидроизоляция",
+        "Укладка плитки",
+        "Керамогранит",
+        "Гидроизоляция Ceresit",
+        "Подготовка стен",
+        "Покраска стен 2 слоя",
+        "Укладка ламината",
+        "Краска интерьерная",
+        "Ламинат",
+    }
+)
+
+
+@dataclass(frozen=True)
+class GeneratedEstimateLine:
+    category: str
+    line_type: LineType
+    name: str
+    unit: str
+    quantity: float
+    unit_price: float
+    calc_detail: str | None = None
 
 
 def validate_room_patch(data: dict, *, allow_archive: bool = False) -> dict:
@@ -148,6 +186,223 @@ async def apply_room_patch(
     return changes
 
 
+def _finish_lines(project: Project, room: Room) -> list[GeneratedEstimateLine]:
+    metrics = calc_room_metrics(
+        room.length_m,
+        room.width_m,
+        room.height_m,
+        room.openings_sq_m,
+    )
+    renovation_type = effective_renovation_type(
+        project.renovation_type,
+        room.room_type,
+    )
+    return [
+        GeneratedEstimateLine(
+            category="finish",
+            line_type=LineType(calculated.line_type),
+            name=calculated.name,
+            unit=calculated.unit,
+            quantity=calculated.quantity,
+            unit_price=calculated.unit_price,
+        )
+        for calculated in generate_lines(
+            renovation_type,
+            room.id,
+            room.name,
+            metrics,
+        )
+    ]
+
+
+def _electrical_lines(room: Room) -> list[GeneratedEstimateLine]:
+    if room.outlets_count <= 0:
+        return []
+    quantity = room.outlets_count
+    return [
+        GeneratedEstimateLine(
+            category="electrical",
+            line_type=LineType.work,
+            name="Монтаж розеток",
+            unit="шт",
+            quantity=quantity,
+            unit_price=OUTLET_WORK,
+            calc_detail=f"{quantity} шт × {OUTLET_WORK} ₽/шт",
+        ),
+        GeneratedEstimateLine(
+            category="electrical",
+            line_type=LineType.material,
+            name="Розетки + подрозетники",
+            unit="шт",
+            quantity=quantity,
+            unit_price=OUTLET_MAT,
+            calc_detail=f"{quantity} шт × {OUTLET_MAT} ₽/шт",
+        ),
+    ]
+
+
+def _plumbing_lines(room: Room) -> list[GeneratedEstimateLine]:
+    if room.plumbing_points <= 0:
+        return []
+    quantity = room.plumbing_points
+    return [
+        GeneratedEstimateLine(
+            category="plumbing",
+            line_type=LineType.work,
+            name="Разводка сантехники",
+            unit="точка",
+            quantity=quantity,
+            unit_price=PLUMBING_WORK,
+            calc_detail=f"{quantity} точек × {PLUMBING_WORK} ₽",
+        ),
+        GeneratedEstimateLine(
+            category="plumbing",
+            line_type=LineType.material,
+            name="Материалы сантехники",
+            unit="точка",
+            quantity=quantity,
+            unit_price=PLUMBING_MAT,
+            calc_detail=f"{quantity} × {PLUMBING_MAT} ₽",
+        ),
+    ]
+
+
+def _line_key(line_type: LineType | str, name: str) -> tuple[str, str]:
+    value = line_type.value if hasattr(line_type, "value") else str(line_type)
+    return value, name
+
+
+async def _sync_generated_category(
+    db: AsyncSession,
+    *,
+    room: Room,
+    category: str,
+    generated: list[GeneratedEstimateLine],
+    managed_names: frozenset[str] | None = None,
+) -> None:
+    """Synchronize system rows in place, preserving manual price/fact evidence."""
+    all_existing = list(
+        (
+            await db.execute(
+                select(EstimateLine)
+                .where(
+                    EstimateLine.room_id == room.id,
+                    EstimateLine.category == category,
+                )
+                .order_by(EstimateLine.id.asc())
+            )
+        ).scalars().all()
+    )
+    existing = [
+        line
+        for line in all_existing
+        if managed_names is None or line.name in managed_names
+    ]
+    grouped: dict[tuple[str, str], list[EstimateLine]] = {}
+    for line in existing:
+        grouped.setdefault(_line_key(line.line_type, line.name), []).append(line)
+
+    retained_ids: set[str] = set()
+    for specification in generated:
+        key = _line_key(specification.line_type, specification.name)
+        candidates = grouped.get(key, [])
+        line = candidates.pop(0) if candidates else None
+        if line is None:
+            line = EstimateLine(
+                project_id=room.project_id,
+                room_id=room.id,
+                line_type=specification.line_type,
+                name=specification.name,
+                unit=specification.unit,
+                quantity_planned=specification.quantity,
+                unit_price=specification.unit_price,
+                room_name=room.name,
+                category=category,
+                calc_detail=specification.calc_detail,
+            )
+            db.add(line)
+            await db.flush()
+        else:
+            line.line_type = specification.line_type
+            line.unit = specification.unit
+            line.quantity_planned = specification.quantity
+            line.room_name = room.name
+            line.category = category
+            line.calc_detail = specification.calc_detail
+        retained_ids.add(line.id)
+
+    for line in existing:
+        if line.id not in retained_ids:
+            await db.delete(line)
+    await db.flush()
+
+
+async def sync_room_estimate_lines(
+    db: AsyncSession,
+    room: Room,
+    *,
+    commit: bool = True,
+) -> None:
+    """Synchronize every system-derived room line and the project plan."""
+    project = await db.get(Project, room.project_id)
+    if project is None:
+        raise ValueError("room_project_not_found")
+
+    await _sync_generated_category(
+        db,
+        room=room,
+        category="finish",
+        generated=_finish_lines(project, room),
+        managed_names=_SYSTEM_FINISH_NAMES,
+    )
+    await _sync_generated_category(
+        db,
+        room=room,
+        category="electrical",
+        generated=_electrical_lines(room),
+    )
+    await _sync_generated_category(
+        db,
+        room=room,
+        category="plumbing",
+        generated=_plumbing_lines(room),
+    )
+
+    from app.services.budget_service import sync_project_budget_planned
+
+    await sync_project_budget_planned(db, room.project_id)
+    if commit:
+        await db.commit()
+
+
+async def prepare_room(
+    db: AsyncSession,
+    *,
+    project: Project,
+    data: dict,
+) -> Room:
+    """Create a room and all generated estimate rows without committing."""
+    room = Room(
+        project_id=project.id,
+        name=data["name"],
+        room_type=data.get("room_type"),
+        floor_level=data.get("floor_level", 1),
+        length_m=data["length_m"],
+        width_m=data["width_m"],
+        height_m=data.get("height_m", 2.7),
+        openings_sq_m=data.get("openings_sq_m", 2),
+        outlets_count=data.get("outlets_count", 0),
+        switches_count=data.get("switches_count", 0),
+        plumbing_points=data.get("plumbing_points", 0),
+        notes=data.get("notes"),
+        budget_alert_pct=data.get("budget_alert_pct"),
+    )
+    db.add(room)
+    await db.flush()
+    await sync_room_estimate_lines(db, room, commit=False)
+    return room
+
+
 async def update_room(
     db: AsyncSession,
     room_id: str,
@@ -155,11 +410,10 @@ async def update_room(
     user_id: str | None = None,
     threshold_pct: float = 10,
 ) -> Room | None:
+    """Compatibility writer; HTTP mutations use room_mutation_service."""
     room = await db.get(Room, room_id)
     if not room:
         return None
-    # Preserve legacy direct-editor semantics: explicit null for a required field
-    # is a no-op, while nullable fields can still be cleared.
     direct_patch = {
         field: value
         for field, value in data.items()
@@ -176,125 +430,7 @@ async def update_room(
     await sync_room_estimate_lines(db, room, commit=False)
     await db.commit()
     await db.refresh(room)
-
-    from app.models.entities import Project
-    from app.services import notification_service as ns
-
-    proj = await db.get(Project, room.project_id)
-    lines = (
-        await db.execute(select(EstimateLine).where(EstimateLine.room_id == room.id))
-    ).scalars().all()
-    plan = sum(line.quantity_planned * line.unit_price for line in lines)
-    fact = sum(line.quantity_actual * line.unit_price for line in lines)
-    if proj and proj.customer_id:
-        await ns.notify(
-            db,
-            user_id=proj.customer_id,
-            project_id=proj.id,
-            notification_type="room_updated",
-            title="Обновлена комната",
-            body=room.name,
-            link_path=f"/room/{room.id}",
-            return_to="/(customer)/(tabs)/object?tab=rooms",
-        )
-    if proj and proj.customer_id and fact > plan and plan > 0:
-        await ns.notify(
-            db,
-            user_id=proj.customer_id,
-            project_id=proj.id,
-            notification_type="change_order",
-            title="Превышение бюджета комнаты",
-            body=f"{room.name}: +{fact-plan:.0f} RUB",
-            link_path=f"/room/{room.id}",
-            return_to="/(customer)/(tabs)/object?tab=rooms",
-        )
     return room
-
-
-async def sync_room_estimate_lines(
-    db: AsyncSession,
-    room: Room,
-    *,
-    commit: bool = True,
-) -> None:
-    """Rebuild electrical/plumbing estimate rows; optionally join caller transaction."""
-    result = await db.execute(
-        select(EstimateLine).where(
-            EstimateLine.room_id == room.id,
-            EstimateLine.category.in_(["electrical", "plumbing"]),
-        )
-    )
-    for line in result.scalars().all():
-        await db.delete(line)
-
-    if room.outlets_count > 0:
-        qty = room.outlets_count
-        db.add(
-            EstimateLine(
-                project_id=room.project_id,
-                room_id=room.id,
-                line_type=LineType.work,
-                name="Монтаж розеток",
-                unit="шт",
-                quantity_planned=qty,
-                unit_price=OUTLET_WORK,
-                room_name=room.name,
-                category="electrical",
-                calc_detail=f"{qty} шт × {OUTLET_WORK} ₽/шт",
-            )
-        )
-        db.add(
-            EstimateLine(
-                project_id=room.project_id,
-                room_id=room.id,
-                line_type=LineType.material,
-                name="Розетки + подрозетники",
-                unit="шт",
-                quantity_planned=qty,
-                unit_price=OUTLET_MAT,
-                room_name=room.name,
-                category="electrical",
-                calc_detail=f"{qty} шт × {OUTLET_MAT} ₽/шт",
-            )
-        )
-
-    if room.plumbing_points > 0:
-        qty = room.plumbing_points
-        db.add(
-            EstimateLine(
-                project_id=room.project_id,
-                room_id=room.id,
-                line_type=LineType.work,
-                name="Разводка сантехники",
-                unit="точка",
-                quantity_planned=qty,
-                unit_price=PLUMBING_WORK,
-                room_name=room.name,
-                category="plumbing",
-                calc_detail=f"{qty} точек × {PLUMBING_WORK} ₽",
-            )
-        )
-        db.add(
-            EstimateLine(
-                project_id=room.project_id,
-                room_id=room.id,
-                line_type=LineType.material,
-                name="Материалы сантехники",
-                unit="точка",
-                quantity_planned=qty,
-                unit_price=PLUMBING_MAT,
-                room_name=room.name,
-                category="plumbing",
-                calc_detail=f"{qty} × {PLUMBING_MAT} ₽",
-            )
-        )
-
-    await db.flush()
-    from app.services.budget_service import sync_project_budget_planned
-
-    await sync_project_budget_planned(db, room.project_id)
-    if commit:
-        await db.commit()
 
 
 def room_detail(room: Room) -> dict:
@@ -331,81 +467,11 @@ async def create_room(
     data: dict,
     user_id: str | None = None,
 ) -> Room | None:
-    """Добавляет комнату в существующий проект и пересчитывает смету."""
-    from app.models.entities import Project
-    from app.services.calc.estimate import effective_renovation_type, generate_lines
-    from app.services.budget_service import sync_project_budget_planned
-
+    """Compatibility writer; HTTP mutations use room_mutation_service."""
     project = await db.get(Project, project_id)
     if not project:
         return None
-
-    room = Room(
-        project_id=project_id,
-        name=data["name"],
-        room_type=data.get("room_type"),
-        floor_level=data.get("floor_level", 1),
-        length_m=data["length_m"],
-        width_m=data["width_m"],
-        height_m=data.get("height_m", 2.7),
-        openings_sq_m=data.get("openings_sq_m", 2),
-        outlets_count=data.get("outlets_count", 0),
-        switches_count=data.get("switches_count", 0),
-        plumbing_points=data.get("plumbing_points", 0),
-        notes=data.get("notes"),
-        budget_alert_pct=data.get("budget_alert_pct"),
-    )
-    db.add(room)
-    await db.flush()
-
-    metrics = calc_room_metrics(
-        room.length_m,
-        room.width_m,
-        room.height_m,
-        room.openings_sq_m,
-    )
-    renovation_type = effective_renovation_type(
-        project.renovation_type,
-        room.room_type,
-    )
-    for calculated in generate_lines(
-        renovation_type,
-        room.id,
-        room.name,
-        metrics,
-    ):
-        db.add(
-            EstimateLine(
-                project_id=project_id,
-                room_id=calculated.room_id,
-                line_type=LineType(calculated.line_type),
-                name=calculated.name,
-                unit=calculated.unit,
-                quantity_planned=calculated.quantity,
-                unit_price=calculated.unit_price,
-                room_name=calculated.room_name,
-                category="finish",
-            )
-        )
-
-    if room.outlets_count or room.plumbing_points:
-        await sync_room_estimate_lines(db, room, commit=False)
-    else:
-        await sync_project_budget_planned(db, project_id)
+    room = await prepare_room(db, project=project, data=data)
     await db.commit()
     await db.refresh(room)
-
-    if user_id and project.customer_id:
-        from app.services import notification_service as ns
-
-        await ns.notify(
-            db,
-            user_id=project.customer_id,
-            project_id=project_id,
-            notification_type="room_created",
-            title="Новая комната",
-            body=room.name,
-            link_path=f"/room/{room.id}",
-            return_to="/(customer)/(tabs)/",
-        )
     return room
