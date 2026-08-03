@@ -183,7 +183,7 @@ async def submit_for_review(
         and acceptance is not None
         and acceptance.status in {"requested", "in_review"}
     ):
-        await db.rollback()
+        await db.commit()
         return StageReviewResult(stage, acceptance, True), None
     if current != StageStatus.active:
         await db.rollback()
@@ -317,7 +317,7 @@ async def reject_for_rework(
         and acceptance is not None
         and acceptance.status == "returned"
     ):
-        await db.rollback()
+        await db.commit()
         return StageReviewResult(stage, acceptance, True)
     if current != StageStatus.review:
         await db.rollback()
