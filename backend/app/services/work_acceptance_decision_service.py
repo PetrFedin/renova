@@ -140,6 +140,7 @@ async def accept_work(
     create_issue: bool = False,
     checklist: list[str] | None = None,
     source_mode: str = "full",
+    source: str = "app",
 ) -> AcceptanceDecisionResult | None:
     """Serialize one acceptance decision and its complete financial/document cascade."""
     _require_customer(project, actor)
@@ -187,6 +188,7 @@ async def accept_work(
     from app.services.accept_orchestrator import finalize_work_acceptance
 
     mode = (source_mode or "full").strip().lower()
+    decision_source = (source or "app").strip().lower() or "app"
     try:
         assert_accept_policy(
             stage,
@@ -216,7 +218,7 @@ async def accept_work(
                 "comment": comment,
                 "payment_id": finalized.payment.id if finalized.payment else None,
                 "next_stage_id": finalized.next_stage.id if finalized.next_stage else None,
-                "source": "app",
+                "source": decision_source,
             },
         )
         await db.commit()
@@ -226,7 +228,7 @@ async def accept_work(
 
     await db.refresh(finalized.acceptance)
     await db.refresh(finalized.stage)
-    await _dispatch(db, "work_acceptance.accept")
+    await _dispatch(db, f"work_acceptance.accept.{decision_source}")
     return AcceptanceDecisionResult(
         acceptance=finalized.acceptance,
         stage=finalized.stage,
