@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select
 
 from app.core.timeutil import utc_now
 from app.models.entities import DomainOutbox
@@ -56,13 +57,30 @@ async def test_failed_event_does_not_expire_logging_context_or_stop_next_event(
     assert "synthetic_delivery_failure" in caplog.text
     assert "MissingGreenlet" not in caplog.text
 
-    failed = await db.get(DomainOutbox, first_id)
-    succeeded = await db.get(DomainOutbox, second_id)
-    assert failed is not None
-    assert failed.processed_at is None
-    assert failed.attempts == 1
-    assert failed.last_error == "synthetic_delivery_failure"
-    assert succeeded is not None
-    assert succeeded.processed_at is not None
-    assert succeeded.attempts == 1
-    assert succeeded.last_error is None
+    # Direct column reads describe committed state without returning stale ORM
+    # identities that were expired by the intentionally exercised rollback.
+    failed_processed_at, failed_attempts, failed_error = (
+        await db.execute(
+            select(
+                DomainOutbox.processed_at,
+                DomainOutbox.attempts,
+                DomainOutbox.last_error,
+            ).where(DomainOutbox.id == first_id)
+        )
+    ).one()
+    succeeded_processed_at, succeeded_attempts, succeeded_error = (
+        await db.execute(
+            select(
+                DomainOutbox.processed_at,
+                DomainOutbox.attempts,
+                DomainOutbox.last_error,
+            ).where(DomainOutbox.id == second_id)
+        )
+    ).one()
+
+    assert failed_processed_at is None
+    assert failed_attempts == 1
+    assert failed_error == "synthetic_delivery_failure"
+    assert succeeded_processed_at is not None
+    assert succeeded_attempts == 1
+    assert succeeded_error is None
