@@ -9,7 +9,10 @@ from app.services import outbox_service as outbox
 
 _ALLOWED: dict[WasteOrderStatus, set[WasteOrderStatus]] = {
     WasteOrderStatus.draft: {WasteOrderStatus.requested},
-    WasteOrderStatus.requested: {WasteOrderStatus.scheduled},
+    WasteOrderStatus.requested: {
+        WasteOrderStatus.scheduled,
+        WasteOrderStatus.cancelled,
+    },
     WasteOrderStatus.scheduled: {WasteOrderStatus.done},
     WasteOrderStatus.done: set(),
     WasteOrderStatus.cancelled: set(),
@@ -35,7 +38,7 @@ def validate_transition(
         raise ValueError(
             f"invalid_waste_order_transition:{current.value}:{target.value}"
         )
-    if target == WasteOrderStatus.scheduled:
+    if target in {WasteOrderStatus.scheduled, WasteOrderStatus.cancelled}:
         if actor.id != project.customer_id:
             raise ValueError("waste_order_actor_forbidden")
         return
@@ -55,6 +58,8 @@ def _activity_copy(
         return "WasteRequested", f"Запрошен вывоз мусора: {volume}", order.notes
     if target == WasteOrderStatus.scheduled:
         return "WasteApproved", f"Вывоз мусора согласован: {volume}", order.notes
+    if target == WasteOrderStatus.cancelled:
+        return "WasteRejected", f"Вывоз мусора отклонён: {volume}", order.notes
     if target == WasteOrderStatus.done:
         return "WasteCompleted", f"Вывоз мусора завершён: {volume}", order.notes
     return "WasteUpdated", f"Статус вывоза: {target.value}", order.notes
@@ -78,6 +83,12 @@ def _notification_copy(
             order.scheduled_date.isoformat()
             if order.scheduled_date
             else "Заявка согласована заказчиком.",
+        )
+    if target == WasteOrderStatus.cancelled:
+        return (
+            "approval",
+            f"Вывоз мусора отклонён: {volume}",
+            order.notes or "Заказчик отклонил заявку на вывоз.",
         )
     return (
         "other",

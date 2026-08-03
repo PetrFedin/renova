@@ -1,227 +1,280 @@
-import json
+from __future__ import annotations
+
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import User, MaterialPick, DesignPackage, UserRole, MaterialPickStatus, ChangeOrder, ChangeOrderStatus, RoomChangeRequest, RoomChangeStatus, WasteOrder, WasteOrderStatus
+from app.models.entities import (
+    ChangeOrder,
+    ChangeOrderStatus,
+    DesignPackage,
+    MaterialPick,
+    MaterialPickStatus,
+    Project,
+    RoomChangeRequest,
+    RoomChangeStatus,
+    User,
+    WasteOrder,
+    WasteOrderStatus,
+)
+from app.services import approval_decision_service as decision_svc
 
 router = APIRouter(prefix="/projects", tags=["approvals"])
 
-@router.get("/{project_id}/approvals")
-async def approval_hub(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    items: list[dict] = []
-    mp = await db.execute(select(MaterialPick).where(MaterialPick.project_id == project_id, MaterialPick.status == MaterialPickStatus.pending))
-    for p in mp.scalars().all():
-        items.append({"id": p.id, "type": "material", "title": p.name, "subtitle": f"{p.qty} {p.unit} · {round(p.qty*p.price)} ₽", "status": p.status.value, "room_id": p.room_id, "stage_id": p.stage_id, "work_type": p.work_type})
-    co = await db.execute(select(ChangeOrder).where(ChangeOrder.project_id == project_id, ChangeOrder.status == ChangeOrderStatus.pending))
-    for c in co.scalars().all():
-        items.append({"id": c.id, "type": "change_order", "title": c.title, "subtitle": f"{c.amount:.0f} ₽", "status": c.status.value, "room_id": None, "work_type": None})
-    rr = await db.execute(select(RoomChangeRequest).where(RoomChangeRequest.project_id == project_id, RoomChangeRequest.status == RoomChangeStatus.pending))
-    for r in rr.scalars().all():
-        items.append({"id": r.id, "type": "room_change", "title": "Изменение комнаты", "subtitle": r.message[:80], "status": r.status.value, "room_id": r.room_id, "work_type": None})
-    wo = await db.execute(select(WasteOrder).where(WasteOrder.project_id == project_id, WasteOrder.status == WasteOrderStatus.requested))
-    for w in wo.scalars().all():
-        items.append({"id": w.id, "type": "waste", "title": f"Вывоз {w.volume_m3} м³", "subtitle": w.notes or w.waste_type, "status": w.status.value, "room_id": w.room_id, "work_type": None})
-    dg = await db.execute(select(DesignPackage).where(DesignPackage.project_id == project_id, DesignPackage.status == "pending"))
-    for d in dg.scalars().all():
-        items.append({"id": d.id, "type": "design", "title": d.title, "subtitle": f"v{d.version}", "status": d.status, "room_id": None, "work_type": None})
-    pending = len(items)
-    return {"pending_count": pending, "items": items}
-
-
-class RejectIn(BaseModel):
-    type: str
-    reason: str = ""
-
-@router.post("/{project_id}/approvals/{item_id}/reject")
-async def reject_item(project_id: str, item_id: str, body: RejectIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """W70 #20: reject пишет activity + notify подрядчику (симметрия с approve)."""
-    await require_project(db, project_id, user, write=True)
-    if user.role != UserRole.customer:
-        raise HTTPException(403)
-    from app.services import activity_service as act
-    from app.services import notification_service as ns
-    from app.models.entities import Project
-
-    proj = await db.get(Project, project_id)
-    title = ""
-    link = "/(contractor)/(tabs)/repair?tab=materials"
-
-    if body.type == "material":
-        p = await db.get(MaterialPick, item_id)
-        if not p or p.project_id != project_id:
-            raise HTTPException(404)
-        p.status = MaterialPickStatus.draft
-        p.notes = (p.notes or "") + f"\nОтклонено: {body.reason}"
-        title = f"Отклонено: {p.name}"
-        link = "/(contractor)/(tabs)/repair?tab=materials"
-    elif body.type == "change_order":
-        c = await db.get(ChangeOrder, item_id)
-        if not c or c.project_id != project_id:
-            raise HTTPException(404)
-        c.status = ChangeOrderStatus.rejected
-        title = f"Отклонено ДО: {c.title}"
-        link = "/(contractor)/(tabs)/object?tab=estimate"
-    elif body.type == "room_change":
-        r = await db.get(RoomChangeRequest, item_id)
-        if not r or r.project_id != project_id:
-            raise HTTPException(404)
-        r.status = RoomChangeStatus.rejected
-        title = "Отклонено изменение комнаты"
-        link = "/(contractor)/(tabs)/object?tab=rooms"
-    elif body.type == "design":
-        d = await db.get(DesignPackage, item_id)
-        if not d or d.project_id != project_id:
-            raise HTTPException(404)
-        d.status = "rejected"
-        title = f"Отклонён дизайн: {d.title}"
-        link = "/(contractor)/(tabs)/object"
-    elif body.type == "waste":
-        w = await db.get(WasteOrder, item_id)
-        if not w or w.project_id != project_id:
-            raise HTTPException(404)
-        w.status = WasteOrderStatus.cancelled
-        w.notes = (w.notes or "") + f"\nОтклонено: {body.reason}"
-        title = f"Отклонён вывоз {w.volume_m3} м³"
-        link = "/(contractor)/(tabs)/repair"
-    else:
-        raise HTTPException(400, "unknown_approval_type")
-
-    await db.commit()
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="approval",
-        title=title,
-        body=body.reason or None,
-    )
-    if proj and proj.contractor_id:
-        await ns.notify(
-            db,
-            user_id=proj.contractor_id,
-            project_id=project_id,
-            notification_type="approval",
-            title=title,
-            body=body.reason or "Заказчик отклонил из очереди Approvals",
-            link_path=link,
-        )
-    return {"ok": True, "type": body.type, "id": item_id}
+ApprovalType = Literal[
+    "material",
+    "change_order",
+    "room_change",
+    "design",
+    "waste",
+]
 
 
 class ApproveIn(BaseModel):
-    type: str
+    type: ApprovalType
+
+
+class RejectIn(BaseModel):
+    type: ApprovalType
+    reason: str = Field(default="", max_length=1000)
+
+
+def _status(value) -> str:
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def _decision_error(error: ValueError) -> HTTPException:
+    code = str(error)
+    if code in {
+        "approval_customer_required",
+        "design_decision_actor_forbidden",
+        "room_change_actor_forbidden",
+        "waste_order_actor_forbidden",
+    }:
+        return HTTPException(
+            403,
+            detail={"code": code, "message": "Решение недоступно для вашей роли"},
+        )
+    if code == "unknown_approval_type":
+        return HTTPException(400, detail={"code": code})
+    if code.startswith("room_patch_") or code in {
+        "room_change_payload_invalid",
+        "room_change_room_not_found",
+    }:
+        return HTTPException(
+            422,
+            detail={"code": code, "message": "Изменение комнаты содержит недопустимые данные"},
+        )
+    if (
+        code.startswith("invalid_design_transition:")
+        or code.startswith("invalid_waste_order_transition:")
+        or code in {
+            "room_change_final_state_conflict",
+            "material_pick_transition_terminal",
+            "material_pick_transition_invalid",
+            "material_pick_locked_by_purchase",
+        }
+    ):
+        return HTTPException(
+            409,
+            detail={"code": code, "message": "Объект уже изменён или переход недоступен"},
+        )
+    return HTTPException(409, detail={"code": code})
+
+
+@router.get("/{project_id}/approvals")
+async def approval_hub(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await require_project(db, project_id, user, write=False)
+    items: list[dict] = []
+
+    # Customer decisions: commercial scope and submitted design/material choices.
+    if user.id == project.customer_id:
+        material_rows = (
+            await db.execute(
+                select(MaterialPick).where(
+                    MaterialPick.project_id == project_id,
+                    MaterialPick.status == MaterialPickStatus.pending,
+                )
+            )
+        ).scalars().all()
+        for pick in material_rows:
+            items.append(
+                {
+                    "id": pick.id,
+                    "type": "material",
+                    "title": pick.name,
+                    "subtitle": f"{pick.qty:g} {pick.unit} · {round(pick.qty * pick.price)} ₽",
+                    "status": _status(pick.status),
+                    "room_id": pick.room_id,
+                    "stage_id": pick.stage_id,
+                    "work_type": pick.work_type,
+                    "allowed_actions": ["approve", "reject"],
+                }
+            )
+
+        change_rows = (
+            await db.execute(
+                select(ChangeOrder).where(
+                    ChangeOrder.project_id == project_id,
+                    ChangeOrder.status == ChangeOrderStatus.pending,
+                )
+            )
+        ).scalars().all()
+        for order in change_rows:
+            items.append(
+                {
+                    "id": order.id,
+                    "type": "change_order",
+                    "title": order.title,
+                    "subtitle": f"{order.amount:.0f} ₽",
+                    "status": _status(order.status),
+                    "room_id": None,
+                    "work_type": None,
+                    "allowed_actions": ["approve", "reject"],
+                }
+            )
+
+        waste_rows = (
+            await db.execute(
+                select(WasteOrder).where(
+                    WasteOrder.project_id == project_id,
+                    WasteOrder.status == WasteOrderStatus.requested,
+                )
+            )
+        ).scalars().all()
+        for order in waste_rows:
+            items.append(
+                {
+                    "id": order.id,
+                    "type": "waste",
+                    "title": f"Вывоз {order.volume_m3:g} м³",
+                    "subtitle": order.notes or order.waste_type,
+                    "status": _status(order.status),
+                    "room_id": order.room_id,
+                    "work_type": None,
+                    "allowed_actions": ["approve", "reject"],
+                }
+            )
+
+        design_rows = (
+            await db.execute(
+                select(DesignPackage).where(
+                    DesignPackage.project_id == project_id,
+                    DesignPackage.status == "pending",
+                )
+            )
+        ).scalars().all()
+        for package in design_rows:
+            items.append(
+                {
+                    "id": package.id,
+                    "type": "design",
+                    "title": package.title,
+                    "subtitle": f"v{package.version}",
+                    "status": str(package.status),
+                    "room_id": None,
+                    "work_type": None,
+                    "allowed_actions": ["approve", "reject"],
+                }
+            )
+
+    # Room changes are customer requests resolved by the assigned executor.
+    if user.id in {project.contractor_id, project.foreman_id}:
+        room_rows = (
+            await db.execute(
+                select(RoomChangeRequest).where(
+                    RoomChangeRequest.project_id == project_id,
+                    RoomChangeRequest.status == RoomChangeStatus.pending,
+                )
+            )
+        ).scalars().all()
+        for request in room_rows:
+            items.append(
+                {
+                    "id": request.id,
+                    "type": "room_change",
+                    "title": "Изменение комнаты",
+                    "subtitle": request.message[:80],
+                    "status": _status(request.status),
+                    "room_id": request.room_id,
+                    "work_type": None,
+                    "allowed_actions": ["approve", "reject"],
+                }
+            )
+
+    return {"pending_count": len(items), "items": items}
+
+
+async def _decide_item(
+    *,
+    project_id: str,
+    item_id: str,
+    item_type: ApprovalType,
+    decision: Literal["approve", "reject"],
+    reason: str | None,
+    user: User,
+    db: AsyncSession,
+) -> dict:
+    project: Project = await require_project(db, project_id, user, write=True)
+    try:
+        result = await decision_svc.decide(
+            db,
+            project=project,
+            item_id=item_id,
+            item_type=item_type,
+            decision=decision,
+            actor=user,
+            reason=reason,
+        )
+    except ValueError as error:
+        raise _decision_error(error) from error
+    if result is None:
+        raise HTTPException(404, detail={"code": "approval_item_not_found"})
+    return {"ok": True, "decision": decision, **result}
 
 
 @router.post("/{project_id}/approvals/{item_id}/approve")
-async def approve_item(project_id: str, item_id: str, body: ApproveIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """W66 #14: единый approve из approval hub."""
-    await require_project(db, project_id, user, write=True)
-    if user.role != UserRole.customer:
-        raise HTTPException(403)
-    from app.services import activity_service as act
-    from app.services import notification_service as ns
-    from app.models.entities import Project
+async def approve_item(
+    project_id: str,
+    item_id: str,
+    body: ApproveIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _decide_item(
+        project_id=project_id,
+        item_id=item_id,
+        item_type=body.type,
+        decision="approve",
+        reason=None,
+        user=user,
+        db=db,
+    )
 
-    proj = await db.get(Project, project_id)
-    title = ""
-    link = "/(contractor)/(tabs)/repair?tab=materials"
 
-    if body.type == "material":
-        p = await db.get(MaterialPick, item_id)
-        if not p or p.project_id != project_id:
-            raise HTTPException(404)
-        p.status = MaterialPickStatus.approved
-        title = f"Согласовано: {p.name}"
-        link = "/(contractor)/(tabs)/repair?tab=materials"
-    elif body.type == "change_order":
-        # W71: тот же канон, что POST .../change-orders/{id}/approve — бюджет + черновик на подпись
-        from app.services import change_order_service as co_svc
-
-        c, draft_meta = await co_svc.approve_with_sign_draft(
-            db, project_id=project_id, order_id=item_id, created_by=user.id
-        )
-        if not c:
-            raise HTTPException(404)
-        title = f"Согласовано ДО: {c.title}"
-        link = "/(contractor)/(tabs)/budget"
-        draft_id = (draft_meta or {}).get("id")
-        await act.log_event(
-            db,
-            project_id=project_id,
-            user_id=user.id,
-            kind="DocumentDraftForSign",
-            title=f"Подпишите доп. работы: {c.title}",
-            body=f"Документ {draft_id} · {c.amount:.0f} ₽",
-            link_path="/documents",
-        )
-        if proj and proj.customer_id:
-            await ns.notify(
-                db,
-                user_id=proj.customer_id,
-                project_id=project_id,
-                notification_type="document",
-                title=f"Подпишите доп. работы: {c.title}",
-                body=f"Черновик в Документах · {c.amount:.0f} ₽",
-                link_path="/documents",
-            )
-        if proj and proj.contractor_id:
-            await ns.notify(
-                db,
-                user_id=proj.contractor_id,
-                project_id=project_id,
-                notification_type="change_order",
-                title=title,
-                body=f"{c.amount:.0f} ₽ · план бюджета обновлён",
-                link_path=link,
-            )
-        await act.log_event(db, project_id=project_id, user_id=user.id, kind="approval", title=title)
-        return {
-            "ok": True,
-            "type": body.type,
-            "id": item_id,
-            "document_id": draft_id,
-            "amount": c.amount,
-            "budget_updated": True,
-            "schedule_synced": bool((draft_meta or {}).get("schedule_synced")),
-        }
-    elif body.type == "room_change":
-        r = await db.get(RoomChangeRequest, item_id)
-        if not r or r.project_id != project_id:
-            raise HTTPException(404)
-        r.status = RoomChangeStatus.approved
-        title = "Согласовано изменение комнаты"
-        link = "/(contractor)/(tabs)/object?tab=rooms"
-    elif body.type == "design":
-        d = await db.get(DesignPackage, item_id)
-        if not d or d.project_id != project_id:
-            raise HTTPException(404)
-        d.status = "approved"
-        title = f"Согласован дизайн: {d.title}"
-        link = "/(contractor)/(tabs)/object"
-    elif body.type == "waste":
-        w = await db.get(WasteOrder, item_id)
-        if not w or w.project_id != project_id:
-            raise HTTPException(404)
-        w.status = WasteOrderStatus.scheduled
-        title = f"Согласован вывоз {w.volume_m3} м³"
-        link = "/(contractor)/(tabs)/repair"
-    else:
-        raise HTTPException(400, "unknown_approval_type")
-
-    await db.commit()
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="approval", title=title)
-    if proj and proj.contractor_id:
-        await ns.notify(
-            db,
-            user_id=proj.contractor_id,
-            project_id=project_id,
-            notification_type="approval",
-            title=title,
-            body="Заказчик согласовал из очереди Approvals",
-            link_path=link,
-        )
-    return {"ok": True, "type": body.type, "id": item_id}
+@router.post("/{project_id}/approvals/{item_id}/reject")
+async def reject_item(
+    project_id: str,
+    item_id: str,
+    body: RejectIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _decide_item(
+        project_id=project_id,
+        item_id=item_id,
+        item_type=body.type,
+        decision="reject",
+        reason=body.reason,
+        user=user,
+        db=db,
+    )
