@@ -69,6 +69,44 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  acceptance-decision-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./acceptance-decision-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Work acceptance decision contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 240s poetry run pytest -vv -s --tb=short tests/test_work_acceptance_decision_integrity*.py 2>&1 | tee acceptance-decision-contracts.log
+      - name: Upload acceptance decision diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-decision-contract-diagnostics
+          path: backend/acceptance-decision-contracts.log
+          if-no-files-found: warn
+          retention-days: 14
+
   backend-complete:
     runs-on: ubuntu-latest
     timeout-minutes: 45

@@ -1,7 +1,7 @@
-"""API приёмки работ: запрос → проверка → принять / вернуть."""
-from app.core.timeutil import utc_now
+"""Canonical API for work acceptance request, accept and return decisions."""
+from __future__ import annotations
+
 import json
-from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -10,43 +10,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import (
-    AcceptanceStatus,
-    Payment,
-    PaymentType,
-    Project,
-    ProjectIssue,
-    Stage,
-    StageStatus,
-    User,
-    UserRole,
-    WorkAcceptance,
-)
+from app.models.entities import Project, User, WorkAcceptance
+from app.services import work_acceptance_decision_service as decisions
 
 router = APIRouter(prefix="/projects", tags=["work-acceptances"])
 
 
 class AcceptanceCreateIn(BaseModel):
     stage_id: str
+    # Retained for wire compatibility. The canonical server-side stage checklist
+    # remains the source of truth and this client list is never used to bypass it.
     checklist: list[str] | None = None
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 class AcceptanceDecisionIn(BaseModel):
     # inline = hub list (quick only); full = stage fold with checklist
-    mode: str | None = None  # "inline" | "full" | None
+    mode: str | None = None
     checklist: list[str] | None = None
     quality_score: float | None = Field(default=None, ge=0, le=10)
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=2000)
     create_issue: bool = False
 
 
 def acceptance_dict(row: WorkAcceptance) -> dict:
-    checklist: list[str] = []
+    checklist: list = []
     if row.checklist_json:
         try:
-            checklist = json.loads(row.checklist_json)
-        except Exception:
+            parsed = json.loads(row.checklist_json)
+            checklist = parsed if isinstance(parsed, list) else []
+        except (TypeError, ValueError):
             checklist = []
     return {
         "id": row.id,
@@ -66,55 +59,64 @@ def acceptance_dict(row: WorkAcceptance) -> dict:
 
 
 def project_member_ids(project: Project) -> list[str]:
-    from app.services.accept_orchestrator import project_member_ids as _pm
+    from app.services.accept_orchestrator import project_member_ids as member_ids
 
-    return _pm(project)
-
-
-def require_acceptance_requester(project: Project, user: User) -> None:
-    is_assigned_contractor = user.role == UserRole.contractor and user.id in {project.contractor_id, project.foreman_id}
-    if not is_assigned_contractor:
-        raise HTTPException(403, "acceptance_request_contractor_only")
+    return member_ids(project)
 
 
-def require_acceptance_decider(project: Project, user: User) -> None:
-    if user.role != UserRole.customer or user.id != project.customer_id:
-        raise HTTPException(403, "acceptance_decision_customer_only")
-
-
-def require_pending_decision(row: WorkAcceptance) -> None:
-    if row.status not in {AcceptanceStatus.requested.value, AcceptanceStatus.in_review.value}:
-        raise HTTPException(409, "acceptance_already_decided")
-
-
-async def require_stage(db: AsyncSession, project_id: str, stage_id: str) -> Stage:
-    stage = await db.get(Stage, stage_id)
-    if not stage or stage.project_id != project_id:
-        raise HTTPException(404, "stage_not_found")
-    return stage
-
-
-async def active_acceptance(db: AsyncSession, project_id: str, stage_id: str) -> WorkAcceptance | None:
-    return (
-        await db.execute(
-            select(WorkAcceptance)
-            .where(WorkAcceptance.project_id == project_id)
-            .where(WorkAcceptance.stage_id == stage_id)
-            .where(WorkAcceptance.status.in_([
-                AcceptanceStatus.requested.value,
-                AcceptanceStatus.in_review.value,
-            ]))
-            .order_by(WorkAcceptance.created_at.desc())
-            .limit(1)
-        )
-    ).scalars().first()
-
-
-# Канон W44: helpers живут в accept_orchestrator (единый cascade)
-from app.services.accept_orchestrator import (  # noqa: E402
+# Compatibility exports used by older internal callers. All HTTP decisions below
+# use work_acceptance_decision_service and cannot bypass the canonical lifecycle.
+from app.services.accept_orchestrator import (  # noqa: E402,F401
     activate_next_stage,
     ensure_stage_payment,
 )
+
+
+def _decision_error(error: ValueError) -> HTTPException:
+    code = str(error)
+    if code in {
+        "stage_submit_actor_forbidden",
+        "stage_reject_actor_forbidden",
+        "acceptance_decision_customer_only",
+    }:
+        return HTTPException(
+            403,
+            detail={"code": code, "message": "Это действие недоступно вашей роли или назначению"},
+        )
+    if code in {"stage_rejection_reason_required", "stage_rejection_reason_too_long"}:
+        return HTTPException(
+            422,
+            detail={"code": code, "message": "Укажите причину возврата этапа на доработку"},
+        )
+    if code == "photos_required":
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Добавьте хотя бы одно фото результата этапа перед приёмкой",
+            },
+        )
+    if code in {"checklist_required", "checklist_incomplete"}:
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Откройте этап и отметьте чек-лист перед приёмкой",
+            },
+        )
+    if code in {
+        "acceptance_already_decided",
+        "acceptance_not_current",
+        "acceptance_state_inconsistent",
+    } or code.startswith(("stage_submit_invalid_status:", "stage_reject_invalid_status:", "stage_accept_invalid_status:")):
+        return HTTPException(
+            409,
+            detail={"code": code, "message": "Решение уже изменилось или переход недоступен"},
+        )
+    return HTTPException(
+        409,
+        detail={"code": code, "message": "Операция приёмки недоступна"},
+    )
 
 
 @router.get("/{project_id}/work-acceptances/pending-count")
@@ -123,10 +125,10 @@ async def acceptances_pending_count(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services import acceptance_service as acc_svc
+    from app.services import acceptance_service
 
     await require_project(db, project_id, user, write=False)
-    return {"count": await acc_svc.pending_count(db, project_id)}
+    return {"count": await acceptance_service.pending_count(db, project_id)}
 
 
 @router.get("/{project_id}/work-acceptances")
@@ -137,7 +139,11 @@ async def list_acceptances(
     db: AsyncSession = Depends(get_db),
 ):
     await require_project(db, project_id, user, write=False)
-    query = select(WorkAcceptance).where(WorkAcceptance.project_id == project_id).order_by(WorkAcceptance.created_at.desc())
+    query = (
+        select(WorkAcceptance)
+        .where(WorkAcceptance.project_id == project_id)
+        .order_by(WorkAcceptance.created_at.desc(), WorkAcceptance.id.desc())
+    )
     if stage_id:
         query = query.where(WorkAcceptance.stage_id == stage_id)
     rows = list((await db.execute(query)).scalars().all())
@@ -152,57 +158,23 @@ async def request_acceptance(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=True)
-    require_acceptance_requester(project, user)
-    stage = await require_stage(db, project_id, body.stage_id)
-    if stage.status == StageStatus.done:
-        raise HTTPException(409, "stage_already_accepted")
-    existing = await active_acceptance(db, project_id, body.stage_id)
-    if existing:
-        return acceptance_dict(existing)
-
-    row = WorkAcceptance(
-        project_id=project_id,
-        room_id=None,
-        stage_id=stage.id,
-        requested_by=user.id,
-        requested_at=utc_now(),
-        status=AcceptanceStatus.requested.value,
-        checklist_json=json.dumps(body.checklist or []),
-        comment=body.comment,
-        created_at=utc_now(),
-    )
-    stage.status = StageStatus.review
-    stage.contractor_ready = True
-    stage.contractor_ready_at = stage.contractor_ready_at or utc_now()
-    stage.percent_complete = max(stage.percent_complete or 0, 90)
-    db.add(row)
-
-    from app.services.work_acceptance_side_effects import prepare_request_effects
-
     try:
-        await db.flush()
-        await prepare_request_effects(
+        result, error = await decisions.request_acceptance(
             db,
             project=project,
-            stage=stage,
-            acceptance=row,
-            requested_by=user.id,
+            stage_id=body.stage_id,
+            actor=user,
             comment=body.comment,
         )
-        await db.commit()
-    except BaseException:
-        await db.rollback()
-        raise
-    await db.refresh(row)
-
-    from app.services.outbox_inline_dispatch import dispatch_best_effort
-
-    await dispatch_best_effort(
-        db,
-        source="work_acceptance.request",
-        limit=10,
-    )
-    return acceptance_dict(row)
+    except ValueError as exc:
+        raise _decision_error(exc) from exc
+    if error:
+        raise HTTPException(409, detail=error)
+    if result is None:
+        raise HTTPException(404, "stage_not_found")
+    response = acceptance_dict(result.acceptance)
+    response["replayed"] = result.replayed
+    return response
 
 
 @router.post("/{project_id}/work-acceptances/{acceptance_id}/accept")
@@ -213,86 +185,32 @@ async def accept_work(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.accept_orchestrator import finalize_work_acceptance
-
     project = await require_project(db, project_id, user, write=True)
-    require_acceptance_decider(project, user)
-    row = await db.get(WorkAcceptance, acceptance_id)
-    if not row or row.project_id != project_id:
-        raise HTTPException(404, "acceptance_not_found")
-    require_pending_decision(row)
-    stage = await require_stage(db, project_id, row.stage_id)
-
-    from app.services.acceptance_policy import assert_accept_policy, policy_dict
-    from app.services import outbox_service as outbox
-
-    source_mode = (getattr(body, "mode", None) or "full").strip().lower()
     try:
-        assert_accept_policy(
-            stage,
-            checklist=body.checklist,
-            source="inline" if source_mode == "inline" else "api",
-        )
-        result = await finalize_work_acceptance(
+        result = await decisions.accept_work(
             db,
             project=project,
-            stage=stage,
-            row=row,
-            accepted_by=user.id,
+            acceptance_id=acceptance_id,
+            actor=user,
             comment=body.comment,
             quality_score=body.quality_score,
             create_issue=body.create_issue,
             checklist=body.checklist,
+            source_mode=body.mode or "full",
         )
     except ValueError as exc:
-        code = str(exc)
-        if code == "photos_required":
-            raise HTTPException(
-                409,
-                detail={
-                    "code": "photos_required",
-                    "message": "Добавьте хотя бы одно фото результата этапа перед приёмкой",
-                },
-            ) from exc
-        if code in ("checklist_required", "checklist_incomplete"):
-            pol = policy_dict(stage)
-            raise HTTPException(
-                409,
-                detail={
-                    "code": code,
-                    "message": "Откройте этап и отметьте чек-лист перед приёмкой",
-                    "policy": pol,
-                },
-            ) from exc
-        raise
-
-    # P1.16: side effects via transactional outbox (same tx as acceptance)
-    await outbox.enqueue(
-        db,
-        aggregate_type="work_acceptance",
-        aggregate_id=result.acceptance.id,
-        event_type="acceptance.side_effects",
-        payload={
-            "project_id": project.id,
-            "stage_id": result.stage.id,
-            "accepted_by": user.id,
-            "comment": body.comment,
-            "payment_id": result.payment.id if result.payment else None,
-            "next_stage_id": result.next_stage.id if result.next_stage else None,
-            "source": "app",
-        },
+        raise _decision_error(exc) from exc
+    if result is None:
+        raise HTTPException(404, "acceptance_not_found")
+    response = acceptance_dict(result.acceptance)
+    response.update(
+        {
+            "replayed": result.replayed,
+            "payment_id": result.payment_id,
+            "next_stage_id": result.next_stage_id,
+        }
     )
-    await db.commit()
-    await db.refresh(result.acceptance)
-
-    from app.services.outbox_inline_dispatch import dispatch_best_effort
-
-    await dispatch_best_effort(
-        db,
-        source="work_acceptance.accept",
-        limit=10,
-    )
-    return acceptance_dict(result.acceptance)
+    return response
 
 
 @router.post("/{project_id}/work-acceptances/{acceptance_id}/return")
@@ -304,62 +222,30 @@ async def return_work(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=True)
-    require_acceptance_decider(project, user)
-    row = await db.get(WorkAcceptance, acceptance_id)
-    if not row or row.project_id != project_id:
-        raise HTTPException(404, "acceptance_not_found")
-    require_pending_decision(row)
-    stage = await require_stage(db, project_id, row.stage_id)
-
-    row.status = AcceptanceStatus.returned.value
-    row.accepted_by = user.id
-    # W139: не подставляем 5 — пишем только явную оценку (None = без оценки)
-    if body.quality_score is not None:
-        row.quality_score = body.quality_score
-    else:
-        row.quality_score = None
-    row.comment = body.comment or row.comment
-    if body.checklist is not None:
-        row.checklist_json = json.dumps(body.checklist)
-    stage.status = StageStatus.active
-    stage.contractor_ready = False
-    stage.contractor_ready_at = None
-    stage.needs_rework = True
-    stage.percent_complete = min(stage.percent_complete or 90, 90)
-
-    if body.create_issue:
-        db.add(ProjectIssue(
-            project_id=project_id,
-            stage_id=stage.id,
-            title=f"Доработка по этапу: {stage.name}",
-            description=body.comment,
-            severity="medium",
-            status="open",
-            created_at=utc_now(),
-        ))
-
-    from app.services.work_acceptance_side_effects import prepare_return_effects
-
     try:
-        await prepare_return_effects(
+        result = await decisions.return_work(
             db,
             project=project,
-            stage=stage,
-            acceptance=row,
-            returned_by=user.id,
-            comment=body.comment,
+            acceptance_id=acceptance_id,
+            actor=user,
+            comment=body.comment or "",
+            quality_score=body.quality_score,
+            create_issue=body.create_issue,
         )
-        await db.commit()
-    except BaseException:
-        await db.rollback()
-        raise
-    await db.refresh(row)
-
-    from app.services.outbox_inline_dispatch import dispatch_best_effort
-
-    await dispatch_best_effort(
-        db,
-        source="work_acceptance.return",
-        limit=10,
+    except ValueError as exc:
+        raise _decision_error(exc) from exc
+    if result is None:
+        raise HTTPException(404, "acceptance_not_found")
+    response = acceptance_dict(result.acceptance)
+    response.update(
+        {
+            "replayed": result.replayed,
+            "issue_id": result.issue_id,
+            "rework_deadline": (
+                result.stage.rework_deadline.isoformat()
+                if result.stage.rework_deadline
+                else None
+            ),
+        }
     )
-    return acceptance_dict(row)
+    return response

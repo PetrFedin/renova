@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock
+import json
 
 import pytest
 import pytest_asyncio
@@ -18,6 +19,7 @@ from app.models.entities import (
     DomainOutbox,
     Project,
     Stage,
+    StagePhoto,
     StageStatus,
     User,
     UserRole,
@@ -27,7 +29,7 @@ import app.models.outbox_runtime  # noqa: F401
 import app.models.project_documents  # noqa: F401
 import app.models.work_schedule  # noqa: F401
 from app.models.outbox_runtime import DomainOutboxLease
-from app.services import outbox_inline_dispatch, outbox_service, work_acceptance_side_effects
+from app.services import outbox_inline_dispatch, outbox_service, stage_review_service
 
 
 @pytest_asyncio.fixture
@@ -56,9 +58,21 @@ async def seed_acceptance_project(db):
         project_id=project.id,
         name="Штукатурка",
         status=StageStatus.active,
-        percent_complete=70,
+        percent_complete=100,
+        assignee_id=contractor.id,
+        checklist_json=json.dumps(
+            [{"id": "finish", "title": "Завершить работы", "done": True}],
+            ensure_ascii=False,
+        ),
     )
-    db.add_all([customer, contractor, project, stage])
+    result_photo = StagePhoto(
+        id="stage-acceptance-result-photo",
+        stage_id=stage.id,
+        user_id=contractor.id,
+        caption="Фото результата",
+        image_url="https://example.com/result.jpg",
+    )
+    db.add_all([customer, contractor, project, stage, result_photo])
     await db.commit()
     return customer, contractor, project, stage
 
@@ -82,11 +96,11 @@ async def test_request_acceptance_commits_state_and_required_effects_together(
     assert response["status"] == AcceptanceStatus.requested.value
     assert await acceptance_db.scalar(select(func.count()).select_from(WorkAcceptance)) == 1
     assert await acceptance_db.scalar(select(Stage.status).where(Stage.id == stage.id)) == StageStatus.review
-    assert await acceptance_db.scalar(select(func.count()).select_from(DomainOutbox)) == 2
-    assert await acceptance_db.scalar(select(func.count()).select_from(DomainOutboxLease)) == 2
+    assert await acceptance_db.scalar(select(func.count()).select_from(DomainOutbox)) == 3
+    assert await acceptance_db.scalar(select(func.count()).select_from(DomainOutboxLease)) == 3
     inline_dispatch.assert_awaited_once_with(
         acceptance_db,
-        source="work_acceptance.request",
+        source="stage.review.submit",
         limit=10,
     )
 
@@ -100,8 +114,8 @@ async def test_request_acceptance_rolls_back_state_when_effect_prepare_fails(
     project_id = project.id
     stage_id = stage.id
     monkeypatch.setattr(
-        work_acceptance_side_effects,
-        "prepare_request_effects",
+        stage_review_service,
+        "_enqueue_activity",
         AsyncMock(side_effect=RuntimeError("request_effect_prepare_failed")),
     )
 
@@ -115,7 +129,7 @@ async def test_request_acceptance_rolls_back_state_when_effect_prepare_fails(
 
     assert await acceptance_db.scalar(select(func.count()).select_from(WorkAcceptance)) == 0
     assert await acceptance_db.scalar(select(Stage.status).where(Stage.id == stage_id)) == StageStatus.active
-    assert await acceptance_db.scalar(select(Stage.percent_complete).where(Stage.id == stage_id)) == 70
+    assert await acceptance_db.scalar(select(Stage.percent_complete).where(Stage.id == stage_id)) == 100
     assert await acceptance_db.scalar(select(func.count()).select_from(DomainOutbox)) == 0
 
 
@@ -141,8 +155,8 @@ async def test_return_acceptance_rolls_back_rework_state_when_effect_prepare_fai
     await acceptance_db.commit()
     acceptance_id = acceptance.id
     monkeypatch.setattr(
-        work_acceptance_side_effects,
-        "prepare_return_effects",
+        stage_review_service,
+        "_enqueue_notification",
         AsyncMock(side_effect=RuntimeError("return_effect_prepare_failed")),
     )
 
