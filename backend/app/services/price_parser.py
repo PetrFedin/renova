@@ -53,7 +53,7 @@ _ATTR_RE = re.compile(
     re.IGNORECASE,
 )
 _CURRENCY_PRICE_RE = re.compile(
-    r"(?<!\d)(\d{1,3}(?:[\s\u00a0\u202f.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,8}(?:[.,]\d{1,2})?)\s*(?:₽|руб(?:\.|ля|лей)?|RUB)\b?",
+    r"(?<!\d)(\d{1,3}(?:[\s\u00a0\u202f.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,8}(?:[.,]\d{1,2})?)\s*(?:₽|руб(?:\.|ля|лей)?|RUB)",
     re.IGNORECASE,
 )
 
@@ -326,12 +326,14 @@ async def fetch_price(url: str, current: float = 0) -> PriceFetchResult:
                     ):
                         return PriceFetchResult(current_price, shop, "unavailable", current_url)
                     content_length = response.headers.get("content-length")
+                    declared_length: int | None = None
                     if content_length:
                         try:
-                            if int(content_length) > MAX_RESPONSE_BYTES:
-                                raise PriceFetchError("price_response_too_large")
+                            declared_length = int(content_length)
                         except ValueError:
-                            pass
+                            declared_length = None
+                    if declared_length is not None and declared_length > MAX_RESPONSE_BYTES:
+                        raise PriceFetchError("price_response_too_large")
 
                     body = bytearray()
                     async for chunk in response.aiter_bytes():
