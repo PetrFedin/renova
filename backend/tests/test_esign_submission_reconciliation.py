@@ -60,8 +60,9 @@ async def seed_document(db, suffix: str):
 
 
 def install_provider(monkeypatch, provider):
+    # Both the request path and the outbox worker resolve providers through the
+    # registry at call time. Patching the source of truth exercises that contract.
     monkeypatch.setattr("app.services.esign.registry.get_provider", lambda _name: provider)
-    monkeypatch.setattr("app.services.esign_submission_service.get_provider", lambda _name: provider)
 
 
 @pytest.mark.asyncio
@@ -115,14 +116,26 @@ async def test_provider_acceptance_is_reconciled_after_local_completion_failure(
     monkeypatch.setattr(outbox_service, "_release_success", fail_first_completion)
     monkeypatch.setattr(outbox_service, "_retry_delay", lambda _attempts: timedelta(0))
 
-    signature = await sign_document(
-        db,
-        document,
-        signer_user_id=user.id,
-        signer_role="customer",
-        provider="kontur",
-    )
+    # The API remains fail-closed for the caller, while the committed intent is
+    # retained for reconciliation instead of pretending the provider call failed.
+    with pytest.raises(ValueError, match="synthetic_local_commit_window"):
+        await sign_document(
+            db,
+            document,
+            signer_user_id=user.id,
+            signer_role="customer",
+            provider="kontur",
+        )
 
+    signature = (
+        await db.execute(
+            select(DocumentSignature).where(
+                DocumentSignature.document_id == document.id,
+                DocumentSignature.signer_user_id == user.id,
+                DocumentSignature.provider_name == "kontur",
+            )
+        )
+    ).scalar_one()
     assert signature.status == "submitting"
     assert signature.provider_external_id is None
     assert len(provider.idempotency_keys) == 1
