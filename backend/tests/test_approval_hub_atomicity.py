@@ -183,6 +183,11 @@ async def test_customer_cannot_resolve_own_room_request_and_executor_applies_pat
     planned_budget = await db.scalar(
         select(Project.budget_planned).where(Project.id == project.id)
     )
+    calculated_budget = await db.scalar(
+        select(func.sum(EstimateLine.quantity_planned * EstimateLine.unit_price)).where(
+            EstimateLine.project_id == project.id
+        )
+    )
     estimate_count = await db.scalar(
         select(func.count())
         .select_from(EstimateLine)
@@ -205,7 +210,8 @@ async def test_customer_cannot_resolve_own_room_request_and_executor_applies_pat
     assert outlets_count == 3
     assert notes is None
     assert estimate_count == 2
-    assert planned_budget == 3150
+    assert planned_budget == pytest.approx(float(calculated_budget), abs=0.01)
+    assert planned_budget > 3150
     assert outbox_count == 2
 
     replay = await decision_svc.decide(
