@@ -105,6 +105,9 @@ async def seed_stage_project(db, suffix: str):
 @pytest.mark.asyncio
 async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
     _, contractor, _, _, project, room, _, _ = await seed_stage_project(db, "create")
+    project_id = project.id
+    contractor_id = contractor.id
+    room_id = room.id
     foreign_customer = User(
         id="stage-foreign-customer",
         phone="+76050000001",
@@ -126,10 +129,9 @@ async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
         height_m=2.7,
         openings_sq_m=2,
     )
+    foreign_room_id = foreign_room.id
     db.add_all([foreign_customer, foreign_project, foreign_room])
     await db.commit()
-    project_id = project.id
-    contractor_id = contractor.id
 
     first = await mutations.create_stage(
         db,
@@ -138,13 +140,13 @@ async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
         name="Электромонтаж",
         planned_start=date(2026, 8, 16),
         planned_end=date(2026, 8, 20),
-        room_ids=[room.id],
+        room_ids=[room_id],
         work_type="electrical",
         client_request_id="stage-create-1",
     )
     assert first.replayed is False
     stage_id = first.stage.id
-    assert json.loads(first.stage.room_ids_json) == [room.id]
+    assert json.loads(first.stage.room_ids_json) == [room_id]
     assert await db.scalar(
         select(func.count())
         .select_from(DomainOutbox)
@@ -167,7 +169,7 @@ async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
         name="Электромонтаж",
         planned_start=date(2026, 8, 16),
         planned_end=date(2026, 8, 20),
-        room_ids=[room.id],
+        room_ids=[room_id],
         work_type="electrical",
         client_request_id="stage-create-1",
     )
@@ -185,10 +187,12 @@ async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
             project_id=project_id,
             actor=contractor,
             name="Другой этап",
-            room_ids=[room.id],
+            room_ids=[room_id],
             client_request_id="stage-create-1",
         )
 
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
     baseline_stages = await db.scalar(
         select(func.count()).select_from(Stage).where(Stage.project_id == project_id)
     )
@@ -199,7 +203,7 @@ async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
             project_id=project_id,
             actor=contractor,
             name="Недопустимая комната",
-            room_ids=[foreign_room.id],
+            room_ids=[foreign_room_id],
             client_request_id="stage-create-foreign",
         )
     assert await db.scalar(
@@ -215,8 +219,15 @@ async def test_stage_configuration_is_role_scoped_and_locked_after_start(db):
     )
     project_id = project.id
     stage_id = stage.id
+    room_id = room.id
+    customer_id = customer.id
+    contractor_id = contractor.id
+    foreman_id = foreman.id
+    outsider_id = outsider.id
 
-    for actor in (customer, outsider):
+    for actor_id in (customer_id, outsider_id):
+        actor = await db.get(User, actor_id)
+        assert actor is not None
         with pytest.raises(ValueError, match="stage_schedule_actor_forbidden"):
             await mutations.update_work_type(
                 db,
@@ -227,6 +238,8 @@ async def test_stage_configuration_is_role_scoped_and_locked_after_start(db):
             )
     assert await db.scalar(select(Stage.work_type).where(Stage.id == stage_id)) is None
 
+    foreman = await db.get(User, foreman_id)
+    assert foreman is not None
     changed = await mutations.update_work_type(
         db,
         project_id=project_id,
@@ -239,19 +252,22 @@ async def test_stage_configuration_is_role_scoped_and_locked_after_start(db):
     assert changed.stage.work_type == "painting"
 
     stored = await db.get(Stage, stage_id)
+    assert stored is not None
     stored.status = StageStatus.active
     await db.commit()
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
     with pytest.raises(ValueError, match="stage_configuration_locked"):
         await mutations.update_rooms(
             db,
             project_id=project_id,
             stage_id=stage_id,
             actor=contractor,
-            room_ids=[room.id],
+            room_ids=[room_id],
         )
     assert json.loads(
         await db.scalar(select(Stage.room_ids_json).where(Stage.id == stage_id))
-    ) == [room.id]
+    ) == [room_id]
 
 
 @pytest.mark.asyncio
@@ -262,12 +278,17 @@ async def test_start_is_atomic_replay_safe_and_assignee_only(db, monkeypatch):
     project_id = project.id
     stage_id = stage.id
     predecessor_id = predecessor.id
+    customer_id = customer.id
+    contractor_id = contractor.id
+    outsider_id = outsider.id
 
     async def contract_ok(*_args, **_kwargs):
         return {"ok": True}
 
     monkeypatch.setattr(project_document_service, "project_contract_gate", contract_ok)
 
+    customer = await db.get(User, customer_id)
+    assert customer is not None
     with pytest.raises(ValueError, match="stage_execution_actor_forbidden"):
         await mutations.start_stage(
             db,
@@ -275,6 +296,8 @@ async def test_start_is_atomic_replay_safe_and_assignee_only(db, monkeypatch):
             stage_id=stage_id,
             actor=customer,
         )
+    outsider = await db.get(User, outsider_id)
+    assert outsider is not None
     with pytest.raises(ValueError, match="stage_execution_actor_forbidden"):
         await mutations.start_stage(
             db,
@@ -283,6 +306,8 @@ async def test_start_is_atomic_replay_safe_and_assignee_only(db, monkeypatch):
             actor=outsider,
         )
 
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
     started, error = await mutations.start_stage(
         db,
         project_id=project_id,
@@ -300,6 +325,8 @@ async def test_start_is_atomic_replay_safe_and_assignee_only(db, monkeypatch):
         .where(DomainOutbox.aggregate_id == stage_id)
     ) == 2
 
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
     replay, replay_error = await mutations.start_stage(
         db,
         project_id=project_id,
@@ -319,6 +346,8 @@ async def test_start_is_atomic_replay_safe_and_assignee_only(db, monkeypatch):
         raise RuntimeError("synthetic_stage_start_effect_failure")
 
     monkeypatch.setattr(mutations, "_enqueue_customer_notification", fail_notification)
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
     with pytest.raises(RuntimeError, match="synthetic_stage_start_effect_failure"):
         await mutations.start_stage(
             db,
@@ -390,6 +419,7 @@ async def test_dependency_allows_planning_but_rejects_cycles_atomically(db):
     project_id = project.id
     stage_id = stage.id
     predecessor_id = predecessor.id
+    contractor_id = contractor.id
 
     linked = await mutations.update_dependency(
         db,
@@ -404,6 +434,8 @@ async def test_dependency_allows_planning_but_rejects_cycles_atomically(db):
         select(Stage.status).where(Stage.id == predecessor_id)
     ) == StageStatus.planned
 
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
     with pytest.raises(ValueError, match="stage_dependency_cycle"):
         await mutations.update_dependency(
             db,
@@ -437,6 +469,7 @@ async def test_dependency_read_is_pure_and_does_not_update_status(db):
     )
     db.add(dependency)
     await db.commit()
+    dependency_id = dependency.id
 
     result = await dependency_service.evaluate_stage(
         db,
@@ -446,13 +479,17 @@ async def test_dependency_read_is_pure_and_does_not_update_status(db):
     )
     assert result["blocked"] is False
     assert await db.scalar(
-        select(WorkDependency.status).where(WorkDependency.id == dependency.id)
+        select(WorkDependency.status).where(WorkDependency.id == dependency_id)
     ) == "pending"
 
 
 @pytest.mark.asyncio
 async def test_ready_route_uses_canonical_completion_and_acceptance(db):
     _, contractor, _, _, project, room, stage, _ = await seed_stage_project(db, "ready")
+    project_id = project.id
+    stage_id = stage.id
+    contractor_id = contractor.id
+    room_id = room.id
     stage.status = StageStatus.active
     stage.percent_complete = 100
     stage.actual_start = date(2026, 8, 1)
@@ -460,21 +497,23 @@ async def test_ready_route_uses_canonical_completion_and_acceptance(db):
         [{"id": "finish", "title": "Завершить работы", "done": True}],
         ensure_ascii=False,
     )
-    stage.room_ids_json = json.dumps([room.id])
+    stage.room_ids_json = json.dumps([room_id])
     db.add(
         StagePhoto(
             id="stage-ready-result-photo",
-            stage_id=stage.id,
-            user_id=contractor.id,
+            stage_id=stage_id,
+            user_id=contractor_id,
             caption="Фото результата после работ",
             image_url="https://example.com/result.jpg",
         )
     )
     await db.commit()
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
 
     response = await stage_mutations.mark_ready(
-        project.id,
-        stage.id,
+        project_id,
+        stage_id,
         user=contractor,
         db=db,
     )
@@ -484,25 +523,33 @@ async def test_ready_route_uses_canonical_completion_and_acceptance(db):
     assert await db.scalar(
         select(func.count())
         .select_from(WorkAcceptance)
-        .where(WorkAcceptance.stage_id == stage.id)
+        .where(WorkAcceptance.stage_id == stage_id)
     ) == 1
     assert await db.scalar(
         select(func.count())
         .select_from(DomainOutbox)
-        .where(DomainOutbox.aggregate_id == stage.id)
+        .where(DomainOutbox.aggregate_id == stage_id)
     ) == 3
 
 
 @pytest.mark.asyncio
 async def test_stage_reads_require_project_membership(db):
     _, _, _, outsider, project, _, stage, _ = await seed_stage_project(db, "read-acl")
-    for call in (
-        stages_ext.stage_detail(project.id, stage.id, user=outsider, db=db),
-        stages_ext.stage_blocked(project.id, stage.id, user=outsider, db=db),
-    ):
-        with pytest.raises(HTTPException) as error:
-            await call
-        assert error.value.status_code == 403
+    project_id = project.id
+    stage_id = stage.id
+    outsider_id = outsider.id
+
+    outsider = await db.get(User, outsider_id)
+    assert outsider is not None
+    with pytest.raises(HTTPException) as detail_error:
+        await stages_ext.stage_detail(project_id, stage_id, user=outsider, db=db)
+    assert detail_error.value.status_code == 403
+
+    outsider = await db.get(User, outsider_id)
+    assert outsider is not None
+    with pytest.raises(HTTPException) as blocked_error:
+        await stages_ext.stage_blocked(project_id, stage_id, user=outsider, db=db)
+    assert blocked_error.value.status_code == 403
 
 
 @pytest.mark.asyncio
