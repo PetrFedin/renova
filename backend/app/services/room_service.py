@@ -127,8 +127,8 @@ async def apply_room_patch(
                     room_id=room.id,
                     user_id=user_id,
                     field_name=field,
-                    old_value=None if old is None else str(old),
-                    new_value=None if value is None else str(value),
+                    old_value="null" if old is None else str(old),
+                    new_value="null" if value is None else str(value),
                 )
             )
         setattr(room, field, value)
