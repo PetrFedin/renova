@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import DesignPackage, Project, User
@@ -20,9 +20,13 @@ def _target(action: DesignAction) -> str:
     }[action]
 
 
+def _is_executor(project: Project, actor_id: str) -> bool:
+    return actor_id in {project.contractor_id, project.foreman_id}
+
+
 def _validate_actor(project: Project, actor: User, action: DesignAction) -> None:
     if action == "submit":
-        if actor.id not in {project.contractor_id, project.foreman_id}:
+        if not _is_executor(project, actor.id):
             raise ValueError("design_decision_actor_forbidden")
         return
     if actor.id != project.customer_id:
@@ -70,6 +74,77 @@ def _notification_targets(project: Project, actor_id: str, action: DesignAction)
     else:
         candidates = {project.contractor_id, project.foreman_id}
     return sorted(value for value in candidates if value and value != actor_id)
+
+
+async def create_package(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+    title: str,
+    file_key: str | None = None,
+    notes: str | None = None,
+) -> DesignPackage:
+    """Create the next version with its audit event in one transaction."""
+    if not _is_executor(project, actor.id):
+        raise ValueError("design_decision_actor_forbidden")
+    normalized_title = (title or "").strip()
+    if not normalized_title or len(normalized_title) > 255:
+        raise ValueError("design_title_invalid")
+    normalized_file_key = (file_key or "").strip() or None
+    if normalized_file_key and len(normalized_file_key) > 512:
+        raise ValueError("design_file_key_invalid")
+    normalized_notes = (notes or "").strip() or None
+
+    lock_query = select(Project.id).where(Project.id == project.id)
+    try:
+        lock_query = lock_query.with_for_update()
+    except Exception:
+        pass
+    await db.execute(lock_query)
+    version = int(
+        await db.scalar(
+            select(func.max(DesignPackage.version)).where(
+                DesignPackage.project_id == project.id
+            )
+        )
+        or 0
+    ) + 1
+    package = DesignPackage(
+        project_id=project.id,
+        title=normalized_title,
+        version=version,
+        file_key=normalized_file_key,
+        notes=normalized_notes,
+        status="published",
+    )
+    db.add(package)
+    await db.flush()
+    await outbox.enqueue(
+        db,
+        aggregate_type="design_package",
+        aggregate_id=package.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": project.id,
+            "user_id": actor.id,
+            "kind": "DesignCreated",
+            "title": f"Дизайн v{version}: {package.title}",
+            "body": package.notes,
+            "link_path": "/design",
+        },
+    )
+    try:
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await db.refresh(package)
+
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(db, source="design_package.create", limit=10)
+    return package
 
 
 async def _prepare_effects(
