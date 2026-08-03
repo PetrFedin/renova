@@ -9,6 +9,7 @@ from app.models.entities import (
     ActivityEvent,
     DomainOutbox,
     EstimateLine,
+    LineType,
     Project,
     Room,
     RoomChangeLog,
@@ -21,14 +22,18 @@ from app.services.client_write_idempotency import IdempotencyConflict
 
 
 async def seed_project(db, suffix: str):
+    phone_tail = sum(
+        (index + 1) * ord(character)
+        for index, character in enumerate(suffix)
+    ) % 10_000_000
     customer = User(
         id=f"room-customer-{suffix}",
-        phone=f"+7801{len(suffix):07d}",
+        phone=f"+7801{phone_tail:07d}",
         role=UserRole.customer,
     )
     contractor = User(
         id=f"room-contractor-{suffix}",
-        phone=f"+7802{len(suffix):07d}",
+        phone=f"+7802{phone_tail:07d}",
         role=UserRole.contractor,
     )
     project = Project(
@@ -182,7 +187,22 @@ async def test_update_recalculates_finish_and_engineering_without_losing_manual_
     laminate_id = laminate.id
     laminate.unit_price = 777
     laminate.quantity_actual = 2
+    manual = EstimateLine(
+        project_id=project_id,
+        room_id=room_id,
+        line_type=LineType.work,
+        name="Авторская ниша",
+        unit="шт",
+        quantity_planned=1,
+        quantity_actual=0.5,
+        unit_price=5000,
+        room_name="Гостиная",
+        category="finish",
+        notes="Ручная строка",
+    )
+    db.add(manual)
     await db.commit()
+    manual_id = manual.id
 
     contractor = await db.get(User, contractor_id)
     project = await db.get(Project, project_id)
@@ -217,6 +237,15 @@ async def test_update_recalculates_finish_and_engineering_without_losing_manual_
     assert actual == 2
     assert price == 777
     assert room_name == "Большая гостиная"
+
+    manual_row = (
+        await db.execute(
+            select(EstimateLine).where(EstimateLine.id == manual_id)
+        )
+    ).scalar_one()
+    assert manual_row.name == "Авторская ниша"
+    assert manual_row.unit_price == 5000
+    assert manual_row.quantity_actual == 0.5
 
     electrical = list(
         (
@@ -362,7 +391,7 @@ async def test_effect_failure_rolls_back_room_estimates_budget_and_audit(db, mon
 
 @pytest.mark.asyncio
 async def test_room_change_log_cannot_read_foreign_project_room(db):
-    customer_a, contractor_a, project_a = await seed_project(db, "acl-a")
+    customer_a, _, project_a = await seed_project(db, "acl-a")
     _, contractor_b, project_b = await seed_project(db, "acl-b")
     foreign = await mutations.create_room(
         db,
