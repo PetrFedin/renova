@@ -76,17 +76,20 @@ async def _locked_stage(
     return (await db.execute(query)).scalar_one_or_none()
 
 
-async def _locked_acceptance(
+async def _latest_locked_acceptance(
     db: AsyncSession,
     *,
     project_id: str,
     stage_id: str,
-    acceptance_id: str,
 ) -> WorkAcceptance | None:
-    query = select(WorkAcceptance).where(
-        WorkAcceptance.id == acceptance_id,
-        WorkAcceptance.project_id == project_id,
-        WorkAcceptance.stage_id == stage_id,
+    query = (
+        select(WorkAcceptance)
+        .where(
+            WorkAcceptance.project_id == project_id,
+            WorkAcceptance.stage_id == stage_id,
+        )
+        .order_by(WorkAcceptance.created_at.desc(), WorkAcceptance.id.desc())
+        .limit(1)
     )
     try:
         query = query.with_for_update()
@@ -142,7 +145,7 @@ async def accept_work(
     source_mode: str = "full",
     source: str = "app",
 ) -> AcceptanceDecisionResult | None:
-    """Serialize one acceptance decision and its complete financial/document cascade."""
+    """Serialize one current acceptance and its complete financial/document cascade."""
     _require_customer(project, actor)
     stage_id = await _acceptance_stage_id(
         db,
@@ -161,15 +164,17 @@ async def accept_work(
     if stage is None:
         await db.rollback()
         return None
-    row = await _locked_acceptance(
+    row = await _latest_locked_acceptance(
         db,
         project_id=project.id,
         stage_id=stage.id,
-        acceptance_id=acceptance_id,
     )
     if row is None:
         await db.rollback()
         return None
+    if row.id != acceptance_id:
+        await db.rollback()
+        raise ValueError("acceptance_not_current")
 
     if row.status in _ACCEPTED:
         if stage.status != StageStatus.done:
