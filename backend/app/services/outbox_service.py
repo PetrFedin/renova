@@ -368,6 +368,7 @@ async def dispatch_pending(
                     now=utc_now(),
                 )
                 continue
+            event_type = str(row.event_type)
             try:
                 await _handle(db, row)
                 if await _release_success(
@@ -395,7 +396,11 @@ async def dispatch_pending(
                     error=exc,
                     now=utc_now(),
                 )
-                logger.exception("outbox failed id=%s type=%s", row.id, row.event_type)
+                logger.exception(
+                    "outbox failed id=%s type=%s",
+                    outbox_id,
+                    event_type,
+                )
 
         if not claimed_in_round:
             break
