@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1 import portal
+from app.api.v1 import portal_acceptance_decisions
 from app.api.v1 import portal_change_order_decisions
 from app.api.v1 import account_lifecycle
 from app.api.v1 import document_lifecycle
@@ -96,13 +97,21 @@ _remove_replaced_routes(os.router, _EXPENSE_MUTATION_ROUTES)
 api_router.include_router(expense_mutations.router)
 api_router.include_router(os.router)
 
-# Replace the two legacy portal CO routes at runtime while the portal module is decomposed.
+# Replace legacy portal mutations at runtime while the portal module is decomposed.
 _PORTAL_CHANGE_ORDER_ROUTES: set[RouteSignature] = {
     ("/portal/projects/{project_id}/change-orders/{order_id}/approve", "POST"),
     ("/portal/projects/{project_id}/change-orders/{order_id}/reject", "POST"),
 }
-_remove_replaced_routes(portal.router, _PORTAL_CHANGE_ORDER_ROUTES)
+_PORTAL_ACCEPTANCE_ROUTES: set[RouteSignature] = {
+    ("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/accept", "POST"),
+    ("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/return", "POST"),
+}
+_remove_replaced_routes(
+    portal.router,
+    _PORTAL_CHANGE_ORDER_ROUTES | _PORTAL_ACCEPTANCE_ROUTES,
+)
 api_router.include_router(portal_change_order_decisions.router)
+api_router.include_router(portal_acceptance_decisions.router)
 api_router.include_router(portal.router)
 api_router.include_router(reports.router)
 
