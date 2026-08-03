@@ -3,7 +3,9 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import func, select
 
+from app.core.timeutil import utc_now
 from app.models.entities import DomainOutbox, Project, User, UserRole
+from app.models.outbox_runtime import DomainOutboxLease
 from app.models.project_documents import DocumentSignature, DocumentStatus, DocumentType
 from app.services import outbox_service
 from app.services.esign.base import SignResult
@@ -116,10 +118,9 @@ async def test_provider_acceptance_is_reconciled_after_local_completion_failure(
         return await original_release_success(*args, **kwargs)
 
     monkeypatch.setattr(outbox_service, "_release_success", fail_first_completion)
-    monkeypatch.setattr(outbox_service, "_retry_delay", lambda _attempts: timedelta(0))
 
-    # The API remains fail-closed for the caller, while the committed intent is
-    # retained for reconciliation instead of pretending the provider call failed.
+    # The normal backoff keeps the failed inline attempt observable to the API
+    # instead of allowing the same dispatch loop to retry it immediately.
     with pytest.raises(ValueError, match="synthetic_local_commit_window"):
         await sign_document(
             db,
@@ -144,6 +145,21 @@ async def test_provider_acceptance_is_reconciled_after_local_completion_failure(
     assert signature.provider_external_id is None
     assert len(provider.idempotency_keys) == 1
 
+    event_id = await db.scalar(
+        select(DomainOutbox.id).where(
+            DomainOutbox.aggregate_type == "document_signature",
+            DomainOutbox.aggregate_id == signature.id,
+            DomainOutbox.event_type == outbox_service.ESIGN_SUBMISSION_EVENT,
+        )
+    )
+    assert event_id is not None
+    lease = await db.get(DomainOutboxLease, event_id)
+    assert lease is not None
+    lease.next_attempt_at = utc_now() - timedelta(seconds=1)
+    lease.locked_at = None
+    lease.locked_by = None
+    await db.commit()
+
     processed = await outbox_service.dispatch_pending(db, limit=10, worker_id="esign-reconcile-test")
     assert processed == 1
     await db.refresh(signature)
@@ -164,15 +180,15 @@ async def test_provider_acceptance_is_reconciled_after_local_completion_failure(
     )
     assert signature_count == 1
 
-    event = (
+    processed_at, attempts, last_error = (
         await db.execute(
-            select(DomainOutbox).where(
-                DomainOutbox.aggregate_type == "document_signature",
-                DomainOutbox.aggregate_id == signature.id,
-                DomainOutbox.event_type == outbox_service.ESIGN_SUBMISSION_EVENT,
-            )
+            select(
+                DomainOutbox.processed_at,
+                DomainOutbox.attempts,
+                DomainOutbox.last_error,
+            ).where(DomainOutbox.id == event_id)
         )
-    ).scalar_one()
-    assert event.processed_at is not None
-    assert event.attempts == 2
-    assert event.last_error is None
+    ).one()
+    assert processed_at is not None
+    assert attempts == 2
+    assert last_error is None
