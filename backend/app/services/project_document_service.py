@@ -212,9 +212,11 @@ async def sign_document(
     async def raise_inline_submission_error(signature: DocumentSignature) -> None:
         if signature.status != "submitting":
             return
-        event = (
+        # Read the scalar database value instead of an ORM row that may still be
+        # present in the identity map from before the worker's failure commit.
+        last_error = (
             await db.execute(
-                select(DomainOutbox)
+                select(DomainOutbox.last_error)
                 .where(
                     DomainOutbox.aggregate_type == "document_signature",
                     DomainOutbox.aggregate_id == signature.id,
@@ -224,8 +226,8 @@ async def sign_document(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if event is not None and event.last_error:
-            raise ValueError(event.last_error)
+        if last_error:
+            raise ValueError(str(last_error))
 
     version = await get_current_version(db, doc.id)
     if not version:
