@@ -100,6 +100,8 @@ async def test_external_submission_commits_intent_before_provider_and_completes_
 @pytest.mark.asyncio
 async def test_provider_acceptance_is_reconciled_after_local_completion_failure(db, monkeypatch):
     user, document = await seed_document(db, "retry")
+    user_id = user.id
+    document_id = document.id
     provider = AcceptingProvider()
     install_provider(monkeypatch, provider)
 
@@ -122,16 +124,18 @@ async def test_provider_acceptance_is_reconciled_after_local_completion_failure(
         await sign_document(
             db,
             document,
-            signer_user_id=user.id,
+            signer_user_id=user_id,
             signer_role="customer",
             provider="kontur",
         )
 
+    # Rollback expires ORM instances by design; query using immutable identities
+    # captured before the simulated local completion failure.
     signature = (
         await db.execute(
             select(DocumentSignature).where(
-                DocumentSignature.document_id == document.id,
-                DocumentSignature.signer_user_id == user.id,
+                DocumentSignature.document_id == document_id,
+                DocumentSignature.signer_user_id == user_id,
                 DocumentSignature.provider_name == "kontur",
             )
         )
@@ -153,8 +157,8 @@ async def test_provider_acceptance_is_reconciled_after_local_completion_failure(
         select(func.count())
         .select_from(DocumentSignature)
         .where(
-            DocumentSignature.document_id == document.id,
-            DocumentSignature.signer_user_id == user.id,
+            DocumentSignature.document_id == document_id,
+            DocumentSignature.signer_user_id == user_id,
             DocumentSignature.provider_name == "kontur",
         )
     )
