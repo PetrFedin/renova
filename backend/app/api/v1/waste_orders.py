@@ -156,6 +156,22 @@ async def approve_waste(
     )
 
 
+@router.post("/{project_id}/waste-orders/{order_id}/reject")
+async def reject_waste(
+    project_id: str,
+    order_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _transition(
+        project_id=project_id,
+        order_id=order_id,
+        target=WasteOrderStatus.cancelled,
+        user=user,
+        db=db,
+    )
+
+
 @router.post("/{project_id}/waste-orders/{order_id}/complete")
 async def complete_waste(
     project_id: str,
