@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import secrets
 from datetime import timedelta
 
-from sqlalchemy import case, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -91,30 +91,31 @@ async def owned_team(db: AsyncSession, owner_id: str) -> Team | None:
 
 
 async def my_team(db: AsyncSession, user_id: str) -> Team | None:
-    """Prefer the team a contractor owns over unrelated older memberships."""
+    """An owned team always wins over unrelated older memberships."""
+    owned = await owned_team(db, user_id)
+    if owned is not None:
+        return owned
     result = await db.execute(
         select(Team)
         .join(TeamMember, TeamMember.team_id == Team.id)
         .where(TeamMember.user_id == user_id)
-        .order_by(
-            case((Team.owner_id == user_id, 0), else_=1),
-            Team.created_at.asc(),
-            Team.id.asc(),
-        )
+        .order_by(Team.created_at.asc(), Team.id.asc())
     )
     return result.scalars().first()
 
 
 async def my_membership(db: AsyncSession, user_id: str) -> TeamMember | None:
+    owned = await owned_team(db, user_id)
+    if owned is not None:
+        return await _find_team_membership(
+            db,
+            team_id=owned.id,
+            user_id=user_id,
+        )
     result = await db.execute(
         select(TeamMember)
-        .join(Team, Team.id == TeamMember.team_id)
         .where(TeamMember.user_id == user_id)
-        .order_by(
-            case((Team.owner_id == user_id, 0), else_=1),
-            TeamMember.created_at.asc(),
-            TeamMember.id.asc(),
-        )
+        .order_by(TeamMember.created_at.asc(), TeamMember.id.asc())
     )
     return result.scalars().first()
 
