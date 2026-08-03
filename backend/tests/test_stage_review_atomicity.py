@@ -98,7 +98,7 @@ async def seed_stage(
 
 @pytest.mark.asyncio
 async def test_submit_creates_one_acceptance_and_durable_evidence(db):
-    customer, contractor, _, project, room, stage = await seed_stage(db, "submit")
+    _, contractor, _, project, room, stage = await seed_stage(db, "submit")
     project_id = project.id
     stage_id = stage.id
 
@@ -203,17 +203,13 @@ async def test_completion_gate_leaves_stage_and_acceptance_untouched(db):
 
 @pytest.mark.asyncio
 async def test_submit_requires_assignee_and_stage_project_scope(db):
-    _, contractor, outsider, project, _, stage = await seed_stage(db, "scope-a")
-    customer_b, _, _, project_b, _, _ = await seed_stage(db, "scope-b")
+    _, contractor, outsider, project_a, _, stage = await seed_stage(db, "scope-a")
+    _, _, _, project_b, _, _ = await seed_stage(db, "scope-b")
     stage_id = stage.id
+    project_a_id = project_a.id
+    project_b_id = project_b.id
+    outsider_id = outsider.id
 
-    with pytest.raises(ValueError, match="stage_submit_actor_forbidden"):
-        await reviews.submit_for_review(
-            db,
-            project=project,
-            stage_id=stage_id,
-            actor=outsider,
-        )
     result, error = await reviews.submit_for_review(
         db,
         project=project_b,
@@ -222,8 +218,18 @@ async def test_submit_requires_assignee_and_stage_project_scope(db):
     )
     assert result is None
     assert error is None
+
+    project_a = await db.get(Project, project_a_id)
+    outsider = await db.get(User, outsider_id)
+    with pytest.raises(ValueError, match="stage_submit_actor_forbidden"):
+        await reviews.submit_for_review(
+            db,
+            project=project_a,
+            stage_id=stage_id,
+            actor=outsider,
+        )
     assert await db.scalar(select(Stage.status).where(Stage.id == stage_id)) == StageStatus.active
-    assert customer_b.id == project_b.customer_id
+    assert project_b_id != project_a_id
 
 
 @pytest.mark.asyncio
@@ -231,6 +237,7 @@ async def test_reject_returns_acceptance_adds_sla_task_and_is_replay_safe(db):
     customer, contractor, _, project, _, stage = await seed_stage(db, "reject")
     project_id = project.id
     stage_id = stage.id
+    contractor_id = contractor.id
 
     submitted, error = await reviews.submit_for_review(
         db,
@@ -308,6 +315,8 @@ async def test_reject_returns_acceptance_adds_sla_task_and_is_replay_safe(db):
         for item in gate_error["completion"]["failed"]
     )
 
+    project = await db.get(Project, project_id)
+    contractor = await db.get(User, contractor_id)
     stored = await db.get(Stage, stage_id)
     checklist = json.loads(stored.checklist_json)
     for item in checklist:
@@ -338,32 +347,35 @@ async def test_reject_returns_acceptance_adds_sla_task_and_is_replay_safe(db):
 
 @pytest.mark.asyncio
 async def test_reject_requires_project_owner(db):
-    customer, contractor, outsider, project, _, stage = await seed_stage(db, "reject-acl")
+    _, contractor, outsider, project, _, stage = await seed_stage(db, "reject-acl")
+    stage_id = stage.id
+    project_id = project.id
+    outsider_id = outsider.id
     submitted, error = await reviews.submit_for_review(
         db,
         project=project,
-        stage_id=stage.id,
+        stage_id=stage_id,
         actor=contractor,
     )
     assert error is None
     assert submitted is not None
 
+    project = await db.get(Project, project_id)
+    outsider = await db.get(User, outsider_id)
     with pytest.raises(ValueError, match="stage_reject_actor_forbidden"):
         await reviews.reject_for_rework(
             db,
             project=project,
-            stage_id=stage.id,
+            stage_id=stage_id,
             actor=outsider,
             reason="Нет полномочий",
         )
-    assert await db.scalar(select(Stage.status).where(Stage.id == stage.id)) == StageStatus.review
-    assert customer.id == project.customer_id
+    assert await db.scalar(select(Stage.status).where(Stage.id == stage_id)) == StageStatus.review
 
 
 @pytest.mark.asyncio
 async def test_submit_effect_failure_rolls_back_stage_acceptance_and_outbox(db, monkeypatch):
     _, contractor, _, project, _, stage = await seed_stage(db, "submit-rollback")
-    project_id = project.id
     stage_id = stage.id
 
     async def fail_activity(*_args, **_kwargs):
@@ -397,7 +409,6 @@ async def test_submit_effect_failure_rolls_back_stage_acceptance_and_outbox(db, 
 @pytest.mark.asyncio
 async def test_reject_effect_failure_rolls_back_every_rework_change(db, monkeypatch):
     customer, contractor, _, project, _, stage = await seed_stage(db, "reject-rollback")
-    project_id = project.id
     stage_id = stage.id
     submitted, error = await reviews.submit_for_review(
         db,
