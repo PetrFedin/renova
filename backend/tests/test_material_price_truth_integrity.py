@@ -241,6 +241,9 @@ async def test_unavailable_supplier_keeps_existing_price_without_audit(db, monke
 @pytest.mark.asyncio
 async def test_live_price_change_commits_with_one_durable_activity(db, monkeypatch):
     _, contractor, project, _, pick = await seed_price_pick(db, "live")
+    contractor_id = contractor.id
+    project_id = project.id
+    pick_id = pick.id
 
     async def live(_url: str, _current: float):
         return PriceFetchResult(3190.0, "petrovich", "live_jsonld", "https://petrovich.ru/item")
@@ -248,9 +251,9 @@ async def test_live_price_change_commits_with_one_durable_activity(db, monkeypat
     monkeypatch.setattr(material_price_service, "fetch_price", live)
     result = await material_price_service.sync_material_price(
         db,
-        project_id=project.id,
-        pick_id=pick.id,
-        actor_id=contractor.id,
+        project_id=project_id,
+        pick_id=pick_id,
+        actor_id=contractor_id,
     )
     assert result is not None
     assert result.price_changed is True
@@ -261,14 +264,14 @@ async def test_live_price_change_commits_with_one_durable_activity(db, monkeypat
         .select_from(DomainOutbox)
         .where(
             DomainOutbox.aggregate_type == "material_pick",
-            DomainOutbox.aggregate_id == pick.id,
+            DomainOutbox.aggregate_id == pick_id,
         )
     ) == 1
     assert await db.scalar(
         select(func.count())
         .select_from(ActivityEvent)
         .where(
-            ActivityEvent.project_id == project.id,
+            ActivityEvent.project_id == project_id,
             ActivityEvent.kind == "MaterialPriceSynced",
         )
     ) == 1
