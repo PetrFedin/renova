@@ -1,13 +1,12 @@
 """Контур.Сайн provider with fail-closed request acceptance."""
 from __future__ import annotations
 
-import hashlib
 import logging
 
 import httpx
 
 from app.core.config import settings
-from app.services.esign.base import SignRequest, SignResult
+from app.services.esign.base import SignRequest, SignResult, signature_idempotency_key
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +19,7 @@ class KonturProviderError(RuntimeError):
 
 
 def _idempotency_id(request: SignRequest) -> str:
-    material = "|".join(
-        [
-            request.document_id,
-            request.version_id,
-            request.signer_user_id,
-            request.signer_role,
-            request.content_hash or "",
-        ]
-    ).encode("utf-8")
-    return f"renova-{hashlib.sha256(material).hexdigest()[:48]}"
+    return signature_idempotency_key(request)
 
 
 class KonturESignProvider:
@@ -127,6 +117,7 @@ class KonturESignProvider:
                     "mode": mode,
                     "document_id": request.document_id,
                     "content_hash": request.content_hash,
+                    "idempotency_key": idempotency_id,
                 },
             )
 
@@ -136,6 +127,7 @@ class KonturESignProvider:
             "document_id": request.document_id,
             "provider_status": accepted["status"],
             "provider_request_id": accepted.get("provider_request_id"),
+            "idempotency_key": idempotency_id,
             "webhook": "/api/v1/esign/webhooks/kontur",
         }
         if accepted.get("signing_url"):

@@ -22,6 +22,7 @@ RECEIPT_CREATED_EVENT = "financial.receipt_created"
 NOTIFICATION_EVENT = "notification.created"
 ACTIVITY_EVENT = "activity.created"
 ACCEPTANCE_SIDE_EFFECTS_EVENT = "acceptance.side_effects"
+ESIGN_SUBMISSION_EVENT = "esign.submission"
 MAX_ATTEMPTS = 8
 LEASE_TTL = timedelta(minutes=2)
 RETRY_BASE_SECONDS = 5
@@ -616,6 +617,12 @@ async def _expand_acceptance_side_effects(
 
 async def _handle(db: AsyncSession, row: DomainOutbox) -> None:
     payload = json.loads(row.payload_json or "{}")
+    if row.event_type == ESIGN_SUBMISSION_EVENT:
+        from app.services.esign_submission_service import process_external_signature_submission
+
+        await process_external_signature_submission(db, payload)
+        return
+
     if row.event_type == ACCEPTANCE_SIDE_EFFECTS_EVENT:
         await _expand_acceptance_side_effects(db, row, payload)
         return
