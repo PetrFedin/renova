@@ -38,6 +38,10 @@ class TeamInviteResult:
     team_replayed: bool
 
 
+class _MembershipAlreadyExists(RuntimeError):
+    """Internal race signal used to roll back a prepared notification."""
+
+
 def _valid_member_role(role: str) -> bool:
     return role in TEAM_MEMBER_ROLES
 
@@ -327,14 +331,16 @@ async def _invite_phone_for_team(
     if target is None or target.role != UserRole.contractor:
         return {"ok": False, "message": "Исполнитель не найден"}
 
-    _member, created = await ensure_team_membership(
+    existing = await _find_team_membership(
         db,
         team_id=team.id,
         user_id=target.id,
-        role=role,
     )
-    if not created:
+    if existing is not None:
         return {"ok": False, "message": "Уже в бригаде"}
+
+    # Prepare the durable effect before mutating membership. If effect preparation
+    # fails, there is no membership DML to leak through SQLite legacy autocommit.
     await _enqueue_notification(
         db,
         team_id=team.id,
@@ -342,6 +348,14 @@ async def _invite_phone_for_team(
         title="Приглашение в бригаду",
         body=f"Вас добавили в бригаду «{team.name}»",
     )
+    _member, created = await ensure_team_membership(
+        db,
+        team_id=team.id,
+        user_id=target.id,
+        role=role,
+    )
+    if not created:
+        raise _MembershipAlreadyExists("team_membership_race_lost")
     return {"ok": True, "user_id": target.id}
 
 
@@ -373,6 +387,9 @@ async def invite_phone_as_owner(
             role=role,
         )
         await db.commit()
+    except _MembershipAlreadyExists:
+        await db.rollback()
+        return {"ok": False, "message": "Уже в бригаде"}
     except BaseException:
         await db.rollback()
         raise
@@ -400,6 +417,9 @@ async def invite_phone(
             role=role,
         )
         await db.commit()
+    except _MembershipAlreadyExists:
+        await db.rollback()
+        return {"ok": False, "message": "Уже в бригаде"}
     except BaseException:
         await db.rollback()
         raise
