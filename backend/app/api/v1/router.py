@@ -6,6 +6,7 @@ from app.api.v1 import document_lifecycle
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
+from app.api.v1 import material_price_sync
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
 from app.api.v1 import (
@@ -42,6 +43,13 @@ def _remove_replaced_routes(router: APIRouter, signatures: set[RouteSignature]) 
 # --- content / design ---
 api_router.include_router(design_packages.router)
 api_router.include_router(marketplace.router)
+
+# Canonical price refresh is public-network only and never fabricates a fallback.
+_MATERIAL_PRICE_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/material-picks/{pick_id}/sync-price", "POST"),
+}
+_remove_replaced_routes(materials.router, _MATERIAL_PRICE_ROUTES)
+api_router.include_router(material_price_sync.router)
 api_router.include_router(materials.router)
 api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
