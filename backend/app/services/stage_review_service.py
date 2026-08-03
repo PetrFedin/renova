@@ -169,7 +169,11 @@ async def submit_for_review(
     if stage is None:
         await db.rollback()
         return None, None
-    _require_submit_actor(project, stage, actor)
+    try:
+        _require_submit_actor(project, stage, actor)
+    except ValueError:
+        await db.rollback()
+        raise
 
     acceptance = await _latest_acceptance(
         db,
@@ -196,73 +200,73 @@ async def submit_for_review(
         await db.rollback()
         return None, {"code": "completion_gate", "completion": completion}
 
-    checklist = workflow.stage_checklist(stage)
-    checklist_json = json.dumps(checklist, ensure_ascii=False)
-    progress = workflow.checklist_progress(checklist)
-    now = utc_now()
-    stage.checklist_json = checklist_json
-    stage.percent_complete = float(progress)
-    stage.contractor_ready = True
-    stage.contractor_ready_at = now
-    stage.status = StageStatus.review
-    stage.actual_end = stage.actual_end or date.today()
-    stage.needs_rework = False
-    stage.rework_deadline = None
+    try:
+        checklist = workflow.stage_checklist(stage)
+        checklist_json = json.dumps(checklist, ensure_ascii=False)
+        progress = workflow.checklist_progress(checklist)
+        now = utc_now()
+        stage.checklist_json = checklist_json
+        stage.percent_complete = float(progress)
+        stage.contractor_ready = True
+        stage.contractor_ready_at = now
+        stage.status = StageStatus.review
+        stage.actual_end = stage.actual_end or date.today()
+        stage.needs_rework = False
+        stage.rework_deadline = None
 
-    room_ids = parse_room_ids(stage)
-    room_id = room_ids[0] if room_ids else None
-    if acceptance is None:
-        acceptance = WorkAcceptance(
-            project_id=project.id,
-            room_id=room_id,
-            stage_id=stage.id,
-            requested_by=actor.id,
-            requested_at=now,
-            status="requested",
-            checklist_json=checklist_json,
-        )
-        db.add(acceptance)
-    else:
-        acceptance.room_id = room_id
-        acceptance.requested_by = actor.id
-        acceptance.requested_at = now
-        acceptance.status = "requested"
-        acceptance.checklist_json = checklist_json
-        acceptance.accepted_by = None
-        acceptance.accepted_at = None
-        acceptance.quality_score = None
-        acceptance.comment = None
+        room_ids = parse_room_ids(stage)
+        room_id = room_ids[0] if room_ids else None
+        if acceptance is None:
+            acceptance = WorkAcceptance(
+                project_id=project.id,
+                room_id=room_id,
+                stage_id=stage.id,
+                requested_by=actor.id,
+                requested_at=now,
+                status="requested",
+                checklist_json=checklist_json,
+            )
+            db.add(acceptance)
+        else:
+            acceptance.room_id = room_id
+            acceptance.requested_by = actor.id
+            acceptance.requested_at = now
+            acceptance.status = "requested"
+            acceptance.checklist_json = checklist_json
+            acceptance.accepted_by = None
+            acceptance.accepted_at = None
+            acceptance.quality_score = None
+            acceptance.comment = None
 
-    await _enqueue_activity(
-        db,
-        stage=stage,
-        actor_id=actor.id,
-        kind="WorkCompleted",
-        title=f"Завершено: {stage.name}",
-    )
-    await _enqueue_activity(
-        db,
-        stage=stage,
-        actor_id=actor.id,
-        kind="InspectionRequested",
-        title=f"Запрошена приёмка: {stage.name}",
-        link_path="/(customer)/(tabs)/repair?tab=control",
-    )
-    if project.customer_id and project.customer_id != actor.id:
-        await _enqueue_notification(
+        await _enqueue_activity(
             db,
             stage=stage,
-            user_id=project.customer_id,
-            title="Этап на приёмке",
-            body=stage.name,
-            return_to="/(customer)/(tabs)/repair?tab=control",
+            actor_id=actor.id,
+            kind="WorkCompleted",
+            title=f"Завершено: {stage.name}",
         )
-
-    try:
+        await _enqueue_activity(
+            db,
+            stage=stage,
+            actor_id=actor.id,
+            kind="InspectionRequested",
+            title=f"Запрошена приёмка: {stage.name}",
+            link_path="/(customer)/(tabs)/repair?tab=control",
+        )
+        if project.customer_id and project.customer_id != actor.id:
+            await _enqueue_notification(
+                db,
+                stage=stage,
+                user_id=project.customer_id,
+                title="Этап на приёмке",
+                body=stage.name,
+                return_to="/(customer)/(tabs)/repair?tab=control",
+            )
         await db.commit()
     except BaseException:
         await db.rollback()
         raise
+
     await db.refresh(stage)
     await db.refresh(acceptance)
     await _dispatch(db, "stage.review.submit")
@@ -303,7 +307,11 @@ async def reject_for_rework(
     if stage is None:
         await db.rollback()
         return None
-    _require_reject_actor(project, actor)
+    try:
+        _require_reject_actor(project, actor)
+    except ValueError:
+        await db.rollback()
+        raise
 
     acceptance = await _latest_acceptance(
         db,
@@ -323,69 +331,69 @@ async def reject_for_rework(
         await db.rollback()
         raise ValueError(f"stage_reject_invalid_status:{current.value}")
 
-    now = utc_now()
-    deadline = now + timedelta(days=REWORK_SLA_DAYS)
-    _append_rework_item(stage, clean_reason)
-    stage.status = StageStatus.active
-    stage.contractor_ready = False
-    stage.contractor_ready_at = None
-    stage.actual_end = None
-    stage.needs_rework = True
-    stage.rework_deadline = deadline
-
-    if acceptance is None:
-        room_ids = parse_room_ids(stage)
-        acceptance = WorkAcceptance(
-            project_id=project.id,
-            room_id=room_ids[0] if room_ids else None,
-            stage_id=stage.id,
-            requested_by=next(iter(_executor_ids(project, stage)), None),
-            requested_at=now,
-            status="returned",
-            checklist_json=stage.checklist_json,
-            comment=clean_reason,
-        )
-        db.add(acceptance)
-    else:
-        acceptance.status = "returned"
-        acceptance.comment = clean_reason
-        acceptance.accepted_by = None
-        acceptance.accepted_at = None
-        acceptance.quality_score = None
-        acceptance.checklist_json = stage.checklist_json
-
-    db.add(
-        StageComment(
-            stage_id=stage.id,
-            user_id=actor.id,
-            author_role="customer",
-            text=f"Отклонено: {clean_reason}",
-        )
-    )
-    await _enqueue_activity(
-        db,
-        stage=stage,
-        actor_id=actor.id,
-        kind="StageReworkRequested",
-        title=f"Этап возвращён на доработку: {stage.name}",
-        body=f"{clean_reason}\nSLA: {REWORK_SLA_DAYS} дн.",
-    )
-    for executor_id in _executor_ids(project, stage):
-        if executor_id != actor.id:
-            await _enqueue_notification(
-                db,
-                stage=stage,
-                user_id=executor_id,
-                title=f"Этап отклонён · SLA {REWORK_SLA_DAYS} дн.",
-                body=f"{stage.name}: {clean_reason}. Срок до {deadline.date().isoformat()}",
-                return_to="/(contractor)/(tabs)/plan",
-            )
-
     try:
+        now = utc_now()
+        deadline = now + timedelta(days=REWORK_SLA_DAYS)
+        _append_rework_item(stage, clean_reason)
+        stage.status = StageStatus.active
+        stage.contractor_ready = False
+        stage.contractor_ready_at = None
+        stage.actual_end = None
+        stage.needs_rework = True
+        stage.rework_deadline = deadline
+
+        if acceptance is None:
+            room_ids = parse_room_ids(stage)
+            acceptance = WorkAcceptance(
+                project_id=project.id,
+                room_id=room_ids[0] if room_ids else None,
+                stage_id=stage.id,
+                requested_by=next(iter(_executor_ids(project, stage)), None),
+                requested_at=now,
+                status="returned",
+                checklist_json=stage.checklist_json,
+                comment=clean_reason,
+            )
+            db.add(acceptance)
+        else:
+            acceptance.status = "returned"
+            acceptance.comment = clean_reason
+            acceptance.accepted_by = None
+            acceptance.accepted_at = None
+            acceptance.quality_score = None
+            acceptance.checklist_json = stage.checklist_json
+
+        db.add(
+            StageComment(
+                stage_id=stage.id,
+                user_id=actor.id,
+                author_role="customer",
+                text=f"Отклонено: {clean_reason}",
+            )
+        )
+        await _enqueue_activity(
+            db,
+            stage=stage,
+            actor_id=actor.id,
+            kind="StageReworkRequested",
+            title=f"Этап возвращён на доработку: {stage.name}",
+            body=f"{clean_reason}\nSLA: {REWORK_SLA_DAYS} дн.",
+        )
+        for executor_id in _executor_ids(project, stage):
+            if executor_id != actor.id:
+                await _enqueue_notification(
+                    db,
+                    stage=stage,
+                    user_id=executor_id,
+                    title=f"Этап отклонён · SLA {REWORK_SLA_DAYS} дн.",
+                    body=f"{stage.name}: {clean_reason}. Срок до {deadline.date().isoformat()}",
+                    return_to="/(contractor)/(tabs)/plan",
+                )
         await db.commit()
     except BaseException:
         await db.rollback()
         raise
+
     await db.refresh(stage)
     await db.refresh(acceptance)
     await _dispatch(db, "stage.review.reject")
