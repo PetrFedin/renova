@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import secrets
 from datetime import timedelta
+import secrets
+import uuid
 
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
@@ -162,24 +164,52 @@ async def ensure_team_membership(
     user_id: str,
     role: str,
 ) -> tuple[TeamMember, bool]:
-    """Create one membership without committing; concurrent duplicates are idempotent."""
+    """Idempotent membership upsert that remains in the caller transaction.
+
+    SQLite can treat a first-operation SAVEPOINT as the effective outer transaction,
+    so releasing ``begin_nested()`` may make a row survive a later rollback. Native
+    conflict-ignore inserts avoid that behavior and keep membership plus outbox under
+    the exact same transaction boundary on SQLite and PostgreSQL.
+    """
     if not _valid_member_role(role):
         raise ValueError("invalid_team_role")
     existing = await _find_team_membership(db, team_id=team_id, user_id=user_id)
     if existing is not None:
         return existing, False
 
-    member = TeamMember(team_id=team_id, user_id=user_id, role=role)
-    try:
-        async with db.begin_nested():
-            db.add(member)
-            await db.flush()
-    except IntegrityError:
-        existing = await _find_team_membership(db, team_id=team_id, user_id=user_id)
-        if existing is None:
-            raise
-        return existing, False
-    return member, True
+    candidate_id = str(uuid.uuid4())
+    values = {
+        "id": candidate_id,
+        "team_id": team_id,
+        "user_id": user_id,
+        "role": role,
+    }
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        statement = (
+            postgresql_insert(TeamMember)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=["team_id", "user_id"])
+            .returning(TeamMember.id)
+        )
+    elif dialect == "sqlite":
+        statement = (
+            sqlite_insert(TeamMember)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=["team_id", "user_id"])
+            .returning(TeamMember.id)
+        )
+    else:
+        member = TeamMember(**values)
+        db.add(member)
+        await db.flush()
+        return member, True
+
+    inserted_id = (await db.execute(statement)).scalar_one_or_none()
+    member = await _find_team_membership(db, team_id=team_id, user_id=user_id)
+    if member is None:
+        raise RuntimeError("team_membership_upsert_missing")
+    return member, inserted_id is not None
 
 
 async def _get_or_create_owned_team_locked(
@@ -636,8 +666,12 @@ async def set_member_role(
     """Owner-only atomic role change with durable member notification."""
     if not _valid_member_role(role):
         return False
+    owner = await _locked_user(db, owner_id)
+    if owner is None or owner.role != UserRole.contractor:
+        await db.rollback()
+        return False
     team = await _locked_team(db, team_id)
-    if team is None or team.owner_id != owner_id:
+    if team is None or team.owner_id != owner.id:
         await db.rollback()
         return False
     member = await _locked_member(db, team_id=team.id, user_id=user_id)
