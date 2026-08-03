@@ -61,6 +61,7 @@ async def seed_project(db, suffix: str):
         outlets_count=0,
         switches_count=0,
         plumbing_points=0,
+        notes="Старая заметка",
     )
     db.add_all([customer, contractor, outsider, project, room])
     await db.commit()
@@ -240,24 +241,27 @@ async def test_forbidden_room_patch_rolls_back_request_and_room(db):
     )
     db.add(request)
     await db.commit()
+    request_id = request.id
+    room_id = room.id
+    project_id = project.id
 
     with pytest.raises(ValueError, match="room_patch_field_forbidden:project_id"):
         await room_change_svc.decide_request(
             db,
             project=project,
-            request_id=request.id,
+            request_id=request_id,
             actor=contractor,
             decision="approve",
         )
 
     assert await db.scalar(
-        select(RoomChangeRequest.status).where(RoomChangeRequest.id == request.id)
+        select(RoomChangeRequest.status).where(RoomChangeRequest.id == request_id)
     ) == RoomChangeStatus.pending
-    assert await db.scalar(select(Room.project_id).where(Room.id == room.id)) == project.id
+    assert await db.scalar(select(Room.project_id).where(Room.id == room_id)) == project_id
     assert await db.scalar(
         select(func.count())
         .select_from(DomainOutbox)
-        .where(DomainOutbox.aggregate_id == request.id)
+        .where(DomainOutbox.aggregate_id == request_id)
     ) == 0
 
 
@@ -272,6 +276,7 @@ async def test_design_decision_rolls_back_when_durable_evidence_cannot_be_enqueu
     )
     db.add(package)
     await db.commit()
+    package_id = package.id
 
     async def fail_effects(*_args, **_kwargs):
         raise RuntimeError("synthetic_outbox_failure")
@@ -281,24 +286,24 @@ async def test_design_decision_rolls_back_when_durable_evidence_cannot_be_enqueu
         await design_svc.transition_package(
             db,
             project=project,
-            package_id=package.id,
+            package_id=package_id,
             actor=customer,
             action="approve",
         )
 
     assert await db.scalar(
-        select(DesignPackage.status).where(DesignPackage.id == package.id)
+        select(DesignPackage.status).where(DesignPackage.id == package_id)
     ) == "pending"
     assert await db.scalar(
         select(func.count())
         .select_from(DomainOutbox)
-        .where(DomainOutbox.aggregate_id == package.id)
+        .where(DomainOutbox.aggregate_id == package_id)
     ) == 0
 
 
 @pytest.mark.asyncio
 async def test_material_hub_decision_uses_canonical_transition_without_duplicate_effects(db):
-    customer, contractor, _, project, room = await seed_project(db, "material")
+    customer, _, _, project, room = await seed_project(db, "material")
     pick = MaterialPick(
         project_id=project.id,
         room_id=room.id,
