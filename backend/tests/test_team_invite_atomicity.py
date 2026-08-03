@@ -177,17 +177,22 @@ def test_join_source_uses_atomic_conditional_update_and_durable_notification():
     join_start = source.index("async def join_by_token")
     join_end = source.index("async def set_member_role", join_start)
     join_block = source[join_start:join_end]
-    invite_start = source.index("async def invite_phone")
-    invite_end = source.index("async def team_owner_ids", invite_start)
-    invite_block = source[invite_start:invite_end]
+    helper_start = source.index("async def _invite_phone_for_team")
+    helper_end = source.index("async def invite_phone_as_owner", helper_start)
+    helper_block = source[helper_start:helper_end]
+    membership_start = source.index("async def ensure_team_membership")
+    membership_end = source.index("async def _get_or_create_owned_team_locked", membership_start)
+    membership_block = source[membership_start:membership_end]
 
     assert "update(TeamInvite)" in join_block
     assert "TeamInvite.used.is_(False)" in join_block
     assert ".returning(TeamInvite.team_id, TeamInvite.role)" in join_block
     assert "select(TeamInvite)" not in join_block
     assert "_enqueue_notification" in join_block
-    assert "_enqueue_notification" in invite_block
-    assert "notification_service.notify" not in invite_block
+    assert "_enqueue_notification" in helper_block
+    assert "notification_service.notify" not in helper_block
+    assert "on_conflict_do_nothing" in membership_block
+    assert "begin_nested" not in membership_block
 
 
 def test_team_routes_have_no_demo_deadlock_copy():
