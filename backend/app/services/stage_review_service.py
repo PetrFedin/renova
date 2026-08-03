@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.timeutil import utc_now
 from app.models.entities import (
     Project,
+    ProjectIssue,
     Stage,
     StageComment,
     StageStatus,
@@ -32,6 +33,7 @@ class StageReviewResult:
     stage: Stage
     acceptance: WorkAcceptance
     replayed: bool
+    issue_id: str | None = None
 
 
 def _stage_status(stage: Stage) -> StageStatus:
@@ -163,6 +165,7 @@ async def submit_for_review(
     project: Project,
     stage_id: str,
     actor: User,
+    comment: str | None = None,
 ) -> tuple[StageReviewResult | None, dict | None]:
     """Move one assigned active stage to review with its acceptance and evidence."""
     stage = await _locked_stage(db, project_id=project.id, stage_id=stage_id)
@@ -200,6 +203,7 @@ async def submit_for_review(
         await db.rollback()
         return None, {"code": "completion_gate", "completion": completion}
 
+    clean_comment = (comment or "").strip() or None
     try:
         checklist = workflow.stage_checklist(stage)
         checklist_json = json.dumps(checklist, ensure_ascii=False)
@@ -225,6 +229,7 @@ async def submit_for_review(
                 requested_at=now,
                 status="requested",
                 checklist_json=checklist_json,
+                comment=clean_comment,
             )
             db.add(acceptance)
         else:
@@ -236,7 +241,7 @@ async def submit_for_review(
             acceptance.accepted_by = None
             acceptance.accepted_at = None
             acceptance.quality_score = None
-            acceptance.comment = None
+            acceptance.comment = clean_comment
 
         await _enqueue_activity(
             db,
@@ -244,6 +249,7 @@ async def submit_for_review(
             actor_id=actor.id,
             kind="WorkCompleted",
             title=f"Завершено: {stage.name}",
+            body=clean_comment,
         )
         await _enqueue_activity(
             db,
@@ -251,6 +257,7 @@ async def submit_for_review(
             actor_id=actor.id,
             kind="InspectionRequested",
             title=f"Запрошена приёмка: {stage.name}",
+            body=clean_comment,
             link_path="/(customer)/(tabs)/repair?tab=control",
         )
         if project.customer_id and project.customer_id != actor.id:
@@ -259,7 +266,7 @@ async def submit_for_review(
                 stage=stage,
                 user_id=project.customer_id,
                 title="Этап на приёмке",
-                body=stage.name,
+                body=clean_comment or stage.name,
                 return_to="/(customer)/(tabs)/repair?tab=control",
             )
         await db.commit()
@@ -295,6 +302,9 @@ async def reject_for_rework(
     stage_id: str,
     actor: User,
     reason: str,
+    expected_acceptance_id: str | None = None,
+    quality_score: float | None = None,
+    create_issue: bool = False,
 ) -> StageReviewResult | None:
     """Return one reviewed stage to work with SLA, checklist task and durable evidence."""
     clean_reason = (reason or "").strip()
@@ -318,6 +328,12 @@ async def reject_for_rework(
         project_id=project.id,
         stage_id=stage.id,
     )
+    if expected_acceptance_id and (
+        acceptance is None or acceptance.id != expected_acceptance_id
+    ):
+        await db.rollback()
+        raise ValueError("acceptance_not_current")
+
     current = _stage_status(stage)
     if (
         current == StageStatus.active
@@ -331,6 +347,7 @@ async def reject_for_rework(
         await db.rollback()
         raise ValueError(f"stage_reject_invalid_status:{current.value}")
 
+    issue: ProjectIssue | None = None
     try:
         now = utc_now()
         deadline = now + timedelta(days=REWORK_SLA_DAYS)
@@ -350,18 +367,38 @@ async def reject_for_rework(
                 stage_id=stage.id,
                 requested_by=next(iter(_executor_ids(project, stage)), None),
                 requested_at=now,
+                accepted_by=actor.id,
+                accepted_at=now,
                 status="returned",
                 checklist_json=stage.checklist_json,
+                quality_score=quality_score,
                 comment=clean_reason,
             )
             db.add(acceptance)
         else:
             acceptance.status = "returned"
             acceptance.comment = clean_reason
-            acceptance.accepted_by = None
-            acceptance.accepted_at = None
-            acceptance.quality_score = None
+            acceptance.accepted_by = actor.id
+            acceptance.accepted_at = now
+            acceptance.quality_score = quality_score
             acceptance.checklist_json = stage.checklist_json
+
+        if create_issue:
+            room_ids = parse_room_ids(stage)
+            executors = _executor_ids(project, stage)
+            issue = ProjectIssue(
+                project_id=project.id,
+                room_id=room_ids[0] if room_ids else None,
+                stage_id=stage.id,
+                title=f"Доработка по этапу: {stage.name}",
+                description=clean_reason,
+                severity="medium",
+                status="open",
+                assignee_id=executors[0] if executors else None,
+                due_at=deadline,
+                created_at=now,
+            )
+            db.add(issue)
 
         db.add(
             StageComment(
@@ -396,5 +433,12 @@ async def reject_for_rework(
 
     await db.refresh(stage)
     await db.refresh(acceptance)
+    if issue is not None:
+        await db.refresh(issue)
     await _dispatch(db, "stage.review.reject")
-    return StageReviewResult(stage, acceptance, False)
+    return StageReviewResult(
+        stage,
+        acceptance,
+        False,
+        issue_id=issue.id if issue is not None else None,
+    )
