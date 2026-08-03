@@ -9,6 +9,7 @@ from app.api.v1 import expense_mutations
 from app.api.v1 import material_price_sync
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
+from app.api.v1 import project_creation
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -128,6 +129,14 @@ api_router.include_router(fns.router)
 api_router.include_router(kpi_history.router)
 api_router.include_router(notifications.router)
 api_router.include_router(media.router)
+
+# Custom and template project creation now share one atomic, replay-safe lifecycle.
+_PROJECT_CREATION_ROUTES: set[RouteSignature] = {
+    ("/projects", "POST"),
+    ("/projects/from-template", "POST"),
+}
+_remove_replaced_routes(projects.router, _PROJECT_CREATION_ROUTES)
+api_router.include_router(project_creation.router)
 api_router.include_router(projects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
