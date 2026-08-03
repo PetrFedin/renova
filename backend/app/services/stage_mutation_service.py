@@ -223,10 +223,12 @@ async def create_stage(
     """Create exactly one stage, request ledger and durable effects in one commit."""
     from app.services.client_write_idempotency import commit_client_write, replay_entity_id
 
-    project = await _locked_project(db, project_id)
+    canonical_project_id = str(project_id)
+    project = await _locked_project(db, canonical_project_id)
     if project is None:
         await db.rollback()
         raise ValueError("project_not_found")
+    actor_id = actor.id
     try:
         await _require_schedule_actor(db, project=project, actor=actor)
         clean_name = name.strip()
@@ -243,7 +245,7 @@ async def create_stage(
         )
         await _validate_room_ids(
             db,
-            project_id=project.id,
+            project_id=canonical_project_id,
             room_ids=normalized_rooms,
         )
         payload = {
@@ -256,27 +258,31 @@ async def create_stage(
         replay_id = await replay_entity_id(
             db,
             scope=STAGE_CREATE_SCOPE,
-            project_id=project.id,
-            user_id=actor.id,
+            project_id=canonical_project_id,
+            user_id=actor_id,
             request_id=client_request_id,
             payload=payload,
         )
         if replay_id:
             await db.commit()
             return StageMutationResult(
-                await _load_stage(db, project_id=project.id, stage_id=replay_id),
+                await _load_stage(
+                    db,
+                    project_id=canonical_project_id,
+                    stage_id=replay_id,
+                ),
                 True,
             )
 
         sort_order = int(
             await db.scalar(
                 select(func.coalesce(func.max(Stage.sort_order), -1)).where(
-                    Stage.project_id == project.id
+                    Stage.project_id == canonical_project_id
                 )
             )
         ) + 1
         stage = Stage(
-            project_id=project.id,
+            project_id=canonical_project_id,
             name=clean_name,
             sort_order=sort_order,
             status=StageStatus.planned,
@@ -297,7 +303,7 @@ async def create_stage(
         await _enqueue_activity(
             db,
             stage=stage,
-            actor_id=actor.id,
+            actor_id=actor_id,
             kind="StageCreated",
             title=f"Добавлен этап: {stage.name}",
         )
@@ -313,8 +319,8 @@ async def create_stage(
         created, entity_id = await commit_client_write(
             db,
             scope=STAGE_CREATE_SCOPE,
-            project_id=project.id,
-            user_id=actor.id,
+            project_id=canonical_project_id,
+            user_id=actor_id,
             request_id=client_request_id,
             payload=payload,
             entity_id=candidate_id,
@@ -325,7 +331,7 @@ async def create_stage(
 
     loaded = await _load_stage(
         db,
-        project_id=project.id,
+        project_id=canonical_project_id,
         stage_id=candidate_id if created else entity_id,
     )
     if created:
