@@ -76,7 +76,7 @@ async def test_complete_project_is_one_consistent_commit(db):
         customer_id=customer_id,
         name="Квартира",
         address="Москва",
-        renovation_type="cosmetic",
+        renovation_type="capital",
         property_type="apartment",
         total_area_sqm=None,
         planned_start_date=start,
@@ -103,7 +103,7 @@ async def test_complete_project_is_one_consistent_commit(db):
     assert project.budget_planned == pytest.approx(calculated_budget, abs=0.01)
 
     stages = sorted(project.stages, key=lambda stage: stage.sort_order)
-    assert len(stages) == len(stages_for_renovation("cosmetic"))
+    assert len(stages) == len(stages_for_renovation("capital"))
     assert stages[0].status == StageStatus.active
     assert all(stage.status == StageStatus.planned for stage in stages[1:])
     assert stages[0].planned_start == start
