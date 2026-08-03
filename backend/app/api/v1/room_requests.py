@@ -1,98 +1,170 @@
 """Запросы заказчика на изменение комнат."""
-from app.core.timeutil import utc_now
+from __future__ import annotations
+
 import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
-from app.api.deps import get_current_user
+
+from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import RoomChangeRequest, RoomChangeStatus, User, UserRole
-from app.services import notification_service as notif_svc
-from app.services import project_service as proj_svc
-from app.services import room_service as room_svc
+from app.models.entities import Project, RoomChangeRequest, User
+from app.services import room_change_service as request_svc
 
 router = APIRouter(prefix="/projects", tags=["room-requests"])
 
 
 class RoomChangeCreate(BaseModel):
     room_id: str
-    message: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=4000)
     payload: dict | None = None
 
 
+def _payload_json(request: RoomChangeRequest) -> dict | None:
+    if not request.payload_json:
+        return None
+    try:
+        value = json.loads(request.payload_json)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _request_error(error: ValueError) -> HTTPException:
+    code = str(error)
+    if code in {"room_change_customer_required", "room_change_actor_forbidden"}:
+        return HTTPException(
+            403,
+            detail={"code": code, "message": "Действие недоступно для вашей роли в проекте"},
+        )
+    if code in {"room_change_room_not_found"}:
+        return HTTPException(404, detail={"code": code})
+    if code == "room_change_final_state_conflict":
+        return HTTPException(
+            409,
+            detail={"code": code, "message": "Запрос уже закрыт другим решением"},
+        )
+    if code.startswith("room_patch_") or code in {
+        "room_change_payload_invalid",
+        "room_change_message_required",
+        "room_change_message_too_long",
+    }:
+        return HTTPException(422, detail={"code": code})
+    return HTTPException(409, detail={"code": code})
+
+
 @router.get("/{project_id}/room-change-requests")
-async def list_requests(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    r = await db.execute(select(RoomChangeRequest).where(RoomChangeRequest.project_id == project_id).order_by(RoomChangeRequest.created_at.desc()))
-    items = r.scalars().all()
+async def list_requests(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_project(db, project_id, user, write=False)
+    result = await db.execute(
+        select(RoomChangeRequest)
+        .where(RoomChangeRequest.project_id == project_id)
+        .order_by(RoomChangeRequest.created_at.desc())
+    )
     return [
         {
-            "id": x.id,
-            "room_id": x.room_id,
-            "status": x.status.value,
-            "message": x.message,
-            "payload": json.loads(x.payload_json) if x.payload_json else None,
-            "created_at": x.created_at.isoformat(),
+            "id": request.id,
+            "room_id": request.room_id,
+            "status": request.status.value if hasattr(request.status, "value") else str(request.status),
+            "message": request.message,
+            "payload": _payload_json(request),
+            "created_at": request.created_at.isoformat(),
+            "resolved_at": request.resolved_at.isoformat() if request.resolved_at else None,
         }
-        for x in items
+        for request in result.scalars().all()
     ]
 
 
 @router.post("/{project_id}/room-change-requests")
-async def create_request(project_id: str, body: RoomChangeCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role != UserRole.customer:
-        raise HTTPException(403, "Заказчик создаёт запрос")
-    p = await proj_svc.get_project(db, project_id)
-    if not p:
-        raise HTTPException(404)
-    req = RoomChangeRequest(
-        project_id=project_id,
-        room_id=body.room_id,
-        requested_by=user.id,
-        message=body.message,
-        payload_json=json.dumps(body.payload) if body.payload else None,
-    )
-    db.add(req)
-    await db.commit()
-    await db.refresh(req)
-    if p.contractor_id:
-        await notif_svc.notify(
+async def create_request(
+    project_id: str,
+    body: RoomChangeCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project: Project = await require_project(db, project_id, user, write=True)
+    try:
+        request = await request_svc.create_request(
             db,
-            user_id=p.contractor_id,
-            project_id=project_id,
-            notification_type="room_change",
-            title="Запрос на изменение комнаты",
-            body=body.message[:200],
-            link_path="/(contractor)/(tabs)/object?tab=rooms", return_to="/(contractor)/(tabs)/",
+            project=project,
+            actor=user,
+            room_id=body.room_id,
+            message=body.message,
+            payload=body.payload,
         )
-    return {"id": req.id, "status": req.status.value}
+    except ValueError as error:
+        raise _request_error(error) from error
+    return {
+        "id": request.id,
+        "status": request.status.value if hasattr(request.status, "value") else str(request.status),
+        "replayed": False,
+    }
+
+
+async def _decide(
+    *,
+    project_id: str,
+    request_id: str,
+    decision: request_svc.RoomDecision,
+    user: User,
+    db: AsyncSession,
+) -> dict:
+    project: Project = await require_project(db, project_id, user, write=True)
+    try:
+        request, room, replayed, changes = await request_svc.decide_request(
+            db,
+            project=project,
+            request_id=request_id,
+            actor=user,
+            decision=decision,
+        )
+    except ValueError as error:
+        raise _request_error(error) from error
+    if request is None:
+        raise HTTPException(404, detail={"code": "room_change_request_not_found"})
+    return {
+        "ok": True,
+        "id": request.id,
+        "status": request.status.value if hasattr(request.status, "value") else str(request.status),
+        "room_id": room.id if room else request.room_id,
+        "changes": changes,
+        "replayed": replayed,
+    }
 
 
 @router.post("/{project_id}/room-change-requests/{req_id}/approve")
-async def approve_request(project_id: str, req_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role != UserRole.contractor:
-        raise HTTPException(403)
-    r = await db.get(RoomChangeRequest, req_id)
-    if not r or r.project_id != project_id:
-        raise HTTPException(404)
-    if r.payload_json:
-        patch = json.loads(r.payload_json)
-        await room_svc.update_room(db, r.room_id, patch)
-    r.status = RoomChangeStatus.approved
-    r.resolved_at = utc_now()
-    await db.commit()
-    return {"ok": True}
+async def approve_request(
+    project_id: str,
+    req_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _decide(
+        project_id=project_id,
+        request_id=req_id,
+        decision="approve",
+        user=user,
+        db=db,
+    )
 
 
 @router.post("/{project_id}/room-change-requests/{req_id}/reject")
-async def reject_request(project_id: str, req_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role != UserRole.contractor:
-        raise HTTPException(403)
-    r = await db.get(RoomChangeRequest, req_id)
-    if not r or r.project_id != project_id:
-        raise HTTPException(404)
-    r.status = RoomChangeStatus.rejected
-    r.resolved_at = utc_now()
-    await db.commit()
-    return {"ok": True}
+async def reject_request(
+    project_id: str,
+    req_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _decide(
+        project_id=project_id,
+        request_id=req_id,
+        decision="reject",
+        user=user,
+        db=db,
+    )
