@@ -49,16 +49,19 @@ async def seed_users(db, suffix: str):
 @pytest.mark.asyncio
 async def test_my_team_prefers_owned_team_over_older_membership(db):
     owner, _, outsider, _ = await seed_users(db, "priority")
+    owner_id = owner.id
+    outsider_id = outsider.id
     joined_team = Team(
         id="team-priority-joined",
         name="Earlier membership",
-        owner_id=outsider.id,
+        owner_id=outsider_id,
     )
     owned = Team(
         id="team-priority-owned",
         name="Owned team",
-        owner_id=owner.id,
+        owner_id=owner_id,
     )
+    owned_id = owned.id
     db.add_all(
         [
             joined_team,
@@ -66,24 +69,24 @@ async def test_my_team_prefers_owned_team_over_older_membership(db):
             TeamMember(
                 id="team-priority-joined-member",
                 team_id=joined_team.id,
-                user_id=owner.id,
+                user_id=owner_id,
                 role="member",
             ),
             TeamMember(
                 id="team-priority-owner-member",
-                team_id=owned.id,
-                user_id=owner.id,
+                team_id=owned_id,
+                user_id=owner_id,
                 role="owner",
             ),
         ]
     )
     await db.commit()
 
-    selected = await team_svc.my_team(db, owner.id)
-    membership = await team_svc.my_membership(db, owner.id)
+    selected = await team_svc.my_team(db, owner_id)
+    membership = await team_svc.my_membership(db, owner_id)
 
-    assert selected is not None and selected.id == owned.id
-    assert membership is not None and membership.team_id == owned.id
+    assert selected is not None and selected.id == owned_id
+    assert membership is not None and membership.team_id == owned_id
     assert membership.role == "owner"
 
 
