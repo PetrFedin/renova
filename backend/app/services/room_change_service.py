@@ -1,4 +1,4 @@
-"""Room-change request decisions with scoped patches and durable evidence."""
+"""Room-change requests with scoped patches and durable decision evidence."""
 from __future__ import annotations
 
 import json
@@ -44,6 +44,96 @@ def _payload(request: RoomChangeRequest) -> dict:
     if not isinstance(parsed, dict):
         raise ValueError("room_change_payload_invalid")
     return parsed
+
+
+async def create_request(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+    room_id: str,
+    message: str,
+    payload: dict | None = None,
+) -> RoomChangeRequest:
+    """Create a project-scoped request and notify assigned executors atomically."""
+    if actor.id != project.customer_id:
+        raise ValueError("room_change_customer_required")
+    room = (
+        await db.execute(
+            select(Room).where(Room.id == room_id, Room.project_id == project.id)
+        )
+    ).scalar_one_or_none()
+    if room is None:
+        raise ValueError("room_change_room_not_found")
+    normalized_message = (message or "").strip()
+    if not normalized_message:
+        raise ValueError("room_change_message_required")
+    if len(normalized_message) > 4000:
+        raise ValueError("room_change_message_too_long")
+    normalized_payload = None
+    if payload is not None:
+        normalized_payload = room_service.validate_room_patch(payload)
+
+    request = RoomChangeRequest(
+        project_id=project.id,
+        room_id=room.id,
+        requested_by=actor.id,
+        message=normalized_message,
+        payload_json=(
+            json.dumps(normalized_payload, ensure_ascii=False)
+            if normalized_payload is not None
+            else None
+        ),
+        status=RoomChangeStatus.pending,
+    )
+    db.add(request)
+    await db.flush()
+    await outbox.enqueue(
+        db,
+        aggregate_type="room_change_request",
+        aggregate_id=request.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": project.id,
+            "user_id": actor.id,
+            "kind": "RoomChangeRequested",
+            "title": f"Запрошено изменение комнаты: {room.name}",
+            "body": normalized_message,
+            "room_id": room.id,
+            "link_path": f"/room/{room.id}",
+        },
+    )
+    for recipient_id in sorted(
+        value
+        for value in {project.contractor_id, project.foreman_id}
+        if value and value != actor.id
+    ):
+        await outbox.enqueue(
+            db,
+            aggregate_type="room_change_request",
+            aggregate_id=request.id,
+            event_type=outbox.NOTIFICATION_EVENT,
+            payload={
+                "user_id": recipient_id,
+                "project_id": project.id,
+                "notification_type": "room_change",
+                "title": "Запрос на изменение комнаты",
+                "body": normalized_message[:500],
+                "link_path": "/(contractor)/(tabs)/object?tab=rooms",
+                "return_to": "/(contractor)/(tabs)/home",
+            },
+        )
+    try:
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await db.refresh(request)
+
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    await dispatch_best_effort(db, source="room_change.create", limit=10)
+    return request
 
 
 async def _prepare_effects(
