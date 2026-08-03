@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.models.entities import User
 from app.services import stage_mutation_service as mutations
 from app.services import stage_review_service
-from app.services.stage_service import stage_to_dict
+from app.services import stage_service
 
 router = APIRouter(prefix="/projects", tags=["stages"])
 
@@ -63,8 +63,14 @@ def _mutation_error(error: ValueError) -> HTTPException:
     return HTTPException(422, detail={"code": code})
 
 
-def _stage_response(result: mutations.StageMutationResult) -> dict:
-    response = stage_to_dict(result.stage)
+async def _stage_response(
+    db: AsyncSession,
+    result: mutations.StageMutationResult,
+) -> dict:
+    loaded = await stage_service.get_stage_full(db, result.stage.id)
+    if loaded is None:
+        raise HTTPException(404, detail={"code": "stage_not_found"})
+    response = stage_service.stage_to_dict(loaded)
     response["replayed"] = result.replayed
     return response
 
@@ -91,7 +97,7 @@ async def create_stage(
         )
     except ValueError as error:
         raise _mutation_error(error) from error
-    return _stage_response(result)
+    return await _stage_response(db, result)
 
 
 @router.post("/{project_id}/stages/{stage_id}/start")
@@ -112,7 +118,7 @@ async def start_stage(
     except ValueError as exc:
         raise _mutation_error(exc) from exc
     if result is not None:
-        return _stage_response(result)
+        return await _stage_response(db, result)
 
     code = (error or {}).get("code", "stage_start_failed")
     if code in {"project_not_found", "stage_not_found"}:
@@ -148,12 +154,16 @@ async def mark_ready(
             raise HTTPException(422, detail=error)
         raise HTTPException(409, detail=error)
 
-    response = stage_to_dict(result.stage)
+    acceptance_id = result.acceptance.id
+    acceptance_status = result.acceptance.status
+    response = await _stage_response(
+        db,
+        mutations.StageMutationResult(result.stage, result.replayed),
+    )
     response.update(
         {
-            "acceptance_id": result.acceptance.id,
-            "acceptance_status": result.acceptance.status,
-            "replayed": result.replayed,
+            "acceptance_id": acceptance_id,
+            "acceptance_status": acceptance_status,
         }
     )
     return response
@@ -181,7 +191,7 @@ async def update_dates(
         raise _mutation_error(error) from error
     if result is None:
         raise HTTPException(404, detail={"code": "stage_not_found"})
-    return _stage_response(result)
+    return await _stage_response(db, result)
 
 
 @router.patch("/{project_id}/stages/{stage_id}/rooms")
@@ -205,7 +215,7 @@ async def update_rooms(
         raise _mutation_error(error) from error
     if result is None:
         raise HTTPException(404, detail={"code": "stage_not_found"})
-    return _stage_response(result)
+    return await _stage_response(db, result)
 
 
 @router.patch("/{project_id}/stages/{stage_id}/work-type")
@@ -229,7 +239,7 @@ async def update_work_type(
         raise _mutation_error(error) from error
     if result is None:
         raise HTTPException(404, detail={"code": "stage_not_found"})
-    return _stage_response(result)
+    return await _stage_response(db, result)
 
 
 @router.patch("/{project_id}/stages/{stage_id}/depends")
@@ -253,7 +263,7 @@ async def update_dependency(
         raise _mutation_error(error) from error
     if result is None:
         raise HTTPException(404, detail={"code": "stage_not_found"})
-    return _stage_response(result)
+    return await _stage_response(db, result)
 
 
 @router.post("/{project_id}/dependencies/sync")
