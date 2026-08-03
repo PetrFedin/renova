@@ -8,7 +8,11 @@ import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 import { resolveActiveProjectId } from '@/lib/resolveActiveProjectId';
 import { API_BASE } from '@/lib/api/client';
 
-const KEYS = { userId: 'renova_user_id', projectId: 'renova_project_id' };
+const KEYS = {
+  userId: 'renova_user_id',
+  projectId: 'renova_project_id',
+  projectExplicitlyPicked: 'renova_project_explicitly_picked',
+};
 
 export const DEMO_PHONES = ['+70000000001', '+70000000002'] as const;
 
@@ -54,7 +58,7 @@ export function isDemoPhone(phone?: string | null): boolean {
   return !!phone && (DEMO_PHONES as readonly string[]).includes(phone);
 }
 
-/** Загрузить активный проект: saved id (без junk) → канонический demo */
+/** Загрузить активный проект: явный выбор → предложенный id → канонический demo. */
 export async function loadActiveProject(
   userId: string,
   projects: ProjectSummary[],
@@ -62,7 +66,18 @@ export async function loadActiveProject(
   role: UserRole,
 ): Promise<ProjectDetail | null> {
   const fallback = pickPrimaryDemoProject(projects)?.id ?? projects[0]?.id;
-  const pickId = resolveActiveProjectId(projects, savedProjectId) ?? fallback;
+  const [persistedProjectId, explicitlyPicked] = await Promise.all([
+    AsyncStorage.getItem(KEYS.projectId),
+    AsyncStorage.getItem(KEYS.projectExplicitlyPicked),
+  ]);
+  const explicitProjectId =
+    explicitlyPicked === '1'
+      ? resolveActiveProjectId(projects, persistedProjectId)
+      : null;
+  const pickId =
+    explicitProjectId
+    ?? resolveActiveProjectId(projects, savedProjectId)
+    ?? fallback;
   if (!pickId) return null;
   try {
     let p = await api.getProject(userId, pickId);
