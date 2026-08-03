@@ -11,6 +11,7 @@ from app.api.v1 import material_price_sync
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
 from app.api.v1 import project_creation
+from app.api.v1 import stage_mutations
 from app.api.v1 import stage_review_transitions
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
@@ -68,6 +69,20 @@ api_router.include_router(budget_planner.router)
 api_router.include_router(activity.router)
 api_router.include_router(rework_sla.router)
 api_router.include_router(project_work_schedule.router)
+
+# Stage create/start/ready/configuration are role-scoped canonical mutations.
+_STAGE_MUTATION_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/stages", "POST"),
+    ("/projects/{project_id}/stages/{stage_id}/start", "POST"),
+    ("/projects/{project_id}/stages/{stage_id}/ready", "POST"),
+    ("/projects/{project_id}/stages/{stage_id}/dates", "PATCH"),
+    ("/projects/{project_id}/stages/{stage_id}/rooms", "PATCH"),
+    ("/projects/{project_id}/stages/{stage_id}/work-type", "PATCH"),
+    ("/projects/{project_id}/stages/{stage_id}/depends", "PATCH"),
+    ("/projects/{project_id}/dependencies/sync", "POST"),
+}
+_remove_replaced_routes(stages_ext.router, _STAGE_MUTATION_ROUTES)
+api_router.include_router(stage_mutations.router)
 api_router.include_router(stages_ext.router)
 api_router.include_router(project_checklists.router)
 api_router.include_router(checklist_templates.router)
