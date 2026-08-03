@@ -39,6 +39,27 @@ _COUNT_FIELDS = frozenset({"outlets_count", "switches_count", "plumbing_points"}
 _POSITIVE_FIELDS = frozenset({"length_m", "width_m", "height_m"})
 _NON_NEGATIVE_FIELDS = frozenset({"openings_sq_m", "budget_alert_pct"})
 _NULLABLE_FIELDS = frozenset({"room_type", "notes", "budget_alert_pct"})
+_SYSTEM_FINISH_NAMES = frozenset(
+    {
+        "Фартук плитка",
+        "Напольное покрытие",
+        "Электромонтаж кухни",
+        "Плитка фартук",
+        "Ламинат/кварц-винил",
+        "Демонтаж покрытий",
+        "Штукатурка стен",
+        "Штукатурная смесь",
+        "Гидроизоляция",
+        "Укладка плитки",
+        "Керамогранит",
+        "Гидроизоляция Ceresit",
+        "Подготовка стен",
+        "Покраска стен 2 слоя",
+        "Укладка ламината",
+        "Краска интерьерная",
+        "Ламинат",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -257,9 +278,10 @@ async def _sync_generated_category(
     room: Room,
     category: str,
     generated: list[GeneratedEstimateLine],
+    managed_names: frozenset[str] | None = None,
 ) -> None:
     """Synchronize system rows in place, preserving manual price/fact evidence."""
-    existing = list(
+    all_existing = list(
         (
             await db.execute(
                 select(EstimateLine)
@@ -271,6 +293,11 @@ async def _sync_generated_category(
             )
         ).scalars().all()
     )
+    existing = [
+        line
+        for line in all_existing
+        if managed_names is None or line.name in managed_names
+    ]
     grouped: dict[tuple[str, str], list[EstimateLine]] = {}
     for line in existing:
         grouped.setdefault(_line_key(line.line_type, line.name), []).append(line)
@@ -326,6 +353,7 @@ async def sync_room_estimate_lines(
         room=room,
         category="finish",
         generated=_finish_lines(project, room),
+        managed_names=_SYSTEM_FINISH_NAMES,
     )
     await _sync_generated_category(
         db,
