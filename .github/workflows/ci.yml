@@ -107,6 +107,44 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  stage-mutation-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./stage-mutation-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Stage mutation integrity contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 240s poetry run pytest -vv -s --tb=short tests/test_stage_mutation_integrity.py 2>&1 | tee stage-mutation-contracts.log
+      - name: Upload stage mutation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage-mutation-contract-diagnostics
+          path: backend/stage-mutation-contracts.log
+          if-no-files-found: warn
+          retention-days: 14
+
   backend-complete:
     runs-on: ubuntu-latest
     timeout-minutes: 45
