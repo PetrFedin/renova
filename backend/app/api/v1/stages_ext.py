@@ -1,4 +1,8 @@
-"""Этапы: детали, комментарии, фото, готовность, даты."""
+"""Этапы: детали, комментарии, фото и read models.
+
+Legacy mutation functions remain import-compatible, but delegate to the canonical
+stage mutation router so direct calls cannot bypass ACL, locks or response loading.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -8,11 +12,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
+from app.api.v1 import stage_mutations as canonical
 from app.db.session import get_db
 from app.models.entities import User
 from app.schemas.project import StageCommentIn, StageDatesIn, StagePhotoIn
-from app.services import stage_mutation_service as mutations
-from app.services import stage_review_service
 from app.services import stage_service as stage_svc
 
 router = APIRouter(prefix="/projects", tags=["stages"])
@@ -39,26 +42,6 @@ class DependsIn(BaseModel):
     depends_on_stage_id: str | None = None
 
 
-def _mutation_error(error: ValueError) -> HTTPException:
-    code = str(error)
-    if code in {
-        "stage_schedule_actor_forbidden",
-        "stage_execution_actor_forbidden",
-        "stage_submit_actor_forbidden",
-    }:
-        return HTTPException(403, detail={"code": code})
-    if code in {
-        "confirmed_schedule_controls_dates",
-        "stage_configuration_locked",
-        "stage_dependency_cycle",
-        "idempotency_conflict",
-    }:
-        return HTTPException(409, detail={"code": code})
-    if code in {"project_not_found", "stage_entity_missing"}:
-        return HTTPException(404, detail={"code": code})
-    return HTTPException(422, detail={"code": code})
-
-
 @router.post("/{project_id}/stages")
 async def create_stage_route(
     project_id: str,
@@ -66,24 +49,19 @@ async def create_stage_route(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    try:
-        result = await mutations.create_stage(
-            db,
-            project_id=project_id,
-            actor=user,
+    return await canonical.create_stage(
+        project_id,
+        canonical.StageCreateIn(
             name=body.name,
             planned_start=body.planned_start,
             planned_end=body.planned_end,
             room_ids=body.room_ids,
             work_type=body.work_type,
             client_request_id=body.client_request_id,
-        )
-    except ValueError as error:
-        raise _mutation_error(error) from error
-    response = stage_svc.stage_to_dict(result.stage)
-    response["replayed"] = result.replayed
-    return response
+        ),
+        user=user,
+        db=db,
+    )
 
 
 @router.get("/{project_id}/stages/{stage_id}")
@@ -185,28 +163,7 @@ async def start_stage(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    try:
-        result, error = await mutations.start_stage(
-            db,
-            project_id=project_id,
-            stage_id=stage_id,
-            actor=user,
-        )
-    except ValueError as exc:
-        raise _mutation_error(exc) from exc
-    if result is not None:
-        response = stage_svc.stage_to_dict(result.stage)
-        response["replayed"] = result.replayed
-        return response
-    code = (error or {}).get("code", "stage_start_failed")
-    if code in {"project_not_found", "stage_not_found"}:
-        raise HTTPException(404, detail=error)
-    if code in {"contract_not_signed", "contract_required"}:
-        raise HTTPException(403, detail=error)
-    if code in {"blocked", "stage_start_invalid_status"}:
-        raise HTTPException(409, detail=error)
-    raise HTTPException(422, detail=error)
+    return await canonical.start_stage(project_id, stage_id, user=user, db=db)
 
 
 @router.post("/{project_id}/stages/{stage_id}/ready")
@@ -216,31 +173,7 @@ async def mark_ready(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=True)
-    try:
-        result, error = await stage_review_service.submit_for_review(
-            db,
-            project=project,
-            stage_id=stage_id,
-            actor=user,
-        )
-    except ValueError as exc:
-        raise _mutation_error(exc) from exc
-    if result is None:
-        if error is None:
-            raise HTTPException(404, detail={"code": "stage_not_found"})
-        if error.get("code") == "completion_gate":
-            raise HTTPException(422, detail=error)
-        raise HTTPException(409, detail=error)
-    response = stage_svc.stage_to_dict(result.stage)
-    response.update(
-        {
-            "acceptance_id": result.acceptance.id,
-            "acceptance_status": result.acceptance.status,
-            "replayed": result.replayed,
-        }
-    )
-    return response
+    return await canonical.mark_ready(project_id, stage_id, user=user, db=db)
 
 
 @router.patch("/{project_id}/stages/{stage_id}/dates")
@@ -251,23 +184,16 @@ async def patch_dates(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    try:
-        result = await mutations.update_dates(
-            db,
-            project_id=project_id,
-            stage_id=stage_id,
-            actor=user,
+    return await canonical.update_dates(
+        project_id,
+        stage_id,
+        canonical.StageDatesIn(
             planned_start=body.planned_start,
             planned_end=body.planned_end,
-        )
-    except ValueError as error:
-        raise _mutation_error(error) from error
-    if result is None:
-        raise HTTPException(404, "Этап не найден")
-    response = stage_svc.stage_to_dict(result.stage)
-    response["replayed"] = result.replayed
-    return response
+        ),
+        user=user,
+        db=db,
+    )
 
 
 @router.get("/{project_id}/plan")
@@ -306,22 +232,13 @@ async def patch_stage_rooms(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    try:
-        result = await mutations.update_rooms(
-            db,
-            project_id=project_id,
-            stage_id=stage_id,
-            actor=user,
-            room_ids=body.room_ids,
-        )
-    except ValueError as error:
-        raise _mutation_error(error) from error
-    if result is None:
-        raise HTTPException(404, "Этап не найден")
-    response = stage_svc.stage_to_dict(result.stage)
-    response["replayed"] = result.replayed
-    return response
+    return await canonical.update_rooms(
+        project_id,
+        stage_id,
+        canonical.StageRoomsIn(room_ids=body.room_ids),
+        user=user,
+        db=db,
+    )
 
 
 @router.patch("/{project_id}/stages/{stage_id}/work-type")
@@ -332,22 +249,13 @@ async def patch_work_type(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    try:
-        result = await mutations.update_work_type(
-            db,
-            project_id=project_id,
-            stage_id=stage_id,
-            actor=user,
-            work_type=body.work_type,
-        )
-    except ValueError as error:
-        raise _mutation_error(error) from error
-    if result is None:
-        raise HTTPException(404, "Этап не найден")
-    response = stage_svc.stage_to_dict(result.stage)
-    response["replayed"] = result.replayed
-    return response
+    return await canonical.update_work_type(
+        project_id,
+        stage_id,
+        canonical.StageWorkTypeIn(work_type=body.work_type),
+        user=user,
+        db=db,
+    )
 
 
 @router.patch("/{project_id}/stages/{stage_id}/depends")
@@ -358,22 +266,15 @@ async def patch_depends(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    try:
-        result = await mutations.update_dependency(
-            db,
-            project_id=project_id,
-            stage_id=stage_id,
-            actor=user,
+    return await canonical.update_dependency(
+        project_id,
+        stage_id,
+        canonical.StageDependencyIn(
             depends_on_stage_id=body.depends_on_stage_id,
-        )
-    except ValueError as error:
-        raise _mutation_error(error) from error
-    if result is None:
-        raise HTTPException(404, "Этап не найден")
-    response = stage_svc.stage_to_dict(result.stage)
-    response["replayed"] = result.replayed
-    return response
+        ),
+        user=user,
+        db=db,
+    )
 
 
 @router.get("/{project_id}/stages/{stage_id}/blocked")
@@ -404,16 +305,7 @@ async def sync_dependencies(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    try:
-        count = await mutations.sync_dependencies(
-            db,
-            project_id=project_id,
-            actor=user,
-        )
-    except ValueError as error:
-        raise _mutation_error(error) from error
-    return {"created": count}
+    return await canonical.sync_dependencies(project_id, user=user, db=db)
 
 
 @router.get("/{project_id}/dependencies")
