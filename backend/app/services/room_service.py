@@ -28,17 +28,19 @@ ROOM_MUTABLE_FIELDS = frozenset(
         "budget_alert_pct",
     }
 )
+ROOM_DIRECT_MUTABLE_FIELDS = ROOM_MUTABLE_FIELDS | {"is_archived"}
 _COUNT_FIELDS = frozenset({"outlets_count", "switches_count", "plumbing_points"})
 _POSITIVE_FIELDS = frozenset({"length_m", "width_m", "height_m"})
 _NON_NEGATIVE_FIELDS = frozenset({"openings_sq_m", "budget_alert_pct"})
 _NULLABLE_FIELDS = frozenset({"room_type", "notes", "budget_alert_pct"})
 
 
-def validate_room_patch(data: dict) -> dict:
+def validate_room_patch(data: dict, *, allow_archive: bool = False) -> dict:
     """Return a normalized, safe room patch or fail closed on unknown fields."""
     if not isinstance(data, dict) or not data:
         raise ValueError("room_patch_empty")
-    unknown = sorted(set(data) - ROOM_MUTABLE_FIELDS)
+    allowed_fields = ROOM_DIRECT_MUTABLE_FIELDS if allow_archive else ROOM_MUTABLE_FIELDS
+    unknown = sorted(set(data) - allowed_fields)
     if unknown:
         raise ValueError(f"room_patch_field_forbidden:{unknown[0]}")
 
@@ -48,6 +50,11 @@ def validate_room_patch(data: dict) -> dict:
             if field not in _NULLABLE_FIELDS:
                 raise ValueError(f"room_patch_value_required:{field}")
             normalized[field] = None
+            continue
+        if field == "is_archived":
+            if not isinstance(value, bool):
+                raise ValueError("room_patch_archive_invalid")
+            normalized[field] = value
             continue
         if field == "name":
             text = str(value).strip()
@@ -104,17 +111,22 @@ def validate_room_patch(data: dict) -> dict:
     return normalized
 
 
+def _audit_value(value: object) -> str:
+    return ("null" if value is None else str(value))[:255]
+
+
 async def apply_room_patch(
     db: AsyncSession,
     room: Room,
     data: dict,
     *,
     user_id: str | None = None,
+    allow_archive: bool = False,
 ) -> dict[str, dict[str, object]]:
     """Apply a validated patch and audit changed fields without committing."""
     from app.models.entities import RoomChangeLog
 
-    patch = validate_room_patch(data)
+    patch = validate_room_patch(data, allow_archive=allow_archive)
     changes: dict[str, dict[str, object]] = {}
     for field, value in patch.items():
         old = getattr(room, field)
@@ -127,8 +139,8 @@ async def apply_room_patch(
                     room_id=room.id,
                     user_id=user_id,
                     field_name=field,
-                    old_value="null" if old is None else str(old),
-                    new_value="null" if value is None else str(value),
+                    old_value=_audit_value(old),
+                    new_value=_audit_value(value),
                 )
             )
         setattr(room, field, value)
@@ -146,7 +158,21 @@ async def update_room(
     room = await db.get(Room, room_id)
     if not room:
         return None
-    await apply_room_patch(db, room, data, user_id=user_id)
+    # Preserve legacy direct-editor semantics: explicit null for a required field
+    # is a no-op, while nullable fields can still be cleared.
+    direct_patch = {
+        field: value
+        for field, value in data.items()
+        if value is not None or field in _NULLABLE_FIELDS
+    }
+    if direct_patch:
+        await apply_room_patch(
+            db,
+            room,
+            direct_patch,
+            user_id=user_id,
+            allow_archive=True,
+        )
     await sync_room_estimate_lines(db, room, commit=False)
     await db.commit()
     await db.refresh(room)
