@@ -46,7 +46,9 @@ async def create_session(
     device_id: str | None = None,
     ip: str | None = None,
     user_agent: str | None = None,
+    commit: bool = True,
 ) -> tuple[UserSession, str]:
+    """Create a refresh session, optionally inside the caller unit of work."""
     row, raw = _new_session(
         user_id,
         device_id=device_id,
@@ -54,8 +56,10 @@ async def create_session(
         user_agent=user_agent,
     )
     db.add(row)
-    await db.commit()
-    await db.refresh(row)
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(row)
     return row, raw
 
 
@@ -142,7 +146,5 @@ async def revoke_all_user_sessions(
     )
     revoked_ids = result.scalars().all()
     if commit:
-        # A zero-row update is still a valid operation. Never rollback unrelated
-        # pending account mutations merely because there were no active sessions.
         await db.commit()
     return len(revoked_ids)
