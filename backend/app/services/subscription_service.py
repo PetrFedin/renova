@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
@@ -27,9 +28,22 @@ async def get_sub(
     r = await db.execute(query)
     s = r.scalar_one_or_none()
     if not s:
-        s = Subscription(user_id=user_id, status=SubscriptionStatus.free, plan="free")
-        db.add(s)
-        await db.flush()
+        candidate = Subscription(
+            user_id=user_id,
+            status=SubscriptionStatus.free,
+            plan="free",
+        )
+        try:
+            # Preserve the caller's outer transaction if another request creates
+            # the same unique user row while this request is in flight.
+            async with db.begin_nested():
+                db.add(candidate)
+                await db.flush()
+            s = candidate
+        except IntegrityError:
+            s = (await db.execute(query)).scalar_one_or_none()
+            if s is None:
+                raise
         if commit:
             await db.commit()
             await db.refresh(s)
@@ -68,7 +82,7 @@ async def activate_pro(
 ) -> Subscription:
     """Add paid days without destroying an active trial or paid remainder.
 
-    Idempotency belongs to the persisted subscription checkout.  This function
+    Idempotency belongs to the persisted subscription checkout. This function
     deliberately stacks one validated purchase on top of the later of ``now``
     and the current entitlement expiry.
     """
