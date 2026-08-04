@@ -93,6 +93,8 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     payload = json.load(handle)
 assert payload.get("ok") is True, payload
 checks = {item.get("name"): item for item in payload.get("checks", [])}
+assert checks.get("storage_configuration", {}).get("ok") is True, payload
+assert checks.get("storage_runtime", {}).get("ok") is True, payload
 assert checks.get("shared_auth_runtime", {}).get("ok") is True, payload
 assert checks.get("database_revision", {}).get("ok") is True, payload
 print("canonical live preflight OK")
