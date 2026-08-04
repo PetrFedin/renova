@@ -23,6 +23,8 @@ on:
       - "backend/app/db/session.py"
       - "backend/app/services/document_ocr_runtime.py"
       - "backend/app/services/otp_runtime.py"
+      - "backend/app/services/storage_runtime.py"
+      - "backend/app/services/storage_service.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
   pull_request:
@@ -47,6 +49,8 @@ on:
       - "backend/app/db/session.py"
       - "backend/app/services/document_ocr_runtime.py"
       - "backend/app/services/otp_runtime.py"
+      - "backend/app/services/storage_runtime.py"
+      - "backend/app/services/storage_service.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
 
