@@ -7,13 +7,15 @@ so ``create_all`` cannot hide a missing or stale migration.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -97,3 +99,24 @@ async def assert_database_at_head(engine: AsyncEngine) -> DatabaseRevisionState:
         details.append(f"unexpected={_format_heads(unexpected)}")
     details.append("run `python -m alembic upgrade head` before starting the API")
     raise DatabaseRevisionError("; ".join(details))
+
+
+async def _command() -> int:
+    """Deployment/readiness command: exit 0 only at the bundled Alembic head."""
+    from app.core.config import settings
+
+    engine = create_async_engine(settings.database_url, echo=False)
+    try:
+        state = await assert_database_at_head(engine)
+    except DatabaseRevisionError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+
+    print(f"database revision ready: {_format_heads(state.current_heads)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(_command()))
