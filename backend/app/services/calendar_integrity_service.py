@@ -27,10 +27,7 @@ class CalendarSyncResult:
 
 
 def accessible_project_ids(user: User):
-    """Return a scalar subquery matching the same explicit project grants as ACLs."""
-    viewer_projects = select(ProjectViewer.project_id).where(
-        ProjectViewer.user_id == user.id
-    )
+    viewer_projects = select(ProjectViewer.project_id).where(ProjectViewer.user_id == user.id)
     conditions = [
         Project.customer_id == user.id,
         Project.contractor_id == user.id,
@@ -47,14 +44,15 @@ def accessible_project_ids(user: User):
 
 
 def visible_items_query(user: User):
-    """Own events plus public events from explicitly accessible projects only."""
+    """Personal events plus project events only while project access remains valid."""
+    accessible = accessible_project_ids(user)
     return select(CalendarItem).where(
         or_(
-            CalendarItem.user_id == user.id,
+            and_(CalendarItem.user_id == user.id, CalendarItem.project_id.is_(None)),
             and_(
-                CalendarItem.is_public.is_(True),
                 CalendarItem.project_id.is_not(None),
-                CalendarItem.project_id.in_(accessible_project_ids(user)),
+                CalendarItem.project_id.in_(accessible),
+                or_(CalendarItem.user_id == user.id, CalendarItem.is_public.is_(True)),
             ),
         )
     )
@@ -96,11 +94,15 @@ def _stage_start(stage: Stage) -> datetime:
 
 
 def _stage_end(stage: Stage) -> datetime:
-    return datetime.combine(
-        stage.planned_end or stage.planned_start,
-        time(hour=18),
-        tzinfo=timezone.utc,
-    )
+    return datetime.combine(stage.planned_end or stage.planned_start, time(hour=18), tzinfo=timezone.utc)
+
+
+def _same_value(current, desired) -> bool:
+    if isinstance(current, datetime) and isinstance(desired, datetime):
+        current_utc = current.replace(tzinfo=timezone.utc) if current.tzinfo is None else current.astimezone(timezone.utc)
+        desired_utc = desired.replace(tzinfo=timezone.utc) if desired.tzinfo is None else desired.astimezone(timezone.utc)
+        return current_utc == desired_utc
+    return current == desired
 
 
 def _apply_stage_projection(item: CalendarItem, stage: Stage, project_id: str) -> bool:
@@ -118,7 +120,7 @@ def _apply_stage_projection(item: CalendarItem, stage: Stage, project_id: str) -
     }
     changed = False
     for field, value in desired.items():
-        if getattr(item, field) != value:
+        if not _same_value(getattr(item, field), value):
             setattr(item, field, value)
             changed = True
     return changed
@@ -130,50 +132,24 @@ async def sync_project_stages(
     project_id: str,
     actor: User,
 ) -> CalendarSyncResult | None:
-    """Upsert one calendar item per stage under the project row lock.
+    from app.services import team_service
 
-    Existing legacy duplicates and stale stage projections are removed in the same
-    transaction. A second replay becomes a no-op rather than creating more events.
-    """
     project = await _locked_project(db, project_id)
     if project is None:
         await db.rollback()
         return None
+    if not await team_service.can_access_project(db, actor, project, write=True):
+        await db.rollback()
+        raise ValueError("calendar_sync_forbidden")
 
-    stages = list(
-        (
-            await db.execute(
-                select(Stage)
-                .where(Stage.project_id == project.id)
-                .order_by(Stage.sort_order.asc(), Stage.id.asc())
-            )
-        ).scalars().all()
-    )
-    existing = list(
-        (
-            await db.execute(
-                select(CalendarItem)
-                .where(
-                    CalendarItem.user_id == actor.id,
-                    CalendarItem.project_id == project.id,
-                    CalendarItem.stage_id.is_not(None),
-                )
-                .order_by(
-                    CalendarItem.stage_id.asc(),
-                    CalendarItem.created_at.asc(),
-                    CalendarItem.id.asc(),
-                )
-            )
-        ).scalars().all()
-    )
+    stages = list((await db.execute(select(Stage).where(Stage.project_id == project.id).order_by(Stage.sort_order.asc(), Stage.id.asc()))).scalars().all())
+    existing = list((await db.execute(select(CalendarItem).where(CalendarItem.user_id == actor.id, CalendarItem.project_id == project.id, CalendarItem.stage_id.is_not(None)).order_by(CalendarItem.stage_id.asc(), CalendarItem.created_at.asc(), CalendarItem.id.asc()))).scalars().all())
     by_stage: dict[str, list[CalendarItem]] = {}
     for item in existing:
         if item.stage_id:
             by_stage.setdefault(item.stage_id, []).append(item)
 
-    created = 0
-    updated = 0
-    deleted = 0
+    created = updated = deleted = 0
     active_stage_ids: set[str] = set()
     try:
         for stage in stages:
@@ -193,14 +169,11 @@ async def sync_project_stages(
                 _apply_stage_projection(item, stage, project.id)
                 db.add(item)
                 created += 1
-
         for stage_id, candidates in by_stage.items():
-            if stage_id in active_stage_ids:
-                continue
-            for stale in candidates:
-                await db.delete(stale)
-                deleted += 1
-
+            if stage_id not in active_stage_ids:
+                for stale in candidates:
+                    await db.delete(stale)
+                    deleted += 1
         await db.commit()
     except BaseException:
         await db.rollback()

@@ -1,18 +1,18 @@
-name: Calendar integrity
+name: OTP auth integrity
 
 on: [push, pull_request]
 
 concurrency:
-  group: calendar-integrity-${{ github.event.pull_request.number || github.ref }}
+  group: otp-auth-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  calendar-contracts:
+  otp-auth-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       ENVIRONMENT: test
-      DATABASE_URL: sqlite+aiosqlite:///./calendar-integrity-tests.db
+      DATABASE_URL: sqlite+aiosqlite:///./otp-auth-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
       SECRET_KEY: ci-secret-key-at-least-16
       ALLOW_CREATE_ALL: "true"
@@ -31,20 +31,16 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-      - name: Calendar read mutation ACL and replay contracts
+      - name: OTP abuse and login integrity contracts
         working-directory: backend
         run: |
           set -o pipefail
-          timeout 300s poetry run pytest -vv -s --tb=short \
-            tests/test_calendar_integrity.py \
-            tests/test_calendar_mutation_integrity.py \
-            tests/test_calendar_revoked_access.py \
-            2>&1 | tee calendar-integrity-contracts.log
-      - name: Upload calendar integrity diagnostics
+          timeout 240s poetry run pytest -vv -s --tb=short tests/test_otp_auth_integrity.py tests/test_otp_atomic_consume.py 2>&1 | tee otp-auth-contracts.log
+      - name: Upload OTP auth diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: calendar-integrity-contract-diagnostics
-          path: backend/calendar-integrity-contracts.log
+          name: otp-auth-contract-diagnostics
+          path: backend/otp-auth-contracts.log
           if-no-files-found: warn
           retention-days: 14
