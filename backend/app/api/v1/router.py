@@ -14,6 +14,7 @@ from app.api.v1 import project_creation
 from app.api.v1 import stage_mutations
 from app.api.v1 import stage_review_transitions
 from app.api.v1 import otp_auth
+from app.api.v1 import calendar_mutations
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -163,6 +164,7 @@ api_router.include_router(stage_review_transitions.router)
 api_router.include_router(projects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
+api_router.include_router(calendar_mutations.router)
 api_router.include_router(calendar.router)
 api_router.include_router(chat_inbox.router)
 api_router.include_router(chats.router)
