@@ -118,7 +118,10 @@ async def run_preflight(
     if policy_check.ok:
         from app.services.document_ocr_runtime import validate_document_ocr_runtime
         from app.services.esign.runtime import validate_esign_runtime
-        from app.services.storage_service import ensure_bucket
+        from app.services.storage_runtime import (
+            validate_storage_configuration,
+            validate_storage_runtime,
+        )
 
         checks.append(
             _run_sync_check(
@@ -136,15 +139,22 @@ async def run_preflight(
         )
         checks.append(
             _run_sync_check(
-                "storage_runtime",
-                ensure_bucket,
-                "storage backend reachable",
+                "storage_configuration",
+                validate_storage_configuration,
+                "storage mode configuration accepted",
             )
         )
 
         if check_runtime_services:
             from app.services.otp_runtime import validate_otp_runtime
 
+            checks.append(
+                _run_sync_check(
+                    "storage_runtime",
+                    validate_storage_runtime,
+                    "storage backend reachable",
+                )
+            )
             checks.append(
                 await _run_async_check(
                     "shared_auth_runtime",
@@ -189,7 +199,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-runtime-services",
         action="store_true",
-        help="Skip live Redis/OAuth runtime validation.",
+        help="Skip live storage, Redis, and OAuth runtime validation.",
     )
     parser.add_argument(
         "--json",
