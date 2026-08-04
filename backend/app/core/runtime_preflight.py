@@ -118,6 +118,7 @@ async def run_preflight(
     if policy_check.ok:
         from app.services.document_ocr_runtime import validate_document_ocr_runtime
         from app.services.esign.runtime import validate_esign_runtime
+        from app.services.storage_service import ensure_bucket
 
         checks.append(
             _run_sync_check(
@@ -131,6 +132,13 @@ async def run_preflight(
                 "esign_runtime",
                 validate_esign_runtime,
                 f"kontur_mode={settings.kontur_mode}; goskey_mode={settings.goskey_mode}",
+            )
+        )
+        checks.append(
+            _run_sync_check(
+                "storage_runtime",
+                ensure_bucket,
+                "storage backend reachable",
             )
         )
 
