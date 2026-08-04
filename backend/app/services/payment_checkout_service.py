@@ -113,6 +113,10 @@ async def _load_provider_payment(provider_payment_id: str, return_url: str) -> d
         data = response.json()
 
     remote_amount, remote_currency = _money(data)
+    cancellation = data.get("cancellation_details") or {}
+    cancellation_reason = None
+    if isinstance(cancellation, dict):
+        cancellation_reason = str(cancellation.get("reason") or "").strip() or None
     return {
         "demo": False,
         "payment_id": str(data.get("id") or ""),
@@ -121,6 +125,7 @@ async def _load_provider_payment(provider_payment_id: str, return_url: str) -> d
         "remote_amount": remote_amount,
         "remote_currency": remote_currency,
         "metadata": data.get("metadata"),
+        "cancellation_reason": cancellation_reason,
     }
 
 
