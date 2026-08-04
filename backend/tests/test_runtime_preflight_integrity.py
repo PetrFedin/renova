@@ -88,8 +88,34 @@ async def test_static_preflight_uses_canonical_policy_and_reports_optional_warni
         "runtime_policy",
         "document_ocr_runtime",
         "esign_runtime",
+        "storage_runtime",
     ]
     assert any("YOOKASSA_SHOP_ID" in warning for warning in report.warnings)
+
+
+@pytest.mark.asyncio
+async def test_storage_startup_failure_is_reported_before_deploy(monkeypatch):
+    from app.services import storage_service
+
+    configured = _working_settings(
+        s3_endpoint="https://storage.example",
+        s3_access_key="partial-access-key",
+        s3_secret_key=None,
+    )
+    monkeypatch.setattr(runtime_preflight, "settings", configured)
+    monkeypatch.setattr(storage_service, "settings", configured)
+
+    report = await runtime_preflight.run_preflight(
+        check_database=False,
+        check_runtime_services=False,
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.ok is False
+    assert checks["runtime_policy"].ok is True
+    assert checks["storage_runtime"].ok is False
+    assert "partial_s3_configuration" in checks["storage_runtime"].detail
+    assert configured.s3_access_key not in checks["storage_runtime"].detail
 
 
 @pytest.mark.asyncio
