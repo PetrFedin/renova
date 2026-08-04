@@ -1,0 +1,46 @@
+name: OTP auth integrity
+
+on: [push, pull_request]
+
+concurrency:
+  group: otp-auth-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  otp-auth-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./otp-auth-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: OTP abuse and login integrity contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 240s poetry run pytest -vv -s --tb=short tests/test_otp_auth_integrity.py tests/test_otp_atomic_consume.py 2>&1 | tee otp-auth-contracts.log
+      - name: Upload OTP auth diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: otp-auth-contract-diagnostics
+          path: backend/otp-auth-contracts.log
+          if-no-files-found: warn
+          retention-days: 14
