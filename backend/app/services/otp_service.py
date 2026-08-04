@@ -26,6 +26,40 @@ _RESEND_COOLDOWN = 60
 _MAX_VERIFY_FAILS = 5
 _LOCK_SECONDS = 900
 _SEND_CLAIM_SECONDS = 30
+_REDIS_CODE_PREFIX = "v2|"
+
+# Store the authoritative deadline with the digest and derive it from Redis TIME.
+# The PX lifetime is cleanup only; verification uses the embedded deadline, so
+# integer TTL rounding can never extend an OTP's security validity window.
+_STORE_OTP_SCRIPT = """
+local code_key = KEYS[1]
+local digest = ARGV[1]
+local ttl_ms = tonumber(ARGV[2])
+if not ttl_ms or ttl_ms <= 0 then
+    redis.call('del', code_key)
+    return 0
+end
+local server_time = redis.call('time')
+local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
+local deadline_ms = now_ms + ttl_ms
+redis.call('set', code_key, 'v2|' .. tostring(deadline_ms) .. '|' .. digest, 'PX', ttl_ms)
+return deadline_ms
+"""
+
+_CLEAR_OTP_IF_DIGEST_SCRIPT = """
+local stored = redis.call('get', KEYS[1])
+if not stored then
+    return 0
+end
+if stored == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+local _, stored_digest = string.match(stored, '^v2|(%d+)|(.+)$')
+if stored_digest == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
 
 # Redis owns verification, attempts, lockout, expiry and consume. Successful
 # verification deletes the code atomically, so concurrent workers cannot replay it.
@@ -37,25 +71,7 @@ local candidate = ARGV[1]
 local max_fails = tonumber(ARGV[2])
 local lock_seconds = tonumber(ARGV[3])
 
-if redis.call('exists', lock_key) == 1 then
-    return 'locked'
-end
-
-local stored = redis.call('get', code_key)
-if not stored then
-    local failures = redis.call('incr', fails_key)
-    redis.call('expire', fails_key, lock_seconds)
-    if failures >= max_fails then
-        local server_time = redis.call('time')
-        local lock_until = tonumber(server_time[1]) + lock_seconds
-        redis.call('set', lock_key, tostring(lock_until), 'EX', lock_seconds)
-        redis.call('del', fails_key)
-        return 'locked'
-    end
-    return 'missing'
-end
-
-if stored ~= candidate then
+local function register_failure(reason)
     local failures = redis.call('incr', fails_key)
     redis.call('expire', fails_key, lock_seconds)
     if failures >= max_fails then
@@ -66,7 +82,33 @@ if stored ~= candidate then
         redis.call('del', code_key)
         return 'locked'
     end
-    return 'mismatch'
+    return reason
+end
+
+if redis.call('exists', lock_key) == 1 then
+    return 'locked'
+end
+
+local stored = redis.call('get', code_key)
+if not stored then
+    return register_failure('missing')
+end
+
+local deadline_raw, stored_digest = string.match(stored, '^v2|(%d+)|(.+)$')
+if deadline_raw then
+    local server_time = redis.call('time')
+    local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
+    if now_ms >= tonumber(deadline_raw) then
+        redis.call('del', code_key)
+        return register_failure('expired')
+    end
+else
+    -- Rolling-deploy compatibility for raw digest records created by v1.
+    stored_digest = stored
+end
+
+if stored_digest ~= candidate then
+    return register_failure('mismatch')
 end
 
 redis.call('del', code_key)
@@ -151,6 +193,21 @@ def _rk(kind: str, phone: str) -> str:
     return f"renova:otp:{kind}:{phone}"
 
 
+def _redis_time_seconds(redis_client) -> float:
+    seconds, microseconds = redis_client.time()
+    return float(seconds) + (float(microseconds) / 1_000_000)
+
+
+def _unpack_redis_code(raw: str) -> tuple[str, int | None]:
+    if not raw.startswith(_REDIS_CODE_PREFIX):
+        return raw, None
+    try:
+        _, deadline_raw, digest = raw.split("|", 2)
+        return digest, int(deadline_raw)
+    except (TypeError, ValueError):
+        return "", 0
+
+
 def _local_send_lock(phone: str) -> asyncio.Lock:
     with _send_locks_guard:
         lock = _send_locks.get(phone)
@@ -188,7 +245,12 @@ def _acquire_distributed_send_claim(phone: str) -> str | None:
     if redis_client is None:
         return None
     token = secrets.token_urlsafe(18)
-    acquired = redis_client.set(_rk("send-claim", phone), token, nx=True, ex=_SEND_CLAIM_SECONDS)
+    acquired = redis_client.set(
+        _rk("send-claim", phone),
+        token,
+        nx=True,
+        ex=_SEND_CLAIM_SECONDS,
+    )
     return token if acquired else ""
 
 
@@ -199,7 +261,8 @@ def _release_distributed_send_claim(phone: str, token: str | None) -> None:
     if redis_client is None:
         return
     redis_client.eval(
-        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+        "if redis.call('get', KEYS[1]) == ARGV[1] then "
+        "return redis.call('del', KEYS[1]) else return 0 end",
         1,
         _rk("send-claim", phone),
         token,
@@ -274,8 +337,17 @@ def _set_lock(phone: str, until: float) -> None:
 def _store_code(phone: str, digest: str, expires_at: float) -> None:
     redis_client = _redis_client()
     if redis_client:
-        ttl = max(1, math.ceil(expires_at - time.time()))
-        redis_client.setex(_rk("code", phone), ttl, digest)
+        remaining_ms = math.ceil((expires_at - time.time()) * 1000)
+        if remaining_ms <= 0:
+            redis_client.delete(_rk("code", phone))
+            return
+        redis_client.eval(
+            _STORE_OTP_SCRIPT,
+            1,
+            _rk("code", phone),
+            digest,
+            remaining_ms,
+        )
         return
     _store[phone] = (digest, expires_at)
 
@@ -284,13 +356,20 @@ def _get_code(phone: str) -> tuple[str, float] | None:
     redis_client = _redis_client()
     if redis_client:
         key = _rk("code", phone)
-        digest = redis_client.get(key)
-        if not digest:
+        raw = redis_client.get(key)
+        if not raw:
             return None
+        digest, deadline_ms = _unpack_redis_code(str(raw))
+        if deadline_ms is not None:
+            now_ms = math.floor(_redis_time_seconds(redis_client) * 1000)
+            if not digest or now_ms >= deadline_ms:
+                redis_client.delete(key)
+                return None
+            return digest, time.time() + ((deadline_ms - now_ms) / 1000)
         remaining_ms = int(redis_client.pttl(key))
         if remaining_ms <= 0:
             return None
-        return str(digest), time.time() + (remaining_ms / 1000)
+        return digest, time.time() + (remaining_ms / 1000)
     return _store.get(phone)
 
 
@@ -306,7 +385,7 @@ def _clear_code_if_matches(phone: str, expected_digest: str) -> None:
     redis_client = _redis_client()
     if redis_client:
         redis_client.eval(
-            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            _CLEAR_OTP_IF_DIGEST_SCRIPT,
             1,
             _rk("code", phone),
             expected_digest,
@@ -356,7 +435,11 @@ async def send_otp(phone: str) -> dict:
         return {"ok": False, "message": "Некорректный номер"}
 
     if not _claim_local_send(normalized):
-        return {"ok": False, "message": "Отправка уже выполняется. Повторите через несколько секунд", "rate_limited": True}
+        return {
+            "ok": False,
+            "message": "Отправка уже выполняется. Повторите через несколько секунд",
+            "rate_limited": True,
+        }
 
     try:
         async with _local_send_lock(normalized):
@@ -364,24 +447,41 @@ async def send_otp(phone: str) -> dict:
             try:
                 claim = _acquire_distributed_send_claim(normalized)
                 if claim == "":
-                    return {"ok": False, "message": "Отправка уже выполняется. Повторите через несколько секунд", "rate_limited": True}
+                    return {
+                        "ok": False,
+                        "message": "Отправка уже выполняется. Повторите через несколько секунд",
+                        "rate_limited": True,
+                    }
 
-                now = time.time()
+                redis_client = _redis_client()
+                now = _redis_time_seconds(redis_client) if redis_client else time.time()
                 lock_left = _lock_left(normalized, now)
                 if lock_left > 0:
-                    return {"ok": False, "message": f"Слишком много попыток. Повторите через {lock_left // 60 + 1} мин", "locked": True}
+                    return {
+                        "ok": False,
+                        "message": f"Слишком много попыток. Повторите через {lock_left // 60 + 1} мин",
+                        "locked": True,
+                    }
                 _prune_sends(normalized, now)
                 last = _last_send(normalized)
                 if last and (now - last) < _RESEND_COOLDOWN:
                     wait = int(_RESEND_COOLDOWN - (now - last)) + 1
-                    return {"ok": False, "message": f"Повторная отправка через {wait} с", "rate_limited": True}
+                    return {
+                        "ok": False,
+                        "message": f"Повторная отправка через {wait} с",
+                        "rate_limited": True,
+                    }
                 if _send_count(normalized, now) >= _MAX_SENDS:
-                    return {"ok": False, "message": "Лимит SMS исчерпан. Подождите 10 минут", "rate_limited": True}
+                    return {
+                        "ok": False,
+                        "message": "Лимит SMS исчерпан. Подождите 10 минут",
+                        "rate_limited": True,
+                    }
 
                 code = f"{secrets.randbelow(1_000_000):06d}"
                 code_digest = _digest(normalized, code)
                 previous = _get_code(normalized)
-                _store_code(normalized, code_digest, now + _TTL)
+                _store_code(normalized, code_digest, time.time() + _TTL)
                 send_record = _record_send(normalized, now)
 
                 try:
@@ -391,13 +491,21 @@ async def send_otp(phone: str) -> dict:
                     _restore_code(normalized, previous)
                     _remove_send_record(normalized, send_record)
                     logger.warning("otp SMS delivery failed", extra={"error_type": type(exc).__name__})
-                    return {"ok": False, "message": "SMS временно недоступна. Повторите позже", "service_unavailable": True}
+                    return {
+                        "ok": False,
+                        "message": "SMS временно недоступна. Повторите позже",
+                        "service_unavailable": True,
+                    }
 
                 if not delivery.delivered and not delivery.preview:
                     _clear_code_if_matches(normalized, code_digest)
                     _restore_code(normalized, previous)
                     _remove_send_record(normalized, send_record)
-                    return {"ok": False, "message": "SMS временно недоступна. Повторите позже", "service_unavailable": True}
+                    return {
+                        "ok": False,
+                        "message": "SMS временно недоступна. Повторите позже",
+                        "service_unavailable": True,
+                    }
 
                 response: dict = {"ok": True, "message": "Код отправлен"}
                 if delivery.preview:
@@ -405,15 +513,27 @@ async def send_otp(phone: str) -> dict:
                         _clear_code_if_matches(normalized, code_digest)
                         _restore_code(normalized, previous)
                         _remove_send_record(normalized, send_record)
-                        return {"ok": False, "message": "SMS не настроена", "service_unavailable": True}
+                        return {
+                            "ok": False,
+                            "message": "SMS не настроена",
+                            "service_unavailable": True,
+                        }
                     response.update({"preview": True, "demo_code": code})
                 return response
             except OtpStoreUnavailable:
-                return {"ok": False, "message": "Сервис кодов временно недоступен", "service_unavailable": True}
+                return {
+                    "ok": False,
+                    "message": "Сервис кодов временно недоступен",
+                    "service_unavailable": True,
+                }
             except RedisError:
                 logger.exception("otp Redis operation failed")
                 _mark_redis_unavailable()
-                return {"ok": False, "message": "Сервис кодов временно недоступен", "service_unavailable": True}
+                return {
+                    "ok": False,
+                    "message": "Сервис кодов временно недоступен",
+                    "service_unavailable": True,
+                }
             finally:
                 try:
                     _release_distributed_send_claim(normalized, claim)
