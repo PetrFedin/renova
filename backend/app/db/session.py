@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 from app.core.environment import policy_for, resolve_policy_flag
 from app.db.base import Base
+from app.db.migration_guard import assert_database_at_head
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,24 @@ def _create_all_allowed() -> bool:
     )
 
 
-async def init_db() -> None:
-    """Initialize permitted schemas and run idempotent truth repairs."""
+def _revision_guard_required() -> bool:
+    return policy_for(settings.normalized_environment).name in {
+        "staging",
+        "production",
+    }
+
+
+async def _prepare_database_schema() -> None:
+    """Prepare local schema or prove a working database is already migrated."""
+    if _revision_guard_required():
+        state = await assert_database_at_head(engine)
+        logger.info(
+            "database revision verified (heads=%s)",
+            ",".join(state.current_heads),
+        )
+        return
+
+    # SQLite compatibility and metadata creation are explicitly local/test-only.
     from app.db.sqlite_compat import ensure_os_schema
 
     if settings.database_url.strip().lower().startswith("sqlite"):
@@ -37,6 +54,11 @@ async def init_db() -> None:
             "init_db: create_all skipped (environment=%s) — use alembic upgrade head",
             settings.normalized_environment,
         )
+
+
+async def init_db() -> None:
+    """Validate/initialize schema before any idempotent truth repair runs."""
+    await _prepare_database_schema()
 
     from app.services.document_ocr_truth_repair import repair_legacy_ocr_truth
     from app.services.fns.receipt_truth_repair import repair_legacy_receipt_truth
