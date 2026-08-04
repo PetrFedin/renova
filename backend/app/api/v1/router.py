@@ -11,6 +11,7 @@ from app.api.v1 import material_price_sync
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
 from app.api.v1 import payment_checkout_integrity
+from app.api.v1 import subscription_integrity
 from app.api.v1 import project_creation
 from app.api.v1 import stage_mutations
 from app.api.v1 import stage_review_transitions
@@ -137,6 +138,12 @@ api_router.include_router(account_lifecycle.router)
 api_router.include_router(otp_auth.router)
 api_router.include_router(auth.router)
 api_router.include_router(push.router)
+_SUBSCRIPTION_INTEGRITY_ROUTES: set[RouteSignature] = {
+    ("/subscription/checkout", "POST"),
+    ("/subscription/webhook", "POST"),
+}
+_remove_replaced_routes(subscription.router, _SUBSCRIPTION_INTEGRITY_ROUTES)
+api_router.include_router(subscription_integrity.router)
 api_router.include_router(subscription.router)
 api_router.include_router(teams.router)
 api_router.include_router(analytics.router)

@@ -1,0 +1,50 @@
+name: Subscription renewal integrity
+
+on: [push, pull_request]
+
+concurrency:
+  group: subscription-renewal-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  subscription-renewal-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./subscription-renewal-integrity-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Renewal replay settlement and delivery contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 420s poetry run pytest -vv -s --tb=short \
+            tests/test_subscription_renewal_integrity.py \
+            tests/test_yookassa_claim_integrity.py \
+            tests/test_yookassa_webhook_delivery_integrity.py \
+            2>&1 | tee subscription-renewal-integrity-contracts.log
+      - name: Upload subscription renewal diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-renewal-integrity-contract-diagnostics
+          path: backend/subscription-renewal-integrity-contracts.log
+          if-no-files-found: warn
+          retention-days: 14

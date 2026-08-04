@@ -9,6 +9,7 @@ on:
       - "backend/app/db/session.py"
       - "backend/app/models/calendar.py"
       - "backend/app/models/entities.py"
+      - "backend/app/models/subscription_checkout.py"
       - "backend/scripts/verify_migration_schema.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
@@ -20,6 +21,7 @@ on:
       - "backend/app/db/session.py"
       - "backend/app/models/calendar.py"
       - "backend/app/models/entities.py"
+      - "backend/app/models/subscription_checkout.py"
       - "backend/scripts/verify_migration_schema.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
@@ -76,16 +78,16 @@ jobs:
       - name: Upgrade clean PostgreSQL database
         working-directory: backend
         run: poetry run python -m alembic upgrade head
-      - name: Verify reflected calendar schema
+      - name: Verify reflected application schema
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect present
       - name: Accept migrated PostgreSQL database
         working-directory: backend
         run: poetry run python -m app.db.migration_guard
-      - name: Downgrade calendar migration
+      - name: Downgrade new schema migrations
         working-directory: backend
         run: poetry run python -m alembic downgrade w6webhookdelivery01
-      - name: Verify calendar schema removal
+      - name: Verify migrated schema removal
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect absent
       - name: Reject downgraded PostgreSQL database
@@ -96,10 +98,10 @@ jobs:
             echo "revision guard accepted a downgraded database" >&2
             exit 1
           fi
-      - name: Replay calendar migration
+      - name: Replay schema migrations
         working-directory: backend
         run: poetry run python -m alembic upgrade head
-      - name: Verify replayed calendar schema
+      - name: Verify replayed application schema
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect present
       - name: Accept replayed PostgreSQL database

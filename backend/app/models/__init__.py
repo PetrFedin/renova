@@ -4,5 +4,6 @@ from __future__ import annotations
 # entities remains the compatibility surface for the decomposed model package.
 from app.models import entities as entities
 from app.models.calendar import CalendarItem as CalendarItem
+from app.models.subscription_checkout import SubscriptionCheckout as SubscriptionCheckout
 
-__all__ = ["entities", "CalendarItem"]
+__all__ = ["entities", "CalendarItem", "SubscriptionCheckout"]
