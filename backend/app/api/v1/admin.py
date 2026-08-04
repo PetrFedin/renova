@@ -7,6 +7,7 @@ from app.models.entities import AuditLog, Project, User, UserRole
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+
 @router.get("/stats")
 async def stats(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
@@ -16,17 +17,29 @@ async def stats(user: User = Depends(get_current_user), db: AsyncSession = Depen
     ac = (await db.execute(select(func.count()).select_from(AuditLog))).scalar() or 0
     return {"projects": pc, "users": uc, "audit_events": ac}
 
+
 @router.get("/projects-chart")
 async def projects_chart(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
-    from app.models.entities import Stage, StageStatus
+    from app.models.entities import StageStatus
+
     r = await db.execute(select(Project).where(Project.contractor_id == user.id))
     out = []
     for p in r.scalars().all():
         await db.refresh(p, ["stages"])
         done = sum(1 for s in p.stages if s.status == StageStatus.done)
-        out.append({"name": p.name[:20], "done": done, "total": len(p.stages), "progress": round(sum(s.percent_complete for s in p.stages) / (len(p.stages) or 1))})
+        out.append(
+            {
+                "name": p.name[:20],
+                "done": done,
+                "total": len(p.stages),
+                "progress": round(
+                    sum(s.percent_complete for s in p.stages)
+                    / (len(p.stages) or 1)
+                ),
+            }
+        )
     return out
 
 
@@ -34,15 +47,32 @@ async def projects_chart(user: User = Depends(get_current_user), db: AsyncSessio
 async def revenue_chart(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
-    from app.models.entities import LineType, Payment, PaymentStatus
+    from app.models.entities import LineType, PaymentStatus
+
     r = await db.execute(select(Project).where(Project.contractor_id == user.id))
     out = []
     for p in r.scalars().all():
         await db.refresh(p, ["estimate_lines", "payments"])
-        mp = sum(l.quantity_planned * l.unit_price for l in p.estimate_lines if l.line_type == LineType.material)
-        paid = sum(x.amount for x in p.payments if x.status == PaymentStatus.confirmed)
-        out.append({"name": p.name[:20], "margin": round(p.budget_planned - mp, 0), "paid": round(paid, 0), "planned": round(p.budget_planned, 0)})
+        mp = sum(
+            line.quantity_planned * line.unit_price
+            for line in p.estimate_lines
+            if line.line_type == LineType.material
+        )
+        paid = sum(
+            payment.amount
+            for payment in p.payments
+            if payment.status == PaymentStatus.confirmed
+        )
+        out.append(
+            {
+                "name": p.name[:20],
+                "margin": round(p.budget_planned - mp, 0),
+                "paid": round(paid, 0),
+                "planned": round(p.budget_planned, 0),
+            }
+        )
     return out
+
 
 @router.get("/release-health")
 async def release_health(
@@ -52,11 +82,17 @@ async def release_health(
     if user.role != UserRole.contractor:
         raise HTTPException(403)
     from app.core.config import settings
-    from app.services.yookassa_service import yookassa_health
-    from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.automation_reminders_worker import automation_worker_metrics
     from app.services.esign import list_providers
+    from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.outbox_service import runtime_snapshot as outbox_runtime_snapshot
+    from app.services.release_health_service import truthful_release_snapshot
+    from app.services.yookassa_service import yookassa_health
+
+    release_health = truthful_release_snapshot()
+    release = release_health["release"]
+    observability = release_health["observability"]
+    metrics = observability["metrics"]
 
     yk = yookassa_health()
     fns = fns_receipt_health()
@@ -64,16 +100,24 @@ async def release_health(
     kontur_mode = (settings.kontur_mode or "off").strip().lower()
     esign = {
         "kontur_mode": kontur_mode,
-        "kontur_configured": bool(settings.kontur_api_key) and kontur_mode in ("sandbox", "live"),
+        "kontur_configured": bool(settings.kontur_api_key)
+        and kontur_mode in ("sandbox", "live"),
         "webhook_secret_set": bool(settings.esign_webhook_secret),
         "providers": list_providers(),
     }
     return {
-        "version": "1.0.0",
-        "crash_free_rate": 99.2,
-        "sessions": 1200,
-        "source": "sentry-stub",
+        "contract_version": release_health["contract_version"],
+        "generated_at": release_health["generated_at"],
+        # Compatibility keys remain, but unknown telemetry is represented as
+        # null rather than invented numbers.
+        "version": release["version"],
+        "commit_sha": release["commit_sha"],
+        "crash_free_rate": metrics["crash_free_rate"],
+        "sessions": metrics["sessions"],
+        "source": metrics["source"],
         "environment": settings.normalized_environment,
+        "release": release,
+        "observability": observability,
         "integrations": {
             "yookassa": {
                 "configured": yk["configured"],
@@ -106,4 +150,5 @@ async def h0_readiness(user: User = Depends(get_current_user)):
     if user.role != UserRole.contractor:
         raise HTTPException(403)
     from app.services.staging_readiness import build_h0_readiness
+
     return build_h0_readiness()
