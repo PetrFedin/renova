@@ -10,6 +10,7 @@ import secrets
 import threading
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 
 from redis.exceptions import RedisError
 
@@ -33,40 +34,125 @@ _REDIS_CODE_PREFIX = "v2|"
 # integer TTL rounding can never extend an OTP's security validity window.
 _STORE_OTP_SCRIPT = """
 local code_key = KEYS[1]
+local generation_key = KEYS[2]
 local digest = ARGV[1]
 local ttl_ms = tonumber(ARGV[2])
 if not ttl_ms or ttl_ms <= 0 then
     redis.call('del', code_key)
+    redis.call('del', generation_key)
     return 0
 end
 local server_time = redis.call('time')
 local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
 local deadline_ms = now_ms + ttl_ms
 redis.call('set', code_key, 'v2|' .. tostring(deadline_ms) .. '|' .. digest, 'PX', ttl_ms)
+redis.call('del', generation_key)
 return deadline_ms
+"""
+
+# Replace the active code and snapshot its previous still-valid value in one
+# Redis operation. Legacy raw digests are normalized to versioned records so a
+# later rollback can retain the original absolute security deadline.
+_SWAP_OTP_SCRIPT = """
+local code_key = KEYS[1]
+local generation_key = KEYS[2]
+local digest = ARGV[1]
+local ttl_ms = tonumber(ARGV[2])
+local generation = ARGV[3]
+if not ttl_ms or ttl_ms <= 0 then
+    return ''
+end
+
+local server_time = redis.call('time')
+local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
+local previous = ''
+local stored = redis.call('get', code_key)
+if stored then
+    local previous_deadline, previous_digest = string.match(stored, '^v2|(%d+)|(.+)$')
+    if previous_deadline then
+        if now_ms < tonumber(previous_deadline) then
+            previous = stored
+        end
+    elseif string.sub(stored, 1, 3) ~= 'v2|' then
+        local previous_ttl = redis.call('pttl', code_key)
+        if previous_ttl and previous_ttl > 0 then
+            previous = 'v2|' .. tostring(now_ms + previous_ttl) .. '|' .. stored
+        end
+    end
+end
+
+local deadline_ms = now_ms + ttl_ms
+redis.call('set', code_key, 'v2|' .. tostring(deadline_ms) .. '|' .. digest, 'PX', ttl_ms)
+redis.call('set', generation_key, generation, 'PX', ttl_ms)
+return previous
+"""
+
+# Restore the previous code only while this exact replacement generation is
+# still active. If the new code was consumed, expired, cleared, or superseded,
+# rollback is rejected and an older credential can never be resurrected.
+_ROLLBACK_OTP_SCRIPT = """
+local code_key = KEYS[1]
+local generation_key = KEYS[2]
+local expected_generation = ARGV[1]
+local previous = ARGV[2]
+
+if redis.call('get', generation_key) ~= expected_generation then
+    return 0
+end
+if redis.call('exists', code_key) == 0 then
+    redis.call('del', generation_key)
+    return 0
+end
+
+if previous ~= '' then
+    local previous_deadline, previous_digest = string.match(previous, '^v2|(%d+)|(.+)$')
+    if previous_deadline and previous_digest then
+        local server_time = redis.call('time')
+        local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
+        local remaining_ms = tonumber(previous_deadline) - now_ms
+        if remaining_ms > 0 then
+            redis.call('set', code_key, previous, 'PX', remaining_ms)
+        else
+            redis.call('del', code_key)
+        end
+    else
+        redis.call('del', code_key)
+    end
+else
+    redis.call('del', code_key)
+end
+redis.call('del', generation_key)
+return 1
 """
 
 _CLEAR_OTP_IF_DIGEST_SCRIPT = """
 local stored = redis.call('get', KEYS[1])
 if not stored then
+    redis.call('del', KEYS[2])
     return 0
 end
 if stored == ARGV[1] then
-    return redis.call('del', KEYS[1])
+    redis.call('del', KEYS[1])
+    redis.call('del', KEYS[2])
+    return 1
 end
 local _, stored_digest = string.match(stored, '^v2|(%d+)|(.+)$')
 if stored_digest == ARGV[1] then
-    return redis.call('del', KEYS[1])
+    redis.call('del', KEYS[1])
+    redis.call('del', KEYS[2])
+    return 1
 end
 return 0
 """
 
 # Redis owns verification, attempts, lockout, expiry and consume. Successful
-# verification deletes the code atomically, so concurrent workers cannot replay it.
+# verification deletes the code and replacement generation atomically, so a
+# later delivery rollback cannot restore an already-used credential.
 _VERIFY_OTP_SCRIPT = """
 local lock_key = KEYS[1]
 local code_key = KEYS[2]
 local fails_key = KEYS[3]
+local generation_key = KEYS[4]
 local candidate = ARGV[1]
 local max_fails = tonumber(ARGV[2])
 local lock_seconds = tonumber(ARGV[3])
@@ -80,6 +166,7 @@ local function register_failure(reason)
         redis.call('set', lock_key, tostring(lock_until), 'EX', lock_seconds)
         redis.call('del', fails_key)
         redis.call('del', code_key)
+        redis.call('del', generation_key)
         return 'locked'
     end
     return reason
@@ -91,6 +178,7 @@ end
 
 local stored = redis.call('get', code_key)
 if not stored then
+    redis.call('del', generation_key)
     return register_failure('missing')
 end
 
@@ -100,6 +188,7 @@ if deadline_raw then
     local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
     if now_ms >= tonumber(deadline_raw) then
         redis.call('del', code_key)
+        redis.call('del', generation_key)
         return register_failure('expired')
     end
 else
@@ -112,12 +201,14 @@ if stored_digest ~= candidate then
 end
 
 redis.call('del', code_key)
+redis.call('del', generation_key)
 redis.call('del', fails_key)
 redis.call('del', lock_key)
 return 'ok'
 """
 
 _store: dict[str, tuple[str, float]] = {}
+_code_generation: dict[str, str] = {}
 _send_log: dict[str, list[float]] = defaultdict(list)
 _fail_count: dict[str, int] = defaultdict(int)
 _lock_until: dict[str, float] = {}
@@ -133,6 +224,14 @@ _redis_failed = False
 
 class OtpStoreUnavailable(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class OtpSwap:
+    generation: str
+    redis_backed: bool
+    previous_local: tuple[str, float] | None = None
+    previous_raw: str | None = None
 
 
 def _working_environment() -> bool:
@@ -339,17 +438,86 @@ def _store_code(phone: str, digest: str, expires_at: float) -> None:
     if redis_client:
         remaining_ms = math.ceil((expires_at - time.time()) * 1000)
         if remaining_ms <= 0:
-            redis_client.delete(_rk("code", phone))
+            redis_client.delete(_rk("code", phone), _rk("code-generation", phone))
             return
         redis_client.eval(
             _STORE_OTP_SCRIPT,
-            1,
+            2,
             _rk("code", phone),
+            _rk("code-generation", phone),
             digest,
             remaining_ms,
         )
         return
-    _store[phone] = (digest, expires_at)
+    with _local_verify_lock(phone):
+        _store[phone] = (digest, expires_at)
+        _code_generation.pop(phone, None)
+
+
+def _swap_code(phone: str, digest: str, expires_at: float) -> OtpSwap:
+    generation = secrets.token_urlsafe(18)
+    redis_client = _redis_client()
+    if redis_client:
+        remaining_ms = math.ceil((expires_at - time.time()) * 1000)
+        if remaining_ms <= 0:
+            raise ValueError("otp_expiry_must_be_future")
+        previous = redis_client.eval(
+            _SWAP_OTP_SCRIPT,
+            2,
+            _rk("code", phone),
+            _rk("code-generation", phone),
+            digest,
+            remaining_ms,
+            generation,
+        )
+        return OtpSwap(
+            generation=generation,
+            redis_backed=True,
+            previous_raw=str(previous) if previous else None,
+        )
+
+    now = time.time()
+    with _local_verify_lock(phone):
+        previous = _store.get(phone)
+        if previous and previous[1] <= now:
+            previous = None
+        _store[phone] = (digest, expires_at)
+        _code_generation[phone] = generation
+    return OtpSwap(
+        generation=generation,
+        redis_backed=False,
+        previous_local=previous,
+    )
+
+
+def _rollback_code(phone: str, swap: OtpSwap) -> bool:
+    if swap.redis_backed:
+        redis_client = _redis_client()
+        if redis_client is None:
+            raise OtpStoreUnavailable("redis_unavailable_for_otp_rollback")
+        restored = redis_client.eval(
+            _ROLLBACK_OTP_SCRIPT,
+            2,
+            _rk("code", phone),
+            _rk("code-generation", phone),
+            swap.generation,
+            swap.previous_raw or "",
+        )
+        return bool(int(restored))
+
+    now = time.time()
+    with _local_verify_lock(phone):
+        if _code_generation.get(phone) != swap.generation:
+            return False
+        if phone not in _store:
+            _code_generation.pop(phone, None)
+            return False
+        if swap.previous_local and swap.previous_local[1] > now:
+            _store[phone] = swap.previous_local
+        else:
+            _store.pop(phone, None)
+        _code_generation.pop(phone, None)
+        return True
 
 
 def _get_code(phone: str) -> tuple[str, float] | None:
@@ -363,7 +531,7 @@ def _get_code(phone: str) -> tuple[str, float] | None:
         if deadline_ms is not None:
             now_ms = math.floor(_redis_time_seconds(redis_client) * 1000)
             if not digest or now_ms >= deadline_ms:
-                redis_client.delete(key)
+                redis_client.delete(key, _rk("code-generation", phone))
                 return None
             return digest, time.time() + ((deadline_ms - now_ms) / 1000)
         remaining_ms = int(redis_client.pttl(key))
@@ -376,9 +544,11 @@ def _get_code(phone: str) -> tuple[str, float] | None:
 def _clear_code(phone: str) -> None:
     redis_client = _redis_client()
     if redis_client:
-        redis_client.delete(_rk("code", phone))
+        redis_client.delete(_rk("code", phone), _rk("code-generation", phone))
         return
-    _store.pop(phone, None)
+    with _local_verify_lock(phone):
+        _store.pop(phone, None)
+        _code_generation.pop(phone, None)
 
 
 def _clear_code_if_matches(phone: str, expected_digest: str) -> None:
@@ -386,21 +556,17 @@ def _clear_code_if_matches(phone: str, expected_digest: str) -> None:
     if redis_client:
         redis_client.eval(
             _CLEAR_OTP_IF_DIGEST_SCRIPT,
-            1,
+            2,
             _rk("code", phone),
+            _rk("code-generation", phone),
             expected_digest,
         )
         return
-    current = _store.get(phone)
-    if current and hmac.compare_digest(current[0], expected_digest):
-        _store.pop(phone, None)
-
-
-def _restore_code(phone: str, previous: tuple[str, float] | None) -> None:
-    if previous and previous[1] > time.time():
-        _store_code(phone, previous[0], previous[1])
-    else:
-        _clear_code(phone)
+    with _local_verify_lock(phone):
+        current = _store.get(phone)
+        if current and hmac.compare_digest(current[0], expected_digest):
+            _store.pop(phone, None)
+            _code_generation.pop(phone, None)
 
 
 def _bump_fail(phone: str, now: float) -> None:
@@ -411,12 +577,14 @@ def _bump_fail(phone: str, now: float) -> None:
         redis_client.expire(key, _LOCK_SECONDS)
         if failures >= _MAX_VERIFY_FAILS:
             _set_lock(phone, now + _LOCK_SECONDS)
-            redis_client.delete(key)
+            redis_client.delete(key, _rk("code", phone), _rk("code-generation", phone))
         return
     _fail_count[phone] += 1
     if _fail_count[phone] >= _MAX_VERIFY_FAILS:
         _lock_until[phone] = now + _LOCK_SECONDS
         _fail_count[phone] = 0
+        _store.pop(phone, None)
+        _code_generation.pop(phone, None)
 
 
 def _clear_fails(phone: str) -> None:
@@ -457,15 +625,16 @@ async def send_otp(phone: str) -> dict:
                 now = _redis_time_seconds(redis_client) if redis_client else time.time()
                 lock_left = _lock_left(normalized, now)
                 if lock_left > 0:
+                    minutes = max(1, math.ceil(lock_left / 60))
                     return {
                         "ok": False,
-                        "message": f"Слишком много попыток. Повторите через {lock_left // 60 + 1} мин",
+                        "message": f"Слишком много попыток. Повторите через {minutes} мин",
                         "locked": True,
                     }
                 _prune_sends(normalized, now)
                 last = _last_send(normalized)
                 if last and (now - last) < _RESEND_COOLDOWN:
-                    wait = int(_RESEND_COOLDOWN - (now - last)) + 1
+                    wait = max(1, math.ceil(_RESEND_COOLDOWN - (now - last)))
                     return {
                         "ok": False,
                         "message": f"Повторная отправка через {wait} с",
@@ -480,15 +649,13 @@ async def send_otp(phone: str) -> dict:
 
                 code = f"{secrets.randbelow(1_000_000):06d}"
                 code_digest = _digest(normalized, code)
-                previous = _get_code(normalized)
-                _store_code(normalized, code_digest, time.time() + _TTL)
+                swap = _swap_code(normalized, code_digest, time.time() + _TTL)
                 send_record = _record_send(normalized, now)
 
                 try:
                     delivery = await send_sms(normalized, f"Renova: код входа {code}")
                 except (SmsConfigurationError, SmsDeliveryFailed) as exc:
-                    _clear_code_if_matches(normalized, code_digest)
-                    _restore_code(normalized, previous)
+                    _rollback_code(normalized, swap)
                     _remove_send_record(normalized, send_record)
                     logger.warning("otp SMS delivery failed", extra={"error_type": type(exc).__name__})
                     return {
@@ -498,8 +665,7 @@ async def send_otp(phone: str) -> dict:
                     }
 
                 if not delivery.delivered and not delivery.preview:
-                    _clear_code_if_matches(normalized, code_digest)
-                    _restore_code(normalized, previous)
+                    _rollback_code(normalized, swap)
                     _remove_send_record(normalized, send_record)
                     return {
                         "ok": False,
@@ -510,8 +676,7 @@ async def send_otp(phone: str) -> dict:
                 response: dict = {"ok": True, "message": "Код отправлен"}
                 if delivery.preview:
                     if _working_environment():
-                        _clear_code_if_matches(normalized, code_digest)
-                        _restore_code(normalized, previous)
+                        _rollback_code(normalized, swap)
                         _remove_send_record(normalized, send_record)
                         return {
                             "ok": False,
@@ -551,6 +716,7 @@ def _verify_local(phone: str, candidate: str, now: float) -> bool:
 
         record = _store.get(phone)
         if not record:
+            _code_generation.pop(phone, None)
             _fail_count[phone] += 1
             if _fail_count[phone] >= _MAX_VERIFY_FAILS:
                 _lock_until[phone] = now + _LOCK_SECONDS
@@ -560,6 +726,7 @@ def _verify_local(phone: str, candidate: str, now: float) -> bool:
         stored_digest, expires_at = record
         if now >= expires_at:
             _store.pop(phone, None)
+            _code_generation.pop(phone, None)
             return False
 
         if not hmac.compare_digest(stored_digest, candidate):
@@ -568,9 +735,11 @@ def _verify_local(phone: str, candidate: str, now: float) -> bool:
                 _lock_until[phone] = now + _LOCK_SECONDS
                 _fail_count[phone] = 0
                 _store.pop(phone, None)
+                _code_generation.pop(phone, None)
             return False
 
         _store.pop(phone, None)
+        _code_generation.pop(phone, None)
         _fail_count.pop(phone, None)
         _lock_until.pop(phone, None)
         return True
@@ -591,10 +760,11 @@ def verify_otp(phone: str, code: str) -> bool:
 
         result = redis_client.eval(
             _VERIFY_OTP_SCRIPT,
-            3,
+            4,
             _rk("lock", normalized),
             _rk("code", normalized),
             _rk("fails", normalized),
+            _rk("code-generation", normalized),
             candidate,
             _MAX_VERIFY_FAILS,
             _LOCK_SECONDS,
