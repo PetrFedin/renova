@@ -169,6 +169,50 @@ async def test_webhook_success_then_lost_response_replays_same_checkout():
     assert timedelta(days=29, hours=23) < remaining < timedelta(days=30, minutes=1)
 
 
+async def test_legacy_inflight_subscription_webhook_remains_idempotent():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        user, _headers = await _contractor(client)
+        event = {
+            "event": "payment.succeeded",
+            "object": {
+                "id": "yk-legacy-subscription-inflight",
+                "status": "succeeded",
+                "amount": {"value": "990.00", "currency": "RUB"},
+                "metadata": {
+                    "kind": "pro_subscription",
+                    "user_id": user["id"],
+                },
+            },
+        }
+        first = await client.post("/api/v1/subscription/webhook", json=event)
+        replay = await client.post("/api/v1/subscription/webhook", json=event)
+
+    assert first.status_code == 200, first.text
+    assert first.json()["business_applied"] is True
+    assert first.json()["pro_user_id"] == user["id"]
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["duplicate"] is True
+    assert replay.json()["business_applied"] is False
+
+    subscription = await _subscription(user["id"])
+    assert subscription.expires_at is not None
+    remaining = subscription.expires_at - utc_now()
+    assert timedelta(days=29, hours=23) < remaining < timedelta(days=30, minutes=1)
+
+    from app.db import session as sess
+
+    async with sess.SessionLocal() as db:
+        rows = (
+            await db.execute(
+                select(SubscriptionCheckout).where(
+                    SubscriptionCheckout.user_id == user["id"]
+                )
+            )
+        ).scalars().all()
+        assert rows == []
+
+
 async def test_duplicate_settlement_cannot_extend_entitlement_twice():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
