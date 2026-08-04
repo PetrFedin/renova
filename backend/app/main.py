@@ -8,13 +8,9 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.environment import (
-    collect_warnings,
-    policy_for,
-    resolve_policy_flag,
-    validate_runtime_settings,
-)
+from app.core.environment import policy_for, resolve_policy_flag
 from app.core.logging_config import setup_logging
+from app.core.runtime_policy import configured_runtime_warnings, validate_configured_runtime
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.audit import AuditMiddleware
 from app.middleware.correlation import CorrelationIdMiddleware
@@ -43,42 +39,8 @@ def _demo_seed_allowed() -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    policy = validate_runtime_settings(
-        environment=settings.environment,
-        database_url=settings.database_url,
-        public_base_url=settings.public_base_url,
-        secret_key=settings.secret_key,
-        auth_allow_header_user_id=settings.auth_allow_header_user_id,
-        allow_create_all=settings.allow_create_all,
-        allow_demo_seed=settings.allow_demo_seed,
-        ops_alert_email=settings.ops_alert_email,
-        smtp_host=settings.smtp_host,
-        smtp_port=settings.smtp_port,
-        smtp_user=settings.smtp_user,
-        smtp_password=settings.smtp_password,
-        smtp_from=settings.smtp_from,
-        redis_url=settings.redis_url,
-        twilio_sid=settings.twilio_sid,
-        twilio_token=settings.twilio_token,
-        twilio_from=settings.twilio_from,
-    )
-    for warning in collect_warnings(
-        environment=settings.environment,
-        database_url=settings.database_url,
-        secret_key=settings.secret_key,
-        kontur_mode=settings.kontur_mode,
-        kontur_api_key=settings.kontur_api_key,
-        yookassa_shop_id=settings.yookassa_shop_id,
-        yookassa_secret=settings.yookassa_secret,
-        esign_webhook_secret=settings.esign_webhook_secret,
-        yookassa_webhook_secret=settings.yookassa_webhook_secret,
-        ops_alert_email=settings.ops_alert_email,
-        smtp_host=settings.smtp_host,
-        redis_url=settings.redis_url,
-        twilio_sid=settings.twilio_sid,
-        twilio_token=settings.twilio_token,
-        twilio_from=settings.twilio_from,
-    ):
+    policy = validate_configured_runtime()
+    for warning in configured_runtime_warnings():
         logger.warning(warning)
 
     from app.services.document_ocr_runtime import validate_document_ocr_runtime
