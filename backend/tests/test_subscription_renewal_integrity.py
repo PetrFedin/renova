@@ -11,7 +11,7 @@ from app.core import config as cfg
 from app.core.timeutil import utc_now
 from app.db.session import init_db
 from app.main import app
-from app.models.entities import Subscription
+from app.models.entities import Subscription, User, UserRole
 from app.models.subscription_checkout import SubscriptionCheckout
 from app.services import subscription_checkout_service as checkout_svc
 from app.services.seed_articles import seed_articles
@@ -253,5 +253,64 @@ async def test_provider_cancellation_releases_cycle_for_new_checkout():
     assert canceled.json()["business_applied"] is True
     assert replacement.status_code == 200, replacement.text
     assert replacement.json()["checkout_id"] != checkout.id
-    assert (await _checkout(checkout.id)).status == "canceled"
+    canceled_checkout = await _checkout(checkout.id)
+    assert canceled_checkout.status == "canceled"
+    assert canceled_checkout.confirmation_url == "https://pay.example/sub-canceled"
     assert replacement.json()["checkout_status"] == "succeeded"
+
+
+async def test_provider_payment_id_cannot_belong_to_two_subscription_cycles():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first_user, _headers = await _contractor(client)
+
+    from app.db import session as sess
+
+    second_user_id = "subscription-provider-conflict-user"
+    async with sess.SessionLocal() as db:
+        db.add(
+            User(
+                id=second_user_id,
+                phone="+79990009991",
+                role=UserRole.contractor,
+            )
+        )
+        await db.commit()
+
+        first_checkout, _ = await checkout_svc.get_or_create_checkout(
+            db,
+            user_id=first_user["id"],
+        )
+        second_checkout, _ = await checkout_svc.get_or_create_checkout(
+            db,
+            user_id=second_user_id,
+        )
+        await checkout_svc.bind_provider_payment(
+            db,
+            checkout_id=first_checkout.id,
+            user_id=first_user["id"],
+            provider_payment_id="yk-shared-subscription-id",
+            confirmation_url="https://pay.example/shared",
+            provider_status="pending",
+            commit=True,
+        )
+
+        with pytest.raises(
+            checkout_svc.SubscriptionCheckoutIntegrityError,
+            match="yookassa_payment_id_conflict",
+        ) as exc_info:
+            await checkout_svc.bind_provider_payment(
+                db,
+                checkout_id=second_checkout.id,
+                user_id=second_user_id,
+                provider_payment_id="yk-shared-subscription-id",
+                confirmation_url="https://pay.example/other",
+                provider_status="pending",
+                commit=True,
+            )
+        assert exc_info.value.code == "yookassa_payment_id_conflict"
+
+        stored_second = await db.get(SubscriptionCheckout, second_checkout.id)
+        assert stored_second is not None
+        assert stored_second.provider_payment_id is None
+        assert stored_second.status == "pending"
