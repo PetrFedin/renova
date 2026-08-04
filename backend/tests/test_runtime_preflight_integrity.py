@@ -71,11 +71,25 @@ def test_canonical_policy_rejects_each_working_runtime_violation(overrides, expe
 
 
 @pytest.mark.asyncio
-async def test_static_preflight_uses_canonical_policy_and_reports_optional_warnings(
+async def test_static_preflight_is_network_free_and_reports_optional_warnings(
     monkeypatch,
 ):
+    from app.services import storage_runtime
+
     configured = _working_settings()
+    live_storage_called = False
+
+    def must_not_call_live_storage() -> None:
+        nonlocal live_storage_called
+        live_storage_called = True
+        raise AssertionError("static preflight called live storage")
+
     monkeypatch.setattr(runtime_preflight, "settings", configured)
+    monkeypatch.setattr(
+        storage_runtime,
+        "validate_storage_runtime",
+        must_not_call_live_storage,
+    )
 
     report = await runtime_preflight.run_preflight(
         check_database=False,
@@ -88,13 +102,59 @@ async def test_static_preflight_uses_canonical_policy_and_reports_optional_warni
         "runtime_policy",
         "document_ocr_runtime",
         "esign_runtime",
-        "storage_runtime",
+        "storage_configuration",
     ]
+    assert live_storage_called is False
     assert any("YOOKASSA_SHOP_ID" in warning for warning in report.warnings)
 
 
 @pytest.mark.asyncio
-async def test_storage_startup_failure_is_reported_before_deploy(monkeypatch):
+async def test_live_preflight_runs_storage_and_shared_auth_checks(monkeypatch):
+    from app.services import otp_runtime, storage_runtime
+
+    configured = _working_settings()
+    calls: list[str] = []
+
+    def storage_configuration() -> str:
+        calls.append("storage_configuration")
+        return "local"
+
+    def storage_live() -> None:
+        calls.append("storage_runtime")
+
+    async def auth_live() -> None:
+        calls.append("shared_auth_runtime")
+
+    monkeypatch.setattr(runtime_preflight, "settings", configured)
+    monkeypatch.setattr(
+        storage_runtime,
+        "validate_storage_configuration",
+        storage_configuration,
+    )
+    monkeypatch.setattr(storage_runtime, "validate_storage_runtime", storage_live)
+    monkeypatch.setattr(otp_runtime, "validate_otp_runtime", auth_live)
+
+    report = await runtime_preflight.run_preflight(
+        check_database=False,
+        check_runtime_services=True,
+    )
+
+    assert report.ok is True
+    assert calls == [
+        "storage_configuration",
+        "storage_runtime",
+        "shared_auth_runtime",
+    ]
+    checks = {check.name: check for check in report.checks}
+    assert checks["storage_configuration"].ok is True
+    assert checks["storage_runtime"].ok is True
+    assert checks["shared_auth_runtime"].ok is True
+
+
+@pytest.mark.asyncio
+async def test_storage_configuration_failure_is_reported_before_network(
+    monkeypatch,
+):
     from app.services import storage_service
 
     configured = _working_settings(
@@ -113,9 +173,10 @@ async def test_storage_startup_failure_is_reported_before_deploy(monkeypatch):
     checks = {check.name: check for check in report.checks}
     assert report.ok is False
     assert checks["runtime_policy"].ok is True
-    assert checks["storage_runtime"].ok is False
-    assert "partial_s3_configuration" in checks["storage_runtime"].detail
-    assert configured.s3_access_key not in checks["storage_runtime"].detail
+    assert checks["storage_configuration"].ok is False
+    assert "partial_s3_configuration" in checks["storage_configuration"].detail
+    assert configured.s3_access_key not in checks["storage_configuration"].detail
+    assert "storage_runtime" not in checks
 
 
 @pytest.mark.asyncio
