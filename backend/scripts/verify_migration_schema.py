@@ -1,8 +1,7 @@
-"""Reflect the database and enforce the calendar Alembic contract.
+"""Reflect the database and enforce the current Alembic schema contract.
 
-The verifier never imports ORM metadata.  It is intentionally run after real
-Alembic transitions so model-only schema changes cannot create a false
-production-readiness signal.
+The verifier never imports ORM metadata. It runs after real Alembic transitions
+so model-only schema changes cannot create a false production-readiness signal.
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-_PRESENT_REVISION = "w8calendarintegrity01"
+_PRESENT_REVISION = "w9subscriptioncheckout01"
 _ABSENT_REVISION = "w6webhookdelivery01"
 
 
@@ -34,20 +33,7 @@ def _current_revision(sync_connection) -> str:
     return str(value)
 
 
-def _verify_present(sync_connection) -> None:
-    _require(
-        _current_revision(sync_connection) == _PRESENT_REVISION,
-        f"Alembic head must be {_PRESENT_REVISION}",
-    )
-
-    inspector = inspect(sync_connection)
-    tables = set(inspector.get_table_names())
-    _require("users" in tables, "users table is missing after Alembic upgrade")
-    _require(
-        "calendar_items" in tables,
-        "calendar_items table is missing after Alembic upgrade",
-    )
-
+def _verify_calendar(inspector) -> None:
     user_columns = {column["name"]: column for column in inspector.get_columns("users")}
     _require(
         "ics_token" in user_columns,
@@ -165,6 +151,120 @@ def _verify_present(sync_connection) -> None:
         _require(not bool(index.get("unique")), f"{name} must not be unique")
 
 
+def _verify_subscription_checkouts(inspector) -> None:
+    expected_columns = {
+        "id",
+        "user_id",
+        "open_key",
+        "status",
+        "amount",
+        "currency",
+        "days",
+        "idempotence_key",
+        "provider_payment_id",
+        "confirmation_url",
+        "provider_status",
+        "completed_at",
+        "replay_until",
+        "created_at",
+        "updated_at",
+    }
+    columns = {
+        column["name"]: column
+        for column in inspector.get_columns("subscription_checkouts")
+    }
+    missing = expected_columns - set(columns)
+    _require(
+        not missing,
+        f"subscription_checkouts columns are missing: {sorted(missing)}",
+    )
+    nullable = {
+        "open_key",
+        "provider_payment_id",
+        "confirmation_url",
+        "provider_status",
+        "completed_at",
+        "replay_until",
+    }
+    for name in expected_columns:
+        _require(
+            bool(columns[name].get("nullable")) is (name in nullable),
+            f"subscription_checkouts.{name} nullable mismatch",
+        )
+
+    primary_key = inspector.get_pk_constraint("subscription_checkouts")
+    _require(
+        list(primary_key.get("constrained_columns") or []) == ["id"],
+        "subscription_checkouts primary key must be id",
+    )
+    foreign_keys = inspector.get_foreign_keys("subscription_checkouts")
+    _require(
+        any(
+            list(foreign_key.get("constrained_columns") or []) == ["user_id"]
+            and foreign_key.get("referred_table") == "users"
+            and list(foreign_key.get("referred_columns") or []) == ["id"]
+            for foreign_key in foreign_keys
+        ),
+        "subscription_checkouts.user_id foreign key is missing",
+    )
+
+    unique_constraints = {
+        constraint["name"]: list(constraint.get("column_names") or [])
+        for constraint in inspector.get_unique_constraints("subscription_checkouts")
+        if constraint.get("name")
+    }
+    _require(
+        unique_constraints.get("uq_subscription_checkout_open_key") == ["open_key"],
+        "subscription checkout open_key uniqueness is missing",
+    )
+    _require(
+        unique_constraints.get("uq_subscription_checkout_idempotence_key")
+        == ["idempotence_key"],
+        "subscription checkout idempotence uniqueness is missing",
+    )
+
+    indexes = {
+        index["name"]: index
+        for index in inspector.get_indexes("subscription_checkouts")
+        if index.get("name")
+    }
+    expected_indexes = {
+        "ix_subscription_checkouts_user_id": (["user_id"], False),
+        "ix_subscription_checkouts_status": (["status"], False),
+        "ix_subscription_checkouts_provider_payment_id": (["provider_payment_id"], True),
+        "ix_subscription_checkouts_replay_until": (["replay_until"], False),
+    }
+    for name, (expected_columns_for_index, unique) in expected_indexes.items():
+        index = indexes.get(name)
+        _require(index is not None, f"{name} is missing")
+        _require(
+            list(index.get("column_names") or []) == expected_columns_for_index,
+            f"{name} targets {index.get('column_names')}, expected {expected_columns_for_index}",
+        )
+        _require(bool(index.get("unique")) is unique, f"{name} unique mismatch")
+
+
+def _verify_present(sync_connection) -> None:
+    _require(
+        _current_revision(sync_connection) == _PRESENT_REVISION,
+        f"Alembic head must be {_PRESENT_REVISION}",
+    )
+
+    inspector = inspect(sync_connection)
+    tables = set(inspector.get_table_names())
+    _require("users" in tables, "users table is missing after Alembic upgrade")
+    _require(
+        "calendar_items" in tables,
+        "calendar_items table is missing after Alembic upgrade",
+    )
+    _require(
+        "subscription_checkouts" in tables,
+        "subscription_checkouts table is missing after Alembic upgrade",
+    )
+    _verify_calendar(inspector)
+    _verify_subscription_checkouts(inspector)
+
+
 def _verify_absent(sync_connection) -> None:
     _require(
         _current_revision(sync_connection) == _ABSENT_REVISION,
@@ -177,7 +277,11 @@ def _verify_absent(sync_connection) -> None:
         "calendar_items" not in tables,
         "calendar_items survived downgrade to the previous revision",
     )
-    _require("users" in tables, "users table disappeared during calendar downgrade")
+    _require(
+        "subscription_checkouts" not in tables,
+        "subscription_checkouts survived downgrade to the previous revision",
+    )
+    _require("users" in tables, "users table disappeared during schema downgrade")
 
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     _require(
@@ -213,7 +317,7 @@ def _parse_args() -> argparse.Namespace:
         "--expect",
         choices=("present", "absent"),
         default="present",
-        help="Expected state of the calendar migration relative to its revision.",
+        help="Expected state of the current migrations relative to w6.",
     )
     return parser.parse_args()
 
