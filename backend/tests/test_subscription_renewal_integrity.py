@@ -329,6 +329,7 @@ async def test_provider_payment_id_cannot_belong_to_two_subscription_cycles():
             db,
             user_id=second_user_id,
         )
+        second_checkout_id = second_checkout.id
         await checkout_svc.bind_provider_payment(
             db,
             checkout_id=first_checkout.id,
@@ -345,7 +346,7 @@ async def test_provider_payment_id_cannot_belong_to_two_subscription_cycles():
         ) as exc_info:
             await checkout_svc.bind_provider_payment(
                 db,
-                checkout_id=second_checkout.id,
+                checkout_id=second_checkout_id,
                 user_id=second_user_id,
                 provider_payment_id="yk-shared-subscription-id",
                 confirmation_url="https://pay.example/other",
@@ -354,7 +355,7 @@ async def test_provider_payment_id_cannot_belong_to_two_subscription_cycles():
             )
         assert exc_info.value.code == "yookassa_payment_id_conflict"
 
-        stored_second = await db.get(SubscriptionCheckout, second_checkout.id)
+        stored_second = await db.get(SubscriptionCheckout, second_checkout_id)
         assert stored_second is not None
         assert stored_second.provider_payment_id is None
         assert stored_second.status == "pending"
