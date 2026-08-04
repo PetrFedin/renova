@@ -1,6 +1,8 @@
 """End-to-end integrity for resumable project checkout."""
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -20,11 +22,11 @@ async def setup_db(tmp_path, monkeypatch):
     db_path = tmp_path / "checkout_resume.db"
     url = f"sqlite+aiosqlite:///{db_path}"
     monkeypatch.setenv("DATABASE_URL", url)
-    cfg.settings.database_url = url
-    cfg.settings.environment = "development"
-    cfg.settings.yookassa_shop_id = None
-    cfg.settings.yookassa_secret = None
-    cfg.settings.public_base_url = "http://127.0.0.1:8081"
+    monkeypatch.setattr(cfg.settings, "database_url", url)
+    monkeypatch.setattr(cfg.settings, "environment", "development")
+    monkeypatch.setattr(cfg.settings, "yookassa_shop_id", None)
+    monkeypatch.setattr(cfg.settings, "yookassa_secret", None)
+    monkeypatch.setattr(cfg.settings, "public_base_url", "http://127.0.0.1:8081")
 
     from app.db import session as sess
 
@@ -38,6 +40,8 @@ async def setup_db(tmp_path, monkeypatch):
     async with sess.SessionLocal() as db:
         await ensure_demo_users(db)
         await seed_articles(db)
+    yield
+    await sess.engine.dispose()
 
 
 async def _customer_project_and_payment(client: AsyncClient):
@@ -130,6 +134,59 @@ async def test_resume_rejects_provider_identity_change(monkeypatch):
         assert payment is not None
         assert payment.yookassa_payment_id == "yk-original"
         assert payment.status == PaymentStatus.processing
+
+
+async def test_provider_cancellation_finishes_processing_payment(monkeypatch):
+    async def fake_create_or_resume_checkout(**kwargs):
+        provider_id = kwargs["existing_provider_id"] or "yk-cancelled"
+        if kwargs["existing_provider_id"]:
+            return {
+                "demo": False,
+                "payment_id": provider_id,
+                "confirmation_url": None,
+                "status": "canceled",
+                "remote_amount": Decimal(str(kwargs["amount"])).quantize(Decimal("0.01")),
+                "remote_currency": "RUB",
+                "metadata": {
+                    "kind": "project_payment",
+                    "payment_id": kwargs["payment_id"],
+                    "project_id": kwargs["project_id"],
+                    "user_id": kwargs["user_id"],
+                },
+                "cancellation_reason": "canceled_by_user",
+            }
+        return {
+            "demo": False,
+            "payment_id": provider_id,
+            "confirmation_url": "https://pay.example/yk-cancelled",
+            "status": "pending",
+        }
+
+    monkeypatch.setattr(
+        checkout_svc,
+        "create_or_resume_checkout",
+        fake_create_or_resume_checkout,
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        _, headers, project_id, payment_id = await _customer_project_and_payment(client)
+        path = f"/api/v1/projects/{project_id}/payments/{payment_id}/yookassa-checkout"
+        first = await client.post(path, headers=headers)
+        cancelled = await client.post(path, headers=headers)
+
+    assert first.status_code == 200, first.text
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "canceled"
+    assert cancelled.json()["message"] == "Платёж отменён ЮKassa"
+
+    from app.db import session as sess
+
+    async with sess.SessionLocal() as db:
+        payment = await db.get(Payment, payment_id)
+        assert payment is not None
+        assert payment.status == PaymentStatus.cancelled
+        assert payment.yookassa_payment_id == "yk-cancelled"
 
 
 async def test_demo_success_is_committed_and_replayable():
