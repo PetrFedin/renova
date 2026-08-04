@@ -162,6 +162,8 @@ async def yookassa_checkout(
         if not stage or stage.project_id != project_id or not stage.customer_accepted_at:
             raise HTTPException(409, "Сначала примите этап — оплата без приёмки запрещена")
 
+    existing_provider_id = existing.yookassa_payment_id
+    was_resume = bool(existing_provider_id)
     try:
         provider = await checkout_svc.create_or_resume_checkout(
             amount=existing.amount,
@@ -170,7 +172,7 @@ async def yookassa_checkout(
             user_id=user.id,
             payment_id=payment_id,
             project_id=project_id,
-            existing_provider_id=existing.yookassa_payment_id,
+            existing_provider_id=existing_provider_id,
         )
     except (httpx.HTTPError, TimeoutError) as exc:
         raise _provider_error(exc) from exc
@@ -181,7 +183,7 @@ async def yookassa_checkout(
     try:
         provider_id = checkout_svc.validate_provider_snapshot(
             provider,
-            expected_provider_id=existing.yookassa_payment_id,
+            expected_provider_id=existing_provider_id,
             expected_amount=existing.amount,
             expected_project_id=project_id,
             expected_payment_id=payment_id,
@@ -217,7 +219,7 @@ async def yookassa_checkout(
             message="Оплата подтверждена (demo ЮKassa)",
         )
 
-    response_message = "Платёж восстановлен" if existing.yookassa_payment_id else None
+    response_message = "Платёж восстановлен" if was_resume else None
     if provider_status == "succeeded":
         # Authenticated provider GET is also a recovery path when webhook delivery
         # was delayed or lost. Money and metadata were checked above.
