@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import func, select
@@ -105,12 +106,36 @@ async def _record_review(
         return existing
 
 
+async def _cumulative_refunded_amount(
+    db: AsyncSession,
+    checkout_id: str | None,
+    fallback: float,
+) -> float:
+    if not checkout_id:
+        return fallback
+    total = await db.scalar(
+        select(func.coalesce(func.sum(SubscriptionRefund.amount), 0.0)).where(
+            SubscriptionRefund.checkout_id == checkout_id,
+            SubscriptionRefund.status.in_({"partial", "applied"}),
+        )
+    )
+    return float(total or fallback)
+
+
 async def _recompute_entitlement(
     db: AsyncSession,
     *,
     user_id: str,
+    target_checkout_id: str,
 ) -> bool:
-    """Replay non-refunded grants from the first captured entitlement baseline."""
+    """Rebuild grants from the nearest reliable snapshot before the target.
+
+    A snapshot captures the aggregate entitlement that existed immediately
+    before its purchase. Therefore legacy checkout rows that predate the first
+    captured snapshot are already represented in that baseline and do not make
+    later refunds impossible. If the refunded purchase predates every snapshot,
+    the result remains fail-closed for manual review.
+    """
     rows = (
         await db.execute(
             select(SubscriptionCheckout)
@@ -127,22 +152,38 @@ async def _recompute_entitlement(
     if not rows:
         raise SubscriptionRefundIntegrityError("subscription_entitlement_history_missing")
 
-    first = rows[0]
-    if first.entitlement_before_status is None or first.entitlement_before_plan is None:
+    target_index = next(
+        (index for index, row in enumerate(rows) if row.id == target_checkout_id),
+        None,
+    )
+    if target_index is None:
+        raise SubscriptionRefundIntegrityError("subscription_refund_target_missing")
+
+    baseline_index = next(
+        (
+            index
+            for index in range(target_index, -1, -1)
+            if rows[index].entitlement_before_status is not None
+            and rows[index].entitlement_before_plan is not None
+        ),
+        None,
+    )
+    if baseline_index is None:
         raise SubscriptionRefundIntegrityError("subscription_entitlement_snapshot_missing")
 
-    virtual_status = first.entitlement_before_status
-    virtual_plan = first.entitlement_before_plan
-    virtual_expiry = first.entitlement_before_expires_at
+    baseline = rows[baseline_index]
+    virtual_status = baseline.entitlement_before_status
+    virtual_plan = baseline.entitlement_before_plan
+    virtual_expiry = baseline.entitlement_before_expires_at
 
-    for checkout in rows:
+    for checkout in rows[baseline_index:]:
         if checkout.status in {"refunded", "refund_review"}:
             continue
         completed_at = checkout.completed_at
         if completed_at is None:
             continue
         base = virtual_expiry if virtual_expiry and virtual_expiry > completed_at else completed_at
-        virtual_expiry = base + __import__("datetime").timedelta(days=checkout.days)
+        virtual_expiry = base + timedelta(days=checkout.days)
         virtual_status = SubscriptionStatus.active.value
         virtual_plan = "pro"
 
@@ -193,6 +234,11 @@ async def apply_provider_refund(
 
     duplicate = await _existing_refund(db, provider_refund_id)
     if duplicate is not None:
+        cumulative = await _cumulative_refunded_amount(
+            db,
+            duplicate.checkout_id,
+            float(duplicate.amount),
+        )
         return SubscriptionRefundResult(
             handled=True,
             changed=False,
@@ -202,7 +248,7 @@ async def apply_provider_refund(
             checkout_id=duplicate.checkout_id,
             user_id=duplicate.user_id,
             refund_id=duplicate.id,
-            cumulative_amount=float(duplicate.amount),
+            cumulative_amount=cumulative,
             reason=duplicate.reason,
         )
 
@@ -313,7 +359,11 @@ async def apply_provider_refund(
     checkout.provider_status = "refunded"
     checkout.entitlement_reversed_at = utc_now()
     try:
-        changed = await _recompute_entitlement(db, user_id=checkout.user_id)
+        changed = await _recompute_entitlement(
+            db,
+            user_id=checkout.user_id,
+            target_checkout_id=checkout.id,
+        )
     except SubscriptionRefundIntegrityError as exc:
         ledger.status = "manual_review"
         ledger.reason = exc.code
