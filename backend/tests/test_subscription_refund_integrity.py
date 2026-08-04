@@ -213,7 +213,7 @@ async def test_refund_restores_active_trial_baseline():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         user, headers = await _contractor(client)
-        trial = await client.post("/api/v1/subscription/trial", headers=headers)
+        trial = await client.post("/api/v1/subscription/start-trial", headers=headers)
         assert trial.status_code == 200, trial.text
         trial_before = await _subscription(user["id"])
         assert trial_before.plan == "trial"
