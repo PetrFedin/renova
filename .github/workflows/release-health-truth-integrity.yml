@@ -1,0 +1,55 @@
+name: Release health truth integrity
+
+on: [push, pull_request]
+
+concurrency:
+  group: release-health-truth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-health-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./release-health-integrity-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Reject fabricated release health values
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 360s poetry run pytest -vv -s --tb=short \
+            tests/test_release_health_truth_integrity.py \
+            2>&1 | tee release-health-truth-contracts.log
+      - name: Scan runtime code for retired release health stub
+        run: |
+          set -euo pipefail
+          if grep -R -n -E 'sentry-stub|"crash_free_rate"[[:space:]]*:[[:space:]]*99\.2|"sessions"[[:space:]]*:[[:space:]]*1200' backend/app; then
+            echo "fabricated release health telemetry remains in runtime code" >&2
+            exit 1
+          fi
+      - name: Upload release health diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-health-truth-diagnostics
+          path: backend/release-health-truth-contracts.log
+          if-no-files-found: warn
+          retention-days: 14
