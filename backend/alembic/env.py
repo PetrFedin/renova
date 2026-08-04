@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import settings
 from app.db.base import Base
-import app.models.entities  # noqa
+import app.models  # noqa: F401 — shared and decomposed ORM registration
 import app.models.project_documents  # noqa: F401 — Document Center migrations
 import app.models.webhook_runtime  # noqa: F401 — payment webhook delivery claims
 
