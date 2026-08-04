@@ -1,0 +1,52 @@
+name: Payment checkout integrity
+
+on: [push, pull_request]
+
+concurrency:
+  group: payment-checkout-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  payment-checkout-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./payment-checkout-integrity-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Checkout replay provider identity and webhook contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 420s poetry run pytest -vv -s --tb=short \
+            tests/test_payment_checkout_resume_integrity.py \
+            tests/test_yookassa_project_payment.py \
+            tests/test_yookassa_claim_integrity.py \
+            tests/test_yookassa_webhook_delivery_integrity.py \
+            tests/test_yookassa_reversal_integrity.py \
+            2>&1 | tee payment-checkout-integrity-contracts.log
+      - name: Upload payment checkout diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payment-checkout-integrity-contract-diagnostics
+          path: backend/payment-checkout-integrity-contracts.log
+          if-no-files-found: warn
+          retention-days: 14
