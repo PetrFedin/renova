@@ -1,10 +1,13 @@
-from app.core.timeutil import utc_now
-from datetime import datetime, timedelta
+from datetime import timedelta
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.timeutil import utc_now
 from app.models.entities import Subscription, SubscriptionStatus
 
 PRO_PRICE = 990.0
+PRO_DAYS = 30
 TRIAL_DAYS = 14
 
 
@@ -59,14 +62,24 @@ async def is_pro(db: AsyncSession, user_id: str) -> bool:
 async def activate_pro(
     db: AsyncSession,
     user_id: str,
-    days: int = 30,
+    days: int = PRO_DAYS,
     *,
     commit: bool = True,
 ) -> Subscription:
+    """Add paid days without destroying an active trial or paid remainder.
+
+    Idempotency belongs to the persisted subscription checkout.  This function
+    deliberately stacks one validated purchase on top of the later of ``now``
+    and the current entitlement expiry.
+    """
+    if days <= 0:
+        raise ValueError("subscription_days_must_be_positive")
     s = await get_sub(db, user_id, commit=False, for_update=True)
+    now = utc_now()
+    base = s.expires_at if s.expires_at and s.expires_at > now else now
     s.status = SubscriptionStatus.active
     s.plan = "pro"
-    s.expires_at = utc_now() + timedelta(days=days)
+    s.expires_at = base + timedelta(days=days)
     await db.flush()
     if commit:
         await db.commit()
