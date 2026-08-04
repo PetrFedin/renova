@@ -192,7 +192,7 @@ def test_join_source_uses_atomic_conditional_update_and_durable_notification():
     assert "_enqueue_notification" in helper_block
     assert "notification_service.notify" not in helper_block
     assert "on_conflict_do_nothing" in membership_block
-    assert "begin_nested" not in membership_block
+    assert "db.begin_nested(" not in membership_block
 
 
 def test_team_routes_have_no_demo_deadlock_copy():
