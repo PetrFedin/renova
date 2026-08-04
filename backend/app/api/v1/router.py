@@ -10,6 +10,7 @@ from app.api.v1 import expense_mutations
 from app.api.v1 import material_price_sync
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
+from app.api.v1 import payment_checkout_integrity
 from app.api.v1 import project_creation
 from app.api.v1 import stage_mutations
 from app.api.v1 import stage_review_transitions
@@ -174,8 +175,12 @@ api_router.include_router(payment_disputes.router)
 _PAYMENT_HISTORY_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/payments", "GET"),
 }
-_remove_replaced_routes(payments.router, _PAYMENT_HISTORY_ROUTES)
+_PAYMENT_CHECKOUT_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/payments/{payment_id}/yookassa-checkout", "POST"),
+}
+_remove_replaced_routes(payments.router, _PAYMENT_HISTORY_ROUTES | _PAYMENT_CHECKOUT_ROUTES)
 api_router.include_router(payment_history.router)
+api_router.include_router(payment_checkout_integrity.router)
 api_router.include_router(payments.router)
 api_router.include_router(estimate.router)
 api_router.include_router(change_orders.router)
