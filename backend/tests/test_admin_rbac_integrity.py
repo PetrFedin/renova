@@ -36,10 +36,7 @@ def test_only_explicit_identity_is_admin_in_working_environment(monkeypatch):
     monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "admin_user_ids", "admin-a, admin-b")
 
-    assert admin_access_state(_user("admin-a")) == (
-        True,
-        "explicit_admin_identity",
-    )
+    assert admin_access_state(_user("admin-a")) == (True, "explicit_admin_identity")
     assert admin_access_state(_user("contractor-a")) == (
         False,
         "admin_identity_forbidden",
@@ -86,7 +83,7 @@ def test_every_admin_route_uses_canonical_guard():
 
     assert "Depends(get_current_user)" not in source
     assert "UserRole.contractor" not in source
-    assert source.count("Depends(require_admin_user)") == 4
+    assert source.count("Depends(require_admin_user)") == 5
     route_paths = {
         route.path
         for route in admin.router.routes
