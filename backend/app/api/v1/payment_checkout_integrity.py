@@ -41,6 +41,20 @@ def _provider_error(exc: Exception) -> HTTPException:
     )
 
 
+def _settlement_evidence(provider: dict) -> tuple[float, str]:
+    amount = provider.get("remote_amount")
+    currency = provider.get("remote_currency")
+    if amount is None or currency is None:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "yookassa_settlement_evidence_missing",
+                "message": "ЮKassa не вернула сумму или валюту завершённого платежа",
+            },
+        )
+    return float(amount), str(currency)
+
+
 async def _return_url(
     *,
     project_id: str,
@@ -203,25 +217,62 @@ async def yookassa_checkout(
             message="Оплата подтверждена (demo ЮKassa)",
         )
 
+    response_message = "Платёж восстановлен" if existing.yookassa_payment_id else None
     if provider_status == "succeeded":
         # Authenticated provider GET is also a recovery path when webhook delivery
         # was delayed or lost. Money and metadata were checked above.
-        if provider.get("remote_amount") is None or provider.get("remote_currency") is None:
+        try:
+            _settlement_evidence(provider)
+        except HTTPException:
             await db.rollback()
-            raise HTTPException(
-                409,
-                detail={
-                    "code": "yookassa_settlement_evidence_missing",
-                    "message": "ЮKassa не вернула сумму или валюту подтверждённого платежа",
-                },
-            )
+            raise
         await _confirm_verified_provider_payment(
             db,
             project_id=project_id,
             payment_id=payment_id,
         )
-    else:
+        response_message = "Платёж подтверждён"
+    elif provider_status == "canceled":
+        try:
+            amount, currency = _settlement_evidence(provider)
+        except HTTPException:
+            await db.rollback()
+            raise
+        from app.services.payment_reversal_service import apply_provider_cancellation
+
+        reversal = await apply_provider_cancellation(
+            db,
+            payment_id=payment_id,
+            project_id=project_id,
+            provider_id=provider_id,
+            amount=amount,
+            currency=currency,
+            reason=provider.get("cancellation_reason"),
+            commit=True,
+        )
+        if not reversal.handled:
+            await db.rollback()
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "provider_cancellation_reconciliation_failed",
+                    "message": "Отмена ЮKassa получена, но не прошла локальную проверку",
+                    "reason": reversal.reason,
+                },
+            )
+        response_message = "Платёж отменён ЮKassa"
+    elif provider_status in {"pending", "waiting_for_capture"}:
         await db.commit()
+    else:
+        await db.rollback()
+        raise HTTPException(
+            409,
+            detail={
+                "code": "unsupported_yookassa_status",
+                "message": "ЮKassa вернула неподдерживаемое состояние платежа",
+                "provider_status": provider_status,
+            },
+        )
 
     return YookassaCheckoutOut(
         demo=False,
@@ -229,5 +280,5 @@ async def yookassa_checkout(
         yookassa_payment_id=provider_id,
         confirmation_url=provider.get("confirmation_url"),
         status=provider_status,
-        message="Платёж восстановлен" if existing.yookassa_payment_id else None,
+        message=response_message,
     )
