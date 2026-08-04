@@ -59,4 +59,16 @@ jobs:
         run: poetry run python -m alembic upgrade head
       - name: Verify reflected calendar schema
         working-directory: backend
-        run: poetry run python scripts/verify_migration_schema.py
+        run: poetry run python scripts/verify_migration_schema.py --expect present
+      - name: Downgrade calendar migration
+        working-directory: backend
+        run: poetry run python -m alembic downgrade w6webhookdelivery01
+      - name: Verify calendar schema removal
+        working-directory: backend
+        run: poetry run python scripts/verify_migration_schema.py --expect absent
+      - name: Replay calendar migration
+        working-directory: backend
+        run: poetry run python -m alembic upgrade head
+      - name: Verify replayed calendar schema
+        working-directory: backend
+        run: poetry run python scripts/verify_migration_schema.py --expect present
