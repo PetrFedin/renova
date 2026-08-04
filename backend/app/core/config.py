@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 14
     refresh_token_expire_days: int = 30
     auth_allow_header_user_id: bool | None = None
+    # Comma-separated immutable user ids permitted to use /admin in working envs.
+    # Empty configuration is intentionally fail-closed on staging/production.
+    admin_user_ids: str = ""
     fns_npd_status_url: str = "https://statusnpd.nalog.ru/api/v1/tracker/taxpayer_status"
     moy_nalog_enabled: bool = False
     moy_nalog_client_id: str | None = None
@@ -86,6 +89,14 @@ class Settings(BaseSettings):
         from app.core.environment import policy_for
 
         return policy_for(self.normalized_environment).allow_header_user_id
+
+    @property
+    def admin_user_id_set(self) -> frozenset[str]:
+        return frozenset(
+            value.strip()
+            for value in (self.admin_user_ids or "").split(",")
+            if value.strip()
+        )
 
 
 settings = Settings()
