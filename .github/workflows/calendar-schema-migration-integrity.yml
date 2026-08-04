@@ -1,0 +1,74 @@
+name: Calendar schema migration integrity
+
+on:
+  push:
+    paths:
+      - "backend/alembic/**"
+      - "backend/app/models/calendar.py"
+      - "backend/app/models/entities.py"
+      - "backend/scripts/verify_migration_schema.py"
+      - ".github/workflows/calendar-schema-migration-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/alembic/**"
+      - "backend/app/models/calendar.py"
+      - "backend/app/models/entities.py"
+      - "backend/scripts/verify_migration_schema.py"
+      - ".github/workflows/calendar-schema-migration-integrity.yml"
+
+concurrency:
+  group: calendar-schema-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-calendar-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PUBLIC_BASE_URL: https://ci-staging.example.com
+      SECRET_KEY: ci-staging-secret-key-32chars!!
+      ALLOW_CREATE_ALL: "false"
+      ALLOW_DEMO_SEED: "false"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Upgrade clean PostgreSQL database
+        working-directory: backend
+        run: poetry run python -m alembic upgrade head
+      - name: Verify reflected calendar schema
+        working-directory: backend
+        run: poetry run python scripts/verify_migration_schema.py --expect present
+      - name: Downgrade calendar migration
+        working-directory: backend
+        run: poetry run python -m alembic downgrade w6webhookdelivery01
+      - name: Verify calendar schema removal
+        working-directory: backend
+        run: poetry run python scripts/verify_migration_schema.py --expect absent
+      - name: Replay calendar migration
+        working-directory: backend
+        run: poetry run python -m alembic upgrade head
+      - name: Verify replayed calendar schema
+        working-directory: backend
+        run: poetry run python scripts/verify_migration_schema.py --expect present

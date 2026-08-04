@@ -111,10 +111,10 @@ async def seed_user(
 
 def test_alembic_graph_has_one_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["w6webhookdelivery01"]
-    revision = script.get_revision("w6webhookdelivery01")
+    assert script.get_heads() == ["w8calendarintegrity01"]
+    revision = script.get_revision("w8calendarintegrity01")
     assert revision is not None
-    assert revision.down_revision == "w7codoclink001"
+    assert revision.down_revision == "w6webhookdelivery01"
 
 
 @pytest.mark.asyncio
