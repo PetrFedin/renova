@@ -171,9 +171,9 @@ async def test_partial_refunds_accumulate_before_entitlement_is_revoked():
     assert active_after_partial.status_code == 200
     assert active_after_partial.json()["is_pro"] is True
     assert second.status_code == 200, second.text
-    assert second.json()["partial"] is False
-    assert second.json()["changed"] is True
-    assert second.json()["cumulative_amount"] == 990
+    assert second.json()["partial"] is False, second.text
+    assert second.json()["changed"] is True, second.text
+    assert second.json()["cumulative_amount"] == 990, second.text
 
     subscription = await _subscription(user["id"])
     assert subscription.status == SubscriptionStatus.free
@@ -193,7 +193,7 @@ async def test_refunding_older_of_two_renewals_preserves_newer_month():
         )
 
     assert response.status_code == 200, response.text
-    assert response.json()["changed"] is True
+    assert response.json()["changed"] is True, response.text
     subscription = await _subscription(user["id"])
     assert subscription.status == SubscriptionStatus.active
     assert subscription.plan == "pro"
