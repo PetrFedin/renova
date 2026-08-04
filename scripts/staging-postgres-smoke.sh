@@ -20,6 +20,7 @@ LOG_FILE="/tmp/renova-staging-smoke-api.log"
 HEALTH_FILE="/tmp/renova-staging-postgres-health.json"
 HEADER_AUTH_FILE="/tmp/renova-staging-header-auth.json"
 OCR_FILE="/tmp/renova-staging-ocr-worker.json"
+PREFLIGHT_FILE="/tmp/renova-staging-preflight.json"
 
 cleanup() {
   if [ -f "$PID_FILE" ]; then
@@ -80,11 +81,24 @@ for i in $(seq 1 40); do
 done
 
 
-echo "=== 2) migrate and verify exact Alembic readiness ==="
+echo "=== 2) migrate and run canonical live preflight ==="
 cd "$ROOT/backend"
 .venv/bin/alembic upgrade head
-.venv/bin/python -m app.db.migration_guard
-echo "alembic readiness OK"
+.venv/bin/python -m app.core.runtime_preflight --json | tee "$PREFLIGHT_FILE"
+python3 - "$PREFLIGHT_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+assert payload.get("ok") is True, payload
+checks = {item.get("name"): item for item in payload.get("checks", [])}
+assert checks.get("storage_configuration", {}).get("ok") is True, payload
+assert checks.get("storage_runtime", {}).get("ok") is True, payload
+assert checks.get("shared_auth_runtime", {}).get("ok") is True, payload
+assert checks.get("database_revision", {}).get("ok") is True, payload
+print("canonical live preflight OK")
+PY
 
 
 echo "=== 3) prove staging policy rejects SQLite specifically ==="

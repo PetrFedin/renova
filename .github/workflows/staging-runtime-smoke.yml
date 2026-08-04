@@ -1,37 +1,57 @@
-name: Staging runtime smoke
+name: Staging runtime integrity
 
 on:
   push:
     paths:
       - "docker-compose.staging.yml"
       - "scripts/staging-postgres-smoke.sh"
+      - "scripts/staging-env-smoke.sh"
+      - "scripts/staging-credentials-probe.sh"
+      - "scripts/staging-readiness-report.sh"
+      - "backend/.env.example"
       - "backend/alembic/**"
       - "backend/alembic.ini"
       - "backend/app/main.py"
       - "backend/app/api/deps.py"
       - "backend/app/api/v1/ocr_worker.py"
+      - "backend/app/core/config.py"
       - "backend/app/core/environment.py"
+      - "backend/app/core/runtime_policy.py"
+      - "backend/app/core/runtime_preflight.py"
       - "backend/app/core/security.py"
       - "backend/app/db/migration_guard.py"
       - "backend/app/db/session.py"
       - "backend/app/services/document_ocr_runtime.py"
       - "backend/app/services/otp_runtime.py"
+      - "backend/app/services/storage_runtime.py"
+      - "backend/app/services/storage_service.py"
+      - "backend/tests/test_runtime_preflight_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
   pull_request:
     paths:
       - "docker-compose.staging.yml"
       - "scripts/staging-postgres-smoke.sh"
+      - "scripts/staging-env-smoke.sh"
+      - "scripts/staging-credentials-probe.sh"
+      - "scripts/staging-readiness-report.sh"
+      - "backend/.env.example"
       - "backend/alembic/**"
       - "backend/alembic.ini"
       - "backend/app/main.py"
       - "backend/app/api/deps.py"
       - "backend/app/api/v1/ocr_worker.py"
+      - "backend/app/core/config.py"
       - "backend/app/core/environment.py"
+      - "backend/app/core/runtime_policy.py"
+      - "backend/app/core/runtime_preflight.py"
       - "backend/app/core/security.py"
       - "backend/app/db/migration_guard.py"
       - "backend/app/db/session.py"
       - "backend/app/services/document_ocr_runtime.py"
       - "backend/app/services/otp_runtime.py"
+      - "backend/app/services/storage_runtime.py"
+      - "backend/app/services/storage_service.py"
+      - "backend/tests/test_runtime_preflight_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
 
 concurrency:
@@ -55,9 +75,34 @@ jobs:
           poetry config virtualenvs.in-project true
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-      - name: Validate smoke shell syntax
-        run: bash -n scripts/staging-postgres-smoke.sh
-      - name: Run staging runtime smoke
+      - name: Validate staging shell syntax
+        run: |
+          set -euo pipefail
+          bash -n scripts/staging-postgres-smoke.sh
+          bash -n scripts/staging-env-smoke.sh
+          bash -n scripts/staging-credentials-probe.sh
+          bash -n scripts/staging-readiness-report.sh
+      - name: Run canonical preflight contracts
+        working-directory: backend
+        run: poetry run pytest -q tests/test_runtime_preflight_integrity.py
+      - name: Exercise static staging credentials probe
+        env:
+          ENV_FILE: /dev/null
+          LIVE: "0"
+          ENVIRONMENT: staging
+          DATABASE_URL: postgresql+asyncpg://renova:redacted@db.internal/renova
+          REDIS_URL: rediss://default:redacted@redis.internal:6380/0
+          PUBLIC_BASE_URL: https://api-staging.renova.example
+          SECRET_KEY: ci-staging-secret-key-32chars!!
+          AUTH_ALLOW_HEADER_USER_ID: "false"
+          ALLOW_CREATE_ALL: "false"
+          ALLOW_DEMO_SEED: "false"
+          DOCUMENT_OCR_MODE: metadata
+          TWILIO_SID: AC00000000000000000000000000000000
+          TWILIO_TOKEN: ci-provider-token
+          TWILIO_FROM: "+15005550006"
+        run: bash scripts/staging-credentials-probe.sh
+      - name: Run full staging runtime smoke
         run: bash scripts/staging-postgres-smoke.sh
       - name: Upload API diagnostics
         if: always()
@@ -70,6 +115,7 @@ jobs:
             /tmp/renova-staging-postgres-health.json
             /tmp/renova-staging-header-auth.json
             /tmp/renova-staging-ocr-worker.json
+            /tmp/renova-staging-preflight.json
       - name: Stop isolated dependencies
         if: always()
         run: docker compose -f docker-compose.staging.yml down -v --remove-orphans
