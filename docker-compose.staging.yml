@@ -1,4 +1,4 @@
-# Minimal Postgres for local staging-like smoke (port 5435 — не конфликтует с :5433 local).
+# Isolated dependencies for the local/CI staging runtime smoke.
 # Usage: bash scripts/staging-postgres-smoke.sh
 services:
   postgres:
@@ -13,6 +13,17 @@ services:
       - renova_pg_staging:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U renova -d renova_staging"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 2s
       timeout: 3s
       retries: 30
