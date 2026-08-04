@@ -1,7 +1,7 @@
 """Canonical guarded OTP send and login endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,7 @@ from app.core.phone import normalize_phone
 from app.db.session import get_db
 from app.schemas.auth import UserOut
 from app.services import otp_abuse_service, otp_login_service, otp_service
+from app.services.auth_audit import log_auth_event
 from app.services.fns.status_npd import check_taxpayer_npd_status
 
 router = APIRouter(prefix="/auth/sms", tags=["auth"])
@@ -33,28 +34,30 @@ class OtpVerifyIn(BaseModel):
 
 
 def _client_ip(request: Request) -> str | None:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip() or None
+    # Do not trust caller-controlled forwarding headers without an explicit trusted
+    # proxy policy. ASGI server/proxy configuration must resolve the real peer.
     return request.client.host if request.client else None
 
 
-def _rate_limit(decision: otp_abuse_service.OtpAbuseDecision, response: Response) -> None:
+def _rate_limit(decision: otp_abuse_service.OtpAbuseDecision) -> None:
     if decision.allowed:
         return
-    response.headers["Retry-After"] = str(decision.retry_after)
-    raise HTTPException(429, "Слишком много попыток. Повторите позже")
+    raise HTTPException(
+        429,
+        "Слишком много попыток. Повторите позже",
+        headers={"Retry-After": str(decision.retry_after)},
+    )
 
 
 @router.post("/send")
-async def send_code(body: OtpSendIn, request: Request, response: Response):
+async def send_code(body: OtpSendIn, request: Request):
     decision = otp_abuse_service.check_and_record(
         "send",
         phone=body.phone,
         ip=_client_ip(request),
         device_id=body.device_id,
     )
-    _rate_limit(decision, response)
+    _rate_limit(decision)
     result = await otp_service.send_otp(body.phone)
     if not result.get("ok"):
         if result.get("service_unavailable"):
@@ -69,7 +72,6 @@ async def send_code(body: OtpSendIn, request: Request, response: Response):
 async def verify_code(
     body: OtpVerifyIn,
     request: Request,
-    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
     ip = _client_ip(request)
@@ -79,12 +81,19 @@ async def verify_code(
         ip=ip,
         device_id=body.device_id,
     )
-    _rate_limit(decision, response)
+    _rate_limit(decision)
     try:
         verified = otp_service.verify_otp(body.phone, body.code)
     except otp_service.OtpStoreUnavailable as exc:
         raise HTTPException(503, "Сервис кодов временно недоступен") from exc
     if not verified:
+        await log_auth_event(
+            db,
+            user_id=None,
+            path="/auth/sms/verify",
+            status_code=400,
+            note="bad_otp",
+        )
         raise HTTPException(400, "Неверный или просроченный код")
 
     npd_verified = False
