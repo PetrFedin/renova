@@ -1,7 +1,7 @@
 """Canonical deployment preflight for Renova working environments.
 
 The command deliberately reuses the same policy and runtime validators as the
-FastAPI lifespan.  It emits only non-secret status metadata and exits non-zero
+FastAPI lifespan. It emits only non-secret status metadata and exits non-zero
 when a deployment would fail startup.
 """
 from __future__ import annotations
@@ -40,6 +40,32 @@ class PreflightReport:
         }
 
 
+def _redacted_error(exc: Exception) -> str:
+    """Keep diagnostics actionable without echoing configuration secrets/DSNs."""
+    detail = str(exc)
+    sensitive_values = (
+        settings.secret_key,
+        settings.database_url,
+        settings.redis_url,
+        settings.twilio_sid,
+        settings.twilio_token,
+        settings.yookassa_secret,
+        settings.yookassa_webhook_secret,
+        settings.smtp_password,
+        settings.s3_access_key,
+        settings.s3_secret_key,
+        settings.moy_nalog_client_secret,
+        settings.kontur_api_key,
+        settings.esign_webhook_secret,
+    )
+    for value in sensitive_values:
+        candidate = str(value or "").strip()
+        if candidate:
+            detail = detail.replace(candidate, "<redacted>")
+    detail = detail.replace("\r", " ").replace("\n", " | ")
+    return f"{type(exc).__name__}: {detail[:1000]}"
+
+
 async def _run_async_check(
     name: str,
     operation: Callable[[], Awaitable[object]],
@@ -51,7 +77,7 @@ async def _run_async_check(
         return PreflightCheck(
             name=name,
             ok=False,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_redacted_error(exc),
         )
     return PreflightCheck(name=name, ok=True, detail=success_detail)
 
@@ -67,7 +93,7 @@ def _run_sync_check(
         return PreflightCheck(
             name=name,
             ok=False,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_redacted_error(exc),
         )
     return PreflightCheck(name=name, ok=True, detail=success_detail)
 
@@ -82,7 +108,7 @@ async def run_preflight(
 
     policy_check = _run_sync_check(
         "runtime_policy",
-        validate_configured_runtime,
+        lambda: validate_configured_runtime(settings),
         "configured environment policy accepted",
     )
     checks.append(policy_check)
@@ -134,7 +160,7 @@ async def run_preflight(
                 )
             )
 
-    warnings = tuple(str(item) for item in configured_runtime_warnings())
+    warnings = tuple(str(item) for item in configured_runtime_warnings(settings))
     return PreflightReport(
         environment=settings.normalized_environment,
         ok=all(check.ok for check in checks),
