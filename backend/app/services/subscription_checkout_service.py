@@ -19,7 +19,6 @@ from app.services import yookassa_service as yk
 from app.services.subscription_service import PRO_DAYS, PRO_PRICE, activate_pro, get_sub
 
 OPEN_STATUSES = {"pending", "processing"}
-TERMINAL_STATUSES = {"succeeded", "canceled", "refunded", "failed"}
 REPLAY_WINDOW = timedelta(minutes=15)
 
 
@@ -104,7 +103,7 @@ async def get_or_create_checkout(
     db.add(checkout)
     try:
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
         winner = (
             await db.execute(
@@ -113,9 +112,12 @@ async def get_or_create_checkout(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        await db.rollback()
         if winner is None:
-            raise
+            await db.rollback()
+            raise SubscriptionCheckoutIntegrityError(
+                "subscription_checkout_create_conflict"
+            ) from exc
+        await db.commit()
         return winner, False
     await db.refresh(checkout)
     return checkout, True
@@ -251,32 +253,47 @@ async def bind_provider_payment(
     if current.provider_payment_id and current.provider_payment_id != provider_payment_id:
         raise SubscriptionCheckoutIntegrityError("yookassa_payment_id_mismatch")
 
-    result = await db.execute(
-        update(SubscriptionCheckout)
-        .where(
-            SubscriptionCheckout.id == checkout_id,
-            SubscriptionCheckout.user_id == user_id,
-            SubscriptionCheckout.status.in_(OPEN_STATUSES),
-            SubscriptionCheckout.open_key == user_id,
+    try:
+        result = await db.execute(
+            update(SubscriptionCheckout)
+            .where(
+                SubscriptionCheckout.id == checkout_id,
+                SubscriptionCheckout.user_id == user_id,
+                SubscriptionCheckout.status.in_(OPEN_STATUSES),
+                SubscriptionCheckout.open_key == user_id,
+            )
+            .values(
+                provider_payment_id=provider_payment_id,
+                confirmation_url=confirmation_url,
+                provider_status=provider_status,
+                status="processing",
+                updated_at=utc_now(),
+            )
         )
-        .values(
-            provider_payment_id=provider_payment_id,
-            confirmation_url=confirmation_url,
-            provider_status=provider_status,
-            status="processing",
-            updated_at=utc_now(),
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        owner_id = await db.scalar(
+            select(SubscriptionCheckout.id).where(
+                SubscriptionCheckout.provider_payment_id == provider_payment_id
+            )
         )
-    )
+        await db.rollback()
+        if owner_id and owner_id != checkout_id:
+            raise SubscriptionCheckoutIntegrityError(
+                "yookassa_payment_id_conflict"
+            ) from exc
+        raise SubscriptionCheckoutIntegrityError(
+            "subscription_checkout_bind_conflict"
+        ) from exc
+
     if result.rowcount != 1:
         await db.rollback()
         raise SubscriptionCheckoutIntegrityError("subscription_checkout_bind_race")
-    await db.flush()
+    await db.refresh(current)
     if commit:
         await db.commit()
-    refreshed = await db.get(SubscriptionCheckout, checkout_id)
-    if refreshed is None:
-        raise SubscriptionCheckoutIntegrityError("subscription_checkout_not_found")
-    return refreshed
+    return current
 
 
 async def _locked_checkout(
@@ -390,9 +407,6 @@ async def cancel_checkout(
     checkout.completed_at = now
     checkout.replay_until = None
     checkout.updated_at = now
-    if reason and not checkout.confirmation_url:
-        # Preserve a bounded diagnostic without introducing another schema field.
-        checkout.confirmation_url = f"canceled:{reason[:240]}"
     await db.flush()
     if commit:
         await db.commit()
