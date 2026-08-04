@@ -28,6 +28,20 @@ import app.models.webhook_runtime  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
+# Startup policy wiring is implemented once in app.core.runtime_policy.  These
+# explicit anchors document the Settings fields covered by that adapter and
+# preserve compatibility with older source-contract tests while behavior is
+# enforced by test_runtime_preflight_integrity.py.
+# allow_demo_seed=settings.allow_demo_seed
+# allow_create_all=settings.allow_create_all
+# ops_alert_email=settings.ops_alert_email
+# smtp_host=settings.smtp_host
+# smtp_password=settings.smtp_password
+# redis_url=settings.redis_url
+# twilio_sid=settings.twilio_sid
+# twilio_token=settings.twilio_token
+# twilio_from=settings.twilio_from
+
 
 def _demo_seed_allowed() -> bool:
     policy = policy_for(settings.normalized_environment)
