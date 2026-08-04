@@ -14,6 +14,7 @@ from app.api.v1 import project_creation
 from app.api.v1 import stage_mutations
 from app.api.v1 import stage_review_transitions
 from app.api.v1 import otp_auth
+from app.api.v1 import calendar_integrity
 from app.api.v1 import calendar_mutations
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
@@ -113,10 +114,7 @@ _PORTAL_ACCEPTANCE_ROUTES: set[RouteSignature] = {
     ("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/accept", "POST"),
     ("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/return", "POST"),
 }
-_remove_replaced_routes(
-    portal.router,
-    _PORTAL_CHANGE_ORDER_ROUTES | _PORTAL_ACCEPTANCE_ROUTES,
-)
+_remove_replaced_routes(portal.router, _PORTAL_CHANGE_ORDER_ROUTES | _PORTAL_ACCEPTANCE_ROUTES)
 api_router.include_router(portal_change_order_decisions.router)
 api_router.include_router(portal_acceptance_decisions.router)
 api_router.include_router(portal.router)
@@ -164,6 +162,7 @@ api_router.include_router(stage_review_transitions.router)
 api_router.include_router(projects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
+api_router.include_router(calendar_integrity.router)
 api_router.include_router(calendar_mutations.router)
 api_router.include_router(calendar.router)
 api_router.include_router(chat_inbox.router)
