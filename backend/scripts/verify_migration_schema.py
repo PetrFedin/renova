@@ -1,17 +1,21 @@
-"""Fail CI when the Alembic head does not materialize critical ORM schema.
+"""Reflect the database and enforce the calendar Alembic contract.
 
-Run only after ``alembic upgrade head`` against the target database.  The check
-uses database reflection rather than ``Base.metadata`` so model-only additions
-cannot create a false production-readiness signal.
+The verifier never imports ORM metadata.  It is intentionally run after real
+Alembic transitions so model-only schema changes cannot create a false
+production-readiness signal.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
-from collections.abc import Iterable
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+
+_PRESENT_REVISION = "w8calendarintegrity01"
+_ABSENT_REVISION = "w6webhookdelivery01"
 
 
 class SchemaMismatch(RuntimeError):
@@ -23,11 +27,19 @@ def _require(condition: bool, message: str) -> None:
         raise SchemaMismatch(message)
 
 
-def _names(rows: Iterable[dict], key: str = "name") -> set[str]:
-    return {str(row[key]) for row in rows if row.get(key)}
+def _current_revision(sync_connection) -> str:
+    value = sync_connection.execute(
+        text("SELECT version_num FROM alembic_version")
+    ).scalar_one()
+    return str(value)
 
 
-def _verify(sync_connection) -> None:
+def _verify_present(sync_connection) -> None:
+    _require(
+        _current_revision(sync_connection) == _PRESENT_REVISION,
+        f"Alembic head must be {_PRESENT_REVISION}",
+    )
+
     inspector = inspect(sync_connection)
     tables = set(inspector.get_table_names())
     _require("users" in tables, "users table is missing after Alembic upgrade")
@@ -45,7 +57,9 @@ def _verify(sync_connection) -> None:
     _require(ics_token.get("nullable") is True, "users.ics_token must be nullable")
 
     user_indexes = {
-        index["name"]: index for index in inspector.get_indexes("users") if index.get("name")
+        index["name"]: index
+        for index in inspector.get_indexes("users")
+        if index.get("name")
     }
     ics_index = user_indexes.get("ix_users_ics_token")
     _require(ics_index is not None, "ix_users_ics_token is missing")
@@ -76,7 +90,8 @@ def _verify(sync_connection) -> None:
         "updated_at",
     }
     calendar_columns = {
-        column["name"]: column for column in inspector.get_columns("calendar_items")
+        column["name"]: column
+        for column in inspector.get_columns("calendar_items")
     }
     missing_columns = expected_columns - set(calendar_columns)
     _require(
@@ -121,7 +136,8 @@ def _verify(sync_connection) -> None:
     for columns, target in expected_foreign_keys.items():
         _require(
             foreign_keys.get(columns) == target,
-            f"calendar_items foreign key mismatch for {columns}: {foreign_keys.get(columns)}",
+            f"calendar_items foreign key mismatch for {columns}: "
+            f"{foreign_keys.get(columns)}",
         )
 
     expected_indexes = {
@@ -149,16 +165,59 @@ def _verify(sync_connection) -> None:
         _require(not bool(index.get("unique")), f"{name} must not be unique")
 
 
-async def _main() -> None:
+def _verify_absent(sync_connection) -> None:
+    _require(
+        _current_revision(sync_connection) == _ABSENT_REVISION,
+        f"Alembic revision after downgrade must be {_ABSENT_REVISION}",
+    )
+
+    inspector = inspect(sync_connection)
+    tables = set(inspector.get_table_names())
+    _require(
+        "calendar_items" not in tables,
+        "calendar_items survived downgrade to the previous revision",
+    )
+    _require("users" in tables, "users table disappeared during calendar downgrade")
+
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    _require(
+        "ics_token" not in user_columns,
+        "users.ics_token survived downgrade to the previous revision",
+    )
+    user_indexes = {
+        index["name"]
+        for index in inspector.get_indexes("users")
+        if index.get("name")
+    }
+    _require(
+        "ix_users_ics_token" not in user_indexes,
+        "ix_users_ics_token survived downgrade to the previous revision",
+    )
+
+
+async def _main(expect: str) -> None:
     database_url = os.environ.get("DATABASE_URL", "").strip()
     _require(bool(database_url), "DATABASE_URL is required")
     engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
-            await connection.run_sync(_verify)
+            verifier = _verify_present if expect == "present" else _verify_absent
+            await connection.run_sync(verifier)
     finally:
         await engine.dispose()
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--expect",
+        choices=("present", "absent"),
+        default="present",
+        help="Expected state of the calendar migration relative to its revision.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    asyncio.run(_main())
+    arguments = _parse_args()
+    asyncio.run(_main(arguments.expect))
