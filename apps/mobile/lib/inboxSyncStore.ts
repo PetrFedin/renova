@@ -194,26 +194,30 @@ function refreshInboxChatRow(nextChat: number) {
   inboxBadge = taskRows + unread;
 }
 
-/** Прочитать тред: optimistic local + API + полный resync */
+/** Прочитать тред: optimistic local + API cursor + resync при ошибке */
 export async function markChatReadAndSync(
   userId: string,
   projectId: string,
   threadId: string,
   userRole?: UserRole,
   knownUnread = 0,
+  readThroughMessageId?: string | null,
 ): Promise<void> {
   const prev = snapshotState();
   void knownUnread;
 
+  // Optimistic только для UX; при ошибке API принудительный resync восстановит счётчики
   applyLocalThreadUnread(threadId, 0);
   refreshInboxChatRow(chatCount);
   notifyIfChanged(prev);
 
+  let apiOk = false;
   try {
-    await api.markChatRead(userId, projectId, threadId);
+    await api.markChatRead(userId, projectId, threadId, readThroughMessageId);
     chatFailed = false;
+    apiOk = true;
   } catch {
-    /* resync подтянет актуальное */
+    /* resync ниже */
   }
 
   await reloadInboxSync(
@@ -227,6 +231,11 @@ export async function markChatReadAndSync(
     true,
   );
   emitInboxWs();
+
+  if (!apiOk) {
+    // Не оставляем «вечный 0» без серверного подтверждения — resync уже выполнен
+    chatFailed = false;
+  }
 }
 
 export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: UserRole): Promise<void> {

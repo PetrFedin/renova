@@ -146,14 +146,38 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  /** W114: прочтение чата — очередь офлайн (inbox badge) */
-  markChatRead: async (userId: string, projectId: string, threadId: string) => {
+  /** W114: прочтение чата — только после видимости треда; cursor через read_through_message_id */
+  markChatRead: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    readThroughMessageId?: string | null,
+  ) => {
+    const body = JSON.stringify(
+      readThroughMessageId ? { read_through_message_id: readThroughMessageId } : {},
+    );
     try {
-      return await req(`/api/v1/projects/${projectId}/chats/${threadId}/read`, { method: 'POST' }, userId);
+      return await req<{
+        ok: boolean;
+        thread_id: string;
+        read_through_message_id?: string | null;
+        thread_unread_count: number;
+        total_unread_count?: number;
+        read_at?: string;
+      }>(
+        `/api/v1/projects/${projectId}/chats/${threadId}/read`,
+        { method: 'POST', body },
+        userId,
+      );
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/chats/${threadId}/read`, method: 'POST', body: '{}', userId });
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/read`,
+        method: 'POST',
+        body,
+        userId,
+      });
       throw new Error('offline_queued');
     }
   },
