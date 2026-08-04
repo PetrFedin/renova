@@ -37,7 +37,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("idempotence_key", name="uq_subscription_checkout_idempotence_key"),
         sa.UniqueConstraint("open_key", name="uq_subscription_checkout_open_key"),
-        sa.UniqueConstraint("provider_payment_id", name="uq_subscription_checkout_provider_payment_id"),
     )
     op.create_index(
         "ix_subscription_checkouts_user_id",
