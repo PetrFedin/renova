@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services import subscription_checkout_service as checkout_svc
+from app.services import subscription_refund_service as refund_svc
 from app.services import yookassa_service as yk
 from app.services.webhook_delivery_service import (
     abandon_delivery,
@@ -31,6 +32,7 @@ _RETRYABLE_REASONS = {
     "refund_source_not_confirmed",
     "subscription_checkout_not_found",
     "subscription_user_not_found",
+    "subscription_refund_source_not_settled",
 }
 
 
@@ -90,6 +92,37 @@ async def _process_subscription_event(
     obj = body.get("object") or {}
     if not isinstance(obj, dict):
         return {"ok": False, "handled": False, "reason": "invalid_object"}
+
+    # Refund objects identify the original purchase with payment_id and often do
+    # not repeat payment metadata. Resolve ownership from persisted provider IDs
+    # before allowing the legacy project-payment reversal processor to run.
+    if event == "refund.succeeded" and obj.get("status") == "succeeded":
+        provider_refund_id = str(obj.get("id") or "")
+        provider_payment_id = str(obj.get("payment_id") or "")
+        amount, currency = _remote_money(obj)
+        result = await refund_svc.apply_provider_refund(
+            db,
+            provider_refund_id=provider_refund_id,
+            provider_payment_id=provider_payment_id,
+            amount=amount,
+            currency=currency,
+            commit=False,
+        )
+        if result is None:
+            return None
+        return {
+            "ok": True,
+            "handled": result.handled,
+            "changed": result.changed,
+            "duplicate": result.duplicate,
+            "partial": result.partial,
+            "manual_review": result.manual_review,
+            "checkout_id": result.checkout_id,
+            "user_id": result.user_id,
+            "subscription_refund_id": result.refund_id,
+            "cumulative_amount": result.cumulative_amount,
+            "reason": result.reason,
+        }
 
     metadata = obj.get("metadata") or {}
     if not isinstance(metadata, dict) or metadata.get("kind") != "pro_subscription":
@@ -355,6 +388,13 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
         try:
             result = await _process_subscription_event(body, db)
         except checkout_svc.SubscriptionCheckoutIntegrityError as exc:
+            result = {
+                "ok": False,
+                "handled": False,
+                "reason": exc.code,
+                "retryable": exc.code in _RETRYABLE_REASONS,
+            }
+        except refund_svc.SubscriptionRefundIntegrityError as exc:
             result = {
                 "ok": False,
                 "handled": False,
