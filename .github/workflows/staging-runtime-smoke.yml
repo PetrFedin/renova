@@ -1,0 +1,75 @@
+name: Staging runtime smoke
+
+on:
+  push:
+    paths:
+      - "docker-compose.staging.yml"
+      - "scripts/staging-postgres-smoke.sh"
+      - "backend/alembic/**"
+      - "backend/alembic.ini"
+      - "backend/app/main.py"
+      - "backend/app/api/deps.py"
+      - "backend/app/api/v1/ocr_worker.py"
+      - "backend/app/core/environment.py"
+      - "backend/app/core/security.py"
+      - "backend/app/db/migration_guard.py"
+      - "backend/app/db/session.py"
+      - "backend/app/services/document_ocr_runtime.py"
+      - "backend/app/services/otp_runtime.py"
+      - ".github/workflows/staging-runtime-smoke.yml"
+  pull_request:
+    paths:
+      - "docker-compose.staging.yml"
+      - "scripts/staging-postgres-smoke.sh"
+      - "backend/alembic/**"
+      - "backend/alembic.ini"
+      - "backend/app/main.py"
+      - "backend/app/api/deps.py"
+      - "backend/app/api/v1/ocr_worker.py"
+      - "backend/app/core/environment.py"
+      - "backend/app/core/security.py"
+      - "backend/app/db/migration_guard.py"
+      - "backend/app/db/session.py"
+      - "backend/app/services/document_ocr_runtime.py"
+      - "backend/app/services/otp_runtime.py"
+      - ".github/workflows/staging-runtime-smoke.yml"
+
+concurrency:
+  group: staging-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-redis-bearer-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend environment
+        run: |
+          set -euo pipefail
+          pip install poetry
+          cd backend
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Validate smoke shell syntax
+        run: bash -n scripts/staging-postgres-smoke.sh
+      - name: Run staging runtime smoke
+        run: bash scripts/staging-postgres-smoke.sh
+      - name: Upload API diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-runtime-smoke-diagnostics
+          if-no-files-found: ignore
+          path: |
+            /tmp/renova-staging-smoke-api.log
+            /tmp/renova-staging-postgres-health.json
+            /tmp/renova-staging-header-auth.json
+            /tmp/renova-staging-ocr-worker.json
+      - name: Stop isolated dependencies
+        if: always()
+        run: docker compose -f docker-compose.staging.yml down -v --remove-orphans
