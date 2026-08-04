@@ -55,7 +55,6 @@ async def get_or_create_checkout(
     force_new: bool = False,
 ) -> tuple[SubscriptionCheckout, bool]:
     """Return one open/replay checkout or persist a new financial identity."""
-    # The unique Subscription row is the PostgreSQL serialization point.
     await get_sub(db, user_id, commit=False, for_update=True)
 
     open_checkout = (
@@ -347,6 +346,11 @@ async def complete_checkout(
     if user.role != UserRole.contractor:
         raise SubscriptionCheckoutIntegrityError("subscription_role_forbidden")
 
+    subscription = await get_sub(db, user_id, commit=False, for_update=True)
+    checkout.entitlement_before_status = subscription.status.value
+    checkout.entitlement_before_plan = subscription.plan
+    checkout.entitlement_before_expires_at = subscription.expires_at
+
     checkout.provider_payment_id = provider_payment_id
     checkout.provider_status = "succeeded"
     checkout.status = "succeeded"
@@ -354,12 +358,13 @@ async def complete_checkout(
     checkout.completed_at = utc_now()
     checkout.replay_until = checkout.completed_at + REPLAY_WINDOW
     checkout.updated_at = checkout.completed_at
-    await activate_pro(
+    activated = await activate_pro(
         db,
         user_id,
         days=checkout.days,
         commit=False,
     )
+    checkout.entitlement_after_expires_at = activated.expires_at
     await db.flush()
     if commit:
         await db.commit()

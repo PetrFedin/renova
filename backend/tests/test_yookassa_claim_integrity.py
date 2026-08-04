@@ -111,10 +111,13 @@ async def seed_user(
 
 def test_alembic_graph_has_one_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["w9subscriptioncheckout01"]
-    revision = script.get_revision("w9subscriptioncheckout01")
-    assert revision is not None
-    assert revision.down_revision == "w8calendarintegrity01"
+    assert script.get_heads() == ["w10subscriptionrefund01"]
+    refund_revision = script.get_revision("w10subscriptionrefund01")
+    assert refund_revision is not None
+    assert refund_revision.down_revision == "w9subscriptioncheckout01"
+    checkout_revision = script.get_revision("w9subscriptioncheckout01")
+    assert checkout_revision is not None
+    assert checkout_revision.down_revision == "w8calendarintegrity01"
     calendar_revision = script.get_revision("w8calendarintegrity01")
     assert calendar_revision is not None
     assert calendar_revision.down_revision == "w6webhookdelivery01"
@@ -129,10 +132,7 @@ async def test_missing_provider_object_id_is_rejected_before_claim(webhook_store
         phone="+79990004001",
         role=UserRole.contractor,
     )
-    body = subscription_body(
-        "missing-id-contractor",
-        object_id="",
-    )
+    body = subscription_body("missing-id-contractor", object_id="")
     async with session_factory() as db:
         with pytest.raises(HTTPException) as exc_info:
             await subscription.yookassa_webhook(FakeRequest(body), db)
@@ -140,9 +140,7 @@ async def test_missing_provider_object_id_is_rejected_before_claim(webhook_store
     assert exc_info.value.detail == "missing_provider_object_id"
 
     async with session_factory() as db:
-        assert await db.scalar(
-            select(func.count()).select_from(PaymentWebhookDelivery)
-        ) == 0
+        assert await db.scalar(select(func.count()).select_from(PaymentWebhookDelivery)) == 0
         assert await db.scalar(select(func.count()).select_from(Subscription)) == 0
 
 
@@ -208,10 +206,7 @@ async def test_valid_subscription_is_activated_once_and_replay_is_duplicate(webh
         phone="+79990004002",
         role=UserRole.contractor,
     )
-    body = subscription_body(
-        "valid-contractor",
-        object_id="yk-valid-pro",
-    )
+    body = subscription_body("valid-contractor", object_id="yk-valid-pro")
 
     async with session_factory() as db:
         first = await subscription.yookassa_webhook(FakeRequest(body), db)
@@ -232,21 +227,13 @@ async def test_valid_subscription_is_activated_once_and_replay_is_duplicate(webh
         assert len(rows) == 1
         assert rows[0].plan == "pro"
         assert rows[0].status.value == "active"
-        assert await db.scalar(
-            select(func.count()).select_from(PaymentWebhookEvent)
-        ) == 1
+        assert await db.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 1
 
 
 @pytest.mark.asyncio
-async def test_active_claim_blocks_concurrent_business_execution(
-    webhook_store,
-    monkeypatch,
-):
+async def test_active_claim_blocks_concurrent_business_execution(webhook_store, monkeypatch):
     _engine, session_factory = webhook_store
-    body = subscription_body(
-        "concurrent-contractor",
-        object_id="yk-concurrent",
-    )
+    body = subscription_body("concurrent-contractor", object_id="yk-concurrent")
     entered = asyncio.Event()
     release = asyncio.Event()
     calls = 0
@@ -418,8 +405,7 @@ async def test_project_provider_id_attach_rolls_back_when_confirmation_fails(
         ) is None
         attempts = await db.scalar(
             select(PaymentWebhookDelivery.attempts).where(
-                PaymentWebhookDelivery.event_id
-                == "payment.succeeded:yk-rollback-payment"
+                PaymentWebhookDelivery.event_id == "payment.succeeded:yk-rollback-payment"
             )
         )
         assert attempts == 1
@@ -430,10 +416,7 @@ async def test_secret_gate_rejects_before_delivery_claim(webhook_store, monkeypa
     _engine, session_factory = webhook_store
     monkeypatch.setattr(settings, "environment", "staging")
     monkeypatch.setattr(settings, "yookassa_webhook_secret", "s" * 40)
-    body = subscription_body(
-        "nobody",
-        object_id="yk-secret-rejected",
-    )
+    body = subscription_body("nobody", object_id="yk-secret-rejected")
 
     async with session_factory() as db:
         with pytest.raises(HTTPException) as exc_info:
@@ -444,9 +427,7 @@ async def test_secret_gate_rejects_before_delivery_claim(webhook_store, monkeypa
     assert exc_info.value.status_code == 401
 
     async with session_factory() as db:
-        assert await db.scalar(
-            select(func.count()).select_from(PaymentWebhookDelivery)
-        ) == 0
+        assert await db.scalar(select(func.count()).select_from(PaymentWebhookDelivery)) == 0
 
 
 def test_production_alias_uses_ip_allowlist(monkeypatch):
