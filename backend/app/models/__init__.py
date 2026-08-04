@@ -5,5 +5,6 @@ from __future__ import annotations
 from app.models import entities as entities
 from app.models.calendar import CalendarItem as CalendarItem
 from app.models.subscription_checkout import SubscriptionCheckout as SubscriptionCheckout
+from app.models.subscription_checkout import SubscriptionRefund as SubscriptionRefund
 
-__all__ = ["entities", "CalendarItem", "SubscriptionCheckout"]
+__all__ = ["entities", "CalendarItem", "SubscriptionCheckout", "SubscriptionRefund"]
