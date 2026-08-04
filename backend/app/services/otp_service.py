@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import math
 import secrets
 import threading
 import time
@@ -25,9 +26,43 @@ _RESEND_COOLDOWN = 60
 _MAX_VERIFY_FAILS = 5
 _LOCK_SECONDS = 900
 _SEND_CLAIM_SECONDS = 30
+_REDIS_CODE_PREFIX = "v2|"
 
-# One Redis script owns verify, attempts, lockout and consume. A successful code
-# is deleted in the same atomic operation, so two workers cannot both accept it.
+# Store the authoritative deadline with the digest and derive it from Redis TIME.
+# The PX lifetime is cleanup only; verification uses the embedded deadline, so
+# integer TTL rounding can never extend an OTP's security validity window.
+_STORE_OTP_SCRIPT = """
+local code_key = KEYS[1]
+local digest = ARGV[1]
+local ttl_ms = tonumber(ARGV[2])
+if not ttl_ms or ttl_ms <= 0 then
+    redis.call('del', code_key)
+    return 0
+end
+local server_time = redis.call('time')
+local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
+local deadline_ms = now_ms + ttl_ms
+redis.call('set', code_key, 'v2|' .. tostring(deadline_ms) .. '|' .. digest, 'PX', ttl_ms)
+return deadline_ms
+"""
+
+_CLEAR_OTP_IF_DIGEST_SCRIPT = """
+local stored = redis.call('get', KEYS[1])
+if not stored then
+    return 0
+end
+if stored == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+local _, stored_digest = string.match(stored, '^v2|(%d+)|(.+)$')
+if stored_digest == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
+
+# Redis owns verification, attempts, lockout, expiry and consume. Successful
+# verification deletes the code atomically, so concurrent workers cannot replay it.
 _VERIFY_OTP_SCRIPT = """
 local lock_key = KEYS[1]
 local code_key = KEYS[2]
@@ -35,7 +70,20 @@ local fails_key = KEYS[3]
 local candidate = ARGV[1]
 local max_fails = tonumber(ARGV[2])
 local lock_seconds = tonumber(ARGV[3])
-local lock_until = ARGV[4]
+
+local function register_failure(reason)
+    local failures = redis.call('incr', fails_key)
+    redis.call('expire', fails_key, lock_seconds)
+    if failures >= max_fails then
+        local server_time = redis.call('time')
+        local lock_until = tonumber(server_time[1]) + lock_seconds
+        redis.call('set', lock_key, tostring(lock_until), 'EX', lock_seconds)
+        redis.call('del', fails_key)
+        redis.call('del', code_key)
+        return 'locked'
+    end
+    return reason
+end
 
 if redis.call('exists', lock_key) == 1 then
     return 'locked'
@@ -43,26 +91,24 @@ end
 
 local stored = redis.call('get', code_key)
 if not stored then
-    local failures = redis.call('incr', fails_key)
-    redis.call('expire', fails_key, lock_seconds)
-    if failures >= max_fails then
-        redis.call('set', lock_key, lock_until, 'EX', lock_seconds)
-        redis.call('del', fails_key)
-        return 'locked'
-    end
-    return 'missing'
+    return register_failure('missing')
 end
 
-if stored ~= candidate then
-    local failures = redis.call('incr', fails_key)
-    redis.call('expire', fails_key, lock_seconds)
-    if failures >= max_fails then
-        redis.call('set', lock_key, lock_until, 'EX', lock_seconds)
-        redis.call('del', fails_key)
+local deadline_raw, stored_digest = string.match(stored, '^v2|(%d+)|(.+)$')
+if deadline_raw then
+    local server_time = redis.call('time')
+    local now_ms = tonumber(server_time[1]) * 1000 + math.floor(tonumber(server_time[2]) / 1000)
+    if now_ms >= tonumber(deadline_raw) then
         redis.call('del', code_key)
-        return 'locked'
+        return register_failure('expired')
     end
-    return 'mismatch'
+else
+    -- Rolling-deploy compatibility for raw digest records created by v1.
+    stored_digest = stored
+end
+
+if stored_digest ~= candidate then
+    return register_failure('mismatch')
 end
 
 redis.call('del', code_key)
@@ -145,6 +191,21 @@ def _redis_client():
 
 def _rk(kind: str, phone: str) -> str:
     return f"renova:otp:{kind}:{phone}"
+
+
+def _redis_time_seconds(redis_client) -> float:
+    seconds, microseconds = redis_client.time()
+    return float(seconds) + (float(microseconds) / 1_000_000)
+
+
+def _unpack_redis_code(raw: str) -> tuple[str, int | None]:
+    if not raw.startswith(_REDIS_CODE_PREFIX):
+        return raw, None
+    try:
+        _, deadline_raw, digest = raw.split("|", 2)
+        return digest, int(deadline_raw)
+    except (TypeError, ValueError):
+        return "", 0
 
 
 def _local_send_lock(phone: str) -> asyncio.Lock:
@@ -259,17 +320,15 @@ def _remove_send_record(phone: str, record: str | float) -> None:
 def _lock_left(phone: str, now: float) -> int:
     redis_client = _redis_client()
     if redis_client:
-        raw = redis_client.get(_rk("lock", phone))
-        if not raw:
-            return 0
-        return max(0, int(float(raw) - now))
-    return max(0, int(_lock_until.get(phone, 0) - now))
+        remaining_ms = int(redis_client.pttl(_rk("lock", phone)))
+        return max(0, math.ceil(remaining_ms / 1000)) if remaining_ms > 0 else 0
+    return max(0, math.ceil(_lock_until.get(phone, 0) - now))
 
 
 def _set_lock(phone: str, until: float) -> None:
     redis_client = _redis_client()
     if redis_client:
-        ttl = max(1, int(until - time.time()))
+        ttl = max(1, math.ceil(until - time.time()))
         redis_client.setex(_rk("lock", phone), ttl, str(until))
         return
     _lock_until[phone] = until
@@ -278,8 +337,17 @@ def _set_lock(phone: str, until: float) -> None:
 def _store_code(phone: str, digest: str, expires_at: float) -> None:
     redis_client = _redis_client()
     if redis_client:
-        ttl = max(1, int(expires_at - time.time()))
-        redis_client.setex(_rk("code", phone), ttl, digest)
+        remaining_ms = math.ceil((expires_at - time.time()) * 1000)
+        if remaining_ms <= 0:
+            redis_client.delete(_rk("code", phone))
+            return
+        redis_client.eval(
+            _STORE_OTP_SCRIPT,
+            1,
+            _rk("code", phone),
+            digest,
+            remaining_ms,
+        )
         return
     _store[phone] = (digest, expires_at)
 
@@ -288,12 +356,20 @@ def _get_code(phone: str) -> tuple[str, float] | None:
     redis_client = _redis_client()
     if redis_client:
         key = _rk("code", phone)
-        digest = redis_client.get(key)
-        if not digest:
+        raw = redis_client.get(key)
+        if not raw:
             return None
-        ttl = redis_client.ttl(key)
-        expires_at = time.time() + (ttl if ttl and ttl > 0 else 0)
-        return str(digest), expires_at
+        digest, deadline_ms = _unpack_redis_code(str(raw))
+        if deadline_ms is not None:
+            now_ms = math.floor(_redis_time_seconds(redis_client) * 1000)
+            if not digest or now_ms >= deadline_ms:
+                redis_client.delete(key)
+                return None
+            return digest, time.time() + ((deadline_ms - now_ms) / 1000)
+        remaining_ms = int(redis_client.pttl(key))
+        if remaining_ms <= 0:
+            return None
+        return digest, time.time() + (remaining_ms / 1000)
     return _store.get(phone)
 
 
@@ -309,8 +385,7 @@ def _clear_code_if_matches(phone: str, expected_digest: str) -> None:
     redis_client = _redis_client()
     if redis_client:
         redis_client.eval(
-            "if redis.call('get', KEYS[1]) == ARGV[1] then "
-            "return redis.call('del', KEYS[1]) else return 0 end",
+            _CLEAR_OTP_IF_DIGEST_SCRIPT,
             1,
             _rk("code", phone),
             expected_digest,
@@ -378,7 +453,8 @@ async def send_otp(phone: str) -> dict:
                         "rate_limited": True,
                     }
 
-                now = time.time()
+                redis_client = _redis_client()
+                now = _redis_time_seconds(redis_client) if redis_client else time.time()
                 lock_left = _lock_left(normalized, now)
                 if lock_left > 0:
                     return {
@@ -405,7 +481,7 @@ async def send_otp(phone: str) -> dict:
                 code = f"{secrets.randbelow(1_000_000):06d}"
                 code_digest = _digest(normalized, code)
                 previous = _get_code(normalized)
-                _store_code(normalized, code_digest, now + _TTL)
+                _store_code(normalized, code_digest, time.time() + _TTL)
                 send_record = _record_send(normalized, now)
 
                 try:
@@ -482,7 +558,7 @@ def _verify_local(phone: str, candidate: str, now: float) -> bool:
             return False
 
         stored_digest, expires_at = record
-        if now > expires_at:
+        if now >= expires_at:
             _store.pop(phone, None)
             return False
 
@@ -522,7 +598,6 @@ def verify_otp(phone: str, code: str) -> bool:
             candidate,
             _MAX_VERIFY_FAILS,
             _LOCK_SECONDS,
-            str(now + _LOCK_SECONDS),
         )
         return str(result) == "ok"
     except OtpStoreUnavailable:
