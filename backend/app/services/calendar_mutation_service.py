@@ -36,10 +36,14 @@ def _clean_text(value: str | None, *, limit: int, required: bool = False) -> str
 
 def _validate_timing(
     *,
-    start_at: datetime,
-    end_at: datetime,
+    start_at: datetime | None,
+    end_at: datetime | None,
     reminder_at: datetime | None,
 ) -> None:
+    if start_at is None:
+        raise ValueError("calendar_start_at_required")
+    if end_at is None:
+        raise ValueError("calendar_end_at_required")
     if _utc(end_at) <= _utc(start_at):
         raise ValueError("calendar_interval_invalid")
     if reminder_at is not None and _utc(reminder_at) > _utc(start_at):
@@ -85,7 +89,6 @@ async def _validate_link(
     from app.services import team_service
 
     resolved_project_id = project_id
-    stage: Stage | None = None
     if stage_id is not None:
         stage = await db.get(Stage, stage_id)
         if stage is None:
@@ -133,30 +136,30 @@ async def create_item(
     if clean_event_type == "stage":
         raise ValueError("calendar_stage_projection_managed")
 
+    resolved_project_id, resolved_stage_id = await _validate_link(
+        db,
+        actor=actor,
+        project_id=project_id,
+        stage_id=stage_id,
+    )
+    item = CalendarItem(
+        user_id=actor.id,
+        title=clean_title,
+        description=clean_description,
+        start_at=start_at,
+        end_at=end_at,
+        all_day=all_day,
+        event_type=clean_event_type,
+        color=clean_color,
+        is_public=is_public,
+        recurrence=clean_recurrence,
+        location=clean_location,
+        reminder_at=reminder_at,
+        reminder_sent=False,
+        project_id=resolved_project_id,
+        stage_id=resolved_stage_id,
+    )
     try:
-        resolved_project_id, resolved_stage_id = await _validate_link(
-            db,
-            actor=actor,
-            project_id=project_id,
-            stage_id=stage_id,
-        )
-        item = CalendarItem(
-            user_id=actor.id,
-            title=clean_title,
-            description=clean_description,
-            start_at=start_at,
-            end_at=end_at,
-            all_day=all_day,
-            event_type=clean_event_type,
-            color=clean_color,
-            is_public=is_public,
-            recurrence=clean_recurrence,
-            location=clean_location,
-            reminder_at=reminder_at,
-            reminder_sent=False,
-            project_id=resolved_project_id,
-            stage_id=resolved_stage_id,
-        )
         db.add(item)
         await db.commit()
     except BaseException:
@@ -175,95 +178,96 @@ async def update_item(
 ) -> CalendarMutationResult | None:
     item = await _locked_item(db, item_id)
     if item is None:
-        await db.rollback()
         return None
     if item.user_id != actor.id:
-        await db.rollback()
         raise ValueError("calendar_item_owner_only")
     if _is_canonical_stage_projection(item):
-        await db.rollback()
         raise ValueError("calendar_stage_projection_managed")
 
+    next_project_id = changes.get("project_id", item.project_id)
+    next_stage_id = changes.get("stage_id", item.stage_id)
+    if "project_id" in changes and changes["project_id"] is None and "stage_id" not in changes:
+        next_stage_id = None
+    resolved_project_id, resolved_stage_id = await _validate_link(
+        db,
+        actor=actor,
+        project_id=next_project_id,
+        stage_id=next_stage_id,
+    )
+
+    next_title = (
+        _clean_text(changes["title"], limit=255, required=True)
+        if "title" in changes
+        else item.title
+    )
+    next_description = (
+        _clean_text(changes["description"], limit=4000)
+        if "description" in changes
+        else item.description
+    )
+    next_location = (
+        _clean_text(changes["location"], limit=500)
+        if "location" in changes
+        else item.location
+    )
+    next_recurrence = (
+        _clean_text(changes["recurrence"], limit=128)
+        if "recurrence" in changes
+        else item.recurrence
+    )
+    next_event_type = (
+        _clean_text(changes["event_type"], limit=64) or "other"
+        if "event_type" in changes
+        else item.event_type
+    )
+    if next_event_type == "stage":
+        raise ValueError("calendar_stage_projection_managed")
+    next_color = (
+        _validate_color(changes["color"])
+        if "color" in changes
+        else item.color
+    )
+    next_start = changes.get("start_at", item.start_at)
+    next_end = changes.get("end_at", item.end_at)
+    next_reminder = changes.get("reminder_at", item.reminder_at)
+    _validate_timing(
+        start_at=next_start,
+        end_at=next_end,
+        reminder_at=next_reminder,
+    )
+
+    desired = {
+        "title": next_title,
+        "description": next_description,
+        "start_at": next_start,
+        "end_at": next_end,
+        "all_day": changes.get("all_day", item.all_day),
+        "event_type": next_event_type,
+        "color": next_color,
+        "is_public": changes.get("is_public", item.is_public),
+        "recurrence": next_recurrence,
+        "location": next_location,
+        "reminder_at": next_reminder,
+        "project_id": resolved_project_id,
+        "stage_id": resolved_stage_id,
+    }
+    changed = False
+    for field, value in desired.items():
+        current = getattr(item, field)
+        equal = (
+            _utc(current) == _utc(value)
+            if isinstance(current, datetime) and isinstance(value, datetime)
+            else current == value
+        )
+        if not equal:
+            setattr(item, field, value)
+            changed = True
+    if not changed:
+        await db.commit()
+        return CalendarMutationResult(item=item, replayed=True)
+    if "reminder_at" in changes or "start_at" in changes:
+        item.reminder_sent = False
     try:
-        next_project_id = changes.get("project_id", item.project_id)
-        next_stage_id = changes.get("stage_id", item.stage_id)
-        if "project_id" in changes and changes["project_id"] is None and "stage_id" not in changes:
-            next_stage_id = None
-        resolved_project_id, resolved_stage_id = await _validate_link(
-            db,
-            actor=actor,
-            project_id=next_project_id,
-            stage_id=next_stage_id,
-        )
-
-        next_title = (
-            _clean_text(changes["title"], limit=255, required=True)
-            if "title" in changes
-            else item.title
-        )
-        next_description = (
-            _clean_text(changes["description"], limit=4000)
-            if "description" in changes
-            else item.description
-        )
-        next_location = (
-            _clean_text(changes["location"], limit=500)
-            if "location" in changes
-            else item.location
-        )
-        next_recurrence = (
-            _clean_text(changes["recurrence"], limit=128)
-            if "recurrence" in changes
-            else item.recurrence
-        )
-        next_event_type = (
-            _clean_text(changes["event_type"], limit=64) or "other"
-            if "event_type" in changes
-            else item.event_type
-        )
-        if next_event_type == "stage":
-            raise ValueError("calendar_stage_projection_managed")
-        next_color = (
-            _validate_color(changes["color"])
-            if "color" in changes
-            else item.color
-        )
-        next_start = changes.get("start_at", item.start_at)
-        next_end = changes.get("end_at", item.end_at)
-        next_reminder = changes.get("reminder_at", item.reminder_at)
-        _validate_timing(
-            start_at=next_start,
-            end_at=next_end,
-            reminder_at=next_reminder,
-        )
-
-        desired = {
-            "title": next_title,
-            "description": next_description,
-            "start_at": next_start,
-            "end_at": next_end,
-            "all_day": changes.get("all_day", item.all_day),
-            "event_type": next_event_type,
-            "color": next_color,
-            "is_public": changes.get("is_public", item.is_public),
-            "recurrence": next_recurrence,
-            "location": next_location,
-            "reminder_at": next_reminder,
-            "project_id": resolved_project_id,
-            "stage_id": resolved_stage_id,
-        }
-        changed = False
-        for field, value in desired.items():
-            current = getattr(item, field)
-            equal = _utc(current) == _utc(value) if isinstance(current, datetime) and isinstance(value, datetime) else current == value
-            if not equal:
-                setattr(item, field, value)
-                changed = True
-        if not changed:
-            await db.commit()
-            return CalendarMutationResult(item=item, replayed=True)
-        if "reminder_at" in changes or "start_at" in changes:
-            item.reminder_sent = False
         await db.commit()
     except BaseException:
         await db.rollback()
@@ -280,22 +284,19 @@ async def delete_item(
 ) -> bool | None:
     item = await _locked_item(db, item_id)
     if item is None:
-        await db.rollback()
         return None
     if item.user_id != actor.id:
-        await db.rollback()
         raise ValueError("calendar_item_owner_only")
     if _is_canonical_stage_projection(item):
-        await db.rollback()
         raise ValueError("calendar_stage_projection_managed")
+    if item.project_id is not None:
+        await _validate_link(
+            db,
+            actor=actor,
+            project_id=item.project_id,
+            stage_id=item.stage_id,
+        )
     try:
-        if item.project_id is not None:
-            await _validate_link(
-                db,
-                actor=actor,
-                project_id=item.project_id,
-                stage_id=item.stage_id,
-            )
         await db.delete(item)
         await db.commit()
     except BaseException:
