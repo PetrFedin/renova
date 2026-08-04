@@ -1,27 +1,35 @@
-name: Calendar schema migration integrity
+name: Database schema integrity
 
 on:
   push:
     paths:
       - "backend/alembic/**"
+      - "backend/alembic.ini"
+      - "backend/app/db/migration_guard.py"
+      - "backend/app/db/session.py"
       - "backend/app/models/calendar.py"
       - "backend/app/models/entities.py"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
   pull_request:
     paths:
       - "backend/alembic/**"
+      - "backend/alembic.ini"
+      - "backend/app/db/migration_guard.py"
+      - "backend/app/db/session.py"
       - "backend/app/models/calendar.py"
       - "backend/app/models/entities.py"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
 
 concurrency:
-  group: calendar-schema-${{ github.event.pull_request.number || github.ref }}
+  group: database-schema-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  postgres-calendar-schema:
+  postgres-schema-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -54,21 +62,46 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
+      - name: Run revision guard contracts
+        working-directory: backend
+        run: poetry run pytest -q tests/test_database_revision_guard.py
+      - name: Reject empty PostgreSQL database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          if poetry run python -m app.db.migration_guard; then
+            echo "revision guard accepted an empty database" >&2
+            exit 1
+          fi
       - name: Upgrade clean PostgreSQL database
         working-directory: backend
         run: poetry run python -m alembic upgrade head
       - name: Verify reflected calendar schema
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect present
+      - name: Accept migrated PostgreSQL database
+        working-directory: backend
+        run: poetry run python -m app.db.migration_guard
       - name: Downgrade calendar migration
         working-directory: backend
         run: poetry run python -m alembic downgrade w6webhookdelivery01
       - name: Verify calendar schema removal
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect absent
+      - name: Reject downgraded PostgreSQL database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          if poetry run python -m app.db.migration_guard; then
+            echo "revision guard accepted a downgraded database" >&2
+            exit 1
+          fi
       - name: Replay calendar migration
         working-directory: backend
         run: poetry run python -m alembic upgrade head
       - name: Verify replayed calendar schema
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect present
+      - name: Accept replayed PostgreSQL database
+        working-directory: backend
+        run: poetry run python -m app.db.migration_guard
