@@ -46,14 +46,13 @@ async def lifespan(app: FastAPI):
     from app.services.document_ocr_runtime import validate_document_ocr_runtime
     from app.services.esign.runtime import validate_esign_runtime
     from app.services.otp_runtime import validate_otp_runtime
+    from app.services.storage_runtime import validate_storage_runtime
 
     validate_esign_runtime()
     validate_document_ocr_runtime()
     await validate_otp_runtime()
     await init_db()
-    from app.services.storage_service import ensure_bucket
-
-    ensure_bucket()
+    validate_storage_runtime()
 
     if _demo_seed_allowed():
         from app.services.seed_demo import ensure_demo_users
