@@ -1,0 +1,38 @@
+name: Playwright service readiness integrity
+
+on:
+  pull_request:
+    paths:
+      - "e2e/playwright.config.ts"
+      - "e2e/service-readiness.spec.ts"
+      - "scripts/ci-playwright.sh"
+      - "scripts/assert-playwright-report.mjs"
+      - "scripts/assert-playwright-report.test.mjs"
+      - ".github/workflows/playwright-service-readiness-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-service-readiness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  false-green-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Validate shell lifecycle syntax
+        run: bash -n scripts/ci-playwright.sh
+      - name: Reject empty, skipped, unexpected and flaky reports
+        run: node scripts/assert-playwright-report.test.mjs
+      - name: Validate Playwright config and readiness spec discovery
+        run: npx playwright test -c e2e/playwright.config.ts e2e/service-readiness.spec.ts --list
