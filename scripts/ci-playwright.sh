@@ -73,7 +73,8 @@ run_ui_e2e() {
   npx playwright test -c e2e/playwright.config.ts \
     e2e/portal-documents-ui.spec.ts \
     e2e/contract-gate-ui.spec.ts \
-    e2e/mobile-surface-integrity.spec.ts
+    e2e/mobile-surface-integrity.spec.ts \
+    e2e/outbox-dead-letter-admin-ui.spec.ts
   npm run cleanup:e2e-gate || true
 }
 
