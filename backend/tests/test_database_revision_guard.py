@@ -41,7 +41,7 @@ def test_bundled_heads_are_resolved_independently_of_process_cwd(
     monkeypatch.chdir(tmp_path)
 
     assert migration_guard.bundled_alembic_heads() == (
-        "w10subscriptionrefund01",
+        "w11refundreview01",
     )
 
 
