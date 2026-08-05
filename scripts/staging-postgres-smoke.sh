@@ -20,6 +20,7 @@ PID_FILE="/tmp/renova-staging-smoke-api.pid"
 LOG_FILE="/tmp/renova-staging-smoke-api.log"
 HEALTH_FILE="/tmp/renova-staging-postgres-health.json"
 HEADER_AUTH_FILE="/tmp/renova-staging-header-auth.json"
+OCR_FORBIDDEN_FILE="/tmp/renova-staging-ocr-forbidden.json"
 OCR_FILE="/tmp/renova-staging-ocr-worker.json"
 H0_FILE="/tmp/renova-staging-h0-readiness.json"
 PREFLIGHT_FILE="/tmp/renova-staging-preflight.json"
@@ -219,7 +220,7 @@ echo "Bearer fixtures ready"
 
 echo "=== 5) start staging API :$API_PORT ==="
 cleanup
-rm -f "$LOG_FILE" "$HEALTH_FILE" "$HEADER_AUTH_FILE" "$OCR_FILE" "$H0_FILE"
+rm -f "$LOG_FILE" "$HEALTH_FILE" "$HEADER_AUTH_FILE" "$OCR_FORBIDDEN_FILE" "$OCR_FILE" "$H0_FILE"
 nohup .venv/bin/uvicorn app.main:app \
   --host 127.0.0.1 \
   --port "$API_PORT" \
@@ -269,10 +270,33 @@ fi
 echo "header identity rejected OK"
 
 
-echo "=== 7) exercise protected OCR status with customer Bearer JWT ==="
+echo "=== 7) prove customer Bearer cannot inspect global OCR queue ==="
+OCR_FORBIDDEN_STATUS=$(curl -sS \
+  -o "$OCR_FORBIDDEN_FILE" \
+  -w '%{http_code}' \
+  "http://127.0.0.1:$API_PORT/api/v1/ocr/worker" \
+  -H "Authorization: Bearer $SMOKE_TOKEN")
+if [ "$OCR_FORBIDDEN_STATUS" != "403" ]; then
+  echo "FAIL: customer OCR worker status returned HTTP $OCR_FORBIDDEN_STATUS, expected 403" >&2
+  cat "$OCR_FORBIDDEN_FILE" >&2 || true
+  exit 1
+fi
+python3 - "$OCR_FORBIDDEN_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+assert payload.get("detail", {}).get("code") == "admin_role_forbidden", payload
+assert "queued_version_ids" not in payload, payload
+print("customer global OCR access rejected without queue disclosure")
+PY
+
+
+echo "=== 8) exercise OCR status with admin Bearer JWT ==="
 curl -sf \
   "http://127.0.0.1:$API_PORT/api/v1/ocr/worker" \
-  -H "Authorization: Bearer $SMOKE_TOKEN" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
   >"$OCR_FILE"
 python3 - <<'PY'
 import json
@@ -285,11 +309,11 @@ assert payload.get("engine_available") is False, payload
 assert payload.get("content_read") is False, payload
 assert payload.get("background_worker_enabled") is False, payload
 assert isinstance(payload.get("queued_count"), int), payload
-print("Bearer OCR metadata contract OK")
+print("admin Bearer OCR metadata contract OK")
 PY
 
 
-echo "=== 8) verify database-backed H0 admin readiness with admin Bearer JWT ==="
+echo "=== 9) verify database-backed H0 admin readiness with admin Bearer JWT ==="
 curl -sf \
   "http://127.0.0.1:$API_PORT/api/v1/admin/h0-readiness" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
