@@ -3,6 +3,8 @@ name: Playwright service readiness integrity
 on:
   pull_request:
     paths:
+      - "e2e/helpers.ts"
+      - "e2e/outbox-dead-letter-admin-ui.spec.ts"
       - "e2e/playwright.config.ts"
       - "e2e/service-readiness.spec.ts"
       - "scripts/ci-playwright.sh"
@@ -34,5 +36,15 @@ jobs:
         run: bash -n scripts/ci-playwright.sh
       - name: Reject empty, skipped, unexpected and flaky reports
         run: node scripts/assert-playwright-report.test.mjs
+      - name: Verify report CLI thresholds
+        run: |
+          cat > /tmp/playwright-report.json <<'JSON'
+          {"stats":{"expected":2,"skipped":0,"unexpected":0,"flaky":0}}
+          JSON
+          if node scripts/assert-playwright-report.mjs /tmp/playwright-report.json --min-expected=3 --max-skipped=0; then
+            echo "FAIL: report below the CLI minimum was accepted"
+            exit 1
+          fi
+          node scripts/assert-playwright-report.mjs /tmp/playwright-report.json --min-expected=2 --max-skipped=0
       - name: Validate Playwright config and readiness spec discovery
         run: npx playwright test -c e2e/playwright.config.ts e2e/service-readiness.spec.ts --list
