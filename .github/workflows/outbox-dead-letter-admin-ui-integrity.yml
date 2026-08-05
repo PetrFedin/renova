@@ -1,0 +1,41 @@
+name: Outbox dead-letter admin UI integrity
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/app/(contractor)/[tool].tsx"
+      - "apps/mobile/app/(contractor)/_screens/admin-dashboard.tsx"
+      - "apps/mobile/app/(contractor)/_screens/outbox-dead-letters.tsx"
+      - "apps/mobile/lib/api/admin.ts"
+      - "apps/mobile/lib/domain/outboxDeadLetter.ts"
+      - "apps/mobile/lib/outboxDeadLetterAdminUi.test.ts"
+      - "e2e/outbox-dead-letter-admin-ui.spec.ts"
+      - "scripts/ci-playwright.sh"
+      - ".github/workflows/outbox-dead-letter-admin-ui-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: outbox-dead-letter-admin-ui-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TSX_TSCONFIG_PATH: ${{ github.workspace }}/apps/mobile/tsconfig.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Verify mobile TypeScript
+        run: npm run typecheck:mobile
+      - name: Verify operator policy and redaction contract
+        run: npx tsx apps/mobile/lib/outboxDeadLetterAdminUi.test.ts
