@@ -1,0 +1,95 @@
+name: Subscription refund review integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/api/v1/admin_subscription_refunds.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/subscription_checkout.py"
+      - "backend/app/models/__init__.py"
+      - "backend/app/services/subscription_refund_service.py"
+      - "backend/app/services/subscription_refund_review_service.py"
+      - "backend/alembic/versions/w11refundreview01_subscription_refund_review_workflow.py"
+      - "backend/scripts/verify_migration_schema.py"
+      - "backend/tests/test_subscription_refund_integrity.py"
+      - "backend/tests/test_subscription_refund_review_workflow.py"
+      - "backend/tests/test_admin_rbac_integrity.py"
+      - "backend/tests/test_database_revision_guard.py"
+      - ".github/workflows/subscription-refund-review-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/api/v1/admin_subscription_refunds.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/subscription_checkout.py"
+      - "backend/app/models/__init__.py"
+      - "backend/app/services/subscription_refund_service.py"
+      - "backend/app/services/subscription_refund_review_service.py"
+      - "backend/alembic/versions/w11refundreview01_subscription_refund_review_workflow.py"
+      - "backend/scripts/verify_migration_schema.py"
+      - "backend/tests/test_subscription_refund_integrity.py"
+      - "backend/tests/test_subscription_refund_review_workflow.py"
+      - "backend/tests/test_admin_rbac_integrity.py"
+      - "backend/tests/test_database_revision_guard.py"
+      - ".github/workflows/subscription-refund-review-integrity.yml"
+
+concurrency:
+  group: subscription-refund-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refund-review-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./subscription-refund-review-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Compile refund review implementation
+        working-directory: backend
+        run: |
+          poetry run python -m compileall -q \
+            app/api/v1/admin_subscription_refunds.py \
+            app/models/subscription_checkout.py \
+            app/services/subscription_refund_service.py \
+            app/services/subscription_refund_review_service.py \
+            tests/test_subscription_refund_review_workflow.py
+      - name: Run refund review and authorization contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 420s poetry run pytest -vv -s --tb=short \
+            tests/test_subscription_refund_integrity.py \
+            tests/test_subscription_refund_review_workflow.py \
+            tests/test_admin_rbac_integrity.py \
+            tests/test_database_revision_guard.py \
+            2>&1 | tee subscription-refund-review-contracts.log
+      - name: Enforce one Alembic head
+        working-directory: backend
+        run: |
+          test "$(poetry run alembic heads | grep -c '(head)')" -eq 1
+          poetry run alembic heads | grep -q '^w11refundreview01 '
+      - name: Upload refund review diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-refund-review-diagnostics
+          path: backend/subscription-refund-review-contracts.log
+          if-no-files-found: warn
+          retention-days: 14
