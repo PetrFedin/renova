@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.admin_access import require_admin_user
 from app.api.deps import get_current_user
 from app.core.timeutil import utc_now
 from app.db.session import get_db
-from app.models.entities import User, UserRole
+from app.models.entities import User
 from app.services import session_service
 from app.services.account_lifecycle_service import soft_delete_account
 from app.services.account_purge_guard import (
@@ -69,18 +70,16 @@ async def revoke_all_sessions(
 async def purge_deleted_accounts(
     body: AccountPurgeRequest,
     ops_secret: str | None = Header(default=None, alias="X-Account-Purge-Secret"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Irreversible retention purge protected by identity, environment and ops secret."""
-    if user.role != UserRole.contractor:
-        raise HTTPException(403, "account_purge_operator_forbidden")
+    """Irreversible purge requires allowlisted admin identity plus ops secret."""
     try:
         authorize_account_purge(ops_secret)
     except AccountPurgeForbidden as exc:
-        raise HTTPException(403, str(exc)) from None
+        raise HTTPException(403, detail={"code": str(exc)}) from None
     except AccountPurgeUnavailable as exc:
-        raise HTTPException(503, str(exc)) from None
+        raise HTTPException(503, detail={"code": str(exc)}) from None
 
     from app.services.account_purge_service import purge_deleted_users
 

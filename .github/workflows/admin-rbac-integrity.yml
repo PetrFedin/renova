@@ -31,7 +31,7 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-      - name: Compile administrative identity implementation
+      - name: Compile administrative implementation
         working-directory: backend
         run: |
           poetry run python -m compileall -q \
@@ -42,24 +42,52 @@ jobs:
             app/services/admin_identity_service.py \
             app/services/staging_readiness.py \
             app/api/v1/admin.py \
-            tests/test_admin_identity_deployment_integrity.py
-      - name: Administrative identity and readiness contracts
+            app/api/v1/account_lifecycle.py \
+            app/api/v1/articles_admin.py \
+            app/api/v1/audit.py \
+            app/api/v1/automation_worker.py \
+            app/api/v1/ocr_worker.py \
+            tests/test_admin_identity_deployment_integrity.py \
+            tests/test_platform_admin_operations_integrity.py
+      - name: Administrative identity and operations contracts
         working-directory: backend
         run: |
           set -o pipefail
           timeout 480s poetry run pytest -vv -s --tb=short \
             tests/test_admin_rbac_integrity.py \
             tests/test_admin_identity_deployment_integrity.py \
+            tests/test_platform_admin_operations_integrity.py \
             tests/test_runtime_preflight_integrity.py \
             tests/test_release_health_truth_integrity.py \
             2>&1 | tee admin-rbac-integrity-contracts.log
-      - name: Reject direct contractor-only admin guards
+      - name: Reject direct contractor-only platform admin guards
         run: |
           set -euo pipefail
-          if grep -R -n -E 'prefix="/admin"' backend/app/api/v1 | cut -d: -f1 | sort -u | xargs grep -n -E 'Depends\(get_current_user\)|UserRole\.contractor'; then
-            echo "an admin router bypasses the canonical RBAC dependency" >&2
+          admin_files=(
+            backend/app/api/v1/admin.py
+            backend/app/api/v1/account_lifecycle.py
+            backend/app/api/v1/articles_admin.py
+            backend/app/api/v1/audit.py
+            backend/app/api/v1/automation_worker.py
+            backend/app/api/v1/ocr_worker.py
+            backend/app/api/v1/admin_subscription_refunds.py
+          )
+          if grep -n -E 'UserRole\.contractor|if .*role.*contractor' "${admin_files[@]}"; then
+            echo "a platform admin operation contains a direct contractor-role guard" >&2
             exit 1
           fi
+          for file in \
+            backend/app/api/v1/articles_admin.py \
+            backend/app/api/v1/audit.py \
+            backend/app/api/v1/automation_worker.py \
+            backend/app/api/v1/ocr_worker.py; do
+            if grep -q 'Depends(get_current_user)' "$file"; then
+              echo "$file bypasses require_admin_user" >&2
+              exit 1
+            fi
+          done
+          grep -q 'Depends(require_admin_user)' backend/app/api/v1/account_lifecycle.py
+          grep -q 'authorize_account_purge(ops_secret)' backend/app/api/v1/account_lifecycle.py
       - name: Enforce deployable environment examples
         run: |
           set -euo pipefail
