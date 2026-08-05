@@ -11,6 +11,7 @@ import {
 const OUTBOX_ID = '11111111-1111-1111-1111-111111111111';
 const CLAIM_TOKEN = 'e2e-secret-claim-token-must-not-render';
 const PAYLOAD_SECRET = 'provider-token-must-not-render';
+const DEAD_LETTER_API = /\/api\/v1\/admin\/outbox\/dead-letters(?:\/[^?]*)?(?:\?.*)?$/;
 
 async function installSession(page: Page, user: DemoUser, projectId: string, role: 'contractor' | 'customer') {
   await page.addInitScript(
@@ -90,7 +91,10 @@ test.describe('Outbox dead-letter operator console', () => {
       });
     });
 
-    await page.route('**/api/v1/admin/outbox/dead-letters**', async (route) => {
+    // A Playwright glob ending in `dead-letters**` does not match nested paths
+    // reliably. Use one anchored regex so list, claim, history and replay are
+    // all guaranteed to stay inside the deterministic browser contract.
+    await page.route(DEAD_LETTER_API, async (route) => {
       const url = new URL(route.request().url());
       const method = route.request().method();
       const pathname = url.pathname;
@@ -163,7 +167,7 @@ test.describe('Outbox dead-letter operator console', () => {
 
     await page.goto('/outbox-dead-letters');
     await expect(page.getByText('Очередь восстановления')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('notification.created')).toBeVisible();
+    await expect(page.getByText('notification.created', { exact: true })).toBeVisible();
     await expect(page.getByText('internal_delivery_error', { exact: false })).toBeVisible();
     await expect(page.getByText(PAYLOAD_SECRET)).toHaveCount(0);
     await expect(page.getByText(CLAIM_TOKEN)).toHaveCount(0);

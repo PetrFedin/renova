@@ -41,7 +41,7 @@ test.describe('P3-W15 Contract gate UI', () => {
       );
       await seedDemoContractorSession(page, contractor.id, projectId, contractor.access_token);
       await page.goto(`/stage/${stageId}`);
-      await expect(page.getByText('Перед началом работ')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText('Перед началом работ', { exact: true })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText(/Подпишите договор|договор/i).first()).toBeVisible();
       await expect(page.getByRole('button', { name: 'К документам' })).toBeVisible();
     } finally {

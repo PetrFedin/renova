@@ -1,0 +1,63 @@
+name: Playwright service readiness integrity
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/lib/useHubTab.ts"
+      - "e2e/contract-gate-ui.spec.ts"
+      - "e2e/helpers.ts"
+      - "e2e/mobile-surface-integrity.spec.ts"
+      - "e2e/outbox-dead-letter-admin-ui.spec.ts"
+      - "e2e/playwright.config.ts"
+      - "e2e/service-readiness.spec.ts"
+      - "scripts/ci-playwright.sh"
+      - "scripts/assert-playwright-report.mjs"
+      - "scripts/assert-playwright-report.test.mjs"
+      - ".github/workflows/playwright-service-readiness-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-service-readiness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  false-green-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TSX_TSCONFIG_PATH: ${{ github.workspace }}/apps/mobile/tsconfig.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Validate mobile navigation TypeScript
+        run: npm run typecheck:mobile
+      - name: Validate shell lifecycle syntax
+        run: bash -n scripts/ci-playwright.sh
+      - name: Reject empty, skipped, unexpected and flaky reports
+        run: node scripts/assert-playwright-report.test.mjs
+      - name: Verify report CLI thresholds
+        run: |
+          cat > /tmp/playwright-report.json <<'JSON'
+          {"stats":{"expected":2,"skipped":0,"unexpected":0,"flaky":0}}
+          JSON
+          if node scripts/assert-playwright-report.mjs /tmp/playwright-report.json --min-expected=3 --max-skipped=0; then
+            echo "FAIL: report below the CLI minimum was accepted"
+            exit 1
+          fi
+          node scripts/assert-playwright-report.mjs /tmp/playwright-report.json --min-expected=2 --max-skipped=0
+      - name: Validate affected Playwright spec discovery
+        run: >-
+          npx playwright test -c e2e/playwright.config.ts
+          e2e/service-readiness.spec.ts
+          e2e/contract-gate-ui.spec.ts
+          e2e/mobile-surface-integrity.spec.ts
+          e2e/outbox-dead-letter-admin-ui.spec.ts
+          --list
