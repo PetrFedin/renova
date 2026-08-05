@@ -92,6 +92,7 @@ async def _record_review(
         status="manual_review",
         entitlement_changed=False,
         reason=reason,
+        review_status="open",
         applied_at=utc_now(),
     )
     try:
@@ -366,6 +367,7 @@ async def apply_provider_refund(
         )
     except SubscriptionRefundIntegrityError as exc:
         ledger.status = "manual_review"
+        ledger.review_status = "open"
         ledger.reason = exc.code
         checkout.status = "refund_review"
         changed = False
