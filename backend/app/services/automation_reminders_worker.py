@@ -11,12 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
 from app.models.entities import Project, WasteOrder, WasteOrderStatus
-from app.services import notification_service as notif_svc
 from app.services.automation_engine import scan_project_reminders
+from app.services.automation_reminder_outbox import enqueue_notification_once
+from app.services.outbox_service import dispatch_pending
 
 logger = logging.getLogger(__name__)
 
-# P4.2a — in-process health (ops: GET /api/v1/automation/worker)
 _METRICS: dict[str, Any] = {
     "last_tick_at": None,
     "last_ok_at": None,
@@ -112,45 +112,68 @@ def _record_fail(exc: BaseException) -> None:
 
 
 async def scan_waste_reminders(db: AsyncSession, *, on_date: date | None = None) -> int:
-    """Notify customers about waste pickup scheduled for tomorrow."""
-    tomorrow = (on_date or date.today()) + timedelta(days=1)
+    """Enqueue tomorrow's waste pickup reminders once per order and date."""
+    scan_date = on_date or utc_now().date()
+    tomorrow = scan_date + timedelta(days=1)
     result = await db.execute(
         select(WasteOrder).where(
             WasteOrder.scheduled_date == tomorrow,
             WasteOrder.status == WasteOrderStatus.scheduled,
         )
     )
-    sent = 0
+    enqueued = 0
     for waste_order in result.scalars().all():
         project = await db.get(Project, waste_order.project_id)
         if project and project.customer_id:
-            await notif_svc.notify(
+            created = await enqueue_notification_once(
                 db,
-                user_id=project.customer_id,
+                dedupe_key=(
+                    f"waste:{waste_order.id}:{project.customer_id}:"
+                    f"{tomorrow.isoformat()}"
+                ),
                 project_id=waste_order.project_id,
+                user_id=project.customer_id,
                 notification_type="waste_reminder",
                 title="Завтра вывоз мусора",
                 body=f"{waste_order.volume_m3} м³",
                 link_path="/(customer)/(tabs)/calendar",
             )
-            sent += 1
-    return sent
+            if created:
+                enqueued += 1
+    return enqueued
 
 
 async def run_automation_reminder_tick(*, on_date: date | None = None) -> dict:
-    """Single tick: scan all active projects + waste reminders."""
+    """Scan, atomically enqueue unique reminders, then dispatch durable events."""
     project_actions: list[str] = []
-    waste_sent = 0
+    waste_enqueued = 0
+    dispatched = 0
     from app.db import session as db_session
 
     async with db_session.SessionLocal() as db:
         projects = list((await db.execute(select(Project))).scalars().all())
         for project in projects:
             await db.refresh(project, ["stages"])
-            project_actions.extend(await scan_project_reminders(db, project))
-        waste_sent = await scan_waste_reminders(db, on_date=on_date)
+            project_actions.extend(
+                await scan_project_reminders(db, project, on_date=on_date)
+            )
+        waste_enqueued = await scan_waste_reminders(db, on_date=on_date)
         await db.commit()
-    return {"project_actions": len(project_actions), "waste_sent": waste_sent}
+
+        # The same durable dispatcher is used by the background outbox worker.
+        # Leases and owner-fenced completion make concurrent manual/background
+        # dispatch safe, while keeping the admin tick end-to-end observable.
+        dispatched = await dispatch_pending(
+            db,
+            limit=max(20, len(project_actions) + waste_enqueued),
+            worker_id="automation-reminders",
+        )
+    return {
+        "project_actions": len(project_actions),
+        "waste_sent": waste_enqueued,
+        "reminders_enqueued": len(project_actions) + waste_enqueued,
+        "outbox_dispatched": dispatched,
+    }
 
 
 async def automation_reminders_loop(stop: asyncio.Event, *, interval_sec: float) -> None:
@@ -160,7 +183,7 @@ async def automation_reminders_loop(stop: asyncio.Event, *, interval_sec: float)
         try:
             result = await run_automation_reminder_tick()
             _record_ok(result)
-            if result["project_actions"] or result["waste_sent"]:
+            if result["reminders_enqueued"] or result["outbox_dispatched"]:
                 logger.info("automation tick: %s", result)
         except Exception as exc:  # noqa: BLE001 — keep the health loop alive
             _record_fail(exc)
