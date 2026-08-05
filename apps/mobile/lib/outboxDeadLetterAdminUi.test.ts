@@ -76,6 +76,7 @@ const screen = readFileSync(
   'utf8',
 );
 const route = readFileSync(join(mobileRoot, 'app/(contractor)/[tool].tsx'), 'utf8');
+const deepLinkRoute = readFileSync(join(mobileRoot, 'app/outbox-dead-letters.tsx'), 'utf8');
 const dashboard = readFileSync(
   join(mobileRoot, 'app/(contractor)/_screens/admin-dashboard.tsx'),
   'utf8',
@@ -90,6 +91,10 @@ console.assert(!screen.includes('last_error'), 'screen must never reference raw 
 console.assert(!screen.includes('{result.claim_token}'), 'claim token must never be rendered');
 console.assert(!screen.includes('{localClaim.token}'), 'stored claim token must never be rendered');
 console.assert(route.includes("'outbox-dead-letters': OutboxDeadLettersScreen"), 'operator route is registered');
+console.assert(
+  deepLinkRoute.includes("'./(contractor)/_screens/outbox-dead-letters'"),
+  'explicit deep link must bypass root slug 404 while retaining backend RBAC',
+);
 console.assert(dashboard.includes('Открыть очередь восстановления событий'), 'dashboard links to recovery');
 
 console.log('outboxDeadLetterAdminUi.test OK');
