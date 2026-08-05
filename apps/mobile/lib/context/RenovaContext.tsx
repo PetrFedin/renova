@@ -34,7 +34,7 @@ import { resolveActiveProjectId, isJunkProjectName } from '@/lib/resolveActivePr
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { setCustomerBudget } from '@/lib/customerBudgetPrefs';
 import { normalizeCustomerBudget } from '@/lib/customerBudgetSync';
-import { Platform } from 'react-native';
+import { registerNativePushToken } from '@/lib/nativeNotifications';
 
 const LOGIN_TIMEOUT_MS = 15_000;
 
@@ -45,18 +45,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   ]);
 }
 
-/** Push registration can hang on web — defer and skip non-native platforms */
+/** Native boundary exits before loading expo-notifications on web. */
 function deferPushRegistration(userId: string) {
-  if (Platform.OS === 'web' || typeof window !== 'undefined') return;
-  setTimeout(async () => {
-    try {
-      const Notifications = await import('expo-notifications');
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status === 'granted') {
-        const tok = (await Notifications.getExpoPushTokenAsync()).data;
-        await api.registerPushToken(userId, tok);
-      }
-    } catch { /* push optional */ }
+  setTimeout(() => {
+    void registerNativePushToken((token) => api.registerPushToken(userId, token))
+      .catch(() => undefined);
   }, 0);
 }
 
@@ -378,14 +371,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        try {
-          const Notifications = await import('expo-notifications');
-          const { status } = await Notifications.requestPermissionsAsync();
-          if (status === 'granted') {
-            const tok = (await Notifications.getExpoPushTokenAsync()).data;
-            await api.registerPushToken(u.id, tok);
-          }
-        } catch {}
+        deferPushRegistration(u.id);
 
         let list = await listProjectsWithRetry(u.id);
 
@@ -462,10 +448,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.removeItem(KEYS.projectId);
       await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
     }
-    try {
-      const tok = await (await import('expo-notifications')).getExpoPushTokenAsync();
-      if (tok?.data) await api.registerPushToken(u.id, tok.data);
-    } catch { /* push */ }
+    deferPushRegistration(u.id);
   }, []);
 
   const register = useCallback(async (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
@@ -477,14 +460,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           const me = team?.members?.find((m: any) => m.user_id === u.id);
           setReadOnly(me?.role === 'viewer');
         } catch { setReadOnly(false); }
-        try {
-          const Notifications = await import('expo-notifications');
-          const { status } = await Notifications.requestPermissionsAsync();
-          if (status === 'granted') {
-            const tok = (await Notifications.getExpoPushTokenAsync()).data;
-            await api.registerPushToken(u.id, tok);
-          }
-        } catch {}
+    deferPushRegistration(u.id);
     await AsyncStorage.setItem(KEYS.userId, u.id);
     if (role === 'contractor') {
       const raw = await api.listProjects(u.id);
