@@ -1,0 +1,44 @@
+name: Outbox dead-letter operations integrity
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/admin_access.py"
+      - "backend/app/api/v1/admin.py"
+      - "backend/app/api/v1/admin_outbox_dead_letters.py"
+      - "backend/app/middleware/audit.py"
+      - "backend/app/models/entities.py"
+      - "backend/app/models/outbox_runtime.py"
+      - "backend/app/services/outbox_dead_letter_service.py"
+      - "backend/app/services/outbox_service.py"
+      - "backend/tests/test_admin_rbac_integrity.py"
+      - "backend/tests/test_outbox_dead_letter_operations_integrity.py"
+      - ".github/workflows/outbox-dead-letter-operations-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: outbox-dead-letter-operations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dead-letter-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Verify dead-letter recovery contracts
+        working-directory: backend
+        run: >-
+          pytest -q
+          tests/test_outbox_dead_letter_operations_integrity.py
+          tests/test_admin_rbac_integrity.py
