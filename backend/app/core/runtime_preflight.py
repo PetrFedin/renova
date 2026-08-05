@@ -2,7 +2,7 @@
 
 The command deliberately reuses the same policy and runtime validators as the
 FastAPI lifespan. It emits only non-secret status metadata and exits non-zero
-when a deployment would fail startup.
+when a deployment would fail startup or has an unusable administrator allowlist.
 """
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ async def run_preflight(
     check_database: bool = True,
     check_runtime_services: bool = True,
 ) -> PreflightReport:
-    """Evaluate all requested startup gates without starting background workers."""
+    """Evaluate all requested deployment gates without starting workers."""
     checks: list[PreflightCheck] = []
 
     policy_check = _run_sync_check(
@@ -165,18 +165,39 @@ async def run_preflight(
 
         if check_database:
             from app.db.migration_guard import assert_database_at_head
-            from app.db.session import engine
+            from app.db.session import SessionLocal, engine
+            from app.services.admin_identity_service import assert_admin_identities
 
             async def database_ready() -> None:
                 await assert_database_at_head(engine)
 
-            checks.append(
-                await _run_async_check(
-                    "database_revision",
-                    database_ready,
-                    "database matches bundled Alembic head",
-                )
+            database_check = await _run_async_check(
+                "database_revision",
+                database_ready,
+                "database matches bundled Alembic head",
             )
+            checks.append(database_check)
+
+            # Query users only after schema compatibility is proven. This is a
+            # deployment gate, not a startup dependency, so initial bootstrap
+            # can create the first real contractor before release verification.
+            if database_check.ok:
+                admin_count = settings.admin_identity_config.configured_count
+
+                async def admin_identity_ready() -> None:
+                    async with SessionLocal() as db:
+                        await assert_admin_identities(
+                            db,
+                            settings.admin_identity_config.configured_ids,
+                        )
+
+                checks.append(
+                    await _run_async_check(
+                        "admin_identity_database",
+                        admin_identity_ready,
+                        f"configured_count={admin_count}; all identities are contractors",
+                    )
+                )
 
     warnings = tuple(str(item) for item in configured_runtime_warnings(settings))
     return PreflightReport(
@@ -194,7 +215,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-database",
         action="store_true",
-        help="Skip live Alembic revision verification.",
+        help="Skip live Alembic revision and admin identity verification.",
     )
     parser.add_argument(
         "--skip-runtime-services",
