@@ -1,8 +1,8 @@
-"""Metadata-classification compatibility worker endpoints."""
+"""Metadata-classification worker operations for platform administrators."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.admin_access import require_admin_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User
@@ -13,10 +13,10 @@ router = APIRouter(prefix="/ocr", tags=["ocr"])
 
 @router.get("/worker")
 async def ocr_worker_status(
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Read queue status without claiming or mutating rows."""
+    """Read the global queue only for an allowlisted platform administrator."""
     queued = await list_queued_versions(db, limit=100)
     return {
         "mode": settings.document_ocr_mode,
@@ -31,10 +31,10 @@ async def ocr_worker_status(
 
 @router.post("/worker/tick")
 async def ocr_worker_tick(
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Drain only legacy metadata jobs; never claim completed OCR."""
+    """Drain legacy global metadata jobs under explicit admin authorization."""
     result = await process_queued_batch(db, limit=50)
     await db.commit()
     return {
