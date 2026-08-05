@@ -13,6 +13,7 @@ on:
       - "backend/scripts/verify_migration_schema.py"
       - "backend/tests/test_subscription_refund_integrity.py"
       - "backend/tests/test_subscription_refund_review_workflow.py"
+      - "backend/tests/test_subscription_refund_review_link_integrity.py"
       - "backend/tests/test_admin_rbac_integrity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/subscription-refund-review-integrity.yml"
@@ -28,6 +29,7 @@ on:
       - "backend/scripts/verify_migration_schema.py"
       - "backend/tests/test_subscription_refund_integrity.py"
       - "backend/tests/test_subscription_refund_review_workflow.py"
+      - "backend/tests/test_subscription_refund_review_link_integrity.py"
       - "backend/tests/test_admin_rbac_integrity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/subscription-refund-review-integrity.yml"
@@ -69,7 +71,8 @@ jobs:
             app/models/subscription_checkout.py \
             app/services/subscription_refund_service.py \
             app/services/subscription_refund_review_service.py \
-            tests/test_subscription_refund_review_workflow.py
+            tests/test_subscription_refund_review_workflow.py \
+            tests/test_subscription_refund_review_link_integrity.py
       - name: Run refund review and authorization contracts
         working-directory: backend
         run: |
@@ -77,6 +80,7 @@ jobs:
           timeout 420s poetry run pytest -vv -s --tb=short \
             tests/test_subscription_refund_integrity.py \
             tests/test_subscription_refund_review_workflow.py \
+            tests/test_subscription_refund_review_link_integrity.py \
             tests/test_admin_rbac_integrity.py \
             tests/test_database_revision_guard.py \
             2>&1 | tee subscription-refund-review-contracts.log
