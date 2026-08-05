@@ -117,8 +117,13 @@ if (invokedDirectly) {
     );
 
     if (result.realLines.length > 0) {
-      console.log('--- real errors (first 20) ---');
-      for (const line of result.realLines.slice(0, 20)) console.log(line);
+      console.log('--- real diagnostics (first 20; baseline debt, not job annotations) ---');
+      // Prefix the original compiler line so GitHub's built-in tsc problem
+      // matcher does not create red annotations for debt that is intentionally
+      // within the ratcheted baseline. The exact diagnostic remains readable.
+      for (const line of result.realLines.slice(0, 20)) {
+        console.log(`TYPECHECK_BASELINE_DIAGNOSTIC: ${line}`);
+      }
     }
 
     if (!result.ok) {
