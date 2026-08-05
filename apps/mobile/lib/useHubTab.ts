@@ -12,6 +12,9 @@ export function useHubTab<T extends string>(
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
   const rootNavigationState = useRootNavigationState();
   const navigationReady = Boolean(rootNavigationState?.key);
+  const tabParamValid =
+    typeof tabParam === 'string'
+    && (allowed as readonly string[]).includes(tabParam);
   const [active, setActive] = useState<T>(defaultTab);
   const [hydrated, setHydrated] = useState(!persistKey);
 
@@ -29,7 +32,7 @@ export function useHubTab<T extends string>(
     let cancelled = false;
     AsyncStorage.getItem(persistKey).then((saved) => {
       if (cancelled) return;
-      if (typeof tabParam === 'string' && (allowed as readonly string[]).includes(tabParam)) {
+      if (tabParamValid) {
         setActive(tabParam as T);
       } else if (saved && (allowed as readonly string[]).includes(saved)) {
         setActive(saved as T);
@@ -41,26 +44,26 @@ export function useHubTab<T extends string>(
       setHydrated(true);
     }).catch(() => setHydrated(true));
     return () => { cancelled = true; };
-  }, [persistKey, tabParam, allowed, defaultTab, syncTabParam]);
+  }, [persistKey, tabParam, tabParamValid, allowed, defaultTab, syncTabParam]);
 
   useEffect(() => {
     if (persistKey && !hydrated) return;
-    if (typeof tabParam === 'string' && (allowed as readonly string[]).includes(tabParam)) {
+    if (tabParamValid) {
       setActive(tabParam as T);
       return;
     }
     if (tabParam == null || tabParam === '' || (Array.isArray(tabParam) && !tabParam.length)) {
       if (!persistKey) setActive(defaultTab);
     }
-  }, [tabParam, allowed, defaultTab, persistKey, hydrated]);
+  }, [tabParam, tabParamValid, allowed, defaultTab, persistKey, hydrated]);
 
-  // If a persisted tab was restored before the root navigator mounted, sync it
-  // as soon as navigation becomes available. This keeps deep links truthful
-  // without making initial rendering depend on router readiness.
+  // If a persisted or programmatically selected tab was set before the root
+  // navigator mounted, sync it as soon as navigation becomes available. Never
+  // overwrite a valid deep-link tab with the initial local default.
   useEffect(() => {
-    if (!navigationReady || !hydrated) return;
+    if (!navigationReady || !hydrated || tabParamValid) return;
     if (tabParam !== active) syncTabParam(active);
-  }, [navigationReady, hydrated, tabParam, active, syncTabParam]);
+  }, [navigationReady, hydrated, tabParam, tabParamValid, active, syncTabParam]);
 
   const setTab = useCallback((tab: T) => {
     setActive(tab);
