@@ -30,6 +30,8 @@ export function validatePlaywrightStats(stats, options = {}) {
     skipped,
     unexpected,
     flaky,
+    minExpected,
+    maxSkipped,
     errors,
   };
 }
@@ -66,7 +68,7 @@ if (invokedDirectly) {
     const [reportPath, ...args] = process.argv.slice(2);
     const result = assertPlaywrightReport(reportPath, args);
     console.log(
-      `Playwright report accepted: expected=${result.expected} skipped=${result.skipped} unexpected=${result.unexpected} flaky=${result.flaky}`,
+      `Playwright report accepted: expected=${result.expected} minExpected=${result.minExpected} skipped=${result.skipped} maxSkipped=${result.maxSkipped} unexpected=${result.unexpected} flaky=${result.flaky}`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
