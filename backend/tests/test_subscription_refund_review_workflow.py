@@ -111,7 +111,7 @@ async def _add_admin(user_id: str) -> dict[str, str]:
 
 async def test_review_queue_is_admin_only_and_claim_is_concurrency_safe():
     source = inspect.getsource(admin_subscription_refunds)
-    assert source.count("Depends(require_admin_user)") == 4
+    assert source.count("Depends(require_admin_user)") == 5
     assert "Depends(get_current_user)" not in source
 
     transport = ASGITransport(app=app)
@@ -149,6 +149,16 @@ async def test_review_queue_is_admin_only_and_claim_is_concurrency_safe():
             headers=second_admin_headers,
             json={"expected_version": 1},
         )
+        release = await client.post(
+            f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/release",
+            headers=admin_headers,
+            json={"expected_version": 1},
+        )
+        takeover = await client.post(
+            f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/claim",
+            headers=second_admin_headers,
+            json={"expected_version": 2},
+        )
 
     assert forbidden.status_code == 403
     assert queue.status_code == 200, queue.text
@@ -162,6 +172,12 @@ async def test_review_queue_is_admin_only_and_claim_is_concurrency_safe():
     assert replay.json()["replayed"] is True
     assert collision.status_code == 409, collision.text
     assert collision.json()["detail"]["code"] == "refund_review_claimed_by_other"
+    assert release.status_code == 200, release.text
+    assert release.json()["review_status"] == "open"
+    assert release.json()["review_version"] == 2
+    assert takeover.status_code == 200, takeover.text
+    assert takeover.json()["review_owner_id"] == "refund-review-admin-2"
+    assert takeover.json()["review_version"] == 3
 
 
 async def test_dismiss_resolution_is_idempotent_and_remains_auditable():
@@ -196,6 +212,14 @@ async def test_dismiss_resolution_is_idempotent_and_remains_auditable():
             headers=headers,
             json=decision,
         )
+        changed_replay = await client.post(
+            f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/resolve",
+            headers=headers,
+            json={
+                **decision,
+                "note": "A different decision payload must never replay as success.",
+            },
+        )
         actionable = await client.get(
             "/api/v1/admin/subscription-refunds/reviews?status=actionable",
             headers=headers,
@@ -216,6 +240,11 @@ async def test_dismiss_resolution_is_idempotent_and_remains_auditable():
     assert resolved.json()["replayed"] is False
     assert replay.status_code == 200, replay.text
     assert replay.json()["replayed"] is True
+    assert changed_replay.status_code == 409, changed_replay.text
+    assert (
+        changed_replay.json()["detail"]["code"]
+        == "refund_review_decision_payload_conflict"
+    )
     assert actionable.json()["total"] == 0
     assert history.json()["total"] == 1
     assert detail.status_code == 200, detail.text
