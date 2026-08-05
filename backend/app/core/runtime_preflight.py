@@ -57,6 +57,7 @@ def _redacted_error(exc: Exception) -> str:
         settings.moy_nalog_client_secret,
         settings.kontur_api_key,
         settings.esign_webhook_secret,
+        *settings.admin_identity_config.configured_ids,
     )
     for value in sensitive_values:
         candidate = str(value or "").strip()
