@@ -145,12 +145,11 @@ async def list_reviews(
     now = utc_now()
     limit = max(1, min(int(limit), 100))
     offset = max(0, int(offset))
-    query = select(SubscriptionRefund).where(
-        SubscriptionRefund.status == "manual_review"
-    )
+    query = select(SubscriptionRefund)
 
     if status == "actionable":
         query = query.where(
+            SubscriptionRefund.status == "manual_review",
             or_(
                 SubscriptionRefund.review_status == "open",
                 (
@@ -160,11 +159,18 @@ async def list_reviews(
                         | (SubscriptionRefund.review_claim_expires_at <= now)
                     )
                 ),
-            )
+            ),
         )
-    elif status in {"open", "claimed", "resolved"}:
-        query = query.where(SubscriptionRefund.review_status == status)
-    elif status != "all":
+    elif status in {"open", "claimed"}:
+        query = query.where(
+            SubscriptionRefund.status == "manual_review",
+            SubscriptionRefund.review_status == status,
+        )
+    elif status == "resolved":
+        query = query.where(SubscriptionRefund.review_status == "resolved")
+    elif status == "all":
+        query = query.where(SubscriptionRefund.review_status != "not_required")
+    else:
         raise SubscriptionRefundReviewError("refund_review_status_invalid")
 
     count_query = select(func.count()).select_from(query.order_by(None).subquery())
