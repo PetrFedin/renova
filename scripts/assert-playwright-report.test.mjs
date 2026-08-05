@@ -9,6 +9,18 @@ const healthy = validatePlaywrightStats({
 });
 assert.equal(healthy.ok, true, 'fully executed suite must pass');
 
+const belowMinimum = validatePlaywrightStats(
+  {
+    expected: 2,
+    skipped: 0,
+    unexpected: 0,
+    flaky: 0,
+  },
+  { minExpected: 3 },
+);
+assert.equal(belowMinimum.ok, false, 'suite below the configured execution threshold must fail');
+assert.match(belowMinimum.errors.join(' '), /below required minimum 3/);
+
 const allSkipped = validatePlaywrightStats({
   expected: 0,
   skipped: 31,
