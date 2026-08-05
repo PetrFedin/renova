@@ -7,12 +7,40 @@ from app.core.config import Settings, settings
 from app.core.environment import EnvironmentPolicy, collect_warnings, validate_runtime_settings
 
 
+def _validate_admin_identity_configuration(
+    current: Settings,
+    policy: EnvironmentPolicy,
+) -> None:
+    """Reject ambiguous allowlists before a working runtime accepts traffic."""
+    if policy.name not in {"staging", "production"}:
+        return
+
+    diagnostics = current.admin_identity_config
+    errors: list[str] = []
+    if diagnostics.configured_count == 0:
+        errors.append(
+            f"{policy.name}: ADMIN_USER_IDS обязателен и должен содержать минимум один user id"
+        )
+    if diagnostics.blank_entry_count:
+        errors.append(
+            f"{policy.name}: ADMIN_USER_IDS содержит пустые элементы "
+            f"(count={diagnostics.blank_entry_count})"
+        )
+    if diagnostics.duplicate_count:
+        errors.append(
+            f"{policy.name}: ADMIN_USER_IDS содержит повторяющиеся user id "
+            f"(count={diagnostics.duplicate_count})"
+        )
+    if errors:
+        raise ValueError("Environment guard failed:\n- " + "\n- ".join(errors))
+
+
 def validate_configured_runtime(
     configured: Settings | None = None,
 ) -> EnvironmentPolicy:
     """Apply the exact startup policy to a Settings instance."""
     current = configured or settings
-    return validate_runtime_settings(
+    policy = validate_runtime_settings(
         environment=current.environment,
         database_url=current.database_url,
         public_base_url=current.public_base_url,
@@ -31,6 +59,8 @@ def validate_configured_runtime(
         twilio_token=current.twilio_token,
         twilio_from=current.twilio_from,
     )
+    _validate_admin_identity_configuration(current, policy)
+    return policy
 
 
 def configured_runtime_warnings(

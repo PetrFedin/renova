@@ -9,7 +9,7 @@ concurrency:
 jobs:
   admin-rbac-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./admin-rbac-integrity-tests.db
@@ -31,12 +31,26 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
+      - name: Compile administrative identity implementation
+        working-directory: backend
+        run: |
+          poetry run python -m compileall -q \
+            app/core/admin_identity.py \
+            app/core/config.py \
+            app/core/runtime_policy.py \
+            app/core/runtime_preflight.py \
+            app/services/admin_identity_service.py \
+            app/services/staging_readiness.py \
+            app/api/v1/admin.py \
+            tests/test_admin_identity_deployment_integrity.py
       - name: Administrative identity and readiness contracts
         working-directory: backend
         run: |
           set -o pipefail
-          timeout 360s poetry run pytest -vv -s --tb=short \
+          timeout 480s poetry run pytest -vv -s --tb=short \
             tests/test_admin_rbac_integrity.py \
+            tests/test_admin_identity_deployment_integrity.py \
+            tests/test_runtime_preflight_integrity.py \
             tests/test_release_health_truth_integrity.py \
             2>&1 | tee admin-rbac-integrity-contracts.log
       - name: Reject direct contractor-only admin guards
@@ -46,6 +60,18 @@ jobs:
             echo "an admin router bypasses the canonical RBAC dependency" >&2
             exit 1
           fi
+      - name: Enforce deployable environment examples
+        run: |
+          set -euo pipefail
+          grep -q '^ADMIN_USER_IDS=' .env.example
+          grep -q '^ADMIN_USER_IDS=' backend/.env.example
+          grep -q '^ADMIN_USER_IDS=' env.staging.example
+          grep -q '^REDIS_URL=' env.staging.example
+          grep -q '^TWILIO_SID=' env.staging.example
+          grep -q '^TWILIO_TOKEN=' env.staging.example
+          grep -q '^TWILIO_FROM=' env.staging.example
+          test "$(grep -c '^ENVIRONMENT=' .env.example)" -eq 1
+          test "$(grep -c '^CLOUDFRONT_DOMAIN=' .env.example)" -eq 1
       - name: Upload admin RBAC diagnostics
         if: always()
         uses: actions/upload-artifact@v4

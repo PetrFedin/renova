@@ -12,6 +12,7 @@ REDIS_URL_VALUE="redis://127.0.0.1:6381/0"
 SECRET="${SECRET_KEY:-$(openssl rand -hex 24)}"
 PUB_URL="${PUBLIC_BASE_URL:-https://api-staging.example.com}"
 API_PORT="${STAGING_SMOKE_PORT:-8102}"
+ADMIN_ID="${STAGING_SMOKE_ADMIN_ID:-staging-smoke-admin}"
 TWILIO_SID_VALUE="${TWILIO_SID:-AC00000000000000000000000000000000}"
 TWILIO_TOKEN_VALUE="${TWILIO_TOKEN:-staging-smoke-token-not-for-delivery}"
 TWILIO_FROM_VALUE="${TWILIO_FROM:-+15005550006}"
@@ -20,6 +21,7 @@ LOG_FILE="/tmp/renova-staging-smoke-api.log"
 HEALTH_FILE="/tmp/renova-staging-postgres-health.json"
 HEADER_AUTH_FILE="/tmp/renova-staging-header-auth.json"
 OCR_FILE="/tmp/renova-staging-ocr-worker.json"
+H0_FILE="/tmp/renova-staging-h0-readiness.json"
 PREFLIGHT_FILE="/tmp/renova-staging-preflight.json"
 
 cleanup() {
@@ -43,6 +45,7 @@ export DATABASE_URL="$PG_URL"
 export REDIS_URL="$REDIS_URL_VALUE"
 export PUBLIC_BASE_URL="$PUB_URL"
 export SECRET_KEY="$SECRET"
+export ADMIN_USER_IDS="$ADMIN_ID"
 export TWILIO_SID="$TWILIO_SID_VALUE"
 export TWILIO_TOKEN="$TWILIO_TOKEN_VALUE"
 export TWILIO_FROM="$TWILIO_FROM_VALUE"
@@ -81,9 +84,39 @@ for i in $(seq 1 40); do
 done
 
 
-echo "=== 2) migrate and run canonical live preflight ==="
+echo "=== 2) migrate, create explicit admin fixture, and run live preflight ==="
 cd "$ROOT/backend"
 .venv/bin/alembic upgrade head
+.venv/bin/python - <<'PY'
+import asyncio
+import os
+
+from app.db.session import SessionLocal
+from app.models.entities import User, UserRole
+
+
+async def main() -> None:
+    admin_id = os.environ["ADMIN_USER_IDS"]
+    if not admin_id or "," in admin_id:
+        raise SystemExit("staging smoke requires exactly one ADMIN_USER_IDS fixture")
+    async with SessionLocal() as db:
+        existing = await db.get(User, admin_id)
+        if existing is None:
+            db.add(
+                User(
+                    id=admin_id,
+                    phone="+79990009501",
+                    role=UserRole.contractor,
+                    full_name="Staging Runtime Admin",
+                )
+            )
+            await db.commit()
+        elif existing.role != UserRole.contractor:
+            raise SystemExit("existing staging smoke admin is not a contractor")
+
+
+asyncio.run(main())
+PY
 .venv/bin/python -m app.core.runtime_preflight --json | tee "$PREFLIGHT_FILE"
 python3 - "$PREFLIGHT_FILE" <<'PY'
 import json
@@ -97,7 +130,9 @@ assert checks.get("storage_configuration", {}).get("ok") is True, payload
 assert checks.get("storage_runtime", {}).get("ok") is True, payload
 assert checks.get("shared_auth_runtime", {}).get("ok") is True, payload
 assert checks.get("database_revision", {}).get("ok") is True, payload
-print("canonical live preflight OK")
+assert checks.get("admin_identity_database", {}).get("ok") is True, payload
+assert "configured_count=1" in checks["admin_identity_database"].get("detail", ""), payload
+print("canonical live preflight and admin identity OK")
 PY
 
 
@@ -129,10 +164,11 @@ print("staging SQLite rejection OK")
 PY
 
 
-echo "=== 4) seed a real user and mint a short-lived Bearer token ==="
+echo "=== 4) seed a customer and mint customer/admin Bearer tokens ==="
 AUTH_JSON=$(.venv/bin/python - <<'PY'
 import asyncio
 import json
+import os
 import secrets
 import uuid
 
@@ -144,7 +180,11 @@ from app.models.entities import User, UserRole
 async def main() -> None:
     user_id = str(uuid.uuid4())
     phone = f"+7999{secrets.randbelow(10_000_000):07d}"
+    admin_id = os.environ["ADMIN_USER_IDS"]
     async with SessionLocal() as db:
+        admin = await db.get(User, admin_id)
+        if admin is None or admin.role != UserRole.contractor:
+            raise SystemExit("verified admin fixture disappeared")
         db.add(
             User(
                 id=user_id,
@@ -154,7 +194,15 @@ async def main() -> None:
             )
         )
         await db.commit()
-    print(json.dumps({"id": user_id, "token": create_access_token(user_id)}))
+    print(
+        json.dumps(
+            {
+                "id": user_id,
+                "token": create_access_token(user_id),
+                "admin_token": create_access_token(admin_id),
+            }
+        )
+    )
 
 
 asyncio.run(main())
@@ -162,14 +210,16 @@ PY
 )
 SMOKE_UID=$(printf '%s' "$AUTH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 SMOKE_TOKEN=$(printf '%s' "$AUTH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+ADMIN_TOKEN=$(printf '%s' "$AUTH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["admin_token"])')
 test -n "$SMOKE_UID"
 test -n "$SMOKE_TOKEN"
-echo "Bearer fixture ready"
+test -n "$ADMIN_TOKEN"
+echo "Bearer fixtures ready"
 
 
 echo "=== 5) start staging API :$API_PORT ==="
 cleanup
-rm -f "$LOG_FILE" "$HEALTH_FILE" "$HEADER_AUTH_FILE" "$OCR_FILE"
+rm -f "$LOG_FILE" "$HEALTH_FILE" "$HEADER_AUTH_FILE" "$OCR_FILE" "$H0_FILE"
 nohup .venv/bin/uvicorn app.main:app \
   --host 127.0.0.1 \
   --port "$API_PORT" \
@@ -219,7 +269,7 @@ fi
 echo "header identity rejected OK"
 
 
-echo "=== 7) exercise protected OCR status with Bearer JWT ==="
+echo "=== 7) exercise protected OCR status with customer Bearer JWT ==="
 curl -sf \
   "http://127.0.0.1:$API_PORT/api/v1/ocr/worker" \
   -H "Authorization: Bearer $SMOKE_TOKEN" \
@@ -236,6 +286,32 @@ assert payload.get("content_read") is False, payload
 assert payload.get("background_worker_enabled") is False, payload
 assert isinstance(payload.get("queued_count"), int), payload
 print("Bearer OCR metadata contract OK")
+PY
+
+
+echo "=== 8) verify database-backed H0 admin readiness with admin Bearer JWT ==="
+curl -sf \
+  "http://127.0.0.1:$API_PORT/api/v1/admin/h0-readiness" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  >"$H0_FILE"
+python3 - "$H0_FILE" "$ADMIN_ID" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+admin_id = sys.argv[2]
+checks = {item.get("id"): item for item in payload.get("checks", [])}
+admin = checks.get("admin_identity", {})
+assert admin.get("ok") is True, payload
+assert admin.get("database_checked") is True, payload
+assert admin.get("database_ok") is True, payload
+assert admin.get("configured_count") == 1, payload
+assert admin.get("valid_contractor_count") == 1, payload
+assert admin.get("missing_count") == 0, payload
+assert admin.get("wrong_role_count") == 0, payload
+assert admin_id not in json.dumps(payload, ensure_ascii=False), payload
+print("H0 admin identity database contract OK")
 PY
 
 

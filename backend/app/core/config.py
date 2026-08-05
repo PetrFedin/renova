@@ -1,6 +1,7 @@
 """Конфигурация backend Renova."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.admin_identity import AdminIdentityConfig, parse_admin_user_ids
 from app.core.environment import normalize_environment
 
 
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     auth_allow_header_user_id: bool | None = None
     # Comma-separated immutable user ids permitted to use /admin in working envs.
-    # Empty configuration is intentionally fail-closed on staging/production.
+    # Empty, duplicate, or blank entries fail startup on staging/production.
     admin_user_ids: str = ""
     fns_npd_status_url: str = "https://statusnpd.nalog.ru/api/v1/tracker/taxpayer_status"
     moy_nalog_enabled: bool = False
@@ -91,12 +92,12 @@ class Settings(BaseSettings):
         return policy_for(self.normalized_environment).allow_header_user_id
 
     @property
+    def admin_identity_config(self) -> AdminIdentityConfig:
+        return parse_admin_user_ids(self.admin_user_ids)
+
+    @property
     def admin_user_id_set(self) -> frozenset[str]:
-        return frozenset(
-            value.strip()
-            for value in (self.admin_user_ids or "").split(",")
-            if value.strip()
-        )
+        return frozenset(self.admin_identity_config.configured_ids)
 
 
 settings = Settings()

@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "docker-compose.staging.yml"
+      - "env.staging.example"
       - "scripts/staging-postgres-smoke.sh"
       - "scripts/staging-env-smoke.sh"
       - "scripts/staging-credentials-probe.sh"
@@ -13,7 +14,9 @@ on:
       - "backend/alembic.ini"
       - "backend/app/main.py"
       - "backend/app/api/deps.py"
+      - "backend/app/api/v1/admin.py"
       - "backend/app/api/v1/ocr_worker.py"
+      - "backend/app/core/admin_identity.py"
       - "backend/app/core/config.py"
       - "backend/app/core/environment.py"
       - "backend/app/core/runtime_policy.py"
@@ -21,15 +24,19 @@ on:
       - "backend/app/core/security.py"
       - "backend/app/db/migration_guard.py"
       - "backend/app/db/session.py"
+      - "backend/app/services/admin_identity_service.py"
+      - "backend/app/services/staging_readiness.py"
       - "backend/app/services/document_ocr_runtime.py"
       - "backend/app/services/otp_runtime.py"
       - "backend/app/services/storage_runtime.py"
       - "backend/app/services/storage_service.py"
+      - "backend/tests/test_admin_identity_deployment_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
   pull_request:
     paths:
       - "docker-compose.staging.yml"
+      - "env.staging.example"
       - "scripts/staging-postgres-smoke.sh"
       - "scripts/staging-env-smoke.sh"
       - "scripts/staging-credentials-probe.sh"
@@ -39,7 +46,9 @@ on:
       - "backend/alembic.ini"
       - "backend/app/main.py"
       - "backend/app/api/deps.py"
+      - "backend/app/api/v1/admin.py"
       - "backend/app/api/v1/ocr_worker.py"
+      - "backend/app/core/admin_identity.py"
       - "backend/app/core/config.py"
       - "backend/app/core/environment.py"
       - "backend/app/core/runtime_policy.py"
@@ -47,10 +56,13 @@ on:
       - "backend/app/core/security.py"
       - "backend/app/db/migration_guard.py"
       - "backend/app/db/session.py"
+      - "backend/app/services/admin_identity_service.py"
+      - "backend/app/services/staging_readiness.py"
       - "backend/app/services/document_ocr_runtime.py"
       - "backend/app/services/otp_runtime.py"
       - "backend/app/services/storage_runtime.py"
       - "backend/app/services/storage_service.py"
+      - "backend/tests/test_admin_identity_deployment_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
 
@@ -84,7 +96,7 @@ jobs:
           bash -n scripts/staging-readiness-report.sh
       - name: Run canonical preflight contracts
         working-directory: backend
-        run: poetry run pytest -q tests/test_runtime_preflight_integrity.py
+        run: poetry run pytest -q tests/test_runtime_preflight_integrity.py tests/test_admin_identity_deployment_integrity.py
       - name: Exercise static staging credentials probe
         env:
           ENV_FILE: /dev/null
@@ -95,6 +107,7 @@ jobs:
           PUBLIC_BASE_URL: https://api-staging.renova.example
           SECRET_KEY: ci-staging-secret-key-32chars!!
           AUTH_ALLOW_HEADER_USER_ID: "false"
+          ADMIN_USER_IDS: ci-admin-user
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
           DOCUMENT_OCR_MODE: metadata
@@ -115,6 +128,7 @@ jobs:
             /tmp/renova-staging-postgres-health.json
             /tmp/renova-staging-header-auth.json
             /tmp/renova-staging-ocr-worker.json
+            /tmp/renova-staging-h0-readiness.json
             /tmp/renova-staging-preflight.json
       - name: Stop isolated dependencies
         if: always()

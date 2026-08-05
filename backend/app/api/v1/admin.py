@@ -145,8 +145,11 @@ async def release_health(
 
 
 @router.get("/h0-readiness")
-async def h0_readiness(user: User = Depends(require_admin_user)):
+async def h0_readiness(
+    user: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
     """H0 staging checklist for a permitted administrator."""
-    from app.services.staging_readiness import build_h0_readiness
+    from app.services.staging_readiness import build_h0_readiness_with_database
 
-    return build_h0_readiness()
+    return await build_h0_readiness_with_database(db)
