@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_access import require_admin_user
+from app.api.v1.admin_outbox_dead_letters import router as outbox_dead_letter_router
 from app.db.session import get_db
 from app.models.entities import AuditLog, Project, User
 
@@ -87,7 +88,7 @@ async def release_health(
     from app.services.automation_reminders_worker import automation_worker_metrics
     from app.services.esign import list_providers
     from app.services.fns.receipt_verify import fns_receipt_health
-    from app.services.outbox_service import runtime_snapshot as outbox_runtime_snapshot
+    from app.services.outbox_dead_letter_service import runtime_health as outbox_runtime_health
     from app.services.release_health_service import truthful_release_snapshot
     from app.services.yookassa_service import yookassa_health
 
@@ -139,7 +140,7 @@ async def release_health(
                 "healthy": int(worker.get("consecutive_failures") or 0) < 3,
                 "consecutive_failures": worker.get("consecutive_failures"),
             },
-            "outbox": await outbox_runtime_snapshot(db),
+            "outbox": await outbox_runtime_health(db),
         },
     }
 
@@ -153,3 +154,6 @@ async def h0_readiness(
     from app.services.staging_readiness import build_h0_readiness_with_database
 
     return await build_h0_readiness_with_database(db)
+
+
+router.include_router(outbox_dead_letter_router)
