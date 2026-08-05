@@ -113,10 +113,14 @@ export async function prepareContractGateScenario(
   const hCont = authHeaders(cont);
   const hCust = authHeaders(cust);
 
+  // Use a realistic selectable name. Names containing E2E/Test are
+  // intentionally filtered from the product project picker as junk, which
+  // would make this UI contract exercise the fallback demo project instead of
+  // the project it just created.
   const created = await request.post(`${API}/api/v1/projects`, {
     headers: hCust,
     data: {
-      name: `E2E Contract Gate ${Date.now()}`,
+      name: `Контрактный объект ${Date.now()}`,
       address: 'E2E',
       renovation_type: 'cosmetic',
       property_type: 'apartment',
