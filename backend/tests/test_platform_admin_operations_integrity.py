@@ -70,6 +70,21 @@ def test_article_admin_input_rejects_ambiguous_slugs_and_invalid_read_time():
         ArticleIn(**{**valid, "read_min": 0})
 
 
+def test_static_article_admin_routes_precede_dynamic_public_slug():
+    get_paths = [
+        route.path
+        for route in app.routes
+        if "GET" in (getattr(route, "methods", set()) or set())
+    ]
+    admin_index = get_paths.index("/api/v1/articles/admin")
+    public_slug_index = get_paths.index("/api/v1/articles/{slug}")
+
+    assert admin_index < public_slug_index
+    assert "/api/v1/articles/admin/{slug}" in {
+        route.path for route in app.routes
+    }
+
+
 @pytest.mark.asyncio
 async def test_automation_worker_status_is_allowlist_only_in_staging(monkeypatch):
     monkeypatch.setattr(settings, "environment", "staging")
