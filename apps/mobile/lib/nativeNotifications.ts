@@ -1,4 +1,8 @@
 import { Platform } from 'react-native';
+import {
+  isNativeNotificationPlatform,
+  shouldScheduleNativeConflictNotification,
+} from '@/lib/nativeNotificationPolicy';
 
 export type NotificationNavigationPayload = {
   linkPath?: string;
@@ -12,7 +16,7 @@ type NotificationSetupError = (
 ) => void;
 
 export function supportsNativeNotifications(platform = Platform.OS): boolean {
-  return platform === 'ios' || platform === 'android';
+  return isNativeNotificationPlatform(platform);
 }
 
 function navigationPayload(data: Record<string, unknown> | undefined): NotificationNavigationPayload {
@@ -65,7 +69,7 @@ export async function installNativeNotificationInteractions(
 
 /** Schedule a local conflict alert only on Android/iOS; web uses in-app UI. */
 export async function scheduleNativeSyncConflictNotification(conflicts: number): Promise<boolean> {
-  if (!supportsNativeNotifications() || !Number.isFinite(conflicts) || conflicts <= 0) {
+  if (!shouldScheduleNativeConflictNotification(Platform.OS, conflicts)) {
     return false;
   }
   const Notifications = await import('expo-notifications');
