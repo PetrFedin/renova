@@ -43,6 +43,7 @@ def _review_http_error(exc: reviews.SubscriptionRefundReviewError) -> HTTPExcept
         "refund_review_action_invalid",
         "refund_review_note_invalid",
         "refund_review_checkout_id_required",
+        "refund_review_checkout_id_forbidden",
     }:
         return HTTPException(422, detail={"code": code})
     if code == "refund_review_checkout_not_found":
@@ -93,6 +94,28 @@ async def claim_subscription_refund_review(
 ):
     try:
         result = await reviews.claim_review(
+            db,
+            refund_id=refund_id,
+            actor_id=user.id,
+            expected_version=body.expected_version,
+        )
+    except reviews.SubscriptionRefundReviewError as exc:
+        await db.rollback()
+        raise _review_http_error(exc) from exc
+    if result is None:
+        raise HTTPException(404, detail={"code": "refund_review_not_found"})
+    return result
+
+
+@router.post("/{refund_id}/release")
+async def release_subscription_refund_review(
+    refund_id: str,
+    body: RefundReviewClaimIn,
+    user: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await reviews.release_review(
             db,
             refund_id=refund_id,
             actor_id=user.id,
