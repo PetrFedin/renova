@@ -79,6 +79,7 @@ def build_h0_readiness() -> dict[str, Any]:
     fns = fns_receipt_health()
     public = (settings.public_base_url or "").strip()
     admin_config = settings.admin_identity_config
+    is_working = env in ("staging", "production")
 
     checks: list[dict[str, Any]] = []
 
@@ -144,8 +145,8 @@ def build_h0_readiness() -> dict[str, Any]:
     )
     add(
         "admin_identity",
-        "Администраторы заданы явно и однозначно",
-        admin_config.is_strictly_valid,
+        "Администраторы заданы явно, однозначно и подтверждены в БД",
+        admin_config.is_strictly_valid and not is_working,
         "Задайте ADMIN_USER_IDS без пустых элементов и дублей; live preflight проверит БД",
         **admin_config.public_diagnostics(),
         database_checked=False,
@@ -209,7 +210,7 @@ async def build_h0_readiness_with_database(
     state = await inspect_admin_identities(db, admin_config.configured_ids)
     admin_check.update(state.public_diagnostics())
     admin_check["database_checked"] = True
-    admin_check["ok"] = bool(admin_check["ok"]) and state.ok
+    admin_check["ok"] = admin_config.is_strictly_valid and state.ok
     if not state.ok:
         admin_check["how"] = (
             "Все ADMIN_USER_IDS должны существовать в users и иметь role=contractor; "
