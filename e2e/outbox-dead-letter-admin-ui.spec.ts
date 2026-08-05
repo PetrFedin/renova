@@ -163,7 +163,7 @@ test.describe('Outbox dead-letter operator console', () => {
 
     await page.goto('/outbox-dead-letters');
     await expect(page.getByText('Очередь восстановления')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('notification.created')).toBeVisible();
+    await expect(page.getByText('notification.created', { exact: true })).toBeVisible();
     await expect(page.getByText('internal_delivery_error', { exact: false })).toBeVisible();
     await expect(page.getByText(PAYLOAD_SECRET)).toHaveCount(0);
     await expect(page.getByText(CLAIM_TOKEN)).toHaveCount(0);
