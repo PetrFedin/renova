@@ -1,17 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import get_current_user
+
+from app.api.admin_access import require_admin_user
 from app.db.session import get_db
-from app.models.entities import AuditLog, Project, User, UserRole
+from app.models.entities import AuditLog, Project, User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/stats")
-async def stats(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role != UserRole.contractor:
-        raise HTTPException(403)
+async def stats(
+    user: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
     pc = (await db.execute(select(func.count()).select_from(Project))).scalar() or 0
     uc = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
     ac = (await db.execute(select(func.count()).select_from(AuditLog))).scalar() or 0
@@ -19,9 +21,10 @@ async def stats(user: User = Depends(get_current_user), db: AsyncSession = Depen
 
 
 @router.get("/projects-chart")
-async def projects_chart(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role != UserRole.contractor:
-        raise HTTPException(403)
+async def projects_chart(
+    user: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
     from app.models.entities import StageStatus
 
     r = await db.execute(select(Project).where(Project.contractor_id == user.id))
@@ -44,9 +47,10 @@ async def projects_chart(user: User = Depends(get_current_user), db: AsyncSessio
 
 
 @router.get("/revenue-chart")
-async def revenue_chart(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if user.role != UserRole.contractor:
-        raise HTTPException(403)
+async def revenue_chart(
+    user: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
     from app.models.entities import LineType, PaymentStatus
 
     r = await db.execute(select(Project).where(Project.contractor_id == user.id))
@@ -76,11 +80,9 @@ async def revenue_chart(user: User = Depends(get_current_user), db: AsyncSession
 
 @router.get("/release-health")
 async def release_health(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.role != UserRole.contractor:
-        raise HTTPException(403)
     from app.core.config import settings
     from app.services.automation_reminders_worker import automation_worker_metrics
     from app.services.esign import list_providers
@@ -89,9 +91,9 @@ async def release_health(
     from app.services.release_health_service import truthful_release_snapshot
     from app.services.yookassa_service import yookassa_health
 
-    release_health = truthful_release_snapshot()
-    release = release_health["release"]
-    observability = release_health["observability"]
+    release_snapshot = truthful_release_snapshot()
+    release = release_snapshot["release"]
+    observability = release_snapshot["observability"]
     metrics = observability["metrics"]
 
     yk = yookassa_health()
@@ -106,10 +108,8 @@ async def release_health(
         "providers": list_providers(),
     }
     return {
-        "contract_version": release_health["contract_version"],
-        "generated_at": release_health["generated_at"],
-        # Compatibility keys remain, but unknown telemetry is represented as
-        # null rather than invented numbers.
+        "contract_version": release_snapshot["contract_version"],
+        "generated_at": release_snapshot["generated_at"],
         "version": release["version"],
         "commit_sha": release["commit_sha"],
         "crash_free_rate": metrics["crash_free_rate"],
@@ -145,10 +145,8 @@ async def release_health(
 
 
 @router.get("/h0-readiness")
-async def h0_readiness(user: User = Depends(get_current_user)):
-    """W53: H0 staging checklist для пилота/инвестора (без секретов)."""
-    if user.role != UserRole.contractor:
-        raise HTTPException(403)
+async def h0_readiness(user: User = Depends(require_admin_user)):
+    """H0 staging checklist for a permitted administrator."""
     from app.services.staging_readiness import build_h0_readiness
 
     return build_h0_readiness()

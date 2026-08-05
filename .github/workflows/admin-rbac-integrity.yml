@@ -1,0 +1,56 @@
+name: Admin RBAC integrity
+
+on: [push, pull_request]
+
+concurrency:
+  group: admin-rbac-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  admin-rbac-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./admin-rbac-integrity-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Administrative identity and readiness contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 360s poetry run pytest -vv -s --tb=short \
+            tests/test_admin_rbac_integrity.py \
+            tests/test_release_health_truth_integrity.py \
+            2>&1 | tee admin-rbac-integrity-contracts.log
+      - name: Reject direct contractor-only admin guards
+        run: |
+          set -euo pipefail
+          if grep -R -n -E 'prefix="/admin"' backend/app/api/v1 | cut -d: -f1 | sort -u | xargs grep -n -E 'Depends\(get_current_user\)|UserRole\.contractor'; then
+            echo "an admin router bypasses the canonical RBAC dependency" >&2
+            exit 1
+          fi
+      - name: Upload admin RBAC diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-rbac-integrity-diagnostics
+          path: backend/admin-rbac-integrity-contracts.log
+          if-no-files-found: warn
+          retention-days: 14

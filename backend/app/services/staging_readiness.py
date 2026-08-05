@@ -2,23 +2,28 @@
 from __future__ import annotations
 
 from pathlib import Path
-
 from typing import Any
 
 from app.core.config import settings
 from app.core.environment import _is_https, _is_localhost_url, normalize_environment
-from app.services.yookassa_service import yookassa_health
 from app.services.fns.receipt_verify import fns_receipt_health
-
+from app.services.yookassa_service import yookassa_health
 
 
 def _git_sha() -> str | None:
     import os
     import subprocess
-    for key in ("GIT_SHA", "COMMIT_SHA", "SOURCE_VERSION", "RENDER_GIT_COMMIT", "HEROKU_SLUG_COMMIT"):
-        v = (os.environ.get(key) or "").strip()
-        if v:
-            return v[:40]
+
+    for key in (
+        "GIT_SHA",
+        "COMMIT_SHA",
+        "SOURCE_VERSION",
+        "RENDER_GIT_COMMIT",
+        "HEROKU_SLUG_COMMIT",
+    ):
+        value = (os.environ.get(key) or "").strip()
+        if value:
+            return value[:40]
     try:
         out = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -30,8 +35,9 @@ def _git_sha() -> str | None:
     except Exception:
         return None
 
+
 def build_h0_readiness() -> dict[str, Any]:
-    """Сводка H0: что блокирует демо инвестору (keys / URL / honesty)."""
+    """Сводка H0: что блокирует демо инвестору (keys / URL / identity)."""
     env = normalize_environment(settings.environment)
     yk = yookassa_health()
     fns = fns_receipt_health()
@@ -97,33 +103,63 @@ def build_h0_readiness() -> dict[str, Any]:
         not bool(settings.allow_header_user_id),
         "AUTH_ALLOW_HEADER_USER_ID запрещён на staging/production",
     )
+    add(
+        "admin_identity",
+        "Администраторы заданы явно",
+        bool(settings.admin_user_id_set),
+        "Задайте ADMIN_USER_IDS как список неизменяемых user id через запятую",
+    )
 
-    # Блокеры пилота = обязательные H0
-    blocker_ids = {"public_url", "public_https", "yookassa_keys", "yookassa_live", "yookassa_no_demo", "auth_bearer"}
+    blocker_ids = {
+        "public_url",
+        "public_https",
+        "yookassa_keys",
+        "yookassa_live",
+        "yookassa_no_demo",
+        "auth_bearer",
+        "admin_identity",
+    }
     if env == "development":
-        # В development localhost OK — не красим красным весь чеклист
-        for c in checks:
-            if c["id"] in ("public_url", "public_https", "yookassa_no_demo", "auth_bearer"):
-                c["ok"] = True
-                c["how"] = "development: localhost/demo/X-User-Id допустимы; для пилота переключите staging"
+        for check in checks:
+            if check["id"] in (
+                "public_url",
+                "public_https",
+                "yookassa_no_demo",
+                "auth_bearer",
+                "admin_identity",
+            ):
+                check["ok"] = True
+                check["how"] = (
+                    "development: localhost/demo/X-User-Id/contractor-admin допустимы; "
+                    "для пилота переключите staging"
+                )
 
-    blockers = [c for c in checks if c["id"] in blocker_ids and not c["ok"]]
+    blockers = [
+        check
+        for check in checks
+        if check["id"] in blocker_ids and not check["ok"]
+    ]
     ready = len(blockers) == 0 and env in ("staging", "production")
-    score = round(100 * sum(1 for c in checks if c["ok"]) / max(len(checks), 1))
+    score = round(
+        100 * sum(1 for check in checks if check["ok"]) / max(len(checks), 1)
+    )
 
     from datetime import datetime, timezone
+
     return {
         "environment": env,
         "ready_for_investor_demo": ready,
         "score": score,
         "blockers": blockers,
         "checks": checks,
-        "public_base_url_host": public.split("/")[2] if public.startswith("http") else public[:40],
+        "public_base_url_host": (
+            public.split("/")[2] if public.startswith("http") else public[:40]
+        ),
         "git_sha": _git_sha(),
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "hint": (
             "Готово к демо инвестору"
             if ready
-            else "Закройте blockers: HTTPS API + YuKassa live keys, затем TestFlight"
+            else "Закройте blockers: HTTPS API + YuKassa live keys + ADMIN_USER_IDS"
         ),
     }
