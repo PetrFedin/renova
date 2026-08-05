@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
@@ -21,9 +22,41 @@ function Bar({ label, value, max }: { label: string; value: number; max: number 
   );
 }
 
+function OutboxOperations({ health, onOpen }: { health: any; onOpen: () => void }) {
+  const outbox = health?.integrations?.outbox;
+  if (!outbox) return null;
+  const poisoned = Number(outbox.poisoned || 0);
+  const stale = Number(outbox.stale_leases || 0);
+  const critical = poisoned > 0 || outbox.status === 'critical';
+  return (
+    <View style={[st.outboxCard, critical ? st.outboxCritical : st.outboxHealthy]}>
+      <View style={st.outboxHeader}>
+        <View style={st.outboxCopy}>
+          <Text style={st.outboxTitle}>Доставка событий</Text>
+          <Text style={st.outboxText}>
+            {critical ? `Остановлено: ${poisoned}` : 'Poisoned-событий нет'}
+            {stale ? ` · просроченных захватов: ${stale}` : ''}
+          </Text>
+        </View>
+        <Text style={critical ? st.outboxCriticalLabel : st.outboxHealthyLabel}>
+          {critical ? 'ACTION' : 'OK'}
+        </Text>
+      </View>
+      <PrimaryButton
+        title={critical ? 'Открыть восстановление' : 'Проверить очередь'}
+        variant={critical ? 'danger' : 'outline'}
+        size="sm"
+        onPress={onOpen}
+        accessibilityLabel="Открыть очередь восстановления событий"
+      />
+    </View>
+  );
+}
+
 /** P3-W39: один файл (раньше .tsx + .web.tsx) */
 export default function AdminDashboardScreen() {
   const { user } = useRenova();
+  const router = useRouter();
   const [s, setS] = useState<any>(null);
   const [rev, setRev] = useState<any[]>([]);
   const [health, setHealth] = useState<any>(null);
@@ -47,6 +80,10 @@ export default function AdminDashboardScreen() {
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);
 
+  const openOutbox = useCallback(() => {
+    router.push('/(contractor)/outbox-dead-letters' as never);
+  }, [router]);
+
   if (Platform.OS !== 'web') {
     return (
       <>
@@ -62,38 +99,37 @@ export default function AdminDashboardScreen() {
             </>
           ) : null}
 
-        {yk ? (
-          <Text style={st.sub}>
-            ЮKassa: {yk.configured ? 'ключи заданы' : 'нет ключей'}
-            {yk.live_checkout_ready ? ' · live ready' : ''}
-            {yk.demo_allowed ? ' · demo OK' : ''}
-            {yk.hint ? ` · ${yk.hint}` : ''}
-          </Text>
-        ) : null}
-        {health?.integrations ? (
-          <Text style={st.sub}>
-            SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
-            {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
-            {health.integrations.fns ? ` · ФНС live: ${health.integrations.fns.live_verify_ready ? 'yes' : 'no'}` : ''}
-            {health.integrations.esign ? ` · Kontur: ${health.integrations.esign.kontur_mode}` : ''}
-          </Text>
-        ) : null}
-
-        
-        {h0 ? (
-          <Text style={st.sub}>
-            H0 investor: {h0.ready_for_investor_demo ? 'READY' : 'NOT READY'} · score {h0.score}%
-            {h0.blockers?.length ? ` · blockers: ${h0.blockers.map((b: { id: string }) => b.id).join(', ')}` : ''}
-            {h0.hint ? ` · ${h0.hint}` : ''}
-          </Text>
-        ) : null}
-        {fns ? (
-          <Text style={st.sub}>
-            ФНС чеки: {fns.receipt_auth_configured ? 'auth OK' : 'без auth'}
-            {fns.live_verify_ready ? ' · live ready' : ''}
-            {fns.demo_verify_allowed ? ' · demo OK' : ''}
-          </Text>
-        ) : null}
+          {yk ? (
+            <Text style={st.sub}>
+              ЮKassa: {yk.configured ? 'ключи заданы' : 'нет ключей'}
+              {yk.live_checkout_ready ? ' · live ready' : ''}
+              {yk.demo_allowed ? ' · demo OK' : ''}
+              {yk.hint ? ` · ${yk.hint}` : ''}
+            </Text>
+          ) : null}
+          {health?.integrations ? (
+            <Text style={st.sub}>
+              SMTP: {health.integrations.smtp?.configured ? 'on' : 'off'}
+              {' · '}worker: {health.integrations.automation_worker?.healthy ? 'ok' : 'alert'}
+              {health.integrations.fns ? ` · ФНС live: ${health.integrations.fns.live_verify_ready ? 'yes' : 'no'}` : ''}
+              {health.integrations.esign ? ` · Kontur: ${health.integrations.esign.kontur_mode}` : ''}
+            </Text>
+          ) : null}
+          <OutboxOperations health={health} onOpen={openOutbox} />
+          {h0 ? (
+            <Text style={st.sub}>
+              H0 investor: {h0.ready_for_investor_demo ? 'READY' : 'NOT READY'} · score {h0.score}%
+              {h0.blockers?.length ? ` · blockers: ${h0.blockers.map((b: { id: string }) => b.id).join(', ')}` : ''}
+              {h0.hint ? ` · ${h0.hint}` : ''}
+            </Text>
+          ) : null}
+          {fns ? (
+            <Text style={st.sub}>
+              ФНС чеки: {fns.receipt_auth_configured ? 'auth OK' : 'без auth'}
+              {fns.live_verify_ready ? ' · live ready' : ''}
+              {fns.demo_verify_allowed ? ' · demo OK' : ''}
+            </Text>
+          ) : null}
         </View>
       </>
     );
@@ -105,6 +141,7 @@ export default function AdminDashboardScreen() {
       <Stack.Screen options={{ title: 'Панель' }} />
       <View style={st.wrap}>
         {health ? <Text style={{ marginBottom: 8 }}>Релиз: {health.crash_free_rate}% без сбоев</Text> : null}
+        <OutboxOperations health={health} onOpen={openOutbox} />
         {yk ? (
           <Text style={st.sub}>
             ЮKassa: {yk.configured ? 'ключи заданы' : 'нет ключей'}
@@ -113,7 +150,7 @@ export default function AdminDashboardScreen() {
             {yk.hint ? ` · ${yk.hint}` : ''}
           </Text>
         ) : null}
-                {h0 ? (
+        {h0 ? (
           <Text style={st.sub}>
             H0 investor: {h0.ready_for_investor_demo ? 'READY' : 'NOT READY'} · score {h0.score}%
             {h0.blockers?.length ? ` · blockers: ${h0.blockers.map((b: { id: string }) => b.id).join(', ')}` : ''}
@@ -164,4 +201,13 @@ const st = StyleSheet.create({
   lbl: { width: 70, fontSize: 12 },
   track: { flex: 1, height: 12, backgroundColor: RenovaTheme.colors.border, borderRadius: 6, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: RenovaTheme.colors.primary },
+  outboxCard: { borderWidth: 1, borderRadius: RenovaTheme.radius.lg, padding: RenovaTheme.spacing.md, gap: RenovaTheme.spacing.sm, marginBottom: RenovaTheme.spacing.md },
+  outboxCritical: { backgroundColor: RenovaTheme.colors.dangerBg, borderColor: RenovaTheme.colors.dangerBorder },
+  outboxHealthy: { backgroundColor: RenovaTheme.colors.successBg, borderColor: RenovaTheme.colors.successBorder },
+  outboxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: RenovaTheme.spacing.md },
+  outboxCopy: { flex: 1, gap: RenovaTheme.spacing.xs },
+  outboxTitle: { fontSize: RenovaTheme.fontSize.h3, fontWeight: RenovaTheme.fontWeight.bold, color: RenovaTheme.colors.text },
+  outboxText: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted },
+  outboxCriticalLabel: { color: RenovaTheme.colors.dangerText, fontWeight: RenovaTheme.fontWeight.extrabold, fontSize: RenovaTheme.fontSize.tiny },
+  outboxHealthyLabel: { color: RenovaTheme.colors.successText, fontWeight: RenovaTheme.fontWeight.extrabold, fontSize: RenovaTheme.fontSize.tiny },
 });

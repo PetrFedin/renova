@@ -4,6 +4,7 @@ import AdminScreen from './_screens/admin';
 import AdminDashboardScreen from './_screens/admin-dashboard';
 import ArticlesAdmin from './_screens/articles-admin';
 import AuditScreen from './_screens/audit';
+import OutboxDeadLettersScreen from './_screens/outbox-dead-letters';
 import SubscriptionScreen from './_screens/subscription';
 import TeamQrScreen from './_screens/team-qr';
 
@@ -12,6 +13,7 @@ const MAP: Record<string, ComponentType> = {
   'admin-dashboard': AdminDashboardScreen,
   'articles-admin': ArticlesAdmin,
   audit: AuditScreen,
+  'outbox-dead-letters': OutboxDeadLettersScreen,
   subscription: SubscriptionScreen,
   'team-qr': TeamQrScreen,
 };
