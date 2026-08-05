@@ -11,8 +11,6 @@ from app.services.release_health_service import truthful_release_snapshot
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
 
-pytestmark = pytest.mark.asyncio
-
 _RELEASE_ENV = (
     "RELEASE_VERSION",
     "APP_VERSION",
@@ -60,10 +58,17 @@ def test_snapshot_has_no_fabricated_identity_or_metrics():
     snapshot = truthful_release_snapshot()
 
     assert snapshot["contract_version"] == 2
-    assert snapshot["release"]["identified"] is False
-    assert snapshot["release"]["version"] is None
-    assert snapshot["release"]["commit_sha"] is None
+    assert snapshot["release"] == {
+        "version": None,
+        "version_source": None,
+        "commit_sha": None,
+        "commit_source": None,
+        "identified": False,
+    }
     assert snapshot["observability"]["status"] == "not_configured"
+    assert snapshot["observability"]["configured"] is False
+    assert snapshot["observability"]["sdk_active"] is False
+    assert snapshot["observability"]["runtime_error"] is None
     assert snapshot["observability"]["metrics"] == {
         "source": "unavailable",
         "available": False,
@@ -71,9 +76,6 @@ def test_snapshot_has_no_fabricated_identity_or_metrics():
         "crash_free_rate": None,
         "sessions": None,
     }
-    assert "sentry-stub" not in repr(snapshot)
-    assert "99.2" not in repr(snapshot)
-    assert "1200" not in repr(snapshot)
 
 
 def test_release_identity_comes_only_from_deployment_metadata(monkeypatch):
