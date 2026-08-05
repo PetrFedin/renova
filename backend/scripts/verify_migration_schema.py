@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-_PRESENT_REVISION = "w10subscriptionrefund01"
+_PRESENT_REVISION = "w11refundreview01"
 _ABSENT_REVISION = "w6webhookdelivery01"
 
 
@@ -181,8 +181,11 @@ def _verify_subscription_checkouts(inspector) -> None:
 def _verify_subscription_refunds(inspector) -> None:
     expected_columns = {
         "id", "checkout_id", "user_id", "provider_refund_id", "provider_payment_id",
-        "amount", "currency", "status", "entitlement_changed", "reason", "created_at",
-        "applied_at",
+        "amount", "currency", "status", "entitlement_changed", "reason",
+        "review_status", "review_owner_id", "review_claimed_at",
+        "review_claim_expires_at", "review_version", "resolution",
+        "resolution_note", "decision_key", "reviewed_by_id", "reviewed_at",
+        "created_at", "applied_at",
     }
     columns = {
         column["name"]: column
@@ -190,7 +193,11 @@ def _verify_subscription_refunds(inspector) -> None:
     }
     missing = expected_columns - set(columns)
     _require(not missing, f"subscription_refunds columns are missing: {sorted(missing)}")
-    nullable = {"checkout_id", "user_id", "reason", "applied_at"}
+    nullable = {
+        "checkout_id", "user_id", "reason", "review_owner_id", "review_claimed_at",
+        "review_claim_expires_at", "resolution", "resolution_note", "decision_key",
+        "reviewed_by_id", "reviewed_at", "applied_at",
+    }
     for name in expected_columns:
         _require(
             bool(columns[name].get("nullable")) is (name in nullable),
@@ -207,13 +214,24 @@ def _verify_subscription_refunds(inspector) -> None:
         )
         for foreign_key in inspector.get_foreign_keys("subscription_refunds")
     }
+    for columns_key, target in {
+        ("checkout_id",): ("subscription_checkouts", ("id",)),
+        ("user_id",): ("users", ("id",)),
+        ("review_owner_id",): ("users", ("id",)),
+        ("reviewed_by_id",): ("users", ("id",)),
+    }.items():
+        _require(
+            foreign_keys.get(columns_key) == target,
+            f"subscription_refunds foreign key mismatch for {columns_key}",
+        )
+    unique_constraints = {
+        constraint["name"]: list(constraint.get("column_names") or [])
+        for constraint in inspector.get_unique_constraints("subscription_refunds")
+        if constraint.get("name")
+    }
     _require(
-        foreign_keys.get(("checkout_id",)) == ("subscription_checkouts", ("id",)),
-        "subscription_refunds.checkout_id foreign key mismatch",
-    )
-    _require(
-        foreign_keys.get(("user_id",)) == ("users", ("id",)),
-        "subscription_refunds.user_id foreign key mismatch",
+        unique_constraints.get("uq_subscription_refunds_decision_key") == ["decision_key"],
+        "subscription_refunds decision key uniqueness is missing",
     )
     indexes = {
         index["name"]: index
@@ -226,11 +244,79 @@ def _verify_subscription_refunds(inspector) -> None:
         "ix_subscription_refunds_provider_refund_id": (["provider_refund_id"], True),
         "ix_subscription_refunds_provider_payment_id": (["provider_payment_id"], False),
         "ix_subscription_refunds_status": (["status"], False),
+        "ix_subscription_refunds_review_status": (["review_status"], False),
+        "ix_subscription_refunds_review_owner_id": (["review_owner_id"], False),
+        "ix_subscription_refunds_review_claim_expires_at": (["review_claim_expires_at"], False),
+        "ix_subscription_refunds_reviewed_by_id": (["reviewed_by_id"], False),
     }.items():
         index = indexes.get(name)
         _require(index is not None, f"{name} is missing")
         _require(list(index.get("column_names") or []) == expected, f"{name} columns mismatch")
         _require(bool(index.get("unique")) is unique, f"{name} unique mismatch")
+
+
+def _verify_subscription_refund_review_events(inspector) -> None:
+    expected_columns = {
+        "id", "refund_id", "actor_id", "event_type", "from_status",
+        "to_status", "payload_json", "created_at",
+    }
+    columns = {
+        column["name"]: column
+        for column in inspector.get_columns("subscription_refund_review_events")
+    }
+    missing = expected_columns - set(columns)
+    _require(
+        not missing,
+        f"subscription_refund_review_events columns are missing: {sorted(missing)}",
+    )
+    nullable = {"from_status", "to_status", "payload_json"}
+    for name in expected_columns:
+        _require(
+            bool(columns[name].get("nullable")) is (name in nullable),
+            f"subscription_refund_review_events.{name} nullable mismatch",
+        )
+    _require(
+        list(
+            inspector.get_pk_constraint("subscription_refund_review_events").get(
+                "constrained_columns"
+            )
+            or []
+        )
+        == ["id"],
+        "subscription_refund_review_events primary key must be id",
+    )
+    foreign_keys = {
+        tuple(foreign_key.get("constrained_columns") or []): (
+            foreign_key.get("referred_table"),
+            tuple(foreign_key.get("referred_columns") or []),
+        )
+        for foreign_key in inspector.get_foreign_keys(
+            "subscription_refund_review_events"
+        )
+    }
+    for columns_key, target in {
+        ("refund_id",): ("subscription_refunds", ("id",)),
+        ("actor_id",): ("users", ("id",)),
+    }.items():
+        _require(
+            foreign_keys.get(columns_key) == target,
+            f"subscription_refund_review_events foreign key mismatch for {columns_key}",
+        )
+    indexes = {
+        index["name"]: index
+        for index in inspector.get_indexes("subscription_refund_review_events")
+        if index.get("name")
+    }
+    for name, expected in {
+        "ix_subscription_refund_review_events_refund_id": ["refund_id"],
+        "ix_subscription_refund_review_events_actor_id": ["actor_id"],
+        "ix_subscription_refund_review_events_event_type": ["event_type"],
+        "ix_subscription_refund_review_events_created_at": ["created_at"],
+    }.items():
+        index = indexes.get(name)
+        _require(index is not None, f"{name} is missing")
+        _require(list(index.get("column_names") or []) == expected, f"{name} columns mismatch")
+        _require(not bool(index.get("unique")), f"{name} must not be unique")
 
 
 def _verify_present(sync_connection) -> None:
@@ -240,11 +326,18 @@ def _verify_present(sync_connection) -> None:
     )
     inspector = inspect(sync_connection)
     tables = set(inspector.get_table_names())
-    for table in ("users", "calendar_items", "subscription_checkouts", "subscription_refunds"):
+    for table in (
+        "users",
+        "calendar_items",
+        "subscription_checkouts",
+        "subscription_refunds",
+        "subscription_refund_review_events",
+    ):
         _require(table in tables, f"{table} table is missing after Alembic upgrade")
     _verify_calendar(inspector)
     _verify_subscription_checkouts(inspector)
     _verify_subscription_refunds(inspector)
+    _verify_subscription_refund_review_events(inspector)
 
 
 def _verify_absent(sync_connection) -> None:
@@ -254,7 +347,12 @@ def _verify_absent(sync_connection) -> None:
     )
     inspector = inspect(sync_connection)
     tables = set(inspector.get_table_names())
-    for table in ("calendar_items", "subscription_checkouts", "subscription_refunds"):
+    for table in (
+        "calendar_items",
+        "subscription_checkouts",
+        "subscription_refunds",
+        "subscription_refund_review_events",
+    ):
         _require(table not in tables, f"{table} survived downgrade to the previous revision")
     _require("users" in tables, "users table disappeared during schema downgrade")
     user_columns = {column["name"] for column in inspector.get_columns("users")}

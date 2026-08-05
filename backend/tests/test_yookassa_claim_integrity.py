@@ -111,7 +111,10 @@ async def seed_user(
 
 def test_alembic_graph_has_one_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["w10subscriptionrefund01"]
+    assert script.get_heads() == ["w11refundreview01"]
+    review_revision = script.get_revision("w11refundreview01")
+    assert review_revision is not None
+    assert review_revision.down_revision == "w10subscriptionrefund01"
     refund_revision = script.get_revision("w10subscriptionrefund01")
     assert refund_revision is not None
     assert refund_revision.down_revision == "w9subscriptioncheckout01"

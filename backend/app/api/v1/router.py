@@ -12,6 +12,7 @@ from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
 from app.api.v1 import payment_checkout_integrity
 from app.api.v1 import subscription_integrity
+from app.api.v1 import admin_subscription_refunds
 from app.api.v1 import project_creation
 from app.api.v1 import stage_mutations
 from app.api.v1 import stage_review_transitions
@@ -148,6 +149,7 @@ api_router.include_router(subscription.router)
 api_router.include_router(teams.router)
 api_router.include_router(analytics.router)
 api_router.include_router(audit.router)
+api_router.include_router(admin_subscription_refunds.router)
 api_router.include_router(admin.router)
 api_router.include_router(articles.router)
 api_router.include_router(articles_admin.router)
