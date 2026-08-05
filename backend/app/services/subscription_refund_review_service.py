@@ -194,7 +194,7 @@ async def list_reviews(
 
 async def get_review_detail(db: AsyncSession, refund_id: str) -> dict | None:
     row = await db.get(SubscriptionRefund, refund_id)
-    if row is None:
+    if row is None or row.review_status == "not_required":
         return None
     events = (
         await db.execute(
@@ -311,6 +311,45 @@ async def claim_review(
     return {**review_item_dict(row), "replayed": False}
 
 
+async def release_review(
+    db: AsyncSession,
+    *,
+    refund_id: str,
+    actor_id: str,
+    expected_version: int,
+    commit: bool = True,
+) -> dict | None:
+    row = await _locked_refund(db, refund_id)
+    if row is None:
+        return None
+    if row.status != "manual_review" or row.review_status != "claimed":
+        raise SubscriptionRefundReviewError("refund_review_not_claimed")
+    if row.review_owner_id != actor_id:
+        raise SubscriptionRefundReviewError("refund_review_claimed_by_other")
+    if int(expected_version) != int(row.review_version):
+        raise SubscriptionRefundReviewError("refund_review_version_conflict")
+
+    row.review_status = "open"
+    row.review_owner_id = None
+    row.review_claimed_at = None
+    row.review_claim_expires_at = None
+    row.review_version += 1
+    await _append_event(
+        db,
+        refund_id=row.id,
+        actor_id=actor_id,
+        event_type="released",
+        from_status="claimed",
+        to_status="open",
+        payload={"version": row.review_version},
+    )
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(row)
+    return {**review_item_dict(row), "replayed": False}
+
+
 async def _link_and_apply(
     db: AsyncSession,
     *,
@@ -386,6 +425,20 @@ async def _link_and_apply(
     }
 
 
+def _same_decision(
+    row: SubscriptionRefund,
+    *,
+    action: str,
+    note: str,
+    checkout_id: str | None,
+) -> bool:
+    if row.resolution != action or row.resolution_note != note:
+        return False
+    if action == "link_and_apply":
+        return row.checkout_id == checkout_id
+    return True
+
+
 async def resolve_review(
     db: AsyncSession,
     *,
@@ -401,12 +454,17 @@ async def resolve_review(
     decision_key = decision_key.strip()
     action = action.strip()
     note = note.strip()
+    checkout_id = checkout_id.strip() if checkout_id else None
     if len(decision_key) < 8 or len(decision_key) > 80:
         raise SubscriptionRefundReviewError("refund_review_decision_key_invalid")
     if action not in RESOLUTION_ACTIONS:
         raise SubscriptionRefundReviewError("refund_review_action_invalid")
     if len(note) < 10 or len(note) > 2000:
         raise SubscriptionRefundReviewError("refund_review_note_invalid")
+    if action == "link_and_apply" and not checkout_id:
+        raise SubscriptionRefundReviewError("refund_review_checkout_id_required")
+    if action in DISMISS_ACTIONS and checkout_id:
+        raise SubscriptionRefundReviewError("refund_review_checkout_id_forbidden")
 
     prior = (
         await db.execute(
@@ -416,8 +474,21 @@ async def resolve_review(
         )
     ).scalar_one_or_none()
     if prior is not None:
-        if prior.id == refund_id and prior.review_status == "resolved":
+        if (
+            prior.id == refund_id
+            and prior.review_status == "resolved"
+            and _same_decision(
+                prior,
+                action=action,
+                note=note,
+                checkout_id=checkout_id,
+            )
+        ):
             return {**review_item_dict(prior), "replayed": True}
+        if prior.id == refund_id:
+            raise SubscriptionRefundReviewError(
+                "refund_review_decision_payload_conflict"
+            )
         raise SubscriptionRefundReviewError("refund_review_decision_key_conflict")
 
     row = await _locked_refund(db, refund_id)
@@ -450,8 +521,6 @@ async def resolve_review(
     if action in DISMISS_ACTIONS:
         row.status = "dismissed"
     else:
-        if not checkout_id:
-            raise SubscriptionRefundReviewError("refund_review_checkout_id_required")
         outcome = await _link_and_apply(db, row=row, checkout_id=checkout_id)
 
     previous_review_status = row.review_status
@@ -494,7 +563,17 @@ async def resolve_review(
                 )
             )
         ).scalar_one_or_none()
-        if replay is not None and replay.id == refund_id and replay.review_status == "resolved":
+        if (
+            replay is not None
+            and replay.id == refund_id
+            and replay.review_status == "resolved"
+            and _same_decision(
+                replay,
+                action=action,
+                note=note,
+                checkout_id=checkout_id,
+            )
+        ):
             return {**review_item_dict(replay), "replayed": True}
         raise SubscriptionRefundReviewError(
             "refund_review_decision_key_conflict"
