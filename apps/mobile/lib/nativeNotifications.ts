@@ -67,6 +67,26 @@ export async function installNativeNotificationInteractions(
   }
 }
 
+/**
+ * Ask for push permission and persist the Expo token through a caller-provided
+ * callback. Keeping the API write outside this module prevents a dependency
+ * cycle while ensuring every login/bootstrap path shares the same native gate.
+ */
+export async function registerNativePushToken(
+  persistToken: (token: string) => Promise<unknown>,
+): Promise<boolean> {
+  if (!supportsNativeNotifications()) return false;
+
+  const Notifications = await import('expo-notifications');
+  const { status } = await Notifications.requestPermissionsAsync();
+  if (status !== 'granted') return false;
+
+  const token = (await Notifications.getExpoPushTokenAsync()).data?.trim();
+  if (!token) return false;
+  await persistToken(token);
+  return true;
+}
+
 /** Schedule a local conflict alert only on Android/iOS; web uses in-app UI. */
 export async function scheduleNativeSyncConflictNotification(conflicts: number): Promise<boolean> {
   if (!shouldScheduleNativeConflictNotification(Platform.OS, conflicts)) {
