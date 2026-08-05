@@ -3,6 +3,7 @@ name: Outbox dead-letter admin UI integrity
 on:
   pull_request:
     paths:
+      - "apps/mobile/app/outbox-dead-letters.tsx"
       - "apps/mobile/app/(contractor)/[tool].tsx"
       - "apps/mobile/app/(contractor)/_screens/admin-dashboard.tsx"
       - "apps/mobile/app/(contractor)/_screens/outbox-dead-letters.tsx"
