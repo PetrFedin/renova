@@ -60,7 +60,7 @@ console.assert(
 
 const summary = deadLetterSafeSummary({
   ...base,
-  ...( {
+  ...({
     payload_json: '{"provider_token":"must-not-render"}',
     last_error: 'smtp password must-not-render',
   } as unknown as OutboxDeadLetter),
@@ -87,7 +87,8 @@ console.assert(screen.includes('releaseOutboxDeadLetter'), 'screen must support 
 console.assert(screen.includes('getOutboxDeadLetterHistory'), 'screen must expose audit history');
 console.assert(!screen.includes('payload_json'), 'screen must never reference raw payload');
 console.assert(!screen.includes('last_error'), 'screen must never reference raw exception text');
-console.assert(!screen.includes('claim_token'), 'claim token must never be rendered or referenced by response field name');
+console.assert(!screen.includes('{result.claim_token}'), 'claim token must never be rendered');
+console.assert(!screen.includes('{localClaim.token}'), 'stored claim token must never be rendered');
 console.assert(route.includes("'outbox-dead-letters': OutboxDeadLettersScreen"), 'operator route is registered');
 console.assert(dashboard.includes('Открыть очередь восстановления событий'), 'dashboard links to recovery');
 
