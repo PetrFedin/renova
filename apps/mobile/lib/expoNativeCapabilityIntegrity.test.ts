@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import {
   isNativeNotificationPlatform,
   shouldScheduleNativeConflictNotification,
@@ -75,6 +75,44 @@ assert.ok(
 assert.ok(
   !layoutSource.includes("typeof window !== 'undefined') {\n        import('expo-notifications')"),
   'web-online handler must not schedule native notifications',
+);
+
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory).flatMap((entry) => {
+    if (entry === 'node_modules' || entry === '.expo' || entry === 'dist') return [];
+    const path = join(directory, entry);
+    const stats = statSync(path);
+    if (stats.isDirectory()) return sourceFiles(path);
+    return /\.(?:ts|tsx)$/.test(entry) ? [path] : [];
+  });
+}
+
+const allowedBoundary = 'lib/nativeNotifications.ts';
+const scannerTest = 'lib/expoNativeCapabilityIntegrity.test.ts';
+const forbiddenPatterns: Array<[string, RegExp]> = [
+  ['static expo-notifications import', /(?:from\s+|require\s*\()['"]expo-notifications['"]/],
+  ['dynamic expo-notifications import', /import\s*\(\s*['"]expo-notifications['"]\s*\)/],
+  ['notification handler API', /\bsetNotificationHandler\s*\(/],
+  ['notification category API', /\bsetNotificationCategoryAsync\s*\(/],
+  ['notification response listener API', /\baddNotificationResponseReceivedListener\s*\(/],
+  ['local notification scheduling API', /\bscheduleNotificationAsync\s*\(/],
+  ['push permission API', /\brequestPermissionsAsync\s*\(/],
+  ['Expo push token API', /\bgetExpoPushTokenAsync\s*\(/],
+];
+
+const violations: string[] = [];
+for (const path of sourceFiles(mobileRoot)) {
+  const relativePath = relative(mobileRoot, path).replaceAll('\\', '/');
+  if (relativePath === allowedBoundary || relativePath === scannerTest) continue;
+  const source = readFileSync(path, 'utf8');
+  for (const [label, pattern] of forbiddenPatterns) {
+    if (pattern.test(source)) violations.push(`${relativePath}: ${label}`);
+  }
+}
+assert.deepEqual(
+  violations,
+  [],
+  `all expo-notifications imports and raw APIs must stay inside ${allowedBoundary}:\n${violations.join('\n')}`,
 );
 
 console.log('expoNativeCapabilityIntegrity.test OK');
