@@ -359,6 +359,8 @@ async def _link_and_apply(
     checkout = await _locked_checkout(db, checkout_id)
     if checkout is None:
         raise SubscriptionRefundReviewError("refund_review_checkout_not_found")
+    if row.checkout_id is not None and row.checkout_id != checkout.id:
+        raise SubscriptionRefundReviewError("refund_review_checkout_conflict")
     if checkout.status not in {
         "succeeded",
         "partially_refunded",
@@ -368,6 +370,17 @@ async def _link_and_apply(
     if checkout.currency != row.currency:
         raise SubscriptionRefundReviewError("refund_review_currency_mismatch")
     if checkout.provider_payment_id not in {None, row.provider_payment_id}:
+        raise SubscriptionRefundReviewError("refund_review_provider_payment_conflict")
+
+    provider_owner_id = await db.scalar(
+        select(SubscriptionCheckout.id)
+        .where(
+            SubscriptionCheckout.provider_payment_id == row.provider_payment_id,
+            SubscriptionCheckout.id != checkout.id,
+        )
+        .limit(1)
+    )
+    if provider_owner_id is not None:
         raise SubscriptionRefundReviewError("refund_review_provider_payment_conflict")
 
     other_total = await db.scalar(
