@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.admin_access import admin_access_state, require_admin_user
-from app.api.v1 import admin
+from app.api.v1 import admin, admin_outbox_dead_letters
 from app.core.config import settings
 from app.models.entities import User, UserRole
 from app.services.staging_readiness import build_h0_readiness
@@ -80,19 +80,37 @@ def test_local_demo_fallback_does_not_apply_to_customers(monkeypatch):
 
 def test_every_admin_route_uses_canonical_guard():
     source = inspect.getsource(admin)
+    dead_letter_source = inspect.getsource(admin_outbox_dead_letters)
 
     assert "Depends(get_current_user)" not in source
     assert "UserRole.contractor" not in source
     assert source.count("Depends(require_admin_user)") == 5
-    route_paths = {
+    assert "Depends(get_current_user)" not in dead_letter_source
+    assert "UserRole.contractor" not in dead_letter_source
+    assert dead_letter_source.count("Depends(require_admin_user)") == 6
+
+    get_paths = {
         route.path
         for route in admin.router.routes
         if "GET" in (getattr(route, "methods", set()) or set())
     }
-    assert route_paths == {
+    assert get_paths == {
         "/admin/stats",
         "/admin/projects-chart",
         "/admin/revenue-chart",
         "/admin/release-health",
         "/admin/h0-readiness",
+        "/admin/outbox/dead-letters",
+        "/admin/outbox/dead-letters/{outbox_id}",
+        "/admin/outbox/dead-letters/{outbox_id}/history",
+    }
+    post_paths = {
+        route.path
+        for route in admin.router.routes
+        if "POST" in (getattr(route, "methods", set()) or set())
+    }
+    assert post_paths == {
+        "/admin/outbox/dead-letters/{outbox_id}/claim",
+        "/admin/outbox/dead-letters/{outbox_id}/release",
+        "/admin/outbox/dead-letters/{outbox_id}/replay",
     }
