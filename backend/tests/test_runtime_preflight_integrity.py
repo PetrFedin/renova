@@ -20,6 +20,7 @@ def _working_settings(**overrides) -> Settings:
         "public_base_url": "https://api-staging.renova.example",
         "secret_key": "unique-staging-secret-key-32-characters",
         "auth_allow_header_user_id": False,
+        "admin_user_ids": "admin-a",
         "allow_create_all": False,
         "allow_demo_seed": False,
         "document_ocr_mode": "metadata",
@@ -59,6 +60,9 @@ def test_canonical_policy_accepts_minimum_working_runtime_without_optional_vendo
         ({"database_url": "sqlite+aiosqlite:///./renova.db"}, "SQLite"),
         ({"public_base_url": "http://localhost:8100"}, "PUBLIC_BASE_URL"),
         ({"auth_allow_header_user_id": True}, "AUTH_ALLOW_HEADER_USER_ID"),
+        ({"admin_user_ids": ""}, "ADMIN_USER_IDS"),
+        ({"admin_user_ids": "admin-a,,admin-b"}, "пустые элементы"),
+        ({"admin_user_ids": "admin-a,admin-a"}, "повторяющиеся"),
         ({"allow_create_all": True}, "ALLOW_CREATE_ALL"),
         ({"allow_demo_seed": True}, "ALLOW_DEMO_SEED"),
     ],
@@ -269,8 +273,10 @@ def test_ops_scripts_forbid_demo_header_fallbacks_and_suppressed_failures():
 
 def test_environment_example_matches_working_runtime_contract():
     example = (_REPO_ROOT / "backend/.env.example").read_text()
+    staging_example = (_REPO_ROOT / "env.staging.example").read_text()
 
     assert "REDIS_URL=redis://redis:6379/0" in example
+    assert "ADMIN_USER_IDS=" in example
     assert "TWILIO_SID=" in example
     assert "TWILIO_TOKEN=" in example
     assert "TWILIO_FROM=" in example
@@ -278,3 +284,16 @@ def test_environment_example_matches_working_runtime_contract():
     assert "python -m app.core.runtime_preflight" in example
     assert "SENTRY_DSN=\n" in example
     assert "Payments. Optional for API startup" in example
+
+    for required in (
+        "REDIS_URL=redis://redis:6379/0",
+        "ADMIN_USER_IDS=replace-with-real-contractor-user-id",
+        "AUTH_ALLOW_HEADER_USER_ID=false",
+        "ALLOW_CREATE_ALL=false",
+        "ALLOW_DEMO_SEED=false",
+        "TWILIO_SID=",
+        "TWILIO_TOKEN=",
+        "TWILIO_FROM=",
+        "python -m app.core.runtime_preflight",
+    ):
+        assert required in staging_example
