@@ -1,0 +1,50 @@
+name: Automation reminder dedupe integrity
+
+on: [push, pull_request]
+
+concurrency:
+  group: automation-reminder-dedupe-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reminder-dedupe-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./automation-reminder-dedupe-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      AUTOMATION_REMINDERS_ENABLED: "0"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Verify daily dedupe and durable dispatch contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 420s poetry run pytest -vv -s --tb=short \
+            tests/test_automation_reminder_dedupe_integrity.py \
+            tests/test_automation_reminders.py \
+            2>&1 | tee automation-reminder-dedupe-integrity.log
+      - name: Upload reminder dedupe diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-reminder-dedupe-integrity-diagnostics
+          path: backend/automation-reminder-dedupe-integrity.log
+          if-no-files-found: warn
+          retention-days: 14

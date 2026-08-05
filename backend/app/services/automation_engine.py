@@ -1,12 +1,12 @@
 """Automation Engine — правила цепочки: работа → приёмка → оплата → закупка."""
 from __future__ import annotations
 
-from app.core.timeutil import utc_now
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import utc_now
 from app.models.entities import (
     MaterialPick,
     MaterialPickStatus,
@@ -17,6 +17,7 @@ from app.models.entities import (
     StageStatus,
 )
 from app.services import notification_service as notif_svc
+from app.services.automation_reminder_outbox import enqueue_notification_once
 
 
 async def process_event(
@@ -155,7 +156,7 @@ async def process_event(
                     return_to="/(customer)/(tabs)/budget",
                 )
 
-    # Просрочка работы
+    # Event-driven fallback. Periodic scans use the durable outbox below.
     if kind == "schedule_overdue" and stage_id:
         stage = await db.get(Stage, stage_id)
         if stage and proj and proj.contractor_id:
@@ -174,32 +175,62 @@ async def process_event(
     return actions
 
 
-async def scan_project_reminders(db: AsyncSession, project: Project) -> list[str]:
-    """Периодические напоминания: материалы для активных работ, просрочки."""
+async def scan_project_reminders(
+    db: AsyncSession,
+    project: Project,
+    *,
+    on_date: date | None = None,
+) -> list[str]:
+    """Enqueue daily project reminders once across all worker instances."""
     actions: list[str] = []
-    today = utc_now().date()
+    today = on_date or utc_now().date()
+    day_key = today.isoformat()
     stages = sorted(project.stages or [], key=lambda s: s.sort_order)
 
-    for st in stages:
-        if st.planned_end and st.planned_end < today and st.status not in (StageStatus.done,):
-            await process_event(db, kind="schedule_overdue", project_id=project.id, stage_id=st.id)
-            actions.append(f"overdue:{st.id}")
-
-    active = [s for s in stages if s.status == StageStatus.active]
-    if active and project.customer_id:
-        picks_r = await db.execute(select(MaterialPick).where(MaterialPick.project_id == project.id))
-        need = [p for p in picks_r.scalars().all() if p.status in (MaterialPickStatus.draft, MaterialPickStatus.pending)]
-        if need:
-            actions.append("materials_reminder")
-            await notif_svc.notify(
+    for stage in stages:
+        if (
+            stage.planned_end
+            and stage.planned_end < today
+            and stage.status not in (StageStatus.done,)
+            and project.contractor_id
+        ):
+            created = await enqueue_notification_once(
                 db,
-                user_id=project.customer_id,
+                dedupe_key=f"schedule-overdue:{stage.id}:{project.contractor_id}:{day_key}",
                 project_id=project.id,
+                user_id=project.contractor_id,
+                notification_type="deadline",
+                title="Просрочка работы",
+                body=stage.name,
+                link_path=f"/stage/{stage.id}",
+                return_to="/(contractor)/(tabs)/repair?tab=works",
+            )
+            if created:
+                actions.append(f"overdue:{stage.id}")
+
+    active = [stage for stage in stages if stage.status == StageStatus.active]
+    if active and project.customer_id:
+        picks_result = await db.execute(
+            select(MaterialPick).where(MaterialPick.project_id == project.id)
+        )
+        need = [
+            pick
+            for pick in picks_result.scalars().all()
+            if pick.status in (MaterialPickStatus.draft, MaterialPickStatus.pending)
+        ]
+        if need:
+            created = await enqueue_notification_once(
+                db,
+                dedupe_key=f"materials:{project.id}:{project.customer_id}:{day_key}",
+                project_id=project.id,
+                user_id=project.customer_id,
                 notification_type="material",
                 title=f"Закупите материалы ({len(need)})",
                 body=f"Для «{active[0].name}» нужны материалы",
                 link_path="/(customer)/(tabs)/repair?tab=materials",
                 return_to="/(customer)/(tabs)/repair?tab=materials",
             )
+            if created:
+                actions.append("materials_reminder")
 
     return actions
