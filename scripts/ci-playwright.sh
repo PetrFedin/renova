@@ -136,6 +136,7 @@ run_ui_e2e() {
   start_expo_web
   run_playwright_suite ui 5 \
     e2e/service-readiness.spec.ts \
+    e2e/expo-web-native-capability.spec.ts \
     e2e/portal-documents-ui.spec.ts \
     e2e/contract-gate-ui.spec.ts \
     e2e/mobile-surface-integrity.spec.ts \
