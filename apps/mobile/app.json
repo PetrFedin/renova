@@ -9,9 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "infoPlist": {
-        "UIBackgroundModes": [
-          "remote-notification"
-        ],
+        "CFBundleDevelopmentRegion": "ru",
         "NSPhotoLibraryUsageDescription": "Renova использует фото для загрузки документов и отчётов по ремонту.",
         "NSCameraUsageDescription": "Renova использует камеру для фото документов и отчётов по ремонту."
       },
@@ -51,21 +49,20 @@
       "expo-asset",
       "expo-web-browser",
       "expo-sharing",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "enableBackgroundRemoteNotifications": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
+      "locale": "ru",
       "sentryEnabled": false
-    }
-  },
-  "extra": {
-    "locale": "ru"
-  },
-  "ios": {
-    "infoPlist": {
-      "CFBundleDevelopmentRegion": "ru"
     }
   }
 }
