@@ -4,10 +4,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.core.environment import _is_https, _is_localhost_url, normalize_environment
+from app.services.admin_identity_service import inspect_admin_identities
 from app.services.fns.receipt_verify import fns_receipt_health
 from app.services.yookassa_service import yookassa_health
+
+
+_BLOCKER_IDS = {
+    "public_url",
+    "public_https",
+    "yookassa_keys",
+    "yookassa_live",
+    "yookassa_no_demo",
+    "auth_bearer",
+    "admin_identity",
+}
 
 
 def _git_sha() -> str | None:
@@ -36,17 +50,42 @@ def _git_sha() -> str | None:
         return None
 
 
+def _finalize(payload: dict[str, Any]) -> dict[str, Any]:
+    checks = payload["checks"]
+    env = payload["environment"]
+    blockers = [
+        check
+        for check in checks
+        if check["id"] in _BLOCKER_IDS and not check["ok"]
+    ]
+    ready = len(blockers) == 0 and env in ("staging", "production")
+    payload["blockers"] = blockers
+    payload["ready_for_investor_demo"] = ready
+    payload["score"] = round(
+        100 * sum(1 for check in checks if check["ok"]) / max(len(checks), 1)
+    )
+    payload["hint"] = (
+        "Готово к демо инвестору"
+        if ready
+        else "Закройте blockers: HTTPS API + YuKassa live keys + ADMIN_USER_IDS"
+    )
+    return payload
+
+
 def build_h0_readiness() -> dict[str, Any]:
-    """Сводка H0: что блокирует демо инвестору (keys / URL / identity)."""
+    """Сводка H0: configuration blockers without live database reads."""
     env = normalize_environment(settings.environment)
     yk = yookassa_health()
     fns = fns_receipt_health()
     public = (settings.public_base_url or "").strip()
+    admin_config = settings.admin_identity_config
 
     checks: list[dict[str, Any]] = []
 
-    def add(id_: str, label: str, ok: bool, how: str) -> None:
-        checks.append({"id": id_, "label": label, "ok": ok, "how": how})
+    def add(id_: str, label: str, ok: bool, how: str, **metadata: Any) -> None:
+        checks.append(
+            {"id": id_, "label": label, "ok": ok, "how": how, **metadata}
+        )
 
     add(
         "env",
@@ -105,20 +144,17 @@ def build_h0_readiness() -> dict[str, Any]:
     )
     add(
         "admin_identity",
-        "Администраторы заданы явно",
-        bool(settings.admin_user_id_set),
-        "Задайте ADMIN_USER_IDS как список неизменяемых user id через запятую",
+        "Администраторы заданы явно и однозначно",
+        admin_config.is_strictly_valid,
+        "Задайте ADMIN_USER_IDS без пустых элементов и дублей; live preflight проверит БД",
+        **admin_config.public_diagnostics(),
+        database_checked=False,
+        database_ok=None,
+        valid_contractor_count=None,
+        missing_count=None,
+        wrong_role_count=None,
     )
 
-    blocker_ids = {
-        "public_url",
-        "public_https",
-        "yookassa_keys",
-        "yookassa_live",
-        "yookassa_no_demo",
-        "auth_bearer",
-        "admin_identity",
-    }
     if env == "development":
         for check in checks:
             if check["id"] in (
@@ -134,32 +170,49 @@ def build_h0_readiness() -> dict[str, Any]:
                     "для пилота переключите staging"
                 )
 
-    blockers = [
-        check
-        for check in checks
-        if check["id"] in blocker_ids and not check["ok"]
-    ]
-    ready = len(blockers) == 0 and env in ("staging", "production")
-    score = round(
-        100 * sum(1 for check in checks if check["ok"]) / max(len(checks), 1)
-    )
-
     from datetime import datetime, timezone
 
-    return {
-        "environment": env,
-        "ready_for_investor_demo": ready,
-        "score": score,
-        "blockers": blockers,
-        "checks": checks,
-        "public_base_url_host": (
-            public.split("/")[2] if public.startswith("http") else public[:40]
-        ),
-        "git_sha": _git_sha(),
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-        "hint": (
-            "Готово к демо инвестору"
-            if ready
-            else "Закройте blockers: HTTPS API + YuKassa live keys + ADMIN_USER_IDS"
-        ),
-    }
+    return _finalize(
+        {
+            "environment": env,
+            "ready_for_investor_demo": False,
+            "score": 0,
+            "blockers": [],
+            "checks": checks,
+            "public_base_url_host": (
+                public.split("/")[2] if public.startswith("http") else public[:40]
+            ),
+            "git_sha": _git_sha(),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "hint": "",
+        }
+    )
+
+
+async def build_h0_readiness_with_database(
+    db: AsyncSession,
+) -> dict[str, Any]:
+    """Augment H0 with aggregate DB identity checks; never expose user IDs."""
+    payload = build_h0_readiness()
+    env = payload["environment"]
+    if env not in ("staging", "production"):
+        return payload
+
+    admin_config = settings.admin_identity_config
+    admin_check = next(
+        check for check in payload["checks"] if check["id"] == "admin_identity"
+    )
+    admin_check["database_checked"] = False
+    if not admin_config.is_strictly_valid:
+        return _finalize(payload)
+
+    state = await inspect_admin_identities(db, admin_config.configured_ids)
+    admin_check.update(state.public_diagnostics())
+    admin_check["database_checked"] = True
+    admin_check["ok"] = bool(admin_check["ok"]) and state.ok
+    if not state.ok:
+        admin_check["how"] = (
+            "Все ADMIN_USER_IDS должны существовать в users и иметь role=contractor; "
+            "идентификаторы в ответе не раскрываются"
+        )
+    return _finalize(payload)
