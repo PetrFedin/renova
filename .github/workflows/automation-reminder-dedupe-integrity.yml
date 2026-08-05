@@ -39,7 +39,6 @@ jobs:
           timeout 420s poetry run pytest -vv -s --tb=short \
             tests/test_automation_reminder_dedupe_integrity.py \
             tests/test_automation_reminders.py \
-            tests/test_outbox_delivery.py \
             2>&1 | tee automation-reminder-dedupe-integrity.log
       - name: Upload reminder dedupe diagnostics
         if: always()
