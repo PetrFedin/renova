@@ -3,7 +3,10 @@ name: Playwright service readiness integrity
 on:
   pull_request:
     paths:
+      - "apps/mobile/lib/useHubTab.ts"
+      - "e2e/contract-gate-ui.spec.ts"
       - "e2e/helpers.ts"
+      - "e2e/mobile-surface-integrity.spec.ts"
       - "e2e/outbox-dead-letter-admin-ui.spec.ts"
       - "e2e/playwright.config.ts"
       - "e2e/service-readiness.spec.ts"
@@ -23,7 +26,9 @@ concurrency:
 jobs:
   false-green-guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      TSX_TSCONFIG_PATH: ${{ github.workspace }}/apps/mobile/tsconfig.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,6 +37,8 @@ jobs:
           cache: npm
       - name: Install workspace dependencies
         run: npm ci
+      - name: Validate mobile navigation TypeScript
+        run: npm run typecheck:mobile
       - name: Validate shell lifecycle syntax
         run: bash -n scripts/ci-playwright.sh
       - name: Reject empty, skipped, unexpected and flaky reports
@@ -46,5 +53,11 @@ jobs:
             exit 1
           fi
           node scripts/assert-playwright-report.mjs /tmp/playwright-report.json --min-expected=2 --max-skipped=0
-      - name: Validate Playwright config and readiness spec discovery
-        run: npx playwright test -c e2e/playwright.config.ts e2e/service-readiness.spec.ts --list
+      - name: Validate affected Playwright spec discovery
+        run: >-
+          npx playwright test -c e2e/playwright.config.ts
+          e2e/service-readiness.spec.ts
+          e2e/contract-gate-ui.spec.ts
+          e2e/mobile-surface-integrity.spec.ts
+          e2e/outbox-dead-letter-admin-ui.spec.ts
+          --list
