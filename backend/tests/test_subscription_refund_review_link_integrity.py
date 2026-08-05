@@ -124,28 +124,32 @@ async def test_already_linked_refund_cannot_move_to_another_checkout(tmp_path):
                 checkout_id=source.id,
                 user_id=owner_a.id,
             )
+            refund_id = refund.id
+            actor_id = actor.id
+            source_id = source.id
+            target_id = target.id
             db.add_all([actor, owner_a, owner_b, source, target, refund])
             await db.commit()
 
             with pytest.raises(SubscriptionRefundReviewError) as exc_info:
                 await resolve_review(
                     db,
-                    refund_id=refund.id,
-                    actor_id=actor.id,
+                    refund_id=refund_id,
+                    actor_id=actor_id,
                     expected_version=1,
                     decision_key="collision-decision-linked",
                     action="link_and_apply",
                     note="A linked refund must remain attached to its original checkout.",
-                    checkout_id=target.id,
+                    checkout_id=target_id,
                 )
             await db.rollback()
 
             assert exc_info.value.code == "refund_review_checkout_conflict"
-            stored_refund = await db.get(SubscriptionRefund, refund.id)
-            stored_source = await db.get(SubscriptionCheckout, source.id)
-            stored_target = await db.get(SubscriptionCheckout, target.id)
+            stored_refund = await db.get(SubscriptionRefund, refund_id)
+            stored_source = await db.get(SubscriptionCheckout, source_id)
+            stored_target = await db.get(SubscriptionCheckout, target_id)
             assert stored_refund is not None
-            assert stored_refund.checkout_id == source.id
+            assert stored_refund.checkout_id == source_id
             assert stored_refund.review_status == "claimed"
             assert stored_refund.decision_key is None
             assert stored_source is not None
@@ -194,26 +198,30 @@ async def test_provider_payment_cannot_be_assigned_to_second_checkout(tmp_path):
                 checkout_id=None,
                 user_id=None,
             )
+            refund_id = refund.id
+            actor_id = actor.id
+            owner_checkout_id = existing_owner.id
+            target_id = target.id
             db.add_all([actor, owner_a, owner_b, existing_owner, target, refund])
             await db.commit()
 
             with pytest.raises(SubscriptionRefundReviewError) as exc_info:
                 await resolve_review(
                     db,
-                    refund_id=refund.id,
-                    actor_id=actor.id,
+                    refund_id=refund_id,
+                    actor_id=actor_id,
                     expected_version=1,
                     decision_key="provider-collision-decision",
                     action="link_and_apply",
                     note="One provider payment must never belong to two subscription checkouts.",
-                    checkout_id=target.id,
+                    checkout_id=target_id,
                 )
             await db.rollback()
 
             assert exc_info.value.code == "refund_review_provider_payment_conflict"
-            stored_refund = await db.get(SubscriptionRefund, refund.id)
-            stored_owner = await db.get(SubscriptionCheckout, existing_owner.id)
-            stored_target = await db.get(SubscriptionCheckout, target.id)
+            stored_refund = await db.get(SubscriptionRefund, refund_id)
+            stored_owner = await db.get(SubscriptionCheckout, owner_checkout_id)
+            stored_target = await db.get(SubscriptionCheckout, target_id)
             assert stored_refund is not None
             assert stored_refund.checkout_id is None
             assert stored_refund.review_status == "claimed"
