@@ -8,10 +8,13 @@ on:
       - "backend/app/services/outbox_service.py"
       - "backend/app/services/notification_service.py"
       - "backend/app/services/outbox_inline_dispatch.py"
+      - "backend/app/services/purchase_service.py"
       - "backend/tests/test_activity_automation_outbox_integrity.py"
       - "backend/tests/test_automation_reminder_dedupe_integrity.py"
       - "backend/tests/test_automation_reminders.py"
       - "backend/tests/test_outbox_failure_isolation.py"
+      - "backend/tests/test_outbox_fencing_integrity.py"
+      - "backend/tests/test_purchase_transition_integrity.py"
       - "backend/tests/test_work_acceptance_outbox_atomicity.py"
       - ".github/workflows/activity-automation-outbox-integrity.yml"
   workflow_dispatch:
@@ -75,6 +78,8 @@ jobs:
             tests/test_automation_reminder_dedupe_integrity.py \
             tests/test_automation_reminders.py \
             tests/test_outbox_failure_isolation.py \
+            tests/test_outbox_fencing_integrity.py \
+            tests/test_purchase_transition_integrity.py \
             tests/test_work_acceptance_outbox_atomicity.py \
             2>&1 | tee activity-automation-outbox-integrity.log
       - name: Upload activity automation diagnostics
