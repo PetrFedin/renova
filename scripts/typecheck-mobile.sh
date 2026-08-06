@@ -14,9 +14,9 @@ for arg in "$@"; do
   esac
 done
 
-# Ratchet down as real errors are fixed. Do not increase casually. Exact merge-
-# ref measurement on 2026-08-05: 116 non-TS2786/non-TS2607 diagnostics.
-BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-116}"
+# Ratchet down as real errors are fixed. Do not increase casually. Exact branch
+# measurement on 2026-08-06: 110 non-TS2786/non-TS2607 diagnostics.
+BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-110}"
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
