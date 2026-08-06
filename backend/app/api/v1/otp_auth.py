@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.phone import normalize_phone
 from app.db.session import get_db
 from app.schemas.auth import UserOut
-from app.services import otp_abuse_service, otp_login_service, otp_service
+from app.services import (
+    otp_abuse_service,
+    otp_login_service,
+    otp_redis_recovery,
+    otp_service,
+)
 from app.services.auth_audit import log_auth_event
 from app.services.fns.status_npd import check_taxpayer_npd_status
 
@@ -49,15 +54,39 @@ def _rate_limit(decision: otp_abuse_service.OtpAbuseDecision) -> None:
     )
 
 
+def _store_unavailable(exc: Exception) -> HTTPException:
+    return HTTPException(503, "Сервис кодов временно недоступен")
+
+
+async def _apply_abuse_guard(
+    action: str,
+    *,
+    phone: str,
+    request: Request,
+    device_id: str | None,
+) -> None:
+    """Recover the shared store when due, then atomically consume abuse budget."""
+    try:
+        await otp_redis_recovery.ensure_otp_store()
+        decision = otp_abuse_service.check_and_record(
+            action,
+            phone=phone,
+            ip=_client_ip(request),
+            device_id=device_id,
+        )
+    except otp_service.OtpStoreUnavailable as exc:
+        raise _store_unavailable(exc) from exc
+    _rate_limit(decision)
+
+
 @router.post("/send")
 async def send_code(body: OtpSendIn, request: Request):
-    decision = otp_abuse_service.check_and_record(
+    await _apply_abuse_guard(
         "send",
         phone=body.phone,
-        ip=_client_ip(request),
+        request=request,
         device_id=body.device_id,
     )
-    _rate_limit(decision)
     result = await otp_service.send_otp(body.phone)
     if not result.get("ok"):
         if result.get("service_unavailable"):
@@ -75,17 +104,16 @@ async def verify_code(
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
     ip = _client_ip(request)
-    decision = otp_abuse_service.check_and_record(
+    await _apply_abuse_guard(
         "verify",
         phone=body.phone,
-        ip=ip,
+        request=request,
         device_id=body.device_id,
     )
-    _rate_limit(decision)
     try:
         verified = otp_service.verify_otp(body.phone, body.code)
     except otp_service.OtpStoreUnavailable as exc:
-        raise HTTPException(503, "Сервис кодов временно недоступен") from exc
+        raise _store_unavailable(exc) from exc
     if not verified:
         await log_auth_event(
             db,
