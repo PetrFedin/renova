@@ -1,0 +1,96 @@
+name: Outbox ops alert integrity
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/core/config.py"
+      - "backend/app/services/automation_reminders_worker.py"
+      - "backend/app/services/email_service.py"
+      - "backend/app/services/outbox_dead_letter_service.py"
+      - "backend/app/services/outbox_service.py"
+      - "backend/tests/test_outbox_ops_alert_integrity.py"
+      - "backend/tests/test_automation_reminder_dedupe_integrity.py"
+      - "backend/tests/test_automation_reminders.py"
+      - "backend/tests/test_outbox_failure_isolation.py"
+      - "backend/tests/test_outbox_dead_letter_operations_integrity.py"
+      - ".github/workflows/outbox-ops-alert-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: outbox-ops-alert-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  outbox-alert-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./outbox-ops-alert-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      AUTOMATION_REMINDERS_ENABLED: "0"
+      OPS_ALERT_EMAIL: ops@example.com
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Reject secret-bearing outbox alert bodies
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("app/services/automation_reminders_worker.py")
+          tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+          target = next(
+              node for node in ast.walk(tree)
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+              and node.name == "_outbox_alert_body"
+          )
+          forbidden = {"payload_json", "last_error", "event_id", "aggregate_id"}
+          used = {
+              node.value
+              for node in ast.walk(target)
+              if isinstance(node, ast.Constant) and isinstance(node.value, str)
+          }
+          leaked = sorted(forbidden & used)
+          if leaked:
+              raise SystemExit(f"unsafe outbox alert fields referenced: {leaked}")
+          print("outbox alert redaction scan OK")
+          PY
+      - name: Verify outbox alert and recovery contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 480s poetry run pytest -vv -s --tb=short \
+            tests/test_outbox_ops_alert_integrity.py \
+            tests/test_automation_reminder_dedupe_integrity.py \
+            tests/test_automation_reminders.py \
+            tests/test_outbox_failure_isolation.py \
+            tests/test_outbox_dead_letter_operations_integrity.py \
+            2>&1 | tee outbox-ops-alert-integrity.log
+      - name: Upload outbox alert diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outbox-ops-alert-integrity-diagnostics
+          path: backend/outbox-ops-alert-integrity.log
+          if-no-files-found: warn
+          retention-days: 14
