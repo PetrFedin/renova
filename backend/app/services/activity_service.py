@@ -8,6 +8,9 @@ from app.core.timeutil import utc_now
 from app.models.entities import ActivityEvent, DomainOutbox, RoomChangeLog
 from app.models.outbox_runtime import SideEffectDelivery
 
+_AUTOMATION_TRIGGER = "trigger"
+_AUTOMATION_EVIDENCE_ONLY = "evidence_only"
+
 
 def _stage_id_from_link_path(link_path: str | None) -> str | None:
     if not link_path or not link_path.startswith("/stage/"):
@@ -16,25 +19,34 @@ def _stage_id_from_link_path(link_path: str | None) -> str | None:
     return stage_id or None
 
 
-async def _resolve_outbox_stage_id(
-    db: AsyncSession,
+async def _outbox_payload(db: AsyncSession, outbox_id: str) -> dict:
+    row = await db.get(DomainOutbox, outbox_id)
+    if row is None:
+        raise RuntimeError("outbox_activity_source_missing")
+    try:
+        decoded = json.loads(row.payload_json or "{}")
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("outbox_activity_payload_invalid") from exc
+    if not isinstance(decoded, dict):
+        raise RuntimeError("outbox_activity_payload_invalid")
+    return decoded
+
+
+def _automation_mode(payload: dict) -> str:
+    mode = payload.get("automation_mode") or _AUTOMATION_TRIGGER
+    if mode not in {_AUTOMATION_TRIGGER, _AUTOMATION_EVIDENCE_ONLY}:
+        raise RuntimeError("outbox_activity_automation_mode_invalid")
+    return mode
+
+
+def _resolve_outbox_stage_id(
+    payload: dict,
     *,
-    outbox_id: str,
     stage_id: str | None,
     link_path: str | None,
 ) -> str | None:
     if stage_id:
         return stage_id
-
-    row = await db.get(DomainOutbox, outbox_id)
-    payload: dict = {}
-    if row and row.payload_json:
-        try:
-            decoded = json.loads(row.payload_json)
-            if isinstance(decoded, dict):
-                payload = decoded
-        except (TypeError, ValueError):
-            payload = {}
     payload_stage_id = payload.get("stage_id")
     if isinstance(payload_stage_id, str) and payload_stage_id:
         return payload_stage_id
@@ -139,9 +151,10 @@ async def log_event_from_outbox(
     link_path: str | None = None,
     stage_id: str | None = None,
 ) -> ActivityEvent:
-    resolved_stage_id = await _resolve_outbox_stage_id(
-        db,
-        outbox_id=outbox_id,
+    payload = await _outbox_payload(db, outbox_id)
+    automation_mode = _automation_mode(payload)
+    resolved_stage_id = _resolve_outbox_stage_id(
+        payload,
         stage_id=stage_id,
         link_path=link_path,
     )
@@ -154,19 +167,20 @@ async def log_event_from_outbox(
         event = await db.get(ActivityEvent, delivery.entity_id)
         if not event:
             raise RuntimeError("outbox_activity_target_missing")
-        from app.services import automation_engine as automation
+        if automation_mode == _AUTOMATION_TRIGGER:
+            from app.services import automation_engine as automation
 
-        await automation.prepare_event_effects(
-            db,
-            kind=kind,
-            project_id=project_id,
-            user_id=user_id,
-            stage_id=resolved_stage_id,
-            body=body,
-            room_id=room_id,
-            source_activity_id=event.id,
-            parent_outbox_id=outbox_id,
-        )
+            await automation.prepare_event_effects(
+                db,
+                kind=kind,
+                project_id=project_id,
+                user_id=user_id,
+                stage_id=resolved_stage_id,
+                body=body,
+                room_id=room_id,
+                source_activity_id=event.id,
+                parent_outbox_id=outbox_id,
+            )
         await db.commit()
         return event
 
@@ -190,19 +204,20 @@ async def log_event_from_outbox(
             delivered_at=utc_now(),
         )
     )
-    from app.services import automation_engine as automation
+    if automation_mode == _AUTOMATION_TRIGGER:
+        from app.services import automation_engine as automation
 
-    await automation.prepare_event_effects(
-        db,
-        kind=kind,
-        project_id=project_id,
-        user_id=user_id,
-        stage_id=resolved_stage_id,
-        body=body,
-        room_id=room_id,
-        source_activity_id=event.id,
-        parent_outbox_id=outbox_id,
-    )
+        await automation.prepare_event_effects(
+            db,
+            kind=kind,
+            project_id=project_id,
+            user_id=user_id,
+            stage_id=resolved_stage_id,
+            body=body,
+            room_id=room_id,
+            source_activity_id=event.id,
+            parent_outbox_id=outbox_id,
+        )
     await db.commit()
     await db.refresh(event)
     return event
