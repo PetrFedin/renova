@@ -8,7 +8,15 @@ export function ChatInThreadSearch({ messages, onJump, onQueryChange }: { messag
   const hits = messages.filter(m => q.trim() && m.text.toLowerCase().includes(q.toLowerCase())).slice(0, 5);
   return (
     <View style={s.wrap}>
-      <TextInput style={s.input} placeholder="Поиск в чате…" value={q} onChangeText={v => { setQ(v); onQueryChange?.(v); }} />
+      <TextInput
+        style={s.input}
+        placeholder="Поиск в чате…"
+        value={q}
+        onChangeText={(value: string) => {
+          setQ(value);
+          onQueryChange?.(value);
+        }}
+      />
       {hits.map(m => <Pressable key={m.id} onPress={() => onJump(m.id)}><Text style={s.hit} numberOfLines={1}><HighlightText text={m.text} query={q} /></Text></Pressable>)}
     </View>
   );
