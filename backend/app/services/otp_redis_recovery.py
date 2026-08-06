@@ -1,15 +1,16 @@
 """Fail-closed, bounded recovery for the shared OTP Redis store.
 
 The OTP service intentionally marks Redis unavailable after a runtime command
-failure.  This coordinator keeps working environments fail closed while
+failure. This coordinator keeps working environments fail closed while
 allowing a later request (or startup probe) to reconnect after a bounded
-exponential backoff.  Only one thread performs a probe, preventing a Redis
+exponential backoff. Only one thread performs a probe, preventing a Redis
 outage from turning into a reconnect storm.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import threading
 import time
 
@@ -53,16 +54,42 @@ def _reset_recovery_state() -> None:
         _retry_at = 0.0
 
 
-def recovery_snapshot() -> dict[str, int | float | bool]:
-    """Return aggregate recovery state without exposing Redis coordinates."""
+def recovery_snapshot() -> dict[str, int | bool | str]:
+    """Return aggregate runtime truth without Redis coordinates or errors."""
     now = time.monotonic()
+    required = _working_environment()
+    configured = bool((settings.redis_url or "").strip())
+    failed = bool(otp_service._redis_failed)
+    connected = otp_service._redis is not None and not failed
+
     with _state_lock:
-        retry_after = max(0.0, _retry_at - now)
-        return {
-            "failed": bool(otp_service._redis_failed),
-            "failure_count": _failure_count,
-            "retry_after": retry_after,
-        }
+        retry_after_seconds = max(0, math.ceil(_retry_at - now))
+        failure_count = _failure_count
+
+    if failed:
+        status = "critical"
+    elif required and (not configured or not connected):
+        # A live process must never advertise working OTP auth without its
+        # required shared store. Startup normally prevents this state; if it is
+        # observed later, release health must surface it as critical.
+        status = "critical"
+    elif connected:
+        status = "healthy"
+    elif configured:
+        status = "unknown"
+    else:
+        status = "not_required"
+
+    return {
+        "healthy": status in {"healthy", "not_required"},
+        "status": status,
+        "required": required,
+        "configured": configured,
+        "connected": connected,
+        "failed": failed,
+        "failure_count": failure_count,
+        "retry_after_seconds": retry_after_seconds,
+    }
 
 
 def _existing_client():

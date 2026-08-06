@@ -88,8 +88,10 @@ async def release_health(
     from app.services.automation_reminders_worker import automation_worker_metrics
     from app.services.esign import list_providers
     from app.services.fns.receipt_verify import fns_receipt_health
+    from app.services.otp_redis_recovery import recovery_snapshot as otp_store_health
     from app.services.outbox_dead_letter_service import runtime_health as outbox_runtime_health
     from app.services.release_health_service import truthful_release_snapshot
+    from app.services.runtime_health_truth import automation_worker_runtime_truth
     from app.services.yookassa_service import yookassa_health
 
     release_snapshot = truthful_release_snapshot()
@@ -99,7 +101,9 @@ async def release_health(
 
     yk = yookassa_health()
     fns = fns_receipt_health()
-    worker = automation_worker_metrics()
+    worker_metrics = automation_worker_metrics()
+    worker_truth = automation_worker_runtime_truth(worker_metrics)
+    otp_store = otp_store_health()
     kontur_mode = (settings.kontur_mode or "off").strip().lower()
     esign = {
         "kontur_mode": kontur_mode,
@@ -136,9 +140,12 @@ async def release_health(
                 "enabled": bool(settings.ollama_digest_enabled),
                 "base_url_set": bool(settings.ollama_base_url),
             },
+            "otp_store": otp_store,
             "automation_worker": {
-                "healthy": int(worker.get("consecutive_failures") or 0) < 3,
-                "consecutive_failures": worker.get("consecutive_failures"),
+                "enabled": settings.automation_reminders_enabled,
+                **worker_truth,
+                "consecutive_failures": worker_metrics.get("consecutive_failures"),
+                "outbox_status": worker_metrics.get("outbox_status"),
             },
             "outbox": await outbox_runtime_health(db),
         },
