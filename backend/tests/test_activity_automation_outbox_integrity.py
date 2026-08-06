@@ -134,6 +134,7 @@ async def test_outbox_activity_derives_stage_and_creates_deterministic_child_onc
             "link_path": f"/stage/{stage.id}",
         },
     )
+    parent_id = parent.id
     await automation_db.commit()
 
     processed = await outbox_service.dispatch_pending(
@@ -151,12 +152,19 @@ async def test_outbox_activity_derives_stage_and_creates_deterministic_child_onc
     rows = list(
         (
             await automation_db.execute(
-                select(DomainOutbox).order_by(DomainOutbox.created_at, DomainOutbox.id)
+                select(
+                    DomainOutbox.id,
+                    DomainOutbox.event_type,
+                    DomainOutbox.aggregate_type,
+                    DomainOutbox.aggregate_id,
+                    DomainOutbox.processed_at,
+                ).order_by(DomainOutbox.created_at, DomainOutbox.id)
             )
-        ).scalars()
+        ).all()
     )
-    child = next(row for row in rows if row.id != parent.id)
-    assert parent.processed_at is not None
+    parent_row = next(row for row in rows if row.id == parent_id)
+    child = next(row for row in rows if row.id != parent_id)
+    assert parent_row.processed_at is not None
     assert child.processed_at is not None
     assert child.event_type == outbox_service.NOTIFICATION_EVENT
     assert child.aggregate_type == "activity_automation"
@@ -197,6 +205,7 @@ async def test_outbox_automation_prepare_failure_remains_retryable_and_visible(
             "link_path": f"/stage/{stage.id}",
         },
     )
+    parent_id = parent.id
     await automation_db.commit()
     monkeypatch.setattr(
         automation_engine,
@@ -219,7 +228,7 @@ async def test_outbox_automation_prepare_failure_remains_retryable_and_visible(
                 DomainOutbox.attempts,
                 DomainOutbox.last_error,
                 DomainOutbox.processed_at,
-            ).where(DomainOutbox.id == parent.id)
+            ).where(DomainOutbox.id == parent_id)
         )
     ).one()
     assert attempts == 1
