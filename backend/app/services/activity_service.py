@@ -10,6 +10,9 @@ from app.models.outbox_runtime import SideEffectDelivery
 
 _AUTOMATION_TRIGGER = "trigger"
 _AUTOMATION_EVIDENCE_ONLY = "evidence_only"
+# These parent workflows already own complete notification fan-out. Their
+# activity rows are immutable evidence, not a second automation trigger.
+_EVIDENCE_ONLY_AGGREGATE_TYPES = {"work_acceptance_effect", "purchase"}
 
 
 def _stage_id_from_link_path(link_path: str | None) -> str | None:
@@ -19,7 +22,10 @@ def _stage_id_from_link_path(link_path: str | None) -> str | None:
     return stage_id or None
 
 
-async def _outbox_payload(db: AsyncSession, outbox_id: str) -> dict:
+async def _outbox_source(
+    db: AsyncSession,
+    outbox_id: str,
+) -> tuple[DomainOutbox, dict]:
     row = await db.get(DomainOutbox, outbox_id)
     if row is None:
         raise RuntimeError("outbox_activity_source_missing")
@@ -29,14 +35,20 @@ async def _outbox_payload(db: AsyncSession, outbox_id: str) -> dict:
         raise RuntimeError("outbox_activity_payload_invalid") from exc
     if not isinstance(decoded, dict):
         raise RuntimeError("outbox_activity_payload_invalid")
-    return decoded
+    return row, decoded
 
 
-def _automation_mode(payload: dict) -> str:
-    mode = payload.get("automation_mode") or _AUTOMATION_TRIGGER
-    if mode not in {_AUTOMATION_TRIGGER, _AUTOMATION_EVIDENCE_ONLY}:
+def _automation_mode(row: DomainOutbox, payload: dict) -> str:
+    configured = payload.get("automation_mode")
+    if configured is None:
+        return (
+            _AUTOMATION_EVIDENCE_ONLY
+            if row.aggregate_type in _EVIDENCE_ONLY_AGGREGATE_TYPES
+            else _AUTOMATION_TRIGGER
+        )
+    if configured not in {_AUTOMATION_TRIGGER, _AUTOMATION_EVIDENCE_ONLY}:
         raise RuntimeError("outbox_activity_automation_mode_invalid")
-    return mode
+    return configured
 
 
 def _resolve_outbox_stage_id(
@@ -151,8 +163,8 @@ async def log_event_from_outbox(
     link_path: str | None = None,
     stage_id: str | None = None,
 ) -> ActivityEvent:
-    payload = await _outbox_payload(db, outbox_id)
-    automation_mode = _automation_mode(payload)
+    row, payload = await _outbox_source(db, outbox_id)
+    automation_mode = _automation_mode(row, payload)
     resolved_stage_id = _resolve_outbox_stage_id(
         payload,
         stage_id=stage_id,
