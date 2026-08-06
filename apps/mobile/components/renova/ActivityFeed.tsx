@@ -66,7 +66,14 @@ export function ActivityFeed({
     <View style={s.box}>
       <Text style={s.head}>{compact ? 'Недавнее' : 'Архив действий'}</Text>
       {!compact && <ScrollView horizontal style={{ marginBottom: 6 }}>{KINDS.map((x) => <Pressable key={x.k} style={[s.ch, kind === x.k && s.on]} onPress={() => setKind(x.k)}><Text style={s.ct}>{x.l}</Text></Pressable>)}</ScrollView>}
-      {!compact && <GlobalFilterBar kind={kind} workType={wt} onKind={setKind} onWorkType={setWt} />}
+      {!compact && (
+        <GlobalFilterBar
+          kind={kind}
+          workType={wt}
+          onKind={(nextKind) => setKind(nextKind ?? '')}
+          onWorkType={setWt}
+        />
+      )}
       {loadError ? (
         <LoadErrorState title="Не удалось загрузить ленту" onRetry={reload} />
       ) : (
