@@ -34,7 +34,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     let disposed = false;
-    let removeNotificationListener = () => undefined;
+    let removeNotificationListener: () => void = () => undefined;
 
     // Native notification APIs are loaded only on Android/iOS. Importing the
     // module on web installs unsupported listeners and creates false runtime
