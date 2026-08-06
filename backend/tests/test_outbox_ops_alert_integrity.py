@@ -43,7 +43,7 @@ def _health(
 
 
 @pytest.fixture(autouse=True)
-def reset_alert_state(monkeypatch):
+def reset_alert_state():
     original_metrics = deepcopy(worker._METRICS)
     original_status = worker._outbox_alerted_status
     original_email = config.settings.ops_alert_email
@@ -136,13 +136,15 @@ async def test_successful_tick_alerts_for_poisoned_row_even_when_dispatch_return
     monkeypatch,
 ):
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'outbox-ops-alert.db'}"
-    config.settings.database_url = database_url
-    sess.engine = __import__(
+    engine = __import__(
         "sqlalchemy.ext.asyncio", fromlist=["create_async_engine"]
     ).create_async_engine(database_url, echo=False)
-    sess.SessionLocal = __import__(
+    session_factory = __import__(
         "sqlalchemy.ext.asyncio", fromlist=["async_sessionmaker"]
-    ).async_sessionmaker(sess.engine, expire_on_commit=False)
+    ).async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(config.settings, "database_url", database_url)
+    monkeypatch.setattr(sess, "engine", engine)
+    monkeypatch.setattr(sess, "SessionLocal", session_factory)
     await init_db()
 
     outbox_id = str(uuid.uuid4())
@@ -186,4 +188,4 @@ async def test_successful_tick_alerts_for_poisoned_row_even_when_dispatch_return
                 )
             ) == outbox_id
     finally:
-        await sess.engine.dispose()
+        await engine.dispose()
