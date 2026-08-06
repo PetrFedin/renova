@@ -1,4 +1,7 @@
 """Платежи: авансы, этапы, материалы."""
+from collections.abc import Awaitable, Callable
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,9 +16,37 @@ from app.services.client_write_idempotency import (
     commit_client_write,
     replay_entity_id,
 )
+from app.services.client_write_side_effects import clear_request_side_effect_context
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["payments"])
 PAYMENT_CREATE_SCOPE = "payment.create"
+
+
+async def _attempt_durable_inline_delivery(
+    db: AsyncSession,
+    *,
+    operation: str,
+    payment_id: str,
+    delivery: Callable[[], Awaitable[object]],
+) -> None:
+    """Try immediate delivery without lying about an already committed payment.
+
+    Payment mutations enqueue their activity and notification effects in the same
+    transaction. Inline delivery is only a latency optimization; the outbox worker
+    remains the source of retry truth when an external push or delivery adapter fails.
+    """
+    try:
+        await delivery()
+    except Exception:  # noqa: BLE001 - durable outbox owns the retry
+        await db.rollback()
+        logger.exception(
+            "payment inline delivery deferred operation=%s payment_id=%s",
+            operation,
+            payment_id,
+        )
+    finally:
+        clear_request_side_effect_context()
 
 
 def _idempotency_http_error() -> HTTPException:
@@ -207,16 +238,27 @@ async def create_payment(
     # Уведомление отправляется только для реально созданного счёта, не для replay.
     if created and project.customer_id and project.customer_id != user.id:
         from app.services import notification_service as notif
-        await notif.notify(
+
+        async def deliver_created_notification() -> object:
+            return await notif.notify(
+                db,
+                user_id=project.customer_id,
+                project_id=project_id,
+                notification_type="payment_pending",
+                title=f"Счёт к оплате: {payment.title}",
+                body=str(payment.amount),
+                link_path="/(customer)/(tabs)/budget?tab=payments",
+                return_to="/(customer)/(tabs)/home",
+            )
+
+        await _attempt_durable_inline_delivery(
             db,
-            user_id=project.customer_id,
-            project_id=project_id,
-            notification_type="payment_pending",
-            title=f"Счёт к оплате: {payment.title}",
-            body=str(payment.amount),
-            link_path="/(customer)/(tabs)/budget?tab=payments",
-            return_to="/(customer)/(tabs)/home",
+            operation="create",
+            payment_id=payment.id,
+            delivery=deliver_created_notification,
         )
+    else:
+        clear_request_side_effect_context()
     receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
 
@@ -282,36 +324,45 @@ async def confirm_payment(
     from app.services import activity_service as act
     from app.services import notification_service as notif
 
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="PaymentApproved",
-        title=f"Оплата: {payment.title}",
-        body=str(payment.amount),
-        link_path="/(customer)/(tabs)/budget",
-    )
-    status_val = payment.status.value if hasattr(payment.status, "value") else str(payment.status)
-    unverified = status_val == "paid_unverified"
-    notification_type = "payment_pending" if unverified else "payment_confirmed"
-    notification_title = (
-        f"Перевод отмечен (без чека): {payment.title}"
-        if unverified
-        else f"Оплата подтверждена: {payment.title}"
-    )
-    for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
-        if not member_id or member_id == user.id:
-            continue
-        await notif.notify(
+    async def deliver_transition_side_effects() -> object:
+        await act.log_event(
             db,
-            user_id=member_id,
             project_id=project_id,
-            notification_type=notification_type,
-            title=notification_title,
+            user_id=user.id,
+            kind="PaymentApproved",
+            title=f"Оплата: {payment.title}",
             body=str(payment.amount),
-            link_path="/(customer)/(tabs)/budget" if member_id == project.customer_id else "/(contractor)/(tabs)/budget",
-            return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home",
+            link_path="/(customer)/(tabs)/budget",
         )
+        status_val = payment.status.value if hasattr(payment.status, "value") else str(payment.status)
+        unverified = status_val == "paid_unverified"
+        notification_type = "payment_pending" if unverified else "payment_confirmed"
+        notification_title = (
+            f"Перевод отмечен (без чека): {payment.title}"
+            if unverified
+            else f"Оплата подтверждена: {payment.title}"
+        )
+        for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+            if not member_id or member_id == user.id:
+                continue
+            await notif.notify(
+                db,
+                user_id=member_id,
+                project_id=project_id,
+                notification_type=notification_type,
+                title=notification_title,
+                body=str(payment.amount),
+                link_path="/(customer)/(tabs)/budget" if member_id == project.customer_id else "/(contractor)/(tabs)/budget",
+                return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home",
+            )
+        return None
+
+    await _attempt_durable_inline_delivery(
+        db,
+        operation="confirm",
+        payment_id=payment.id,
+        delivery=deliver_transition_side_effects,
+    )
     receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
 
