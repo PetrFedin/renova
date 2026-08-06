@@ -235,6 +235,7 @@ async def create_payment(
             if not payment:
                 raise HTTPException(409, detail={"code": "idempotency_target_missing"})
 
+    persisted_payment_id = payment.id
     # Уведомление отправляется только для реально созданного счёта, не для replay.
     if created and project.customer_id and project.customer_id != user.id:
         from app.services import notification_service as notif
@@ -254,12 +255,16 @@ async def create_payment(
         await _attempt_durable_inline_delivery(
             db,
             operation="create",
-            payment_id=payment.id,
+            payment_id=persisted_payment_id,
             delivery=deliver_created_notification,
         )
     else:
         clear_request_side_effect_context()
-    receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
+
+    payment = await pay_svc.get_payment(db, persisted_payment_id)
+    if not payment:
+        raise HTTPException(500, detail={"code": "committed_payment_missing"})
+    receipt_id = await pay_svc.receipt_id_for_payment(db, persisted_payment_id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
 
 
@@ -324,6 +329,8 @@ async def confirm_payment(
     from app.services import activity_service as act
     from app.services import notification_service as notif
 
+    persisted_payment_id = payment.id
+
     async def deliver_transition_side_effects() -> object:
         await act.log_event(
             db,
@@ -360,10 +367,14 @@ async def confirm_payment(
     await _attempt_durable_inline_delivery(
         db,
         operation="confirm",
-        payment_id=payment.id,
+        payment_id=persisted_payment_id,
         delivery=deliver_transition_side_effects,
     )
-    receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
+
+    payment = await pay_svc.get_payment(db, persisted_payment_id)
+    if not payment:
+        raise HTTPException(500, detail={"code": "committed_payment_missing"})
+    receipt_id = await pay_svc.receipt_id_for_payment(db, persisted_payment_id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
 
 
