@@ -4,8 +4,11 @@ on:
   pull_request:
     paths:
       - "backend/app/api/v1/automation_worker.py"
+      - "backend/app/api/v1/admin.py"
       - "backend/app/services/automation_reminders_worker.py"
+      - "backend/app/services/runtime_health_truth.py"
       - "backend/tests/test_automation_worker_health_truth.py"
+      - "backend/tests/test_release_runtime_health_coherence.py"
       - "backend/tests/test_outbox_ops_alert_integrity.py"
       - "backend/tests/test_admin_rbac_integrity.py"
       - ".github/workflows/automation-worker-health-truth-integrity.yml"
@@ -45,23 +48,44 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-      - name: Reject failure-only worker health
+      - name: Reject failure-only or divergent worker health
         working-directory: backend
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          source = Path("app/api/v1/automation_worker.py").read_text(encoding="utf-8")
-          required = [
-              "outbox_status",
-              "tick_executed",
-              "outbox_healthy",
-              "_worker_runtime_truth",
-          ]
-          missing = [token for token in required if token not in source]
+          api = Path("app/api/v1/automation_worker.py").read_text(encoding="utf-8")
+          admin = Path("app/api/v1/admin.py").read_text(encoding="utf-8")
+          classifier = Path("app/services/runtime_health_truth.py").read_text(encoding="utf-8")
+
+          required = {
+              "api": [
+                  "outbox_status",
+                  "tick_executed",
+                  "automation_worker_runtime_truth(metrics)",
+              ],
+              "admin": ["automation_worker_runtime_truth(worker_metrics)"],
+              "classifier": [
+                  "outbox_healthy",
+                  'outbox_status == "critical"',
+                  'status = "degraded"',
+                  'status = "unknown"',
+                  'status = "healthy"',
+              ],
+          }
+          sources = {"api": api, "admin": admin, "classifier": classifier}
+          missing = {
+              name: [token for token in tokens if token not in sources[name]]
+              for name, tokens in required.items()
+          }
+          missing = {name: tokens for name, tokens in missing.items() if tokens}
           if missing:
               raise SystemExit(f"worker health truth contract missing: {missing}")
-          print("automation worker health truth scan OK")
+
+          retired = 'int(worker.get("consecutive_failures") or 0) < 3'
+          if retired in admin:
+              raise SystemExit("release health still contains failure-only worker formula")
+          print("automation worker shared health truth scan OK")
           PY
       - name: Verify worker status and tick truth contracts
         working-directory: backend
@@ -69,6 +93,7 @@ jobs:
           set -o pipefail
           timeout 480s poetry run pytest -vv -s --tb=short \
             tests/test_automation_worker_health_truth.py \
+            tests/test_release_runtime_health_coherence.py \
             tests/test_outbox_ops_alert_integrity.py \
             tests/test_admin_rbac_integrity.py \
             2>&1 | tee automation-worker-health-truth-integrity.log
