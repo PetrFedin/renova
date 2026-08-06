@@ -1,52 +1,37 @@
 #!/usr/bin/env bash
-# W70 #38: typecheck mobile — ignore RN×React19 JSX noise (TS2786/TS2607).
-# Default: soft report. --strict fails if real errors exceed baseline.
-# Baseline ratchets down as real errors are fixed (do not raise casually).
+# Mobile TypeScript integrity with an explicit, ratcheted exception for known
+# RN x React 19 JSX noise (TS2786/TS2607). All parsing is portable Node.js and
+# any compiler/tooling failure without TypeScript diagnostics fails closed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/apps/mobile"
 
 STRICT=0
 for arg in "$@"; do
-  [[ "$arg" == "--strict" ]] && STRICT=1
+  case "$arg" in
+    --strict) STRICT=1 ;;
+    *) echo "FAIL: unsupported argument: $arg"; exit 2 ;;
+  esac
 done
 
-# After W70 ProfileFields VAT fix; ratchet down when cleaning more files.
-BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-117}"
-
+# Ratchet down as real errors are fixed. Do not increase casually. Exact merge-
+# ref measurement on 2026-08-05: 116 non-TS2786/non-TS2607 diagnostics.
+BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-116}"
 TMP="$(mktemp)"
-FILTERED="$(mktemp)"
-trap 'rm -f "$TMP" "$FILTERED"' EXIT
+trap 'rm -f "$TMP"' EXIT
 
-npx tsc --noEmit -p . >"$TMP" 2>&1 || true
-rg -v "error TS2786:|error TS2607:" "$TMP" >"$FILTERED" || true
+set +e
+npx tsc --noEmit -p . >"$TMP" 2>&1
+TSC_EXIT=$?
+set -e
 
-REAL="$(rg -c "error TS" "$FILTERED" || true)"
-NOISE_2786="$(rg -c "error TS2786:" "$TMP" || true)"
-NOISE_2607="$(rg -c "error TS2607:" "$TMP" || true)"
-REAL="${REAL:-0}"
-NOISE_2786="${NOISE_2786:-0}"
-NOISE_2607="${NOISE_2607:-0}"
-
-echo "typecheck-mobile: TS2786=${NOISE_2786} TS2607=${NOISE_2607} real=${REAL} baseline=${BASELINE_REAL}"
-
-if [[ "$REAL" -gt 0 ]]; then
-  echo "--- real errors (first 20) ---"
-  rg "error TS" "$FILTERED" | head -20 || true
+ARGS=(
+  "--input=$TMP"
+  "--tsc-exit=$TSC_EXIT"
+  "--baseline=$BASELINE_REAL"
+)
+if [[ "$STRICT" -eq 1 ]]; then
+  ARGS+=(--strict)
 fi
 
-if [[ "$REAL" -gt "$BASELINE_REAL" ]]; then
-  echo "FAIL: real errors ${REAL} > baseline ${BASELINE_REAL}"
-  exit 1
-fi
-
-if [[ "$STRICT" -eq 1 && "$REAL" -gt 0 ]]; then
-  echo "FAIL: --strict and ${REAL} real errors remain"
-  exit 1
-fi
-
-if [[ "$REAL" -gt 0 ]]; then
-  echo "WARN: ${REAL} real errors (≤ baseline); use --strict for zero-tolerance"
-else
-  echo "PASS: no real TypeScript errors (JSX noise gated)"
-fi
+node "$ROOT/scripts/typecheck-mobile-report.mjs" "${ARGS[@]}"

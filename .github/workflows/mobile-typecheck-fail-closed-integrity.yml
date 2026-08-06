@@ -1,0 +1,63 @@
+name: Mobile typecheck fail-closed integrity
+
+on:
+  pull_request:
+    paths:
+      - "scripts/typecheck-mobile.sh"
+      - "scripts/typecheck-mobile-report.mjs"
+      - "scripts/typecheck-mobile-report.test.mjs"
+      - ".github/workflows/mobile-typecheck-fail-closed-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-typecheck-fail-closed-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Validate shell syntax
+        run: bash -n scripts/typecheck-mobile.sh
+      - name: Verify diagnostic parser contracts
+        run: node scripts/typecheck-mobile-report.test.mjs
+      - name: Verify CLI fails closed
+        run: |
+          set -euo pipefail
+          cat > /tmp/noise.log <<'EOF'
+          app/a.tsx(1,1): error TS2786: known JSX compatibility noise
+          app/b.tsx(2,1): error TS2607: known JSX attribute compatibility noise
+          EOF
+          node scripts/typecheck-mobile-report.mjs \
+            --input=/tmp/noise.log --tsc-exit=2 --baseline=0
+
+          cat > /tmp/one-real.log <<'EOF'
+          lib/api.ts(3,4): error TS2322: Type 'string' is not assignable to type 'number'.
+          EOF
+          node scripts/typecheck-mobile-report.mjs \
+            --input=/tmp/one-real.log --tsc-exit=2 --baseline=1
+          if node scripts/typecheck-mobile-report.mjs \
+            --input=/tmp/one-real.log --tsc-exit=2 --baseline=0; then
+            echo "FAIL: diagnostics above baseline were accepted"
+            exit 1
+          fi
+
+          printf '%s\n' 'npm ERR! could not determine executable to run' > /tmp/tooling-crash.log
+          if node scripts/typecheck-mobile-report.mjs \
+            --input=/tmp/tooling-crash.log --tsc-exit=127 --baseline=117; then
+            echo "FAIL: tooling failure without TypeScript diagnostics was accepted"
+            exit 1
+          fi
+      - name: Run actual mobile TypeScript integrity
+        run: npm run typecheck:mobile
