@@ -10,31 +10,9 @@ from app.services.automation_reminders_worker import (
     automation_worker_metrics,
     run_automation_reminder_tick,
 )
+from app.services.runtime_health_truth import automation_worker_runtime_truth
 
 router = APIRouter(prefix="/automation", tags=["automation"])
-
-
-def _worker_runtime_truth(metrics: dict) -> dict[str, object]:
-    failures = int(metrics.get("consecutive_failures") or 0)
-    tick_healthy = failures < 3
-    outbox_status = str(metrics.get("outbox_status") or "unknown")
-    outbox_healthy = outbox_status == "healthy"
-
-    if not tick_healthy or outbox_status == "critical":
-        status = "critical"
-    elif outbox_status == "degraded":
-        status = "degraded"
-    elif outbox_status == "healthy":
-        status = "healthy"
-    else:
-        status = "unknown"
-
-    return {
-        "healthy": status == "healthy",
-        "status": status,
-        "tick_healthy": tick_healthy,
-        "outbox_healthy": outbox_healthy,
-    }
 
 
 @router.get("/worker")
@@ -45,7 +23,7 @@ async def automation_worker_status(
     return {
         "enabled": settings.automation_reminders_enabled,
         "interval_sec": settings.automation_reminders_interval_sec,
-        **_worker_runtime_truth(metrics),
+        **automation_worker_runtime_truth(metrics),
         **metrics,
     }
 
