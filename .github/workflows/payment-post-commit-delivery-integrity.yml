@@ -1,0 +1,67 @@
+name: Payment post-commit delivery integrity
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/v1/payments.py"
+      - "backend/app/services/client_write_side_effects.py"
+      - "backend/app/services/activity_service.py"
+      - "backend/app/services/notification_service.py"
+      - "backend/app/services/outbox_service.py"
+      - "backend/tests/test_payment_post_commit_delivery_integrity.py"
+      - "backend/tests/test_financial_side_effect_outbox.py"
+      - "backend/tests/test_payment_transition_idempotency.py"
+      - "backend/tests/test_payment_notifications_api.py"
+      - ".github/workflows/payment-post-commit-delivery-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: payment-post-commit-delivery-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  payment-delivery-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./payment-post-commit-delivery-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Verify payment commit and delivery recovery contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 480s poetry run pytest -vv -s --tb=short \
+            tests/test_payment_post_commit_delivery_integrity.py \
+            tests/test_financial_side_effect_outbox.py \
+            tests/test_payment_transition_idempotency.py \
+            tests/test_payment_notifications_api.py \
+            2>&1 | tee payment-post-commit-delivery-integrity.log
+      - name: Upload payment delivery diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payment-post-commit-delivery-integrity-diagnostics
+          path: backend/payment-post-commit-delivery-integrity.log
+          if-no-files-found: warn
+          retention-days: 14
