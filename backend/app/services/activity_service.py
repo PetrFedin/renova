@@ -1,10 +1,47 @@
 """Единый архив действий по проекту."""
+import json
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
-from app.models.entities import ActivityEvent, RoomChangeLog
+from app.models.entities import ActivityEvent, DomainOutbox, RoomChangeLog
 from app.models.outbox_runtime import SideEffectDelivery
+
+
+def _stage_id_from_link_path(link_path: str | None) -> str | None:
+    if not link_path or not link_path.startswith("/stage/"):
+        return None
+    stage_id = link_path.removeprefix("/stage/").split("?", 1)[0].split("/", 1)[0]
+    return stage_id or None
+
+
+async def _resolve_outbox_stage_id(
+    db: AsyncSession,
+    *,
+    outbox_id: str,
+    stage_id: str | None,
+    link_path: str | None,
+) -> str | None:
+    if stage_id:
+        return stage_id
+
+    row = await db.get(DomainOutbox, outbox_id)
+    payload: dict = {}
+    if row and row.payload_json:
+        try:
+            decoded = json.loads(row.payload_json)
+            if isinstance(decoded, dict):
+                payload = decoded
+        except (TypeError, ValueError):
+            payload = {}
+    payload_stage_id = payload.get("stage_id")
+    if isinstance(payload_stage_id, str) and payload_stage_id:
+        return payload_stage_id
+    payload_link_path = payload.get("link_path")
+    return _stage_id_from_link_path(
+        link_path or (payload_link_path if isinstance(payload_link_path, str) else None)
+    )
 
 
 async def log_event(
@@ -41,6 +78,7 @@ async def log_event(
             room_id=room_id,
             work_type=work_type,
             link_path=link_path,
+            stage_id=stage_id,
         )
 
     event = ActivityEvent(
@@ -54,10 +92,12 @@ async def log_event(
         link_path=link_path,
     )
     db.add(event)
-    await db.commit()
     try:
+        await db.flush()
+        event_id = event.id
         from app.services import automation_engine as automation
-        await automation.process_event(
+
+        await automation.prepare_event_effects(
             db,
             kind=kind,
             project_id=project_id,
@@ -65,10 +105,24 @@ async def log_event(
             stage_id=stage_id,
             body=body,
             room_id=room_id,
+            source_activity_id=event_id,
         )
+        await db.commit()
     except Exception:
-        pass
-    return event
+        await db.rollback()
+        raise
+
+    from app.services import outbox_inline_dispatch
+
+    await outbox_inline_dispatch.dispatch_best_effort(
+        db,
+        source="activity.log_event",
+        limit=10,
+    )
+    persisted = await db.get(ActivityEvent, event_id)
+    if not persisted:
+        raise RuntimeError("committed_activity_missing")
+    return persisted
 
 
 async def log_event_from_outbox(
@@ -83,7 +137,14 @@ async def log_event_from_outbox(
     room_id: str | None = None,
     work_type: str | None = None,
     link_path: str | None = None,
+    stage_id: str | None = None,
 ) -> ActivityEvent:
+    resolved_stage_id = await _resolve_outbox_stage_id(
+        db,
+        outbox_id=outbox_id,
+        stage_id=stage_id,
+        link_path=link_path,
+    )
     delivery = (
         await db.execute(
             select(SideEffectDelivery).where(SideEffectDelivery.outbox_id == outbox_id)
@@ -93,6 +154,20 @@ async def log_event_from_outbox(
         event = await db.get(ActivityEvent, delivery.entity_id)
         if not event:
             raise RuntimeError("outbox_activity_target_missing")
+        from app.services import automation_engine as automation
+
+        await automation.prepare_event_effects(
+            db,
+            kind=kind,
+            project_id=project_id,
+            user_id=user_id,
+            stage_id=resolved_stage_id,
+            body=body,
+            room_id=room_id,
+            source_activity_id=event.id,
+            parent_outbox_id=outbox_id,
+        )
+        await db.commit()
         return event
 
     event = ActivityEvent(
@@ -114,6 +189,19 @@ async def log_event_from_outbox(
             entity_id=event.id,
             delivered_at=utc_now(),
         )
+    )
+    from app.services import automation_engine as automation
+
+    await automation.prepare_event_effects(
+        db,
+        kind=kind,
+        project_id=project_id,
+        user_id=user_id,
+        stage_id=resolved_stage_id,
+        body=body,
+        room_id=room_id,
+        source_activity_id=event.id,
+        parent_outbox_id=outbox_id,
     )
     await db.commit()
     await db.refresh(event)
@@ -152,6 +240,7 @@ async def project_feed(
         )
 
     from app.models.entities import Room
+
     room_ids = (await db.execute(select(Room.id).where(Room.project_id == project_id))).scalars().all()
     if room_ids:
         room_query = select(RoomChangeLog).where(RoomChangeLog.room_id.in_(room_ids))
