@@ -46,7 +46,7 @@ const s = StyleSheet.create({
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: RenovaTheme.radius.full,
+    borderRadius: RenovaTheme.radius.pill,
     backgroundColor: '#F1F5F9',
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
