@@ -58,9 +58,16 @@ def test_transient_failure_is_fail_closed_then_recovers_after_backoff(monkeypatc
         otp_redis_recovery.ensure_otp_store_sync()
 
     first_snapshot = otp_redis_recovery.recovery_snapshot()
-    assert first_snapshot["failed"] is True
-    assert first_snapshot["failure_count"] == 1
-    assert first_snapshot["retry_after"] == pytest.approx(1.0)
+    assert first_snapshot == {
+        "healthy": False,
+        "status": "critical",
+        "required": True,
+        "configured": True,
+        "connected": False,
+        "failed": True,
+        "failure_count": 1,
+        "retry_after_seconds": 1,
+    }
     assert len(calls) == 1
 
     with pytest.raises(otp_service.OtpStoreUnavailable, match="redis_unavailable_for_otp"):
@@ -82,9 +89,30 @@ def test_transient_failure_is_fail_closed_then_recovers_after_backoff(monkeypatc
     assert otp_service._redis is healthy
     assert otp_service._redis_failed is False
     assert otp_redis_recovery.recovery_snapshot() == {
+        "healthy": True,
+        "status": "healthy",
+        "required": True,
+        "configured": True,
+        "connected": True,
         "failed": False,
         "failure_count": 0,
-        "retry_after": 0.0,
+        "retry_after_seconds": 0,
+    }
+
+
+def test_local_preview_without_redis_is_explicitly_not_required(monkeypatch):
+    monkeypatch.setattr(otp_service.settings, "environment", "development")
+    monkeypatch.setattr(otp_service.settings, "redis_url", "")
+
+    assert otp_redis_recovery.recovery_snapshot() == {
+        "healthy": True,
+        "status": "not_required",
+        "required": False,
+        "configured": False,
+        "connected": False,
+        "failed": False,
+        "failure_count": 0,
+        "retry_after_seconds": 0,
     }
 
 
