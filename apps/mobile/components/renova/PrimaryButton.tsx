@@ -5,6 +5,7 @@ import { reportCatch } from '@/lib/reportError';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'dangerOutline';
 type Size = 'sm' | 'md' | 'lg';
+type PressState = { pressed: boolean };
 
 type Props = {
   title: string;
@@ -53,7 +54,7 @@ export function PrimaryButton({
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: unavailable, busy: Boolean(loading) }}
       disabled={unavailable}
-      style={({ pressed }) => [
+      style={({ pressed }: PressState) => [
         styles.btn,
         { paddingVertical: pad.v, paddingHorizontal: pad.h },
         fullWidth && styles.fullWidth,

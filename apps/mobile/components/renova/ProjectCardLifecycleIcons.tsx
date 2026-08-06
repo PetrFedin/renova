@@ -4,6 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import type { ProjectBucket } from '@/components/renova/ProjectBucketToolbar';
 
+type LifecyclePressEvent = {
+  stopPropagation?: () => void;
+  preventDefault?: () => void;
+};
+
 type Props = {
   bucket: ProjectBucket;
   onArchive?: () => void;
@@ -28,14 +33,10 @@ function IconBtn({
   return (
     <Pressable
       style={[s.btn, danger && s.btnDanger]}
-      onPress={(e) => {
+      onPress={(event: LifecyclePressEvent) => {
         // Web: не даём клику уйти на карточку проекта
-        if (e && typeof e === 'object' && 'stopPropagation' in e && typeof e.stopPropagation === 'function') {
-          e.stopPropagation();
-        }
-        if (e && typeof e === 'object' && 'preventDefault' in e && typeof e.preventDefault === 'function') {
-          e.preventDefault();
-        }
+        event.stopPropagation?.();
+        event.preventDefault?.();
         onPress();
       }}
       hitSlop={8}

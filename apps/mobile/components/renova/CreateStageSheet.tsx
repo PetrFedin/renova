@@ -10,6 +10,8 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { alertStageCreated } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
 
+type PropagationEvent = { stopPropagation?: () => void };
+
 export function CreateStageSheet({
   visible,
   project,
@@ -66,7 +68,7 @@ export function CreateStageSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={s.sheet} onPress={(event: PropagationEvent) => event.stopPropagation?.()}>
           <Text style={s.head}>Новый этап</Text>
           <TextInput style={s.inp} value={name} onChangeText={setName} placeholder="Название (например: Штукатурка)" />
           <TextInput style={s.inp} value={start} onChangeText={setStart} placeholder="Начало ГГГГ-ММ-ДД" />

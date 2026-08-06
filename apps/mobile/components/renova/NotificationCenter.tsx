@@ -11,6 +11,8 @@ import type { OsRole } from '@/constants/osSections';
 import { SnoozeUntilPicker } from '@/components/renova/SnoozeUntilPicker';
 import { reportCatch } from '@/lib/reportError';
 
+type PropagationEvent = { stopPropagation?: () => void };
+
 export function NotificationCenter({
   userId,
   role = 'customer',
@@ -34,19 +36,25 @@ export function NotificationCenter({
   useProjectDataReload(reload);
   const list = items.filter(n => !onlyUnread || !n.read).slice(0, compact ? 3 : 15);
   const unread = items.filter(n => !n.read).length;
-  const snooze = async (e: any, id: string, h: number) => { e.stopPropagation?.(); await api.snoozeNotification(userId, id, h); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); reload(); };
+  const sync = () => syncProjectSideEffects({ user, project: activeProject });
+  const snooze = async (event: PropagationEvent, id: string, h: number) => {
+    event.stopPropagation?.();
+    await api.snoozeNotification(userId, id, h);
+    await sync();
+    reload();
+  };
   return (
     <View>
       {!hideHeader ? (
         <View style={s.row}>
           <Text style={s.head}>Уведомления {unread ? `(${unread})` : ''}</Text>
-          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); reload(); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
+          <Pressable onPress={async () => { await api.markAllNotifications(userId); await sync(); reload(); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
           <Pressable onPress={() => setOnlyUnread(u => !u)}><Text style={s.filter}>{onlyUnread ? 'Все' : 'Непрочит.'}</Text></Pressable>
         </View>
       ) : (
         <View style={s.row}>
           <Text style={s.subHead}>Лента {unread ? `· ${unread} непрочит.` : ''}</Text>
-          <Pressable onPress={async () => { await api.markAllNotifications(userId); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject }); reload(); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
+          <Pressable onPress={async () => { await api.markAllNotifications(userId); await sync(); reload(); }}><Text style={s.filter}>Все прочит.</Text></Pressable>
           <Pressable onPress={() => setOnlyUnread(u => !u)}><Text style={s.filter}>{onlyUnread ? 'Все' : 'Непрочит.'}</Text></Pressable>
         </View>
       )}
@@ -54,7 +62,7 @@ export function NotificationCenter({
       {list.map(n => (
         <Pressable key={n.id} style={[s.item, !n.read && s.unread]} onPress={async () => {
           await api.readNotification(userId, n.id);
-          await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject });
+          await sync();
           const back = role === 'contractor' ? '/(contractor)/(tabs)/profile' : '/(customer)/(tabs)/profile';
           // W118: все переходы через pushOsNav SoT
           if (n.notification_type === 'change_order') {
@@ -76,9 +84,9 @@ export function NotificationCenter({
           <Text style={s.title}>{n.title}</Text>
           <Text style={s.body}>{n.body}</Text>
           <View style={s.snoozeRow}>
-            <Pressable onPress={(e) => snooze(e, n.id, 1)}><Text style={s.snooze}>1ч</Text></Pressable>
-            <Pressable onPress={(e) => snooze(e, n.id, 24)}><Text style={s.snooze}>24ч</Text></Pressable>
-            <Pressable onPress={(e) => snooze(e, n.id, 72)}><Text style={s.snooze}>3д</Text></Pressable>
+            <Pressable onPress={(event: PropagationEvent) => snooze(event, n.id, 1)}><Text style={s.snooze}>1ч</Text></Pressable>
+            <Pressable onPress={(event: PropagationEvent) => snooze(event, n.id, 24)}><Text style={s.snooze}>24ч</Text></Pressable>
+            <Pressable onPress={(event: PropagationEvent) => snooze(event, n.id, 72)}><Text style={s.snooze}>3д</Text></Pressable>
           </View>
           <SnoozeUntilPicker userId={userId} notificationId={n.id} onDone={async () => reload()} />
         </Pressable>

@@ -42,6 +42,14 @@ function phaseTone(phase: string): StatusTone {
   return 'info';
 }
 
+function isSubscriptionRequired(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  return (
+    ('code' in error && error.code === 'subscription_required') ||
+    ('status' in error && error.status === 402)
+  );
+}
+
 function projectCardMeta(p: ProjectSummary, pendingById: Record<string, number>): string {
   const type = p.property_type === 'house' ? 'Дом' : 'Квартира';
   const rooms = p.rooms_count ? `${p.rooms_count} комн.` : '';
@@ -219,17 +227,18 @@ export function ProjectEmptyState({
     );
   }
 
-
   const pick = (id: string) => {
     if (bucket !== 'active') return;
     if (onSelectProject) {
-      onSelectProject(id).catch((e) => {
-        if (e?.code === 'subscription_required' || e?.status === 402) showPaywall();
-      });
+      void Promise.resolve()
+        .then(() => onSelectProject(id))
+        .catch((error: unknown) => {
+          if (isSubscriptionRequired(error)) showPaywall();
+        });
       return;
     }
-    loadProject(id).catch((e) => {
-      if (e?.code === 'subscription_required' || e?.status === 402) showPaywall();
+    loadProject(id).catch((error: unknown) => {
+      if (isSubscriptionRequired(error)) showPaywall();
     });
   };
 
@@ -300,10 +309,10 @@ export function ProjectEmptyState({
                   // Не «Студия»/«Studio» exact — иначе junk-фильтр picker скроет объект рядом с демо
                   const name =
                     id === 'studio' ? 'Моя студия' : id === 'house' ? 'Мой дом' : 'Моя квартира';
-                  const p = await api.createProjectFromTemplate(user.id, { template_id: id, name });
+                  const project = await api.createProjectFromTemplate(user.id, { template_id: id, name });
                   await refreshProjects();
-                  await loadProject((p as { id: string }).id);
-                  await syncProjectSideEffects({ user, project: p as any });
+                  await loadProject(project.id);
+                  await syncProjectSideEffects({ user, project });
                 } catch {
                   /* noop */
                 }

@@ -15,7 +15,7 @@ type C = {
   company?: string;
   specialties?: string;
   rating: number;
-  jobs_done: number;
+  jobs_done?: number;
   city?: string;
   score?: number;
 };
@@ -48,7 +48,7 @@ export function ContractorDirectory({
   linkedOnly?: boolean;
   onLinked?: () => void;
 }) {
-  const { user, activeProject, loadProject } = useRenova();
+  const { user, loadProject } = useRenova();
   const [items, setItems] = useState<C[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -65,13 +65,11 @@ export function ContractorDirectory({
     if (!projectId) return;
     setBusyId(contractorId);
     try {
-      await api.linkContractor(userId, projectId, contractorId);
+      const linkedProject = await api.linkContractor(userId, projectId, contractorId);
       await loadProject(projectId).catch(reportCatch('components.renova.ContractorDirectory.2'));
-      // W97: home/inbox/смета после подключения исполнителя
-      await syncProjectSideEffects({
-        user: user ?? ({ id: userId } as any),
-        project: activeProject ?? ({ id: projectId } as any),
-      });
+      // Mutation response is the committed ProjectDetail; using it avoids a stale
+      // activeProject closure immediately after the context refresh.
+      await syncProjectSideEffects({ user, project: linkedProject });
       onLinked?.();
       reload();
     } catch (e: unknown) {
@@ -81,9 +79,7 @@ export function ContractorDirectory({
       Alert.alert(
         paywall ? 'Нужна подписка Pro' : 'Не удалось подключить',
         paywall
-          ? `${msg}
-
-Назначить исполнителя на staging/пилоте можно после Pro или trial.`
+          ? `${msg}\n\nНазначить исполнителя на staging/пилоте можно после Pro или trial.`
           : msg,
       );
     } finally {

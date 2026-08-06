@@ -12,6 +12,8 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
 
+type PropagationEvent = { stopPropagation?: () => void };
+
 export function OfflineSyncBanner() {
   const nav = useNavFromHere();
   const { user } = useRenova();
@@ -47,8 +49,8 @@ export function OfflineSyncBanner() {
       </View>
       {busy ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : (
         <Pressable
-          onPress={async (e) => {
-            e.stopPropagation?.();
+          onPress={async (event: PropagationEvent) => {
+            event.stopPropagation?.();
             setBusy(true);
             try {
               const r = await flushOfflineOutbox();

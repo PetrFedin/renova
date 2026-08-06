@@ -3,6 +3,7 @@ name: Mobile typecheck fail-closed integrity
 on:
   pull_request:
     paths:
+      - "apps/mobile/**"
       - "scripts/typecheck-mobile.sh"
       - "scripts/typecheck-mobile-report.mjs"
       - "scripts/typecheck-mobile-report.test.mjs"
@@ -21,17 +22,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
+      - name: Checkout repository without marketplace actions
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git -c http.extraheader="AUTHORIZATION: basic ${auth_header}" \
+            fetch --no-tags --depth=1 origin "$GITHUB_REF"
+          git checkout --detach FETCH_HEAD
+          git remote remove origin
+
+      - name: Verify runner Node runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          node -e "const major=Number(process.versions.node.split('.')[0]); if (major < 20) { console.error('Node 20+ required'); process.exit(1); }"
+
       - name: Install workspace dependencies
         run: npm ci
       - name: Validate shell syntax
         run: bash -n scripts/typecheck-mobile.sh
       - name: Verify diagnostic parser contracts
         run: node scripts/typecheck-mobile-report.test.mjs
+      - name: Verify truthful side-effect context contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/sideEffectContext.w177.test.ts
       - name: Verify CLI fails closed
         run: |
           set -euo pipefail

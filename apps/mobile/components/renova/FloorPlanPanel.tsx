@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, LayoutChangeEvent, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
@@ -24,6 +24,9 @@ import { EmptyActionState } from '@/components/ui/EmptyActionState';
 
 const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 const MAP_H = 180;
+
+type MapLayoutEvent = { nativeEvent?: { layout?: { width?: number } } };
+type MapPressEvent = { nativeEvent?: { locationX?: number; locationY?: number } };
 
 /** W67 #33: punch = ProjectIssue в QC (единый статус). */
 function punchTone(severity: string, status: string) {
@@ -63,6 +66,7 @@ export function FloorPlanPanel({
   const [punchSheet, setPunchSheet] = useState<{ issueId?: string; hasPhoto: boolean } | null>(null);
   const [uploadSheet, setUploadSheet] = useState(false);
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const sideEffectProject = activeProject?.id === projectId ? activeProject : null;
 
   // Investor P2: deep-link ?punch=1 → сразу режим замечаний на плане
   useEffect(() => {
@@ -100,7 +104,10 @@ export function FloorPlanPanel({
     }
   };
 
-  const onMapLayout = (e: LayoutChangeEvent) => setMapW(e.nativeEvent.layout.width);
+  const onMapLayout = (event: MapLayoutEvent) => {
+    const width = event.nativeEvent?.layout?.width;
+    if (typeof width === 'number') setMapW(width);
+  };
 
   const capturePunchPhoto = async (): Promise<string | undefined> => {
     // Камера → иначе галерея (поле без камеры / отказ в permission)
@@ -142,10 +149,7 @@ export function FloorPlanPanel({
         y_pct,
         ...(photo_key ? { photo_key } : {}),
       });
-      await syncProjectSideEffects({
-        user: user ?? ({ id: userId } as any),
-        project: activeProject ?? ({ id: projectId } as any),
-      });
+      await syncProjectSideEffects({ user, project: sideEffectProject });
       await load();
       setPunchMode(false);
       // Clarity B: sheet с выбором — не Alert + авто-навигация одновременно
@@ -173,10 +177,7 @@ export function FloorPlanPanel({
       const blob = await (await fetch(asset.uri)).blob();
       const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
       await api.createFloorPlan(userId, projectId, { name: `Этаж ${floor}`, image_key: key, floor_level: floor });
-      await syncProjectSideEffects({
-        user: user ?? ({ id: userId } as any),
-        project: activeProject ?? ({ id: projectId } as any),
-      });
+      await syncProjectSideEffects({ user, project: sideEffectProject });
       load();
       // Clarity B: sheet вместо Alert
       setUploadSheet(true);
@@ -242,7 +243,13 @@ export function FloorPlanPanel({
               <Pressable
                 style={s.punchOverlay}
                 disabled={addingPunch}
-                onPress={(e) => addPunchAt(e.nativeEvent.locationX, e.nativeEvent.locationY)}
+                onPress={(event: MapPressEvent) => {
+                  const locationX = event.nativeEvent?.locationX;
+                  const locationY = event.nativeEvent?.locationY;
+                  if (typeof locationX === 'number' && typeof locationY === 'number') {
+                    void addPunchAt(locationX, locationY);
+                  }
+                }}
               />
             ) : null}
             {(plan.punch ?? []).map((item) => (
@@ -375,7 +382,7 @@ const s = StyleSheet.create({
   punchModeHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, flex: 1 },
   mapWrap: { position: 'relative', minHeight: MAP_H },
   img: { width: '100%', height: MAP_H, backgroundColor: RenovaTheme.colors.surfaceMuted, borderRadius: 8 },
-  punchOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2 },
+  punchOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 2 },
   emptyBox: {
     padding: 14,
     borderRadius: 10,
