@@ -1,0 +1,98 @@
+name: OTP Redis recovery integrity
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/v1/otp_auth.py"
+      - "backend/app/services/otp_service.py"
+      - "backend/app/services/otp_redis_recovery.py"
+      - "backend/app/services/otp_runtime.py"
+      - "backend/tests/test_otp_redis_recovery_integrity.py"
+      - "backend/tests/test_otp_redis_runtime_integrity.py"
+      - "backend/tests/test_otp_auth_integrity.py"
+      - "backend/tests/test_otp_atomic_consume.py"
+      - ".github/workflows/otp-redis-recovery-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: otp-redis-recovery-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  otp-redis-recovery-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./otp-redis-recovery.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Reject permanent OTP Redis failure state
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          recovery = Path("app/services/otp_redis_recovery.py").read_text(encoding="utf-8")
+          auth = Path("app/api/v1/otp_auth.py").read_text(encoding="utf-8")
+          runtime = Path("app/services/otp_runtime.py").read_text(encoding="utf-8")
+          required = {
+              "recovery": [
+                  "_probe_lock",
+                  "_RETRY_MAX_SECONDS",
+                  "ensure_otp_store_sync",
+                  "otp_service._redis_failed = False",
+              ],
+              "auth": [
+                  "await otp_redis_recovery.ensure_otp_store()",
+                  "except otp_service.OtpStoreUnavailable",
+              ],
+              "runtime": ["ensure_otp_store(force=True)"],
+          }
+          sources = {"recovery": recovery, "auth": auth, "runtime": runtime}
+          missing = {
+              name: [token for token in tokens if token not in sources[name]]
+              for name, tokens in required.items()
+          }
+          missing = {name: tokens for name, tokens in missing.items() if tokens}
+          if missing:
+              raise SystemExit(f"OTP Redis recovery contract missing: {missing}")
+          print("OTP Redis recovery source contract OK")
+          PY
+      - name: Verify recovery, abuse and atomic consume contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 480s poetry run pytest -vv -s --tb=short \
+            tests/test_otp_redis_recovery_integrity.py \
+            tests/test_otp_redis_runtime_integrity.py \
+            tests/test_otp_auth_integrity.py \
+            tests/test_otp_atomic_consume.py \
+            2>&1 | tee otp-redis-recovery-integrity.log
+      - name: Upload OTP recovery diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: otp-redis-recovery-integrity-diagnostics
+          path: backend/otp-redis-recovery-integrity.log
+          if-no-files-found: warn
+          retention-days: 14
