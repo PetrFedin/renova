@@ -31,20 +31,56 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-      - name: Reject fabricated release health values
+      - name: Reject divergent or fabricated runtime health
         working-directory: backend
         run: |
           set -o pipefail
           timeout 360s poetry run pytest -vv -s --tb=short \
             tests/test_release_health_truth_integrity.py \
+            tests/test_release_runtime_health_coherence.py \
+            tests/test_automation_worker_health_truth.py \
+            tests/test_otp_redis_recovery_integrity.py \
             2>&1 | tee release-health-truth-contracts.log
-      - name: Scan runtime code for retired release health stub
+      - name: Scan runtime code for retired health formulas and stubs
         run: |
           set -euo pipefail
           if grep -R -n -E 'sentry-stub|"crash_free_rate"[[:space:]]*:[[:space:]]*99\.2|"sessions"[[:space:]]*:[[:space:]]*1200' backend/app; then
             echo "fabricated release health telemetry remains in runtime code" >&2
             exit 1
           fi
+          python - <<'PY'
+          from pathlib import Path
+
+          admin = Path("backend/app/api/v1/admin.py").read_text(encoding="utf-8")
+          worker = Path("backend/app/api/v1/automation_worker.py").read_text(encoding="utf-8")
+          helper = Path("backend/app/services/runtime_health_truth.py").read_text(encoding="utf-8")
+          otp = Path("backend/app/services/otp_redis_recovery.py").read_text(encoding="utf-8")
+
+          required = {
+              "admin": [
+                  "automation_worker_runtime_truth(worker_metrics)",
+                  '"otp_store": otp_store',
+              ],
+              "worker": ["automation_worker_runtime_truth(metrics)"],
+              "helper": ["outbox_status == \"critical\"", "status = \"unknown\""],
+              "otp": [
+                  '"retry_after_seconds"',
+                  '"connected"',
+                  'status = "critical"',
+              ],
+          }
+          sources = {"admin": admin, "worker": worker, "helper": helper, "otp": otp}
+          missing = {
+              name: [token for token in tokens if token not in sources[name]]
+              for name, tokens in required.items()
+          }
+          missing = {name: tokens for name, tokens in missing.items() if tokens}
+          if missing:
+              raise SystemExit(f"runtime health coherence contract missing: {missing}")
+          if 'int(worker.get("consecutive_failures") or 0) < 3' in admin:
+              raise SystemExit("release health still contains failure-only worker formula")
+          print("runtime health coherence source contract OK")
+          PY
       - name: Upload release health diagnostics
         if: always()
         uses: actions/upload-artifact@v4
