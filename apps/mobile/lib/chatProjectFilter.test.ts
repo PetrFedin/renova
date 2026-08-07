@@ -10,5 +10,5 @@ const threads: ChatThread[] = [
 
 const deduped = dedupeChatThreadsByTitle(threads);
 console.assert(deduped.length === 2, 'keeps one per project+title');
-console.assert(deduped.find((t) => t.id === '2'), 'keeps newest duplicate');
+console.assert(deduped.some((thread) => thread.id === '2'), 'keeps newest duplicate');
 console.log('chatProjectFilter dedupe OK');
