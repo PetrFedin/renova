@@ -15,8 +15,8 @@ for arg in "$@"; do
 done
 
 # Ratchet down as real errors are fixed. Do not increase casually. Exact branch
-# target on 2026-08-07: 36 non-TS2786/non-TS2607 diagnostics.
-BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-36}"
+# target on 2026-08-07: 31 non-TS2786/non-TS2607 diagnostics.
+BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-31}"
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 

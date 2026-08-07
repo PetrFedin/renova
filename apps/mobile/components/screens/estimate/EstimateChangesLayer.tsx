@@ -5,13 +5,13 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
 import { changeOrderStatusLabel } from '@/constants/labels';
 import { api, type ChangeOrder } from '@/lib/api';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { budgetTabRoute } from '@/constants/osSections';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChangeOrderApproved } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { reportError } from '@/lib/reportError';
 
 type Props = {
   userId: string;
@@ -36,6 +36,22 @@ export function EstimateChangesLayer({
   const notifyBudgetDelta = (order: ChangeOrder, documentId?: string) => {
     alertChangeOrderApproved(role, formatRub(order.amount), documentId);
   };
+
+  const reconcileCommittedOrder = async (source: 'Approve' | 'Reject') => {
+    try {
+      // The parent owns the fresh ProjectDetail reload. Do not follow it with
+      // fabricated/stale project side effects in this child layer.
+      await onProjectReload();
+    } catch (error) {
+      reportError(`components.screens.estimate.EstimateChangesLayer.${source}.ProjectRefresh`, error, { projectId });
+    }
+    try {
+      onOrdersChanged(await api.listChangeOrders(userId, projectId));
+    } catch (error) {
+      reportError(`components.screens.estimate.EstimateChangesLayer.${source}.OrdersRefresh`, error, { projectId });
+    }
+  };
+
   const pending = orders.filter((o) => o.status === 'pending');
   const decided = orders.filter((o) => o.status !== 'pending');
   /** Clarity D: сумма дельты по ожидающим — сразу видно влияние на бюджет */
@@ -77,15 +93,30 @@ export function EstimateChangesLayer({
                 primaryLabel: 'Согласовать',
                 onPrimary: () => {
                   void (async () => {
+                    let result: Awaited<ReturnType<typeof api.approveChangeOrder>>;
                     try {
-                      const res = await api.approveChangeOrder(userId, projectId, o.id);
-                      await onProjectReload();
-                      onOrdersChanged(await api.listChangeOrders(userId, projectId));
-                      notifyBudgetDelta(o, res?.document_id);
-                      await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
-                    } catch (e) {
-                      if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение доп. работ');
+                      result = await api.approveChangeOrder(userId, projectId, o.id);
+                    } catch (error) {
+                      if (isOfflineQueued(error)) {
+                        notifyOfflineQueued('Одобрение доп. работ');
+                      } else {
+                        reportError('components.screens.estimate.EstimateChangesLayer.Approve.Mutation', error, { projectId, orderId: o.id });
+                        showActionConfirm({
+                          title: 'Не удалось согласовать',
+                          message: error instanceof Error ? error.message : 'Повторите попытку.',
+                        });
+                      }
+                      return;
                     }
+
+                    // Server decision is committed. Notification and refresh are
+                    // follow-up work and must not turn it into a false rejection.
+                    try {
+                      notifyBudgetDelta(o, result?.document_id);
+                    } catch (error) {
+                      reportError('components.screens.estimate.EstimateChangesLayer.Approve.Notification', error, { projectId, orderId: o.id });
+                    }
+                    await reconcileCommittedOrder('Approve');
                   })();
                 },
                 secondaryLabel: 'Отмена',
@@ -101,12 +132,19 @@ export function EstimateChangesLayer({
                   void (async () => {
                     try {
                       await api.rejectChangeOrder(userId, projectId, o.id);
-                      await onProjectReload();
-                      onOrdersChanged(await api.listChangeOrders(userId, projectId));
-                      await syncProjectSideEffects({ user, project: { id: projectId } as any, role });
-                    } catch (e) {
-                      if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение доп. работ');
+                    } catch (error) {
+                      if (isOfflineQueued(error)) {
+                        notifyOfflineQueued('Отклонение доп. работ');
+                      } else {
+                        reportError('components.screens.estimate.EstimateChangesLayer.Reject.Mutation', error, { projectId, orderId: o.id });
+                        showActionConfirm({
+                          title: 'Не удалось отклонить',
+                          message: error instanceof Error ? error.message : 'Повторите попытку.',
+                        });
+                      }
+                      return;
                     }
+                    await reconcileCommittedOrder('Reject');
                   })();
                 },
                 secondaryLabel: 'Отмена',
@@ -149,8 +187,8 @@ function ChangeOrderRow({
 }: {
   order: ChangeOrder;
   canWrite: boolean;
-  onApprove: () => Promise<void>;
-  onReject: () => Promise<void>;
+  onApprove: () => void;
+  onReject: () => void;
 }) {
   return (
     <View style={s.orderRow}>

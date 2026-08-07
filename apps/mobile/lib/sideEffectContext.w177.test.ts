@@ -21,6 +21,8 @@ const contextFiles = [
   'components/screens/PortalScreen.tsx',
   'components/screens/RoomDetailScreen.tsx',
   'components/screens/StageDetailScreen.tsx',
+  'components/screens/estimate/ContractorEstimateView.tsx',
+  'components/screens/estimate/EstimateChangesLayer.tsx',
   'components/screens/estimate/EstimateDocumentsLayer.tsx',
   'components/screens/stage/StageDetailAcceptanceFold.tsx',
   'lib/context/RenovaContext.tsx',
@@ -183,6 +185,31 @@ if (!/await api\.toggleStageChecklist\([\s\S]*?await reconcileCommittedStageChan
 }
 if (!/p\.image_url \?/.test(stageAcceptance)) {
   throw new Error('acceptance photo rendering must use the typed image_url contract');
+}
+
+const contractorEstimate = read('components/screens/estimate/ContractorEstimateView.tsx');
+if (!/const project = activeProject;/.test(contractorEstimate)) {
+  throw new Error('contractor estimate mutations must capture the non-null selected project after the render guard');
+}
+if (/syncProjectSideEffects/.test(contractorEstimate)) {
+  throw new Error('contractor estimate must not duplicate fresh loadProject reconciliation with stale project sync');
+}
+if (!/await loadProject\(project\.id\)/.test(contractorEstimate)) {
+  throw new Error('contractor estimate commits must reconcile through a fresh ProjectDetail load');
+}
+
+const estimateChanges = read('components/screens/estimate/EstimateChangesLayer.tsx');
+if (/syncProjectSideEffects/.test(estimateChanges)) {
+  throw new Error('change-order decisions must not use fabricated or stale project side-effect context');
+}
+if (!/result = await api\.approveChangeOrder/.test(estimateChanges) || !/await api\.rejectChangeOrder/.test(estimateChanges)) {
+  throw new Error('change-order layer must keep approve/reject mutation boundaries explicit');
+}
+if (!/await onProjectReload\(\)/.test(estimateChanges) || !/onOrdersChanged\(await api\.listChangeOrders/.test(estimateChanges)) {
+  throw new Error('committed change-order decisions must reconcile project and order read models independently');
+}
+if (!/Approve\.Mutation/.test(estimateChanges) || !/Reject\.Mutation/.test(estimateChanges) || !/OrdersRefresh/.test(estimateChanges)) {
+  throw new Error('change-order mutation and follow-up failures must remain separately observable');
 }
 
 const estimateDocuments = read('components/screens/estimate/EstimateDocumentsLayer.tsx');
