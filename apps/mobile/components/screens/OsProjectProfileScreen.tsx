@@ -3,20 +3,30 @@ import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Alert, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { ProjectProfileFields, type ProjectProfileValues } from '@/components/renova/ProjectProfileFields';
+import {
+  ProjectProfileFields,
+  type ProjectProfileValues,
+  type VatRate,
+} from '@/components/renova/ProjectProfileFields';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useCustomerBudget } from '@/lib/hooks/useCustomerBudget';
+import { parseCustomerBudgetInput } from '@/lib/customerBudgetSync';
 import { canEditProjectProfile } from '@/lib/domain/roleCapabilities';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { isIsoDate } from '@/lib/validateDate';
+import { reportError } from '@/lib/reportError';
 import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
 import { formMetaText } from '@/constants/formTypography';
 import { alertProjectProfileSaved } from '@/lib/fieldCreateNav';
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
+
+function toVatRate(value: unknown): VatRate {
+  return value === 5 || value === 10 || value === 20 ? value : 0;
+}
 
 export function OsProjectProfileScreen({
   role,
@@ -31,9 +41,12 @@ export function OsProjectProfileScreen({
     projectId: activeProject?.id,
     userId: user?.id,
     serverBudget: activeProject?.customer_budget,
+    user,
+    project: activeProject,
   });
   const [values, setValues] = useState<ProjectProfileValues | null>(null);
   const [budgetInput, setBudgetInput] = useState('');
+  const [budgetError, setBudgetError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [budgetDirty, setBudgetDirty] = useState(false);
@@ -50,7 +63,7 @@ export function OsProjectProfileScreen({
       name: activeProject.name,
       address: activeProject.address || '',
       renovation_type: activeProject.renovation_type,
-      vat_rate: activeProject.vat_rate ?? 0,
+      vat_rate: toVatRate(activeProject.vat_rate),
       property_type: activeProject.property_type === 'house' ? 'house' : 'apartment',
       planned_start_date: activeProject.planned_start_date || '',
       planned_end_date: activeProject.planned_end_date || '',
@@ -61,6 +74,7 @@ export function OsProjectProfileScreen({
     activeProject?.name,
     activeProject?.address,
     activeProject?.renovation_type,
+    activeProject?.vat_rate,
     activeProject?.property_type,
     activeProject?.planned_start_date,
     activeProject?.planned_end_date,
@@ -68,19 +82,23 @@ export function OsProjectProfileScreen({
 
   useEffect(() => {
     setBudgetInput(customerBudget ? String(customerBudget) : '');
+    setBudgetError(null);
     setBudgetDirty(false);
   }, [customerBudget, activeProject?.id]);
 
   if (!activeProject) return <ProjectEmptyState role={role} />;
   if (!values) return null;
+  const project = activeProject;
+  const profileValues = values;
 
   async function onSave() {
-    if (!values?.name.trim()) {
+    const projectId = project.id;
+    if (!profileValues.name.trim()) {
       Alert.alert('Укажите название проекта');
       return;
     }
-    const start = values.planned_start_date?.trim() || '';
-    const end = values.planned_end_date?.trim() || '';
+    const start = profileValues.planned_start_date?.trim() || '';
+    const end = profileValues.planned_end_date?.trim() || '';
     if (start && !isIsoDate(start)) {
       Alert.alert('Дата старта', 'Формат: YYYY-MM-DD');
       return;
@@ -93,28 +111,35 @@ export function OsProjectProfileScreen({
       Alert.alert('Сроки', 'Дата старта не может быть позже финиша');
       return;
     }
+
+    const parsedBudget = budgetDirty ? parseCustomerBudgetInput(budgetInput) : null;
+    if (parsedBudget?.error) {
+      setBudgetError(parsedBudget.error);
+      return;
+    }
+
     setBusy(true);
     try {
       const datesChanged =
-        (start || null) !== (activeProject?.planned_start_date || null)
-        || (end || null) !== (activeProject?.planned_end_date || null);
+        (start || null) !== (project.planned_start_date || null)
+        || (end || null) !== (project.planned_end_date || null);
       await updateProjectProfile({
-        name: values.name.trim(),
-        address: values.address.trim() || undefined,
-        renovation_type: values.renovation_type,
-        vat_rate: values.vat_rate ?? 0,
-        property_type: values.property_type,
+        name: profileValues.name.trim(),
+        address: profileValues.address.trim() || null,
+        renovation_type: profileValues.renovation_type,
+        vat_rate: profileValues.vat_rate ?? 0,
+        property_type: profileValues.property_type,
         planned_start_date: start || null,
         planned_end_date: end || null,
-        ...(budgetDirty
-          ? { customer_budget: (() => { const n = parseInt(budgetInput.replace(/\s/g, ''), 10); return n > 0 ? n : null; })() }
-          : {}),
+        ...(budgetDirty ? { customer_budget: parsedBudget?.value ?? null } : {}),
       });
       if (budgetDirty) setBudgetDirty(false);
+      setBudgetError(null);
       setDirty(false);
       // W133: сроки → график
       alertProjectProfileSaved(role, datesChanged);
-    } catch {
+    } catch (error) {
+      reportError('projectProfile.save', error, { projectId });
       Alert.alert('Ошибка', 'Не удалось сохранить. Проверьте подключение к серверу.');
     } finally {
       setBusy(false);
@@ -129,12 +154,14 @@ export function OsProjectProfileScreen({
         variant="profile"
         role={role}
         readOnly={!!readOnly}
-        values={values}
+        values={profileValues}
         showSchedule
         budgetValue={budgetInput}
-        estimateTotal={activeProject.budget_planned}
+        budgetError={budgetError}
+        estimateTotal={project.budget_planned}
         onBudgetChange={(v) => {
           setBudgetInput(v);
+          setBudgetError(parseCustomerBudgetInput(v).error);
           setBudgetDirty(true);
         }}
         onChange={(patch) => {
@@ -159,7 +186,7 @@ export function OsProjectProfileScreen({
           <PrimaryButton
             title={busy ? 'Сохранение…' : 'Сохранить профиль'}
             onPress={onSave}
-            disabled={busy || !hasChanges}
+            disabled={busy || !hasChanges || !!budgetError}
           />
         ) : null}
       </View>

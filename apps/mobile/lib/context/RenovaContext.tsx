@@ -1,6 +1,6 @@
 /** Глобальное состояние: пользователь, роль, активный проект */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PaywallModal } from '@/components/renova/PaywallModal';
 import { ActionConfirmHost } from '@/components/renova/ActionConfirmHost';
@@ -84,6 +84,7 @@ type WizardDraft = {
   name: string;
   address: string;
   renovation_type: string;
+  vat_rate?: 0 | 5 | 10 | 20;
   property_type: 'apartment' | 'house';
   planned_start_date?: string;
   planned_end_date?: string;
@@ -94,7 +95,13 @@ type WizardDraft = {
   wizard_mode?: 'quick' | 'detailed';
 };
 
-export type ProjectProfilePatch = Partial<Pick<WizardDraft, 'name' | 'address' | 'renovation_type' | 'property_type' | 'customer_budget'>> & {
+export type ProjectProfilePatch = {
+  name?: string;
+  address?: string | null;
+  renovation_type?: string;
+  vat_rate?: 0 | 5 | 10 | 20;
+  property_type?: 'apartment' | 'house';
+  customer_budget?: number | null;
   planned_start_date?: string | null;
   planned_end_date?: string | null;
 };
@@ -208,10 +215,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         if (user.role === 'contractor') {
           try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { pushOsNav } = await import('@/lib/pushOsNav'); pushOsNav('/(contractor)/subscription', undefined, 'contractor'); throw e; } }
         }
-        const syncedLimit = await syncCustomerBudgetOnLoad(user.id, id, p.customer_budget);
-        if (syncedLimit !== normalizeCustomerBudget(p.customer_budget)) {
-          p = { ...p, customer_budget: syncedLimit };
-        }
+        p = await syncCustomerBudgetOnLoad(user, p);
         setActiveProject(p);
         setReadOnly(!!p?.read_only);
         await AsyncStorage.setItem(KEYS.projectId, id);
@@ -289,8 +293,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       isDemoPhone(u.phone) && enriched.length > 0
         ? pickPrimaryDemoProject(enriched)?.id ?? enriched[0]?.id
         : null;
-    const p = await loadActiveProject(u.id, enriched, demoPick ?? pid, role);
+    let p = await loadActiveProject(u.id, enriched, demoPick ?? pid, role);
     if (p) {
+      p = await syncCustomerBudgetOnLoad(u, p);
       setReadOnly(!!p.read_only);
       setActiveProject(p);
       if (isDemoPhone(u.phone)) {
@@ -323,8 +328,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (list.length) {
-        const p = await loadActiveProject(user.id, list, await AsyncStorage.getItem(KEYS.projectId), role);
+        let p = await loadActiveProject(user.id, list, await AsyncStorage.getItem(KEYS.projectId), role);
         if (p) {
+          p = await syncCustomerBudgetOnLoad(user, p);
           setActiveProject(p);
           setReadOnly(!!p.read_only);
         }
@@ -439,7 +445,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const saved = await AsyncStorage.getItem(KEYS.projectId);
     const pickId = saved ? resolveActiveProjectId(list, saved) : null;
     if (pickId) {
-      const detail = await api.getProject(u.id, pickId);
+      let detail = await api.getProject(u.id, pickId);
+      detail = await syncCustomerBudgetOnLoad(u, detail);
       setActiveProject(detail);
       await AsyncStorage.setItem(KEYS.projectId, pickId);
       await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
@@ -475,16 +482,27 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     if (!draft.name.trim()) throw new Error('Укажите название проекта');
     const body = buildProjectCreatePayload(draft);
     const created = await api.createProject(user.id, body);
-    if (draft.customer_budget && draft.customer_budget > 0) {
-      await api.patchProject(user.id, created.id, { customer_budget: Math.round(draft.customer_budget) });
-    }
-    const limit = normalizeCustomerBudget(created.customer_budget) ?? normalizeCustomerBudget(draft.customer_budget);
-    if (limit) await setCustomerBudget(created.id, limit);
     let detail = created;
+    const requestedLimit = normalizeCustomerBudget(draft.customer_budget);
+    if (requestedLimit) {
+      try {
+        detail = await api.patchProject(user.id, created.id, { customer_budget: requestedLimit });
+      } catch (error) {
+        // Project creation already committed. Preserve the local draft limit and
+        // report unsynced budget instead of turning the whole creation into a
+        // false failure.
+        reportError('projectWizard.customerBudget.persist', error, { projectId: created.id });
+      }
+      try {
+        await setCustomerBudget(created.id, normalizeCustomerBudget(detail.customer_budget) ?? requestedLimit);
+      } catch (error) {
+        reportError('projectWizard.customerBudget.cache', error, { projectId: created.id });
+      }
+    }
     try {
       detail = await api.getProject(user.id, created.id);
     } catch {
-      /* POST-ответ достаточен как fallback */
+      /* POST/PATCH-ответ достаточен как fallback */
     }
     const refreshed = await enrichProjectsPendingPayments(user.id, await api.listProjects(user.id), user.role as UserRole);
     setProjects(refreshed);
@@ -516,15 +534,33 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const body: Record<string, unknown> = { ...patch };
     if (patch.address === undefined) delete body.address;
     if (patch.customer_budget === undefined) delete body.customer_budget;
+
+    // This is the commit boundary. Everything below must be non-destructive
+    // follow-up work so a successful PATCH is never reported as failed.
     const p = await api.patchProject(user.id, activeProject.id, body);
+
     if (patch.customer_budget !== undefined) {
       const limit = normalizeCustomerBudget(p.customer_budget) ?? normalizeCustomerBudget(patch.customer_budget);
-      await setCustomerBudget(activeProject.id, limit);
+      try {
+        await setCustomerBudget(activeProject.id, limit);
+      } catch (error) {
+        reportError('projectProfile.cacheBudget', error, { projectId: activeProject.id });
+      }
     }
     setActiveProject(p);
-    await refreshProjects();
+
+    try {
+      await refreshProjects();
+    } catch (error) {
+      reportError('projectProfile.refreshProjects', error, { projectId: activeProject.id });
+    }
+
     // W88: профиль/бюджет объекта → home insights + inbox
-    await syncProjectSideEffects({ user, project: p });
+    try {
+      await syncProjectSideEffects({ user, project: p });
+    } catch (error) {
+      reportError('projectProfile.sideEffects', error, { projectId: activeProject.id });
+    }
   }, [user, activeProject, refreshProjects]);
 
   const submitStage = useCallback(

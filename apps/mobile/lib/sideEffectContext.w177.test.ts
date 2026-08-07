@@ -17,6 +17,9 @@ const contextFiles = [
   'components/renova/ProjectEmptyState.tsx',
   'components/renova/ViewerSharePanel.tsx',
   'components/renova/schedule/ScheduleIconToolbar.tsx',
+  'lib/context/RenovaContext.tsx',
+  'lib/customerBudgetMigrate.ts',
+  'lib/hooks/useCustomerBudget.ts',
 ];
 
 const fabricatedPatterns = [
@@ -84,6 +87,33 @@ if (!/syncProjectSideEffects\(\{ user, project: activeProject \}\)/.test(schedul
 }
 if (!/importIcal\.sideEffects/.test(scheduleIconToolbar)) {
   throw new Error('calendar import follow-up failure must be reported separately from committed import failure');
+}
+
+const budgetMigration = read('lib/customerBudgetMigrate.ts');
+if (!/syncCustomerBudgetOnLoad\(\s*user: User,\s*project: ProjectDetail/.test(budgetMigration)) {
+  throw new Error('customer budget migration must receive real user and project domain objects');
+}
+if (!/syncProjectSideEffects\(\{ user, project: committed \}\)/.test(budgetMigration)) {
+  throw new Error('customer budget migration side effects must use committed ProjectDetail');
+}
+if (!/return committed;/.test(budgetMigration) || !/return project;/.test(budgetMigration)) {
+  throw new Error('customer budget migration must distinguish committed server truth from local fallback');
+}
+
+const budgetHook = read('lib/hooks/useCustomerBudget.ts');
+if (!/syncProjectSideEffects\(\{ user, project: committed \}\)/.test(budgetHook)) {
+  throw new Error('customer budget save side effects must use committed ProjectDetail');
+}
+if (!/setSyncState\('local_only'\)/.test(budgetHook)) {
+  throw new Error('customer budget remote failure must remain visibly distinguishable as local-only state');
+}
+
+const renovaContext = read('lib/context/RenovaContext.tsx');
+if (!/projectProfile\.sideEffects/.test(renovaContext) || !/projectProfile\.refreshProjects/.test(renovaContext)) {
+  throw new Error('project profile post-commit follow-ups must be isolated and reported');
+}
+if (!/p = await syncCustomerBudgetOnLoad\(user, p\)/.test(renovaContext)) {
+  throw new Error('project load must preserve server-confirmed customer budget truth');
 }
 
 console.log('sideEffectContext.w177.test OK');
