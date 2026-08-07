@@ -179,7 +179,7 @@ export function buildProjectOsSnapshot(
             ? `${formatRub(pendingPaymentTotal)} к оплате`
             : `${unpaid} счёт(ов)`,
           button: 'Оплатить',
-          href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
+          href: budgetTabRoute(role, 'payments', { openPayment: '1' }),
           kind: 'payment',
         }
         : {
@@ -188,7 +188,7 @@ export function buildProjectOsSnapshot(
             ? `${formatRub(pendingPaymentTotal)} у заказчика`
             : 'Счёт выставлен',
           button: 'Счета',
-          href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
+          href: budgetTabRoute(role, 'payments'),
           kind: 'payment',
         };
     } else if (warrantyOpen > 0) {
@@ -245,7 +245,7 @@ export function buildProjectOsSnapshot(
         ? `${formatRub(pendingPaymentTotal)} выставлено`
         : 'Счёт у заказчика',
       button: 'Счета',
-      href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
+      href: budgetTabRoute(role, 'payments'),
       kind: 'payment',
     };
   } else if (unpaid > 0 && role === 'customer') {
@@ -255,7 +255,7 @@ export function buildProjectOsSnapshot(
         ? `${formatRub(pendingPaymentTotal)} к оплате`
         : 'Счёт после приёмки',
       button: 'Оплатить',
-      href: budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined),
+      href: budgetTabRoute(role, 'payments', { openPayment: '1' }),
       kind: 'payment',
     };
   } else if (offlineBlocked > 0) {
@@ -455,7 +455,7 @@ export function buildProjectOsSnapshot(
     schedule: {
       currentStage: isComplete ? 'Завершён' : (osSchedule?.current_stage || active[0]?.name),
       plannedEnd: osSchedule?.planned_end || project.planned_end_date || stages.find((s) => s.status !== 'done')?.planned_end || undefined,
-      forecastEnd: osSchedule?.forecast_end,
+      forecastEnd: osSchedule?.forecast_end ?? undefined,
       forecastDelayDays: osSchedule?.forecast_delay_days ?? 0,
       progressPercent,
       delayDays: osSchedule?.max_delay_days ?? overdue.length,
