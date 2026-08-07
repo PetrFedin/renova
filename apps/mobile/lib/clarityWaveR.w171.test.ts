@@ -39,8 +39,18 @@ if (!expense.includes('const busyRef = useRef(false)') || !expense.includes('if 
 if (!expense.includes("notifyOfflineQueued('Расход без чека')") || !expense.includes('Введённые данные сохранены в форме')) {
   throw new Error('manual expense offline/error preservation');
 }
-if (!expense.includes('let saved = false') || !expense.includes('void syncProjectSideEffects')) {
+if (
+  !expense.includes('let savedReceipt: ReceiptItem | null = null')
+  || !expense.includes('savedReceipt = await api.addManualReceipt')
+  || !expense.includes('if (!savedReceipt) return')
+  || !expense.includes('await onSaved?.(savedReceipt)')
+  || !expense.includes('await loadProject(project.id)')
+  || expense.includes('syncProjectSideEffects')
+) {
   throw new Error('manual expense durable write boundary');
+}
+if (!expense.includes('ManualExpenseForm.onSaved') || !expense.includes('ManualExpenseForm.projectRefresh')) {
+  throw new Error('manual expense post-commit failures must remain observable');
 }
 if (!expense.includes('ExpenseContextPickers') || !expense.includes('roomId') || !expense.includes('stageId')) {
   throw new Error('manual expense context links');
