@@ -1,6 +1,6 @@
 import { reportError, reportCatch } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Linking,
 } from 'react-native';
@@ -21,7 +21,6 @@ import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documen
 import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/lib/offlineUi';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
@@ -96,7 +95,7 @@ export function DocumentsHub({
   projectId: string;
   projectName?: string;
 }) {
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, loadProject } = useRenova();
   const isContractor = user?.role === 'contractor';
   const isArchived = Boolean(activeProject?.is_archived);
   const [busy, setBusy] = useState<string | null>(null);
@@ -106,8 +105,27 @@ export function DocumentsHub({
   const [indexLoading, setIndexLoading] = useState(true);
   const [konturAvailable, setKonturAvailable] = useState(false);
   const [konturMode, setKonturMode] = useState<'off' | 'sandbox' | 'live' | string>('off');
-  const [ocrModeLabel, setOcrModeLabel] = useState('LOCAL');
+  // OCR в Document Center — локальная heuristic-классификация, не remote ML demo.
+  const ocrModeLabel = 'LOCAL';
+  const contextRef = useRef({ userId: user?.id ?? null, projectId: activeProject?.id ?? null });
+  contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
 
+  const reconcileProjectAfterCommit = useCallback(async (action: string) => {
+    const current = contextRef.current;
+    if (current.userId !== userId || current.projectId !== projectId) {
+      reportError(
+        'DocumentsHub.ContextChangedAfterCommit',
+        new Error('active documents context changed after committed mutation'),
+        { action, projectId, currentProjectId: current.projectId },
+      );
+      return;
+    }
+    try {
+      await loadProject(projectId);
+    } catch (error) {
+      reportError(`DocumentsHub.${action}.ProjectRefresh`, error, { projectId });
+    }
+  }, [loadProject, projectId, userId]);
 
   const pdfPath = (path: string) => path.replace('{id}', projectId);
 
@@ -140,8 +158,6 @@ export function DocumentsHub({
         if (km) setKonturMode(String(km));
       })
       .catch(reportCatch('docs.esignHealth'));
-    // OCR в DC — heuristic/local, не ML live
-    setOcrModeLabel('DEMO');
     return () => { alive = false; };
   }, [userId, projectId]);
 
@@ -265,11 +281,7 @@ export function DocumentsHub({
             allow_accept_stage: true,
             allow_pay: true,
           });
-          await syncProjectSideEffects({
-            user: user ?? ({ id: userId } as any),
-            project: { id: projectId } as any,
-            role: isContractor ? 'contractor' : 'customer',
-          });
+          // Создание magic-link не изменяет ProjectDetail — project sync здесь не нужен.
           await shareRenovaLink(link.url, 'портал Renova (приёмка · подпись · оплата)');
         },
       },
@@ -303,7 +315,7 @@ export function DocumentsHub({
                     void (async () => {
                       try {
                         await api.closeWarrantyClaim(userId, projectId, first.id);
-                        void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                        void reconcileProjectAfterCommit('WarrantyClose');
                         alertWarrantyClosed(role);
                       } catch (e: unknown) {
                         Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
@@ -319,7 +331,7 @@ export function DocumentsHub({
                         title: 'Гарантийное обращение',
                         description: 'Создано из Document Center',
                       });
-                      void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                      void reconcileProjectAfterCommit('WarrantyCreate');
                       alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
                     })();
                   },
@@ -332,7 +344,7 @@ export function DocumentsHub({
             title: 'Гарантийное обращение',
             description: 'Создано из Document Center',
           });
-          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          void reconcileProjectAfterCommit('WarrantyCreate');
           alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
         },
       },
@@ -415,7 +427,7 @@ export function DocumentsHub({
               void (async () => {
                 try {
                   const res = await api.closeoutProject(userId, projectId);
-                  void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+                  void reconcileProjectAfterCommit('Closeout');
                   alertCloseoutDone('customer', res.next_action);
                 } catch (e: unknown) {
                   Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось завершить');
@@ -501,7 +513,7 @@ export function DocumentsHub({
         rows: [rows.dossierPdf, rows.gdpr],
       },
     ];
-  }, [userId, projectId, user?.role]);
+  }, [userId, projectId, user?.role, isArchived, reconcileProjectAfterCommit]);
 
   async function withBusy(id: string, fn: () => Promise<void>) {
     setBusy(id);
@@ -668,7 +680,7 @@ export function DocumentsHub({
         onPress: () => withBusy(`sign-${doc.id}`, async () => {
           await api.signProjectDocument(userId, projectId, doc.id, { provider: 'in_app' });
           await reloadIndex();
-          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          void reconcileProjectAfterCommit('SignInApp');
           // W132: подпись → документы / график
           alertDocumentSigned(role, 'in_app');
         }),
@@ -686,7 +698,7 @@ export function DocumentsHub({
           }
           const status = await pollDocumentSignature(userId, projectId, doc.id, { provider: 'kontur' });
           await reloadIndex();
-          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          void reconcileProjectAfterCommit('SignKontur');
           if (status === 'signed') {
             alertDocumentSigned(role, 'kontur');
           } else if (status === 'failed') {
@@ -713,7 +725,7 @@ export function DocumentsHub({
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {
           await api.runDocumentOcr(userId, projectId, doc.id, true);
           await reloadIndex();
-          void syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
+          void reconcileProjectAfterCommit('Ocr');
           alertDocumentOcrDone(role);
         }),
       },
@@ -748,6 +760,7 @@ export function DocumentsHub({
         { title: file.name, document_type: 'upload' },
       );
       await reloadIndex();
+      void reconcileProjectAfterCommit('Upload');
     });
   }
 
@@ -810,10 +823,7 @@ export function DocumentsHub({
         projectId={projectId}
         role={user?.role === 'contractor' ? 'contractor' : 'customer'}
         onDone={() => {
-          void syncProjectSideEffects({
-            user: user ?? ({ id: userId } as any),
-            project: activeProject ?? ({ id: projectId } as any),
-          });
+          void reconcileProjectAfterCommit('BankImport');
         }}
       />
     <View style={s.wrap}>
@@ -829,7 +839,7 @@ export function DocumentsHub({
             return (
               <Pressable
                 key={doc.id}
-                style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
+                style={({ pressed }: { pressed: boolean }) => [s.recentRow, pressed && s.rowPressed]}
                 onPress={() => openIndexedDocument(doc)}
                 disabled={Boolean(busy)}
                 accessibilityRole="button"
@@ -894,7 +904,7 @@ export function DocumentsHub({
               return (
                 <Pressable
                   key={doc.id}
-                  style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
+                  style={({ pressed }: { pressed: boolean }) => [s.recentRow, pressed && s.rowPressed]}
                   onPress={() => openIndexedDocument(doc)}
                   disabled={Boolean(busy)}
                   accessibilityRole="button"
@@ -954,7 +964,7 @@ export function DocumentsHub({
                   return (
                     <Pressable
                       key={row.id}
-                      style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+                      style={({ pressed }: { pressed: boolean }) => [s.row, pressed && s.rowPressed]}
                       onPress={() => onRowPress(row)}
                       disabled={!!busy}
                       accessibilityRole="button"

@@ -14,9 +14,9 @@ for arg in "$@"; do
   esac
 done
 
-# Ratchet down as real errors are fixed. Do not increase casually. Exact branch
-# target on 2026-08-07: 3 non-TS2786/non-TS2607 diagnostics.
-BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-3}"
+# Zero real diagnostics is now the enforced target. Known RN x React 19 JSX
+# compatibility noise (TS2786/TS2607) remains separately counted and gated.
+BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-0}"
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
