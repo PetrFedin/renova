@@ -109,7 +109,7 @@ export function CreatePaymentForm({
     clearDraft();
     onSaved?.();
     alertPaymentCreated((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole);
-    void syncProjectSideEffects({ user: user ?? ({ id: userId } as never), project })
+    void syncProjectSideEffects({ user, project })
       .catch(reportCatch('CreatePaymentForm.sideEffects'));
   };
 
@@ -197,7 +197,7 @@ export function CreatePaymentForm({
       <TextInput
         style={formSurfaceStyles.input}
         value={amount}
-        onChangeText={(value) => { setAmount(value); setPercent(null); }}
+        onChangeText={(value: string) => { setAmount(value); setPercent(null); }}
         placeholder={percent != null ? `${percent}% от стоимости этапа` : 'Сумма, ₽'}
         keyboardType="decimal-pad"
         editable={!busy && percent == null}

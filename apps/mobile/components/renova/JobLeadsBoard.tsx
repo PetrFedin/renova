@@ -50,11 +50,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
   const [creating, setCreating] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
-  const sync = () =>
-    syncProjectSideEffects({
-      user: user ?? ({ id: userId } as any),
-      project: activeProject,
-    });
+  const sync = () => syncProjectSideEffects({ user, project: activeProject });
 
   const load = useCallback(() => {
     api
@@ -219,7 +215,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
                 placeholder="₽"
                 keyboardType="numeric"
                 value={quote[l.id] || ''}
-                onChangeText={(v) => setQuote({ ...quote, [l.id]: v })}
+                onChangeText={(value: string) => setQuote({ ...quote, [l.id]: value })}
               />
               <PrimaryButton
                 title="КП"

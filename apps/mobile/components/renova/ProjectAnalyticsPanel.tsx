@@ -158,11 +158,11 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     </View>
     <ExpenseDetailSheet
       target={expenseDetail}
-      project={activeProject ? { rooms, stages } : undefined}
+      project={activeProject}
       rooms={rooms}
       stages={stages}
-      userId={user?.id}
-      projectId={activeProject?.id}
+      userId={user.id}
+      projectId={activeProject.id}
       editable={canWrite && !readOnly}
       onClose={() => setExpenseDetail(null)}
       onChanged={() => { reload().catch(reportCatch('analytics.reload')); }}

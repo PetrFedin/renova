@@ -23,7 +23,7 @@ export const projectsApi = {
       '/api/v1/projects/templates', {}, userId,
     ),
   createProjectFromTemplate: (userId: string, body: { template_id: string; name?: string }) =>
-    req(`/api/v1/projects/from-template`, { method: 'POST', body: JSON.stringify(body) }, userId),
+    req<ProjectDetail>(`/api/v1/projects/from-template`, { method: 'POST', body: JSON.stringify(body) }, userId),
   createProject: (userId: string, body: object) => req<ProjectDetail>('/api/v1/projects', { method: 'POST', body: JSON.stringify(body) }, userId),
   patchProject: (userId: string, projectId: string, body: object) =>
     req<ProjectDetail>(`/api/v1/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),

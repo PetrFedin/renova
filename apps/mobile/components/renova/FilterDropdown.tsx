@@ -7,6 +7,8 @@ import { screenTypography } from '@/constants/screenTypography';
 
 export type FilterOption<T extends string> = { value: T; label: string };
 
+type PropagationEvent = { stopPropagation?: () => void };
+
 type Props<T extends string> = {
   title: string;
   hint?: string;
@@ -56,7 +58,7 @@ export function FilterDropdown<T extends string>({
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={s.menu} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={s.menu} onPress={(event: PropagationEvent) => event.stopPropagation?.()}>
             <Text style={s.menuTitle}>{title}</Text>
             <ScrollView style={s.menuScroll} keyboardShouldPersistTaps="handled">
               {options.map((opt) => {

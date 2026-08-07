@@ -54,6 +54,7 @@ export function CreateRoomSheet({
   const { user } = useRenova();
   const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
   const [nameTouched, setNameTouched] = useState(false);
+  const propertyType = project.property_type ?? 'apartment';
 
   const dimValues = { length, width, height, outlets, switches, plumbing };
   const dimSetters = {
@@ -75,7 +76,7 @@ export function CreateRoomSheet({
     if (preset.outlets) setOutlets(preset.outlets);
     if (preset.switches) setSwitches(preset.switches);
     if (preset.plumbing) setPlumbing(preset.plumbing);
-    if (preset.floor && project.property_type === 'house') setFloor(preset.floor);
+    if (preset.floor && propertyType === 'house') setFloor(preset.floor);
   }
 
   function resetForm() {
@@ -107,7 +108,7 @@ export function CreateRoomSheet({
       await onCreate({
         name: name.trim(),
         room_type: roomType,
-        floor_level: project.property_type === 'house' ? floor : 1,
+        floor_level: propertyType === 'house' ? floor : 1,
         length_m: len,
         width_m: wid,
         height_m: parseFloat(height) || 2.7,
@@ -139,7 +140,7 @@ export function CreateRoomSheet({
           <Text style={s.head}>Новая комната</Text>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <RoomFormGuideBox compact />
-            <PropertyTypeBanner propertyType={project.property_type} />
+            <PropertyTypeBanner propertyType={propertyType} />
             <RoomNameField
               value={name}
               onChange={(v) => {
@@ -150,10 +151,10 @@ export function CreateRoomSheet({
             />
             <RoomTypeSection value={roomType} onChange={setRoomType} onPreset={applyPreset} />
             <RoomFloorSection
-              propertyType={project.property_type}
+              propertyType={propertyType}
               value={floor}
               onChange={setFloor}
-              max={project.property_type === 'house' ? 3 : 1}
+              max={propertyType === 'house' ? 3 : 1}
             />
             <RoomDimensionsSection values={dimValues} setters={dimSetters} />
             <RoomEngineeringSection values={dimValues} setters={dimSetters} />

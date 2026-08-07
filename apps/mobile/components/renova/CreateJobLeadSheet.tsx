@@ -26,6 +26,8 @@ const RENOVATION_TYPES = [
   { id: 'kitchen', label: 'Кухня' },
 ] as const;
 
+type PropagationEvent = { stopPropagation?: () => void };
+
 export type { JobLeadCreateBody };
 
 const TITLE_BY_TYPE: Record<string, string> = {
@@ -132,7 +134,7 @@ export function CreateJobLeadSheet({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable style={s.backdrop} onPress={requestClose}>
-          <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={s.sheet} onPress={(event: PropagationEvent) => event.stopPropagation?.()}>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <Text style={s.head}>Новая заявка</Text>
               <Text style={s.hint}>Исполнители увидят объект и смогут прислать КП.</Text>
@@ -158,7 +160,7 @@ export function CreateJobLeadSheet({
               <TextInput
                 style={s.inp}
                 value={title}
-                onChangeText={(v) => {
+                onChangeText={(v: string) => {
                   setTitleTouched(true);
                   setTitle(v);
                 }}
