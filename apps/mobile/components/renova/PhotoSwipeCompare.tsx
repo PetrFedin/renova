@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { Modal, View, Text, Image, Pressable, StyleSheet, Dimensions } from 'react-native';
 
-type P = { id: string; caption: string | null; image_url?: string };
+type P = { id: string; caption: string | null; image_url?: string | null };
 export function PhotoSwipeCompare({ before, after, visible, onClose }: { before: P[]; after: P[]; visible: boolean; onClose: () => void }) {
   const [idx, setIdx] = useState(0);
   const pool = [...before.map(p=>({...p, tag:'До'})), ...after.map(p=>({...p, tag:'После'}))];

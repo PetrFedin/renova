@@ -20,7 +20,9 @@ const contextFiles = [
   'components/renova/schedule/ScheduleIconToolbar.tsx',
   'components/screens/PortalScreen.tsx',
   'components/screens/RoomDetailScreen.tsx',
+  'components/screens/StageDetailScreen.tsx',
   'components/screens/estimate/EstimateDocumentsLayer.tsx',
+  'components/screens/stage/StageDetailAcceptanceFold.tsx',
   'lib/context/RenovaContext.tsx',
   'lib/createProjectChat.ts',
   'lib/customerBudgetMigrate.ts',
@@ -144,6 +146,43 @@ if (/syncProjectSideEffects\(\{\s*user,\s*project:\s*activeProject\s*\}\)/.test(
 }
 if (!/archived:\s*false/.test(roomDetail) || !/archived:\s*true/.test(roomDetail) || !/Комната не найдена/.test(roomDetail)) {
   throw new Error('room detail must terminate loading for active, archived, and missing room states');
+}
+
+const stageDetail = read('components/screens/StageDetailScreen.tsx');
+if (/compressUri\(await fetch/.test(stageDetail)) {
+  throw new Error('stage photo compression must receive an image URI, never a Blob');
+}
+if (!/const compressedUri = await compressUri\(asset\.uri\)/.test(stageDetail) || !/const blob = await compressedResponse\.blob\(\)/.test(stageDetail)) {
+  throw new Error('stage photo flow must compress URI before producing the upload Blob');
+}
+if (!/const uploadResponse = await fetch\(up\.upload_url/.test(stageDetail) || !/if \(!uploadResponse\.ok\)/.test(stageDetail)) {
+  throw new Error('stage photo metadata must not be registered before a successful storage PUT');
+}
+if (!/await api\.addStagePhoto\([\s\S]*?up\.key, up\.public_url\)/.test(stageDetail)) {
+  throw new Error('stage photo flow must register storage key/url only after upload');
+}
+if (/syncProjectSideEffects/.test(stageDetail)) {
+  throw new Error('stage detail must reconcile committed mutations through fresh loadProject, not stale project sync');
+}
+if (!/PhotoProjectRefresh/.test(stageDetail) || !/CommentProjectRefresh/.test(stageDetail) || !/await loadProject\(activeProject\.id\)/.test(stageDetail)) {
+  throw new Error('stage photo/comment commits must isolate fresh project reconciliation failures');
+}
+if (!/p\.image_url \?/.test(stageDetail)) {
+  throw new Error('stage photo rendering must use the typed image_url contract');
+}
+
+const stageAcceptance = read('components/screens/stage/StageDetailAcceptanceFold.tsx');
+if (/syncProjectSideEffects/.test(stageAcceptance)) {
+  throw new Error('stage acceptance fold must not fabricate or propagate stale project context');
+}
+if (!/contextRef\.current\.userId !== userId/.test(stageAcceptance) || !/await loadProject\(projectId\)/.test(stageAcceptance)) {
+  throw new Error('stage acceptance reconciliation must guard context identity and refresh the real project');
+}
+if (!/await api\.toggleStageChecklist\([\s\S]*?await reconcileCommittedStageChange\('ToggleChecklist'\)/.test(stageAcceptance)) {
+  throw new Error('stage checklist commit must be separated from post-commit reconciliation');
+}
+if (!/p\.image_url \?/.test(stageAcceptance)) {
+  throw new Error('acceptance photo rendering must use the typed image_url contract');
 }
 
 const estimateDocuments = read('components/screens/estimate/EstimateDocumentsLayer.tsx');

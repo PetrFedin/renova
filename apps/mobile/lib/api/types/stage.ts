@@ -42,11 +42,19 @@ export type WorkAcceptance = {
   created_at: string | null;
 };
 
+export type StagePhoto = {
+  id: string;
+  caption: string | null;
+  created_at: string;
+  image_url: string | null;
+  has_image: boolean;
+};
+
 export type StageDetail = Stage & {
   notes: string | null;
   contractor_ready_at: string | null;
   comments: { id: string; text: string; author_role: string; created_at: string }[];
-  photos: { id: string; caption: string | null; created_at: string; has_image: boolean }[];
+  photos: StagePhoto[];
 };
 
 export type ProjectPlan = {

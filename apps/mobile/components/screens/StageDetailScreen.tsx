@@ -8,7 +8,6 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, StageDetail, WorkSnapshot } from '@/lib/api';
@@ -64,10 +63,15 @@ function CommentReactions({ id, stageId, counts }: { id: string; stageId: string
         {(['👍', '❓'] as const).map((x) => (
           <Pressable
             key={x}
+            disabled={!canWrite}
             onPress={async () => {
               if (user && activeProject && stageId) {
-                await api.reactComment(user.id, activeProject.id, stageId, id, r === x ? '' : x);
-                setR(r === x ? null : x);
+                try {
+                  await api.reactComment(user.id, activeProject.id, stageId, id, r === x ? '' : x);
+                  setR(r === x ? null : x);
+                } catch (error) {
+                  reportError('components.screens.StageDetailScreen.CommentReaction', error, { stageId, commentId: id });
+                }
               } else {
                 setR(await toggleReaction(id, x));
               }
@@ -217,14 +221,31 @@ export function StageDetailScreen() {
     setLoading(true);
     const msg = replyTo ? `↩ "${replyTo.slice(0, 80)}"\n${t}` : t;
     try {
-      await api.addStageComment(user.id, activeProject.id, stage.id, msg);
+      try {
+        await api.addStageComment(user.id, activeProject.id, stage.id, msg);
+      } catch (error: unknown) {
+        if (isOfflineQueued(error)) {
+          notifyOfflineQueued('Комментарий');
+        } else {
+          reportError('components.screens.StageDetailScreen.AddComment', error, { stageId: stage.id });
+          Alert.alert('Комментарий', 'Не удалось отправить комментарий. Повторите попытку.');
+        }
+        return;
+      }
+
+      // Comment is committed. Reconciliation must not turn success into failure.
       setComment('');
       setReplyTo(null);
-      await reload();
-      await syncProjectSideEffects({ user, project: activeProject });
-    } catch (e: unknown) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Комментарий');
-      else throw e;
+      try {
+        await reload();
+      } catch (error) {
+        reportError('components.screens.StageDetailScreen.CommentRefresh', error, { stageId: stage.id });
+      }
+      try {
+        await loadProject(activeProject.id);
+      } catch (error) {
+        reportError('components.screens.StageDetailScreen.CommentProjectRefresh', error, { stageId: stage.id });
+      }
     } finally {
       setLoading(false);
     }
@@ -244,23 +265,56 @@ export function StageDetailScreen() {
       return;
     }
     const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.5 });
-    if (pick.canceled || !pick.assets[0]?.base64) return;
+    const asset = pick.canceled ? undefined : pick.assets[0];
+    if (!asset?.uri) return;
+
     setLoading(true);
     try {
-      const up = await api.getUploadUrl(user.id);
-      if (up.upload_url && pick.assets[0].uri) {
-        const blob = await compressUri(await fetch(pick.assets[0].uri).then((r) => r.blob()));
-        await fetch(up.upload_url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
-        await api.addStagePhoto(user.id, activeProject.id, stage.id, undefined, label, up.key, up.public_url);
-      } else {
-        await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${pick.assets[0].base64}`, label);
+      try {
+        const compressedUri = await compressUri(asset.uri);
+        const compressedResponse = await fetch(compressedUri);
+        if (!compressedResponse.ok && compressedResponse.status !== 0) {
+          throw new Error(`Compressed image read failed with status ${compressedResponse.status}`);
+        }
+        const blob = await compressedResponse.blob();
+        const up = await api.getUploadUrl(user.id);
+        if (up.upload_url) {
+          const uploadResponse = await fetch(up.upload_url, {
+            method: 'PUT',
+            body: blob,
+            headers: { 'Content-Type': 'image/jpeg' },
+          });
+          if (!uploadResponse.ok) {
+            throw new Error(`Stage photo upload failed with status ${uploadResponse.status}`);
+          }
+          await api.addStagePhoto(user.id, activeProject.id, stage.id, undefined, label, up.key, up.public_url);
+        } else if (asset.base64) {
+          await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${asset.base64}`, label);
+        } else {
+          throw new Error('Stage photo upload URL unavailable and no inline image fallback exists');
+        }
+      } catch (error: unknown) {
+        if (isOfflineQueued(error)) {
+          notifyOfflineQueued('Фото');
+        } else {
+          reportError('components.screens.StageDetailScreen.AddPhoto', error, { stageId: stage.id, label });
+          Alert.alert('Фото', 'Не удалось загрузить фото. Запись этапа не изменена — повторите попытку.');
+        }
+        return;
       }
-      await reload();
-      await syncProjectSideEffects({ user, project: activeProject });
-    } catch (e: unknown) {
-      if (isOfflineQueued(e)) {
-        notifyOfflineQueued('Фото');
-      } else throw e;
+
+      // Photo metadata is committed only after a successful storage PUT (or the
+      // explicit inline fallback). Refresh failures are separate telemetry.
+      try {
+        await reload();
+      } catch (error) {
+        reportError('components.screens.StageDetailScreen.PhotoRefresh', error, { stageId: stage.id });
+      }
+      try {
+        await loadProject(activeProject.id);
+      } catch (error) {
+        reportError('components.screens.StageDetailScreen.PhotoProjectRefresh', error, { stageId: stage.id });
+      }
     } finally {
       setLoading(false);
     }
@@ -347,8 +401,8 @@ export function StageDetailScreen() {
 
         <StageDetailAccordion title="Фото до / после" summary={`${stage.photos.length} фото`}>
           <View style={styles.photoBtns}>
-            <PrimaryButton disabled={!canWrite || loading} title="До работ" variant="outline" onPress={() => onAddPhoto('До работ')} />
-            <PrimaryButton disabled={!canWrite || loading} title="После работ" variant="outline" onPress={() => onAddPhoto('После работ')} />
+            <PrimaryButton disabled={!canWrite || loading} title="До работ" variant="outline" onPress={() => { void onAddPhoto('До работ'); }} />
+            <PrimaryButton disabled={!canWrite || loading} title="После работ" variant="outline" onPress={() => { void onAddPhoto('После работ'); }} />
           </View>
           {[{ title: 'До', list: before }, { title: 'После', list: after }, { title: 'Прочие', list: other }].map(
             ({ title, list }) =>
@@ -357,8 +411,8 @@ export function StageDetailScreen() {
                   <Text style={styles.subSection}>{title}</Text>
                   {list.map((p) => (
                     <View key={p.id} style={styles.photoRow}>
-                      {(p as { image_url?: string }).image_url ? (
-                        <Image source={{ uri: (p as { image_url: string }).image_url }} style={styles.img} />
+                      {p.image_url ? (
+                        <Image source={{ uri: p.image_url }} style={styles.img} />
                       ) : null}
                       <Text>{p.caption || 'Фото'} · {p.created_at.slice(0, 10)}</Text>
                     </View>
@@ -393,7 +447,7 @@ export function StageDetailScreen() {
           {isContractor && (
             <View style={styles.tplRow}>
               {TEMPLATES.map((t) => (
-                <Pressable key={t} style={styles.tpl} onPress={() => onAddComment(t)}>
+                <Pressable key={t} style={styles.tpl} onPress={() => { void onAddComment(t); }}>
                   <Text style={styles.tplT}>{t}</Text>
                 </Pressable>
               ))}
@@ -420,7 +474,7 @@ export function StageDetailScreen() {
             onChangeText={setComment}
             multiline
           />
-          <PrimaryButton disabled={!canWrite || loading} title="Отправить" onPress={() => onAddComment()} />
+          <PrimaryButton disabled={!canWrite || loading} title="Отправить" onPress={() => { void onAddComment(); }} />
         </StageDetailAccordion>
 
         <StageDetailAccordion title="История решений" summary="Смета · сроки · согласования">
