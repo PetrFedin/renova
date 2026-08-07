@@ -16,7 +16,6 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type ScratchpadLine } from '@/lib/api';
 import { createProjectChat } from '@/lib/createProjectChat';
@@ -84,6 +83,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Статус строки');
+      } else {
+        Alert.alert('Черновик', 'Не удалось изменить статус строки');
       }
     }
   };
@@ -96,7 +97,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       message: line.text,
       primaryLabel: 'Удалить',
       onPrimary: () => {
-        void api.deleteScratchpadLine(user.id, activeProject.id, line.id).then(reload);
+        void api.deleteScratchpadLine(user.id, activeProject.id, line.id)
+          .then(reload)
+          .catch(() => Alert.alert('Черновик', 'Не удалось удалить строку'));
       },
       secondaryLabel: 'Отмена',
       onSecondary: () => undefined,
@@ -152,7 +155,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
                 const existing = await api.chatInbox(user.id);
                 const title = line.text.slice(0, 60);
                 await createProjectChat({
-                  userId: user.id,
+                  user,
                   projectId: activeProject.id,
                   title,
                   existingThreads: existing,
@@ -170,11 +173,9 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         {
           label: '→ Расход',
           onPress: () => {
-            void (async () => {
-              await markPromoted(line, 'expense');
-              await syncProjectSideEffects({ user, project: activeProject });
-              pushOsNav(budgetTabHref(role, 'expenses'), returnTo, role);
-            })();
+            const base = budgetTabHref(role, 'expenses', { focus: 'create' });
+            const source = `scratchpadLineId=${encodeURIComponent(line.id)}&scratchpadText=${encodeURIComponent(line.text)}`;
+            pushOsNav(`${base}${base.includes('?') ? '&' : '?'}${source}`, returnTo, role);
           },
         },
         {
@@ -285,7 +286,6 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         onCreatedWork={async (wo) => {
           if (!promoteLine) return;
           await markPromoted(promoteLine, 'work_order', wo.id);
-          await syncProjectSideEffects({ user, project: activeProject });
           const date = (wo.planned_start || new Date().toISOString()).slice(0, 10);
           pushOsNav(calendarTabHref(role, { date }), returnTo, role);
         }}
@@ -293,7 +293,10 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
 
       <Modal visible={!!editLine} transparent animationType="fade" onRequestClose={() => setEditLine(null)}>
         <Pressable style={s.modalBackdrop} onPress={() => setEditLine(null)}>
-          <Pressable style={s.modalSheet} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={s.modalSheet}
+            onPress={(event: { stopPropagation: () => void }) => event.stopPropagation()}
+          >
             <Text style={s.modalTitle}>Редактировать</Text>
             <TextInput
               style={s.input}
