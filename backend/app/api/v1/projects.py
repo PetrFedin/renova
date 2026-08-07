@@ -8,6 +8,7 @@ from app.models.entities import User, UserRole
 from app.models.entities import PaymentStatus
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectDetail, ProjectOut, EstimateLineOut, StageOut, RoomOut
 from app.services import project_service as svc
+from app.services import project_profile_service as profile_svc
 from app.services.stage_service import parse_room_ids
 from app.services import room_service as room_svc
 from app.services import project_document_service as docs_svc
@@ -33,6 +34,7 @@ def _filter_stages_for_user(p, user: User):
 def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
     payments = getattr(p, "payments", None) or []
     pending = sum(1 for pay in payments if pay.status == PaymentStatus.pending)
+    customer_budget = getattr(p, "customer_budget", None)
     return ProjectOut(
         id=p.id,
         name=p.name,
@@ -41,6 +43,7 @@ def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
         property_type=getattr(p, "property_type", "apartment") or "apartment",
         budget_planned=p.budget_planned,
         budget_spent=p.budget_spent,
+        customer_budget=float(customer_budget) if customer_budget is not None else None,
         progress_percent=p.progress_percent,
         vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
@@ -256,11 +259,9 @@ async def purge_project(project_id: str, user: User = Depends(get_current_user),
 
 @router.patch("/{project_id}", response_model=ProjectDetail)
 async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     data = body.model_dump(exclude_unset=True)
-    p = await svc.update_project(db, project_id, **data)
-    if not p:
-        raise HTTPException(404)
+    p = await profile_svc.update_project_profile(db, project, data)
     return await _detail(db, p, user)
 
 @router.get("/{project_id}", response_model=ProjectDetail)

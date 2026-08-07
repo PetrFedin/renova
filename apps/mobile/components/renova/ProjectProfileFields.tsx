@@ -19,11 +19,13 @@ const PROPERTY_TYPES = [
   { id: 'house' as const, label: 'Дом' },
 ] as const;
 
+export type VatRate = 0 | 5 | 10 | 20;
+
 export type ProjectProfileValues = {
   name: string;
   address: string;
   renovation_type: string;
-  vat_rate?: number;
+  vat_rate?: VatRate;
   property_type: 'apartment' | 'house';
   planned_start_date?: string;
   planned_end_date?: string;
@@ -39,6 +41,7 @@ type Props = {
   role?: RoleContext['role'];
   readOnly?: boolean;
   budgetValue?: string;
+  budgetError?: string | null;
   onBudgetChange?: (v: string) => void;
   estimateTotal?: number;
 };
@@ -78,6 +81,7 @@ export function ProjectProfileFields({
   role = 'customer',
   readOnly = false,
   budgetValue,
+  budgetError,
   onBudgetChange,
   estimateTotal,
 }: Props) {
@@ -189,6 +193,7 @@ export function ProjectProfileFields({
         embedded
         value={budgetValue}
         onChange={onBudgetChange}
+        error={budgetError}
         estimateTotal={estimateTotal}
       />
     ) : null;

@@ -1,0 +1,64 @@
+name: Project profile persistence integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/models/__init__.py"
+      - "backend/app/models/entities.py"
+      - "backend/app/models/project_profile.py"
+      - "backend/app/schemas/project.py"
+      - "backend/app/api/v1/projects.py"
+      - "backend/app/services/project_profile_service.py"
+      - "backend/alembic/versions/k1l2m3n4o5p6_customer_budget.py"
+      - "backend/tests/test_project_profile_persistence_integrity.py"
+      - ".github/workflows/project-profile-persistence-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/models/__init__.py"
+      - "backend/app/models/entities.py"
+      - "backend/app/models/project_profile.py"
+      - "backend/app/schemas/project.py"
+      - "backend/app/api/v1/projects.py"
+      - "backend/app/services/project_profile_service.py"
+      - "backend/alembic/versions/k1l2m3n4o5p6_customer_budget.py"
+      - "backend/tests/test_project_profile_persistence_integrity.py"
+      - ".github/workflows/project-profile-persistence-integrity.yml"
+
+jobs:
+  project-profile-persistence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: "sqlite+aiosqlite:///./project-profile-persistence-tests.db"
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: test-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Run project profile persistence truth tests
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 240s poetry run pytest -vv -s --tb=short tests/test_project_profile_persistence_integrity.py 2>&1 | tee project-profile-persistence.log
+      - name: Upload profile persistence diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-profile-persistence-diagnostics
+          path: backend/project-profile-persistence.log
+          if-no-files-found: warn
+          retention-days: 14

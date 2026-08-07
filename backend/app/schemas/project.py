@@ -1,5 +1,6 @@
 from datetime import date
-from pydantic import BaseModel, Field
+from typing import Literal
+from pydantic import BaseModel, Field, model_validator
 
 
 class RoomInput(BaseModel):
@@ -36,12 +37,22 @@ class RoomUpdate(BaseModel):
 class ProjectUpdate(BaseModel):
     """Редактируемый профиль проекта — без пересчёта комнат/сметы."""
     name: str | None = None
-    vat_rate: float | None = None  # W69 #48: 0 / 5 / 10 / 20
+    vat_rate: Literal[0, 5, 10, 20] | None = None
     address: str | None = None
     renovation_type: str | None = None
     property_type: str | None = None
     planned_start_date: date | None = None
     planned_end_date: date | None = None
+    customer_budget: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def reject_null_required_fields(self):
+        # Explicit null must not reach NOT NULL project columns and become a 500.
+        # Omitted fields remain a valid partial PATCH.
+        for field_name in ("name", "renovation_type", "property_type"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return self
 
 
 class ProjectCreate(BaseModel):
@@ -174,6 +185,7 @@ class ProjectOut(BaseModel):
     property_type: str = "apartment"
     budget_planned: float
     budget_spent: float
+    customer_budget: float | None = None
     progress_percent: float
     vat_rate: float = 0
     rooms_count: int

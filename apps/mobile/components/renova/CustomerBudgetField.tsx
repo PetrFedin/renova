@@ -8,13 +8,14 @@ type Props = {
   onChange: (v: string) => void;
   estimateTotal?: number;
   hint?: string;
+  error?: string | null;
   /** Внутри секции ObjectProfileSection — без своего заголовка */
   embedded?: boolean;
 };
 
-export function CustomerBudgetField({ value, onChange, estimateTotal, hint, embedded }: Props) {
+export function CustomerBudgetField({ value, onChange, estimateTotal, hint, error, embedded }: Props) {
   const num = parseInt(value.replace(/\s/g, ''), 10);
-  const overEstimate = estimateTotal && num > 0 && num < estimateTotal;
+  const overEstimate = !error && estimateTotal && num > 0 && num < estimateTotal;
 
   return (
     <View style={embedded ? s.embedded : s.wrap}>
@@ -27,12 +28,15 @@ export function CustomerBudgetField({ value, onChange, estimateTotal, hint, embe
         </>
       ) : null}
       <TextInput
-        style={s.input}
+        style={[s.input, error ? s.inputError : null]}
         placeholder="Например: 500000"
         keyboardType="number-pad"
         value={value}
         onChangeText={onChange}
+        accessibilityLabel="Бюджет заказчика"
+        accessibilityHint={error || 'Введите сумму в рублях. Пустое поле удаляет лимит.'}
       />
+      {error ? <Text style={s.error}>{error}</Text> : null}
       {estimateTotal != null && estimateTotal > 0 ? (
         <Text style={s.meta}>Смета проекта: {formatRub(estimateTotal)}</Text>
       ) : null}
@@ -57,6 +61,8 @@ const s = StyleSheet.create({
     fontWeight: '700',
     backgroundColor: RenovaTheme.colors.surface,
   },
+  inputError: { borderColor: RenovaTheme.colors.danger },
   meta: { ...formMetaText.caption, marginTop: 6 },
   warn: { fontSize: 12, color: RenovaTheme.colors.warning, marginTop: 6, lineHeight: 16 },
+  error: { fontSize: 12, color: RenovaTheme.colors.danger, marginTop: 4, lineHeight: 16 },
 });
