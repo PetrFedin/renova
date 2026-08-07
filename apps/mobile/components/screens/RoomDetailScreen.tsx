@@ -1,16 +1,18 @@
 /** Комната — Digital Twin: паспорт сверху, детали по запросу */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
-import { useLocalSearchParams, router, usePathname } from 'expo-router';
+import { useLocalSearchParams, usePathname } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { RoomDiffTimeline } from '@/components/renova/RoomDiffTimeline';
 import { RoomDiagramInteractive } from '@/components/renova/RoomDiagramInteractive';
 import { RoomBudgetThreshold } from '@/components/renova/RoomBudgetThreshold';
 import { RoomPassport } from '@/components/renova/os/RoomPassport';
 import { RoomTypePicker, FloorLevelPicker } from '@/components/renova/RoomTypePicker';
 import { roomTypeLabel } from '@/constants/roomTypes';
-import { snapshotRoom, getRoomDiff } from '@/lib/roomDiff';
+import { snapshotRoom } from '@/lib/roomDiff';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { budgetTabRoute, objectTabHref } from '@/constants/osSections';
@@ -18,25 +20,26 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { roomSpentUnified } from '@/lib/domain/expenseAnalytics';
 import { calcRoomMetrics } from '@/lib/roomMetrics';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
-import { api, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase } from '@/lib/api';
+import { api, type User, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase } from '@/lib/api';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type RoomMutation = 'archive' | 'save' | 'materials';
+type RoomLoadState = 'loading' | 'ready' | 'error';
 
 export function RoomDetailScreen() {
   const { id, returnTo, overrun } = useLocalSearchParams<{ id: string; returnTo?: string; overrun?: string }>();
   const pathname = usePathname();
-  const { user, activeProject, loadProject, readOnly } = useRenova();
+  const { loading, projectResolving, user, activeProject, loadProject, readOnly } = useRenova();
   const canWrite = useWriteAllowed();
   const [showDetails, setShowDetails] = useState(false);
   const [history, setHistory] = useState<{field:string;old:string;new:string;at:string}[]>([]);
   const [room, setRoom] = useState<Room | null>(null);
+  const [loadState, setLoadState] = useState<RoomLoadState>('loading');
   const [len, setLen] = useState(''); const [wid, setWid] = useState(''); const [hei, setHei] = useState('3');
   const [outlets, setOutlets] = useState('0'); const [plumbing, setPlumbing] = useState('0'); const [switches, setSwitches] = useState('0');
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
@@ -48,6 +51,8 @@ export function RoomDetailScreen() {
   const [roomSnap, setRoomSnap] = useState<RoomSnapshot | null>(null);
   const [mutation, setMutation] = useState<RoomMutation | null>(null);
   const mutationRef = useRef(false);
+  const contextRef = useRef<{ userId: string | null; projectId: string | null }>({ userId: null, projectId: null });
+  contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
   const isContractor = user?.role === 'contractor';
   const ownerCanEdit = !isContractor && !activeProject?.contractor_id && canWrite && !readOnly;
   const role = isContractor ? 'contractor' : 'customer';
@@ -67,30 +72,81 @@ export function RoomDetailScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    if (!user || !activeProject || !id) return;
-    const rs = await api.listRooms(user.id, activeProject.id);
-    const r = rs.find(x => x.id === id) || null;
-    setRoom(r);
-    if (r) {
-      api.roomSnapshot(user.id, activeProject.id, r.id).then(setRoomSnap).catch((e) => { reportError('components.screens.RoomDetailScreen.RoomSnap', e); setRoomSnap(null); });
-      if (user && activeProject) api.roomChangeLog(user.id, activeProject.id, r.id).then(setHistory).catch(reportCatch('components.screens.RoomDetailScreen.1'));
-      api.listReceipts(user.id, activeProject.id).then(setReceipts).catch(reportCatch('components.screens.RoomDetailScreen.2'));
-      api.osExpenses(user.id, activeProject.id).then(setExpenses).catch(reportCatch('components.screens.RoomDetailScreen.3'));
-      api.listMaterialPicks(user.id, activeProject.id).then(setPicks).catch(reportCatch('components.screens.RoomDetailScreen.4'));
-      api.listPurchases(user.id, activeProject.id).then(setPurchases).catch(reportCatch('components.screens.RoomDetailScreen.5'));
-      setLen(String(r.length_m)); setWid(String(r.width_m)); setHei(String(r.height_m));
-      setOutlets(String(r.outlets_count)); setPlumbing(String(r.plumbing_points)); setSwitches(String(r.switches_count));
+    const actor = user;
+    const projectId = activeProject?.id;
+    if (!actor || !projectId || !id) return;
+    setLoadState((current) => current === 'ready' ? current : 'loading');
+    try {
+      const activeRooms = await api.listRooms(actor.id, projectId, { archived: false });
+      let nextRoom = activeRooms.find((candidate) => candidate.id === id) ?? null;
+      if (!nextRoom) {
+        const archivedRooms = await api.listRooms(actor.id, projectId, { archived: true });
+        nextRoom = archivedRooms.find((candidate) => candidate.id === id) ?? null;
+      }
+      if (contextRef.current.userId !== actor.id || contextRef.current.projectId !== projectId) return;
+
+      setRoom(nextRoom);
+      if (!nextRoom) {
+        setRoomSnap(null);
+        setHistory([]);
+        setLoadState('ready');
+        return;
+      }
+
+      api.roomSnapshot(actor.id, projectId, nextRoom.id).then(setRoomSnap).catch((e) => { reportError('components.screens.RoomDetailScreen.RoomSnap', e); setRoomSnap(null); });
+      api.roomChangeLog(actor.id, projectId, nextRoom.id).then(setHistory).catch(reportCatch('components.screens.RoomDetailScreen.1'));
+      api.listReceipts(actor.id, projectId).then(setReceipts).catch(reportCatch('components.screens.RoomDetailScreen.2'));
+      api.osExpenses(actor.id, projectId).then(setExpenses).catch(reportCatch('components.screens.RoomDetailScreen.3'));
+      api.listMaterialPicks(actor.id, projectId).then(setPicks).catch(reportCatch('components.screens.RoomDetailScreen.4'));
+      api.listPurchases(actor.id, projectId).then(setPurchases).catch(reportCatch('components.screens.RoomDetailScreen.5'));
+      setLen(String(nextRoom.length_m)); setWid(String(nextRoom.width_m)); setHei(String(nextRoom.height_m));
+      setOutlets(String(nextRoom.outlets_count)); setPlumbing(String(nextRoom.plumbing_points)); setSwitches(String(nextRoom.switches_count));
+      setLoadState('ready');
+    } catch (error) {
+      if (contextRef.current.userId === actor.id && contextRef.current.projectId === projectId) {
+        setLoadState('error');
+      }
+      throw error;
     }
-  }, [user?.id, activeProject?.id, id]);
+  }, [user, activeProject?.id, id]);
+
+  useEffect(() => {
+    setRoom(null);
+    setRoomSnap(null);
+    setHistory([]);
+    setLoadState('loading');
+  }, [activeProject?.id, id]);
   useEffect(() => { if (room) snapshotRoom(room).catch(reportCatch('components.screens.RoomDetailScreen.6')); }, [room?.id, room?.outlets_count]);
   useEffect(() => { if (overrun === '1' && user && activeProject && id) api.budgetRoomLines(user.id, activeProject.id, id).then(setOverrunLines).catch(reportCatch('components.screens.RoomDetailScreen.7')); }, [overrun, id, user?.id, activeProject?.id]);
   useEffect(() => { load().catch(reportCatch('components.screens.RoomDetailScreen.8')); }, [load]);
   useProjectDataReload(load);
 
+  const reconcileCommittedRoomMutation = useCallback(async (actor: User, projectId: string) => {
+    const isCurrentContext = () => contextRef.current.userId === actor.id && contextRef.current.projectId === projectId;
+    if (!isCurrentContext()) return;
+
+    // loadProject fetches a fresh ProjectDetail before refreshing inbox/home, so
+    // a committed room mutation never propagates the stale pre-mutation project.
+    try {
+      await loadProject(projectId);
+    } catch (error) {
+      reportError('components.screens.RoomDetailScreen.PostCommitProjectRefresh', error);
+    }
+    if (!isCurrentContext()) return;
+    try {
+      await load();
+    } catch (error) {
+      reportError('components.screens.RoomDetailScreen.PostCommitRoomRefresh', error);
+    }
+  }, [loadProject, load]);
+
   const lines = (activeProject?.estimate_lines || []).filter(l => (l.room_id && l.room_id === room?.id) || l.room_name === room?.name);
 
   const toggleArchive = () => {
     if (!user || !activeProject || !room || !isContractor || mutationRef.current) return;
+    const actor = user;
+    const projectId = activeProject.id;
+    const roomId = room.id;
     const nextArchived = !room.is_archived;
     showActionConfirm({
       title: nextArchived ? 'В архив?' : 'Восстановить комнату?',
@@ -102,19 +158,18 @@ export function RoomDetailScreen() {
       onPrimary: () => {
         void runMutation('archive', async () => {
           try {
-            await api.updateRoom(user.id, activeProject.id, room.id, { is_archived: nextArchived });
-            await syncProjectSideEffects({ user, project: activeProject });
-            await loadProject(activeProject.id);
-            await load();
-          } catch (e: unknown) {
-            if (isOfflineQueued(e)) notifyOfflineQueued(nextArchived ? 'Архивирование комнаты' : 'Восстановление комнаты');
+            await api.updateRoom(actor.id, projectId, roomId, { is_archived: nextArchived });
+          } catch (error: unknown) {
+            if (isOfflineQueued(error)) notifyOfflineQueued(nextArchived ? 'Архивирование комнаты' : 'Восстановление комнаты');
             else {
               showActionConfirm({
                 title: 'Ошибка',
-                message: e instanceof Error ? e.message : 'Не удалось изменить архив',
+                message: error instanceof Error ? error.message : 'Не удалось изменить архив',
               });
             }
+            return;
           }
+          await reconcileCommittedRoomMutation(actor, projectId);
         });
       },
       secondaryLabel: 'Отмена',
@@ -124,20 +179,56 @@ export function RoomDetailScreen() {
 
   const save = async (body: object) => {
     if (!user || !activeProject || !room) return;
+    const actor = user;
+    const projectId = activeProject.id;
+    const roomId = room.id;
     await runMutation('save', async () => {
       try {
-        await api.updateRoom(user.id, activeProject.id, room.id, body);
-        await syncProjectSideEffects({ user, project: activeProject });
-        await loadProject(activeProject.id);
-        await load();
-      } catch (e: unknown) {
-        if (isOfflineQueued(e)) notifyOfflineQueued('Изменения комнаты');
-        else throw e;
+        await api.updateRoom(actor.id, projectId, roomId, body);
+      } catch (error: unknown) {
+        if (isOfflineQueued(error)) {
+          notifyOfflineQueued('Изменения комнаты');
+        } else {
+          showActionConfirm({
+            title: 'Не удалось сохранить комнату',
+            message: error instanceof Error ? error.message : 'Повторите попытку.',
+          });
+        }
+        return;
       }
+      await reconcileCommittedRoomMutation(actor, projectId);
     });
   };
 
-  if (!room) return (<><BackHeader title="Комната" returnTo={returnTo} /><View style={s.center}><Text>Загрузка…</Text></View></>);
+  if (loading || projectResolving) {
+    return (<><BackHeader title="Комната" returnTo={returnTo} /><View style={s.center}><Text>Загрузка объекта…</Text></View></>);
+  }
+  if (!user || !activeProject) {
+    return <ProjectEmptyState role={role} title="Выберите объект" hint="Комната откроется после выбора объекта." showCreate={false} />;
+  }
+  if (loadState === 'error') {
+    return (
+      <>
+        <BackHeader title="Комната" returnTo={returnTo} />
+        <LoadErrorState title="Не удалось загрузить комнату" onRetry={() => { void load(); }} role={role} showChatCta />
+      </>
+    );
+  }
+  if (loadState === 'ready' && !room) {
+    return (
+      <>
+        <BackHeader title="Комната" returnTo={returnTo} />
+        <View style={[s.center, s.emptyState]}>
+          <Text style={s.h}>Комната не найдена</Text>
+          <Text style={s.emptyHint}>Проверили и активные, и архивные комнаты. Возможно, комната удалена или ссылка устарела.</Text>
+          <PrimaryButton title="Проверить снова" variant="outline" onPress={() => { void load(); }} />
+        </View>
+      </>
+    );
+  }
+  if (!room) return (<><BackHeader title="Комната" returnTo={returnTo} /><View style={s.center}><Text>Загрузка комнаты…</Text></View></>);
+
+  const project = activeProject;
 
   return (
     <>
@@ -160,13 +251,13 @@ export function RoomDetailScreen() {
           </View>
         )}
 
-        {room && <RoomDiagramInteractive room={room} />}
+        <RoomDiagramInteractive room={room} />
 
         <View style={s.card}>
           <Text style={s.h}>Калькулятор материалов</Text>
           {!calcItems.length && <Text style={s.line}>Плитка, краска, ламинат — по размерам комнаты</Text>}
           {calcItems.map((it) => <Text key={it.name} style={s.line}>{it.name}: {it.qty} {it.unit}{it.note ? ` · ${it.note}` : ''}</Text>)}
-          {canWrite && user && activeProject && (
+          {canWrite && (
             <PrimaryButton
               title="Рассчитать материалы"
               variant="outline"
@@ -175,8 +266,8 @@ export function RoomDetailScreen() {
               disabled={busy && mutation !== 'materials'}
               onPress={() => {
                 void runMutation('materials', async () => {
-                  const r = await api.calcRoomMaterials(user.id, activeProject.id, room.id);
-                  setCalcItems(r.items);
+                  const result = await api.calcRoomMaterials(user.id, project.id, room.id);
+                  setCalcItems(result.items);
                 });
               }}
             />
@@ -189,14 +280,14 @@ export function RoomDetailScreen() {
           </View>
         )}
 
-        {lines.length > 0 && room && (() => {
+        {lines.length > 0 && (() => {
           const plan = lines.reduce((a, l) => a + l.quantity_planned * l.unit_price, 0);
           const spent = roomSpentUnified(
             receipts,
             expenses,
             picks,
-            activeProject.rooms || [],
-            activeProject.stages || [],
+            project.rooms || [],
+            project.stages || [],
             room.id,
             purchases,
           );
@@ -222,7 +313,7 @@ export function RoomDetailScreen() {
             {isContractor && <RoomBudgetThreshold value={room.budget_alert_pct} onChange={v => save({ budget_alert_pct: v })} />}
             {isContractor && (<View style={s.card}><Text style={s.h}>Тип и этаж</Text>
               <RoomTypePicker value={room.room_type} onChange={(room_type) => save({ room_type })} />
-              <FloorLevelPicker value={room.floor_level ?? 1} max={activeProject?.property_type === "house" ? 3 : 1} onChange={(floor_level) => save({ floor_level })} />
+              <FloorLevelPicker value={room.floor_level ?? 1} max={project.property_type === 'house' ? 3 : 1} onChange={(floor_level) => save({ floor_level })} />
             </View>)}
             {(isContractor || ownerCanEdit) && (<View style={s.card}><Text style={s.h}>Габариты</Text>
               <Field label="Длина" value={len} onChange={setLen} /><Field label="Ширина" value={wid} onChange={setWid} /><Field label="Высота" value={hei} onChange={setHei} />
@@ -245,12 +336,10 @@ export function RoomDetailScreen() {
               ))}
             </View>}
             {history.length > 0 && <RoomDiffTimeline logs={history} />}
-            {user && activeProject && (
-              <View style={s.card}>
-                <Text style={s.h}>Экспорт</Text>
-                <Text style={s.line}>{DOCUMENTS_MENU_HINT}</Text>
-              </View>
-            )}
+            <View style={s.card}>
+              <Text style={s.h}>Экспорт</Text>
+              <Text style={s.line}>{DOCUMENTS_MENU_HINT}</Text>
+            </View>
           </>
         )}
       </ScrollView>
@@ -262,6 +351,7 @@ function Field({ label, value, onChange }: { label:string; value:string; onChang
 }
 const s = StyleSheet.create({
   wrap:{ flex:1, backgroundColor: RenovaTheme.colors.background }, center:{ flex:1, alignItems:'center', justifyContent:'center' },
+  emptyState:{ gap:12, padding:24 }, emptyHint:{ maxWidth:420, textAlign:'center', color:RenovaTheme.colors.textMuted, lineHeight:19 },
   metrics:{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12 }, metric:{ flex:1, minWidth:'45%', backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:'#E5E7EB', borderRadius:14, padding:12, alignItems:'center' }, metricN:{ fontSize:18, fontWeight:'800' }, metricL:{ fontSize:11, color: RenovaTheme.colors.textMuted, marginTop:2 },
   card:{ backgroundColor:RenovaTheme.colors.surface, padding:14, borderRadius:12, marginBottom:10 }, h:{ fontWeight:'800', marginBottom:8 },
   field:{ marginBottom:8 }, lbl:{ fontSize:12, color: RenovaTheme.colors.textMuted }, input:{ backgroundColor:'#f9fafb', borderRadius:8, padding:10, marginTop:4, borderWidth:1, borderColor:RenovaTheme.colors.border }, line:{ paddingVertical:6, fontSize:13 },

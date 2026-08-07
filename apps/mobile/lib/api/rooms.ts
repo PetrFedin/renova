@@ -1,19 +1,52 @@
 /** API: rooms */
 import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
+
+function roomCacheKey(projectId: string, archived: boolean | undefined): string {
+  const scope = archived === true ? 'archived' : archived === false ? 'active' : 'default';
+  return `${OFFLINE_ROOMS}:${projectId}:${scope}`;
+}
+
+function parseCachedRooms(raw: string | null): Room[] | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    if (!parsed.every((entry) => typeof entry === 'object' && entry !== null && typeof (entry as { id?: unknown }).id === 'string')) {
+      return null;
+    }
+    return parsed as Room[];
+  } catch {
+    return null;
+  }
+}
+
+function filterRoomsByArchive(rooms: Room[], archived: boolean | undefined): Room[] {
+  return archived === undefined
+    ? rooms
+    : rooms.filter((room) => Boolean(room.is_archived) === archived);
+}
+
 export const roomsApi = {
-  listRooms: async (userId: string, projectId: string, opts?: { archived?: boolean }) => {
+  listRooms: async (userId: string, projectId: string, opts?: { archived?: boolean }): Promise<Room[]> => {
     const qs = opts?.archived ? '?archived=true' : '';
+    const cacheKey = roomCacheKey(projectId, opts?.archived);
     try {
-      const r = await req<Room[]>(`/api/v1/projects/${projectId}/rooms${qs}`, {}, userId);
-      const filtered =
-        opts?.archived === undefined
-          ? r
-          : r.filter((room) => Boolean(room.is_archived) === opts.archived);
-      if (typeof localStorage !== 'undefined') localStorage.setItem(`${OFFLINE_ROOMS}:${projectId}`, JSON.stringify(r));
+      const rooms = await req<Room[]>(`/api/v1/projects/${projectId}/rooms${qs}`, {}, userId);
+      const filtered = filterRoomsByArchive(rooms, opts?.archived);
+      if (typeof localStorage !== 'undefined') localStorage.setItem(cacheKey, JSON.stringify(filtered));
       return filtered;
     } catch {
-      if (typeof localStorage !== 'undefined') { const c = localStorage.getItem(`${OFFLINE_ROOMS}:${projectId}`); if (c) return JSON.parse(c); }
+      if (typeof localStorage !== 'undefined') {
+        const scoped = parseCachedRooms(localStorage.getItem(cacheKey));
+        if (scoped) return scoped;
+
+        // Backward-compatible read of the legacy unscoped cache. Apply an
+        // explicit archive filter when the caller provided one so an archived
+        // snapshot can never masquerade as an active-room response.
+        const legacy = parseCachedRooms(localStorage.getItem(`${OFFLINE_ROOMS}:${projectId}`));
+        if (legacy) return filterRoomsByArchive(legacy, opts?.archived);
+      }
       throw new Error('offline');
     }
   },
