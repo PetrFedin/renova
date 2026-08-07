@@ -1,6 +1,6 @@
 /** W124: экспорт .ics — web download + native Share (как CSV/PDF). Разовый файл, не live-синк. */
 import { Platform, Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { authHeaders } from '@/lib/api/client';
 

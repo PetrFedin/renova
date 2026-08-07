@@ -1,7 +1,7 @@
 /** Открытие PDF — preview / share на native, download на web */
 import { Platform, Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { authHeaders } from '@/lib/api/client';
 

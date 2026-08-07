@@ -1,6 +1,6 @@
 /** GDPR JSON export — web download + native share (как CSV/PDF) */
 import { Platform, Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 export async function exportGdprJsonFile(data: unknown, filename = 'renova-export.json') {

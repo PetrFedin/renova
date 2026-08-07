@@ -1,6 +1,6 @@
 /** Скачивание файлов с API — web download + native share sheet (P2.4) */
 import { Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fetchPdfBlob, openPdfBlob } from '@/lib/pdfOpen';
 import { authHeaders } from '@/lib/api/client';
