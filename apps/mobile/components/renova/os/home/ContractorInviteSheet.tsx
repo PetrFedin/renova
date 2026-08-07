@@ -13,6 +13,12 @@ type Props = {
   onLinked?: () => void;
 };
 
+function stopPropagation(event: unknown): void {
+  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
+  const stop = event.stopPropagation;
+  if (typeof stop === 'function') stop.call(event);
+}
+
 export function ContractorInviteSheet({
   visible,
   userId,
@@ -24,7 +30,7 @@ export function ContractorInviteSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={s.sheet} onPress={stopPropagation}>
           <ScrollView keyboardShouldPersistTaps="handled">
             <ContractorInvitePanel
               userId={userId}
