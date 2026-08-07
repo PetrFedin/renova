@@ -15,6 +15,12 @@ const DUE_PRESETS = [
   { label: '2 недели', days: 14 },
 ];
 
+function stopPropagation(event: unknown): void {
+  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
+  const stop = event.stopPropagation;
+  if (typeof stop === 'function') stop.call(event);
+}
+
 export function ChatTaskSheet({
   visible,
   defaultTitle,
@@ -57,7 +63,7 @@ export function ChatTaskSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={s.sheet} onPress={stopPropagation}>
           <Text style={s.head}>Задача из сообщения</Text>
           <TextInput style={s.inp} value={title} onChangeText={setTitle} placeholder="Название задачи" />
           <Text style={s.label}>Срок</Text>

@@ -47,6 +47,12 @@ function emptyInvite(): InviteRow {
   return { id: `${Date.now()}-${Math.random()}`, phone: '', profileCode: '' };
 }
 
+function stopPropagation(event: unknown): void {
+  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
+  const stop = event.stopPropagation;
+  if (typeof stop === 'function') stop.call(event);
+}
+
 export function CreateChatSheet({
   visible,
   onClose,
@@ -156,7 +162,7 @@ export function CreateChatSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={closeSafely}>
       <Pressable style={s.backdrop} onPress={closeSafely}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={s.sheet} onPress={stopPropagation}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.scroll}>
             <Text style={s.head}>Новый чат</Text>
             <Text style={s.sub}>Один чат — один объект. Участников можно добавить сразу или позже в настройках чата.</Text>
@@ -214,7 +220,7 @@ export function CreateChatSheet({
                 <TextInput
                   style={[s.input, s.inviteInput]}
                   value={row.profileCode}
-                  onChangeText={(v) => updateInvite(row.id, { profileCode: v })}
+                  onChangeText={(value: string) => updateInvite(row.id, { profileCode: value })}
                   placeholder="Профиль (6 символов)"
                   autoCapitalize="characters"
                   editable={!busy}
@@ -223,7 +229,7 @@ export function CreateChatSheet({
                 <TextInput
                   style={[s.input, s.inviteInput]}
                   value={row.phone}
-                  onChangeText={(v) => updateInvite(row.id, { phone: v })}
+                  onChangeText={(value: string) => updateInvite(row.id, { phone: value })}
                   placeholder="Телефон +7…"
                   keyboardType="phone-pad"
                   editable={!busy}

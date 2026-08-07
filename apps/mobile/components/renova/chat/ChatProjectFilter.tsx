@@ -19,6 +19,12 @@ type Props = {
   disabled?: boolean;
 };
 
+function stopPropagation(event: unknown): void {
+  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
+  const stop = event.stopPropagation;
+  if (typeof stop === 'function') stop.call(event);
+}
+
 export function ChatProjectFilterDropdown({ projects, value, onChange, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const [draftAll, setDraftAll] = useState(value.projectIds === null);
@@ -82,7 +88,7 @@ export function ChatProjectFilterDropdown({ projects, value, onChange, disabled 
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={s.menu} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={s.menu} onPress={stopPropagation}>
             <Text style={s.menuTitle}>Объекты</Text>
             <ScrollView style={s.menuScroll} keyboardShouldPersistTaps="handled">
               {projects.length > 1 ? (
