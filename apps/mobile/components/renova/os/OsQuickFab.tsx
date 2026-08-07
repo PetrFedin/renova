@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { createProjectChat } from '@/lib/createProjectChat';
@@ -16,7 +15,13 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { fabActionIdsForLevel } from '@/lib/detailLevelPolicy';
 
-type Action = { id: string; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap; run: () => void };
+type Action = {
+  id: string;
+  label: string;
+  sub: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  run: () => void;
+};
 
 export function OsQuickFab({ role }: { role: OsRole }) {
   const { user, activeProject, readOnly, loadProject } = useRenova();
@@ -43,6 +48,28 @@ export function OsQuickFab({ role }: { role: OsRole }) {
 
   const prefix = tabsPrefix(role);
   const isContractor = role === 'contractor';
+  const contractorActions: Action[] = isContractor
+    ? [
+        {
+          id: 'work',
+          label: 'Работа',
+          sub: 'Заказ в календаре',
+          icon: 'hammer-outline',
+          run: () => { setOpen(false); setShowWork(true); },
+        },
+        {
+          id: 'scratch',
+          label: 'В черновик',
+          sub: 'Записать мысль',
+          icon: 'document-text-outline',
+          run: () => {
+            setOpen(false);
+            pushOsNav({ pathname: '/scratchpad', params: { role } }, pathname, role);
+          },
+        },
+      ]
+    : [];
+
   const actions: Action[] = [
     {
       id: 'expense',
@@ -51,22 +78,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
       icon: 'receipt-outline',
       run: () => { setOpen(false); setExpenseOpen(true); },
     },
-    ...(isContractor ? [{
-      id: 'work',
-      label: 'Работа',
-      sub: 'Заказ в календаре',
-      icon: 'hammer-outline' as keyof typeof Ionicons.glyphMap,
-      run: () => { setOpen(false); setShowWork(true); },
-    }, {
-      id: 'scratch',
-      label: 'В черновик',
-      sub: 'Записать мысль',
-      icon: 'document-text-outline',
-      run: () => {
-        setOpen(false);
-        pushOsNav({ pathname: '/scratchpad', params: { role } }, pathname, role);
-      },
-    }] : []),
+    ...contractorActions,
     {
       id: 'chat',
       label: 'Сообщение',
@@ -149,20 +161,21 @@ export function OsQuickFab({ role }: { role: OsRole }) {
                 let existing: Awaited<ReturnType<typeof api.chatInbox>>;
                 try {
                   existing = await api.chatInbox(user.id);
-                } catch (e) {
-                  reportError('quickFab.chatInbox', e);
+                } catch (error) {
+                  reportError('quickFab.chatInbox', error, { projectId: activeProject.id });
                   Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть.');
                   return;
                 }
                 await createProjectChat({
-                  userId: user.id,
+                  user,
                   projectId: activeProject.id,
                   title: chatTitle.trim() || 'Чат',
                   existingThreads: existing,
                   onOpen: (id) => pushOsNav({ pathname: '/chat/[threadId]', params: { threadId: id } }, pathname, role),
                 });
-              } catch {
-                pushOsNav(`${prefix}/chat`, pathname, role);
+              } catch (error) {
+                reportError('quickFab.createChat', error, { projectId: activeProject.id });
+                Alert.alert('Чат', 'Не удалось создать чат. Проверьте подключение и повторите.');
               }
             }}>
               <Ionicons name="add-circle-outline" size={22} color={RenovaTheme.colors.primary} />
@@ -193,9 +206,13 @@ export function OsQuickFab({ role }: { role: OsRole }) {
           variant={isContractor ? 'contractor' : 'customer'}
           onClose={() => setShowWork(false)}
           onCreated={async () => {
-            await loadProject(activeProject.id);
-            await syncProjectSideEffects({ user, project: activeProject, role });
+            const projectId = activeProject.id;
             setShowWork(false);
+            try {
+              await loadProject(projectId);
+            } catch (error) {
+              reportError('quickFab.work.refresh', error, { projectId });
+            }
           }}
         />
       ) : null}
