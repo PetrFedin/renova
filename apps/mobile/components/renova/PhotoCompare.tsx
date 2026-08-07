@@ -1,7 +1,7 @@
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
-type Photo = { id: string; caption: string | null; image_url?: string };
+type Photo = { id: string; caption: string | null; image_url?: string | null };
 
 export function PhotoCompare({ before, after }: { before: Photo[]; after: Photo[] }) {
   const b = before[0];

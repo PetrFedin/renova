@@ -1,5 +1,5 @@
 /** Приёмка above fold: фото результата → чеклист → принять/вернуть (W139: оценка только явно) */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, Image } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
@@ -13,8 +13,8 @@ type StagePhoto = StageDetail['photos'][number];
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { api } from '@/lib/api';
 import { addCustomCheck } from '@/lib/customChecklist';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { reportError } from '@/lib/reportError';
 
 type WfCheck = { id: string; text: string; done: boolean };
 
@@ -60,14 +60,33 @@ export function StageDetailAcceptanceFold({
   onExportAcceptance,
   onReload,
 }: Props) {
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, loadProject } = useRenova();
+  const contextRef = useRef({ userId: user?.id ?? null, projectId: activeProject?.id ?? null });
+  contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
   const [newCheck, setNewCheck] = useState('');
   const [qualityScore, setQualityScore] = useState<number | null>(null);
-  const syncAfter = () =>
-    syncProjectSideEffects({
-      user: user ?? ({ id: userId } as any),
-      project: activeProject ?? ({ id: projectId } as any),
-    });
+
+  const reconcileCommittedStageChange = async (source: string) => {
+    if (contextRef.current.userId !== userId || contextRef.current.projectId !== projectId) {
+      reportError(
+        `components.screens.stage.StageDetailAcceptanceFold.${source}.ContextChanged`,
+        new Error('Stage acceptance context changed after commit'),
+        { userId, projectId, stageId },
+      );
+      return;
+    }
+    try {
+      await onReload();
+    } catch (error) {
+      reportError(`components.screens.stage.StageDetailAcceptanceFold.${source}.StageRefresh`, error, { projectId, stageId });
+    }
+    if (contextRef.current.userId !== userId || contextRef.current.projectId !== projectId) return;
+    try {
+      await loadProject(projectId);
+    } catch (error) {
+      reportError(`components.screens.stage.StageDetailAcceptanceFold.${source}.ProjectRefresh`, error, { projectId, stageId });
+    }
+  };
 
   return (
     <View style={s.wrap}>
@@ -78,8 +97,8 @@ export function StageDetailAcceptanceFold({
         <>
           <PhotoCompare before={before} after={after} />
           {after.slice(0, 2).map((p) =>
-            (p as { image_url?: string }).image_url ? (
-              <Image key={p.id} source={{ uri: (p as { image_url: string }).image_url }} style={s.previewImg} />
+            p.image_url ? (
+              <Image key={p.id} source={{ uri: p.image_url }} style={s.previewImg} />
             ) : null,
           )}
           <PrimaryButton title="Полноэкранное сравнение" variant="outline" onPress={() => setSwipeOpen(true)} />
@@ -97,15 +116,20 @@ export function StageDetailAcceptanceFold({
           <Pressable
             key={c}
             style={s.checkRow}
+            disabled={!canWrite}
             onPress={async () => {
               if (wf) {
                 try {
                   await api.toggleStageChecklist(userId, projectId, stage.id, wf.id, !wf.done);
-                  await onReload();
-                  await syncAfter();
-                } catch (e) {
-                  if (isOfflineQueued(e)) notifyOfflineQueued('Чеклист этапа');
+                } catch (error: unknown) {
+                  if (isOfflineQueued(error)) {
+                    notifyOfflineQueued('Чеклист этапа');
+                  } else {
+                    reportError('components.screens.stage.StageDetailAcceptanceFold.ToggleChecklist', error, { projectId, stageId });
+                  }
+                  return;
                 }
+                await reconcileCommittedStageChange('ToggleChecklist');
               } else {
                 setChecks((x) => ({ ...x, [c]: !x[c] }));
               }
@@ -130,16 +154,29 @@ export function StageDetailAcceptanceFold({
       />
       <PrimaryButton title="Акт приёмки (PDF)" variant="outline" onPress={onExportAcceptance} />
 
-      <TextInput style={s.input} placeholder="Свой пункт чеклиста…" value={newCheck} onChangeText={setNewCheck} />
+      <TextInput style={s.input} placeholder="Свой пункт чеклиста…" value={newCheck} onChangeText={setNewCheck} editable={canWrite} />
       <PrimaryButton
         title="Добавить пункт"
         variant="outline"
-        onPress={async () => {
-          if (!newCheck.trim()) return;
-          await addCustomCheck(stageId, newCheck);
-          setNewCheck('');
-          await onReload();
-          await syncAfter();
+        disabled={!canWrite}
+        onPress={() => {
+          void (async () => {
+            const text = newCheck.trim();
+            if (!text) return;
+            try {
+              await addCustomCheck(stageId, text);
+            } catch (error) {
+              reportError('components.screens.stage.StageDetailAcceptanceFold.AddCustomCheck', error, { projectId, stageId });
+              return;
+            }
+            setNewCheck('');
+            if (contextRef.current.userId !== userId || contextRef.current.projectId !== projectId) return;
+            try {
+              await onReload();
+            } catch (error) {
+              reportError('components.screens.stage.StageDetailAcceptanceFold.CustomCheckRefresh', error, { projectId, stageId });
+            }
+          })();
         }}
       />
 
