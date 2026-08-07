@@ -15,6 +15,7 @@ import { reportError } from '@/lib/reportError';
 
 type V = { user_id: string; phone: string; full_name?: string; role: string };
 type ViewerAction = 'add' | `link:${string}` | `remove:${string}`;
+type PressState = { pressed: boolean };
 
 export function ViewerSharePanel({
   userId,
@@ -26,11 +27,10 @@ export function ViewerSharePanel({
   embedded?: boolean;
 }) {
   const { user, activeProject } = useRenova();
-  const syncAfter = () => syncProjectSideEffects({
-    user: user ?? ({ id: userId } as any),
-    project: activeProject ?? ({ id: projectId } as any),
-  });
+  const syncAfter = () => syncProjectSideEffects({ user, project: activeProject });
   const [items, setItems] = useState<V[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
+  const [itemsLoadFailed, setItemsLoadFailed] = useState(false);
   const [phone, setPhone] = useState('');
   const [profileCode, setProfileCode] = useState('');
   const [busyAction, setBusyAction] = useState<ViewerAction | null>(null);
@@ -38,9 +38,21 @@ export function ViewerSharePanel({
   const busy = busyAction !== null;
 
   const load = useCallback(() => {
-    api.listViewers(userId, projectId).then(setItems).catch((e) => { reportError('components.renova.ViewerSharePanel.Items', e); setItems([]); });
+    setItemsLoading(true);
+    setItemsLoadFailed(false);
+    return api.listViewers(userId, projectId)
+      .then((nextItems) => {
+        setItems(nextItems);
+      })
+      .catch((e) => {
+        reportError('components.renova.ViewerSharePanel.Items', e);
+        setItemsLoadFailed(true);
+      })
+      .finally(() => {
+        setItemsLoading(false);
+      });
   }, [userId, projectId]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
   useProjectDataReload(load);
 
   const runAction = useCallback(async (action: ViewerAction, task: () => Promise<void>) => {
@@ -76,7 +88,7 @@ export function ViewerSharePanel({
         setPhone('');
         setProfileCode('');
         await syncAfter();
-        load();
+        await load();
         alertViewerGuestAdded('customer');
       } catch (e: unknown) {
         showActionConfirm({
@@ -117,7 +129,7 @@ export function ViewerSharePanel({
           try {
             await api.removeViewer(userId, projectId, viewer.user_id);
             await syncAfter();
-            load();
+            await load();
           } catch (e: unknown) {
             showActionConfirm({
               title: 'Ошибка',
@@ -135,7 +147,29 @@ export function ViewerSharePanel({
 
   return (
     <View style={[s.box, embedded && s.embedded]}>
-      {items.length ? (
+      {itemsLoadFailed ? (
+        <View style={s.loadErrorRow} accessibilityRole="alert">
+          <Text style={s.loadErrorText}>
+            {items.length ? 'Не удалось обновить гостей — показаны последние данные.' : 'Не удалось загрузить гостевой доступ.'}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Повторить загрузку гостевого доступа"
+            disabled={itemsLoading}
+            style={({ pressed }: PressState) => [s.retryBtn, pressed && s.pressed, itemsLoading && s.disabled]}
+            onPress={() => { void load(); }}
+          >
+            <Text style={s.retryBtnText}>{itemsLoading ? '…' : 'Повторить'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {itemsLoading && items.length === 0 ? (
+        <View style={s.loadingRow} accessibilityLabel="Загрузка гостевого доступа">
+          <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
+          <Text style={s.hint}>Загружаем гостей…</Text>
+        </View>
+      ) : items.length ? (
         <View style={s.list}>
           {items.map((v) => {
             const linkBusy = busyAction === `link:${v.user_id}`;
@@ -150,7 +184,7 @@ export function ViewerSharePanel({
                   accessibilityRole="button"
                   accessibilityLabel={`Поделиться ссылкой портала для ${v.full_name || v.phone}`}
                   disabled={busy}
-                  style={({ pressed }) => [s.linkBtn, (pressed || linkBusy) && s.pressed, busy && !linkBusy && s.disabled]}
+                  style={({ pressed }: PressState) => [s.linkBtn, (pressed || linkBusy) && s.pressed, busy && !linkBusy && s.disabled]}
                   onPress={() => { void shareViewerPortal(v); }}
                 >
                   {linkBusy ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : <Text style={s.linkBtnT}>🔗</Text>}
@@ -159,7 +193,7 @@ export function ViewerSharePanel({
                   accessibilityRole="button"
                   accessibilityLabel={`Удалить гостевой доступ для ${v.full_name || v.phone}`}
                   disabled={busy}
-                  style={({ pressed }) => [s.remove, (pressed || removeBusy) && s.pressed, busy && !removeBusy && s.disabled]}
+                  style={({ pressed }: PressState) => [s.remove, (pressed || removeBusy) && s.pressed, busy && !removeBusy && s.disabled]}
                   onPress={() => confirmRemoveViewer(v)}
                 >
                   {removeBusy ? <ActivityIndicator size="small" color={RenovaTheme.colors.danger} /> : <Text style={s.removeT}>✕</Text>}
@@ -168,7 +202,7 @@ export function ViewerSharePanel({
             );
           })}
         </View>
-      ) : (
+      ) : itemsLoadFailed ? null : (
         <>
           <Text style={s.empty}>Нет гостей</Text>
           <Text style={s.hint}>
@@ -224,6 +258,26 @@ const s = StyleSheet.create({
     borderWidth: 0,
     backgroundColor: 'transparent',
   },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  loadErrorRow: {
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.dangerBorder,
+    borderRadius: RenovaTheme.radius.md,
+    padding: 10,
+    marginBottom: 12,
+    gap: 8,
+  },
+  loadErrorText: { fontSize: 12, color: RenovaTheme.colors.dangerText, lineHeight: 16 },
+  retryBtn: {
+    minHeight: RenovaTheme.minTouch,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderRadius: RenovaTheme.radius.md,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.border,
+  },
+  retryBtnText: { color: RenovaTheme.colors.text, fontWeight: '600', fontSize: 13 },
   list: { gap: 0, marginBottom: 12 },
   row: {
     flexDirection: 'row',

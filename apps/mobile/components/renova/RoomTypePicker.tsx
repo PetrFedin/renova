@@ -12,6 +12,10 @@ function floorDisplayLabel(value: number, customMode: boolean): string {
   return `${value}-й этаж`;
 }
 
+function isRoomTypeId(value: string | null | undefined): value is RoomTypeId {
+  return Boolean(value && ROOM_TYPES.some((type) => type.id === value));
+}
+
 export function RoomTypePicker({
   value,
   onChange,
@@ -21,7 +25,7 @@ export function RoomTypePicker({
   onChange: (id: RoomTypeId) => void;
   title?: string;
 }) {
-  const selected = (value || 'living') as RoomTypeId;
+  const selected: RoomTypeId = isRoomTypeId(value) ? value : 'living';
   const options = useMemo(
     () => ROOM_TYPES.map((t) => ({ value: t.id, label: t.label })),
     [],
@@ -125,7 +129,7 @@ export function FloorLevelPicker({
           <TextInput
             style={s.customInp}
             value={customText}
-            onChangeText={(t) => {
+            onChangeText={(t: string) => {
               setCustomText(t);
               const n = parseInt(t, 10);
               if (n > 0) onChange(n);
