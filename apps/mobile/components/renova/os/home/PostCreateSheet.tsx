@@ -59,11 +59,17 @@ type Props = {
   onClose: () => void;
 };
 
+function stopPropagation(event: unknown): void {
+  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
+  const stop = event.stopPropagation;
+  if (typeof stop === 'function') stop.call(event);
+}
+
 export function PostCreateSheet({ visible, projectName, onNavigate, onHome, onClose }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={s.sheet} onPress={stopPropagation}>
           <Text style={s.head}>Объект создан</Text>
           <Text style={s.sub}>«{projectName}» готов. Что дальше?</Text>
           {STEPS.map((step) => (

@@ -23,6 +23,12 @@ type Props = {
   onClose: () => void;
 };
 
+function stopPropagation(event: unknown): void {
+  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
+  const stop = event.stopPropagation;
+  if (typeof stop === 'function') stop.call(event);
+}
+
 export function HomeKpiDetailSheet({ widgetId, snap, role, onClose }: Props) {
   const { pushNav } = useOsNavFromHere(role);
   if (!widgetId) return null;
@@ -33,7 +39,7 @@ export function HomeKpiDetailSheet({ widgetId, snap, role, onClose }: Props) {
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={s.sheet} onPress={stopPropagation}>
           <View style={s.handle} />
           <Text style={s.title}>{detail.title}</Text>
           {detail.lead ? <Text style={s.lead}>{detail.lead}</Text> : null}

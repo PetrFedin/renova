@@ -22,17 +22,29 @@ const ION: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 const SF = {
-  home: 'house', rooms: 'square.split.2x2', estimate: 'list.bullet.rectangle',
-  stages: 'checkmark.circle', calendar: 'calendar', chat: 'bubble.left.and.bubble.right',
-  finance: 'rublesign.circle', guide: 'book', profile: 'person', objects: 'building.2',
+  home: 'house',
+  rooms: 'square.split.2x2',
+  estimate: 'list.bullet.rectangle',
+  stages: 'checkmark.circle',
+  calendar: 'calendar',
+  chat: 'bubble.left.and.bubble.right',
+  finance: 'rublesign.circle',
+  guide: 'book',
+  profile: 'person',
+  objects: 'building.2',
 } as const;
 
 export type TabIconKey = keyof typeof ION;
 
 export function TabIcon({ name, color, size = 20 }: { name: TabIconKey; color: string; size?: number }) {
-  if (Platform.OS === 'web') {
+  const sf = name in SF ? SF[name as keyof typeof SF] : undefined;
+
+  // expo-symbols uses SF Symbol names on iOS and Material Symbol names on
+  // Android/Web. Our canonical tab map is SF-only, so Android/Web must use the
+  // Ionicons map instead of accidentally feeding SF names to Material Symbols.
+  if (Platform.OS !== 'ios' || !sf) {
     return <Ionicons name={ION[name]} size={size} color={color} />;
   }
-  const sf = SF[name as keyof typeof SF];
-  return <SymbolView name={{ ios: sf, android: sf, web: sf }} tintColor={color} size={size} />;
+
+  return <SymbolView name={sf} tintColor={color} size={size} />;
 }
