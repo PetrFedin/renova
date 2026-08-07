@@ -16,6 +16,7 @@ const contextFiles = [
   'components/renova/NotificationCenter.tsx',
   'components/renova/ProjectEmptyState.tsx',
   'components/renova/ViewerSharePanel.tsx',
+  'components/renova/schedule/ScheduleIconToolbar.tsx',
 ];
 
 const fabricatedPatterns = [
@@ -72,6 +73,17 @@ if (/listViewers\([\s\S]*?\.catch\([\s\S]*?setItems\(\[\]\)/.test(viewerSharePan
 }
 if (!/setItemsLoadFailed\(true\)/.test(viewerSharePanel) || !/Повторить загрузку гостевого доступа/.test(viewerSharePanel)) {
   throw new Error('viewer load failure must expose an explicit retryable error state');
+}
+
+const scheduleIconToolbar = read('components/renova/schedule/ScheduleIconToolbar.tsx');
+if (!/user\?\.id === userId && activeProject\?\.id === projectId/.test(scheduleIconToolbar)) {
+  throw new Error('calendar import side effects must verify active context identity');
+}
+if (!/syncProjectSideEffects\(\{ user, project: activeProject \}\)/.test(scheduleIconToolbar)) {
+  throw new Error('calendar import side effects must use real Renova context');
+}
+if (!/importIcal\.sideEffects/.test(scheduleIconToolbar)) {
+  throw new Error('calendar import follow-up failure must be reported separately from committed import failure');
 }
 
 console.log('sideEffectContext.w177.test OK');

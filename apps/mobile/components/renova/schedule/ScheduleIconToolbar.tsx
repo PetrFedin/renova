@@ -9,6 +9,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { readIcalFile } from '@/lib/mediaUpload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { alertIcalExported, alertIcalImported, ICS_SYNC_HONESTY } from '@/lib/calendarIcsNav';
+import { reportError } from '@/lib/reportError';
 import type { OsRole } from '@/constants/osSections';
 
 type Action = {
@@ -31,7 +32,6 @@ function IconTip({ icon, label, onPress, disabled }: Omit<Action, 'id'>) {
         accessibilityLabel={label}
         onHoverIn={() => setHover(true)}
         onHoverOut={() => setHover(false)}
-        // @ts-expect-error web title fallback
         title={Platform.OS === 'web' ? label : undefined}
       >
         <Ionicons name={icon} size={20} color={disabled ? RenovaTheme.colors.textSubtle : RenovaTheme.colors.text} />
@@ -81,18 +81,32 @@ export function ScheduleIconToolbar({
     }
     setBusy(true);
     try {
-      const r = await api.importIcal(userId, projectId, text);
-      await syncProjectSideEffects({
-        user: user ?? ({ id: userId } as any),
-        project: activeProject ?? ({ id: projectId } as any),
-      });
-      alertIcalImported((r as { updated_stages?: number }).updated_stages, role, onImported);
-    } catch (e) {
-      if (isOfflineQueued(e)) {
+      const result = await api.importIcal(userId, projectId, text);
+
+      // Import is already committed at this point. Follow-up refresh must never
+      // turn a successful mutation into a false "import failed" result.
+      if (user?.id === userId && activeProject?.id === projectId) {
+        try {
+          await syncProjectSideEffects({ user, project: activeProject });
+        } catch (sideEffectError) {
+          reportError('schedule.iconToolbar.importIcal.sideEffects', sideEffectError, { projectId });
+        }
+      } else {
+        reportError(
+          'schedule.iconToolbar.importIcal.contextMismatch',
+          new Error('Committed calendar import has no matching active Renova context'),
+          { projectId, userId },
+        );
+      }
+
+      alertIcalImported(result.updated_stages, role, onImported);
+    } catch (error) {
+      if (isOfflineQueued(error)) {
         notifyOfflineQueued('Импорт календаря');
         onImported?.();
         return;
       }
+      reportError('schedule.iconToolbar.importIcal', error, { projectId });
       Alert.alert('Календарь', 'Не удалось импортировать');
     } finally {
       setBusy(false);
@@ -105,7 +119,8 @@ export function ScheduleIconToolbar({
     try {
       await api.exportIcal(userId, projectId);
       alertIcalExported(role);
-    } catch {
+    } catch (error) {
+      reportError('schedule.iconToolbar.exportIcal', error, { projectId });
       Alert.alert('Календарь', 'Не удалось экспортировать .ics');
     } finally {
       setBusy(false);
@@ -128,8 +143,14 @@ export function ScheduleIconToolbar({
   return (
     <View>
       <View style={s.row}>
-        {actions.map((a) => (
-          <IconTip key={a.id} icon={a.icon} label={a.label} onPress={a.onPress} disabled={a.disabled} />
+        {actions.map((action) => (
+          <IconTip
+            key={action.id}
+            icon={action.icon}
+            label={action.label}
+            onPress={action.onPress}
+            disabled={action.disabled}
+          />
         ))}
       </View>
       <Text style={s.honesty} accessibilityHint="ics-honesty">
