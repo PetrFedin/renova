@@ -36,7 +36,7 @@ jobs:
         working-directory: backend
         env:
           ENVIRONMENT: test
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           PUBLIC_BASE_URL: http://127.0.0.1:8100
           SECRET_KEY: test-secret-key-at-least-16
         run: |

@@ -2,6 +2,12 @@
 import { req, cachedGet, ApiError } from './client';
 import type { CalendarData, OsScheduleSummary } from './types';
 
+export type IcalImportResult = {
+  ok: boolean;
+  parsed: number;
+  updated_stages: number;
+};
+
 export const calendarApi = {
   getCalendar: (userId: string, projectId: string) =>
     cachedGet<CalendarData>(`/api/v1/projects/${projectId}/calendar`, userId),
@@ -43,7 +49,7 @@ export const calendarApi = {
   importIcal: async (userId: string, projectId: string, content: string) => {
     const payload = JSON.stringify({ content });
     try {
-      return await req(
+      return await req<IcalImportResult>(
         `/api/v1/projects/${projectId}/calendar/import`,
         { method: 'POST', body: payload },
         userId,

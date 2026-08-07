@@ -2,4 +2,9 @@
 export { api, ApiError, isRateLimitError, invalidateProjectsCache } from './api/index';
 export type * from './api/types';
 export type { SelectionItem } from './api/selections';
-export type { WorkSchedule, WorkScheduleStatus } from './api/workSchedule';
+export type {
+  WorkSchedule,
+  WorkScheduleStatus,
+  WorkScheduleItem,
+  WorkScheduleItemStatus,
+} from './api/workSchedule';
