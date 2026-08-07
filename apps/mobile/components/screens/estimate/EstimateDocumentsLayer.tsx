@@ -1,17 +1,16 @@
 /** Слой «Документы» — PDF / Excel / CSV сметы + переход в полный раздел документов */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { documentsHref } from '@/lib/documentsNav';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
-import { reportCatch } from '@/lib/reportError';
+import { reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type DocRow = {
@@ -35,6 +34,8 @@ export function EstimateDocumentsLayer({
   pathname: string;
 }) {
   const { user, activeProject, loadProject } = useRenova();
+  const contextRef = useRef({ userId: user?.id ?? null, projectId: activeProject?.id ?? null });
+  contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [busy, setBusy] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -70,34 +71,63 @@ export function EstimateDocumentsLayer({
   ];
 
   async function submitImport() {
+    if (!csvText.trim()) {
+      Alert.alert('Импорт', 'Вставьте CSV-данные сметы.');
+      return;
+    }
+    if (busy) return;
+
     setBusy('import-csv');
     try {
-      const res = await api.importEstimateCsv(userId, projectId, csvText);
+      let result: Awaited<ReturnType<typeof api.importEstimateCsv>>;
+      try {
+        result = await api.importEstimateCsv(userId, projectId, csvText);
+      } catch (error) {
+        reportError('components.screens.estimate.EstimateDocumentsLayer.Import', error, { projectId });
+        Alert.alert('Импорт', 'Не удалось импортировать CSV. Проверьте формат и что смета не зафиксирована.');
+        return;
+      }
+
+      // Import is committed. Refreshing the current project is reconciliation,
+      // not part of the mutation result: it must never turn a successful import
+      // into a false failure message.
       setImportOpen(false);
-      await loadProject(projectId).catch(reportCatch('components.screens.estimate.EstimateDocumentsLay.1'));
-      // W99: смета/бюджет/inbox после CSV import
-      await syncProjectSideEffects({
-        user: user ?? ({ id: userId } as any),
-        project: activeProject ?? ({ id: projectId } as any),
-      });
+      let refreshFailed = false;
+      if (contextRef.current.userId === userId && contextRef.current.projectId === projectId) {
+        try {
+          await loadProject(projectId);
+        } catch (error) {
+          refreshFailed = true;
+          reportError('components.screens.estimate.EstimateDocumentsLayer.PostCommitRefresh', error, { projectId });
+        }
+      } else {
+        refreshFailed = true;
+        reportError(
+          'components.screens.estimate.EstimateDocumentsLayer.ContextChangedAfterCommit',
+          new Error('Estimate import committed after active project context changed'),
+          { projectId, userId },
+        );
+      }
+
       Alert.alert(
         'Импорт сметы',
-        `Добавлено: ${res.created}. Пропущено: ${res.skipped}.` +
-          (res.delimiter ? ` Разделитель: ${res.delimiter}.` : '') +
-          (res.errors?.length ? `\nОшибки: ${res.errors.join('; ')}` : ''),
+        `Добавлено: ${result.created}. Пропущено: ${result.skipped}.` +
+          (result.delimiter ? ` Разделитель: ${result.delimiter}.` : '') +
+          (result.errors?.length ? `\nОшибки строк: ${result.errors.join('; ')}` : '') +
+          (refreshFailed ? '\n\nИмпорт сохранён на сервере, но экран не удалось обновить. Повторно откройте объект или обновите данные.' : ''),
       );
-    } catch {
-      Alert.alert('Импорт', 'Не удалось импортировать CSV. Проверьте формат и что смета не зафиксирована.');
     } finally {
       setBusy(null);
     }
   }
 
   async function withBusy(id: string, fn: () => Promise<void>) {
+    if (busy) return;
     setBusy(id);
     try {
       await fn();
-    } catch {
+    } catch (error) {
+      reportError('components.screens.estimate.EstimateDocumentsLayer.DocumentAction', error, { projectId, action: id });
       Alert.alert('Ошибка', 'Не удалось получить документ. Проверьте подключение и повторите.');
     } finally {
       setBusy(null);
@@ -111,19 +141,18 @@ export function EstimateDocumentsLayer({
   }
 
   function openPdfMenu(row: DocRow) {
-    // Clarity P: parity с DocumentsHub — sheet вместо Alert
     const actions: { label: string; onPress: () => void }[] = [
       {
         label: 'Открыть',
         onPress: () => {
           if (!row.previewPath || !row.filename) return;
-          withBusy(`${row.id}-open`, () => previewProjectPdf(userId, row.previewPath!, row.filename!));
+          void withBusy(`${row.id}-open`, () => previewProjectPdf(userId, row.previewPath!, row.filename!));
         },
       },
-      { label: 'Скачать', onPress: () => withBusy(`${row.id}-dl`, row.run) },
+      { label: 'Скачать', onPress: () => { void withBusy(`${row.id}-dl`, row.run); } },
     ];
     if (Platform.OS !== 'web') {
-      actions.push({ label: 'Поделиться', onPress: () => withBusy(`${row.id}-share`, () => sharePdf(row)) });
+      actions.push({ label: 'Поделиться', onPress: () => { void withBusy(`${row.id}-share`, () => sharePdf(row)); } });
     }
     showActionConfirm({
       title: row.label,
@@ -137,7 +166,7 @@ export function EstimateDocumentsLayer({
       openPdfMenu(row);
       return;
     }
-    withBusy(row.id, row.run);
+    void withBusy(row.id, row.run);
   }
 
   return (
@@ -151,10 +180,11 @@ export function EstimateDocumentsLayer({
         return (
           <Pressable
             key={row.id}
-            style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+            style={({ pressed }: { pressed: boolean }) => [s.row, pressed && s.rowPressed]}
             onPress={() => onRowPress(row)}
             disabled={!!busy}
             accessibilityRole="button"
+            accessibilityLabel={`${row.label}, ${row.format}`}
           >
             <View style={s.rowMain}>
               <Text style={s.label}>{row.label}</Text>
@@ -185,17 +215,17 @@ export function EstimateDocumentsLayer({
         onPress={() => pushOsNav(documentsHref(pathname), pathname, role)}
       />
 
-      <Modal visible={importOpen} animationType="slide" transparent onRequestClose={() => setImportOpen(false)}>
+      <Modal visible={importOpen} animationType="slide" transparent onRequestClose={() => { if (!busy) setImportOpen(false); }}>
         <View style={s.modalBackdrop}>
           <View style={s.modalCard}>
             <Text style={s.label}>Импорт сметы (CSV / Excel / ГрандСмета)</Text>
-            <Text style={{ color: '#64748B', fontSize: 12, marginBottom: 8 }}>
+            <Text style={s.importHint}>
               Заголовки: Наименование; Ед.; Кол-во; Цена (или сумма). Разделитель ; , или tab.
             </Text>
             <Text style={s.desc}>
               Колонки: name, line_type (work|material), unit, quantity_planned, unit_price, room_name
             </Text>
-            <ScrollView style={{ maxHeight: 220, marginTop: 8 }}>
+            <ScrollView style={s.csvScroll} keyboardShouldPersistTaps="handled">
               <TextInput
                 style={s.csvInput}
                 multiline
@@ -203,14 +233,30 @@ export function EstimateDocumentsLayer({
                 onChangeText={setCsvText}
                 autoCapitalize="none"
                 autoCorrect={false}
+                editable={busy !== 'import-csv'}
+                accessibilityLabel="CSV данные сметы"
               />
             </ScrollView>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-              <Pressable onPress={() => setImportOpen(false)} style={s.modalBtnGhost}>
-                <Text style={s.desc}>Отмена</Text>
+            <View style={s.modalActions}>
+              <Pressable
+                onPress={() => setImportOpen(false)}
+                style={s.modalBtnGhost}
+                disabled={!!busy}
+                accessibilityRole="button"
+              >
+                <Text style={s.modalBtnGhostText}>Отмена</Text>
               </Pressable>
-              <Pressable onPress={submitImport} style={s.modalBtn} disabled={busy === 'import-csv'}>
-                <Text style={s.modalBtnText}>{busy === 'import-csv' ? '…' : 'Импортировать'}</Text>
+              <Pressable
+                onPress={() => { void submitImport(); }}
+                style={[s.modalBtn, busy === 'import-csv' && s.modalBtnDisabled]}
+                disabled={busy === 'import-csv'}
+                accessibilityRole="button"
+              >
+                {busy === 'import-csv' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={s.modalBtnText}>Импортировать</Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -238,4 +284,53 @@ const s = StyleSheet.create({
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },
   rowTail: { alignItems: 'flex-end', gap: 4, minWidth: 56 },
   format: { fontSize: 10, fontWeight: '700', color: RenovaTheme.colors.primary, textTransform: 'uppercase' },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(15,23,42,0.5)',
+  },
+  modalCard: {
+    ...card,
+    padding: 16,
+    maxHeight: '88%',
+  },
+  importHint: { color: RenovaTheme.colors.textMuted, fontSize: 12, lineHeight: 16, marginTop: 6, marginBottom: 4 },
+  csvScroll: { maxHeight: 240, marginTop: 10 },
+  csvInput: {
+    minHeight: 180,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.border,
+    borderRadius: 10,
+    padding: 12,
+    color: RenovaTheme.colors.text,
+    backgroundColor: RenovaTheme.colors.background,
+    fontSize: 12,
+    lineHeight: 17,
+    textAlignVertical: 'top',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  modalBtnGhost: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  modalBtnGhostText: { color: RenovaTheme.colors.text, fontSize: 14, fontWeight: '700' },
+  modalBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    backgroundColor: RenovaTheme.colors.primary,
+  },
+  modalBtnDisabled: { opacity: 0.65 },
+  modalBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 });
