@@ -20,6 +20,7 @@ const contextFiles = [
   'components/renova/schedule/ScheduleIconToolbar.tsx',
   'components/screens/PortalScreen.tsx',
   'components/screens/RoomDetailScreen.tsx',
+  'components/screens/estimate/EstimateDocumentsLayer.tsx',
   'lib/context/RenovaContext.tsx',
   'lib/createProjectChat.ts',
   'lib/customerBudgetMigrate.ts',
@@ -143,6 +144,23 @@ if (/syncProjectSideEffects\(\{\s*user,\s*project:\s*activeProject\s*\}\)/.test(
 }
 if (!/archived:\s*false/.test(roomDetail) || !/archived:\s*true/.test(roomDetail) || !/Комната не найдена/.test(roomDetail)) {
   throw new Error('room detail must terminate loading for active, archived, and missing room states');
+}
+
+const estimateDocuments = read('components/screens/estimate/EstimateDocumentsLayer.tsx');
+if (!/result = await api\.importEstimateCsv\(userId, projectId, csvText\)/.test(estimateDocuments)) {
+  throw new Error('estimate CSV flow must retain the committed import result');
+}
+if (!/await loadProject\(projectId\)/.test(estimateDocuments)) {
+  throw new Error('estimate CSV post-commit reconciliation must refresh the selected ProjectDetail');
+}
+if (!/EstimateDocumentsLayer\.PostCommitRefresh/.test(estimateDocuments) || !/refreshFailed/.test(estimateDocuments)) {
+  throw new Error('estimate CSV refresh failure must remain distinguishable from import failure');
+}
+if (/syncProjectSideEffects/.test(estimateDocuments)) {
+  throw new Error('estimate CSV flow must not duplicate project side effects after loadProject reconciliation');
+}
+if (!/ContextChangedAfterCommit/.test(estimateDocuments)) {
+  throw new Error('estimate CSV flow must detect project context changes after commit');
 }
 
 const budgetMigration = read('lib/customerBudgetMigrate.ts');
