@@ -9,6 +9,7 @@ import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts
 import { RepairControlSummary } from '@/components/renova/RepairControlSummary';
 import { OsWidgetGrid } from '@/components/renova/os/OsWidgetStrip';
 import { BUDGET_SEGMENT_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
+import type { BudgetWidgetId } from '@/constants/budgetWidgets';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { api, MaterialPick, OsBudgetSummary, OsExpense, Payment, Purchase, ReceiptItem, Room, Stage } from '@/lib/api';
 import { buildUnifiedBudgetExpenses, rowToExpenseTarget } from '@/lib/domain/buildUnifiedBudgetExpenses';
@@ -37,7 +38,7 @@ type Props = {
   stages?: Stage[];
   rooms?: Room[];
   picks?: MaterialPick[];
-  bwVisible: (id: string) => boolean;
+  bwVisible: (id: BudgetWidgetId) => boolean;
   role: OsRole;
   readOnly: boolean;
   customerBudget?: number | null;

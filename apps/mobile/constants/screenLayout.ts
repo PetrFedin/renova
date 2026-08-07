@@ -5,6 +5,10 @@ import { screenTypography } from '@/constants/screenTypography';
 export const screenLayout = {
   padding: RenovaTheme.spacing.lg,
   paddingBottom: 32,
+  screen: {
+    flex: 1,
+    padding: RenovaTheme.spacing.lg,
+  },
   contentStyle: {
     padding: RenovaTheme.spacing.lg,
     paddingBottom: 32,
