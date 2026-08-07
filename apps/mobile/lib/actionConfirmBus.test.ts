@@ -5,9 +5,9 @@ import {
   type ActionConfirmPayload,
 } from './actionConfirmBus';
 
-let latest: ActionConfirmPayload | null = null;
+const events: Array<ActionConfirmPayload | null> = [];
 const unsubscribe = subscribeActionConfirm((payload) => {
-  latest = payload;
+  events.push(payload);
 });
 
 showActionConfirm({
@@ -18,12 +18,13 @@ showActionConfirm({
   onPrimary: () => undefined,
 });
 
-if (!latest?.primaryDestructive) {
+const shown = events.at(-1);
+if (!shown || !shown.primaryDestructive) {
   throw new Error('destructive primary action must be preserved by action confirm bus');
 }
 
 clearActionConfirm();
-if (latest !== null) {
+if (events.at(-1) !== null) {
   throw new Error('clearActionConfirm must clear the active payload');
 }
 

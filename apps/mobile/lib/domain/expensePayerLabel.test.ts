@@ -8,13 +8,13 @@ const materialRow: ExpenseDetailRow = {
   id: 'm1', date: '', title: 'Клей', amount: 200, category: 'materials', categoryLabel: 'Материалы',
   kind: 'material', hasDocument: false,
 };
-const osRow: ExpenseDetailRow = {
+const expenseRow: ExpenseDetailRow = {
   id: 'o1', date: '2026-01-02', title: 'Ручная', amount: 50, category: 'other', categoryLabel: 'Прочее',
-  kind: 'os', hasDocument: false,
+  kind: 'expense', hasDocument: false,
 };
 
 if (expensePayerLabel(receiptRow) !== 'Вы') throw new Error('receipt payer');
 if (expensePayerLabel(materialRow) !== 'Подрядчик') throw new Error('material payer');
-if (expensePayerLabel(osRow) !== 'Учёт') throw new Error('os payer');
+if (expensePayerLabel(expenseRow) !== 'Учёт') throw new Error('expense payer');
 
 console.log('expensePayerLabel.test OK');

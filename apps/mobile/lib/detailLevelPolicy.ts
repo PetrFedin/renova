@@ -7,7 +7,10 @@ import type { HomeWidgetId } from '@/constants/homeWidgets';
 const CUSTOMER_FAB_STANDARD = ['expense', 'chat'];
 const CUSTOMER_FAB_BRIEF = ['expense', 'chat'];
 
-const BRIEF_HIDDEN_WIDGETS = new Set<HomeWidgetId>(['risks', 'kpi_analytics']);
+/** `kpi_analytics` existed in saved preferences before KPI widgets were split. */
+export type DetailLevelWidgetId = HomeWidgetId | 'kpi_analytics';
+
+const BRIEF_HIDDEN_WIDGETS = new Set<DetailLevelWidgetId>(['risks', 'kpi_analytics']);
 
 export function fabActionIdsForLevel(level: DetailLevel, role: OsRole): Set<string> | null {
   if (role !== 'customer') return null;
@@ -31,8 +34,8 @@ export function objectTabGuideCompact(level: DetailLevel): boolean {
   return level !== 'detailed';
 }
 
-/** Brief — скрыть второстепенные виджеты на главной */
-export function homeWidgetVisibleForLevel(id: HomeWidgetId, level: DetailLevel): boolean {
+/** Brief — скрыть второстепенные виджеты на главной; legacy ids remain readable. */
+export function homeWidgetVisibleForLevel(id: DetailLevelWidgetId, level: DetailLevel): boolean {
   if (level === 'brief' && BRIEF_HIDDEN_WIDGETS.has(id)) return false;
   return true;
 }
