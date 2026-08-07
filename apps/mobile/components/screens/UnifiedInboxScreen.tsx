@@ -7,6 +7,7 @@ import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useInboxTasks } from '@/lib/useChatUnread';
 import { filterInboxForHero, type InboxItem } from '@/lib/domain/buildInboxItems';
+import { resolveInboxNavigation } from '@/lib/domain/inboxNavigation';
 import { navigateApproval } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
@@ -64,9 +65,14 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
       await reload().catch(reportCatch('components.screens.UnifiedInboxScreen.2'));
       return;
     }
-    if (it.kind === 'approval') navigateApproval(it.approval, role, returnTo);
+
+    const target = resolveInboxNavigation(it);
+    if (target.kind === 'approval') {
+      navigateApproval(target.approval, role, returnTo);
+      return;
+    }
     // W111: role → /control и short aliases через resolvePushLink SoT
-    else pushOsNav(it.href, returnTo, role);
+    pushOsNav(target.href, returnTo, role);
   };
 
   return (
