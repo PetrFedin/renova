@@ -1,4 +1,5 @@
 import { inboxTotal, inboxAttentionBadge, inboxTaskBadge, inboxLinkItems, filterInboxForHero, type InboxItem } from './buildInboxItems';
+import { resolveInboxNavigation } from './inboxNavigation';
 
 let ok = true;
 function assert(cond: boolean, msg: string) {
@@ -34,6 +35,27 @@ assert(
     { id: 'chat', kind: 'chat', title: 'Чат', href: '/c', priority: 90 },
   ]) === 2,
   'W77 task badge excludes chat, includes warranty+CO',
+);
+
+const hrefTarget = resolveInboxNavigation(items[1]!);
+assert(hrefTarget.kind === 'href' && hrefTarget.href === '/budget', 'ordinary inbox row resolves to href navigation');
+
+const approvalItem: InboxItem = {
+  id: 'approval-material',
+  kind: 'approval',
+  title: 'Согласовать материал',
+  priority: 95,
+  approval: {
+    id: 'material-1',
+    type: 'material',
+    title: 'Плитка',
+    status: 'pending',
+  },
+};
+const approvalTarget = resolveInboxNavigation(approvalItem);
+assert(
+  approvalTarget.kind === 'approval' && approvalTarget.approval.id === 'material-1',
+  'approval inbox row resolves to approval payload instead of a fabricated href',
 );
 
 if (!ok) process.exit(1);

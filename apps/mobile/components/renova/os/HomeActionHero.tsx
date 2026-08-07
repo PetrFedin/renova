@@ -6,6 +6,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useInboxTasks } from '@/lib/useChatUnread';
 import { inboxLinkItems, filterInboxForHero, type InboxItem } from '@/lib/domain/buildInboxItems';
+import { resolveInboxNavigation } from '@/lib/domain/inboxNavigation';
 import { navigateApproval, useOsNavFromHere } from '@/lib/navigation';
 import { homeHeroLabel } from '@/lib/domain/roleCapabilities';
 import type { ProjectOsSnapshot, OsNextAction } from '@/lib/domain/osTypes';
@@ -89,8 +90,12 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
           key={it.id}
           style={s.secondary}
           onPress={() => {
-            if (it.kind === 'approval') navigateApproval(it.approval, role, returnTo);
-            else pushNav(it.href);
+            const target = resolveInboxNavigation(it);
+            if (target.kind === 'approval') {
+              navigateApproval(target.approval, role, returnTo);
+              return;
+            }
+            pushNav(target.href);
           }}
         >
           <Text style={s.bullet}>•</Text>
