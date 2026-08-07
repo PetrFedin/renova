@@ -16,6 +16,7 @@ import { FilterDropdown } from '@/components/renova/FilterDropdown';
 import { createProjectChat, type ChatParticipantInvite } from '@/lib/createProjectChat';
 import type { ChatThread } from '@/lib/api';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 const CHAT_TOPICS = [
   { value: 'general', label: 'Общий' },
@@ -65,6 +66,7 @@ export function CreateChatSheet({
   onCreated,
   onOpenChat,
 }: Props) {
+  const { user } = useRenova();
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState<Topic>('general');
   const [projectId, setProjectId] = useState(defaultProjectId ?? '');
@@ -103,6 +105,15 @@ export function CreateChatSheet({
 
   const submit = async () => {
     if (busyRef.current) return;
+    if (!user || user.id !== userId) {
+      showActionConfirm({
+        title: 'Сессия изменилась',
+        message: 'Обновите экран чатов и повторите создание.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+      return;
+    }
     if (!projectId) {
       showActionConfirm({
         title: 'Выберите объект',
@@ -133,8 +144,8 @@ export function CreateChatSheet({
     busyRef.current = true;
     setBusy(true);
     try {
-      await createProjectChat({
-        userId,
+      const result = await createProjectChat({
+        user,
         projectId,
         title: trimmed,
         topic,
@@ -146,6 +157,14 @@ export function CreateChatSheet({
           onClose();
         },
       });
+      if (result.failedInvites > 0) {
+        showActionConfirm({
+          title: 'Чат создан',
+          message: `Чат сохранён, но ${result.failedInvites} ${result.failedInvites === 1 ? 'приглашение не отправлено' : 'приглашения не отправлены'}. Добавьте участников позже из настроек чата.`,
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
+      }
     } catch (e: unknown) {
       showActionConfirm({
         title: 'Не удалось создать чат',

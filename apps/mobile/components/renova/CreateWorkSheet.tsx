@@ -30,7 +30,7 @@ type Props = {
   defaultTitle?: string;
   /** customer — задачи в план без калькулятора; contractor — полная форма */
   variant?: 'customer' | 'contractor';
-  onCreated: () => void;
+  onCreated: () => void | Promise<void>;
   onCreatedWork?: (wo: import('@/lib/api').WorkOrder) => void | Promise<void>;
 };
 
@@ -153,38 +153,65 @@ export function CreateWorkSheet({
     }
     setBusy(true);
     try {
-      const wo = await api.createWorkOrder(userId, projectId, {
-        title,
-        work_type: workType,
-        room_id: roomId || null,
-        planned_start: plannedStart || null,
-        planned_end: plannedEnd || plannedStart || null,
-        budget_planned: budget ? +budget : 0,
-        notes: notes || null,
-        publish,
-      });
-      await syncProjectSideEffects({
-        user: user ?? ({ id: userId } as any),
-        project: activeProject ?? ({ id: projectId } as any),
-      });
-      await onCreatedWork?.(wo);
-      onCreated();
+      let wo: import('@/lib/api').WorkOrder;
+      try {
+        wo = await api.createWorkOrder(userId, projectId, {
+          title,
+          work_type: workType,
+          room_id: roomId || null,
+          planned_start: plannedStart || null,
+          planned_end: plannedEnd || plannedStart || null,
+          budget_planned: budget ? +budget : 0,
+          notes: notes || null,
+          publish,
+        });
+      } catch (error) {
+        if (isRateLimitError(error)) {
+          Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+        } else if (isOfflineQueued(error) || (error instanceof Error && error.message === 'offline_queued')) {
+          notifyOfflineQueued('Создание работы', variant === 'customer' ? 'customer' : 'contractor');
+          onClose();
+        } else {
+          reportError('createWorkSheet.create', error, { projectId });
+          Alert.alert('Ошибка', 'Не удалось создать работу');
+        }
+        return;
+      }
+
+      // Work order is committed. Everything below is best-effort follow-up and
+      // must never turn the successful mutation into a false creation failure.
+      if (user?.id === userId && activeProject?.id === projectId) {
+        try {
+          await syncProjectSideEffects({ user, project: activeProject });
+        } catch (error) {
+          reportError('createWorkSheet.sideEffects', error, { projectId, workOrderId: wo.id });
+        }
+      } else {
+        reportError(
+          'createWorkSheet.contextMismatch',
+          new Error('Committed work order has no matching active Renova context'),
+          { projectId, userId, workOrderId: wo.id },
+        );
+      }
+
+      try {
+        await onCreatedWork?.(wo);
+      } catch (error) {
+        reportError('createWorkSheet.onCreatedWork', error, { projectId, workOrderId: wo.id });
+      }
+      try {
+        await onCreated();
+      } catch (error) {
+        reportError('createWorkSheet.onCreated', error, { projectId, workOrderId: wo.id });
+      }
+
       onClose();
       setCustomTitle('');
       setNotes('');
       setBudget('');
       // W133: работа → график / карточка
       const role = (isCustomer ? 'customer' : 'contractor') as OsRole;
-      alertWorkCreated(role, wo?.id);
-    } catch (e) {
-      if (isRateLimitError(e)) {
-        Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
-      } else if (isOfflineQueued(e) || (e instanceof Error && e.message === 'offline_queued')) {
-        notifyOfflineQueued('Создание работы', variant === 'customer' ? 'customer' : 'contractor');
-        onClose();
-      } else {
-        Alert.alert('Ошибка', 'Не удалось создать работу');
-      }
+      alertWorkCreated(role, wo.id);
     } finally {
       setBusy(false);
     }

@@ -11,6 +11,7 @@ function read(relativePath: string): string {
 const contextFiles = [
   'components/renova/ContractorDirectory.tsx',
   'components/renova/CreatePaymentForm.tsx',
+  'components/renova/CreateWorkSheet.tsx',
   'components/renova/FloorPlanPanel.tsx',
   'components/renova/JobLeadsBoard.tsx',
   'components/renova/NotificationCenter.tsx',
@@ -18,6 +19,7 @@ const contextFiles = [
   'components/renova/ViewerSharePanel.tsx',
   'components/renova/schedule/ScheduleIconToolbar.tsx',
   'lib/context/RenovaContext.tsx',
+  'lib/createProjectChat.ts',
   'lib/customerBudgetMigrate.ts',
   'lib/hooks/useCustomerBudget.ts',
 ];
@@ -87,6 +89,31 @@ if (!/syncProjectSideEffects\(\{ user, project: activeProject \}\)/.test(schedul
 }
 if (!/importIcal\.sideEffects/.test(scheduleIconToolbar)) {
   throw new Error('calendar import follow-up failure must be reported separately from committed import failure');
+}
+
+const createWorkSheet = read('components/renova/CreateWorkSheet.tsx');
+if (!/user\?\.id === userId && activeProject\?\.id === projectId/.test(createWorkSheet)) {
+  throw new Error('work creation side effects must verify active context identity');
+}
+if (!/syncProjectSideEffects\(\{ user, project: activeProject \}\)/.test(createWorkSheet)) {
+  throw new Error('work creation side effects must use real Renova context');
+}
+if (!/createWorkSheet\.sideEffects/.test(createWorkSheet) || !/createWorkSheet\.onCreated/.test(createWorkSheet)) {
+  throw new Error('committed work follow-up failures must be isolated and reported');
+}
+
+const createProjectChat = read('lib/createProjectChat.ts');
+if (!/const project = await api\.getProject\(user\.id, projectId\)/.test(createProjectChat)) {
+  throw new Error('chat creation must load the real selected project before side effects');
+}
+if (!/syncProjectSideEffects\(\{ user, project \}\)/.test(createProjectChat)) {
+  throw new Error('chat creation side effects must use real User + ProjectDetail context');
+}
+if (!/createProjectChat\.sideEffects/.test(createProjectChat) || !/createProjectChat\.projectRefresh/.test(createProjectChat)) {
+  throw new Error('committed chat follow-up failures must be isolated from mutation failure');
+}
+if (!/failedInvites \+= 1/.test(createProjectChat) || !/createProjectChat\.invite/.test(createProjectChat)) {
+  throw new Error('partial chat invitation failure must be counted and reported');
 }
 
 const budgetMigration = read('lib/customerBudgetMigrate.ts');
