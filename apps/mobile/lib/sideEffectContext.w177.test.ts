@@ -18,6 +18,8 @@ const contextFiles = [
   'components/renova/ProjectEmptyState.tsx',
   'components/renova/ViewerSharePanel.tsx',
   'components/renova/schedule/ScheduleIconToolbar.tsx',
+  'components/screens/PortalScreen.tsx',
+  'components/screens/RoomDetailScreen.tsx',
   'lib/context/RenovaContext.tsx',
   'lib/createProjectChat.ts',
   'lib/customerBudgetMigrate.ts',
@@ -28,6 +30,8 @@ const fabricatedPatterns = [
   /user:\s*user\s*\?\?\s*\(\{\s*id:/,
   /project:\s*activeProject\s*\?\?\s*\(\{\s*id:/,
   /\{\s*id:\s*(?:userId|projectId)\s*\}\s*as\s*(?:any|never)/,
+  /user:\s*\{\s*id:[^}]+\}\s*as\s*(?:any|never)/,
+  /project:\s*\{\s*id:[^}]+\}\s*as\s*(?:any|never)/,
   /project:\s*\w+\s+as\s+any/,
 ];
 
@@ -114,6 +118,31 @@ if (!/createProjectChat\.sideEffects/.test(createProjectChat) || !/createProject
 }
 if (!/failedInvites \+= 1/.test(createProjectChat) || !/createProjectChat\.invite/.test(createProjectChat)) {
   throw new Error('partial chat invitation failure must be counted and reported');
+}
+
+const portalScreen = read('components/screens/PortalScreen.tsx');
+if (!/api\.me\(currentSession\.user_id\)/.test(portalScreen) || !/api\.getProject\(currentSession\.user_id, currentSession\.project_id\)/.test(portalScreen)) {
+  throw new Error('portal side effects must resolve real User + ProjectDetail before global sync');
+}
+if (!/syncProjectSideEffects\(\{[\s\S]*?user: realUser,[\s\S]*?project: realProject/.test(portalScreen)) {
+  throw new Error('portal side effects must use resolved real API entities');
+}
+if (!/PortalScreen\.PostCommitRefresh/.test(portalScreen) || !/PortalScreen\.PostCommitSuccessUi/.test(portalScreen)) {
+  throw new Error('portal committed mutations must isolate refresh/success-UI failures');
+}
+
+const roomDetail = read('components/screens/RoomDetailScreen.tsx');
+if (!/await api\.updateRoom\([\s\S]*?await reconcileCommittedRoomMutation/.test(roomDetail)) {
+  throw new Error('room mutations must reconcile only after the room PATCH commits');
+}
+if (!/await loadProject\(projectId\)/.test(roomDetail)) {
+  throw new Error('room post-commit reconciliation must refresh a real ProjectDetail before inbox/home propagation');
+}
+if (/syncProjectSideEffects\(\{\s*user,\s*project:\s*activeProject\s*\}\)/.test(roomDetail)) {
+  throw new Error('room mutations must not propagate stale pre-mutation activeProject');
+}
+if (!/archived:\s*false/.test(roomDetail) || !/archived:\s*true/.test(roomDetail) || !/Комната не найдена/.test(roomDetail)) {
+  throw new Error('room detail must terminate loading for active, archived, and missing room states');
 }
 
 const budgetMigration = read('lib/customerBudgetMigrate.ts');

@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Text,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -33,6 +32,7 @@ import { apiErrorMessage } from '@/lib/formatPhone';
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { reportError } from '@/lib/reportError';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -61,6 +61,20 @@ type ConfirmedMutation<T> = MutationOptions<T> & {
   task: () => Promise<T>;
 };
 
+/**
+ * RN 0.85 runtime still delivers View.onLayout as nativeEvent.layout. Keep the
+ * portal boundary structural so React/RN type drift cannot leak `any` into the
+ * rest of the screen, and ignore malformed events instead of crashing scroll.
+ */
+function portalLayoutY(event: unknown): number | null {
+  if (typeof event !== 'object' || event === null || !('nativeEvent' in event)) return null;
+  const nativeEvent = event.nativeEvent;
+  if (typeof nativeEvent !== 'object' || nativeEvent === null || !('layout' in nativeEvent)) return null;
+  const layout = nativeEvent.layout;
+  if (typeof layout !== 'object' || layout === null || !('y' in layout)) return null;
+  return typeof layout.y === 'number' && Number.isFinite(layout.y) ? layout.y : null;
+}
+
 function PortalSection({
   title,
   subtitle,
@@ -72,7 +86,7 @@ function PortalSection({
   subtitle?: string;
   children: ReactNode;
   focused?: boolean;
-  onLayout?: (event: LayoutChangeEvent) => void;
+  onLayout?: (event: unknown) => void;
 }) {
   return (
     <View style={[styles.section, focused && styles.sectionFocused]} onLayout={onLayout}>
@@ -120,11 +134,17 @@ export default function PortalScreen() {
   const refreshPortalSnapshot = useCallback(async (currentSession: PortalSession) => {
     const next = await api.portalSnapshot(currentSession.user_id, currentSession.project_id);
     setSnapshot(next);
-    void syncProjectSideEffects({
-      user: { id: currentSession.user_id, role: 'customer' } as never,
-      project: { id: currentSession.project_id } as never,
+
+    // Portal snapshot itself is enough to render this surface. Global inbox/home
+    // sync is best-effort and must use real API entities, never fabricated IDs.
+    void Promise.all([
+      api.me(currentSession.user_id),
+      api.getProject(currentSession.user_id, currentSession.project_id),
+    ]).then(([realUser, realProject]) => syncProjectSideEffects({
+      user: realUser,
+      project: realProject,
       role: 'customer',
-    }).catch(() => undefined);
+    })).catch((error) => reportError('components.screens.PortalScreen.SideEffectRefresh', error));
     return next;
   }, []);
 
@@ -137,20 +157,37 @@ export default function PortalScreen() {
     mutationRef.current = true;
     setMutationKey(key);
     try {
-      const result = await task();
-      const next = options.refresh === false ? snapshot : await refreshPortalSnapshot(session);
-      await options.onSuccess?.(result, next);
-      return result;
-    } catch (error) {
-      if (options.onError) {
-        options.onError(error);
-      } else {
-        showActionConfirm({
-          title: options.errorTitle ?? 'Не удалось выполнить действие',
-          message: apiErrorMessage(error, options.errorFallback ?? 'Повторите попытку.'),
-        });
+      let result: T;
+      try {
+        result = await task();
+      } catch (error) {
+        if (options.onError) {
+          options.onError(error);
+        } else {
+          showActionConfirm({
+            title: options.errorTitle ?? 'Не удалось выполнить действие',
+            message: apiErrorMessage(error, options.errorFallback ?? 'Повторите попытку.'),
+          });
+        }
+        return null;
       }
-      return null;
+
+      // Everything below is post-commit reconciliation. A refresh or success-UI
+      // failure must never make a completed server mutation look rejected.
+      let next = snapshot;
+      if (options.refresh !== false) {
+        try {
+          next = await refreshPortalSnapshot(session);
+        } catch (error) {
+          reportError('components.screens.PortalScreen.PostCommitRefresh', error);
+        }
+      }
+      try {
+        await options.onSuccess?.(result, next);
+      } catch (error) {
+        reportError('components.screens.PortalScreen.PostCommitSuccessUi', error);
+      }
+      return result;
     } finally {
       mutationRef.current = false;
       setMutationKey(null);
@@ -252,7 +289,7 @@ export default function PortalScreen() {
     if (!session) return;
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active' || mutationRef.current) return;
-      void refreshPortalSnapshot(session).catch(() => undefined);
+      void refreshPortalSnapshot(session).catch((error) => reportError('components.screens.PortalScreen.AppStateRefresh', error));
     });
     return () => subscription.remove();
   }, [refreshPortalSnapshot, session]);
@@ -433,7 +470,11 @@ export default function PortalScreen() {
         errorFallback: 'Используйте перевод по реквизитам.',
         onSuccess: async (checkout) => {
           if (checkout.demo) {
-            await refreshPortalSnapshot(session);
+            try {
+              await refreshPortalSnapshot(session);
+            } catch (error) {
+              reportError('components.screens.PortalScreen.DemoPaymentRefresh', error);
+            }
             showActionConfirm({
               title: 'Оплата (demo)',
               message: checkout.message || 'Тестовая оплата выполнена без реального списания.',
@@ -442,10 +483,14 @@ export default function PortalScreen() {
           }
           if (checkout.confirmation_url) {
             await WebBrowser.openBrowserAsync(checkout.confirmation_url);
-            await refreshPortalSnapshot(session);
+            try {
+              await refreshPortalSnapshot(session);
+            } catch (error) {
+              reportError('components.screens.PortalScreen.PaymentRefresh', error);
+            }
             showActionConfirm({
               title: 'ЮKassa',
-              message: 'Статус оплаты обновлён. Обработка банком может занять несколько минут.',
+              message: 'Статус оплаты обновляется после возврата из банка. Обработка может занять несколько минут.',
             });
           }
         },
@@ -516,7 +561,12 @@ export default function PortalScreen() {
               message: 'Завершите подписание в браузере. Статус обновится после webhook.',
             });
           } else {
-            const next = await refreshPortalSnapshot(session);
+            let next = snapshot;
+            try {
+              next = await refreshPortalSnapshot(session);
+            } catch (error) {
+              reportError('components.screens.PortalScreen.SignRefresh', error);
+            }
             showActionConfirm({
               title: 'Подписано',
               message: result.status === 'signed' ? document.title : 'Запрос на подпись создан.',
@@ -530,7 +580,13 @@ export default function PortalScreen() {
                 : { primaryLabel: 'Готово', onPrimary: () => undefined }),
             });
           }
-          if (provider === 'kontur') await refreshPortalSnapshot(session);
+          if (provider === 'kontur') {
+            try {
+              await refreshPortalSnapshot(session);
+            } catch (error) {
+              reportError('components.screens.PortalScreen.KonturRefresh', error);
+            }
+          }
         },
       },
     );
@@ -732,7 +788,10 @@ export default function PortalScreen() {
         <PortalSection
           title={`Ожидают оплаты (${snapshot.pending_payments.length})`}
           focused={focusSection === 'payments'}
-          onLayout={(event) => { paymentsY.current = event.nativeEvent.layout.y; }}
+          onLayout={(event) => {
+            const y = portalLayoutY(event);
+            if (y !== null) paymentsY.current = y;
+          }}
           subtitle={snapshot.payments_mode === 'live'
             ? 'Оплата картой через ЮKassa или перевод по реквизитам.'
             : snapshot.payments_mode === 'requisites'
@@ -786,7 +845,10 @@ export default function PortalScreen() {
         <PortalSection
           title={`Документы (${snapshot.documents_total})`}
           focused={focusSection === 'documents'}
-          onLayout={(event) => { documentsY.current = event.nativeEvent.layout.y; }}
+          onLayout={(event) => {
+            const y = portalLayoutY(event);
+            if (y !== null) documentsY.current = y;
+          }}
         >
           {pendingDocuments.length > 0 ? (
             <View style={styles.documentBlock}>
@@ -838,7 +900,7 @@ export default function PortalScreen() {
         userId={session.user_id}
         projectId={session.project_id}
         onClose={() => { setSheetPayment(null); setSheetStages([]); }}
-        onChanged={() => { void refreshPortalSnapshot(session); }}
+        onChanged={() => { void refreshPortalSnapshot(session).catch((error) => reportError('components.screens.PortalScreen.PaymentSheetRefresh', error)); }}
       />
     </>
   );
