@@ -7,9 +7,13 @@ type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'dange
 type Size = 'sm' | 'md' | 'lg';
 type PressState = { pressed: boolean };
 
+export type PrimaryButtonPressEvent = {
+  stopPropagation?: () => void;
+};
+
 type Props = {
   title: string;
-  onPress: () => void;
+  onPress: (event?: PrimaryButtonPressEvent) => void;
   variant?: Variant;
   size?: Size;
   /** @deprecated use size="sm" */
@@ -26,6 +30,13 @@ const sizePad: Record<Size, { v: number; h: number; font: number }> = {
   md: { v: 10, h: 14, font: RenovaTheme.fontSize.body },
   lg: { v: 12, h: 18, font: RenovaTheme.fontSize.body },
 };
+
+function pressEventCapability(event: unknown): PrimaryButtonPressEvent | undefined {
+  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return undefined;
+  const stopPropagation = event.stopPropagation;
+  if (typeof stopPropagation !== 'function') return undefined;
+  return { stopPropagation: () => stopPropagation.call(event) };
+}
 
 export function PrimaryButton({
   title,
@@ -66,10 +77,10 @@ export function PrimaryButton({
         unavailable && styles.disabled,
         pressed && !unavailable && styles.pressed,
       ]}
-      onPress={() => {
+      onPress={(event?: unknown) => {
         if (unavailable) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(reportCatch('components.renova.PrimaryButton.1'));
-        onPress();
+        onPress(pressEventCapability(event));
       }}
     >
       {loading ? (

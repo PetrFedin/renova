@@ -15,6 +15,7 @@ const contextFiles = [
   'components/renova/JobLeadsBoard.tsx',
   'components/renova/NotificationCenter.tsx',
   'components/renova/ProjectEmptyState.tsx',
+  'components/renova/ViewerSharePanel.tsx',
 ];
 
 const fabricatedPatterns = [
@@ -60,6 +61,17 @@ if (!/loadProject\(project\.id\)/.test(projectEmptyState)) {
 }
 if (!/syncProjectSideEffects\(\{ user, project \}\)/.test(projectEmptyState)) {
   throw new Error('template creation side effects must use the typed ProjectDetail response');
+}
+
+const viewerSharePanel = read('components/renova/ViewerSharePanel.tsx');
+if (!/syncProjectSideEffects\(\{ user, project: activeProject \}\)/.test(viewerSharePanel)) {
+  throw new Error('viewer access side effects must use real Renova context');
+}
+if (/listViewers\([\s\S]*?\.catch\([\s\S]*?setItems\(\[\]\)/.test(viewerSharePanel)) {
+  throw new Error('viewer load failure must not be rendered as a false empty guest list');
+}
+if (!/setItemsLoadFailed\(true\)/.test(viewerSharePanel) || !/Повторить загрузку гостевого доступа/.test(viewerSharePanel)) {
+  throw new Error('viewer load failure must expose an explicit retryable error state');
 }
 
 console.log('sideEffectContext.w177.test OK');
