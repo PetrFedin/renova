@@ -292,17 +292,42 @@ export function ChatThreadView({
     );
   }
 
+  const refreshChatAfterCommit = async (action: string) => {
+    try {
+      await loadMessages();
+    } catch (error) {
+      reportError(`ChatThreadView.${action}.ChatRefresh`, error, { threadId, projectId });
+    }
+  };
+
+  const refreshProjectAfterCommit = async (action: string) => {
+    try {
+      const freshProject = await api.getProject(user.id, projectId);
+      await syncProjectSideEffects({ user, project: freshProject });
+    } catch (error) {
+      reportError(`ChatThreadView.${action}.ProjectRefresh`, error, { threadId, projectId });
+    }
+  };
+
+  const reconcileCommittedChatMutation = async (action: string) => {
+    await refreshChatAfterCommit(action);
+    await refreshProjectAfterCommit(action);
+  };
+
   const sendText = async (body: string, type = 'text', image?: string) => {
     const prefix = replyTo?.text ? `↩ ${replyTo.text.slice(0, 40)}…\n` : '';
     try {
       await api.sendChatMessage(user.id, projectId, threadId, prefix + body, type, image, replyTo?.id);
     } catch (e) {
-      if (isOfflineQueued(e)) { notifyOfflineQueued('Сообщение'); return; }
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Сообщение');
+        setReplyTo(null);
+        return;
+      }
       throw e;
-    } finally {
-      setReplyTo(null);
-      await reload();
     }
+    setReplyTo(null);
+    await reconcileCommittedChatMutation('SendMessage');
   };
 
   return (
@@ -318,11 +343,16 @@ export function ChatThreadView({
         <Pressable onPress={async () => {
           try {
             await api.patchChatState(user.id, projectId, threadId, { is_pinned: !chat.is_pinned });
-            await reload();
           } catch (e) {
-            if (isOfflineQueued(e)) { notifyOfflineQueued(chat.is_pinned ? 'Открепление чата' : 'Закрепление чата'); return; }
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued(chat.is_pinned ? 'Открепление чата' : 'Закрепление чата');
+              return;
+            }
+            reportError('ChatThreadView.ChatPin.Mutation', e, { threadId, projectId });
             Alert.alert('Ошибка', 'Не удалось изменить закрепление');
+            return;
           }
+          await refreshChatAfterCommit('ChatPin');
         }}>
           <Text style={s.topLink}>{chat.is_pinned ? 'Открепить чат' : 'Закрепить чат'}</Text>
         </Pressable>
@@ -342,33 +372,46 @@ export function ChatThreadView({
             onReact={async (emoji) => {
               try {
                 await api.reactChatMessage(user.id, projectId, threadId, m.id, emoji);
-                await reload();
               } catch (e) {
-                if (isOfflineQueued(e)) { notifyOfflineQueued('Реакция'); return; }
+                if (isOfflineQueued(e)) {
+                  notifyOfflineQueued('Реакция');
+                  return;
+                }
+                reportError('ChatThreadView.Reaction.Mutation', e, { threadId, projectId, messageId: m.id });
+                Alert.alert('Ошибка', 'Не удалось поставить реакцию');
+                return;
               }
+              await refreshChatAfterCommit('Reaction');
             }}
             onPin={async () => {
               try {
                 await api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned);
-                await reload();
               } catch (e) {
-                if (isOfflineQueued(e)) { notifyOfflineQueued('Закрепление сообщения'); return; }
+                if (isOfflineQueued(e)) {
+                  notifyOfflineQueued('Закрепление сообщения');
+                  return;
+                }
+                reportError('ChatThreadView.MessagePin.Mutation', e, { threadId, projectId, messageId: m.id });
+                Alert.alert('Ошибка', 'Не удалось изменить закрепление сообщения');
+                return;
               }
+              await refreshChatAfterCommit('MessagePin');
             }}
             onReply={() => setReplyTo(m)}
             onTask={() => setTaskMsg(m)}
             onConfirm={m.message_type === 'confirm' ? async () => {
               try {
                 await api.confirmChatMessage(user.id, projectId, threadId, m.id);
-                await reload();
-                await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
               } catch (e) {
                 if (isOfflineQueued(e)) {
                   notifyOfflineQueued('Подтверждение');
                   return;
                 }
-                throw e;
+                reportError('ChatThreadView.Confirm.Mutation', e, { threadId, projectId, messageId: m.id });
+                Alert.alert('Ошибка', 'Не удалось подтвердить сообщение');
+                return;
               }
+              await reconcileCommittedChatMutation('Confirm');
             } : undefined}
             onPay={m.message_type === 'payment' ? () => {
               const meta = (m as { meta?: { payment_id?: string }; payment_id?: string });
@@ -391,7 +434,7 @@ export function ChatThreadView({
         <TextInput
           style={s.input}
           value={text}
-          onChangeText={(v) => { setText(v); wsSend({ type: 'typing' }); }}
+          onChangeText={(v: string) => { setText(v); wsSend({ type: 'typing' }); }}
           placeholder="Сообщение…"
           editable={canWrite}
           multiline
@@ -401,23 +444,44 @@ export function ChatThreadView({
             if (!text.trim()) return;
             const tmp = text.trim();
             setText('');
-            await sendText(tmp);
+            try {
+              await sendText(tmp);
+            } catch (error) {
+              setText(tmp);
+              reportError('ChatThreadView.SendMessage.Mutation', error, { threadId, projectId });
+              Alert.alert('Ошибка', 'Не удалось отправить сообщение');
+            }
           }} />
           <Pressable disabled={!canWrite} onPress={async () => {
             const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.6 });
             if (pick.canceled || !pick.assets[0]?.base64) return;
-            await sendText('Фото', 'photo', compressDataUrl(`data:image/jpeg;base64,${pick.assets[0].base64}`));
+            try {
+              await sendText('Фото', 'photo', compressDataUrl(`data:image/jpeg;base64,${pick.assets[0].base64}`));
+            } catch (error) {
+              reportError('ChatThreadView.SendPhoto.Mutation', error, { threadId, projectId });
+              Alert.alert('Ошибка', 'Не удалось отправить фото');
+            }
           }}><Text style={s.toolBtn}>📷</Text></Pressable>
           <Pressable disabled={!canWrite} onPress={async () => {
             const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
             if (pick.canceled || !pick.assets[0]?.base64) return;
             const a = pick.assets[0];
             const isPhoto = (a.mimeType || '').startsWith('image/');
-            await sendText(a.fileName || (isPhoto ? 'Фото' : 'Файл'), isPhoto ? 'photo' : 'file', compressDataUrl(`data:${a.mimeType || 'image/jpeg'};base64,${a.base64}`));
+            try {
+              await sendText(a.fileName || (isPhoto ? 'Фото' : 'Файл'), isPhoto ? 'photo' : 'file', compressDataUrl(`data:${a.mimeType || 'image/jpeg'};base64,${a.base64}`));
+            } catch (error) {
+              reportError('ChatThreadView.SendAttachment.Mutation', error, { threadId, projectId });
+              Alert.alert('Ошибка', 'Не удалось отправить файл');
+            }
           }}><Text style={s.toolBtn}>📎</Text></Pressable>
           {user.role === 'contractor' && (
             <>
-              <Pressable disabled={!canWrite} onPress={() => sendText('Прошу подтвердить согласование', 'confirm')}>
+              <Pressable disabled={!canWrite} onPress={() => {
+                void sendText('Прошу подтвердить согласование', 'confirm').catch((error) => {
+                  reportError('ChatThreadView.SendConfirm.Mutation', error, { threadId, projectId });
+                  Alert.alert('Ошибка', 'Не удалось отправить запрос подтверждения');
+                });
+              }}>
                 <Text style={s.toolBtn}>✓?</Text>
               </Pressable>
               <Pressable disabled={!canWrite} onPress={() => {
@@ -429,17 +493,18 @@ export function ChatThreadView({
                       amount,
                       payment_type: 'stage',
                     });
-                    await reload();
-                    await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-                    // W131: счёт из чата — роль-aware оплаты
-                    alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
                   } catch (e: unknown) {
                     if (isOfflineQueued(e)) {
                       notifyOfflineQueued('Счёт');
                     } else {
+                      reportError('ChatThreadView.Invoice.Mutation', e, { threadId, projectId, amount });
                       Alert.alert('Ошибка', 'Не удалось создать счёт');
                     }
+                    return;
                   }
+                  await reconcileCommittedChatMutation('Invoice');
+                  // W131: счёт из чата — роль-aware оплаты
+                  alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
                 };
                 const openPaymentForm = () => {
                   const osRole = role === 'contractor' ? 'contractor' : 'customer';
@@ -498,14 +563,20 @@ export function ChatThreadView({
             <TextInput style={s.input} value={invitePhone} onChangeText={setInvitePhone} placeholder="Телефон +7…" keyboardType="phone-pad" />
             <Text style={s.hint}>На телефон придёт SMS: установите Renova и зарегистрируйтесь — чат появится в Сообщениях.</Text>
             <PrimaryButton title="Пригласить" onPress={async () => {
-              await api.inviteToChat(user.id, projectId, threadId, {
-                phone: invitePhone || undefined,
-                profile_code: inviteCode || undefined,
-              });
+              try {
+                await api.inviteToChat(user.id, projectId, threadId, {
+                  phone: invitePhone || undefined,
+                  profile_code: inviteCode || undefined,
+                });
+              } catch (error) {
+                reportError('ChatThreadView.Invite.Mutation', error, { threadId, projectId });
+                Alert.alert('Ошибка', 'Не удалось пригласить участника');
+                return;
+              }
               setInviteOpen(false);
               setInvitePhone('');
               setInviteCode('');
-              await reload();
+              await reconcileCommittedChatMutation('Invite');
               alertChatInviteSent((user.role === 'contractor' ? 'contractor' : 'customer'));
             }} />
             <PrimaryButton title="Закрыть" variant="outline" onPress={() => setInviteOpen(false)} />
@@ -522,19 +593,18 @@ export function ChatThreadView({
           if (!taskMsg) return;
           try {
             await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
-            setTaskMsg(null);
-            await reload();
-            // W98/W131: календарь / работы / inbox после задачи из чата
-            await syncProjectSideEffects({ user, project: activeProject ?? ({ id: projectId } as any) });
-            alertChatTaskCreated(role === 'contractor' ? 'contractor' : 'customer');
           } catch (e) {
             if (isOfflineQueued(e)) {
               notifyOfflineQueued('Задача из чата');
               setTaskMsg(null);
               return;
             }
+            reportError('ChatThreadView.Task.Mutation', e, { threadId, projectId, messageId: taskMsg.id });
             throw e;
           }
+          setTaskMsg(null);
+          await reconcileCommittedChatMutation('Task');
+          alertChatTaskCreated(role === 'contractor' ? 'contractor' : 'customer');
         }}
       />
     </View>
