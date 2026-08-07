@@ -17,6 +17,11 @@ import { replaceOsNav } from '@/lib/pushOsNav';
 import { reportError } from '@/lib/reportError';
 
 const TAB_IDS = ['works', 'materials', 'selections', 'control'] as const;
+type RepairTab = (typeof TAB_IDS)[number];
+
+function isRepairTab(id: string): id is RepairTab {
+  return (TAB_IDS as readonly string[]).includes(id);
+}
 
 export function OsRepairHubScreen({ role }: { role: OsRole }) {
   const { tab: tabParam, subtab: subtabParam } = useLocalSearchParams<{ tab?: string; subtab?: string }>();
@@ -54,6 +59,14 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
   useFocusEffect(useCallback(() => { reloadBadge(); }, [reloadBadge]));
   useProjectDataReload(reloadBadge);
 
+  const handleTabChange = useCallback((id: string) => {
+    if (isRepairTab(id)) {
+      setActive(id);
+      return;
+    }
+    reportError('components.screens.OsRepairHubScreen.InvalidTab', new Error(`Unsupported repair tab: ${id}`));
+  }, [setActive]);
+
   const controlBadge = pendingAcceptance > 0 ? pendingAcceptance : undefined;
 
   // Clarity A: Этапы + Приёмка primary; Материалы/Подбор — «Ещё» (badge поднимает подбор)
@@ -72,7 +85,7 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
   return (
     <ProjectScopeLoader role={role}>
       <View style={s.root}>
-        <OsHubTabs tabs={tabs} value={active} onChange={setActive} />
+        <OsHubTabs tabs={tabs} value={active} onChange={handleTabChange} />
         <View style={s.body}>
           {active === 'works' && <OsWorksScreen role={role} />}
           {active === 'materials' && <OsMaterialsScreen role={role} />}
