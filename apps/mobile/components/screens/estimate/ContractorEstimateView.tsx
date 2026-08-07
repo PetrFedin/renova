@@ -6,7 +6,6 @@ import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { AddEstimateLineForm } from '@/components/renova/AddEstimateLineForm';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -49,13 +48,15 @@ export function ContractorEstimateView() {
   if (!activeProject) {
     return <ProjectEmptyState role="contractor" />;
   }
+  const project = activeProject;
 
   async function patchLine(lineId: string, body: object) {
     if (!user) return;
     try {
-      await api.patchEstimateLine(user.id, activeProject!.id, lineId, body);
-      await loadProject(activeProject!.id);
-      await syncProjectSideEffects({ user, project: activeProject });
+      await api.patchEstimateLine(user.id, project.id, lineId, body);
+      // loadProject fetches the committed ProjectDetail and performs project-data
+      // reconciliation; do not follow it with a second sync of stale `project`.
+      await loadProject(project.id);
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Изменение строки');
@@ -68,9 +69,8 @@ export function ContractorEstimateView() {
   async function addChangeOrder() {
     if (!user) return;
     try {
-      await api.createChangeOrder(user.id, activeProject.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
-      await loadProject(activeProject.id);
-      await syncProjectSideEffects({ user, project: activeProject });
+      await api.createChangeOrder(user.id, project.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
+      await loadProject(project.id);
       // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
       alertChangeOrderSubmitted('contractor');
     } catch (e: unknown) {
@@ -90,9 +90,9 @@ export function ContractorEstimateView() {
 
         <View style={styles.totalBox}>
           <Text style={styles.totalLabel}>Смета проекта</Text>
-          <Text style={styles.total}>{formatRub(activeProject.budget_planned)}</Text>
-          {activeProject.estimate_locked_at ? (
-            <Text style={styles.locked}>Зафиксирована · {activeProject.estimate_locked_at.slice(0, 10)}</Text>
+          <Text style={styles.total}>{formatRub(project.budget_planned)}</Text>
+          {project.estimate_locked_at ? (
+            <Text style={styles.locked}>Зафиксирована · {project.estimate_locked_at.slice(0, 10)}</Text>
           ) : null}
           <Text style={styles.breakdown}>
             Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} ({totals.materialsCount})
@@ -113,17 +113,16 @@ export function ContractorEstimateView() {
         </Text>
         <EstimateEditorByRoom lines={filtered} canWrite={canWrite} onPatch={patchLine} />
 
-        {user && canWrite && !activeProject.estimate_locked_at && allLines.length > 0 && (
+        {user && canWrite && !project.estimate_locked_at && allLines.length > 0 && (
           <>
             <PrimaryButton
-              title={activeProject.estimate_lock_proposed_at ? 'Смета у заказчика на согласовании' : 'Отправить смету на согласование'}
+              title={project.estimate_lock_proposed_at ? 'Смета у заказчика на согласовании' : 'Отправить смету на согласование'}
               variant="outline"
-              disabled={!!activeProject.estimate_lock_proposed_at || !isContractorOwner}
+              disabled={!!project.estimate_lock_proposed_at || !isContractorOwner}
               onPress={async () => {
                 try {
-                  await api.proposeEstimateLock(user.id, activeProject.id);
-                  await loadProject(activeProject.id);
-                  await syncProjectSideEffects({ user, project: activeProject });
+                  await api.proposeEstimateLock(user.id, project.id);
+                  await loadProject(project.id);
                   alertEstimateProposed('contractor');
                 } catch (e: unknown) {
                   Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отправки сметы');
@@ -133,7 +132,7 @@ export function ContractorEstimateView() {
             {!isContractorOwner && teamRole && teamRole !== 'owner' ? (
               <Text style={{ color: '#64748B', marginTop: 8 }}>Отправку сметы делает главный исполнитель (не {teamRole}).</Text>
             ) : null}
-            {activeProject.estimate_lock_proposed_at ? (
+            {project.estimate_lock_proposed_at ? (
               <PrimaryButton
                 title="Отозвать предложение"
                 variant="outline"
@@ -146,9 +145,8 @@ export function ContractorEstimateView() {
                     onPrimary: () => {
                       void (async () => {
                         try {
-                          await api.withdrawEstimateLock(user.id, activeProject.id);
-                          await loadProject(activeProject.id);
-                          await syncProjectSideEffects({ user, project: activeProject });
+                          await api.withdrawEstimateLock(user.id, project.id);
+                          await loadProject(project.id);
                           alertEstimateProposalRevoked('contractor');
                         } catch (e: unknown) {
                           showActionConfirm({
@@ -171,18 +169,18 @@ export function ContractorEstimateView() {
           <AddEstimateLineForm
             collapsed
             userId={user.id}
-            project={activeProject}
-            onSaved={() => loadProject(activeProject.id)}
+            project={project}
+            onSaved={() => loadProject(project.id)}
           />
         )}
 
         {user && (
           <EstimateOperationsPanel
             userId={user.id}
-            projectId={activeProject.id}
+            projectId={project.id}
             role="contractor"
-            rooms={activeProject.rooms || []}
-            stages={activeProject.stages || []}
+            rooms={project.rooms || []}
+            stages={project.stages || []}
           />
         )}
 

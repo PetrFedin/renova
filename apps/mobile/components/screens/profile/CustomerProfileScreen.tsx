@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Alert, ScrollView, View, Text, type LayoutChangeEvent } from 'react-native';
+import { Alert, ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
@@ -27,6 +27,20 @@ const EXTRA_BASIC = [
 /** После подключения исполнителя — доп. ссылки; архив в шапке «Ещё», согласования через inbox */
 const EXTRA_WITH_CONTRACTOR: typeof EXTRA_BASIC = [];
 
+/**
+ * RN runtime delivers View.onLayout as nativeEvent.layout. Keep this boundary
+ * structural so RN/React type drift cannot leak `any`, and ignore malformed
+ * events instead of breaking focused-section scrolling.
+ */
+function customerProfileLayoutY(event: unknown): number | null {
+  if (typeof event !== 'object' || event === null || !('nativeEvent' in event)) return null;
+  const nativeEvent = event.nativeEvent;
+  if (typeof nativeEvent !== 'object' || nativeEvent === null || !('layout' in nativeEvent)) return null;
+  const layout = nativeEvent.layout;
+  if (typeof layout !== 'object' || layout === null || !('y' in layout)) return null;
+  return typeof layout.y === 'number' && Number.isFinite(layout.y) ? layout.y : null;
+}
+
 export function CustomerProfileScreen() {
   const pathname = usePathname();
   const { focus } = useLocalSearchParams<{ focus?: string }>();
@@ -47,8 +61,9 @@ export function CustomerProfileScreen() {
     return () => clearTimeout(t);
   }, [focusContractor, showAccess, activeProject?.id]);
 
-  const onContractorLayout = (e: LayoutChangeEvent) => {
-    contractorY.current = e.nativeEvent.layout.y;
+  const onContractorLayout = (event: unknown) => {
+    const y = customerProfileLayoutY(event);
+    if (y !== null) contractorY.current = y;
   };
 
   return (
@@ -113,7 +128,7 @@ export function CustomerProfileScreen() {
         </View>
       </ProfileSection>
 
-            <ProfileSection title="Безопасность">
+      <ProfileSection title="Безопасность">
         <View style={ps.actionGap}>
           <PrimaryButton
             title="Выйти на всех устройствах"
