@@ -16,6 +16,6 @@ console.assert(!fab.includes("id: 'remark'") && !fab.includes("id: 'photo'"), 'c
 console.assert(fab.includes("id: 'expense'") && fab.includes("id: 'chat'"), 'FAB keeps create expense+chat');
 
 const std = fabActionIdsForLevel('standard', 'customer');
-console.assert(std && std.size === 2 && std.has('expense') && std.has('chat'), 'customer FAB policy = create only');
+console.assert(Boolean(std && std.size === 2 && std.has('expense') && std.has('chat')), 'customer FAB policy = create only');
 
 console.log('moreUnifyFab.w146.test OK');
