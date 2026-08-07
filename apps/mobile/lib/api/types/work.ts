@@ -1,5 +1,4 @@
-/** Работы, наряды, приёмка */
-import type { StageChecklistItem } from './stage';
+/** Работы и наряды. WorkAcceptance lives in stage.ts because the canonical API is stage-scoped. */
 export type WorkCompletionCheck = { id: string; ok: boolean; message: string; action?: string; button?: string };
 
 export type WorkSnapshot = {
@@ -48,18 +47,4 @@ export type WorkOrder = {
   created_by?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-};
-
-export type WorkAcceptance = {
-  id: string;
-  stage_id: string;
-  stage_name?: string | null;
-  status: string;
-  quality_score?: number | null;
-  requested_at?: string | null;
-  accepted_at?: string | null;
-  comment?: string | null;
-  checklist?: StageChecklistItem[];
-  /** API иногда не отдаёт progress на pending — UI обязан быть defensive */
-  checklist_progress?: { done: number; total: number };
 };
