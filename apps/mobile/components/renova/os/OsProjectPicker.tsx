@@ -39,6 +39,15 @@ function portfolioDeltaLabel(summary: ReturnType<typeof summarizePortfolio>): st
   return `По плану · ${summary.spendPct}% бюджета`;
 }
 
+function projectSwitchError(error: unknown): { code?: string; status?: number } {
+  if (typeof error !== 'object' || error === null) return {};
+  const value = error as Record<string, unknown>;
+  return {
+    code: typeof value.code === 'string' ? value.code : undefined,
+    status: typeof value.status === 'number' ? value.status : undefined,
+  };
+}
+
 function ProjectPickerRow({
   p,
   active,
@@ -132,7 +141,6 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
     for (const p of displayProjects) {
       if (p.pending_payments != null) fromSummary[p.id] = p.pending_payments;
     }
-    // Не пишем тот же объект — иначе лишний ре-рендер шапки при каждом обновлении projects[]
     setPendingById((prev) => {
       const prevKeys = Object.keys(prev);
       const nextKeys = Object.keys(fromSummary);
@@ -170,11 +178,12 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
   }, [open, user?.id, displayProjects]);
 
   if (!activeProject || activeProjects.length === 0) return null;
+  const currentProjectId = activeProject.id;
 
   async function select(id: string) {
     if (bucket !== 'active') return;
     if (busyId) return;
-    if (id === activeProject?.id) {
+    if (id === currentProjectId) {
       setOpen(false);
       return;
     }
@@ -182,8 +191,9 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
     try {
       await loadProject(id);
       setOpen(false);
-    } catch (e: any) {
-      if (e?.code === 'subscription_required' || e?.status === 402) showPaywall();
+    } catch (error: unknown) {
+      const { code, status } = projectSwitchError(error);
+      if (code === 'subscription_required' || status === 402) showPaywall();
       else Alert.alert('Ошибка', 'Не удалось переключить объект. Попробуйте ещё раз.');
     } finally {
       setBusyId(null);
@@ -192,7 +202,6 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
   function openPortfolio() {
     setOpen(false);
-    // Web Modal: навигация в том же тике может съесться при unmount — откладываем.
     setTimeout(() => pushScreen('/portfolio'), 0);
   }
 
@@ -215,7 +224,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={s.backdrop}>
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} accessibilityLabel="Закрыть" />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel="Закрыть" />
           <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
             <ScrollView
               style={s.menuScroll}
@@ -273,7 +282,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                       <ProjectPickerRow
                         key={p.id}
                         p={p}
-                        active={!isPortfolioScreen && p.id === activeProject.id}
+                        active={!isPortfolioScreen && p.id === currentProjectId}
                         loading={busyId === p.id}
                         busy={!!busyId}
                         pendingById={pendingById}
@@ -293,7 +302,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                       <ProjectPickerRow
                         key={p.id}
                         p={p}
-                        active={!isPortfolioScreen && p.id === activeProject.id}
+                        active={!isPortfolioScreen && p.id === currentProjectId}
                         loading={busyId === p.id}
                         busy={!!busyId}
                         pendingById={pendingById}
@@ -383,8 +392,9 @@ const s = StyleSheet.create({
     maxWidth: 340,
     width: '100%',
     flex: 1,
+    flexShrink: 1,
     minHeight: 0,
-    ...(Platform.OS === 'web' ? { overflowY: 'auto' as const, maxHeight: 'min(85vh, 640px)' } : null),
+    maxHeight: 640,
   },
   menuScrollIn: { alignItems: 'flex-end' },
   menu: {
@@ -419,8 +429,7 @@ const s = StyleSheet.create({
   },
   sectionHeadGap: { marginTop: 4, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.borderLight },
   itemWrap: { paddingBottom: 4, position: 'relative', minHeight: 72 },
-  item: { position: 'relative' as const,
- flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
+  item: { position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
   portfolioItem: { backgroundColor: RenovaTheme.colors.borderLight },
   itemOn: { backgroundColor: RenovaTheme.colors.infoBg },
   itemBody: { flex: 1, minWidth: 0, paddingRight: 8 },
