@@ -1,260 +1,257 @@
-/** Форма создания работы — секции: что · где · когда · бюджет */
-import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Modal, Alert } from 'react-native';
+/** Создание WorkOrder — единая форма «Работа» */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, View, Text, TextInput, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { WORK_TYPES_FALLBACK, type WorkTypeOption } from '@/constants/workCatalog';
-import { WORK_CATEGORIES, WORK_FORM_HINTS } from '@/constants/workFormHints';
 import { BudgetPlannerPanel } from '@/components/renova/BudgetPlannerPanel';
-import { WorkFormSection } from '@/components/renova/work/WorkFormSection';
-import type { MarketEstimate } from '@/constants/regions';
-import { calcRoomMetrics } from '@/lib/calc-engine';
-import { api, Room, isRateLimitError } from '@/lib/api';
-import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
-import { alertWorkCreated } from '@/lib/fieldCreateNav';
+import { WorkFormSection } from '@/components/renova/WorkFormSection';
+import { api, type Room, type WorkOrder } from '@/lib/api';
+import { buildRoomCalc } from '@/lib/calc-engine';
+import { WORK_TYPE_CATALOG, WORK_TYPE_CATEGORIES, WORK_FORM_HINTS, workTypeName } from '@/constants/workTypes';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { alertCreateWorkSuccess } from '@/lib/createSuccessNav';
 import type { OsRole } from '@/constants/osSections';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportError } from '@/lib/reportError';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { createClientRequestId } from '@/lib/clientRequestId';
+
+export type CreateWorkVariant = 'contractor' | 'customer';
 
 type Props = {
   visible: boolean;
-  onClose: () => void;
   userId: string;
   projectId: string;
   rooms: Room[];
-  defaultRoomId?: string;
-  defaultDate?: string;
-  /** Предзаполнение из черновика */
+  onClose: () => void;
+  onCreated?: () => void | Promise<void>;
+  /** W138: вернуть созданный WO (scratchpad promotion / deep-link) */
+  onCreatedWork?: (work: WorkOrder) => void | Promise<void>;
+  variant?: CreateWorkVariant;
   defaultTitle?: string;
-  /** customer — задачи в план без калькулятора; contractor — полная форма */
-  variant?: 'customer' | 'contractor';
-  onCreated: () => void | Promise<void>;
-  onCreatedWork?: (wo: import('@/lib/api').WorkOrder) => void | Promise<void>;
+  defaultRoomId?: string;
+  defaultStart?: string;
+  defaultEnd?: string;
+  defaultBudget?: number;
 };
-
-type FormTab = 'form' | 'calculator';
-
-function dedupeTypes(types: WorkTypeOption[]) {
-  const seen = new Set<string>();
-  return types.filter((t) => {
-    if (seen.has(t.code)) return false;
-    seen.add(t.code);
-    return true;
-  });
-}
 
 export function CreateWorkSheet({
   visible,
-  onClose,
   userId,
   projectId,
   rooms,
-  defaultRoomId,
-  defaultDate,
-  defaultTitle,
-  variant = 'contractor',
+  onClose,
   onCreated,
   onCreatedWork,
+  variant = 'contractor',
+  defaultTitle,
+  defaultRoomId,
+  defaultStart,
+  defaultEnd,
+  defaultBudget,
 }: Props) {
-  const { user, activeProject } = useRenova();
-  const isCustomer = variant === 'customer';
-  const [types, setTypes] = useState(WORK_TYPES_FALLBACK);
-  const [workType, setWorkType] = useState('electrical');
-  const [category, setCategory] = useState('engineering');
-  const [customTitle, setCustomTitle] = useState('');
+  const { user, activeProject, loadProject } = useRenova();
+  const [category, setCategory] = useState(WORK_TYPE_CATEGORIES[0].id);
+  const [workType, setWorkType] = useState('custom');
+  const [customTitle, setCustomTitle] = useState(defaultTitle || '');
   const [roomId, setRoomId] = useState<string | undefined>(defaultRoomId);
-  const [plannedStart, setPlannedStart] = useState(defaultDate || new Date().toISOString().slice(0, 10));
-  const [plannedEnd, setPlannedEnd] = useState(defaultDate || new Date().toISOString().slice(0, 10));
-  const [budget, setBudget] = useState('');
+  const [plannedStart, setPlannedStart] = useState(defaultStart || '');
+  const [plannedEnd, setPlannedEnd] = useState(defaultEnd || '');
+  const [budget, setBudget] = useState(defaultBudget ? String(defaultBudget) : '');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<FormTab>('form');
-  const [regionCode, setRegionCode] = useState('moscow');
+  const [tab, setTab] = useState<'form' | 'calculator'>('form');
+  const [regionCode, setRegionCode] = useState('RU-MOW');
   const [complexity, setComplexity] = useState(1);
-  const [laborShare, setLaborShare] = useState(0.5);
-  const [daysEst, setDaysEst] = useState<number | null>(null);
-
-  const cleanTypes = useMemo(() => dedupeTypes(types), [types]);
-  const selectedRoom = rooms.find((r) => r.id === roomId);
-  const selected = cleanTypes.find((t) => t.code === workType);
-  const typesInCategory = useMemo(
-    () => cleanTypes.filter((t) => (t.category || 'other') === category),
-    [cleanTypes, category],
-  );
-
-  const metrics = useMemo(() => {
-    if (!selectedRoom) {
-      return { floor_sq_m: 12, wall_sq_m: 24, perimeter_m: 14, outlets_count: 0, plumbing_points: 0 };
-    }
-    const m = calcRoomMetrics({
-      lengthM: selectedRoom.length_m,
-      widthM: selectedRoom.width_m,
-      heightM: selectedRoom.height_m,
-      openingsSqM: selectedRoom.openings_sq_m ?? 2,
-    });
-    return {
-      floor_sq_m: m.floorSqM,
-      wall_sq_m: m.wallSqM,
-      perimeter_m: m.perimeterM,
-      outlets_count: selectedRoom.outlets_count || 0,
-      plumbing_points: selectedRoom.plumbing_points || 0,
-    };
-  }, [selectedRoom]);
-
-  const title = workType === 'custom' ? customTitle.trim() : customTitle.trim() || selected?.name || 'Работа';
-  const preview = [title, selectedRoom?.name].filter(Boolean).join(' · ');
+  const [laborShare, setLaborShare] = useState(0.45);
+  const requestIdRef = useRef(createClientRequestId('work-order'));
+  const isCustomer = variant === 'customer';
 
   useEffect(() => {
-    api.listWorkTypes().then((list) => setTypes(dedupeTypes(list))).catch(() => setTypes(WORK_TYPES_FALLBACK));
-  }, []);
-
-  useEffect(() => {
-    if (defaultRoomId) setRoomId(defaultRoomId);
-    if (defaultDate) {
-      setPlannedStart(defaultDate);
-      setPlannedEnd(defaultDate);
-    }
-    if (visible && defaultTitle) {
-      setCustomTitle(defaultTitle);
-      setWorkType('custom');
-    }
-    if (visible) setTab('form');
-  }, [defaultRoomId, defaultDate, defaultTitle, visible]);
-
-  useEffect(() => {
-    const cat = selected?.category || 'other';
-    if (cat !== category) setCategory(cat);
-  }, [workType, selected?.category]);
-
-  const pickCategory = (catId: string) => {
-    setCategory(catId);
-    const first = cleanTypes.find((t) => (t.category || 'other') === catId);
-    if (first) setWorkType(first.code);
-  };
-
-  const onEstimate = (est: MarketEstimate) => {
-    setBudget(String(Math.round(est.grand_total)));
-    setDaysEst(est.days_estimated);
-    if (est.days_estimated && plannedStart) {
-      const d = new Date(plannedStart);
-      d.setDate(d.getDate() + Math.ceil(est.days_estimated));
-      setPlannedEnd(d.toISOString().slice(0, 10));
-    }
+    if (!visible) return;
+    requestIdRef.current = createClientRequestId('work-order');
+    setCategory(WORK_TYPE_CATEGORIES[0].id);
+    setWorkType('custom');
+    setCustomTitle(defaultTitle || '');
+    setRoomId(defaultRoomId);
+    setPlannedStart(defaultStart || '');
+    setPlannedEnd(defaultEnd || '');
+    setBudget(defaultBudget ? String(defaultBudget) : '');
+    setNotes('');
+    setBusy(false);
     setTab('form');
-    Alert.alert('Расчёт', `Сумма ${formatRub(est.grand_total)} подставлена в форму`);
+  }, [visible, defaultTitle, defaultRoomId, defaultStart, defaultEnd, defaultBudget]);
+
+  const typesInCategory = useMemo(
+    () => WORK_TYPE_CATALOG.filter((t) => t.category === category),
+    [category],
+  );
+  const selectedRoom = rooms.find((r) => r.id === roomId);
+  const selected = WORK_TYPE_CATALOG.find((t) => t.code === workType);
+  const title = (customTitle.trim() || selected?.name || workTypeName(workType)).trim();
+  const budgetNum = Number(String(budget).replace(',', '.')) || 0;
+  const metrics = useMemo(() => buildRoomCalc(selectedRoom || null), [selectedRoom]);
+  const calcWorks = useMemo(
+    () => metrics
+      ? {
+          floorArea: metrics.floorArea,
+          wallArea: metrics.wallArea,
+          perimeter: metrics.perimeter,
+        }
+      : undefined,
+    [metrics],
+  );
+  const calcEstimate = useMemo(() => {
+    const m = calcWorks;
+    if (!m || !selected) return null;
+    const qty = selected.metric === 'floor_area' ? m.floorArea
+      : selected.metric === 'wall_area' ? m.wallArea
+        : selected.metric === 'perimeter' ? m.perimeter
+          : selected.metric === 'point' ? 1
+            : 1;
+    const price = selected.default_price_rub || 0;
+    const base = qty * price;
+    return base > 0 ? Math.round(base * complexity) : null;
+  }, [calcWorks, selected, complexity]);
+  const daysEst = useMemo(() => {
+    const selectedType = WORK_TYPE_CATALOG.find((t) => t.code === workType);
+    const productivity = selectedType?.productivity_per_day || 0;
+    if (!productivity || !metrics) return null;
+    const qty = selectedType.metric === 'floor_area' ? metrics.floorArea
+      : selectedType.metric === 'wall_area' ? metrics.wallArea
+        : selectedType.metric === 'perimeter' ? metrics.perimeter
+          : 1;
+    return Math.max(1, Math.ceil((qty / productivity) * complexity));
+  }, [workType, metrics, complexity]);
+
+  const onEstimate = (estimated: { total: number }) => {
+    if (estimated.total > 0) setBudget(String(Math.round(estimated.total)));
   };
 
-  async function submit(publish: boolean) {
-    if (!title) {
-      Alert.alert('Работа', 'Укажите тип или название');
-      return;
-    }
+  const submit = async (publish: boolean) => {
+    if (busy || !title) return;
     setBusy(true);
+    let created: WorkOrder | null = null;
     try {
-      let wo: import('@/lib/api').WorkOrder;
-      try {
-        wo = await api.createWorkOrder(userId, projectId, {
-          title,
-          work_type: workType,
-          room_id: roomId || null,
-          planned_start: plannedStart || null,
-          planned_end: plannedEnd || plannedStart || null,
-          budget_planned: budget ? +budget : 0,
-          notes: notes || null,
-          publish,
-        });
-      } catch (error) {
-        if (isRateLimitError(error)) {
-          Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
-        } else if (isOfflineQueued(error) || (error instanceof Error && error.message === 'offline_queued')) {
-          notifyOfflineQueued('Создание работы', variant === 'customer' ? 'customer' : 'contractor');
-          onClose();
-        } else {
-          reportError('createWorkSheet.create', error, { projectId });
-          Alert.alert('Ошибка', 'Не удалось создать работу');
-        }
+      created = await api.createWorkOrder(userId, projectId, {
+        work_type: workType,
+        title,
+        room_id: roomId || null,
+        planned_start: plannedStart || null,
+        planned_end: plannedEnd || null,
+        budget_planned: budgetNum,
+        notes: notes || null,
+        client_request_id: requestIdRef.current,
+      });
+      if (publish && created.status === 'draft') {
+        created = await api.patchWorkOrder(userId, projectId, created.id, { status: 'planned' });
+      }
+    } catch (e: unknown) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Работа');
+        onClose();
         return;
       }
-
-      // Work order is committed. Everything below is best-effort follow-up and
-      // must never turn the successful mutation into a false creation failure.
-      if (user?.id === userId && activeProject?.id === projectId) {
-        try {
-          await syncProjectSideEffects({ user, project: activeProject });
-        } catch (error) {
-          reportError('createWorkSheet.sideEffects', error, { projectId, workOrderId: wo.id });
-        }
-      } else {
-        reportError(
-          'createWorkSheet.contextMismatch',
-          new Error('Committed work order has no matching active Renova context'),
-          { projectId, userId, workOrderId: wo.id },
-        );
-      }
-
-      try {
-        await onCreatedWork?.(wo);
-      } catch (error) {
-        reportError('createWorkSheet.onCreatedWork', error, { projectId, workOrderId: wo.id });
-      }
-      try {
-        await onCreated();
-      } catch (error) {
-        reportError('createWorkSheet.onCreated', error, { projectId, workOrderId: wo.id });
-      }
-
-      onClose();
-      setCustomTitle('');
-      setNotes('');
-      setBudget('');
-      // W133: работа → график / карточка
-      const role = (isCustomer ? 'customer' : 'contractor') as OsRole;
-      alertWorkCreated(role, wo.id);
+      showActionConfirm({
+        title: 'Не удалось создать работу',
+        message: e instanceof Error ? e.message : 'Попробуйте ещё раз',
+      });
+      return;
     } finally {
       setBusy(false);
     }
-  }
+
+    if (!created) return;
+    requestIdRef.current = createClientRequestId('work-order');
+
+    // The mutation is already committed. Reconcile through a fresh ProjectDetail;
+    // never propagate the pre-mutation activeProject into inbox/home side effects.
+    try {
+      if (user?.id === userId && activeProject?.id === projectId) {
+        await loadProject(projectId);
+      } else {
+        reportError(
+          'createWorkSheet.contextMissing',
+          new Error('work committed without matching active Renova context'),
+          { userId, projectId, activeUserId: user?.id, activeProjectId: activeProject?.id },
+        );
+      }
+    } catch (e) {
+      reportError('createWorkSheet.projectRefresh', e, { projectId, workOrderId: created.id });
+    }
+
+    try {
+      await onCreatedWork?.(created);
+    } catch (e) {
+      reportError('createWorkSheet.onCreatedWork', e, { projectId, workOrderId: created.id });
+    }
+
+    try {
+      await onCreated?.();
+    } catch (e) {
+      reportError('createWorkSheet.onCreated', e, { projectId, workOrderId: created.id });
+    }
+
+    try {
+      alertCreateWorkSuccess((isCustomer ? 'customer' : 'contractor') as OsRole, created.id, {
+        title: created.title,
+        plannedStart: created.planned_start,
+      });
+    } catch (e) {
+      reportError('createWorkSheet.successUi', e, { projectId, workOrderId: created.id });
+    }
+    onClose();
+  };
+
+  if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <View style={s.sheet}>
-          <Text style={s.head}>{isCustomer ? 'Задача на день' : 'Новая работа'}</Text>
-          <Text style={s.guide}>{isCustomer ? 'Можно несколько задач в один день — каждая отдельной строкой в календаре.' : WORK_FORM_HINTS.guide}</Text>
+          <Text style={s.head}>{isCustomer ? 'Добавить работу в план' : 'Новая работа'}</Text>
+          <Text style={s.guide}>
+            {isCustomer
+              ? 'Что нужно сделать, где и когда. Сумму можно оставить пустой — исполнитель уточнит.'
+              : 'Сначала заполните основное. Калькулятор — отдельная вкладка, ничего не пересчитает без вашего действия.'}
+          </Text>
 
           {!isCustomer ? (
-          <View style={s.tabs}>
-            <Pressable style={[s.tab, tab === 'form' && s.tabOn]} onPress={() => setTab('form')}>
-              <Text style={[s.tabT, tab === 'form' && s.tabTOn]}>Заполнение</Text>
-            </Pressable>
-            <Pressable style={[s.tab, tab === 'calculator' && s.tabOn]} onPress={() => setTab('calculator')}>
-              <Text style={[s.tabT, tab === 'calculator' && s.tabTOn]}>Калькулятор</Text>
-            </Pressable>
-          </View>
+            <View style={s.tabs}>
+              <Pressable style={[s.tab, tab === 'form' && s.tabOn]} onPress={() => setTab('form')}>
+                <Text style={[s.tabT, tab === 'form' && s.tabTOn]}>Заполнение</Text>
+              </Pressable>
+              <Pressable style={[s.tab, tab === 'calculator' && s.tabOn]} onPress={() => setTab('calculator')}>
+                <Text style={[s.tabT, tab === 'calculator' && s.tabTOn]}>Калькулятор</Text>
+              </Pressable>
+            </View>
           ) : null}
 
-          <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
+          <View style={s.preview}>
+            <Text style={s.previewLabel}>Будет создано</Text>
+            <Text style={s.previewVal} numberOfLines={2}>{title || 'Работа без названия'}</Text>
+            <Text style={s.previewLabel}>
+              {selectedRoom?.name || 'Весь объект'}
+              {plannedStart ? ` · ${plannedStart}` : ''}
+              {plannedEnd ? ` → ${plannedEnd}` : ''}
+              {budgetNum > 0 ? ` · ${formatRub(budgetNum)}` : ''}
+            </Text>
+          </View>
+
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
             {tab === 'form' || isCustomer ? (
               <>
-                {preview ? (
-                  <View style={s.preview}>
-                    <Text style={s.previewLabel}>Будет создано</Text>
-                    <Text style={s.previewVal}>{preview}</Text>
-                  </View>
-                ) : null}
-
-                <WorkFormSection title="Что делаем" hint={WORK_FORM_HINTS.what}>
+                <WorkFormSection title="Что" hint={WORK_FORM_HINTS.what}>
                   <Text style={s.fieldLabel}>Категория</Text>
                   <View style={s.chips}>
-                    {WORK_CATEGORIES.map((c) => (
+                    {WORK_TYPE_CATEGORIES.map((c) => (
                       <Pressable
                         key={c.id}
                         style={[s.chip, category === c.id && s.chipOn]}
-                        onPress={() => pickCategory(c.id)}
+                        onPress={() => { setCategory(c.id); setWorkType('custom'); }}
                       >
-                        <Text style={[s.chipT, category === c.id && s.chipTOn]}>{c.label}</Text>
+                        <Text style={[s.chipT, category === c.id && s.chipTOn]}>{c.name}</Text>
                       </Pressable>
                     ))}
                   </View>
