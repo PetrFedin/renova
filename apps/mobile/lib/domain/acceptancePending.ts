@@ -7,9 +7,9 @@ export function computePendingAcceptanceCount(
   stages: Stage[] | undefined,
   acceptances: WorkAcceptance[],
 ): number {
-  const pending = acceptances.filter((a) => PENDING_ACC.has(a.status));
-  const covered = new Set(pending.map((a) => a.stage_id));
-  const orphanReview = (stages || []).filter((s) => s.status === 'review' && !covered.has(s.id)).length;
+  const pending = acceptances.filter((acceptance) => PENDING_ACC.has(acceptance.status));
+  const covered = new Set(pending.map((acceptance) => acceptance.stage_id));
+  const orphanReview = (stages || []).filter((stage) => stage.status === 'review' && !covered.has(stage.id)).length;
   return pending.length + orphanReview;
 }
 
@@ -17,34 +17,45 @@ export type UnifiedAcceptanceItem =
   | { kind: 'acceptance'; id: string; stageId: string; title: string; sub: string; acceptanceId: string }
   | { kind: 'stage'; id: string; stageId: string; title: string; sub: string };
 
-/** Список для UI приёмки без дублирования этапа и acceptance */
+function stageAcceptanceSubtitle(stage: Stage | undefined): string {
+  if (typeof stage?.checklist_progress === 'number' && Number.isFinite(stage.checklist_progress) && stage.checklist_progress > 0) {
+    return `Чеклист ${Math.max(0, Math.min(100, Math.round(stage.checklist_progress)))}%`;
+  }
+  return 'Ждёт приёмки';
+}
+
+/**
+ * Список для UI приёмки без дублирования этапа и acceptance.
+ * Canonical acceptance API does not expose stage_name/checklist_progress, so
+ * presentation data is joined from the project stage read-model by stage_id.
+ */
 export function buildUnifiedAcceptanceItems(
   stages: Stage[] | undefined,
   acceptances: WorkAcceptance[],
 ): UnifiedAcceptanceItem[] {
-  const pending = acceptances.filter((a) => PENDING_ACC.has(a.status));
-  const covered = new Set(pending.map((a) => a.stage_id));
-  const items: UnifiedAcceptanceItem[] = pending.map((a) => {
-    // API иногда отдаёт pending без checklist_progress — не падаем на .done
-    const done = a.checklist_progress?.done ?? 0;
-    const total = a.checklist_progress?.total ?? 0;
+  const stageList = stages || [];
+  const stageById = new Map(stageList.map((stage) => [stage.id, stage]));
+  const pending = acceptances.filter((acceptance) => PENDING_ACC.has(acceptance.status));
+  const covered = new Set(pending.map((acceptance) => acceptance.stage_id));
+  const items: UnifiedAcceptanceItem[] = pending.map((acceptance) => {
+    const stage = stageById.get(acceptance.stage_id);
     return {
       kind: 'acceptance' as const,
-      id: `acc-${a.id}`,
-      stageId: a.stage_id,
-      acceptanceId: a.id,
-      title: a.stage_name || 'Этап',
-      sub: total > 0 ? `Чеклист ${done}/${total}` : 'Ждёт приёмки',
+      id: `acc-${acceptance.id}`,
+      stageId: acceptance.stage_id,
+      acceptanceId: acceptance.id,
+      title: stage?.name || 'Этап',
+      sub: stageAcceptanceSubtitle(stage),
     };
   });
-  for (const st of stages || []) {
-    if (st.status === 'review' && !covered.has(st.id)) {
+  for (const stage of stageList) {
+    if (stage.status === 'review' && !covered.has(stage.id)) {
       items.push({
         kind: 'stage',
-        id: `st-${st.id}`,
-        stageId: st.id,
-        title: st.name,
-        sub: 'Ждёт приёмки',
+        id: `st-${stage.id}`,
+        stageId: stage.id,
+        title: stage.name,
+        sub: stageAcceptanceSubtitle(stage),
       });
     }
   }

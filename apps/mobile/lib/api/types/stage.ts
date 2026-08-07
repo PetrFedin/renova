@@ -22,10 +22,13 @@ export type Stage = {
   actual_start?: string | null;
   actual_end?: string | null;
   budget_alert_pct?: number | null;
+  /** Canonical stage read-model exposes workflow completion as a percent. */
+  checklist_progress?: number;
 };
 
 export type StageChecklistItem = { id: string; text: string; done: boolean };
 
+/** Canonical `/projects/{id}/work-acceptances` wire shape. */
 export type WorkAcceptance = {
   id: string;
   project_id: string;
@@ -36,10 +39,16 @@ export type WorkAcceptance = {
   requested_at: string | null;
   accepted_at: string | null;
   status: 'not_requested' | 'requested' | 'in_review' | 'accepted' | 'accepted_with_remarks' | 'returned' | 'rejected' | string;
-  checklist: string[];
+  checklist: unknown[];
   quality_score: number | null;
   comment: string | null;
   created_at: string | null;
+  /** Mutation-only response metadata; absent from list responses. */
+  replayed?: boolean;
+  payment_id?: string | null;
+  next_stage_id?: string | null;
+  issue_id?: string | null;
+  rework_deadline?: string | null;
 };
 
 export type StagePhoto = {
