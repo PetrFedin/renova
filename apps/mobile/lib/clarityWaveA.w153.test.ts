@@ -12,7 +12,7 @@ const guide = readFileSync(join(mobile, 'components/screens/object/ObjectTabGuid
 const planOv = readFileSync(join(mobile, 'components/screens/object/PlanTabOverview.tsx'), 'utf8');
 
 console.assert(
-  home.includes("phase === 'active' && !readOnly") && !home.includes("role === 'customer' && phase === 'active'"),
+  home.includes("showAttention && phase !== 'complete'") && home.includes('<HomeActionHero'),
   'lean both roles',
 );
 console.assert(home.includes('title="Сводка"') || more.includes("title = 'Сводка'"), 'Home Сводка not Ещё');
@@ -28,7 +28,8 @@ console.assert(cust.filter((t) => t.secondary).length === 2, 'customer budget se
 console.assert(contr.filter((t) => t.secondary).length === 2, 'contractor budget secondary');
 
 const ok =
-  home.includes("phase === 'active'") &&
+  home.includes("showAttention && phase !== 'complete'") &&
+  home.includes('<HomeActionHero') &&
   more.includes('Сводка') &&
   objectHub.includes('OsHubTabs') &&
   guide.includes('Скрыть');
