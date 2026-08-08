@@ -50,10 +50,11 @@ jobs:
         run: bash -n scripts/typecheck-mobile.sh
       - name: Verify diagnostic parser contracts
         run: node scripts/typecheck-mobile-report.test.mjs
-      - name: Verify truthful side-effect context contracts
+      - name: Verify truthful side-effect and filesystem export contracts
         run: |
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/sideEffectContext.w177.test.ts
+          npx tsx apps/mobile/lib/filesystemExport.w178.test.ts
       - name: Verify CLI fails closed
         run: |
           set -euo pipefail

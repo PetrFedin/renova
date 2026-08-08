@@ -1,8 +1,8 @@
 /** W124: экспорт .ics — web download + native Share (как CSV/PDF). Разовый файл, не live-синк. */
 import { Platform, Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { authHeaders } from '@/lib/api/client';
+import { writeTemporaryShareFile } from '@/lib/tempShareFile';
 
 export async function exportIcalFile(userId: string, projectId: string, filename = 'renova.ics') {
   const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
@@ -11,29 +11,21 @@ export async function exportIcalFile(userId: string, projectId: string, filename
   });
   if (!r.ok) throw new Error('ical');
 
-  const safe = filename.replace(/[^\w.-]+/g, '_') || 'renova.ics';
-
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const blob = await r.blob();
     const u = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = u;
-    a.download = safe;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(u);
     return;
   }
 
   const text = await r.text();
-  const cache = FileSystem.cacheDirectory;
-  if (!cache) {
-    Alert.alert('Календарь', 'Нет доступа к файловой системе');
-    return;
-  }
-  const out = `${cache}${safe}`;
-  await FileSystem.writeAsStringAsync(out, text, { encoding: FileSystem.EncodingType.UTF8 });
+  const temporary = writeTemporaryShareFile(filename, text, 'renova.ics');
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(out, {
+    await Sharing.shareAsync(temporary.uri, {
       mimeType: 'text/calendar',
       UTI: 'public.calendar-event',
       dialogTitle: 'Импорт в календарь устройства',

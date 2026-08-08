@@ -1,7 +1,7 @@
 /** GDPR JSON export — web download + native share (как CSV/PDF) */
 import { Platform, Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { writeTemporaryShareFile } from '@/lib/tempShareFile';
 
 export async function exportGdprJsonFile(data: unknown, filename = 'renova-export.json') {
   const text = JSON.stringify(data, null, 2);
@@ -17,11 +17,9 @@ export async function exportGdprJsonFile(data: unknown, filename = 'renova-expor
     return;
   }
 
-  const safe = filename.replace(/[^\w.-]+/g, '_') || 'renova-export.json';
-  const path = `${FileSystem.cacheDirectory}${safe}`;
-  await FileSystem.writeAsStringAsync(path, text, { encoding: FileSystem.EncodingType.UTF8 });
+  const temporary = writeTemporaryShareFile(filename, text, 'renova-export.json');
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(path, { mimeType: 'application/json', UTI: 'public.json' });
+    await Sharing.shareAsync(temporary.uri, { mimeType: 'application/json', UTI: 'public.json' });
   } else {
     Alert.alert('Экспорт', 'Файл сохранён во временную папку приложения.');
   }

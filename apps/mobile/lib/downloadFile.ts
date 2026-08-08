@@ -1,9 +1,9 @@
 /** Скачивание файлов с API — web download + native share sheet (P2.4) */
 import { Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { fetchPdfBlob, openPdfBlob } from '@/lib/pdfOpen';
 import { authHeaders } from '@/lib/api/client';
+import { writeTemporaryShareFile } from '@/lib/tempShareFile';
 
 export async function downloadFromApi(userId: string, url: string, filename: string) {
   const isPdf = filename.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('.pdf');
@@ -27,35 +27,13 @@ export async function downloadFromApi(userId: string, url: string, filename: str
     return;
   }
 
-  const safe = filename.replace(/[^\w.-]+/g, '_') || 'file.bin';
-  const cachePath = `${FileSystem.cacheDirectory}${safe}`;
-  const b64 = await blobToBase64(blob);
-  await FileSystem.writeAsStringAsync(cachePath, b64, { encoding: FileSystem.EncodingType.Base64 });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const temporary = writeTemporaryShareFile(filename, bytes, 'file.bin');
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(cachePath);
+    await Sharing.shareAsync(temporary.uri);
   } else {
-    Alert.alert('Файл', `Сохранено: ${safe}`);
+    Alert.alert('Файл', `Сохранено: ${temporary.filename}`);
   }
-}
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  if (typeof FileReader !== 'undefined') {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        resolve(dataUrl.split(',')[1] || '');
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-  const buf = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  if (typeof globalThis.btoa === 'function') return globalThis.btoa(binary);
-  throw new Error('base64 unavailable');
 }
 
 export async function downloadProjectPdf(userId: string, path: string, filename: string) {
