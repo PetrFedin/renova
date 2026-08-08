@@ -82,10 +82,10 @@ if [[ -z "${EXPO_TOKEN:-}" ]]; then
   exit 1
 fi
 
-echo "--- 6) EAS CLI auth/project probe ---"
+echo "--- 6) EAS account/project probe ---"
 cd apps/mobile
-npx eas-cli@latest project:info --non-interactive >/tmp/renova-eas-project-info.txt
-cat /tmp/renova-eas-project-info.txt
+npx eas-cli@latest whoami
+npx eas-cli@latest project:info
 cd "$ROOT"
 
 if [[ "$CI_MODE" -eq 0 ]]; then
