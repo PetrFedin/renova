@@ -296,7 +296,10 @@ export function DocumentsHub({
         format: isArchived ? 'Post-closeout' : 'Заявка',
         run: async () => {
           const role = (isContractor ? 'contractor' : 'customer') as OsRole;
-          const open = await api.listWarrantyClaims(userId, projectId).catch(() => ({ open: 0, items: [] as { id: string; title?: string; status?: string }[] }));
+          const open = await api.listWarrantyClaims(userId, projectId).catch((error) => {
+            reportError('DocumentsHub.WarrantyDecisionRead', error, { projectId });
+            throw error;
+          });
           const openItems = (open.items || []).filter((i) => i.status !== 'closed');
           // W64/W126: заказчик закрывает гарантию — иначе closeout тупик; обе роли → QC
           if (!isContractor && openItems.length > 0) {
@@ -312,28 +315,24 @@ export function DocumentsHub({
                 {
                   label: 'Закрыть это',
                   onPress: () => {
-                    void (async () => {
-                      try {
-                        await api.closeWarrantyClaim(userId, projectId, first.id);
-                        void reconcileProjectAfterCommit('WarrantyClose');
-                        alertWarrantyClosed(role);
-                      } catch (e: unknown) {
-                        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось закрыть');
-                      }
-                    })();
+                    void withBusy('warranty-close', async () => {
+                      await api.closeWarrantyClaim(userId, projectId, first.id);
+                      void reconcileProjectAfterCommit('WarrantyClose');
+                      alertWarrantyClosed(role);
+                    });
                   },
                 },
                 {
                   label: 'Создать ещё',
                   onPress: () => {
-                    void (async () => {
+                    void withBusy('warranty-create-extra', async () => {
                       const res = await api.createWarrantyClaim(userId, projectId, {
                         title: 'Гарантийное обращение',
                         description: 'Создано из Document Center',
                       });
                       void reconcileProjectAfterCommit('WarrantyCreate');
                       alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
-                    })();
+                    });
                   },
                 },
               ],
