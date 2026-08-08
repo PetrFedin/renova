@@ -21,7 +21,7 @@ on:
           - android
           - all
       submit:
-        description: Submit to store after build
+        description: Submit to store after successful build
         required: false
         default: false
         type: boolean
@@ -29,36 +29,75 @@ on:
 jobs:
   preflight-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Repo preflight
-        run: bash scripts/testflight-preflight.sh --ci
-      - name: EAS build and optional submit
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate requested release path
+        shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${EXPO_TOKEN}" ]; then
-            echo "::warning::EXPO_TOKEN not set — skipping EAS build/submit"
-            echo "See docs/TESTFLIGHT-PREP-RUNBOOK.md"
-            exit 0
+          profile="${{ inputs.profile }}"
+          platform="${{ inputs.platform }}"
+          submit="${{ inputs.submit }}"
+          if [ "$profile" = "testflight" ] && [ "$platform" != "ios" ]; then
+            echo "::error::testflight profile is iOS-only; choose platform=ios"
+            exit 1
           fi
-          npm ci
+          if [ "$profile" = "preview" ] && [ "$submit" = "true" ]; then
+            echo "::error::preview is internal distribution and cannot be submitted to an app store"
+            exit 1
+          fi
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Install backend dependencies for release guards
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+
+      - name: Repo and EAS preflight
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: bash scripts/testflight-preflight.sh --ci --profile "${{ inputs.profile }}"
+
+      - name: EAS build and optional submit — wait for outcome
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "::error::EXPO_TOKEN is required; a release workflow may not pass without starting EAS"
+            exit 1
+          fi
+
           cd apps/mobile
           npx eas-cli@latest build \
             --platform "${{ inputs.platform }}" \
             --profile "${{ inputs.profile }}" \
             --non-interactive \
-            --no-wait
+            --wait
+
           if [ "${{ inputs.submit }}" = "true" ]; then
-            SUBMIT_PROFILE="${{ inputs.profile }}"
-            if [ "$SUBMIT_PROFILE" = "preview" ]; then SUBMIT_PROFILE="testflight"; fi
+            submit_profile="${{ inputs.profile }}"
             npx eas-cli@latest submit \
-              --platform ios \
-              --profile "$SUBMIT_PROFILE" \
+              --platform "${{ inputs.platform }}" \
+              --profile "$submit_profile" \
               --non-interactive \
-              --latest
+              --latest \
+              --wait
           fi

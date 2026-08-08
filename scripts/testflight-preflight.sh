@@ -1,61 +1,102 @@
 #!/usr/bin/env bash
-# Preflight before EAS TestFlight build. Exit 0 = repo ready; secrets/EAS account checked separately.
+# Fail-closed preflight before an EAS store/internal build.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+
 CI_MODE=0
-if [[ "${1:-}" == "--ci" ]]; then CI_MODE=1; fi
+PROFILE="testflight"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ci)
+      CI_MODE=1
+      shift
+      ;;
+    --profile)
+      PROFILE="${2:-}"
+      if [[ -z "$PROFILE" ]]; then echo "FAIL: --profile requires a value" >&2; exit 2; fi
+      shift 2
+      ;;
+    *)
+      echo "FAIL: unsupported argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 
-echo "=== TestFlight preflight (Renova v0.2) ==="
+case "$PROFILE" in
+  testflight|preview|production|staging) ;;
+  *) echo "FAIL: unsupported EAS profile: $PROFILE" >&2; exit 2 ;;
+esac
 
-echo "--- 1) mobile unit tests ---"
+echo "=== EAS preflight (profile=$PROFILE) ==="
+
+echo "--- 1) mobile unit/domain tests ---"
 npm run mobile:test
 
-echo "--- 2) eas.json profiles ---"
+echo "--- 2) EAS profile contracts ---"
 node apps/mobile/lib/__tests__/easProfiles.test.mjs
 
 
-echo "--- 2b) staging URL placeholder ---"
-if grep -q 'api-staging.example.com' apps/mobile/eas.json; then
-  echo "WARN: eas.json still has api-staging.example.com — set real staging URL before TestFlight"
-else
-  echo "OK: eas.json staging URL not placeholder"
-fi
+echo "--- 2b) selected profile API must be real HTTPS, not placeholder ---"
+PROFILE="$PROFILE" node - <<'NODE'
+const fs = require('fs');
+const eas = JSON.parse(fs.readFileSync('apps/mobile/eas.json', 'utf8'));
+const name = process.env.PROFILE;
+const profile = eas.build?.[name];
+if (!profile) throw new Error(`missing EAS build profile: ${name}`);
+const url = profile.env?.EXPO_PUBLIC_API_URL || '';
+if (!url.startsWith('https://')) throw new Error(`${name}: EXPO_PUBLIC_API_URL must use https (${url || 'empty'})`);
+if (/localhost|127\.0\.0\.1|example\.com/i.test(url)) {
+  throw new Error(`${name}: EXPO_PUBLIC_API_URL is local/placeholder (${url})`);
+}
+if (profile.env?.EXPO_PUBLIC_DEMO !== '0') throw new Error(`${name}: EXPO_PUBLIC_DEMO must be 0`);
+if (!['staging', 'production'].includes(profile.env?.EXPO_PUBLIC_APP_ENV)) {
+  throw new Error(`${name}: EXPO_PUBLIC_APP_ENV must be staging|production`);
+}
+console.log(`OK: ${name} -> ${url}`);
+NODE
 
-echo "--- 3) app version / bundle id ---"
+echo "--- 3) app version / bundle id / EAS project binding ---"
 node - <<'NODE'
 const fs = require('fs');
 const app = JSON.parse(fs.readFileSync('apps/mobile/app.json', 'utf8'));
+const pkg = JSON.parse(fs.readFileSync('apps/mobile/package.json', 'utf8'));
 const v = app.expo?.version;
 const bid = app.expo?.ios?.bundleIdentifier;
-if (!v || !v.startsWith('0.2')) throw new Error(`expected expo.version 0.2.x, got ${v}`);
+const projectId = app.expo?.extra?.eas?.projectId;
+if (!v || v !== pkg.version) throw new Error(`app/package version mismatch: app=${v} package=${pkg.version}`);
 if (bid !== 'ru.renova.app') throw new Error(`unexpected bundleIdentifier: ${bid}`);
-console.log(`OK: version=${v} bundle=${bid}`);
+if (!projectId || typeof projectId !== 'string') {
+  throw new Error('EAS project is not linked: apps/mobile/app.json must contain expo.extra.eas.projectId');
+}
+console.log(`OK: version=${v} bundle=${bid} EAS project linked`);
 NODE
 
-echo "--- 4) priority guards (backend) ---"
+echo "--- 4) priority backend guards ---"
 npm run test:guards
 
-if [[ "$CI_MODE" -eq 0 ]]; then
-  echo "--- 5) optional: EAS CLI ---"
-  if command -v eas >/dev/null 2>&1 || npx eas --version >/dev/null 2>&1; then
-    echo "EAS CLI available"
-    if [[ -n "${EXPO_TOKEN:-}" ]]; then
-      echo "EXPO_TOKEN set (local)"
-    else
-      echo "WARN: EXPO_TOKEN not set — CI/GitHub Actions build needs repo secret"
-    fi
-  else
-    echo "WARN: eas cli not installed globally (npx eas works in CI)"
-  fi
-  echo "--- 6) optional: API e2e ---"
-  if curl -sf --max-time 2 http://127.0.0.1:8100/health >/dev/null; then
-    bash scripts/e2e-smoke.sh
-  else
-    echo "WARN: API :8100 down — skip live e2e"
-  fi
-else
-  echo "--- 5) CI mode: skip EAS token / live e2e ---"
+echo "--- 5) EAS authentication — REQUIRED ---"
+if [[ -z "${EXPO_TOKEN:-}" ]]; then
+  echo "FAIL: EXPO_TOKEN is required for non-interactive EAS build/submit" >&2
+  exit 1
 fi
 
-echo "=== TestFlight preflight PASS ==="
+echo "--- 6) EAS account/project probe ---"
+cd apps/mobile
+npx eas-cli@latest whoami
+npx eas-cli@latest project:info
+cd "$ROOT"
+
+if [[ "$CI_MODE" -eq 0 ]]; then
+  echo "--- 7) local API E2E — REQUIRED for local release preflight ---"
+  if ! curl -sf --max-time 2 http://127.0.0.1:8100/health >/dev/null; then
+    echo "FAIL: API :8100 unavailable; local release preflight cannot skip E2E" >&2
+    exit 1
+  fi
+  bash scripts/e2e-smoke.sh
+else
+  echo "--- 7) CI mode: local API E2E is provided by repository CI; EAS auth/project still verified above ---"
+fi
+
+echo "=== EAS preflight PASS: repository + profile + project binding + auth verified ==="
