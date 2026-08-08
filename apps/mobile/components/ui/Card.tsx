@@ -36,7 +36,7 @@ export function Card({ children, variant = 'base', style, onPress }: Props) {
   if (onPress) {
     return (
       <Pressable
-        style={({ pressed }) => [boxStyle, pressed && s.pressed]}
+        style={({ pressed }: { pressed: boolean }) => [boxStyle, pressed && s.pressed]}
         onPress={onPress}
         accessibilityRole="button"
       >

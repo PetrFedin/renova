@@ -15,13 +15,13 @@ async function main() {
   await sleep(18);
   if (burstCalls !== 1) throw new Error(`burst must collapse to one call, got ${burstCalls}`);
 
-  let releaseFirst: (() => void) | null = null;
+  const firstRelease: { current: (() => void) | null } = { current: null };
   let trailingCalls = 0;
   const trailing = createTrailingReloadScheduler(
     async () => {
       trailingCalls += 1;
       if (trailingCalls === 1) {
-        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        await new Promise<void>((resolve) => { firstRelease.current = resolve; });
       }
     },
     { debounceMs: 5, maxWaitMs: 20 },
@@ -31,7 +31,7 @@ async function main() {
   await sleep(2);
   trailing.schedule();
   trailing.schedule();
-  releaseFirst?.();
+  firstRelease.current?.();
   await sleep(25);
   if (trailingCalls !== 2) throw new Error(`active reload must get one trailing call, got ${trailingCalls}`);
 
