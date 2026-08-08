@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-PR gate for develop → main. Exit 0 only if automated checklist criteria green.
+# Pre-PR gate for develop/main integration. Exit 0 only if required automated criteria actually ran and passed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -7,25 +7,29 @@ cd "$ROOT"
 echo "=== 1) npm test:priority ==="
 npm run test:priority
 
-echo "=== 2) e2e (needs API :8100) ==="
-if curl -sf --max-time 2 http://127.0.0.1:8100/health >/dev/null; then
-  bash scripts/e2e-smoke.sh
-  npm run e2e:api
-  npm run cleanup:e2e-gate || true
-else
-  echo "WARN: API :8100 down — skip live e2e (run with API up before merge)"
+echo "=== 2) API E2E — REQUIRED ==="
+if ! curl -sf --max-time 2 http://127.0.0.1:8100/health >/dev/null; then
+  echo "FAIL: API :8100 is unavailable; live E2E may not be skipped by merge-readiness" >&2
+  echo "Start the backend, then rerun npm run merge:check." >&2
+  exit 1
 fi
+bash scripts/e2e-smoke.sh
+npm run e2e:api
+npm run cleanup:e2e-gate || true
 
-echo "=== 2b) Playwright UI smoke (needs :8100 + :8081) ==="
-if curl -sf --max-time 2 http://127.0.0.1:8100/health >/dev/null && curl -sf --max-time 2 http://127.0.0.1:8081 >/dev/null; then
-  npm run e2e:portal-ui
-  npm run e2e:contract-gate-ui
-else
-  echo "WARN: skip Playwright UI (start backend :8100 + mobile web :8081)"
+echo "=== 2b) Playwright UI smoke — REQUIRED ==="
+if ! curl -sf --max-time 2 http://127.0.0.1:8081 >/dev/null; then
+  echo "FAIL: mobile web :8081 is unavailable; UI E2E may not be skipped by merge-readiness" >&2
+  echo "Start mobile web, then rerun npm run merge:check." >&2
+  exit 1
 fi
+npm run e2e:portal-ui
+npm run e2e:contract-gate-ui
 
-echo "=== 3) staging env dry-smoke ==="
-bash scripts/staging-env-smoke.sh
+echo "=== 3) configured staging-runtime dry smoke ==="
+# This verifies configuration/runtime policy only. Remote staging is a separate
+# release gate and must never be implied by this merge gate.
+REQUIRE_REMOTE=0 bash scripts/staging-env-smoke.sh
 
 echo "=== 4) SECRET_KEY guard proof ==="
 cd "$ROOT/backend"
@@ -79,5 +83,5 @@ fi
 echo "OK: no unexpected weak SECRET literals"
 
 echo ""
-echo "merge-readiness: PASS"
-echo "Next: open PR develop→main using docs/MERGE-DEVELOP-TO-MAIN.md (do not auto-merge)"
+echo "merge-readiness: PASS (priority + API E2E + UI E2E + configured-runtime policy verified)"
+echo "Remote staging/TestFlight readiness is intentionally separate and must use the live release gates."
