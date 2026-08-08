@@ -35,6 +35,12 @@ import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { setCustomerBudget } from '@/lib/customerBudgetPrefs';
 import { normalizeCustomerBudget } from '@/lib/customerBudgetSync';
 import { registerNativePushToken } from '@/lib/nativeNotifications';
+import {
+  NOT_APPLICABLE_TEAM_ACCESS,
+  UNRESOLVED_TEAM_ACCESS,
+  resolveTeamAccess,
+  type TeamAccess,
+} from '@/lib/domain/teamAccess';
 
 const LOGIN_TIMEOUT_MS = 15_000;
 
@@ -170,12 +176,32 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const ensureAttemptKeyRef = useRef<string | null>(null);
   const [wizard, setWizardState] = useState<WizardDraft>(defaultWizard);
   const [paywallVisible, setPaywallVisible] = useState(false);
+  /** Project/portal restriction only. Team restriction is composed separately below. */
   const [readOnly, setReadOnly] = useState(false);
-  /** W68 #43: роль в бригаде owner|foreman|member|viewer */
-  const [teamRole, setTeamRole] = useState<string | null>(null);
+  const [teamAccess, setTeamAccess] = useState<TeamAccess>(NOT_APPLICABLE_TEAM_ACCESS);
+  const effectiveReadOnly = readOnly || teamAccess.readOnly;
+  const teamRole = teamAccess.role;
 
   const setWizard = useCallback((p: Partial<WizardDraft>) => {
     setWizardState((w) => ({ ...w, ...p }));
+  }, []);
+
+  const refreshTeamAccess = useCallback(async (u: User) => {
+    if (u.role !== 'contractor') {
+      setTeamAccess(NOT_APPLICABLE_TEAM_ACCESS);
+      return;
+    }
+
+    // While authorization is being resolved, writes are disabled. A project refresh
+    // cannot override this because teamAccess is composed separately from readOnly.
+    setTeamAccess(UNRESOLVED_TEAM_ACCESS);
+    try {
+      const team = await api.getTeam(u.id);
+      setTeamAccess(resolveTeamAccess({ userId: u.id, userRole: u.role, team }));
+    } catch (error) {
+      setTeamAccess(UNRESOLVED_TEAM_ACCESS);
+      reportError('renovaContext.teamAccess', error, { userId: u.id });
+    }
   }, []);
 
   const refreshProjects = useCallback(async () => {
@@ -197,12 +223,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const u = await api.me(user.id);
     setUser(u);
-    try {
-      const team = await api.getTeam(u.id);
-      const me = team?.members?.find((m: any) => m.user_id === u.id);
-      setReadOnly(false);
-    } catch { setReadOnly(false); }
-  }, [user?.id]);
+    await refreshTeamAccess(u);
+  }, [user?.id, refreshTeamAccess]);
 
   const loadProject = useCallback(
     async (id: string) => {
@@ -267,24 +289,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const applySession = useCallback(async (u: User, list: ProjectSummary[]) => {
     await persistAccessToken(u);
     setUser(u);
+    setReadOnly(false);
     const enriched = await enrichProjectsPendingPayments(u.id, list, u.role);
     setProjects(enriched);
-    try {
-      const team = await api.getTeam(u.id);
-      const me = team?.members?.find((m: { user_id: string; role?: string }) => m.user_id === u.id);
-      if (u.role === 'contractor') {
-        setTeamRole(me?.role || 'owner');
-        setReadOnly(me?.role === 'viewer');
-      } else {
-        setTeamRole(null);
-      }
-    } catch {
-      setReadOnly(false);
-    }
+    await refreshTeamAccess(u);
     const pendingPick = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
     // pendingProjectPick=1 — только явный экран выбора (onboarding); demo auto-load ниже
     if (pendingPick === '1') {
       setActiveProject(null);
+      setReadOnly(false);
       return;
     }
     const pid = await AsyncStorage.getItem(KEYS.projectId);
@@ -304,8 +317,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       }
     } else {
       setActiveProject(null);
+      setReadOnly(false);
     }
-  }, []);
+  }, [refreshTeamAccess]);
 
   const recoverSession = useCallback(async () => {
     const reachable = await pingApi();
@@ -319,12 +333,14 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     if (user) {
+      await refreshTeamAccess(user);
       const raw = await listProjectsWithRetry(user.id, 4);
       const list = user ? await enrichProjectsPendingPayments(user.id, raw, user.role) : raw;
       setProjects(list);
       const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
       if (pending === '1') {
         setActiveProject(null);
+        setReadOnly(false);
         return;
       }
       if (list.length) {
@@ -336,7 +352,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [user, applySession]);
+  }, [user, applySession, refreshTeamAccess]);
 
   useEffect(() => {
     (async () => {
@@ -411,11 +427,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const u = await withTimeout(api.demoLogin(role), LOGIN_TIMEOUT_MS, 'Превышено время ожидания сервера');
     await persistAccessToken(u);
     setUser(u);
-    try {
-      const team = await api.getTeam(u.id);
-      const me = team?.members?.find((m: any) => m.user_id === u.id);
-      setReadOnly(me?.role === 'viewer');
-    } catch { setReadOnly(false); }
+    setReadOnly(false);
+    await refreshTeamAccess(u);
     deferPushRegistration(u.id);
     await AsyncStorage.setItem(KEYS.userId, u.id);
     await AsyncStorage.setItem('renova_user_role', role);
@@ -428,10 +441,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     }
     setProjects(list);
     setActiveProject(null);
+    setReadOnly(false);
     await AsyncStorage.removeItem(KEYS.projectId);
     await AsyncStorage.removeItem(SESSION_KEYS.projectExplicitlyPicked);
     await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
-  }, []);
+  }, [refreshTeamAccess]);
 
 
   const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
@@ -439,6 +453,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     await persistAccessToken(u);
     await AsyncStorage.setItem(KEYS.userId, u.id);
     setUser(u);
+    setReadOnly(false);
+    await refreshTeamAccess(u);
     const raw = await api.listProjects(u.id);
     const list = await enrichProjectsPendingPayments(u.id, raw, role);
     setProjects(list);
@@ -448,25 +464,24 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       let detail = await api.getProject(u.id, pickId);
       detail = await syncCustomerBudgetOnLoad(u, detail);
       setActiveProject(detail);
+      setReadOnly(!!detail.read_only);
       await AsyncStorage.setItem(KEYS.projectId, pickId);
       await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
     } else {
       setActiveProject(null);
+      setReadOnly(false);
       await AsyncStorage.removeItem(KEYS.projectId);
       await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
     }
     deferPushRegistration(u.id);
-  }, []);
+  }, [refreshTeamAccess]);
 
   const register = useCallback(async (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const u = await api.register({ phone, role, ...extra });
     await persistAccessToken(u);
     setUser(u);
-        try {
-          const team = await api.getTeam(u.id);
-          const me = team?.members?.find((m: any) => m.user_id === u.id);
-          setReadOnly(me?.role === 'viewer');
-        } catch { setReadOnly(false); }
+    setReadOnly(false);
+    await refreshTeamAccess(u);
     deferPushRegistration(u.id);
     await AsyncStorage.setItem(KEYS.userId, u.id);
     if (role === 'contractor') {
@@ -474,7 +489,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       const list = await enrichProjectsPendingPayments(u.id, raw, role);
       setProjects(list);
     }
-  }, []);
+  }, [refreshTeamAccess]);
 
   const createProjectFromWizard = useCallback(async (extra?: Partial<WizardDraft>): Promise<CreateProjectResult> => {
     if (!user) throw new Error('no user');
@@ -513,6 +528,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       if (primaryId) {
         const primaryDetail = await api.getProject(user.id, primaryId);
         setActiveProject(primaryDetail);
+        setReadOnly(!!primaryDetail.read_only);
         await AsyncStorage.setItem(KEYS.projectId, primaryId);
         await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
         return {
@@ -522,6 +538,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setActiveProject(detail);
+    setReadOnly(!!detail.read_only);
     await AsyncStorage.setItem(KEYS.projectId, created.id);
     await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
     await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
@@ -548,6 +565,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setActiveProject(p);
+    setReadOnly(!!p.read_only);
 
     try {
       await refreshProjects();
@@ -613,6 +631,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setProjects([]);
     setActiveProject(null);
+    setReadOnly(false);
+    setTeamAccess(NOT_APPLICABLE_TEAM_ACCESS);
     setWizardState(defaultWizard);
   }, []);
 
@@ -644,16 +664,16 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       paywallVisible,
       showPaywall: () => setPaywallVisible(true),
       hidePaywall: () => setPaywallVisible(false),
-      readOnly,
+      readOnly: effectiveReadOnly,
       teamRole,
       isContractorOwner: Boolean(
         user?.role === 'contractor'
-        && (!teamRole || teamRole === 'owner')
+        && teamAccess.ownerLike
         && activeProject
         && activeProject.contractor_id === user.id
       ),
     }),
-    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, readOnly, teamRole],
+    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, effectiveReadOnly, teamRole, teamAccess.ownerLike],
   );
 
   return (
