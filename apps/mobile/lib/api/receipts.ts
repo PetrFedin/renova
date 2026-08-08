@@ -26,7 +26,7 @@ export const receiptsApi = {
     };
     const serialized = JSON.stringify(body);
     try {
-      return await req(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: serialized }, userId);
+      return await req<ReceiptItem>(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: serialized }, userId);
     } catch (error) {
       if (error instanceof ApiError) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
