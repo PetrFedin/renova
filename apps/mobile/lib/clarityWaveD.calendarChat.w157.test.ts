@@ -21,12 +21,19 @@ console.assert(createChat.includes('variant="ghost"') && createChat.includes('ti
 console.assert(createChat.includes('minHeight: RenovaTheme.minTouch'), 'create chat participant touch target');
 console.assert(cal.includes('planExpanded') && cal.includes('План-график и задачи · развернуть'), 'cal day plan collapse');
 console.assert(cal.includes('filtersOpen') && cal.includes('Фильтры'), 'cal filters secondary');
-console.assert(cal.includes('день = список дел'), 'cal day-first comment');
+console.assert(
+  cal.includes('const [selectedDate') &&
+    cal.includes('const [dayDetailOpen') &&
+    cal.includes('setDayDetailOpen(true)') &&
+    cal.includes('<ScheduleDayDetail'),
+  'cal day-first detail',
+);
 
 const ok =
   !home.includes("from '@/components/renova/os/WeekScheduleStrip'") &&
   !chat.includes('unreadBanner') &&
   createChat.includes('const busyRef = useRef(false)') &&
-  cal.includes('planExpanded');
+  cal.includes('planExpanded') &&
+  cal.includes('setDayDetailOpen(true)');
 if (!ok) process.exit(1);
 console.log('clarityWaveD.calendarChat.w157.test OK');

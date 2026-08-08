@@ -1,8 +1,8 @@
 /** W126: гарантия post-closeout → QC / closeout SoT (Buildertrend heritage) */
-import { Alert } from 'react-native';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { warrantyRoute } from '@/lib/navigation/navigationPolicy';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export type WarrantyCreateInfo = {
   issue_id?: string;
@@ -44,30 +44,26 @@ export function alertWarrantyCreated(
   info: WarrantyCreateInfo,
   opts?: { openCount?: number; returnTo?: string },
 ) {
-  Alert.alert('Гарантия', warrantyCreatedMessage(info, opts?.openCount), [
-    { text: 'OK' },
-    {
-      text: role === 'contractor' ? 'Открыть контроль' : 'Открыть обращение',
-      onPress: () => pushOsNav(
-        warrantyRoute(role, warrantyNavigationParams(info)),
-        opts?.returnTo,
-        role,
-      ),
-    },
-  ]);
+  showActionConfirm({
+    title: 'Гарантия',
+    message: warrantyCreatedMessage(info, opts?.openCount),
+    primaryLabel: role === 'contractor' ? 'Открыть контроль' : 'Открыть обращение',
+    onPrimary: () => pushOsNav(
+      warrantyRoute(role, warrantyNavigationParams(info)),
+      opts?.returnTo,
+      role,
+    ),
+    secondaryLabel: 'Позже',
+  });
 }
 
 /** Закрыто заказчиком → путь к closeout / документам */
 export function alertWarrantyClosed(role: OsRole) {
-  Alert.alert(
-    'Гарантия закрыта',
-    'Если остальные гейты готовы — можно завершить объект в Документах.',
-    [
-      { text: 'OK' },
-      {
-        text: 'К завершению',
-        onPress: () => pushOsNav('/documents', undefined, role),
-      },
-    ],
-  );
+  showActionConfirm({
+    title: 'Гарантия закрыта',
+    message: 'Если остальные гейты готовы — можно завершить объект в Документах.',
+    primaryLabel: 'К завершению',
+    onPrimary: () => pushOsNav('/documents', undefined, role),
+    secondaryLabel: 'Позже',
+  });
 }
