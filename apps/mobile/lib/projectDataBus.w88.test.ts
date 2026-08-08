@@ -11,23 +11,24 @@ import {
 
 async function main() {
   let n = 0;
+  const count = () => n;
   const off = subscribeProjectDataChanged(() => {
     n += 1;
   });
 
   notifyProjectDataChanged();
-  if (n !== 1) throw new Error(`notify expected 1, got ${n}`);
+  if (count() !== 1) throw new Error(`notify expected 1, got ${count()}`);
 
   await syncProjectSideEffects({ user: null, project: null });
-  if (n !== 2) throw new Error(`sync empty expected 2, got ${n}`);
+  if (count() !== 2) throw new Error(`sync empty expected 2, got ${count()}`);
 
   await runWithProjectSideEffects({ user: null, project: null }, async () => 88);
-  if (n !== 3) throw new Error(`runWith expected 3, got ${n}`);
+  if (count() !== 3) throw new Error(`runWith expected 3, got ${count()}`);
 
   off();
-  const frozen = n;
+  const frozen = count();
   notifyProjectDataChanged();
-  if (n !== frozen) throw new Error('listener leaked');
+  if (count() !== frozen) throw new Error('listener leaked');
 
   console.log('projectDataBus.w88.test OK');
 }
