@@ -391,7 +391,7 @@ export function ChatThreadView({
         <TextInput
           style={s.input}
           value={text}
-          onChangeText={(v) => { setText(v); wsSend({ type: 'typing' }); }}
+          onChangeText={(v: string) => { setText(v); wsSend({ type: 'typing' }); }}
           placeholder="Сообщение…"
           editable={canWrite}
           multiline

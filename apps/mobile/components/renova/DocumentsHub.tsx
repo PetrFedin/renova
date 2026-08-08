@@ -829,7 +829,7 @@ export function DocumentsHub({
             return (
               <Pressable
                 key={doc.id}
-                style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
+                style={({ pressed }: { pressed: boolean }) => [s.recentRow, pressed && s.rowPressed]}
                 onPress={() => openIndexedDocument(doc)}
                 disabled={Boolean(busy)}
                 accessibilityRole="button"
@@ -894,7 +894,7 @@ export function DocumentsHub({
               return (
                 <Pressable
                   key={doc.id}
-                  style={({ pressed }) => [s.recentRow, pressed && s.rowPressed]}
+                  style={({ pressed }: { pressed: boolean }) => [s.recentRow, pressed && s.rowPressed]}
                   onPress={() => openIndexedDocument(doc)}
                   disabled={Boolean(busy)}
                   accessibilityRole="button"
@@ -954,7 +954,7 @@ export function DocumentsHub({
                   return (
                     <Pressable
                       key={row.id}
-                      style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+                      style={({ pressed }: { pressed: boolean }) => [s.row, pressed && s.rowPressed]}
                       onPress={() => onRowPress(row)}
                       disabled={!!busy}
                       accessibilityRole="button"

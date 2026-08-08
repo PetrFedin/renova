@@ -293,7 +293,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
 
       <Modal visible={!!editLine} transparent animationType="fade" onRequestClose={() => setEditLine(null)}>
         <Pressable style={s.modalBackdrop} onPress={() => setEditLine(null)}>
-          <Pressable style={s.modalSheet} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={s.modalSheet} onPress={(e: { stopPropagation: () => void }) => e.stopPropagation()}>
             <Text style={s.modalTitle}>Редактировать</Text>
             <TextInput
               style={s.input}
