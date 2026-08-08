@@ -1,0 +1,109 @@
+name: Agent npm security safe fixes
+
+on:
+  push:
+    branches:
+      - agent/npm-security-safe-fixes
+    paths:
+      - .github/workflows/agent-npm-security-safe-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  safe-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/npm-security-safe-fixes
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Capture baseline and apply no-force lockfile fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp package.json /tmp/package.json.before
+          cp apps/mobile/package.json /tmp/mobile-package.json.before
+
+          set +e
+          npm audit --omit=dev --json > /tmp/audit-before.json
+          before_exit=$?
+          npm audit fix --package-lock-only --ignore-scripts > /tmp/audit-fix.log 2>&1
+          fix_exit=$?
+          npm audit --omit=dev --json > /tmp/audit-after.json
+          after_exit=$?
+          set -e
+
+          echo "BASELINE_AUDIT_EXIT=$before_exit"
+          echo "AUDIT_FIX_EXIT=$fix_exit"
+          echo "AFTER_AUDIT_EXIT=$after_exit"
+          cat /tmp/audit-fix.log
+
+          cmp --silent package.json /tmp/package.json.before || { echo 'FAIL: root package.json changed'; exit 1; }
+          cmp --silent apps/mobile/package.json /tmp/mobile-package.json.before || { echo 'FAIL: mobile package.json changed'; exit 1; }
+
+          node <<'NODE'
+          const fs = require('fs');
+          const before = JSON.parse(fs.readFileSync('/tmp/audit-before.json', 'utf8'));
+          const after = JSON.parse(fs.readFileSync('/tmp/audit-after.json', 'utf8'));
+          const b = before.metadata?.vulnerabilities || {};
+          const a = after.metadata?.vulnerabilities || {};
+          console.log('BEFORE_PROD', JSON.stringify(b));
+          console.log('AFTER_PROD', JSON.stringify(a));
+          const beforeHigh = (b.high || 0) + (b.critical || 0);
+          const afterHigh = (a.high || 0) + (a.critical || 0);
+          if (afterHigh >= beforeHigh) {
+            throw new Error(`safe lockfile fix did not reduce high/critical production advisories: ${beforeHigh} -> ${afterHigh}`);
+          }
+          if ((a.critical || 0) > 0) throw new Error('critical production advisory remains');
+          NODE
+
+          changed="$(git diff --name-only)"
+          printf 'CHANGED_FILES:\n%s\n' "$changed"
+          test "$changed" = 'package-lock.json' || { echo 'FAIL: safe fix changed files other than package-lock.json'; exit 1; }
+
+      - name: Install updated lockfile
+        run: npm ci
+
+      - name: Verify direct runtime versions did not regress
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const lock = require('./package-lock.json');
+          const expo = lock.packages?.['node_modules/expo']?.version;
+          const rn = lock.packages?.['node_modules/react-native']?.version;
+          const react = lock.packages?.['node_modules/react']?.version;
+          console.log(JSON.stringify({ expo, reactNative: rn, react }));
+          if (!expo?.startsWith('56.')) throw new Error(`Expo major/minor regressed: ${expo}`);
+          if (!rn?.startsWith('0.85.')) throw new Error(`React Native major/minor regressed: ${rn}`);
+          if (!react?.startsWith('19.2.')) throw new Error(`React version regressed: ${react}`);
+          NODE
+
+      - name: Verify mobile and runtime contracts
+        run: |
+          npm run typecheck:mobile
+          npm run mobile:test
+          npm run test:offline
+          npm run test:routes
+          npm run test:docs-meta
+          npm run test:docs-upload
+          npm run testflight:eas
+
+      - name: Commit validated lockfile and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'renova-agent'
+          git config user.email '81327591+PetrFedin@users.noreply.github.com'
+          git rm .github/workflows/agent-npm-security-safe-fixes.yml
+          git add package-lock.json
+          git commit -m 'chore(deps): apply safe npm security lockfile fixes'
+          git push origin HEAD:agent/npm-security-safe-fixes
