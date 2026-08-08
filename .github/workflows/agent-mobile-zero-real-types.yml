@@ -1,0 +1,118 @@
+name: Agent mobile zero-real-types codemod
+
+on:
+  push:
+    branches:
+      - agent/mobile-zero-real-types
+    paths:
+      - .github/workflows/agent-mobile-zero-real-types.yml
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/mobile-zero-real-types
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply exact contract fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} occurrence(s), found {count}: {old!r}")
+              p.write_text(text.replace(old, new))
+
+          replace_exact(
+              'apps/mobile/components/renova/DocumentsHub.tsx',
+              'style={({ pressed }) =>',
+              'style={({ pressed }: { pressed: boolean }) =>',
+              3,
+          )
+          replace_exact(
+              'apps/mobile/components/renova/chat/ChatThreadView.tsx',
+              "onChangeText={(v) => { setText(v); wsSend({ type: 'typing' }); }}",
+              "onChangeText={(v: string) => { setText(v); wsSend({ type: 'typing' }); }}",
+          )
+          replace_exact(
+              'apps/mobile/components/screens/ScratchpadScreen.tsx',
+              'onPress={(e) => e.stopPropagation()}',
+              'onPress={(e: { stopPropagation: () => void }) => e.stopPropagation()}',
+          )
+
+          project_os = 'apps/mobile/lib/domain/buildProjectOsSnapshot.ts'
+          replace_exact(
+              project_os,
+              "  })();\n\n  let nextAction: ProjectOsSnapshot['nextAction'];",
+              "  })();\n\n  const paymentsHref = budgetTabRoute(\n    role,\n    'payments',\n    role === 'customer' ? { openPayment: '1' } : undefined,\n  );\n\n  let nextAction: ProjectOsSnapshot['nextAction'];",
+          )
+          replace_exact(
+              project_os,
+              "budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined)",
+              'paymentsHref',
+              5,
+          )
+          replace_exact(
+              project_os,
+              "plannedEnd: osSchedule?.planned_end || project.planned_end_date || stages.find((s) => s.status !== 'done')?.planned_end || undefined,",
+              "plannedEnd: (osSchedule?.planned_end || project.planned_end_date || stages.find((s) => s.status !== 'done')?.planned_end) ?? undefined,",
+          )
+
+          typecheck = 'scripts/typecheck-mobile.sh'
+          replace_exact(
+              typecheck,
+              'target on 2026-08-08: 8 non-TS2786/non-TS2607 diagnostics.',
+              'target on 2026-08-08: 0 non-TS2786/non-TS2607 diagnostics.',
+          )
+          replace_exact(
+              typecheck,
+              'BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-8}"',
+              'BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-0}"',
+          )
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prove zero real TypeScript diagnostics
+        run: npm run typecheck:mobile
+
+      - name: Run focused runtime contracts
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/trailingReloadScheduler.test.ts
+          npx tsx apps/mobile/lib/detailLevelPolicy.test.ts
+          npx tsx apps/mobile/lib/chatAttention.test.ts
+          npx tsx apps/mobile/lib/chatProjectFilter.test.ts
+
+      - name: Commit validated codemod and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "renova-agent"
+          git config user.email "81327591+PetrFedin@users.noreply.github.com"
+          git rm .github/workflows/agent-mobile-zero-real-types.yml
+          git add apps/mobile/components/renova/DocumentsHub.tsx \
+                  apps/mobile/components/renova/chat/ChatThreadView.tsx \
+                  apps/mobile/components/screens/ScratchpadScreen.tsx \
+                  apps/mobile/lib/domain/buildProjectOsSnapshot.ts \
+                  scripts/typecheck-mobile.sh
+          git commit -m "fix(mobile): reach zero real TypeScript diagnostics"
+          git push origin HEAD:agent/mobile-zero-real-types
