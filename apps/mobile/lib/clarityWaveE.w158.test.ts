@@ -17,10 +17,14 @@ const i18n = readFileSync(join(mobile, 'lib/i18n.ts'), 'utf8');
 const design = readFileSync(join(mobile, 'components/renova/DesignPackageList.tsx'), 'utf8');
 
 console.assert(menu.includes('Ещё') && moreMenuA11yLabel(0) === 'Ещё', 'header Ещё');
-console.assert(home.includes("title=\"Сводка\"") && home.includes("moneyZoneTitle = 'Деньги'"), 'Сводка≠Деньги');
+console.assert(
+  home.includes("const moneyZoneTitle = role === 'customer' ? 'Деньги' : 'Сводка';") &&
+    home.includes('title={moneyZoneTitle}'),
+  'Сводка≠Деньги',
+);
 console.assert(host.includes('ActionConfirmSheet') && ctx.includes('ActionConfirmHost'), 'host wired');
 console.assert(offline.includes('showActionConfirm') && !offline.includes('Alert.alert'), 'offline sheet');
-console.assert(warranty.includes('showActionConfirm') && closeout.includes('showActionConfirm'), 'nav sheets');
+console.assert(warranty.includes('showActionConfirm') && !warranty.includes('Alert.alert') && closeout.includes('showActionConfirm'), 'nav sheets');
 console.assert(!HOME_WIDGET_STANDARD.includes('activity'), 'standard no activity');
 console.assert(HOME_WIDGET_PRESETS.detailed.ids.includes('activity'), 'detailed keeps activity');
 console.assert(widgets.includes('в блоке «Сводка»'), 'activity hint Сводка');
@@ -30,6 +34,8 @@ console.assert(design.includes("'+ Загрузить PDF'"), 'design contractor
 const ok =
   moreMenuA11yLabel(0) === 'Ещё' &&
   !HOME_WIDGET_STANDARD.includes('activity') &&
-  offline.includes('showActionConfirm');
+  offline.includes('showActionConfirm') &&
+  warranty.includes('showActionConfirm') &&
+  !warranty.includes('Alert.alert');
 if (!ok) process.exit(1);
 console.log('clarityWaveE.w158.test OK');
