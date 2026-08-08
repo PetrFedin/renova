@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# W54: единый H0 gate перед демо инвестору / TestFlight.
+# W54: единый H0 gate перед инвесторским показом / TestFlight.
+# --strict is a real release gate: it always performs live Bearer verification.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -10,9 +11,12 @@ for arg in "$@"; do
   case "$arg" in
     --strict) STRICT=1 ;;
     --live) LIVE=1 ;;
+    *) echo "FAIL unsupported argument: $arg" >&2; exit 2 ;;
   esac
 done
+if [[ "$STRICT" -eq 1 ]]; then LIVE=1; fi
 
+LIVE_TOKEN="${TOKEN:-${H0_TOKEN:-}}"
 FAIL=0
 WARN=0
 pass() { echo "OK  $*"; }
@@ -20,37 +24,35 @@ warn() { echo "WARN $*"; WARN=$((WARN + 1)); }
 fail() { echo "FAIL $*"; FAIL=$((FAIL + 1)); }
 
 echo "=== Renova H0 check (investor / TestFlight gate) ==="
+echo "mode: strict=$STRICT live=$LIVE"
 
 echo ""
-echo "--- 1) EAS profiles (no localhost on release) ---"
+echo "--- 1) EAS profiles / placeholder release URLs ---"
 if node apps/mobile/lib/__tests__/easProfiles.test.mjs; then
-  pass "eas profiles"
+  pass "eas profile structure"
 else
-  fail "eas profiles"
+  fail "eas profile structure"
 fi
-
-echo ""
-echo "--- 2) Placeholder staging URL ---"
-if grep -q 'api-staging.example.com' apps/mobile/eas.json; then
+if grep -Eq 'https://[^" ]*example\.com' apps/mobile/eas.json; then
   if [[ "$STRICT" -eq 1 ]]; then
-    fail "eas.json still has api-staging.example.com — set real HTTPS API before TF"
+    fail "eas.json still contains placeholder example.com API URLs"
   else
-    warn "eas.json has api-staging.example.com (use --strict to fail)"
+    warn "eas.json still contains placeholder example.com API URLs"
   fi
 else
-  pass "eas.json staging URL not placeholder"
+  pass "eas.json release API URLs are not placeholders"
 fi
 
 echo ""
-echo "--- 3) Local env hints (optional .env) ---"
+echo "--- 2) Local configured-runtime hints ---"
 load_env() {
-  local f="$1"
-  if [[ -f "$f" ]]; then
+  local file="$1"
+  if [[ -f "$file" ]]; then
     set -a
     # shellcheck disable=SC1090
-    source "$f"
+    source "$file"
     set +a
-    echo "loaded $f"
+    echo "loaded $file"
   fi
 }
 load_env "backend/.env" || true
@@ -62,31 +64,31 @@ PUB="${PUBLIC_BASE_URL:-}"
 YK_SHOP="${YOOKASSA_SHOP_ID:-}"
 YK_SEC="${YOOKASSA_SECRET:-}"
 
-echo "ENVIRONMENT=${ENV_NAME}"
+echo "ENVIRONMENT=$ENV_NAME"
 if [[ "$ENV_NAME" == "staging" || "$ENV_NAME" == "production" ]]; then
-  pass "environment is $ENV_NAME"
+  pass "local environment policy is $ENV_NAME"
 else
-  warn "ENVIRONMENT=$ENV_NAME (for pilot set staging)"
+  warn "local ENVIRONMENT=$ENV_NAME; live release truth is verified remotely below"
 fi
 
 if [[ -n "$PUB" ]]; then
-  if [[ "$PUB" == https://* ]] && [[ "$PUB" != *localhost* ]] && [[ "$PUB" != *127.0.0.1* ]]; then
-    pass "PUBLIC_BASE_URL https + not localhost"
+  if [[ "$PUB" == https://* ]] && [[ "$PUB" != *localhost* ]] && [[ "$PUB" != *127.0.0.1* ]] && [[ "$PUB" != *example.com* ]]; then
+    pass "PUBLIC_BASE_URL is real HTTPS"
   else
-    fail "PUBLIC_BASE_URL must be https://... (not localhost): $PUB"
+    fail "PUBLIC_BASE_URL must be real https://... and not localhost/example.com: $PUB"
   fi
 else
-  warn "PUBLIC_BASE_URL empty (set in staging secrets)"
+  warn "PUBLIC_BASE_URL is not present locally"
 fi
 
 if [[ -n "$YK_SHOP" && -n "$YK_SEC" ]]; then
-  pass "YOOKASSA_* present in env"
+  pass "YOOKASSA_* present locally"
 else
-  warn "YOOKASSA_SHOP_ID/SECRET missing locally (must be on staging server)"
+  warn "YOOKASSA_* not present locally; remote readiness must prove payment mode"
 fi
 
 echo ""
-echo "--- 3b) WebSocket deps (uvicorn /ws/inbox) ---"
+echo "--- 3) WebSocket/runtime prerequisites ---"
 PY_BACKEND="python3"
 if [[ -x backend/.venv/bin/python ]]; then
   PY_BACKEND="backend/.venv/bin/python"
@@ -96,144 +98,125 @@ fi
 if "$PY_BACKEND" -c "import websockets; import uvicorn" >/dev/null 2>&1; then
   pass "websockets + uvicorn importable ($PY_BACKEND)"
 else
-  fail "websockets missing in $PY_BACKEND — poetry install / add websockets (else /ws/inbox 404)"
+  fail "websockets/uvicorn missing in $PY_BACKEND"
 fi
 
-echo ""
-echo "--- 4) Client API guard unit ---"
 if (cd apps/mobile && npx tsx lib/apiBaseGuard.test.ts); then
-  pass "apiBaseGuard"
+  pass "mobile apiBaseGuard"
 else
-  fail "apiBaseGuard"
+  fail "mobile apiBaseGuard"
 fi
 
 echo ""
-echo "--- 5) Backend staging policy smoke (dry) ---"
-if bash scripts/staging-env-smoke.sh; then
-  pass "staging-env-smoke"
-else
-  fail "staging-env-smoke"
-fi
-
-echo ""
-echo "--- 5b) Credentials probe + e2e Bearer assert ---"
+echo "--- 4) Bearer-only E2E/auth contract ---"
 if bash scripts/assert-e2e-bearer.sh; then
   pass "assert-e2e-bearer"
 else
   fail "assert-e2e-bearer"
 fi
-# In --strict / staging env, credentials probe is fail-closed; otherwise warn-only.
-if [[ "$STRICT" -eq 1 || "$ENV_NAME" == "staging" || "$ENV_NAME" == "production" ]]; then
+
+# Local configured-runtime probe remains useful, but never substitutes for live.
+if [[ "$LIVE" -eq 0 ]]; then
   if bash scripts/staging-credentials-probe.sh; then
-    pass "staging-credentials-probe"
+    pass "staging-credentials-probe config-only"
   else
-    fail "staging-credentials-probe"
-  fi
-else
-  if bash scripts/staging-credentials-probe.sh; then
-    pass "staging-credentials-probe (dev warn-ok)"
-  else
-    warn "staging-credentials-probe reported fails (ok in development)"
+    warn "staging-credentials-probe reported local configuration gaps"
   fi
 fi
 
 echo ""
-echo "--- 6) Live H0 readiness (optional) ---"
+echo "--- 5) Staging/runtime smoke ---"
 if [[ "$LIVE" -eq 1 || -n "${API_BASE:-}" ]]; then
   if [[ -z "${API_BASE:-}" ]]; then
-    fail "--live requires API_BASE=https://..."
+    fail "live H0 requires API_BASE=https://..."
+  elif [[ "$API_BASE" != https://* || "$API_BASE" == *example.com* || "$API_BASE" == *localhost* || "$API_BASE" == *127.0.0.1* ]]; then
+    fail "live H0 requires a real HTTPS API_BASE: $API_BASE"
+  elif [[ -z "$LIVE_TOKEN" ]]; then
+    fail "live H0 requires TOKEN or H0_TOKEN Bearer JWT"
   else
-    echo "API_BASE=$API_BASE"
-    if curl -sf "$API_BASE/health" >/tmp/renova-h0-health.json; then
-      python3 -c 'import json; d=json.load(open("/tmp/renova-h0-health.json")); print("health:", d.get("environment") or d.get("status") or d)'
+    INVESTOR_READY=0
+    if [[ "$STRICT" -eq 1 ]]; then INVESTOR_READY=1; fi
+    if API_BASE="$API_BASE" TOKEN="$LIVE_TOKEN" REQUIRE_REMOTE=1 REQUIRE_INVESTOR_READY="$INVESTOR_READY" \
+      bash scripts/staging-env-smoke.sh; then
+      pass "remote staging health + H0 + release-health via Bearer"
     else
-      fail "health unreachable"
-    fi
-    # Prefer JWT Bearer (staging forbids X-User-Id). Fallback: H0_TOKEN / H0_USER_ID legacy.
-    AUTH_HDR=()
-    DEMO_JSON="$(curl -sf -X POST "$API_BASE/api/v1/auth/demo" -H "Content-Type: application/json" -d "{\"role\":\"contractor\"}" || true)"
-    if [[ -n "$DEMO_JSON" ]]; then
-      DEMO_TOKEN="$(python3 -c "import json,sys; d=json.load(sys.stdin); print((d.get('access_token') or '').strip())" <<< "$DEMO_JSON")"
-      DEMO_ID="$(python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" <<< "$DEMO_JSON")"
-      if [[ -n "$DEMO_TOKEN" ]]; then
-        AUTH_HDR=(-H "Authorization: Bearer $DEMO_TOKEN")
-      elif [[ -n "$DEMO_ID" ]]; then
-        warn "demo returned id without access_token — falling back to X-User-Id (dev only)"
-        AUTH_HDR=(-H "X-User-Id: $DEMO_ID")
-      fi
-    elif [[ -n "${H0_TOKEN:-}" ]]; then
-      AUTH_HDR=(-H "Authorization: Bearer $H0_TOKEN")
-    elif [[ -n "${H0_USER_ID:-}" ]]; then
-      warn "using H0_USER_ID without token — staging will reject if header auth forbidden"
-      AUTH_HDR=(-H "X-User-Id: $H0_USER_ID")
-    else
-      warn "demo auth disabled — set H0_TOKEN=... (Bearer) to query /admin/h0-readiness"
-    fi
-    if [[ ${#AUTH_HDR[@]} -gt 0 ]]; then
-      if curl -sf "$API_BASE/api/v1/admin/h0-readiness" "${AUTH_HDR[@]}" -o /tmp/renova-h0-readiness.json; then
-        set +e
-        python3 -c '
-import json, sys
-d=json.load(open("/tmp/renova-h0-readiness.json"))
-print("ready_for_investor_demo:", d.get("ready_for_investor_demo"))
-print("score:", d.get("score"))
-print("hint:", d.get("hint"))
-blockers=d.get("blockers") or []
-if blockers:
-    print("blockers:")
-    for b in blockers:
-        print(" -", b.get("id"), b.get("label"), "->", b.get("how"))
-    sys.exit(2)
-'
-        RC=$?
-        set -e
-        if [[ $RC -eq 0 ]]; then
-          pass "h0-readiness READY"
-        else
-          fail "h0-readiness has blockers"
-        fi
-      else
-        fail "h0-readiness request failed"
-      fi
-    else
-      warn "set H0_TOKEN=... (Bearer JWT) to query /admin/h0-readiness"
+      fail "remote staging health/H0/release-health"
     fi
   fi
 else
-  warn "skip live API (set API_BASE=https://... or --live)"
+  if REQUIRE_REMOTE=0 bash scripts/staging-env-smoke.sh; then
+    pass "configured-runtime smoke only (remote NOT VERIFIED)"
+  else
+    fail "configured-runtime smoke"
+  fi
+  warn "live API not verified; use --live or --strict with API_BASE + TOKEN"
 fi
 
 echo ""
-echo "--- 7) Investor 15-min demo script ---"
-echo "1) Home: H0 chip READY, YuKassa live"
+echo "--- 6) Live H0 blocker details (Bearer only) ---"
+if [[ "$LIVE" -eq 1 && -n "${API_BASE:-}" && -n "$LIVE_TOKEN" ]]; then
+  if curl --fail-with-body --silent --show-error --retry 2 \
+    "$API_BASE/api/v1/admin/h0-readiness" \
+    -H "Authorization: Bearer $LIVE_TOKEN" \
+    -o /tmp/renova-h0-readiness.json; then
+    set +e
+    python3 - <<'PY'
+import json
+import sys
+
+with open('/tmp/renova-h0-readiness.json', encoding='utf-8') as handle:
+    data = json.load(handle)
+print('ready_for_investor_demo:', data.get('ready_for_investor_demo'))
+print('score:', data.get('score'))
+print('hint:', data.get('hint'))
+blockers = data.get('blockers') or []
+if blockers:
+    print('blockers:')
+    for blocker in blockers:
+        print(' -', blocker.get('id'), blocker.get('label'), '->', blocker.get('how'))
+    sys.exit(2)
+PY
+    RC=$?
+    set -e
+    if [[ "$RC" -eq 0 ]]; then
+      pass "h0-readiness READY"
+    else
+      fail "h0-readiness has blockers"
+    fi
+  else
+    fail "h0-readiness Bearer request failed"
+  fi
+elif [[ "$LIVE" -eq 1 ]]; then
+  fail "live H0 readiness was not queried because API_BASE/Bearer auth is missing"
+else
+  warn "live H0 blocker details not queried in config-only mode"
+fi
+
+echo ""
+echo "--- 7) Investor 15-min scenario ---"
+echo "1) Home: H0 chip READY, payment mode truthful"
 echo "2) Estimate lock / customer approve -> contract"
 echo "3) Repair -> acceptance (one orchestrator)"
 echo "4) Budget -> pay (live or honest requisites)"
 echo "5) Documents -> act / digest preview"
 echo "6) Portal magic link + Team QR"
-echo "7) Do NOT show localhost / demo Pro bypass / WA Business"
-pass "demo script printed (docs/H0-STAGING-RUNBOOK-2026-07-19.md)"
+echo "7) Do NOT show localhost / demo Pro bypass / demo auth"
+pass "scenario printed (docs/H0-STAGING-RUNBOOK-2026-07-19.md)"
 
 echo ""
 echo "=== SUMMARY: FAIL=$FAIL WARN=$WARN ==="
 if [[ "$FAIL" -gt 0 ]]; then
-  echo "H0 NOT READY — fix FAIL items before investor demo"
-  echo ""
-  echo "=== Нужно от вас (секреты / infra, не код) ==="
-  echo "1) Реальный HTTPS API → заменить api-staging.example.com в apps/mobile/eas.json"
-  echo "2) YOOKASSA_SHOP_ID + YOOKASSA_SECRET на staging (payments_mode=live)"
-  echo "3) ENVIRONMENT=staging, DEMO pay off (demo_allowed=false)"
-  echo "4) PUBLIC_BASE_URL=https://… (portal magic-link)"
-  echo "5) Postgres+Alembic smoke: bash scripts/staging-postgres-smoke.sh"
-  echo "6) 2–3 paid Pro аккаунта для демо assign/paywall"
-  echo "7) npm run h0:check:live против staging URL"
-  echo "См. docs/H0-STAGING-RUNBOOK-2026-07-19.md"
+  echo "H0 NOT READY — fix FAIL items before investor demo/TestFlight"
+  echo "Required external inputs may include: real HTTPS API URLs, EAS project binding/token, live payment credentials and staging infrastructure."
   exit 1
 fi
-echo "H0 local checks passed (resolve WARN before TestFlight / live pay)"
-if [[ "$WARN" -gt 0 ]]; then
-  echo ""
-  echo "Пилот (пункты 1–8) всё ещё ждёт: HTTPS API в eas.json, YuKassa live, PUBLIC_BASE_URL, Postgres smoke, Pro accounts, h0:check:live"
-  echo "Подробно: docs/H0-STAGING-RUNBOOK-2026-07-19.md · docs/PRIORITY-50-PLAN-2026-07-20.md § H0"
+if [[ "$STRICT" -eq 1 && "$LIVE" -ne 1 ]]; then
+  echo "H0 NOT READY — strict mode must be live"
+  exit 1
+fi
+if [[ "$STRICT" -eq 1 ]]; then
+  echo "H0 strict gate PASS — live Bearer staging readiness was verified"
+else
+  echo "H0 checks PASS for the executed scope; WARN items are not release approval"
 fi
 exit 0
