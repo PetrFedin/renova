@@ -12,11 +12,13 @@ const contextFiles = [
   'components/renova/ContractorDirectory.tsx',
   'components/renova/CreatePaymentForm.tsx',
   'components/renova/CreateWorkSheet.tsx',
+  'components/renova/DocumentsHub.tsx',
   'components/renova/FloorPlanPanel.tsx',
   'components/renova/JobLeadsBoard.tsx',
   'components/renova/NotificationCenter.tsx',
   'components/renova/ProjectEmptyState.tsx',
   'components/renova/ViewerSharePanel.tsx',
+  'components/renova/chat/ChatThreadView.tsx',
   'components/renova/schedule/ScheduleIconToolbar.tsx',
   'components/screens/PortalScreen.tsx',
   'components/screens/RoomDetailScreen.tsx',
@@ -123,6 +125,36 @@ if (!/createProjectChat\.sideEffects/.test(createProjectChat) || !/createProject
 }
 if (!/failedInvites \+= 1/.test(createProjectChat) || !/createProjectChat\.invite/.test(createProjectChat)) {
   throw new Error('partial chat invitation failure must be counted and reported');
+}
+
+const chatThread = read('components/renova/chat/ChatThreadView.tsx');
+if (!/const freshProject = await api\.getProject\(user\.id, projectId\)/.test(chatThread)) {
+  throw new Error('chat thread post-commit reconciliation must load a fresh ProjectDetail');
+}
+if (!/syncProjectSideEffects\(\{ user, project: freshProject \}\)/.test(chatThread)) {
+  throw new Error('chat thread global side effects must use fresh User + ProjectDetail context');
+}
+for (const action of ['Confirm', 'Invoice', 'Task']) {
+  if (!chatThread.includes(`reconcileCommittedChatMutation('${action}')`)) {
+    throw new Error(`chat ${action} mutation must reconcile only after commit`);
+  }
+}
+if (!/Reaction\.Mutation/.test(chatThread) || !/MessagePin\.Mutation/.test(chatThread) || !/ChatPin\.Mutation/.test(chatThread)) {
+  throw new Error('chat reaction and pin online failures must remain observable');
+}
+
+const documentsHub = read('components/renova/DocumentsHub.tsx');
+if (/syncProjectSideEffects/.test(documentsHub)) {
+  throw new Error('documents hub must reconcile committed mutations through fresh loadProject, not stale side-effect sync');
+}
+if (!/DocumentsHub\.ContextChangedAfterCommit/.test(documentsHub) || !/await loadProject\(projectId\)/.test(documentsHub)) {
+  throw new Error('documents hub must guard active context and refresh the real ProjectDetail');
+}
+if (!/reconcileProjectAfterCommit\('BankImport'\)/.test(documentsHub)) {
+  throw new Error('bank import must reconcile the project only after committed import');
+}
+if (/OCR:\s*DEMO/.test(documentsHub) || !/const ocrModeLabel = 'LOCAL'/.test(documentsHub)) {
+  throw new Error('documents hub OCR mode must remain truthful for local heuristic classification');
 }
 
 const portalScreen = read('components/screens/PortalScreen.tsx');
