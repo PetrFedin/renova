@@ -1,0 +1,41 @@
+name: Agent JSX compatibility diagnostic
+
+on:
+  push:
+    branches:
+      - agent/jsx-compat-diagnostic
+    paths:
+      - .github/workflows/agent-jsx-compat-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Dependency type universe
+        shell: bash
+        run: |
+          npm ls react react-dom react-native @types/react typescript --all || true
+      - name: Raw JSX diagnostics
+        shell: bash
+        run: |
+          set +e
+          npx tsc --noEmit -p apps/mobile --pretty false > /tmp/mobile-tsc.log 2>&1
+          code=$?
+          set -e
+          echo "RAW_TSC_EXIT=$code"
+          echo "TS2786_COUNT=$(grep -c 'error TS2786:' /tmp/mobile-tsc.log || true)"
+          echo "TS2607_COUNT=$(grep -c 'error TS2607:' /tmp/mobile-tsc.log || true)"
+          echo '--- first 60 JSX compatibility diagnostics ---'
+          grep -E 'error TS(2786|2607):' /tmp/mobile-tsc.log | head -n 60 || true
+          echo '--- non-JSX diagnostics ---'
+          grep -E 'error TS[0-9]+:' /tmp/mobile-tsc.log | grep -Ev 'error TS(2786|2607):' | head -n 40 || true
