@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Staging preflight plus optional remote API smoke.
+# Staging preflight plus optional/required remote API smoke.
 # Local configuration uses the exact FastAPI startup policy. Remote protected
-# checks require an explicit contractor Bearer token; demo/header fallbacks are forbidden.
+# checks require an explicit Bearer token; demo/header fallbacks are forbidden.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 API_BASE="${API_BASE:-}"
 TOKEN="${TOKEN:-}"
 LIVE_DEPENDENCIES="${LIVE_DEPENDENCIES:-0}"
+REQUIRE_REMOTE="${REQUIRE_REMOTE:-0}"
 REQUIRE_INVESTOR_READY="${REQUIRE_INVESTOR_READY:-0}"
 HEALTH_FILE="${HEALTH_FILE:-/tmp/renova-staging-health.json}"
 H0_FILE="${H0_FILE:-/tmp/renova-staging-h0.json}"
@@ -32,8 +33,11 @@ fi
 )
 
 if [ -z "$API_BASE" ]; then
-  echo "SKIP remote API checks (set API_BASE=https://... and TOKEN=Bearer-JWT)"
-  echo "staging-env-smoke: PASS (configured runtime only)"
+  if [ "$REQUIRE_REMOTE" = "1" ]; then
+    echo "FAIL: remote staging verification required; set API_BASE=https://... and TOKEN=Bearer-JWT" >&2
+    exit 1
+  fi
+  echo "staging-env-smoke: PASS_CONFIG_ONLY (remote staging NOT VERIFIED)"
   exit 0
 fi
 
@@ -46,6 +50,12 @@ case "$API_BASE" in
   https://*) ;;
   *)
     echo "FAIL: remote API_BASE must use https://" >&2
+    exit 1
+    ;;
+esac
+case "$API_BASE" in
+  *example.com*)
+    echo "FAIL: remote API_BASE is still a placeholder: $API_BASE" >&2
     exit 1
     ;;
 esac
@@ -110,4 +120,4 @@ print("release-health contract OK")
 PY
 
 
-echo "staging-env-smoke: PASS (configured runtime + remote Bearer API)"
+echo "staging-env-smoke: PASS_REMOTE (configured runtime + remote Bearer API verified)"
