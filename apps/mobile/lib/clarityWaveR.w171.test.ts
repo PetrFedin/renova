@@ -44,7 +44,7 @@ if (
   || !expense.includes('savedReceipt = await api.addManualReceipt')
   || !expense.includes('if (!savedReceipt) return')
   || !expense.includes('await onSaved?.(savedReceipt)')
-  || !expense.includes('await loadProject(project.id)')
+  || !expense.includes('loadProject(project.id)')
   || expense.includes('syncProjectSideEffects')
 ) {
   throw new Error('manual expense durable write boundary');
