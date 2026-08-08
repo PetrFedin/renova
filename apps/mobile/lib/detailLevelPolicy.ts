@@ -7,7 +7,8 @@ import type { HomeWidgetId } from '@/constants/homeWidgets';
 const CUSTOMER_FAB_STANDARD = ['expense', 'chat'];
 const CUSTOMER_FAB_BRIEF = ['expense', 'chat'];
 
-const BRIEF_HIDDEN_WIDGETS = new Set<HomeWidgetId>(['risks', 'kpi_analytics']);
+// Brief keeps the four real KPI cards. Only secondary list widgets are hidden.
+const BRIEF_HIDDEN_WIDGETS = new Set<HomeWidgetId>(['risks']);
 
 export function fabActionIdsForLevel(level: DetailLevel, role: OsRole): Set<string> | null {
   if (role !== 'customer') return null;
