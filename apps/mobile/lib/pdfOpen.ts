@@ -1,9 +1,9 @@
 /** Открытие PDF — preview / share на native, download на web */
 import { Platform, Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { authHeaders } from '@/lib/api/client';
+import { writeTemporaryShareFile } from '@/lib/tempShareFile';
 
 export async function fetchPdfBlob(userId: string, path: string): Promise<Blob> {
   const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
@@ -49,14 +49,12 @@ async function openPdfNativePreview(blob: Blob, filename: string) {
 
 /** Native: сохранить во временный файл и открыть share sheet */
 async function sharePdfNative(blob: Blob, filename: string) {
-  const safe = filename.replace(/[^\w.-]+/g, '_') || 'document.pdf';
-  const path = `${FileSystem.cacheDirectory}${safe}`;
-  const b64 = await blobToBase64(blob);
-  await FileSystem.writeAsStringAsync(path, b64, { encoding: FileSystem.EncodingType.Base64 });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const temporary = writeTemporaryShareFile(filename, bytes, 'document.pdf');
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(path, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+    await Sharing.shareAsync(temporary.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
   } else {
-    await openPdfNativePreview(blob, safe);
+    await openPdfNativePreview(blob, temporary.filename);
   }
 }
 

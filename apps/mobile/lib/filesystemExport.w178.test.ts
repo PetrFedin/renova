@@ -13,12 +13,16 @@ if (!helper.includes('new File(Paths.cache, safe)') || !helper.includes('file.wr
   throw new Error('temporary share helper must write through File/Paths.cache');
 }
 
-for (const rel of [
+const nativeSharePaths = [
   'lib/downloadFile.ts',
   'lib/exportExpensesCsv.ts',
   'lib/exportGdprJson.ts',
   'lib/exportIcalFile.ts',
-]) {
+  'lib/exportProjectCsv.ts',
+  'lib/pdfOpen.ts',
+];
+
+for (const rel of nativeSharePaths) {
   const content = src(rel);
   if (content.includes('cacheDirectory') || content.includes('writeAsStringAsync') || content.includes('EncodingType.')) {
     throw new Error(`${rel} reintroduced legacy expo-file-system API`);
@@ -28,9 +32,11 @@ for (const rel of [
   }
 }
 
-const download = src('lib/downloadFile.ts');
-if (!download.includes('new Uint8Array(await blob.arrayBuffer())')) {
-  throw new Error('binary downloads must be written as bytes, not text/base64');
+for (const rel of ['lib/downloadFile.ts', 'lib/pdfOpen.ts']) {
+  const content = src(rel);
+  if (!content.includes('new Uint8Array(await blob.arrayBuffer())')) {
+    throw new Error(`${rel} binary payload must be written as bytes, not text/base64`);
+  }
 }
 
 console.log('filesystemExport.w178.test OK');
