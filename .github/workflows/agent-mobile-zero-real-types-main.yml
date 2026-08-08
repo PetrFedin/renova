@@ -1,0 +1,92 @@
+name: Agent mobile zero-real-types main codemod
+
+on:
+  push:
+    branches:
+      - agent/mobile-zero-real-types-main
+    paths:
+      - .github/workflows/agent-mobile-zero-real-types-main.yml
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/mobile-zero-real-types-main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply exact UI type fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} occurrence(s), found {count}: {old!r}")
+              p.write_text(text.replace(old, new))
+
+          replace_exact(
+              'apps/mobile/components/renova/DocumentsHub.tsx',
+              'style={({ pressed }) =>',
+              'style={({ pressed }: { pressed: boolean }) =>',
+              3,
+          )
+          replace_exact(
+              'apps/mobile/components/renova/chat/ChatThreadView.tsx',
+              "onChangeText={(v) => { setText(v); wsSend({ type: 'typing' }); }}",
+              "onChangeText={(v: string) => { setText(v); wsSend({ type: 'typing' }); }}",
+          )
+          replace_exact(
+              'apps/mobile/components/screens/ScratchpadScreen.tsx',
+              'onPress={(e) => e.stopPropagation()}',
+              'onPress={(e: { stopPropagation: () => void }) => e.stopPropagation()}',
+          )
+          replace_exact(
+              'scripts/typecheck-mobile.sh',
+              'target on 2026-08-07: 5 non-TS2786/non-TS2607 diagnostics.',
+              'target on 2026-08-08: 0 non-TS2786/non-TS2607 diagnostics.',
+          )
+          replace_exact(
+              'scripts/typecheck-mobile.sh',
+              'BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-5}"',
+              'BASELINE_REAL="${TYPECHECK_BASELINE_REAL:-0}"',
+          )
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prove zero real TypeScript diagnostics
+        run: npm run typecheck:mobile
+
+      - name: Run mobile domain and UI contracts
+        run: npm run mobile:test
+
+      - name: Commit validated fixes and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "renova-agent"
+          git config user.email "81327591+PetrFedin@users.noreply.github.com"
+          git rm .github/workflows/agent-mobile-zero-real-types-main.yml
+          git add apps/mobile/components/renova/DocumentsHub.tsx \
+                  apps/mobile/components/renova/chat/ChatThreadView.tsx \
+                  apps/mobile/components/screens/ScratchpadScreen.tsx \
+                  scripts/typecheck-mobile.sh
+          git commit -m "fix(mobile): eliminate remaining real TypeScript debt"
+          git push origin HEAD:agent/mobile-zero-real-types-main
