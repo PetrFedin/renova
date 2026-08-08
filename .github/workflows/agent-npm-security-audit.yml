@@ -1,0 +1,71 @@
+name: Agent npm security audit
+
+on:
+  push:
+    branches:
+      - agent/npm-security-audit
+    paths:
+      - .github/workflows/agent-npm-security-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Capture full and production npm audits
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > /tmp/npm-audit-all.json
+          all_code=$?
+          npm audit --omit=dev --json > /tmp/npm-audit-prod.json
+          prod_code=$?
+          set -e
+          echo "NPM_AUDIT_ALL_EXIT=$all_code"
+          echo "NPM_AUDIT_PROD_EXIT=$prod_code"
+
+      - name: Classify vulnerabilities and fix paths
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          function summarize(path, label) {
+            const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const vulnerabilities = data.vulnerabilities || {};
+            const rows = Object.entries(vulnerabilities).map(([name, v]) => ({
+              name,
+              severity: v.severity,
+              isDirect: Boolean(v.isDirect),
+              range: v.range,
+              fixAvailable: v.fixAvailable,
+              via: (v.via || []).map((x) => typeof x === 'string' ? x : `${x.name || name}:${x.source || ''}:${x.severity || ''}`),
+              effects: v.effects || [],
+            }));
+            const rank = { critical: 5, high: 4, moderate: 3, low: 2, info: 1 };
+            rows.sort((a, b) => (rank[b.severity] || 0) - (rank[a.severity] || 0) || Number(b.isDirect) - Number(a.isDirect) || a.name.localeCompare(b.name));
+            console.log(`=== ${label} ===`);
+            console.log(JSON.stringify(data.metadata?.vulnerabilities || {}, null, 2));
+            for (const row of rows) console.log(JSON.stringify(row));
+          }
+
+          summarize('/tmp/npm-audit-all.json', 'ALL DEPENDENCIES');
+          summarize('/tmp/npm-audit-prod.json', 'PRODUCTION ONLY');
+          NODE
+
+      - name: Show top-level dependency graph
+        shell: bash
+        run: |
+          npm ls --depth=0 || true
