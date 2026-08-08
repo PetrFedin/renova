@@ -124,7 +124,15 @@ if (!manualExpense.includes('loading={busy}') || !manualExpense.includes('title=
 if (!manualExpense.includes('Введённые данные сохранены в форме') || !formStyles.includes('minHeight: RenovaTheme.minTouch')) {
   throw new Error('manual expense draft/touch contract');
 }
-if (!manualExpense.includes('let saved = false') || !manualExpense.includes('void syncProjectSideEffects')) {
+if (
+  !manualExpense.includes('let savedReceipt: ReceiptItem | null = null')
+  || !manualExpense.includes('savedReceipt = await api.addManualReceipt')
+  || !manualExpense.includes('if (!savedReceipt) return')
+  || !manualExpense.includes('await onSaved?.(savedReceipt)')
+  || !manualExpense.includes('loadProject(project.id)')
+  || !manualExpense.includes('ManualExpenseForm.projectRefresh')
+  || manualExpense.includes('syncProjectSideEffects')
+) {
   throw new Error('manual expense durable write contract');
 }
 if (!expensePickers.includes('filterChipStyles') || expensePickers.includes('backgroundColor: RenovaTheme.colors.primary')) {
