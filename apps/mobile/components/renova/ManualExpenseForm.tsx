@@ -6,14 +6,13 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ExpenseContextPickers } from '@/components/renova/ExpenseContextPickers';
 import { formSurfaceStyles } from '@/constants/formStyles';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
-import { api, type ProjectDetail } from '@/lib/api';
+import { api, type ProjectDetail, type ReceiptItem } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertManualExpenseSaved } from '@/lib/receiptNav';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
 export function ManualExpenseForm({
@@ -23,20 +22,22 @@ export function ManualExpenseForm({
   onSaved,
   initialRoomId,
   initialStageId,
+  initialDescription,
   collapsed,
 }: {
   userId: string;
   project: ProjectDetail;
   readOnly?: boolean;
-  onSaved?: () => void;
+  onSaved?: (receipt: ReceiptItem) => void | Promise<void>;
   initialRoomId?: string | null;
   initialStageId?: string | null;
+  initialDescription?: string;
   /** На экране списка/скана форма может быть свёрнута, чтобы сначала показать операции. */
   collapsed?: boolean;
 }) {
-  const { user } = useRenova();
+  const { user, activeProject, loadProject } = useRenova();
   const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(initialDescription ?? '');
   const [category, setCategory] = useState<ExpenseCategoryId>('materials');
   const [roomId, setRoomId] = useState<string | null>(initialRoomId ?? null);
   const [stageId, setStageId] = useState<string | null>(initialStageId ?? null);
@@ -44,6 +45,8 @@ export function ManualExpenseForm({
   const busyRef = useRef(false);
   const requestIdRef = useRef(createClientRequestId('receipt-manual'));
   const [open, setOpen] = useState(!collapsed);
+  const contextRef = useRef({ userId: user?.id ?? null, projectId: activeProject?.id ?? null });
+  contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
 
   const clearDraft = () => {
     setAmount('');
@@ -64,9 +67,9 @@ export function ManualExpenseForm({
 
     busyRef.current = true;
     setBusy(true);
-    let saved = false;
+    let savedReceipt: ReceiptItem | null = null;
     try {
-      await api.addManualReceipt(
+      savedReceipt = await api.addManualReceipt(
         userId,
         project.id,
         normalizedAmount,
@@ -77,7 +80,6 @@ export function ManualExpenseForm({
         null,
         requestIdRef.current,
       );
-      saved = true;
     } catch (error) {
       if (isOfflineQueued(error)) {
         notifyOfflineQueued('Расход без чека');
@@ -95,15 +97,30 @@ export function ManualExpenseForm({
       setBusy(false);
     }
 
-    if (!saved) return;
+    if (!savedReceipt) return;
+
     rotateRequestId();
     clearDraft();
     if (collapsed) setOpen(false);
-    onSaved?.();
     const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
     alertManualExpenseSaved(role, normalizedAmount);
-    void syncProjectSideEffects({ user: user ?? ({ id: userId } as never), project })
-      .catch(reportCatch('ManualExpenseForm.sideEffects'));
+
+    try {
+      await onSaved?.(savedReceipt);
+    } catch (error) {
+      reportError('ManualExpenseForm.onSaved', error, { projectId: project.id, receiptId: savedReceipt.id });
+    }
+
+    const current = contextRef.current;
+    if (current.userId === userId && current.projectId === project.id) {
+      void loadProject(project.id).catch(reportCatch('ManualExpenseForm.projectRefresh'));
+    } else {
+      reportError(
+        'ManualExpenseForm.ContextChangedAfterCommit',
+        new Error('active expense context changed after receipt commit'),
+        { projectId: project.id, receiptId: savedReceipt.id, currentProjectId: current.projectId },
+      );
+    }
   };
 
   if (collapsed && !open) {

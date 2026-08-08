@@ -14,7 +14,7 @@ import { UnifiedExpenseList } from '@/components/renova/UnifiedExpenseList';
 import { ScheduleFilterChips } from '@/components/renova/schedule/ScheduleFilterChips';
 import { ExpenseByRoom } from '@/components/renova/ExpenseByRoom';
 import { ExpenseByStage } from '@/components/renova/ExpenseByStage';
-import type { MaterialPick, OsExpense, ProjectDetail, Purchase, ReceiptItem } from '@/lib/api';
+import { api, type MaterialPick, type OsExpense, type ProjectDetail, type Purchase, type ReceiptItem } from '@/lib/api';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import {
@@ -30,6 +30,7 @@ import type { OsRole } from '@/constants/osSections';
 import { budgetTabHref } from '@/constants/osSections';
 import type { ExpenseView } from '@/constants/budgetTabs';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
+import { reportError } from '@/lib/reportError';
 
 type Props = {
   userId: string;
@@ -44,6 +45,9 @@ type Props = {
   initialRoomId?: string | null;
   initialStageId?: string | null;
   periodParam?: string | string[];
+  focusParam?: string;
+  scratchpadLineId?: string;
+  scratchpadText?: string;
   serverFact?: number;
   listTotal?: number;
   expenseView?: ExpenseView;
@@ -66,7 +70,9 @@ function emptyLabel(filter: ExpenseListFilter): string {
 }
 
 export function BudgetExpensesSection({
-  userId, project, receipts, expenses, picks, purchases = [], role, canWrite, readOnly, initialRoomId, initialStageId, periodParam, serverFact, listTotal, expenseView = 'list', onReload, onExpensePress,
+  userId, project, receipts, expenses, picks, purchases = [], role, canWrite, readOnly,
+  initialRoomId, initialStageId, periodParam, focusParam, scratchpadLineId, scratchpadText,
+  serverFact, listTotal, expenseView = 'list', onReload, onExpensePress,
 }: Props) {
   const pathname = usePathname();
   const [filter, setFilter] = useState<ExpenseListFilter>('all');
@@ -184,8 +190,25 @@ export function BudgetExpensesSection({
               project={project}
               initialRoomId={initialRoomId ?? null}
               initialStageId={initialStageId ?? null}
-              onSaved={onReload}
-              collapsed
+              initialDescription={scratchpadText}
+              onSaved={async (receipt) => {
+                onReload();
+                if (!scratchpadLineId) return;
+                try {
+                  await api.patchScratchpadLine(userId, project.id, scratchpadLineId, {
+                    promoted_kind: 'expense',
+                    promoted_id: receipt.id,
+                    done: true,
+                  });
+                } catch (error) {
+                  reportError('BudgetExpensesSection.ScratchpadPromotion', error, {
+                    projectId: project.id,
+                    scratchpadLineId,
+                    receiptId: receipt.id,
+                  });
+                }
+              }}
+              collapsed={focusParam !== 'create'}
             />
           ) : null}
         </>

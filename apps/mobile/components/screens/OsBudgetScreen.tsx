@@ -36,6 +36,8 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     tab: tabParam,
     openPayment: openPaymentParam,
     paymentId: paymentIdParam,
+    scratchpadLineId: scratchpadLineIdParam,
+    scratchpadText: scratchpadTextParam,
   } = useLocalSearchParams<{
     roomId?: string;
     stageId?: string;
@@ -45,6 +47,8 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     tab?: string;
     openPayment?: string;
     paymentId?: string;
+    scratchpadLineId?: string;
+    scratchpadText?: string;
   }>();
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
@@ -165,6 +169,9 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             initialRoomId={roomParam ?? null}
             initialStageId={stageParam ?? null}
             periodParam={periodParam}
+            focusParam={focusParam}
+            scratchpadLineId={scratchpadLineIdParam}
+            scratchpadText={scratchpadTextParam}
             serverFact={serverFact}
             listTotal={listTotal}
             expenseView={expenseView}
