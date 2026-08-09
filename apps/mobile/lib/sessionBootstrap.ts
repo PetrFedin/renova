@@ -18,6 +18,21 @@ export const DEMO_PHONES = ['+70000000001', '+70000000002'] as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function statusOf(error: unknown): number | null {
+  if (!error || typeof error !== 'object') return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === 'number' ? status : null;
+}
+
+async function getProjectOrNullOn404(userId: string, projectId: string): Promise<ProjectDetail | null> {
+  try {
+    return await api.getProject(userId, projectId);
+  } catch (error) {
+    if (statusOf(error) === 404) return null;
+    throw error;
+  }
+}
+
 /** iframe iphone-preview — автодемо без ручного входа */
 export function isPreviewFrame(): boolean {
   return typeof window !== 'undefined' && window.parent !== window;
@@ -88,25 +103,26 @@ export async function loadActiveProject(
     ?? resolveActiveProjectId(projects, savedProjectId)
     ?? fallback;
   if (!pickId) return null;
-  try {
-    let p = await api.getProject(userId, pickId);
-    if (!p && fallback) {
-      p = await api.getProject(userId, fallback);
-      if (p) await AsyncStorage.setItem(KEYS.projectId, fallback);
-      return p;
-    }
-    if (role === 'contractor' && p) {
-      try {
-        p = await api.assignProject(userId, pickId);
-      } catch {
-        /* ok */
-      }
-    }
-    if (p) await AsyncStorage.setItem(KEYS.projectId, p.id);
-    return p;
-  } catch {
-    return null;
+
+  let p = await getProjectOrNullOn404(userId, pickId);
+  if (!p && fallback && fallback !== pickId) {
+    p = await getProjectOrNullOn404(userId, fallback);
   }
+  if (!p) return null;
+
+  // Read-only contractor access (for example a viewer) is already valid and must
+  // never be escalated through /assign. Writable team projects may already belong
+  // to another team member/owner: 409 is an expected no-op after a successful ACL read.
+  if (role === 'contractor' && !p.read_only) {
+    try {
+      p = await api.assignProject(userId, p.id);
+    } catch (error) {
+      if (statusOf(error) !== 409) throw error;
+    }
+  }
+
+  await AsyncStorage.setItem(KEYS.projectId, p.id);
+  return p;
 }
 
 /** Перелогин в демо-пользователя с актуальными проектами */
