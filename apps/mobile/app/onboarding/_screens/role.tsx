@@ -11,8 +11,8 @@ import { navigateAfterLogin } from '@/lib/osEntry';
 
 type Mode = 'demo' | 'sms';
 
-/** W67 #27: демо-вход только при EXPO_PUBLIC_DEMO=1 (иначе SMS по умолчанию). */
-const DEMO_LOGIN_ENABLED = (process.env.EXPO_PUBLIC_DEMO ?? '1') !== '0';
+/** W67 #27: демо-вход только при явном EXPO_PUBLIC_DEMO=1 (fail-closed по умолчанию). */
+const DEMO_LOGIN_ENABLED = (process.env.EXPO_PUBLIC_DEMO ?? '0') === '1';
 
 export default function RoleScreen() {
   const { teamToken } = useLocalSearchParams<{ teamToken?: string }>();
@@ -49,8 +49,8 @@ export default function RoleScreen() {
         if (!codeSent) {
           const r = await api.sendSmsCode(phone);
           setCodeSent(true);
-          if (r.demo_code) setDemoCode(r.demo_code);
-          alertMessage('Код отправлен', r.demo_code ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
+          if (r.demo_code && DEMO_LOGIN_ENABLED) setDemoCode(r.demo_code);
+          alertMessage('Код отправлен', r.demo_code && DEMO_LOGIN_ENABLED ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
           return;
         }
         await loginWithSms(phone, code, role, name ? { full_name: name } : undefined);
