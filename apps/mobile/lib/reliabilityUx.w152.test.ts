@@ -32,6 +32,9 @@ const planTab = readFileSync(join(mobile, 'components/screens/OsPlanTabScreen.ts
 const hub = readFileSync(join(mobile, 'components/renova/os/OsHubTabs.tsx'), 'utf8');
 const status = readFileSync(join(mobile, 'components/renova/OfflineSyncStatus.tsx'), 'utf8');
 const inbox = readFileSync(join(mobile, 'components/screens/UnifiedInboxScreen.tsx'), 'utf8');
+const inboxSync = readFileSync(join(mobile, 'lib/inboxSyncStore.ts'), 'utf8');
+const chatHooks = readFileSync(join(mobile, 'lib/useChatUnread.ts'), 'utf8');
+const chatList = readFileSync(join(mobile, 'components/renova/chat/ChatListView.tsx'), 'utf8');
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
@@ -57,6 +60,18 @@ console.assert(
     && inbox.includes('Повторить загрузку'),
   'degraded inbox explains uncertainty and offers retry',
 );
+console.assert(
+  inboxSync.includes('threadsOk: false, unreadOk: true')
+    && inboxSync.includes('chatFailed = !chatState.threadsOk')
+    && inboxSync.includes('chatState.unreadOk'),
+  'chat unread fallback does not pretend the thread list is fresh',
+);
+console.assert(
+  chatHooks.includes("throw new Error('chat_inbox_refresh_degraded')")
+    && chatList.includes('!displayThreads.length && loadError')
+    && chatList.includes('Не удалось загрузить чаты'),
+  'stale/unknown chat list reaches explicit error UI instead of fake empty',
+);
 
 const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
@@ -64,7 +79,10 @@ const ok =
   offline.includes('/conflicts') &&
   sched.includes('asyncShowError(calendarResource)') &&
   sched.includes('useAsyncResource<CalendarData>') &&
-  inbox.includes("!visible.length && health.status === 'complete'");
+  inbox.includes("!visible.length && health.status === 'complete'") &&
+  inboxSync.includes('threadsOk: false, unreadOk: true') &&
+  chatHooks.includes("throw new Error('chat_inbox_refresh_degraded')") &&
+  chatList.includes('!displayThreads.length && loadError');
 
 if (!ok) process.exit(1);
 console.log('reliabilityUx.w152.test OK');
