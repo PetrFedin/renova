@@ -30,44 +30,45 @@ export function OfflineSyncStatus({
   const [conflicts, setConflicts] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
   const { user, activeProject } = useRenova();
 
   const refresh = useCallback(async () => {
     if (pathIncludes?.length) {
-      let q: Awaited<ReturnType<typeof getQueue>> = [];
       try {
-        q = await getQueue();
-      } catch (e) {
-        reportError('offline.getQueue', e);
-        setLastMessage('Не удалось прочитать очередь офлайн');
-        return;
+        const q = await getQueue();
+        const filtered = q.filter((j) => pathIncludes.some((s) => j.path.includes(s)));
+        setPending(filtered.filter((j) => !j.blocked && !j.conflict).length);
+        setBlocked(filtered.filter((j) => j.blocked).length);
+        setConflicts(filtered.filter((j) => j.conflict).length);
+        setReadError(null);
+      } catch (error) {
+        reportError('offline.getQueue', error);
+        setReadError('Не удалось прочитать локальную очередь. Данные не считаются синхронизированными.');
       }
-      const filtered = q.filter((j) => pathIncludes.some((s) => j.path.includes(s)));
-      setPending(filtered.filter((j) => !j.blocked && !j.conflict).length);
-      setBlocked(filtered.filter((j) => j.blocked).length);
-      setConflicts(filtered.filter((j) => j.conflict).length);
       return;
     }
-    let status: { total: number; pending: number; blocked: number; conflicts: number };
+
     try {
-      status = await getOfflineOutboxStatus();
-    } catch (e) {
-      reportError('offline.outboxStatus', e);
-      setLastMessage('Не удалось получить статус синхронизации');
-      return;
+      const status = await getOfflineOutboxStatus();
+      setPending(status.pending);
+      setBlocked(status.blocked);
+      setConflicts(status.conflicts);
+      setReadError(null);
+    } catch (error) {
+      reportError('offline.outboxStatus', error);
+      setReadError('Не удалось получить статус локальной очереди. Данные не считаются синхронизированными.');
     }
-    setPending(status.pending);
-    setBlocked(status.blocked);
-    setConflicts(status.conflicts);
   }, [pathIncludes]);
 
   useFocusEffect(useCallback(() => {
-    refresh().catch((e) => reportError('offline.refresh', e));
+    void refresh();
   }, [refresh]));
   useEffect(() => subscribeOfflineFlush(() => { void refresh(); }), [refresh]);
 
   const runSync = async () => {
     setSyncing(true);
+    setLastMessage(null);
     try {
       const result = await flushOfflineOutbox();
       if (result.conflicts > 0) {
@@ -80,30 +81,36 @@ export function OfflineSyncStatus({
       await refresh();
       // W112: после flush — inbox + home через канон bus (не только badge)
       if (result.synced > 0) {
-        await syncProjectSideEffects({ user, project: activeProject }).catch((e) => reportError('offline.sideEffects', e));
+        await syncProjectSideEffects({ user, project: activeProject }).catch((error) => reportError('offline.sideEffects', error));
       } else if (user?.id) {
-        await reloadInboxSync({ userId: user.id, userRole: user.role }).catch((e) => reportError('offline.inboxSync', e));
+        await reloadInboxSync({ userId: user.id, userRole: user.role }).catch((error) => reportError('offline.inboxSync', error));
       }
+    } catch (error) {
+      reportError('offline.sync', error);
+      setReadError('Синхронизация остановлена: локальная очередь недоступна. Изменения не удалены.');
+      setLastMessage('Синхронизация не выполнена');
     } finally {
       setSyncing(false);
     }
   };
 
-  if (compact && pending === 0 && blocked === 0 && conflicts === 0) return null;
+  if (compact && pending === 0 && blocked === 0 && conflicts === 0 && !readError) return null;
 
   const scope = label ? `${label}: ` : '';
   const unsynced = pending + blocked + conflicts;
-  const title = pending > 0
-    ? `${scope}Не синхронизировано: ${pending} действий`
-    : conflicts > 0
-      ? `${scope}Не синхронизировано: ${conflicts} конфликтов`
-      : blocked > 0
-        ? `${scope}Не синхронизировано: ${blocked} заблокированы`
-        : unsynced > 0
-          ? `${scope}Не синхронизировано: ${unsynced}`
-          : 'Офлайн-очередь пуста';
+  const title = readError
+    ? `${scope}Статус синхронизации недоступен`
+    : pending > 0
+      ? `${scope}Не синхронизировано: ${pending} действий`
+      : conflicts > 0
+        ? `${scope}Не синхронизировано: ${conflicts} конфликтов`
+        : blocked > 0
+          ? `${scope}Не синхронизировано: ${blocked} заблокированы`
+          : unsynced > 0
+            ? `${scope}Не синхронизировано: ${unsynced}`
+            : 'Офлайн-очередь пуста';
 
-  const hint = lastMessage || (
+  const hint = readError || lastMessage || (
     conflicts > 0
       ? 'Сервер отклонил изменения (409). Откройте экран конфликтов.'
       : blocked > 0
@@ -111,8 +118,21 @@ export function OfflineSyncStatus({
         : 'Последние данные доступны из кэша. Изменения можно отправить вручную.'
   );
 
-  const iconName = pending > 0 ? 'cloud-upload-outline' : (conflicts > 0 || blocked > 0) ? 'warning-outline' : 'cloud-done-outline';
-  const iconColor = pending > 0 ? RenovaTheme.colors.warning : (conflicts > 0 || blocked > 0) ? RenovaTheme.colors.danger : RenovaTheme.colors.success;
+  const hasAttention = Boolean(readError) || conflicts > 0 || blocked > 0;
+  const iconName = readError
+    ? 'warning-outline'
+    : pending > 0
+      ? 'cloud-upload-outline'
+      : hasAttention
+        ? 'warning-outline'
+        : 'cloud-done-outline';
+  const iconColor = readError
+    ? RenovaTheme.colors.danger
+    : pending > 0
+      ? RenovaTheme.colors.warning
+      : hasAttention
+        ? RenovaTheme.colors.danger
+        : RenovaTheme.colors.success;
 
   return (
     <View style={styles.card}>
@@ -125,17 +145,33 @@ export function OfflineSyncStatus({
           <Text style={styles.hint}>{hint}</Text>
         </View>
       </View>
-      {pending > 0 ? (
-        <Pressable style={({ pressed }: PressState) => [styles.button, pressed && styles.pressed]} onPress={runSync} disabled={syncing}>
+
+      {readError ? (
+        <Pressable
+          style={({ pressed }: PressState) => [styles.button, pressed && styles.pressed]}
+          onPress={() => { void refresh(); }}
+          disabled={syncing}
+        >
+          <Text style={styles.buttonText}>Повторить проверку</Text>
+        </Pressable>
+      ) : pending > 0 ? (
+        <Pressable
+          style={({ pressed }: PressState) => [styles.button, pressed && styles.pressed]}
+          onPress={() => { void runSync(); }}
+          disabled={syncing}
+        >
           {syncing ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : <Text style={styles.buttonText}>Синхронизировать</Text>}
         </Pressable>
       ) : null}
-      {(conflicts > 0 || blocked > 0) ? (
+
+      {(readError || conflicts > 0 || blocked > 0) ? (
         <Pressable
           style={({ pressed }: PressState) => [styles.button, pressed && styles.pressed]}
           onPress={() => pushOsNav('/conflicts', undefined, (user?.role === 'contractor' ? 'contractor' : 'customer'))}
         >
-          <Text style={styles.buttonText}>{conflicts > 0 ? 'Открыть конфликты' : 'Открыть очередь'}</Text>
+          <Text style={styles.buttonText}>
+            {readError ? 'Открыть очередь' : conflicts > 0 ? 'Открыть конфликты' : 'Открыть очередь'}
+          </Text>
         </Pressable>
       ) : null}
     </View>
