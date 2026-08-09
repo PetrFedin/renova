@@ -5,6 +5,10 @@ import {
   OfflineQueueStorageError,
   parseOfflineQueueStorage,
 } from './offlineQueueStorage';
+import {
+  isAuthoritativeRefreshRejection,
+  shouldFallbackToDurableCache,
+} from './api/failurePolicy';
 
 const root = join(__dirname, '..');
 const must = (cond: boolean, msg: string) => {
@@ -90,5 +94,34 @@ must(backendAuth.includes('raise HTTPException(404, "demo_disabled")'), 'Backend
 const bridge = readFileSync(join(root, '../../backend/app/services/ws_redis_bridge.py'), 'utf8');
 must(bridge.includes('INSTANCE_ID'), 'ws redis bridge has instance id');
 must(bridge.includes('redis_subscriber_loop'), 'ws redis bridge has subscriber loop');
+
+// Auth refresh: only an authoritative 401/403 may invalidate a persisted session.
+must(isAuthoritativeRefreshRejection(401), '401 refresh rejection is authoritative');
+must(isAuthoritativeRefreshRejection(403), '403 refresh rejection is authoritative');
+must(!isAuthoritativeRefreshRejection(0), 'network failure must not kill refresh session');
+must(!isAuthoritativeRefreshRejection(429), 'rate limit must not kill refresh session');
+must(!isAuthoritativeRefreshRejection(500), 'server failure must not kill refresh session');
+
+// Durable GET cache: transient failures may use stale data, client/auth errors may not.
+must(shouldFallbackToDurableCache({ status: 0, code: 'network' }), 'network failure may use durable cache');
+must(shouldFallbackToDurableCache({ status: 0, code: 'timeout' }), 'timeout may use durable cache');
+must(shouldFallbackToDurableCache({ status: 429, code: 'rate_limit' }), 'rate limit may use durable cache');
+must(shouldFallbackToDurableCache({ status: 503 }), '5xx may use durable cache');
+must(!shouldFallbackToDurableCache({ status: 401 }), '401 must not be hidden by stale cache');
+must(!shouldFallbackToDurableCache({ status: 404 }), '404 must not be hidden by stale cache');
+
+const apiClient = readFileSync(join(root, 'lib/api/client.ts'), 'utf8');
+must(
+  apiClient.includes('if (isAuthoritativeRefreshRejection(res.status))'),
+  'Refresh clears credentials only through authoritative rejection policy',
+);
+must(
+  apiClient.includes("throw new ApiError(502, 'Сервер не вернул новый токен доступа.'"),
+  'Malformed successful refresh response must fail closed instead of becoming false/session-dead',
+);
+must(
+  !apiClient.includes('catch {\n      return false;\n    } finally'),
+  'Transient refresh exceptions must never silently become session-dead=false',
+);
 
 console.log('failClosed.w144.test OK');
