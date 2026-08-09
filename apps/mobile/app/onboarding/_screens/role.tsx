@@ -77,8 +77,8 @@ export default function RoleScreen() {
         if (!codeSent) {
           const r = await api.sendSmsCode(phone);
           setCodeSent(true);
-          if (r.demo_code) setDemoCode(r.demo_code);
-          alertMessage('Код отправлен', r.demo_code ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
+          if (r.demo_code && DEMO_LOGIN_ENABLED) setDemoCode(r.demo_code);
+          alertMessage('Код отправлен', r.demo_code && DEMO_LOGIN_ENABLED ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
           return;
         }
         await loginWithSms(phone, code, role, name ? { full_name: name } : undefined);
