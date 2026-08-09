@@ -1,4 +1,5 @@
 /** W146: no silent empty catch left in product TS/TSX (except comment in reportError). */
+import './sessionBootstrapFailClosed.w181.test';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
