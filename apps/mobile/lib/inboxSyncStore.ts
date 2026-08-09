@@ -5,6 +5,7 @@ import {
   type InboxBuildIssue,
   type InboxItem,
 } from '@/lib/domain/buildInboxItems';
+import { selectConfirmedInboxSnapshot } from '@/lib/domain/inboxIntegrity';
 import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
 import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
@@ -157,7 +158,7 @@ function setInboxHealth(
   status: InboxHealthSnapshot['status'],
   issues: InboxSyncIssue[],
   hasConfirmedSnapshot: boolean,
-  lastCompleteAt = inboxHealthSnapshot.lastCompleteAt,
+  lastCompleteAt?: string | null,
 ) {
   inboxHealthSnapshot = {
     status,
@@ -250,7 +251,7 @@ function resetForSignedOut() {
   confirmedInboxKey = '';
   activeUserId = undefined;
   cachedFullSync = null;
-  setInboxHealth('idle', [], false, undefined);
+  setInboxHealth('idle', [], false, null);
 }
 
 function prepareReloadContext(merged: ReloadOpts) {
@@ -270,7 +271,7 @@ function prepareReloadContext(merged: ReloadOpts) {
     inboxBadge = 0;
     inboxContextKey = '';
     confirmedInboxKey = '';
-    setInboxHealth('idle', [], false, undefined);
+    setInboxHealth('idle', [], false, null);
   }
 
   if (merged.projectId && merged.osRole) {
@@ -280,7 +281,7 @@ function prepareReloadContext(merged: ReloadOpts) {
       confirmedInboxKey = '';
       inboxItems = [];
       inboxBadge = 0;
-      setInboxHealth('idle', [], false, undefined);
+      setInboxHealth('idle', [], false, null);
       refreshInboxChatRow(chatCount);
     }
   }
@@ -354,19 +355,15 @@ export async function reloadInboxSync(opts: ReloadOpts, force = false): Promise<
     const chatState = await loadChatState(merged.userId);
     if (generation !== reloadGeneration) return;
 
-    if (chatState.ok) {
-      chatThreads = chatState.threads;
-      chatCount = chatState.unread;
-      chatFailed = false;
-    } else {
-      chatCount = chatState.unread;
-      chatFailed = chatThreads.length === 0 && chatCount === 0;
-    }
+    chatThreads = chatState.threads;
+    chatCount = chatState.unread;
+    chatFailed = !chatState.ok;
 
     const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
     const syncOsRole = merged.osRole ?? cachedFullSync?.osRole;
 
     if (syncProjectId && syncOsRole) {
+      const previousItems = inboxItems;
       let candidateItems: InboxItem[] = [];
       let issues: InboxSyncIssue[] = chatState.ok
         ? []
@@ -403,23 +400,26 @@ export async function reloadInboxSync(opts: ReloadOpts, force = false): Promise<
 
       if (generation !== reloadGeneration) return;
       const hasConfirmedSnapshot = confirmedInboxKey === inboxContextKey && confirmedInboxKey.length > 0;
-      if (issues.length === 0) {
-        inboxItems = candidateItems;
+      const decision = selectConfirmedInboxSnapshot({
+        candidateItems,
+        previousItems,
+        issueCount: issues.length,
+        hasConfirmedSnapshot,
+      });
+      inboxItems = decision.items;
+
+      if (decision.acceptedCandidate) {
         const taskRows = inboxItems.filter((item) => item.kind !== 'chat').length;
         inboxBadge = taskRows + chatCount;
         confirmedInboxKey = inboxContextKey;
         setInboxHealth('complete', [], true, new Date().toISOString());
       } else {
-        if (!hasConfirmedSnapshot) {
-          inboxItems = [];
-          inboxBadge = 0;
-        }
         refreshInboxChatRow(chatCount);
         setInboxHealth(
           'degraded',
           issues,
           hasConfirmedSnapshot,
-          hasConfirmedSnapshot ? inboxHealthSnapshot.lastCompleteAt : undefined,
+          hasConfirmedSnapshot ? inboxHealthSnapshot.lastCompleteAt ?? null : null,
         );
       }
     } else {
