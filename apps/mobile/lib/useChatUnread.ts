@@ -145,11 +145,14 @@ function useChatInboxThreadsSnapshot() {
   return useSyncExternalStore(subscribeInboxSync, getChatInboxThreadsSnapshot, getChatInboxThreadsSnapshot);
 }
 
-/** Список чатов из store — синхронен с badge */
+/** Список чатов из store — синхронен с badge; stale thread list не считается успешным reload. */
 export function useChatInboxThreads(userId?: string, userRole?: UserRole) {
   const threads = useChatInboxThreadsSnapshot();
   const reload = useCallback(async () => {
     await reloadInboxSync({ userId, userRole });
+    if (getChatFailedSnapshot()) {
+      throw new Error('chat_inbox_refresh_degraded');
+    }
   }, [userId, userRole]);
   return { threads, reload };
 }
