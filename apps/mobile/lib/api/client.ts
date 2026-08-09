@@ -1,6 +1,7 @@
 /** HTTP-клиент Renova API */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
+import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
 
 export class ApiError extends Error {
   status: number;
@@ -84,9 +85,7 @@ function canUseDurableCache(opts: RequestInit) {
 }
 
 function canFallbackToCache(error: unknown) {
-  if (!(error instanceof ApiError)) return true;
-  if (error.status === 429 || error.code === 'rate_limit') return true;
-  return error.status >= 500;
+  return shouldFallbackToDurableCache(error);
 }
 
 function sleep(ms: number) {
@@ -104,7 +103,9 @@ function retryAfterMs(res: Response): number {
 async function saveDurableCache<T>(path: string, userId: string | undefined, value: T) {
   try {
     await AsyncStorage.setItem(storageKey(path, userId), JSON.stringify({ t: Date.now(), v: value }));
-  } catch { /* cache is best-effort */ }
+  } catch {
+    /* silent-catch-ok: cache persistence is best-effort; network response stays authoritative */
+  }
 }
 
 async function readDurableCache<T>(path: string, userId?: string): Promise<T | null> {
@@ -115,6 +116,7 @@ async function readDurableCache<T>(path: string, userId?: string): Promise<T | n
     if (!parsed.t || Date.now() - parsed.t > DURABLE_CACHE_TTL) return null;
     return parsed.v ?? null;
   } catch {
+    /* silent-catch-ok: unreadable cache is a cache miss; request/error remains authoritative */
     return null;
   }
 }
@@ -133,7 +135,7 @@ export async function invalidateProjectsCache(userId: string): Promise<void> {
     try {
       await AsyncStorage.removeItem(storageKey(path, userId));
     } catch {
-      /* cache is best-effort */
+      /* silent-catch-ok: invalidation is best-effort; in-memory cache is already cleared */
     }
   }
 }
@@ -173,7 +175,9 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
         try {
           const { reportError } = await import('@/lib/reportError');
           reportError('api.cachedGet.staleFallback', error, { path, status });
-        } catch { /* report best-effort */ }
+        } catch {
+          /* silent-catch-ok: telemetry must never prevent a valid stale-cache fallback */
+        }
         _cache.set(k, { t: Date.now(), v: fallback });
         _lastCachedGetMeta = {
           path,
@@ -225,7 +229,11 @@ export function getRefreshToken(): string | null {
   return _refreshToken;
 }
 
-/** Rotate refresh → new access. Returns false if session dead. */
+/**
+ * Rotate refresh → new access.
+ * Returns false only when the server authoritatively rejects the session.
+ * Transient/network/server failures throw and preserve both tokens for retry.
+ */
 export async function refreshAccessToken(): Promise<boolean> {
   if (!_refreshToken) return false;
   if (_refreshInflight) return _refreshInflight;
@@ -236,17 +244,39 @@ export async function refreshAccessToken(): Promise<boolean> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: _refreshToken }),
       });
+      const txt = await res.text();
       if (!res.ok) {
-        setAccessToken(null);
-        setRefreshToken(null);
-        return false;
+        const parsed = parseApiErrorBody(txt, res.status);
+        if (isAuthoritativeRefreshRejection(res.status)) {
+          setAccessToken(null);
+          setRefreshToken(null);
+          return false;
+        }
+        throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
       }
-      const data = await res.json() as { access_token?: string; refresh_token?: string };
-      if (data.access_token) setAccessToken(data.access_token);
-      if (data.refresh_token) setRefreshToken(data.refresh_token);
-      return Boolean(data.access_token);
-    } catch {
-      return false;
+
+      let data: { access_token?: unknown; refresh_token?: unknown };
+      try {
+        data = txt ? JSON.parse(txt) as { access_token?: unknown; refresh_token?: unknown } : {};
+      } catch (error) {
+        throw new ApiError(502, 'Сервер вернул некорректный ответ обновления сессии.', 'invalid_refresh_response', error);
+      }
+
+      const nextAccess = typeof data.access_token === 'string' ? data.access_token.trim() : '';
+      if (!nextAccess) {
+        throw new ApiError(502, 'Сервер не вернул новый токен доступа.', 'invalid_refresh_response', data);
+      }
+      setAccessToken(nextAccess);
+
+      const nextRefresh = typeof data.refresh_token === 'string' ? data.refresh_token.trim() : '';
+      if (nextRefresh) setRefreshToken(nextRefresh);
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
+        throw new ApiError(0, 'Сервер временно недоступен. Проверьте соединение и повторите.', 'network');
+      }
+      throw error;
     } finally {
       _refreshInflight = null;
     }

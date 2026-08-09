@@ -17,7 +17,13 @@ function signalPreviewReady() {
 
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
 import { setAccessToken, setRefreshToken } from '@/lib/api/client';
+import { isAuthoritativeSessionFailure } from '@/lib/api/failurePolicy';
 import { secureGet, secureSet, secureMultiRemove } from '@/lib/secureTokenStore';
+import {
+  SESSION_USER_SNAPSHOT_KEY,
+  parseSessionUserSnapshot,
+  serializeSessionUserSnapshot,
+} from '@/lib/sessionSnapshot';
 import {
   bootstrapPreviewDemo,
   inferDemoRole,
@@ -55,14 +61,21 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 function deferPushRegistration(userId: string) {
   setTimeout(() => {
     void registerNativePushToken((token) => api.registerPushToken(userId, token))
-      .catch(() => undefined);
+      .catch(reportCatch('renovaContext.pushRegistration', { userId }));
   }, 0);
 }
 
 import { syncCustomerBudgetOnLoad } from '@/lib/customerBudgetMigrate';
 import { buildProjectCreatePayload } from '@/lib/wizard/buildProjectCreatePayload';
 
-const KEYS = { userId: 'renova_user_id', projectId: 'renova_project_id', accessToken: 'renova_access_token', refreshToken: 'renova_refresh_token' };
+const KEYS = {
+  userId: 'renova_user_id',
+  userRole: 'renova_user_role',
+  userSnapshot: SESSION_USER_SNAPSHOT_KEY,
+  projectId: 'renova_project_id',
+  accessToken: 'renova_access_token',
+  refreshToken: 'renova_refresh_token',
+};
 
 async function persistAccessToken(user: { access_token?: string | null; refresh_token?: string | null }) {
   const tok = user.access_token?.trim();
@@ -75,6 +88,15 @@ async function persistAccessToken(user: { access_token?: string | null; refresh_
     setRefreshToken(refresh);
     await secureSet(KEYS.refreshToken, refresh);
   }
+}
+
+async function persistUserSession(user: User) {
+  await persistAccessToken(user);
+  await AsyncStorage.multiSet([
+    [KEYS.userId, user.id],
+    [KEYS.userRole, user.role],
+  ]);
+  await secureSet(KEYS.userSnapshot, serializeSessionUserSnapshot(user));
 }
 
 async function clearAccessToken() {
@@ -186,6 +208,12 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     setWizardState((w) => ({ ...w, ...p }));
   }, []);
 
+  const applyDegradedIdentity = useCallback((u: User) => {
+    setUser(u);
+    setReadOnly(false);
+    setTeamAccess(u.role === 'contractor' ? UNRESOLVED_TEAM_ACCESS : NOT_APPLICABLE_TEAM_ACCESS);
+  }, []);
+
   const refreshTeamAccess = useCallback(async (u: User) => {
     if (u.role !== 'contractor') {
       setTeamAccess(NOT_APPLICABLE_TEAM_ACCESS);
@@ -222,6 +250,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const refreshMe = useCallback(async () => {
     if (!user) return;
     const u = await api.me(user.id);
+    await persistUserSession(u);
     setUser(u);
     await refreshTeamAccess(u);
   }, [user?.id, refreshTeamAccess]);
@@ -277,7 +306,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     try {
       await loadProject(pickId);
     } catch {
-      /* оставляем ref — не крутим бесконечный retry; ручной выбор сбросит */
+      /* silent-catch-ok: keep ref to avoid infinite retry; explicit project selection resets it */
     }
   }, [user, activeProject, projects, projectResolving, loadProject]);
 
@@ -287,7 +316,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   /** Применить пользователя + проекты + активный объект после bootstrap/recovery */
   const applySession = useCallback(async (u: User, list: ProjectSummary[]) => {
-    await persistAccessToken(u);
+    await persistUserSession(u);
     setUser(u);
     setReadOnly(false);
     const enriched = await enrichProjectsPendingPayments(u.id, list, u.role);
@@ -301,7 +330,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const pid = await AsyncStorage.getItem(KEYS.projectId);
-    const role = inferDemoRole(u, await AsyncStorage.getItem('renova_user_role'));
+    const role = inferDemoRole(u, await AsyncStorage.getItem(KEYS.userRole));
     const demoPick =
       isDemoPhone(u.phone) && enriched.length > 0
         ? pickPrimaryDemoProject(enriched)?.id ?? enriched[0]?.id
@@ -325,7 +354,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const reachable = await pingApi();
     setApiReachable(reachable);
     if (!reachable) return;
-    const storedRole = await AsyncStorage.getItem('renova_user_role');
+    const storedRole = await AsyncStorage.getItem(KEYS.userRole);
     const role = inferDemoRole(user, storedRole);
     const recovered = await recoverDemoSession(role);
     if (recovered) {
@@ -360,10 +389,13 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         const reachable = await pingApi();
         setApiReachable(reachable);
 
-        const uid = await AsyncStorage.getItem(KEYS.userId);
-        const storedRole = await AsyncStorage.getItem('renova_user_role');
-        const storedTok = await secureGet(KEYS.accessToken);
-        const storedRefresh = await secureGet(KEYS.refreshToken);
+        const [uid, storedRole, storedSnapshot, storedTok, storedRefresh] = await Promise.all([
+          AsyncStorage.getItem(KEYS.userId),
+          AsyncStorage.getItem(KEYS.userRole),
+          secureGet(KEYS.userSnapshot),
+          secureGet(KEYS.accessToken),
+          secureGet(KEYS.refreshToken),
+        ]);
         if (storedTok) setAccessToken(storedTok);
         if (storedRefresh) setRefreshToken(storedRefresh);
 
@@ -378,18 +410,42 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
         if (!uid) return;
 
+        const expectedRole = storedRole === 'customer' || storedRole === 'contractor' ? storedRole : null;
+        const snapshot = parseSessionUserSnapshot(storedSnapshot, { id: uid, role: expectedRole });
+
+        // Known-offline cold start must never probe /me and convert transport failure into logout.
+        // Restore identity only; contractor writes remain fail-closed until team access is revalidated.
+        if (!reachable) {
+          if (snapshot) applyDegradedIdentity(snapshot);
+          return;
+        }
+
         let u: User;
         try {
           u = await api.me(uid);
-          await persistAccessToken(u);
-        } catch {
-          await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, KEYS.refreshToken]);
-          await secureMultiRemove([KEYS.accessToken, KEYS.refreshToken]);
-          await clearAccessToken();
-          if (reachable) {
-            const recovered = await recoverDemoSession(inferDemoRole(null, storedRole));
-            if (recovered) await applySession(recovered.user, recovered.projects);
+          await persistUserSession(u);
+          // Establish identity before secondary project/team loads so a later transient
+          // dependency failure cannot make the app look logged out.
+          applyDegradedIdentity(u);
+        } catch (error) {
+          if (!isAuthoritativeSessionFailure(error)) {
+            setApiReachable(false);
+            reportError('renovaContext.sessionBootstrapTransient', error, { userId: uid });
+            if (snapshot) applyDegradedIdentity(snapshot);
+            return;
           }
+
+          await AsyncStorage.multiRemove([
+            KEYS.userId,
+            KEYS.userRole,
+            KEYS.projectId,
+            KEYS.accessToken,
+            KEYS.refreshToken,
+          ]);
+          await secureMultiRemove([KEYS.userSnapshot]);
+          await clearAccessToken();
+          const recovered = await recoverDemoSession(inferDemoRole(null, storedRole));
+          if (recovered) await applySession(recovered.user, recovered.projects);
           return;
         }
 
@@ -398,7 +454,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         let list = await listProjectsWithRetry(u.id);
 
         // Пустой список или устаревший userId — пересинхронизация с демо
-        if (list.length === 0 && reachable) {
+        if (list.length === 0) {
           const role = inferDemoRole(u, storedRole);
           if (isDemoPhone(u.phone) || storedRole === 'customer' || storedRole === 'contractor') {
             const recovered = await recoverDemoSession(role);
@@ -410,33 +466,36 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         }
 
         await applySession(u, list);
-      } catch {
-        /* сбой окружения — не сбрасываем storage */
+      } catch (error) {
+        // Environment/secondary bootstrap failure keeps persisted session intact.
+        setApiReachable(false);
+        reportError('renovaContext.bootstrap', error);
       } finally {
         try {
           await flushOfflineOutbox();  // W93: session boot → канон flush + buses
-        } catch {}
+        } catch (error) {
+          reportError('renovaContext.bootstrap.flushOfflineOutbox', error);
+        }
         setLoading(false);
         signalPreviewReady();
       }
     })();
-  }, [applySession]);
+  }, [applySession, applyDegradedIdentity]);
 
 
   const demoLogin = useCallback(async (role: UserRole) => {
     const u = await withTimeout(api.demoLogin(role), LOGIN_TIMEOUT_MS, 'Превышено время ожидания сервера');
-    await persistAccessToken(u);
+    await persistUserSession(u);
     setUser(u);
     setReadOnly(false);
     await refreshTeamAccess(u);
     deferPushRegistration(u.id);
-    await AsyncStorage.setItem(KEYS.userId, u.id);
-    await AsyncStorage.setItem('renova_user_role', role);
     let list: ProjectSummary[] = [];
     try {
       const raw = await withTimeout(listProjectsWithRetry(u.id, 4), LOGIN_TIMEOUT_MS, 'Превышено время ожидания загрузки проектов');
       list = await enrichProjectsPendingPayments(u.id, raw, role);
-    } catch {
+    } catch (error) {
+      reportError('renovaContext.demoLogin.projects', error, { userId: u.id, role });
       list = [];
     }
     setProjects(list);
@@ -450,8 +509,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const u = await api.verifySmsCode(phone, code, role, extra);
-    await persistAccessToken(u);
-    await AsyncStorage.setItem(KEYS.userId, u.id);
+    await persistUserSession(u);
     setUser(u);
     setReadOnly(false);
     await refreshTeamAccess(u);
@@ -478,12 +536,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(async (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const u = await api.register({ phone, role, ...extra });
-    await persistAccessToken(u);
+    await persistUserSession(u);
     setUser(u);
     setReadOnly(false);
     await refreshTeamAccess(u);
     deferPushRegistration(u.id);
-    await AsyncStorage.setItem(KEYS.userId, u.id);
     if (role === 'contractor') {
       const raw = await api.listProjects(u.id);
       const list = await enrichProjectsPendingPayments(u.id, raw, role);
@@ -517,7 +574,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     try {
       detail = await api.getProject(user.id, created.id);
     } catch {
-      /* POST/PATCH-ответ достаточен как fallback */
+      /* silent-catch-ok: POST/PATCH response is sufficient as the committed project fallback */
     }
     const refreshed = await enrichProjectsPendingPayments(user.id, await api.listProjects(user.id), user.role as UserRole);
     setProjects(refreshed);
@@ -625,8 +682,16 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
   const logout = useCallback(async () => {
-    await AsyncStorage.multiRemove([KEYS.userId, KEYS.projectId, KEYS.accessToken, KEYS.refreshToken, SESSION_KEYS.pendingProjectPick, SESSION_KEYS.projectExplicitlyPicked]);
-    await secureMultiRemove([KEYS.accessToken, KEYS.refreshToken]);
+    await AsyncStorage.multiRemove([
+      KEYS.userId,
+      KEYS.userRole,
+      KEYS.projectId,
+      KEYS.accessToken,
+      KEYS.refreshToken,
+      SESSION_KEYS.pendingProjectPick,
+      SESSION_KEYS.projectExplicitlyPicked,
+    ]);
+    await secureMultiRemove([KEYS.userSnapshot]);
     await clearAccessToken();
     setUser(null);
     setProjects([]);

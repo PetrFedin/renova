@@ -5,6 +5,16 @@ import {
   OfflineQueueStorageError,
   parseOfflineQueueStorage,
 } from './offlineQueueStorage';
+import {
+  isAuthoritativeRefreshRejection,
+  isAuthoritativeSessionFailure,
+  shouldFallbackToDurableCache,
+} from './api/failurePolicy';
+import {
+  parseSessionUserSnapshot,
+  serializeSessionUserSnapshot,
+} from './sessionSnapshot';
+import type { User } from './api';
 
 const root = join(__dirname, '..');
 const must = (cond: boolean, msg: string) => {
@@ -90,5 +100,91 @@ must(backendAuth.includes('raise HTTPException(404, "demo_disabled")'), 'Backend
 const bridge = readFileSync(join(root, '../../backend/app/services/ws_redis_bridge.py'), 'utf8');
 must(bridge.includes('INSTANCE_ID'), 'ws redis bridge has instance id');
 must(bridge.includes('redis_subscriber_loop'), 'ws redis bridge has subscriber loop');
+
+// Auth refresh/bootstrap: only an authoritative 401/403 may invalidate a persisted session.
+must(isAuthoritativeRefreshRejection(401), '401 refresh rejection is authoritative');
+must(isAuthoritativeRefreshRejection(403), '403 refresh rejection is authoritative');
+must(!isAuthoritativeRefreshRejection(0), 'network failure must not kill refresh session');
+must(!isAuthoritativeRefreshRejection(429), 'rate limit must not kill refresh session');
+must(!isAuthoritativeRefreshRejection(500), 'server failure must not kill refresh session');
+must(isAuthoritativeSessionFailure({ status: 401 }), '401 bootstrap failure is authoritative');
+must(!isAuthoritativeSessionFailure({ status: 0, code: 'network' }), 'network bootstrap failure preserves session');
+must(!isAuthoritativeSessionFailure({ status: 503 }), '5xx bootstrap failure preserves session');
+
+// Durable GET cache: transient failures may use stale data, client/auth errors may not.
+must(shouldFallbackToDurableCache({ status: 0, code: 'network' }), 'network failure may use durable cache');
+must(shouldFallbackToDurableCache({ status: 0, code: 'timeout' }), 'timeout may use durable cache');
+must(shouldFallbackToDurableCache({ status: 429, code: 'rate_limit' }), 'rate limit may use durable cache');
+must(shouldFallbackToDurableCache({ status: 503 }), '5xx may use durable cache');
+must(!shouldFallbackToDurableCache({ status: 401 }), '401 must not be hidden by stale cache');
+must(!shouldFallbackToDurableCache({ status: 404 }), '404 must not be hidden by stale cache');
+must(!shouldFallbackToDurableCache({ status: 401, code: 'network' }), 'HTTP auth status wins over contradictory transient code');
+
+const apiClient = readFileSync(join(root, 'lib/api/client.ts'), 'utf8');
+must(
+  apiClient.includes('if (isAuthoritativeRefreshRejection(res.status))'),
+  'Refresh clears credentials only through authoritative rejection policy',
+);
+must(
+  apiClient.includes("throw new ApiError(502, 'Сервер не вернул новый токен доступа.'"),
+  'Malformed successful refresh response must fail closed instead of becoming false/session-dead',
+);
+must(
+  !apiClient.includes('catch {\n      return false;\n    } finally'),
+  'Transient refresh exceptions must never silently become session-dead=false',
+);
+
+// Offline identity snapshot must contain profile only, never access/refresh credentials.
+const snapshotUser: User = {
+  id: 'u-1',
+  phone: '+70000000000',
+  role: 'customer',
+  full_name: 'Test User',
+  inn: null,
+  npd_verified: false,
+  access_token: 'access-secret',
+  refresh_token: 'refresh-secret',
+  token_type: 'bearer',
+};
+const serializedSnapshot = serializeSessionUserSnapshot(snapshotUser);
+must(!serializedSnapshot.includes('access-secret'), 'session snapshot strips access token');
+must(!serializedSnapshot.includes('refresh-secret'), 'session snapshot strips refresh token');
+const restoredSnapshot = parseSessionUserSnapshot(serializedSnapshot, { id: 'u-1', role: 'customer' });
+must(restoredSnapshot?.id === 'u-1' && restoredSnapshot.role === 'customer', 'valid session snapshot restores identity');
+must(!restoredSnapshot?.access_token && !restoredSnapshot?.refresh_token, 'restored snapshot never synthesizes credentials');
+must(parseSessionUserSnapshot(serializedSnapshot, { id: 'other' }) === null, 'snapshot is bound to persisted user id');
+must(parseSessionUserSnapshot(serializedSnapshot, { role: 'contractor' }) === null, 'snapshot is bound to persisted role');
+
+const renovaContext = readFileSync(join(root, 'lib/context/RenovaContext.tsx'), 'utf8');
+must(
+  renovaContext.includes("userSnapshot: SESSION_USER_SNAPSHOT_KEY"),
+  'RenovaContext persists a versioned offline identity snapshot',
+);
+must(
+  renovaContext.includes("[KEYS.userRole, user.role]") && renovaContext.includes('serializeSessionUserSnapshot(user)'),
+  'All successful session persistence stores role and safe identity snapshot together',
+);
+must(
+  renovaContext.includes('if (!reachable) {\n          if (snapshot) applyDegradedIdentity(snapshot);\n          return;\n        }'),
+  'Known-offline cold start restores identity without probing /me',
+);
+must(
+  renovaContext.includes('if (!isAuthoritativeSessionFailure(error))'),
+  'Transient bootstrap failures are classified before any destructive session reset',
+);
+const transientBranchAt = renovaContext.indexOf('if (!isAuthoritativeSessionFailure(error))');
+const destructiveResetAt = renovaContext.indexOf('await AsyncStorage.multiRemove([', transientBranchAt);
+must(
+  transientBranchAt >= 0 && destructiveResetAt > transientBranchAt,
+  'Session storage reset is reachable only after transient failure branch returns',
+);
+must(
+  renovaContext.includes("setTeamAccess(u.role === 'contractor' ? UNRESOLVED_TEAM_ACCESS : NOT_APPLICABLE_TEAM_ACCESS)"),
+  'Offline contractor identity remains write-blocked until team access is revalidated',
+);
+must(
+  renovaContext.includes('await secureMultiRemove([KEYS.userSnapshot]);'),
+  'Authoritative logout/session rejection deletes persisted identity snapshot',
+);
 
 console.log('failClosed.w144.test OK');
