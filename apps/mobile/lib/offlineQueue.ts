@@ -42,6 +42,11 @@ export type OfflineJob = {
   version?: number;
 };
 
+type OfflineJobInput = Omit<
+  OfflineJob,
+  'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError' | 'nextAttemptAt' | 'lastAttemptAt' | 'version'
+>;
+
 export type OfflineFlushResult = {
   synced: number;
   conflicts: number;
@@ -72,7 +77,21 @@ function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function normalizeJob(raw: Record<string, unknown>): OfflineJob | null {
+function parseStoredTimestamp(raw: Record<string, unknown>, allowGeneratedIdentity: boolean): number | null {
+  if (typeof raw.ts === 'number' && Number.isFinite(raw.ts)) return raw.ts;
+  const candidate = typeof raw.createdAt === 'string'
+    ? raw.createdAt
+    : typeof raw.created_at === 'string'
+      ? raw.created_at
+      : null;
+  if (candidate) {
+    const parsed = Date.parse(candidate);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return allowGeneratedIdentity ? Date.now() : null;
+}
+
+function normalizeJob(raw: Record<string, unknown>, allowGeneratedIdentity = false): OfflineJob | null {
   const path = typeof raw.path === 'string' ? raw.path : '';
   const method = typeof raw.method === 'string' ? raw.method : 'POST';
   if (!path) return null;
@@ -80,7 +99,9 @@ function normalizeJob(raw: Record<string, unknown>): OfflineJob | null {
   let body = '';
   if (typeof raw.body === 'string') body = raw.body;
   else if (raw.body !== undefined) {
-    body = JSON.stringify(raw.body);
+    const serialized = JSON.stringify(raw.body);
+    if (serialized === undefined) return null;
+    body = serialized;
   }
 
   const userId =
@@ -91,18 +112,15 @@ function normalizeJob(raw: Record<string, unknown>): OfflineJob | null {
         : '';
 
   const id =
-    typeof raw.id === 'string'
+    typeof raw.id === 'string' && raw.id.length > 0
       ? raw.id
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      : allowGeneratedIdentity
+        ? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        : '';
+  if (!id) return null;
 
-  const ts =
-    typeof raw.ts === 'number'
-      ? raw.ts
-      : typeof raw.createdAt === 'string'
-        ? Date.parse(raw.createdAt) || Date.now()
-        : typeof raw.created_at === 'string'
-          ? Date.parse(raw.created_at) || Date.now()
-          : Date.now();
+  const ts = parseStoredTimestamp(raw, allowGeneratedIdentity);
+  if (ts === null) return null;
 
   return {
     path,
@@ -126,12 +144,16 @@ async function readRaw(key: string): Promise<unknown[]> {
   return parseOfflineQueueStorage(raw, key);
 }
 
-function normalizeStoredJobs(raw: unknown[], storageKey: string): OfflineJob[] {
+function normalizeStoredJobs(
+  raw: unknown[],
+  storageKey: string,
+  allowGeneratedIdentity = false,
+): OfflineJob[] {
   return raw.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
       throw new OfflineQueueStorageError(storageKey, 'invalid_job', index);
     }
-    const job = normalizeJob(item as Record<string, unknown>);
+    const job = normalizeJob(item as Record<string, unknown>, allowGeneratedIdentity);
     if (!job) throw new OfflineQueueStorageError(storageKey, 'invalid_job', index);
     return job;
   });
@@ -145,7 +167,7 @@ async function migrateLegacyQueues(existing: OfflineJob[]): Promise<OfflineJob[]
   for (const key of LEGACY_KEYS) {
     const legacyRaw = await readRaw(key);
     if (!legacyRaw.length) continue;
-    const legacy = normalizeStoredJobs(legacyRaw, key);
+    const legacy = normalizeStoredJobs(legacyRaw, key, true);
     for (const job of legacy) {
       if (byId.has(job.id)) continue;
       byId.set(job.id, job);
@@ -225,23 +247,40 @@ async function emitQueueChanged(): Promise<void> {
   }
 }
 
-export async function enqueue(job: Omit<OfflineJob, 'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError' | 'nextAttemptAt' | 'lastAttemptAt' | 'version'>) {
-  const length = await withQueueLock(async () => {
+function buildQueuedJob(job: OfflineJobInput): OfflineJob {
+  const ts = Date.now();
+  return {
+    ...job,
+    ts,
+    id: `${ts}-${Math.random().toString(36).slice(2)}`,
+    attempts: 0,
+    blocked: false,
+    conflict: false,
+    version: 0,
+  };
+}
+
+async function appendJob(job: OfflineJobInput): Promise<{ item: OfflineJob; length: number }> {
+  return withQueueLock(async () => {
     const queue = await getQueueUnlocked();
-    queue.push({
-      ...job,
-      ts: Date.now(),
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      attempts: 0,
-      blocked: false,
-      conflict: false,
-      version: 0,
-    });
+    const item = buildQueuedJob(job);
+    queue.push(item);
     await setQueueUnlocked(queue);
-    return queue.length;
+    return { item, length: queue.length };
   });
+}
+
+export async function enqueue(job: OfflineJobInput): Promise<number> {
+  const result = await appendJob(job);
   await emitQueueChanged();
-  return length;
+  return result.length;
+}
+
+/** Enqueue and return the exact committed item without a racy follow-up list read. */
+export async function enqueueJob(job: OfflineJobInput): Promise<OfflineJob> {
+  const result = await appendJob(job);
+  await emitQueueChanged();
+  return result.item;
 }
 
 export async function removeJob(id: string) {
@@ -254,27 +293,69 @@ export async function removeJob(id: string) {
   return length;
 }
 
-export async function retryJob(id: string) {
-  await withQueueLock(async () => {
+export async function retryJob(id: string): Promise<boolean> {
+  const updated = await withQueueLock(async () => {
     const queue = await getQueueUnlocked();
-    await setQueueUnlocked(
-      queue.map((job) =>
-        job.id === id
-          ? {
-              ...job,
-              attempts: 0,
-              blocked: false,
-              conflict: false,
-              lastError: undefined,
-              nextAttemptAt: undefined,
-              lastAttemptAt: undefined,
-              version: (job.version ?? 0) + 1,
-            }
-          : job,
-      ),
-    );
+    let found = false;
+    const next = queue.map((job) => {
+      if (job.id !== id) return job;
+      found = true;
+      return {
+        ...job,
+        attempts: 0,
+        blocked: false,
+        conflict: false,
+        lastError: undefined,
+        nextAttemptAt: undefined,
+        lastAttemptAt: undefined,
+        version: (job.version ?? 0) + 1,
+      };
+    });
+    if (found) await setQueueUnlocked(next);
+    return found;
   });
-  await emitQueueChanged();
+  if (updated) await emitQueueChanged();
+  return updated;
+}
+
+/** Atomically record a failed attempt against the latest canonical queue. */
+export async function markJobFailed(
+  id: string,
+  message: string,
+  permanent = false,
+): Promise<boolean> {
+  const updated = await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    let found = false;
+    const next = queue.map((job) => {
+      if (job.id !== id) return job;
+      found = true;
+      const attempts = (job.attempts ?? 0) + 1;
+      return {
+        ...job,
+        attempts,
+        lastError: message,
+        blocked: permanent || attempts >= MAX_ATTEMPTS,
+        version: (job.version ?? 0) + 1,
+      };
+    });
+    if (found) await setQueueUnlocked(next);
+    return found;
+  });
+  if (updated) await emitQueueChanged();
+  return updated;
+}
+
+/** Explicit destructive clear. Corrupt/unreadable storage is never overwritten. */
+export async function clearQueue(): Promise<number> {
+  const removed = await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    if (queue.length === 0) return 0;
+    await setQueueUnlocked([]);
+    return queue.length;
+  });
+  if (removed > 0) await emitQueueChanged();
+  return removed;
 }
 
 /**
