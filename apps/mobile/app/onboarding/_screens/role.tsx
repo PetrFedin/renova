@@ -11,8 +11,8 @@ import { navigateAfterLogin } from '@/lib/osEntry';
 
 type Mode = 'demo' | 'sms';
 
-/** W67 #27: демо-вход только при EXPO_PUBLIC_DEMO=1 (иначе SMS по умолчанию). */
-const DEMO_LOGIN_ENABLED = (process.env.EXPO_PUBLIC_DEMO ?? '1') !== '0';
+/** W67 #27: демо-вход только при явном EXPO_PUBLIC_DEMO=1 (fail-closed по умолчанию). */
+const DEMO_LOGIN_ENABLED = (process.env.EXPO_PUBLIC_DEMO ?? '0') === '1';
 
 export default function RoleScreen() {
   const { teamToken } = useLocalSearchParams<{ teamToken?: string }>();
