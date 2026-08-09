@@ -8,6 +8,7 @@ import {
   filterInboxForHero,
   type InboxItem,
 } from './buildInboxItems';
+import { selectConfirmedInboxSnapshot } from './inboxIntegrity';
 import { resolveInboxNavigation } from './inboxNavigation';
 
 let ok = true;
@@ -65,6 +66,43 @@ const approvalTarget = resolveInboxNavigation(approvalItem);
 assert(
   approvalTarget.kind === 'approval' && approvalTarget.approval.id === 'material-1',
   'approval inbox row resolves to approval payload instead of a fabricated href',
+);
+
+const priorConfirmed: InboxItem[] = [
+  { id: 'confirmed-task', kind: 'work', title: 'Подтверждённая задача', href: '/work', priority: 70 },
+];
+const partialCandidate: InboxItem[] = [
+  { id: 'partial-task', kind: 'payment', title: 'Частичный результат', href: '/budget', priority: 80 },
+];
+const degradedWithHistory = selectConfirmedInboxSnapshot({
+  candidateItems: partialCandidate,
+  previousItems: priorConfirmed,
+  issueCount: 1,
+  hasConfirmedSnapshot: true,
+});
+assert(
+  degradedWithHistory.items === priorConfirmed && !degradedWithHistory.acceptedCandidate,
+  'degraded reload preserves the last confirmed snapshot',
+);
+const degradedWithoutHistory = selectConfirmedInboxSnapshot({
+  candidateItems: partialCandidate,
+  previousItems: [],
+  issueCount: 1,
+  hasConfirmedSnapshot: false,
+});
+assert(
+  degradedWithoutHistory.items.length === 0 && !degradedWithoutHistory.acceptedCandidate,
+  'first degraded reload fails closed instead of publishing partial task rows',
+);
+const completeCandidate = selectConfirmedInboxSnapshot({
+  candidateItems: partialCandidate,
+  previousItems: priorConfirmed,
+  issueCount: 0,
+  hasConfirmedSnapshot: true,
+});
+assert(
+  completeCandidate.items === partialCandidate && completeCandidate.acceptedCandidate,
+  'complete reload replaces the confirmed snapshot',
 );
 
 async function testBuildHealth() {
