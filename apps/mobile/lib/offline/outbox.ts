@@ -5,12 +5,13 @@
 import {
   OFFLINE_MAX_ATTEMPTS,
   OFFLINE_QUEUE_KEY,
-  enqueue,
+  clearQueue,
+  enqueueJob,
   getQueue,
   getQueueStatus,
+  markJobFailed,
   removeJob,
   retryJob,
-  writeQueue,
   type OfflineJob,
 } from '@/lib/offlineQueue';
 
@@ -59,14 +60,19 @@ export const offlineOutbox = {
     userId?: string;
     body?: unknown;
   }) {
-    await enqueue({
+    let body = '';
+    if (input.body !== undefined) {
+      const serialized = JSON.stringify(input.body);
+      if (serialized === undefined) throw new Error('offline_body_not_serializable');
+      body = serialized;
+    }
+    const queued = await enqueueJob({
       path: input.path,
       method: input.method,
       userId: input.userId ?? '',
-      body: input.body === undefined ? '' : JSON.stringify(input.body),
+      body,
     });
-    const items = await this.list();
-    return items[items.length - 1];
+    return jobToMutation(queued);
   },
 
   async remove(id: string) {
@@ -74,20 +80,9 @@ export const offlineOutbox = {
   },
 
   async markFailed(id: string, error: unknown, permanent = false) {
-    const q = await getQueue();
     const message = error instanceof Error ? error.message : String(error || 'sync_failed');
-    await writeQueue(
-      q.map((item) => {
-        if (item.id !== id) return item;
-        const attempts = (item.attempts ?? 0) + 1;
-        return {
-          ...item,
-          attempts,
-          lastError: message,
-          blocked: permanent || attempts >= OFFLINE_MAX_ATTEMPTS,
-        };
-      }),
-    );
+    const updated = await markJobFailed(id, message, permanent);
+    if (!updated) throw new Error('offline_job_missing');
   },
 
   async retry(id: string) {
@@ -95,7 +90,7 @@ export const offlineOutbox = {
   },
 
   async clear() {
-    await writeQueue([]);
+    await clearQueue();
   },
 
   async status() {

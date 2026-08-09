@@ -1,6 +1,10 @@
 /** W144: fail-closed critical loads and auth/demo surfaces. */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import {
+  OfflineQueueStorageError,
+  parseOfflineQueueStorage,
+} from './offlineQueueStorage';
 
 const root = join(__dirname, '..');
 const must = (cond: boolean, msg: string) => {
@@ -13,6 +17,50 @@ must(!chat.includes("chatInbox(user.id).catch(() => [])"), 'ChatThreadView: no s
 const offline = readFileSync(join(root, 'components/renova/OfflineSyncStatus.tsx'), 'utf8');
 must(offline.includes("reportError('offline.getQueue'"), 'OfflineSync reports queue errors');
 must(!offline.includes("getQueue().catch(() => [])"), 'OfflineSync: no silent empty queue');
+must(offline.includes('readError') && offline.includes('Повторить проверку'), 'OfflineSync exposes queue read failure and retry');
+must(
+  offline.includes('pending === 0 && blocked === 0 && conflicts === 0 && !readError'),
+  'compact OfflineSync must stay visible when queue status cannot be read',
+);
+
+const queue = readFileSync(join(root, 'lib/offlineQueue.ts'), 'utf8');
+must(queue.includes('return parseOfflineQueueStorage(raw, key);'), 'Offline queue storage parsing is fail-closed');
+must(queue.includes('normalizeStoredJobs(raw, KEY)'), 'Offline queue rejects malformed stored jobs');
+must(!queue.includes('export async function writeQueue'), 'Offline recovery cannot replace the whole queue from a stale UI snapshot');
+must(queue.includes('export async function updateJobBody'), 'Conflict body update is atomic against latest queue');
+must(queue.includes('export async function dedupeExactJobs'), 'Queue dedupe is atomic against latest queue');
+const persistLegacyAt = queue.indexOf('await AsyncStorage.setItem(KEY, JSON.stringify(merged));');
+const cleanupLegacyAt = queue.indexOf('await AsyncStorage.removeItem(key);');
+must(
+  persistLegacyAt >= 0 && cleanupLegacyAt > persistLegacyAt,
+  'Legacy queue migration persists canonical data before deleting source storage',
+);
+
+must(parseOfflineQueueStorage(null, 'test').length === 0, 'Missing offline storage is a legitimate empty queue');
+must(parseOfflineQueueStorage('[]', 'test').length === 0, 'Valid empty offline storage remains empty');
+let invalidJsonRejected = false;
+try {
+  parseOfflineQueueStorage('{broken', 'test');
+} catch (error) {
+  invalidJsonRejected = error instanceof OfflineQueueStorageError && error.reason === 'invalid_json';
+}
+must(invalidJsonRejected, 'Malformed offline queue JSON must never become []');
+let invalidShapeRejected = false;
+try {
+  parseOfflineQueueStorage('{"ok":true}', 'test');
+} catch (error) {
+  invalidShapeRejected = error instanceof OfflineQueueStorageError && error.reason === 'invalid_shape';
+}
+must(invalidShapeRejected, 'Non-array offline queue storage must never become []');
+
+const conflicts = readFileSync(join(root, 'app/_stack/conflicts.tsx'), 'utf8');
+must(conflicts.includes('loadError') && conflicts.includes('Повторить чтение'), 'Conflict recovery exposes storage read errors');
+must(conflicts.includes('updateJobBody') && !conflicts.includes('writeQueue'), 'Conflict merge does not overwrite the whole queue');
+must(conflicts.includes('dedupeExactJobs'), 'Conflict dedupe operates on the latest locked queue');
+must(
+  conflicts.includes('setJobs([])') && conflicts.includes('Never render/edit a stale snapshot'),
+  'Conflict recovery never edits stale jobs after a failed read',
+);
 
 const stage = readFileSync(join(root, 'components/screens/StageDetailScreen.tsx'), 'utf8');
 must(stage.includes("blocked: true, depends_on: 'load_error'"), 'StageDetail fail-closed on blocked load');
