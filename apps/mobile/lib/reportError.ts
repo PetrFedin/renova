@@ -27,7 +27,7 @@ function captureSentry(error: unknown, message: string, scope: string, payload: 
 export function reportError(scope: string, error: unknown, extra?: Extra): void {
   const message = error instanceof Error ? error.message : String(error);
   const payload = { scope, message, extra, at: new Date().toISOString() };
-  if (__DEV__) {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
     console.warn(`[reportError] ${scope}`, error, extra || '');
   }
   captureSentry(error, message, scope, payload);
