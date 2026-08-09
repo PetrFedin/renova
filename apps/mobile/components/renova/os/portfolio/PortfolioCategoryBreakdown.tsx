@@ -7,9 +7,15 @@ type Props = {
   rows: PortfolioCategoryRow[];
   loading: boolean;
   projectCount: number;
+  unavailableProjectCount?: number;
 };
 
-export function PortfolioCategoryBreakdown({ rows, loading, projectCount }: Props) {
+export function PortfolioCategoryBreakdown({
+  rows,
+  loading,
+  projectCount,
+  unavailableProjectCount = 0,
+}: Props) {
   if (loading) {
     return (
       <View style={[s.wrap, s.center]}>
@@ -21,6 +27,17 @@ export function PortfolioCategoryBreakdown({ rows, loading, projectCount }: Prop
 
   if (!projectCount) {
     return null;
+  }
+
+  if (unavailableProjectCount === projectCount) {
+    return (
+      <View style={s.wrap}>
+        <Text style={s.head}>Статьи расходов</Text>
+        <Text style={s.warning}>
+          Детализация временно недоступна для выбранных объектов. Итоги ниже не подменяются нулевыми значениями — повторите позже.
+        </Text>
+      </View>
+    );
   }
 
   if (!rows.length) {
@@ -36,6 +53,11 @@ export function PortfolioCategoryBreakdown({ rows, loading, projectCount }: Prop
     <View style={s.wrap}>
       <Text style={s.head}>Статьи расходов</Text>
       <Text style={s.sub}>Сумма по выбранным объектам — где был перерасход относительно плана</Text>
+      {unavailableProjectCount > 0 ? (
+        <Text style={s.warning}>
+          Частичные данные: детализация недоступна для {unavailableProjectCount} из {projectCount} объект(ов). Сумма ниже не является итогом всего выбранного портфеля.
+        </Text>
+      ) : null}
 
       {rows.map((row) => (
         <View key={row.key} style={[s.line, row.key === 'total' && s.lineTotal]}>
@@ -71,6 +93,7 @@ const s = StyleSheet.create({
   head: { fontSize: 13, fontWeight: '800', color: RenovaTheme.colors.text, marginBottom: 4 },
   sub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 10, lineHeight: 16 },
   empty: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16 },
+  warning: { fontSize: 12, color: RenovaTheme.colors.dangerText, lineHeight: 17, marginBottom: 10 },
   line: {
     paddingVertical: 8,
     borderTopWidth: 1,

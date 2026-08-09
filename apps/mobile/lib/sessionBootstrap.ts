@@ -7,6 +7,7 @@ import { api, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
 import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 import { resolveActiveProjectId } from '@/lib/resolveActiveProjectId';
 import { API_BASE } from '@/lib/api/client';
+import { reportError } from '@/lib/reportError';
 
 const KEYS = {
   userId: 'renova_user_id',
@@ -23,29 +24,36 @@ export function isPreviewFrame(): boolean {
   return typeof window !== 'undefined' && window.parent !== window;
 }
 
-/** Проверка доступности API с повторами (backend может стартовать позже Expo) */
+/** Проверка доступности API с повторами (backend может стартовать позже Expo). */
 export async function pingApi(retries = 5, delayMs = 600): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fetch(`${API_BASE}/health`, { method: 'GET' });
       if (res.ok) return true;
-    } catch {
-      /* retry */
+      if (i === retries - 1) {
+        reportError('sessionBootstrap.pingApi.http', new Error(`HTTP ${res.status}`), { retries });
+      }
+    } catch (error) {
+      if (i === retries - 1) reportError('sessionBootstrap.pingApi', error, { retries });
     }
     if (i < retries - 1) await sleep(delayMs * (i + 1));
   }
   return false;
 }
 
+/** Retry transient failures, but never turn exhausted retries into a real empty list. */
 export async function listProjectsWithRetry(userId: string, retries = 3): Promise<ProjectSummary[]> {
+  let lastError: unknown = new Error('projects_load_failed');
   for (let i = 0; i < retries; i++) {
     try {
       return await api.listProjects(userId);
-    } catch {
-      if (i < retries - 1) await sleep(500 * (i + 1));
+    } catch (error) {
+      lastError = error;
+      if (i === retries - 1) throw error;
+      await sleep(500 * (i + 1));
     }
   }
-  return [];
+  throw lastError;
 }
 
 export function inferDemoRole(user: User | null, storedRole: string | null): UserRole {
@@ -79,42 +87,37 @@ export async function loadActiveProject(
     ?? resolveActiveProjectId(projects, savedProjectId)
     ?? fallback;
   if (!pickId) return null;
-  try {
-    let p = await api.getProject(userId, pickId);
-    if (!p && fallback) {
-      p = await api.getProject(userId, fallback);
-      if (p) await AsyncStorage.setItem(KEYS.projectId, fallback);
-      return p;
-    }
-    if (role === 'contractor' && p) {
-      try {
-        p = await api.assignProject(userId, pickId);
-      } catch {
-        /* ok */
-      }
-    }
-    if (p) await AsyncStorage.setItem(KEYS.projectId, p.id);
+
+  let p = await api.getProject(userId, pickId);
+  if (!p && fallback) {
+    p = await api.getProject(userId, fallback);
+    if (p) await AsyncStorage.setItem(KEYS.projectId, fallback);
     return p;
-  } catch {
-    return null;
   }
+  if (role === 'contractor' && p) {
+    try {
+      p = await api.assignProject(userId, pickId);
+    } catch (error) {
+      // getProject already proved readable access; assignment reconciliation is
+      // non-blocking, but failure must remain observable.
+      reportError('sessionBootstrap.assignProject', error, { userId, projectId: pickId });
+    }
+  }
+  if (p) await AsyncStorage.setItem(KEYS.projectId, p.id);
+  return p;
 }
 
-/** Перелогин в демо-пользователя с актуальными проектами */
-export async function recoverDemoSession(role: UserRole): Promise<{ user: User; projects: ProjectSummary[] } | null> {
-  try {
-    const u = await api.demoLogin(role);
-    await AsyncStorage.setItem(KEYS.userId, u.id);
-    await AsyncStorage.setItem('renova_user_role', role);
-    const list = await listProjectsWithRetry(u.id, 4);
-    return { user: u, projects: list };
-  } catch {
-    return null;
-  }
+/** Перелогин в демо-пользователя с актуальными проектами. Transport errors propagate. */
+export async function recoverDemoSession(role: UserRole): Promise<{ user: User; projects: ProjectSummary[] }> {
+  const u = await api.demoLogin(role);
+  await AsyncStorage.setItem(KEYS.userId, u.id);
+  await AsyncStorage.setItem('renova_user_role', role);
+  const list = await listProjectsWithRetry(u.id, 4);
+  return { user: u, projects: list };
 }
 
 /** Автовход для preview: демо-заказчик + пропуск квиза и выбора объекта */
-export async function bootstrapPreviewDemo(): Promise<{ user: User; projects: ProjectSummary[] } | null> {
+export async function bootstrapPreviewDemo(): Promise<{ user: User; projects: ProjectSummary[] }> {
   await AsyncStorage.setItem('renova_detail_quiz_done', '1');
   await AsyncStorage.setItem('renova_detail_level', 'standard');
   await AsyncStorage.setItem('renova_project_explicitly_picked', '1');

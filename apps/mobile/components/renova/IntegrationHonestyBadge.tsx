@@ -6,8 +6,19 @@ import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { API_BASE_GUARD } from '@/lib/api/client';
 import { useInboxWsConnected } from '@/lib/useChatUnread';
+import { reportError } from '@/lib/reportError';
 
 type Chip = { id: string; label: string; ok: boolean };
+type Probe<T> = { value: T | null; failed: boolean };
+
+async function probe<T>(scope: string, request: () => Promise<T>): Promise<Probe<T>> {
+  try {
+    return { value: await request(), failed: false };
+  } catch (error) {
+    reportError(scope, error);
+    return { value: null, failed: true };
+  }
+}
 
 export function IntegrationHonestyBadge() {
   const { user } = useRenova();
@@ -19,14 +30,20 @@ export function IntegrationHonestyBadge() {
     if (!user?.id) return;
     let alive = true;
     (async () => {
-      const [y, f, e, h0] = await Promise.all([
-        api.getYookassaHealth(user.id).catch(() => null),
-        api.getFnsHealth(user.id).catch(() => null),
-        api.getEsignHealth(user.id).catch(() => null),
-        user.role === 'contractor' ? api.getH0Readiness(user.id).catch(() => null) : Promise.resolve(null),
+      const [yProbe, fProbe, eProbe, h0Probe] = await Promise.all([
+        probe('integrationHealth.yookassa', () => api.getYookassaHealth(user.id)),
+        probe('integrationHealth.fns', () => api.getFnsHealth(user.id)),
+        probe('integrationHealth.esign', () => api.getEsignHealth(user.id)),
+        user.role === 'contractor'
+          ? probe('integrationHealth.h0', () => api.getH0Readiness(user.id))
+          : Promise.resolve({ value: null, failed: false }),
       ]);
       if (!alive) return;
 
+      const y = yProbe.value;
+      const f = fProbe.value;
+      const e = eProbe.value;
+      const h0 = h0Probe.value;
       const yLive = Boolean(
         y &&
           ((y as { live_checkout_ready?: boolean }).live_checkout_ready ||
@@ -37,9 +54,21 @@ export function IntegrationHonestyBadge() {
       const eLive = Boolean(providers?.some((p) => p?.available));
 
       const next: Chip[] = [
-        { id: 'pay', label: yLive ? 'ЮKassa: live' : 'ЮKassa: demo/off', ok: yLive },
-        { id: 'fns', label: fLive ? 'ФНС: live' : 'ФНС: offline', ok: fLive },
-        { id: 'sign', label: eLive ? 'Kontur: on' : 'Подпись: in_app', ok: eLive },
+        {
+          id: 'pay',
+          label: yProbe.failed ? 'ЮKassa: status unknown' : yLive ? 'ЮKassa: live' : 'ЮKassa: demo/off',
+          ok: !yProbe.failed && yLive,
+        },
+        {
+          id: 'fns',
+          label: fProbe.failed ? 'ФНС: status unknown' : fLive ? 'ФНС: live' : 'ФНС: offline',
+          ok: !fProbe.failed && fLive,
+        },
+        {
+          id: 'sign',
+          label: eProbe.failed ? 'Подпись: status unknown' : eLive ? 'Kontur: on' : 'Подпись: in_app',
+          ok: !eProbe.failed && eLive,
+        },
         // Investor P1: WS inbox — иначе polling и ложное «realtime»
         {
           id: 'ws',
@@ -54,7 +83,9 @@ export function IntegrationHonestyBadge() {
         next.unshift({ id: 'api', label: 'API: localhost', ok: false });
       }
 
-      if (h0) {
+      if (user.role === 'contractor' && h0Probe.failed) {
+        next.push({ id: 'h0', label: 'H0: status unknown', ok: false });
+      } else if (h0) {
         next.push({
           id: 'h0',
           label: h0.ready_for_investor_demo
@@ -65,7 +96,7 @@ export function IntegrationHonestyBadge() {
       }
 
       setChips(next);
-    })();
+    })().catch((error) => reportError('integrationHealth.load', error, { userId: user.id }));
     return () => {
       alive = false;
     };
@@ -80,7 +111,7 @@ export function IntegrationHonestyBadge() {
   const summary =
     degraded.length === 0
       ? 'Системы: live'
-      : `Системы: ${degraded.length} offline`;
+      : `Системы: ${degraded.length} требуют внимания`;
 
   return (
     <View style={s.wrap} accessibilityLabel="Статус интеграций">
