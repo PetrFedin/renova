@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import './teamJoinFlow.test';
 
 function must(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -6,6 +7,8 @@ function must(condition: unknown, message: string): asserts condition {
 
 const context = readFileSync('apps/mobile/lib/context/RenovaContext.tsx', 'utf8');
 const helper = readFileSync('apps/mobile/lib/domain/teamAccess.ts', 'utf8');
+const roleScreen = readFileSync('apps/mobile/app/onboarding/_screens/role.tsx', 'utf8');
+const joinHelper = readFileSync('apps/mobile/lib/teamJoinFlow.ts', 'utf8');
 
 must(
   context.includes('const effectiveReadOnly = readOnly || teamAccess.readOnly;'),
@@ -46,6 +49,39 @@ must(
 must(
   helper.includes("readOnly: role === 'viewer'"),
   'viewer membership must remain explicitly read-only',
+);
+
+must(
+  roleScreen.includes('setPendingTeamJoinUserId(id);'),
+  'team invite flow must remember authenticated user id so join retry never consumes another OTP',
+);
+must(
+  roleScreen.includes('requireSuccessfulTeamJoin(joined)'),
+  'team invite flow must validate the business result instead of trusting HTTP success',
+);
+must(
+  roleScreen.includes("reportError('onboarding.teamJoin'"),
+  'team invite failures must remain observable',
+);
+must(
+  roleScreen.includes("reportError('onboarding.teamJoin.refreshAccess'"),
+  'post-commit team access reconciliation failures must remain observable',
+);
+must(
+  roleScreen.includes('Продолжить без вступления'),
+  'failed invite join must expose an explicit escape path instead of a dead end',
+);
+must(
+  !roleScreen.includes('catch { /* team */ }'),
+  'team invite join must never silently swallow failure and navigate as success',
+);
+must(
+  joinHelper.includes('value.ok !== true'),
+  'business-level join failure must fail closed',
+);
+must(
+  joinHelper.includes("typeof value.team_id !== 'string'"),
+  'malformed success without committed team id must fail closed',
 );
 
 console.log('teamAccessFailClosed.w178.test OK');

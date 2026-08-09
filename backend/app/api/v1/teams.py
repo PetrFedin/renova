@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import User, UserRole
+from app.services import team_invite_join_service as team_join_svc
 from app.services import team_service as team_svc
 
 router = APIRouter(prefix="/teams", tags=["teams"])
@@ -195,4 +196,4 @@ async def join(
     db: AsyncSession = Depends(get_db),
 ):
     _require_contractor(user)
-    return await team_svc.join_by_token(db, user.id, body.token)
+    return await team_join_svc.join_by_token(db, user.id, body.token)
