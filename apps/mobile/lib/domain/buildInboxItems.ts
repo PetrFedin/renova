@@ -11,6 +11,7 @@ export type InboxItem =
   | { id: string; title: string; sub?: string; kind: 'approval'; approval: ApprovalItem; priority: number };
 
 export type InboxSource =
+  | 'chat'
   | 'payments'
   | 'approval_hub'
   | 'acceptances'
@@ -24,7 +25,8 @@ export type InboxSource =
   | 'documents'
   | 'work_orders'
   | 'closeout'
-  | 'floor_plans';
+  | 'floor_plans'
+  | 'offline_outbox';
 
 export type InboxBuildIssue = {
   projectId: string;
