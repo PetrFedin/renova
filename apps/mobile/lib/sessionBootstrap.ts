@@ -37,15 +37,24 @@ export async function pingApi(retries = 5, delayMs = 600): Promise<boolean> {
   return false;
 }
 
+/**
+ * Load projects with bounded retry. A genuine API `[]` is a valid empty state;
+ * transport/auth/server failure after the final attempt is not.
+ */
 export async function listProjectsWithRetry(userId: string, retries = 3): Promise<ProjectSummary[]> {
-  for (let i = 0; i < retries; i++) {
+  const attempts = Math.max(1, retries);
+  let lastError: unknown = new Error('project_list_failed');
+
+  for (let i = 0; i < attempts; i++) {
     try {
       return await api.listProjects(userId);
-    } catch {
-      if (i < retries - 1) await sleep(500 * (i + 1));
+    } catch (error) {
+      lastError = error;
+      if (i < attempts - 1) await sleep(500 * (i + 1));
     }
   }
-  return [];
+
+  throw lastError;
 }
 
 export function inferDemoRole(user: User | null, storedRole: string | null): UserRole {
@@ -104,9 +113,15 @@ export async function loadActiveProject(
 export async function recoverDemoSession(role: UserRole): Promise<{ user: User; projects: ProjectSummary[] } | null> {
   try {
     const u = await api.demoLogin(role);
-    await AsyncStorage.setItem(KEYS.userId, u.id);
-    await AsyncStorage.setItem('renova_user_role', role);
     const list = await listProjectsWithRetry(u.id, 4);
+
+    // Do not persist a recovered identity until its project state has been read
+    // successfully. Otherwise a transient project-list failure poisons startup
+    // storage with a half-recovered session.
+    await AsyncStorage.multiSet([
+      [KEYS.userId, u.id],
+      ['renova_user_role', role],
+    ]);
     return { user: u, projects: list };
   } catch {
     return null;
@@ -115,9 +130,16 @@ export async function recoverDemoSession(role: UserRole): Promise<{ user: User; 
 
 /** Автовход для preview: демо-заказчик + пропуск квиза и выбора объекта */
 export async function bootstrapPreviewDemo(): Promise<{ user: User; projects: ProjectSummary[] } | null> {
-  await AsyncStorage.setItem('renova_detail_quiz_done', '1');
-  await AsyncStorage.setItem('renova_detail_level', 'standard');
-  await AsyncStorage.setItem('renova_project_explicitly_picked', '1');
+  const recovered = await recoverDemoSession('customer');
+  if (!recovered) return null;
+
+  // Onboarding completion is a consequence of successful preview recovery, not
+  // a prerequisite. Failed demo/bootstrap must not leave the app marked done.
+  await AsyncStorage.multiSet([
+    ['renova_detail_quiz_done', '1'],
+    ['renova_detail_level', 'standard'],
+    ['renova_project_explicitly_picked', '1'],
+  ]);
   await AsyncStorage.removeItem('renova_pending_project_pick');
-  return recoverDemoSession('customer');
+  return recovered;
 }
