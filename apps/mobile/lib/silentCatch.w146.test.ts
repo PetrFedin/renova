@@ -38,6 +38,20 @@ function isFallbackExpression(node: ts.Expression | undefined): boolean {
   return false;
 }
 
+function containsAwait(node: ts.Node): boolean {
+  let found = false;
+  const visit = (current: ts.Node): void => {
+    if (found) return;
+    if (ts.isAwaitExpression(current)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return found;
+}
+
 function hasObservableFailurePath(node: ts.Node): boolean {
   let observable = false;
   const visit = (current: ts.Node): void => {
@@ -65,6 +79,11 @@ function hasObservableFailurePath(node: ts.Node): boolean {
 }
 
 function catchClauseIsSilent(node: ts.CatchClause): boolean {
+  // This gate targets async integrity. Synchronous parse/format fallbacks are
+  // intentionally outside W146 and should be covered by their domain tests.
+  const tryStatement = node.parent;
+  if (!ts.isTryStatement(tryStatement) || !containsAwait(tryStatement.tryBlock)) return false;
+
   if (node.block.statements.length === 0) return true;
   if (hasObservableFailurePath(node.block)) return false;
 
@@ -109,7 +128,7 @@ for (const file of walk(root)) {
   const visit = (node: ts.Node): void => {
     if (!isExplicitlyAllowed(node, source)) {
       if (ts.isCatchClause(node) && catchClauseIsSilent(node)) {
-        record(node, 'silent catch block');
+        record(node, 'silent async catch');
       } else if (ts.isCallExpression(node) && promiseCatchIsSilent(node)) {
         record(node, 'silent promise fallback');
       }
@@ -121,7 +140,7 @@ for (const file of walk(root)) {
 
 if (offenders.length) {
   throw new Error(
-    'silent failure/fallback remains; report, rethrow, or document an intentional best-effort catch with `silent-catch-ok:`:\n' +
+    'silent async failure/fallback remains; report, rethrow, or document an intentional best-effort catch with `silent-catch-ok:`:\n' +
       offenders.join('\n'),
   );
 }
