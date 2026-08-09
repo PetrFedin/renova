@@ -10,7 +10,12 @@ import {
   type QueueFlushMutation,
 } from '@/lib/offline/queueMerge';
 import { filterJobsExceptProject } from '@/lib/offline/projectQueueFilter';
+import {
+  OfflineQueueStorageError,
+  parseOfflineQueueStorage,
+} from '@/lib/offlineQueueStorage';
 import { authHeaders } from '@/lib/api/client';
+import { reportError } from '@/lib/reportError';
 
 const KEY = 'renova_offline_queue';
 /** Legacy keys from parallel outbox stacks — migrate once into KEY. */
@@ -75,11 +80,7 @@ function normalizeJob(raw: Record<string, unknown>): OfflineJob | null {
   let body = '';
   if (typeof raw.body === 'string') body = raw.body;
   else if (raw.body !== undefined) {
-    try {
-      body = JSON.stringify(raw.body);
-    } catch {
-      body = '';
-    }
+    body = JSON.stringify(raw.body);
   }
 
   const userId =
@@ -121,44 +122,64 @@ function normalizeJob(raw: Record<string, unknown>): OfflineJob | null {
 }
 
 async function readRaw(key: string): Promise<unknown[]> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const raw = await AsyncStorage.getItem(key);
+  return parseOfflineQueueStorage(raw, key);
+}
+
+function normalizeStoredJobs(raw: unknown[], storageKey: string): OfflineJob[] {
+  return raw.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new OfflineQueueStorageError(storageKey, 'invalid_job', index);
+    }
+    const job = normalizeJob(item as Record<string, unknown>);
+    if (!job) throw new OfflineQueueStorageError(storageKey, 'invalid_job', index);
+    return job;
+  });
 }
 
 async function migrateLegacyQueues(existing: OfflineJob[]): Promise<OfflineJob[]> {
   const byId = new Map(existing.map((job) => [job.id, job]));
+  const cleanupKeys: string[] = [];
   let changed = false;
 
   for (const key of LEGACY_KEYS) {
-    const legacy = await readRaw(key);
-    if (!legacy.length) continue;
-    for (const item of legacy) {
-      if (!item || typeof item !== 'object') continue;
-      const job = normalizeJob(item as Record<string, unknown>);
-      if (!job || byId.has(job.id)) continue;
+    const legacyRaw = await readRaw(key);
+    if (!legacyRaw.length) continue;
+    const legacy = normalizeStoredJobs(legacyRaw, key);
+    for (const job of legacy) {
+      if (byId.has(job.id)) continue;
       byId.set(job.id, job);
       changed = true;
     }
-    await AsyncStorage.removeItem(key);
+    cleanupKeys.push(key);
   }
 
-  if (!changed) return existing;
-  const merged = [...byId.values()].sort((a, b) => a.ts - b.ts);
-  await AsyncStorage.setItem(KEY, JSON.stringify(merged));
+  const merged = changed
+    ? [...byId.values()].sort((a, b) => a.ts - b.ts)
+    : existing;
+
+  // Persist the canonical copy before deleting any legacy storage. If this write
+  // fails, all source keys remain untouched and the caller sees a real error.
+  if (changed) {
+    await AsyncStorage.setItem(KEY, JSON.stringify(merged));
+  }
+
+  for (const key of cleanupKeys) {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch (error) {
+      // Canonical data is already durable; failed cleanup is observable but must
+      // not make a healthy queue unavailable or risk deleting user mutations.
+      reportError('offline.legacyQueue.cleanup', error, { storageKey: key });
+    }
+  }
+
   return merged;
 }
 
 async function getQueueUnlocked(): Promise<OfflineJob[]> {
   const raw = await readRaw(KEY);
-  const jobs = raw
-    .map((item) => (item && typeof item === 'object' ? normalizeJob(item as Record<string, unknown>) : null))
-    .filter((job): job is OfflineJob => Boolean(job));
+  const jobs = normalizeStoredJobs(raw, KEY);
   return migrateLegacyQueues(jobs);
 }
 
@@ -254,6 +275,49 @@ export async function retryJob(id: string) {
     );
   });
   await emitQueueChanged();
+}
+
+/**
+ * Update only one conflict body against the latest queue snapshot.
+ * This prevents a stale screen snapshot from overwriting jobs enqueued in parallel.
+ */
+export async function updateJobBody(id: string, body: string): Promise<boolean> {
+  const updated = await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    let found = false;
+    const next = queue.map((job) => {
+      if (job.id !== id) return job;
+      found = true;
+      return {
+        ...job,
+        body,
+        version: (job.version ?? 0) + 1,
+      };
+    });
+    if (found) await setQueueUnlocked(next);
+    return found;
+  });
+  if (updated) await emitQueueChanged();
+  return updated;
+}
+
+/** Remove only exact duplicate mutations from the latest locked queue. */
+export async function dedupeExactJobs(): Promise<number> {
+  const removed = await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    const seen = new Set<string>();
+    const next = queue.filter((job) => {
+      const signature = JSON.stringify([job.userId, job.method, job.path, job.body]);
+      if (seen.has(signature)) return false;
+      seen.add(signature);
+      return true;
+    });
+    const count = queue.length - next.length;
+    if (count > 0) await setQueueUnlocked(next);
+    return count;
+  });
+  if (removed > 0) await emitQueueChanged();
+  return removed;
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -429,19 +493,6 @@ export function flush(apiBase: string): Promise<OfflineFlushResult> {
     activeFlush = null;
   });
   return activeFlush;
-}
-
-export async function writeQueue(jobs: OfflineJob[]) {
-  await withQueueLock(async () => {
-    const current = await getQueueUnlocked();
-    const currentById = new Map(current.map((job) => [job.id, job]));
-    const next = jobs.map((job) => ({
-      ...job,
-      version: (currentById.get(job.id)?.version ?? job.version ?? 0) + 1,
-    }));
-    await setQueueUnlocked(next);
-  });
-  await emitQueueChanged();
 }
 
 /** После archive/trash/purge — не replay мутации по этому project_id. */
