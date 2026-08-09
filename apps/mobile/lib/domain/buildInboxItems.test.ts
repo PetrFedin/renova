@@ -1,4 +1,13 @@
-import { inboxTotal, inboxAttentionBadge, inboxTaskBadge, inboxLinkItems, filterInboxForHero, type InboxItem } from './buildInboxItems';
+import { api } from '@/lib/api';
+import {
+  buildInboxItemsWithHealth,
+  inboxTotal,
+  inboxAttentionBadge,
+  inboxTaskBadge,
+  inboxLinkItems,
+  filterInboxForHero,
+  type InboxItem,
+} from './buildInboxItems';
 import { resolveInboxNavigation } from './inboxNavigation';
 
 let ok = true;
@@ -58,5 +67,63 @@ assert(
   'approval inbox row resolves to approval payload instead of a fabricated href',
 );
 
-if (!ok) process.exit(1);
-console.log('buildInboxItems.test OK');
+async function testBuildHealth() {
+  const mutableApi = api as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+  const mocks: Record<string, (...args: unknown[]) => Promise<unknown>> = {
+    listPayments: async () => [],
+    approvalHub: async () => ({ items: [] }),
+    acceptancesPendingCount: async () => ({ count: 0 }),
+    getActiveWorkSchedule: async () => null,
+    listIssues: async () => [],
+    listMaterialPicks: async () => [],
+    selectionsPendingCount: async () => ({ count: 0 }),
+    listChangeOrders: async () => [],
+    listWarrantyClaims: async () => ({ open: 0, overdue: 0 }),
+    listProjectDocuments: async () => ({ items: [] }),
+    listWorkOrders: async () => [],
+  };
+  const originals = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+
+  for (const [key, value] of Object.entries(mocks)) {
+    originals.set(key, mutableApi[key]!);
+    mutableApi[key] = value;
+  }
+
+  try {
+    const complete = await buildInboxItemsWithHealth({
+      userId: 'user-1',
+      projectId: 'project-1',
+      role: 'customer',
+      chatUnread: 0,
+    });
+    assert(complete.health === 'complete', 'all successful sources produce complete health');
+    assert(complete.issues.length === 0, 'complete inbox has no source issues');
+    assert(complete.items.length === 0, 'legitimate empty source data remains a true empty inbox');
+
+    mutableApi.listPayments = async () => { throw new Error('payments unavailable'); };
+    const degraded = await buildInboxItemsWithHealth({
+      userId: 'user-1',
+      projectId: 'project-1',
+      role: 'customer',
+      chatUnread: 0,
+    });
+    assert(degraded.health === 'degraded', 'one failed source makes the aggregate degraded');
+    assert(
+      degraded.issues.some((issue) => issue.projectId === 'project-1' && issue.source === 'payments'),
+      'degraded result identifies the failed source and project',
+    );
+    assert(degraded.items.length === 0, 'failed source can no longer masquerade as authoritative empty success');
+  } finally {
+    for (const [key, value] of originals) mutableApi[key] = value;
+  }
+}
+
+void testBuildHealth()
+  .then(() => {
+    if (!ok) process.exit(1);
+    console.log('buildInboxItems.test OK');
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
