@@ -65,7 +65,7 @@ function InboxIntegrityBanner({
       <Pressable
         accessibilityRole="button"
         onPress={onRetry}
-        style={({ pressed }) => [s.retryButton, pressed && s.retryButtonPressed]}
+        style={s.retryButton}
       >
         <Text style={s.retryText}>Повторить загрузку</Text>
       </Pressable>
@@ -193,7 +193,6 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.warningBorder,
   },
-  retryButtonPressed: { opacity: 0.72 },
   retryText: {
     color: RenovaTheme.colors.warningText,
     fontWeight: RenovaTheme.fontWeight.semibold,
