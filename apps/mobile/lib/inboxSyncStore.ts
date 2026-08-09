@@ -24,6 +24,12 @@ type ReloadOpts = {
   osRole?: OsRole;
 };
 type InboxSyncIssue = InboxBuildIssue | { projectId: string; source: 'build' };
+type ChatLoadState = {
+  threads: ChatThread[];
+  unread: number;
+  threadsOk: boolean;
+  unreadOk: boolean;
+};
 
 export type InboxHealthSnapshot = {
   status: 'idle' | 'complete' | 'degraded';
@@ -168,18 +174,18 @@ function setInboxHealth(
   };
 }
 
-async function loadChatState(userId: string): Promise<{ threads: ChatThread[]; unread: number; ok: boolean }> {
+async function loadChatState(userId: string): Promise<ChatLoadState> {
   try {
     const threads = await api.chatInbox(userId);
-    return { threads, unread: sumChatUnread(threads), ok: true };
+    return { threads, unread: sumChatUnread(threads), threadsOk: true, unreadOk: true };
   } catch (error) {
     reportError('inbox.chatInbox', error, { userId });
     try {
       const { count } = await api.chatUnreadTotal(userId);
-      return { threads: chatThreads, unread: count, ok: true };
+      return { threads: chatThreads, unread: count, threadsOk: false, unreadOk: true };
     } catch (fallbackError) {
       reportError('inbox.chatUnreadTotal', fallbackError, { userId });
-      return { threads: chatThreads, unread: chatCount, ok: false };
+      return { threads: chatThreads, unread: chatCount, threadsOk: false, unreadOk: false };
     }
   }
 }
@@ -357,7 +363,7 @@ export async function reloadInboxSync(opts: ReloadOpts, force = false): Promise<
 
     chatThreads = chatState.threads;
     chatCount = chatState.unread;
-    chatFailed = !chatState.ok;
+    chatFailed = !chatState.threadsOk;
 
     const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
     const syncOsRole = merged.osRole ?? cachedFullSync?.osRole;
@@ -365,7 +371,7 @@ export async function reloadInboxSync(opts: ReloadOpts, force = false): Promise<
     if (syncProjectId && syncOsRole) {
       const previousItems = inboxItems;
       let candidateItems: InboxItem[] = [];
-      let issues: InboxSyncIssue[] = chatState.ok
+      let issues: InboxSyncIssue[] = chatState.unreadOk
         ? []
         : [{ projectId: syncProjectId, source: 'chat' }];
 
