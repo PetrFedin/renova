@@ -15,6 +15,23 @@ must(
   'listProjectsWithRetry must distinguish a real empty API response from exhausted failures',
 );
 
+must(
+  src.includes('if (statusOf(error) === 404) return null;'),
+  'only an explicit project 404 may become a stale-project null during bootstrap',
+);
+must(
+  src.includes('if (statusOf(error) !== 409) throw error;'),
+  'contractor assignment must propagate auth/subscription/server/transport failures',
+);
+must(
+  src.includes("if (role === 'contractor' && !p.read_only)"),
+  'read-only contractor/viewer access must never be escalated through project assignment',
+);
+must(
+  !/loadActiveProject[\s\S]{0,1800}catch\s*\{\s*return null;\s*\}/.test(src),
+  'loadActiveProject must not collapse every failure into no-project',
+);
+
 const recoverStart = src.indexOf('export async function recoverDemoSession');
 const recoverEnd = src.indexOf('/** Автовход для preview', recoverStart);
 const recover = src.slice(recoverStart, recoverEnd);
