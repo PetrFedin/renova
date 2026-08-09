@@ -37,8 +37,6 @@ const KNOWN_DEBT: Record<string, number> = {
   [debtKey('components/screens/OsHomeScreen.tsx', 'async')]: 1,
   [debtKey('components/screens/OsRoomsScreen.tsx', 'async')]: 2,
   [debtKey('lib/chatPrefs.ts', 'async')]: 1,
-  [debtKey('lib/context/RenovaContext.tsx', 'promise')]: 1,
-  [debtKey('lib/context/RenovaContext.tsx', 'async')]: 4,
   [debtKey('lib/customerBudgetPrefs.ts', 'async')]: 1,
   [debtKey('lib/domain/buildInboxItems.ts', 'async')]: 19,
   [debtKey('lib/homeWidgetPrefs.ts', 'async')]: 1,
