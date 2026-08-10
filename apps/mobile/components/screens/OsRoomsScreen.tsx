@@ -32,11 +32,19 @@ import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateN
 import type { OsRole } from '@/constants/osSections';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
+import { reportError } from '@/lib/reportError';
 
 const ROOM_FILTERS = [
   { key: 'active', label: 'Активные' },
   { key: 'archive', label: 'Архив' },
 ];
+
+type CustomerListResource<T> = {
+  key: string;
+  status: 'loading' | 'loaded' | 'error';
+  data: T;
+  hasConfirmed: boolean;
+};
 
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
@@ -48,32 +56,80 @@ export function OsRoomsScreen({ role, onNextTab }: { role: OsRole; onNextTab?: (
 function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => void }) {
   const nav = useNavFromHere();
   const { user, activeProject } = useRenova();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [requests, setRequests] = useState<RoomChangeRequest[]>([]);
+  const [roomsResource, setRoomsResource] = useState<CustomerListResource<Room[]>>({
+    key: '',
+    status: 'loading',
+    data: [],
+    hasConfirmed: false,
+  });
+  const [requestsResource, setRequestsResource] = useState<CustomerListResource<RoomChangeRequest[]>>({
+    key: '',
+    status: 'loading',
+    data: [],
+    hasConfirmed: false,
+  });
   const [query, setQuery] = useState('');
   const [roomFilter, setRoomFilter] = useState('active');
 
+  const userId = user?.id;
+  const projectId = activeProject?.id;
+  const roomsContextKey = `${userId ?? 'signed-out'}:${projectId ?? 'no-project'}:${roomFilter}`;
+  const requestsContextKey = `${userId ?? 'signed-out'}:${projectId ?? 'no-project'}`;
+
   const reloadRooms = useCallback(async () => {
-    if (!user || !activeProject) return;
-    try {
-      const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
-      setRooms(filterRoomsByArchive(list, roomFilter === 'archive'));
-    } catch {
-      /* noop */
+    if (!userId || !projectId) return;
+    const roomsKey = `${userId}:${projectId}:${roomFilter}`;
+    const requestsKey = `${userId}:${projectId}`;
+
+    setRoomsResource((previous) => previous.key === roomsKey
+      ? { ...previous, status: 'loading' }
+      : { key: roomsKey, status: 'loading', data: [], hasConfirmed: false });
+    setRequestsResource((previous) => previous.key === requestsKey
+      ? { ...previous, status: 'loading' }
+      : { key: requestsKey, status: 'loading', data: [], hasConfirmed: false });
+
+    const [roomsResult, requestsResult] = await Promise.allSettled([
+      api.listRooms(userId, projectId, { archived: roomFilter === 'archive' }),
+      api.listRoomChangeRequests(userId, projectId),
+    ] as const);
+
+    if (roomsResult.status === 'fulfilled') {
+      const nextRooms = filterRoomsByArchive(roomsResult.value, roomFilter === 'archive');
+      setRoomsResource((previous) => previous.key === roomsKey
+        ? { key: roomsKey, status: 'loaded', data: nextRooms, hasConfirmed: true }
+        : previous);
+    } else {
+      reportError('rooms.customer.listRooms', roomsResult.reason, { userId, projectId, roomFilter });
+      setRoomsResource((previous) => previous.key === roomsKey
+        ? { ...previous, status: 'error' }
+        : previous);
     }
-    try {
-      setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
-    } catch {
-      /* noop */
+
+    if (requestsResult.status === 'fulfilled') {
+      setRequestsResource((previous) => previous.key === requestsKey
+        ? { key: requestsKey, status: 'loaded', data: requestsResult.value, hasConfirmed: true }
+        : previous);
+    } else {
+      reportError('rooms.customer.listRoomChangeRequests', requestsResult.reason, { userId, projectId });
+      setRequestsResource((previous) => previous.key === requestsKey
+        ? { ...previous, status: 'error' }
+        : previous);
     }
-  }, [user?.id, activeProject?.id, roomFilter]);
+  }, [userId, projectId, roomFilter]);
 
   useEffect(() => {
     void reloadRooms();
   }, [reloadRooms]);
   useProjectDataReload(reloadRooms);
 
-  const filtered = rooms
+  const roomsState = roomsResource.key === roomsContextKey
+    ? roomsResource
+    : { key: roomsContextKey, status: 'loading' as const, data: [] as Room[], hasConfirmed: false };
+  const requestsState = requestsResource.key === requestsContextKey
+    ? requestsResource
+    : { key: requestsContextKey, status: 'loading' as const, data: [] as RoomChangeRequest[], hasConfirmed: false };
+
+  const filtered = roomsState.data
     .filter((r) => !query || r.name.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => (a.floor_level ?? 1) - (b.floor_level ?? 1) || a.name.localeCompare(b.name));
 
@@ -112,9 +168,24 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
             ? 'Откройте комнату для паспорта, расходов и запроса изменений.'
             : 'Откройте комнату для паспорта, размеров и связанных данных.'}
         </Text>
-        {!filtered.length && (
+        {roomsState.status === 'error' ? (
+          <>
+            <InfoBanner
+              tone="warning"
+              title="Не удалось обновить комнаты"
+              message={roomsState.hasConfirmed
+                ? 'Показан последний подтверждённый список для этого объекта и фильтра.'
+                : 'Актуальный список не получен. Пустой экран не означает, что комнат нет.'}
+            />
+            <PrimaryButton title="Повторить загрузку" variant="outline" onPress={() => { void reloadRooms(); }} />
+          </>
+        ) : null}
+        {roomsState.status === 'loading' && !roomsState.hasConfirmed ? (
+          <Text style={styles.loading}>Загружаем комнаты…</Text>
+        ) : null}
+        {roomsState.status === 'loaded' && !filtered.length ? (
           <Text style={styles.empty}>Комнат пока нет. Список появится после создания объекта.</Text>
-        )}
+        ) : null}
         {groupRoomsByFloor(filtered, activeProject.property_type).map(({ floor, rooms: floorRooms }) => (
           <View key={`f-${floor}`}>
             <FloorSectionHeader floor={floor} count={floorRooms.length} isHouse={activeProject.property_type === 'house'} />
@@ -127,8 +198,8 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
                 onSubmit={async (message, payload) => {
                   try {
                     await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
-                    setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
                     alertRoomChangeRequested('customer');
+                    await reloadRooms();
                     return true;
                   } catch (e) {
                     if (isOfflineQueued(e)) notifyOfflineQueued('Запрос на изменение');
@@ -150,8 +221,17 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
             ))}
           </View>
         ))}
-        {requests.length > 0 && <Text style={styles.section}>Мои запросы</Text>}
-        {requests.map((r) => (
+        {requestsState.status === 'error' ? (
+          <InfoBanner
+            tone="warning"
+            title="Запросы могут быть неактуальны"
+            message={requestsState.hasConfirmed
+              ? 'Показаны последние подтверждённые запросы. Повторная загрузка обновит статусы.'
+              : 'Не удалось получить список запросов к комнатам.'}
+          />
+        ) : null}
+        {requestsState.data.length > 0 && <Text style={styles.section}>Мои запросы</Text>}
+        {requestsState.data.map((r) => (
           <View key={r.id} style={styles.req}>
             <Text>{r.message}</Text>
             <Text style={styles.status}>Статус: {roomChangeStatusLabel(r.status)}</Text>
@@ -192,6 +272,7 @@ function ContractorRoomsBody() {
     try {
       setRequests(await api.listRoomChangeRequests(user.id, activeProject.id));
     } catch (e) {
+      reportError('rooms.contractor.listRoomChangeRequests', e, { userId: user.id, projectId: activeProject.id });
       if (isRateLimitError(e)) return;
     }
   }, [user?.id, activeProject?.id]);
@@ -202,6 +283,7 @@ function ContractorRoomsBody() {
       const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
       setRooms(filterRoomsByArchive(list, roomFilter === 'archive'));
     } catch (e) {
+      reportError('rooms.contractor.listRooms', e, { userId: user.id, projectId: activeProject.id, roomFilter });
       if (isRateLimitError(e)) {
         showActionConfirm({
           title: 'Подождите',
@@ -534,6 +616,7 @@ function RoomListRow({
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   hint: { color: RenovaTheme.colors.textMuted, marginBottom: 12, fontSize: 13, lineHeight: 18 },
+  loading: { ...screenTypography.empty, marginBottom: 16 },
   empty: { ...screenTypography.empty, marginBottom: 16 },
   card: { ...listRowStyles.row, paddingVertical: 14 },
   roomHead: { minHeight: RenovaTheme.minTouch, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
