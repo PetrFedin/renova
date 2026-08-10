@@ -1,4 +1,14 @@
-import { inboxTotal, inboxAttentionBadge, inboxTaskBadge, inboxLinkItems, filterInboxForHero, type InboxItem } from './buildInboxItems';
+import { api } from '@/lib/api';
+import {
+  buildInboxItemsWithHealth,
+  inboxTotal,
+  inboxAttentionBadge,
+  inboxTaskBadge,
+  inboxLinkItems,
+  filterInboxForHero,
+  type InboxItem,
+} from './buildInboxItems';
+import { selectConfirmedInboxSnapshot } from './inboxIntegrity';
 import { resolveInboxNavigation } from './inboxNavigation';
 
 let ok = true;
@@ -58,5 +68,100 @@ assert(
   'approval inbox row resolves to approval payload instead of a fabricated href',
 );
 
-if (!ok) process.exit(1);
-console.log('buildInboxItems.test OK');
+const priorConfirmed: InboxItem[] = [
+  { id: 'confirmed-task', kind: 'work', title: 'Подтверждённая задача', href: '/work', priority: 70 },
+];
+const partialCandidate: InboxItem[] = [
+  { id: 'partial-task', kind: 'payment', title: 'Частичный результат', href: '/budget', priority: 80 },
+];
+const degradedWithHistory = selectConfirmedInboxSnapshot({
+  candidateItems: partialCandidate,
+  previousItems: priorConfirmed,
+  issueCount: 1,
+  hasConfirmedSnapshot: true,
+});
+assert(
+  degradedWithHistory.items === priorConfirmed && !degradedWithHistory.acceptedCandidate,
+  'degraded reload preserves the last confirmed snapshot',
+);
+const degradedWithoutHistory = selectConfirmedInboxSnapshot({
+  candidateItems: partialCandidate,
+  previousItems: [],
+  issueCount: 1,
+  hasConfirmedSnapshot: false,
+});
+assert(
+  degradedWithoutHistory.items.length === 0 && !degradedWithoutHistory.acceptedCandidate,
+  'first degraded reload fails closed instead of publishing partial task rows',
+);
+const completeCandidate = selectConfirmedInboxSnapshot({
+  candidateItems: partialCandidate,
+  previousItems: priorConfirmed,
+  issueCount: 0,
+  hasConfirmedSnapshot: true,
+});
+assert(
+  completeCandidate.items === partialCandidate && completeCandidate.acceptedCandidate,
+  'complete reload replaces the confirmed snapshot',
+);
+
+async function testBuildHealth() {
+  const mutableApi = api as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+  const mocks: Record<string, (...args: unknown[]) => Promise<unknown>> = {
+    listPayments: async () => [],
+    approvalHub: async () => ({ items: [] }),
+    acceptancesPendingCount: async () => ({ count: 0 }),
+    getActiveWorkSchedule: async () => null,
+    listIssues: async () => [],
+    listMaterialPicks: async () => [],
+    selectionsPendingCount: async () => ({ count: 0 }),
+    listChangeOrders: async () => [],
+    listWarrantyClaims: async () => ({ open: 0, overdue: 0 }),
+    listProjectDocuments: async () => ({ items: [] }),
+    listWorkOrders: async () => [],
+  };
+  const originals = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+
+  for (const [key, value] of Object.entries(mocks)) {
+    originals.set(key, mutableApi[key]!);
+    mutableApi[key] = value;
+  }
+
+  try {
+    const complete = await buildInboxItemsWithHealth({
+      userId: 'user-1',
+      projectId: 'project-1',
+      role: 'customer',
+      chatUnread: 0,
+    });
+    assert(complete.health === 'complete', 'all successful sources produce complete health');
+    assert(complete.issues.length === 0, 'complete inbox has no source issues');
+    assert(complete.items.length === 0, 'legitimate empty source data remains a true empty inbox');
+
+    mutableApi.listPayments = async () => { throw new Error('payments unavailable'); };
+    const degraded = await buildInboxItemsWithHealth({
+      userId: 'user-1',
+      projectId: 'project-1',
+      role: 'customer',
+      chatUnread: 0,
+    });
+    assert(degraded.health === 'degraded', 'one failed source makes the aggregate degraded');
+    assert(
+      degraded.issues.some((issue) => issue.projectId === 'project-1' && issue.source === 'payments'),
+      'degraded result identifies the failed source and project',
+    );
+    assert(degraded.items.length === 0, 'failed source can no longer masquerade as authoritative empty success');
+  } finally {
+    for (const [key, value] of originals) mutableApi[key] = value;
+  }
+}
+
+void testBuildHealth()
+  .then(() => {
+    if (!ok) process.exit(1);
+    console.log('buildInboxItems.test OK');
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

@@ -1,12 +1,18 @@
 /** Единый store: chat threads, unread, inbox задачи — один reload и одно WS */
 import { api, type ChatThread, type ProjectDetail, type UserRole } from '@/lib/api';
-import { buildInboxItems, type InboxItem } from '@/lib/domain/buildInboxItems';
+import {
+  buildInboxItemsWithHealth,
+  type InboxBuildIssue,
+  type InboxItem,
+} from '@/lib/domain/buildInboxItems';
+import { selectConfirmedInboxSnapshot } from '@/lib/domain/inboxIntegrity';
 import { mergeOfflineInboxItem } from '@/lib/domain/offlineInbox';
 import { getOfflineOutboxStatus } from '@/lib/offline';
 import { emitInboxWs, subscribeInboxWs } from '@/lib/inboxWsBus';
 import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
 import { createTrailingReloadScheduler } from '@/lib/trailingReloadScheduler';
+import { reportError } from '@/lib/reportError';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -16,6 +22,20 @@ type ReloadOpts = {
   projectId?: string;
   project?: ProjectDetail | null;
   osRole?: OsRole;
+};
+type InboxSyncIssue = InboxBuildIssue | { projectId: string; source: 'build' };
+type ChatLoadState = {
+  threads: ChatThread[];
+  unread: number;
+  threadsOk: boolean;
+  unreadOk: boolean;
+};
+
+export type InboxHealthSnapshot = {
+  status: 'idle' | 'complete' | 'degraded';
+  issues: InboxSyncIssue[];
+  hasConfirmedSnapshot: boolean;
+  lastCompleteAt?: string;
 };
 
 const POLL_DISCONNECTED_MS = 25_000;
@@ -30,13 +50,22 @@ let inboxWsConnected = false;
 let chatThreads: ChatThread[] = [];
 let inboxItems: InboxItem[] = [];
 let inboxBadge = 0;
+let inboxHealthSnapshot: InboxHealthSnapshot = {
+  status: 'idle',
+  issues: [],
+  hasConfirmedSnapshot: false,
+};
+
+let activeUserId: string | undefined;
+let inboxContextKey = '';
+let confirmedInboxKey = '';
+let reloadGeneration = 0;
 
 let wsUserId: string | undefined;
 let wsRefCount = 0;
 let wsCleanup: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-let reloadInflight: Promise<void> | null = null;
-let lastReloadKey = '';
+let reloadInflight: { key: string; promise: Promise<void> } | null = null;
 
 export function subscribeInboxSync(listener: Listener): () => void {
   listeners.add(listener);
@@ -49,8 +78,8 @@ function notify() {
   Array.from(listeners).forEach((fn) => {
     try {
       fn();
-    } catch {
-      /* noop */
+    } catch (error) {
+      reportError('inbox.listener', error);
     }
   });
 }
@@ -89,7 +118,7 @@ export function getChatInboxThreadsSnapshot(): ChatThread[] {
 }
 
 export function getInboxTasksSnapshot() {
-  return { items: inboxItems, badge: inboxBadge };
+  return { items: inboxItems, badge: inboxBadge, health: inboxHealthSnapshot };
 }
 
 export function getInboxBadgeSnapshot() {
@@ -100,11 +129,17 @@ export function getInboxItemsSnapshot() {
   return inboxItems;
 }
 
+export function getInboxHealthSnapshot(): InboxHealthSnapshot {
+  return inboxHealthSnapshot;
+}
+
 function snapshotState() {
   return {
     chatCount,
     chatFailed,
+    chatThreads,
     inboxBadge,
+    inboxHealthSnapshot,
     inboxItems,
     inboxWsConnected,
   };
@@ -114,7 +149,9 @@ function notifyIfChanged(prev: ReturnType<typeof snapshotState>) {
   if (
     prev.chatCount === chatCount
     && prev.chatFailed === chatFailed
+    && prev.chatThreads === chatThreads
     && prev.inboxBadge === inboxBadge
+    && prev.inboxHealthSnapshot === inboxHealthSnapshot
     && prev.inboxItems === inboxItems
     && prev.inboxWsConnected === inboxWsConnected
   ) {
@@ -123,16 +160,32 @@ function notifyIfChanged(prev: ReturnType<typeof snapshotState>) {
   notify();
 }
 
-async function loadChatState(userId: string): Promise<{ threads: ChatThread[]; unread: number; ok: boolean }> {
+function setInboxHealth(
+  status: InboxHealthSnapshot['status'],
+  issues: InboxSyncIssue[],
+  hasConfirmedSnapshot: boolean,
+  lastCompleteAt?: string | null,
+) {
+  inboxHealthSnapshot = {
+    status,
+    issues,
+    hasConfirmedSnapshot,
+    ...(lastCompleteAt ? { lastCompleteAt } : {}),
+  };
+}
+
+async function loadChatState(userId: string): Promise<ChatLoadState> {
   try {
     const threads = await api.chatInbox(userId);
-    return { threads, unread: sumChatUnread(threads), ok: true };
-  } catch {
+    return { threads, unread: sumChatUnread(threads), threadsOk: true, unreadOk: true };
+  } catch (error) {
+    reportError('inbox.chatInbox', error, { userId });
     try {
       const { count } = await api.chatUnreadTotal(userId);
-      return { threads: chatThreads, unread: count, ok: true };
-    } catch {
-      return { threads: chatThreads, unread: chatCount, ok: false };
+      return { threads: chatThreads, unread: count, threadsOk: false, unreadOk: true };
+    } catch (fallbackError) {
+      reportError('inbox.chatUnreadTotal', fallbackError, { userId });
+      return { threads: chatThreads, unread: chatCount, threadsOk: false, unreadOk: false };
     }
   }
 }
@@ -194,6 +247,54 @@ function refreshInboxChatRow(nextChat: number) {
   inboxBadge = taskRows + unread;
 }
 
+function resetForSignedOut() {
+  chatCount = 0;
+  chatFailed = false;
+  chatThreads = [];
+  inboxItems = [];
+  inboxBadge = 0;
+  inboxContextKey = '';
+  confirmedInboxKey = '';
+  activeUserId = undefined;
+  cachedFullSync = null;
+  setInboxHealth('idle', [], false, null);
+}
+
+function prepareReloadContext(merged: ReloadOpts) {
+  const prev = snapshotState();
+  if (!merged.userId) {
+    resetForSignedOut();
+    notifyIfChanged(prev);
+    return;
+  }
+
+  if (activeUserId !== merged.userId) {
+    activeUserId = merged.userId;
+    chatCount = 0;
+    chatFailed = false;
+    chatThreads = [];
+    inboxItems = [];
+    inboxBadge = 0;
+    inboxContextKey = '';
+    confirmedInboxKey = '';
+    setInboxHealth('idle', [], false, null);
+  }
+
+  if (merged.projectId && merged.osRole) {
+    const nextContextKey = [merged.userId, merged.userRole, merged.projectId, merged.osRole].join(':');
+    if (nextContextKey !== inboxContextKey) {
+      inboxContextKey = nextContextKey;
+      confirmedInboxKey = '';
+      inboxItems = [];
+      inboxBadge = 0;
+      setInboxHealth('idle', [], false, null);
+      refreshInboxChatRow(chatCount);
+    }
+  }
+
+  notifyIfChanged(prev);
+}
+
 /** Прочитать тред: optimistic local + API + полный resync */
 export async function markChatReadAndSync(
   userId: string,
@@ -202,6 +303,8 @@ export async function markChatReadAndSync(
   userRole?: UserRole,
   knownUnread = 0,
 ): Promise<void> {
+  const previousThreads = chatThreads;
+  const previousChatCount = chatCount;
   const prev = snapshotState();
   void knownUnread;
 
@@ -212,8 +315,14 @@ export async function markChatReadAndSync(
   try {
     await api.markChatRead(userId, projectId, threadId);
     chatFailed = false;
-  } catch {
-    /* resync подтянет актуальное */
+  } catch (error) {
+    reportError('inbox.markChatRead', error, { userId, projectId, threadId });
+    const failedPrev = snapshotState();
+    chatThreads = previousThreads;
+    chatCount = previousChatCount;
+    chatFailed = true;
+    refreshInboxChatRow(chatCount);
+    notifyIfChanged(failedPrev);
   }
 
   await reloadInboxSync(
@@ -235,69 +344,103 @@ export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: Us
 }
 
 export async function reloadInboxSync(opts: ReloadOpts, force = false): Promise<void> {
+  if (!opts.userId || (activeUserId && activeUserId !== opts.userId)) {
+    cachedFullSync = null;
+  }
   const merged = mergeReloadOpts(opts);
   const key = [merged.userId, merged.userRole, merged.projectId, merged.osRole].join(':');
-  if (!force && reloadInflight && lastReloadKey === key) return reloadInflight;
+  if (!force && reloadInflight?.key === key) return reloadInflight.promise;
 
-  lastReloadKey = key;
-  reloadInflight = (async () => {
-    const prev = snapshotState();
+  const generation = ++reloadGeneration;
+  prepareReloadContext(merged);
 
-    if (!merged.userId) {
-      chatCount = 0;
-      chatFailed = false;
-      chatThreads = [];
-      inboxItems = [];
-      inboxBadge = 0;
-      cachedFullSync = null;
-      notifyIfChanged(prev);
-      return;
-    }
+  let request!: Promise<void>;
+  request = (async () => {
+    if (!merged.userId) return;
 
     const chatState = await loadChatState(merged.userId);
-    if (chatState.ok) {
-      chatThreads = chatState.threads;
-      chatCount = chatState.unread;
-      chatFailed = false;
-    } else {
-      chatCount = chatState.unread;
-      chatFailed = chatThreads.length === 0 && chatCount === 0;
-    }
+    if (generation !== reloadGeneration) return;
+
+    chatThreads = chatState.threads;
+    chatCount = chatState.unread;
+    chatFailed = !chatState.threadsOk;
 
     const syncProjectId = merged.projectId ?? cachedFullSync?.projectId;
     const syncOsRole = merged.osRole ?? cachedFullSync?.osRole;
 
     if (syncProjectId && syncOsRole) {
+      const previousItems = inboxItems;
+      let candidateItems: InboxItem[] = [];
+      let issues: InboxSyncIssue[] = chatState.unreadOk
+        ? []
+        : [{ projectId: syncProjectId, source: 'chat' }];
+
       try {
-        inboxItems = await buildInboxItems({
+        const result = await buildInboxItemsWithHealth({
           userId: merged.userId,
           projectId: syncProjectId,
           role: syncOsRole,
           chatUnread: chatCount,
           project: merged.project ?? cachedFullSync?.project,
         });
-        try {
-          const offline = await getOfflineOutboxStatus();
-          inboxItems = mergeOfflineInboxItem(inboxItems, offline);
-        } catch {
-          /* noop */
-        }
+        if (generation !== reloadGeneration) return;
+        candidateItems = result.items;
+        issues = [...issues, ...result.issues];
+      } catch (error) {
+        reportError('inbox.build.unexpected', error, {
+          userId: merged.userId,
+          projectId: syncProjectId,
+          role: syncOsRole,
+        });
+        issues.push({ projectId: syncProjectId, source: 'build' });
+      }
+
+      try {
+        const offline = await getOfflineOutboxStatus();
+        if (generation !== reloadGeneration) return;
+        candidateItems = mergeOfflineInboxItem(candidateItems, offline);
+      } catch (error) {
+        reportError('inbox.offlineOutbox', error, { projectId: syncProjectId });
+        issues.push({ projectId: syncProjectId, source: 'offline_outbox' });
+      }
+
+      if (generation !== reloadGeneration) return;
+      const hasConfirmedSnapshot = confirmedInboxKey === inboxContextKey && confirmedInboxKey.length > 0;
+      const decision = selectConfirmedInboxSnapshot({
+        candidateItems,
+        previousItems,
+        issueCount: issues.length,
+        hasConfirmedSnapshot,
+      });
+      inboxItems = decision.items;
+
+      if (decision.acceptedCandidate) {
         const taskRows = inboxItems.filter((item) => item.kind !== 'chat').length;
         inboxBadge = taskRows + chatCount;
-      } catch {
-        if (!inboxItems.length) inboxBadge = chatCount;
+        confirmedInboxKey = inboxContextKey;
+        setInboxHealth('complete', [], true, new Date().toISOString());
+      } else {
+        refreshInboxChatRow(chatCount);
+        setInboxHealth(
+          'degraded',
+          issues,
+          hasConfirmedSnapshot,
+          hasConfirmedSnapshot ? inboxHealthSnapshot.lastCompleteAt ?? null : null,
+        );
       }
     } else {
       refreshInboxChatRow(chatCount);
     }
 
-    notifyIfChanged(prev);
+    if (generation !== reloadGeneration) return;
+    notify();
   })();
 
+  reloadInflight = { key, promise: request };
   try {
-    await reloadInflight;
+    await request;
   } finally {
-    reloadInflight = null;
+    if (reloadInflight?.promise === request) reloadInflight = null;
   }
 }
 
@@ -366,7 +509,7 @@ function startInboxWebSocket(userId: string, onReload: () => void | Promise<void
             try {
               if (ws.readyState === WebSocket.OPEN) ws.send('ping');
             } catch {
-              /* noop */
+              /* connection close will drive reconnect */
             }
           }, 25_000);
         };
@@ -399,7 +542,8 @@ function startInboxWebSocket(userId: string, onReload: () => void | Promise<void
           const delay = Math.min(30_000, 2_000 * 2 ** Math.min(attempt - 1, 4));
           reconnectTimer = setTimeout(connect, delay);
         };
-      } catch {
+      } catch (error) {
+        reportError('inbox.websocket.connect', error, { userId });
         if (alive) {
           const prev = inboxWsConnected;
           inboxWsConnected = false;

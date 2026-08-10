@@ -7,6 +7,7 @@ import {
   getChatFailedSnapshot,
   getChatInboxThreadsSnapshot,
   getChatUnreadCountSnapshot,
+  getInboxHealthSnapshot,
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
   reloadInboxSync,
@@ -43,6 +44,10 @@ function useInboxItems() {
   return useSyncExternalStore(subscribeInboxSync, getInboxItemsSnapshot, getInboxItemsSnapshot);
 }
 
+function useInboxHealth() {
+  return useSyncExternalStore(subscribeInboxSync, getInboxHealthSnapshot, getInboxHealthSnapshot);
+}
+
 export function useChatUnread(userId?: string, userRole?: UserRole) {
   const count = useChatUnreadCount();
   const failed = useChatFailed();
@@ -73,8 +78,7 @@ export function useChatReadSync(userId?: string, userRole?: UserRole) {
     async (projectId: string, threadId: string, knownUnread = 0) => {
       if (!userId || !projectId || !threadId) return;
       await markChatReadAndSync(userId, projectId, threadId, userRole, knownUnread);
-    },
-    [userId, userRole],
+    }, [userId, userRole],
   );
 }
 
@@ -82,6 +86,7 @@ export function useChatReadSync(userId?: string, userRole?: UserRole) {
 export function useInboxTasks(role: OsRole) {
   const { user, activeProject } = useRenova();
   const items = useInboxItems();
+  const health = useInboxHealth();
   const chatUnread = useChatUnreadCount();
   const taskBadge = inboxTaskBadge(items);
   const badge = inboxAttentionBadge(items, chatUnread);
@@ -101,50 +106,53 @@ export function useInboxTasks(role: OsRole) {
 
   useFocusEffect(
     useCallback(() => {
-      reload().catch(reportCatch('chatUnread.reload'));
+      reload().catch(reportCatch('inboxTasks.reload.focus'));
     }, [reload]),
   );
 
   useInboxWsListener(
     useCallback(() => {
-      reload().catch(reportCatch('chatUnread.reload'));
+      reload().catch(reportCatch('inboxTasks.reload.bus'));
     }, [reload]),
   );
 
   useEffect(() => {
     if (!user?.id) return undefined;
     return ensureInboxWebSocket(user.id, () => {
-      reload().catch(reportCatch('chatUnread.reload'));
+      reload().catch(reportCatch('inboxTasks.reload.websocket'));
     });
   }, [user?.id, reload]);
 
   // W79: после flush offline — пересобрать inbox (в т.ч. offline-строку)
   useEffect(() => subscribeOfflineFlush(() => {
-    reload().catch(reportCatch('chatUnread.reload'));
+    reload().catch(reportCatch('inboxTasks.reload.offlineFlush'));
   }), [reload]);
 
   // W88: projectDataBus (мутации golden path) → badges «Входящие»/«Ещё» без focus
   useEffect(() => subscribeProjectDataChanged(() => {
-    reload().catch(reportCatch('chatUnread.reload'));
+    reload().catch(reportCatch('inboxTasks.reload.projectData'));
   }), [reload]);
 
   // W81: смена объекта → inbox/задачи текущего projectId (не ждать blur/focus)
   useEffect(() => {
-    reload().catch(reportCatch('chatUnread.reload'));
+    reload().catch(reportCatch('inboxTasks.reload.context'));
   }, [reload]);
 
-  return { items, badge, taskBadge, chatUnread, reload };
+  return { items, health, badge, taskBadge, chatUnread, reload };
 }
 
 function useChatInboxThreadsSnapshot() {
   return useSyncExternalStore(subscribeInboxSync, getChatInboxThreadsSnapshot, getChatInboxThreadsSnapshot);
 }
 
-/** Список чатов из store — синхронен с badge */
+/** Список чатов из store — синхронен с badge; stale thread list не считается успешным reload. */
 export function useChatInboxThreads(userId?: string, userRole?: UserRole) {
   const threads = useChatInboxThreadsSnapshot();
   const reload = useCallback(async () => {
     await reloadInboxSync({ userId, userRole });
+    if (getChatFailedSnapshot()) {
+      throw new Error('chat_inbox_refresh_degraded');
+    }
   }, [userId, userRole]);
   return { threads, reload };
 }

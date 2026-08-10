@@ -42,9 +42,40 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
   );
 }
 
+function InboxIntegrityBanner({
+  hasConfirmedSnapshot,
+  issueCount,
+  onRetry,
+}: {
+  hasConfirmedSnapshot: boolean;
+  issueCount: number;
+  onRetry: () => void;
+}) {
+  return (
+    <View style={s.integrityBanner} accessibilityRole="alert">
+      <Text style={s.integrityTitle}>Не все данные входящих обновились</Text>
+      <Text style={s.integrityText}>
+        {hasConfirmedSnapshot
+          ? 'Показаны последние подтверждённые задачи. Новые изменения появятся после восстановления источников.'
+          : 'Актуальность задач пока не подтверждена. Пустой список не означает, что активных задач нет.'}
+      </Text>
+      {issueCount > 0 ? (
+        <Text style={s.integrityMeta}>Недоступных источников: {issueCount}</Text>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        onPress={onRetry}
+        style={s.retryButton}
+      >
+        <Text style={s.retryText}>Повторить загрузку</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: { role: OsRole; returnTo?: string; heroKind?: string }) {
   const { user, activeProject, readOnly } = useRenova();
-  const { items, badge, chatUnread, reload } = useInboxTasks(role);
+  const { items, health, badge, chatUnread, reload } = useInboxTasks(role);
 
   if (!user || !activeProject) {
     return (
@@ -75,17 +106,35 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
     pushOsNav(target.href, returnTo, role);
   };
 
+  const subtitle = readOnly
+    ? 'Только просмотр — действия недоступны'
+    : health.status === 'degraded'
+      ? 'Часть источников временно недоступна'
+      : health.status === 'idle'
+        ? 'Обновляем актуальные задачи…'
+        : inboxSubtitle(badge, chatUnread);
+
   return (
     <>
       <BackHeader
         title="Входящие"
-        subtitle={readOnly ? 'Только просмотр — действия недоступны' : inboxSubtitle(badge, chatUnread)}
+        subtitle={subtitle}
         returnTo={returnTo}
       />
       <ReadOnlyBanner />
       <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <OfflineSyncStatus />
-        {!visible.length && (
+        {health.status === 'degraded' ? (
+          <InboxIntegrityBanner
+            hasConfirmedSnapshot={health.hasConfirmedSnapshot}
+            issueCount={health.issues.length}
+            onRetry={() => { reload().catch(reportCatch('components.screens.UnifiedInboxScreen.retry')); }}
+          />
+        ) : null}
+        {!visible.length && health.status === 'idle' ? (
+          <Text style={s.loadingState}>Проверяем актуальные задачи…</Text>
+        ) : null}
+        {!visible.length && health.status === 'complete' ? (
           <EmptyActionState
             title="Нет активных задач"
             hint="Всё под контролем — можно открыть сообщения или документы."
@@ -93,7 +142,7 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
             actionVariant="primary"
             onAction={() => pushOsNav(tabsRoute(role, 'chat'), returnTo, role)}
           />
-        )}
+        ) : null}
         {visible.map((it) => (
           <InboxRow key={it.id} item={it} onPress={() => { open(it).catch(reportCatch('components.screens.UnifiedInboxScreen.3')); }} />
         ))}
@@ -109,5 +158,49 @@ const s = StyleSheet.create({
   title: { ...screenTypography.listTitle },
   sub: { ...screenTypography.listMeta },
   arrow: { fontSize: 18, color: RenovaTheme.colors.textMuted, marginLeft: 8 },
-  empty: { ...screenTypography.empty, textAlign: 'center', marginTop: 24 },
+  integrityBanner: {
+    backgroundColor: RenovaTheme.colors.warningBg,
+    borderColor: RenovaTheme.colors.warningBorder,
+    borderWidth: 1,
+    borderRadius: RenovaTheme.radius.lg,
+    padding: RenovaTheme.spacing.md,
+    marginBottom: RenovaTheme.spacing.md,
+  },
+  integrityTitle: {
+    fontSize: RenovaTheme.fontSize.body,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+    color: RenovaTheme.colors.warningText,
+    marginBottom: RenovaTheme.spacing.xs,
+  },
+  integrityText: {
+    fontSize: RenovaTheme.fontSize.bodySmall,
+    color: RenovaTheme.colors.text,
+    lineHeight: 18,
+  },
+  integrityMeta: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
+    marginTop: RenovaTheme.spacing.xs,
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    minHeight: RenovaTheme.minTouch,
+    justifyContent: 'center',
+    marginTop: RenovaTheme.spacing.sm,
+    paddingHorizontal: RenovaTheme.spacing.md,
+    borderRadius: RenovaTheme.radius.sm,
+    backgroundColor: RenovaTheme.colors.surface,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.warningBorder,
+  },
+  retryText: {
+    color: RenovaTheme.colors.warningText,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+    fontSize: RenovaTheme.fontSize.bodySmall,
+  },
+  loadingState: {
+    ...screenTypography.empty,
+    textAlign: 'center',
+    marginTop: RenovaTheme.spacing.xl,
+  },
 });
