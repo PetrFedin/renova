@@ -35,6 +35,7 @@ const inbox = readFileSync(join(mobile, 'components/screens/UnifiedInboxScreen.t
 const inboxSync = readFileSync(join(mobile, 'lib/inboxSyncStore.ts'), 'utf8');
 const chatHooks = readFileSync(join(mobile, 'lib/useChatUnread.ts'), 'utf8');
 const chatList = readFileSync(join(mobile, 'components/renova/chat/ChatListView.tsx'), 'utf8');
+const rooms = readFileSync(join(mobile, 'components/screens/OsRoomsScreen.tsx'), 'utf8');
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
@@ -72,6 +73,24 @@ console.assert(
     && chatList.includes('Не удалось загрузить чаты'),
   'stale/unknown chat list reaches explicit error UI instead of fake empty',
 );
+console.assert(
+  rooms.includes("roomsState.status === 'loaded' && !filtered.length")
+    && rooms.includes("roomsState.status === 'error'")
+    && rooms.includes('Пустой экран не означает, что комнат нет.'),
+  'rooms empty state requires an authoritative loaded response',
+);
+console.assert(
+  rooms.includes('Promise.allSettled')
+    && rooms.includes("reportError('rooms.customer.listRooms'")
+    && rooms.includes("reportError('rooms.customer.listRoomChangeRequests'")
+    && rooms.includes("requestsState.status === 'error'"),
+  'rooms and room-change requests expose source failure instead of silent empty fallback',
+);
+console.assert(
+  rooms.indexOf("await api.createRoomChangeRequest") < rooms.indexOf("alertRoomChangeRequested('customer')")
+    && rooms.indexOf("alertRoomChangeRequested('customer')") < rooms.indexOf('await reloadRooms();'),
+  'room-change mutation is acknowledged before its non-authoritative list refresh',
+);
 
 const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
@@ -82,7 +101,9 @@ const ok =
   inbox.includes("!visible.length && health.status === 'complete'") &&
   inboxSync.includes('threadsOk: false, unreadOk: true') &&
   chatHooks.includes("throw new Error('chat_inbox_refresh_degraded')") &&
-  chatList.includes('!displayThreads.length && loadError');
+  chatList.includes('!displayThreads.length && loadError') &&
+  rooms.includes("roomsState.status === 'loaded' && !filtered.length") &&
+  rooms.includes("reportError('rooms.customer.listRooms'");
 
 if (!ok) process.exit(1);
 console.log('reliabilityUx.w152.test OK');
