@@ -12,12 +12,19 @@ console.assert(docs.includes('showActionConfirm') && docs.includes('Дайдже
 console.assert(docs.includes('Не удалось открыть') && docs.includes('showActionConfirm'), 'docs open fail CTA');
 console.assert(receipt.includes('showActionConfirm') && !receipt.includes('Alert.alert'), 'receiptNav sheet');
 console.assert(pay.includes('confirmAcceptanceFirst') && pay.includes('showActionConfirm'), 'payment gate sheet');
-console.assert(pay.includes("title: 'Оплата (demo)'"), 'payment demo honesty sheet');
+console.assert(
+  pay.includes("checkout.demo || checkout.status === 'demo' || checkout.provider === 'mock'")
+    && pay.includes("reportError('payment.checkout.mockProvider'")
+    && pay.includes("title: 'Онлайн-оплата недоступна'")
+    && !pay.includes("title: 'Оплата (demo)'"),
+  'payment mock/demo checkout must fail closed instead of pretending to be a payment',
+);
 console.assert(work.includes('notifyOfflineQueued'), 'create work offline sheet');
 
 const ok =
   docs.includes('Дайджест отправлен') &&
   !receipt.includes('Alert.alert') &&
-  pay.includes('confirmAcceptanceFirst');
+  pay.includes('confirmAcceptanceFirst') &&
+  !pay.includes("title: 'Оплата (demo)'");
 if (!ok) process.exit(1);
 console.log('clarityWaveI.w162.test OK');
