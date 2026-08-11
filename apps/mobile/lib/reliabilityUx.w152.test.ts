@@ -26,6 +26,7 @@ console.assert(
 
 const nav = readFileSync(join(mobile, 'lib/navigation.ts'), 'utf8');
 const offline = readFileSync(join(mobile, 'lib/offlineUi.ts'), 'utf8');
+const offlineQueue = readFileSync(join(mobile, 'lib/offlineQueue.ts'), 'utf8');
 const sched = readFileSync(join(mobile, 'components/screens/schedule/UnifiedScheduleView.tsx'), 'utf8');
 const asyncResource = readFileSync(join(mobile, 'lib/async/asyncResource.ts'), 'utf8');
 const planTab = readFileSync(join(mobile, 'components/screens/OsPlanTabScreen.tsx'), 'utf8');
@@ -40,6 +41,20 @@ const projectEmpty = readFileSync(join(mobile, 'components/renova/ProjectEmptySt
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
+console.assert(
+  offlineQueue.includes("reportError('offline.queueChanged.notify'")
+    && offlineQueue.includes("reportError('offline.flush.responseBody'"),
+  'offline queue notification and response-body failures are observable',
+);
+console.assert(
+  offlineQueue.includes('const errorText = response.ok')
+    && offlineQueue.includes("const message = errorText || (response.ok ? 'ok' : `HTTP ${response.status}`)"),
+  'failed response-body reads retain HTTP status truth for retry/block decisions',
+);
+console.assert(
+  offlineQueue.indexOf('await setQueueUnlocked(queue);') < offlineQueue.indexOf('await emitQueueChanged();'),
+  'offline mutation is durable before best-effort UI notification',
+);
 console.assert(
   sched.includes('asyncShowError(calendarResource)') && sched.includes('LoadErrorState'),
   'calendar error UI',
@@ -134,6 +149,8 @@ const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
   Boolean(repair?.params?.tab === 'control') &&
   offline.includes('/conflicts') &&
+  offlineQueue.includes("reportError('offline.queueChanged.notify'") &&
+  offlineQueue.includes("reportError('offline.flush.responseBody'") &&
   sched.includes('asyncShowError(calendarResource)') &&
   sched.includes('useAsyncResource<CalendarData>') &&
   inbox.includes("!visible.length && health.status === 'complete'") &&
