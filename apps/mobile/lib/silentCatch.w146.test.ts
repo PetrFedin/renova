@@ -32,7 +32,6 @@ const KNOWN_DEBT: Record<string, number> = {
   [debtKey('components/renova/FloorPlanPanel.tsx', 'async')]: 3,
   [debtKey('components/renova/JobLeadsBoard.tsx', 'async')]: 1,
   [debtKey('components/renova/PaymentDetailSheet.tsx', 'async')]: 1,
-  [debtKey('components/renova/ProjectEmptyState.tsx', 'async')]: 1,
   [debtKey('components/screens/OsHomeScreen.tsx', 'async')]: 1,
   [debtKey('lib/chatPrefs.ts', 'async')]: 1,
   [debtKey('lib/customerBudgetPrefs.ts', 'async')]: 1,
