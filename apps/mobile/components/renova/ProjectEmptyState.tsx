@@ -281,10 +281,7 @@ export function ProjectEmptyState({
     setTemplateCreatingId(templateId);
     setEmptyActionFeedback(null);
 
-    let project: Awaited<ReturnType<typeof api.createProjectFromTemplate>>;
-    try {
-      project = await api.createProjectFromTemplate(user.id, { template_id: templateId, name });
-    } catch (error) {
+    const project = await api.createProjectFromTemplate(user.id, { template_id: templateId, name }).catch((error: unknown) => {
       reportError('projectEmptyState.templateCreate', error, { userId: user.id, templateId });
       if (isSubscriptionRequired(error)) {
         showPaywall();
@@ -294,6 +291,9 @@ export function ProjectEmptyState({
           text: 'Не удалось создать объект. Проверьте подключение и повторите.',
         });
       }
+      return null;
+    });
+    if (!project) {
       setTemplateCreatingId(null);
       return;
     }
