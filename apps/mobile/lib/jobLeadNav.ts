@@ -33,8 +33,8 @@ export function alertJobLeadQuoted(role: OsRole) {
 
 export function alertJobLeadAssigned(role: OsRole) {
   showActionConfirm({
-    title: 'Исполнитель подобран',
-    message: 'Дождитесь КП или продолжите переписку в заявке.',
+    title: 'Исполнитель закреплён',
+    message: 'Заявка готова к преобразованию в проект. Откройте её и нажмите «→ Проект».',
     primaryLabel: 'К заявке',
     onPrimary: () => pushOsNav('/job-leads', undefined, role),
     secondaryLabel: 'Позже',
