@@ -30,7 +30,6 @@ const debtKey = (file: string, kind: DebtKind) => `${file}|${kind}`;
  */
 const KNOWN_DEBT: Record<string, number> = {
   [debtKey('components/renova/FloorPlanPanel.tsx', 'async')]: 3,
-  [debtKey('components/renova/JobLeadsBoard.tsx', 'async')]: 1,
   [debtKey('components/renova/PaymentDetailSheet.tsx', 'async')]: 1,
   [debtKey('components/screens/OsHomeScreen.tsx', 'async')]: 1,
   [debtKey('lib/chatPrefs.ts', 'async')]: 1,

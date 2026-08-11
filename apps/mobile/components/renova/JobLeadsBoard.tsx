@@ -1,6 +1,6 @@
 /** Заявки marketplace — КП → проект (W119 SoT + W130 CTAs + W140 форма) */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, TextInput, StyleSheet } from 'react-native';
 import { api } from '@/lib/api';
 import { LeadChat } from '@/components/renova/LeadChat';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -42,41 +42,85 @@ type L = {
   quotes?: { id: string; contractor_id: string; pre_estimate: number }[];
 };
 
+function parseQuoteAmount(raw: string | undefined): number | null {
+  const value = Number(String(raw ?? '').replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export function JobLeadsBoard({ userId, role }: { userId: string; role: string }) {
   const { user, activeProject, loadProject, refreshProjects } = useRenova();
   const [items, setItems] = useState<L[]>([]);
   const [quote, setQuote] = useState<Record<string, string>>({});
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
-  const sync = () => syncProjectSideEffects({ user, project: activeProject });
 
-  const load = useCallback(() => {
-    api
-      .listJobLeads(userId)
-      .then((rows) => {
-        setItems(rows);
-        setLoadError(false);
-      })
-      .catch(() => setLoadError(true));
+  const load = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    try {
+      // Backend defaults to status=open. Fetch quoted explicitly as well or the lead
+      // disappears exactly when the customer needs the «→ Проект» action.
+      const [quotedRows, openRows] = await Promise.all([
+        api.listJobLeads(userId, 'quoted'),
+        api.listJobLeads(userId, 'open'),
+      ]);
+      setItems([...quotedRows, ...openRows]);
+      setLoadedOnce(true);
+      setLoadError(false);
+    } catch (error) {
+      reportError('jobLeads.load', error, { userId });
+      // Preserve last confirmed rows. A failed refresh must not become a fake empty board.
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
+
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
   useProjectDataReload(load);
+
+  const reconcileAfterCommit = useCallback(
+    async (operation: string): Promise<void> => {
+      try {
+        await syncProjectSideEffects({ user, project: activeProject });
+      } catch (error) {
+        reportError('jobLeads.postCommit.sync', error, {
+          operation,
+          userId,
+          projectId: activeProject?.id ?? null,
+        });
+      }
+      await load();
+    },
+    [user, activeProject, userId, load],
+  );
+
+  const showMutationFailure = (scope: string, error: unknown, fallback: string) => {
+    reportError(scope, error, { userId });
+    showActionConfirm({
+      title: 'Не удалось',
+      message: error instanceof Error ? error.message : fallback,
+    });
+  };
 
   const onCreateLead = async (body: JobLeadCreateBody) => {
     setCreating(true);
     try {
-      await api.createJobLead(userId, body);
-      alertJobLeadCreated(osRole);
       try {
-        await sync();
-        load();
-      } catch {
-        /* заявка уже создана */
+        await api.createJobLead(userId, body);
+      } catch (error) {
+        reportError('jobLeads.create.mutation', error, { userId });
+        throw error;
       }
+
+      // Mutation truth first: the sheet may close even if non-authoritative refresh later fails.
+      alertJobLeadCreated(osRole);
+      void reconcileAfterCommit('create');
     } finally {
       setCreating(false);
     }
@@ -88,13 +132,22 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
         <View style={s.info}>
           <Text style={s.infoT}>Новые объекты — через заявки</Text>
           <Text style={s.infoSub}>
-            Ответьте КП → заказчик принимает → «→ Проект». Создать объект вручную нельзя (лимит Pro).
+            Ответьте КП → заказчик принимает → «→ Проект». Создать объект вручную нельзя.
           </Text>
         </View>
       )}
       <Text style={s.head}>Заявки</Text>
+      {loading && !loadedOnce ? <ActivityIndicator color={RenovaTheme.colors.primary} style={s.loader} /> : null}
       {loadError ? (
-        <Text style={s.err}>Не удалось загрузить заявки. Откройте экран снова.</Text>
+        <View style={s.loadErrorBox}>
+          <Text style={s.err}>
+            Не удалось обновить заявки. {loadedOnce ? 'Показаны последние подтверждённые данные.' : 'Пустой список не означает, что заявок нет.'}
+          </Text>
+          <PrimaryButton title="Повторить загрузку" variant="outline" loading={loading} onPress={() => void load()} />
+        </View>
+      ) : null}
+      {loadedOnce && !loadError && items.length === 0 ? (
+        <Text style={s.empty}>Активных заявок пока нет.</Text>
       ) : null}
       {items.map((l) => (
         <View key={l.id} style={s.row}>
@@ -126,7 +179,6 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
                   key={q.id}
                   title={`Принять · ${formatRub(q.pre_estimate)}`}
                   onPress={() => {
-                    // Clarity U: привязка исполнителя — confirm
                     showActionConfirm({
                       title: 'Принять КП?',
                       message: `${formatRub(q.pre_estimate)} — исполнитель будет закреплён за заявкой.`,
@@ -135,15 +187,12 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
                         void (async () => {
                           try {
                             await api.acceptJobLeadQuote(userId, l.id, q.id);
-                            await sync();
-                            load();
-                            alertJobLeadAssigned(osRole);
-                          } catch (e: unknown) {
-                            showActionConfirm({
-                              title: 'Не удалось',
-                              message: e instanceof Error ? e.message : 'Ошибка принятия КП',
-                            });
+                          } catch (error) {
+                            showMutationFailure('jobLeads.acceptQuote.mutation', error, 'Ошибка принятия КП');
+                            return;
                           }
+                          alertJobLeadAssigned(osRole);
+                          void reconcileAfterCommit('accept_quote');
                         })();
                       },
                       secondaryLabel: 'Отмена',
@@ -167,15 +216,12 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
                     void (async () => {
                       try {
                         await api.autoAssignLead(userId, l.id);
-                        await sync();
-                        load();
-                        alertJobLeadAssigned(osRole);
-                      } catch (e: unknown) {
-                        showActionConfirm({
-                          title: 'Не удалось',
-                          message: e instanceof Error ? e.message : 'Ошибка назначения',
-                        });
+                      } catch (error) {
+                        showMutationFailure('jobLeads.autoAssign.mutation', error, 'Ошибка назначения');
+                        return;
                       }
+                      alertJobLeadAssigned(osRole);
+                      void reconcileAfterCommit('auto_assign');
                     })();
                   },
                   secondaryLabel: 'Отмена',
@@ -188,23 +234,55 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
             <PrimaryButton
               title="→ Проект"
               variant="outline"
-              onPress={async () => {
+              onPress={() => {
                 if (role === 'contractor') {
                   pushOsNav({ pathname: `/contractor-wizard/${l.id}` }, '/job-leads', osRole);
                   return;
                 }
-                const r = await api.convertJobLead(userId, l.id);
-                await refreshProjects();
-                if (r?.project_id) {
-                  await loadProject(r.project_id);
-                  await sync();
-                  replaceOsNav(
-                    role === 'contractor' ? '/(contractor)/(tabs)/' : '/(customer)/(tabs)/',
-                    undefined,
-                    osRole,
-                  );
-                }
-                load();
+                void (async () => {
+                  let converted: { project_id: string; name: string };
+                  try {
+                    converted = await api.convertJobLead(userId, l.id);
+                  } catch (error) {
+                    showMutationFailure('jobLeads.convert.mutation', error, 'Не удалось создать проект из заявки');
+                    return;
+                  }
+
+                  // The lead is already converted on the server. Refresh failures below
+                  // must never encourage the customer to repeat the conversion mutation.
+                  void load();
+                  try {
+                    await refreshProjects();
+                  } catch (error) {
+                    reportError('jobLeads.convert.refreshProjects', error, { userId, projectId: converted.project_id });
+                  }
+
+                  try {
+                    await loadProject(converted.project_id);
+                  } catch (error) {
+                    reportError('jobLeads.convert.loadProject', error, { userId, projectId: converted.project_id });
+                    showActionConfirm({
+                      title: 'Проект создан',
+                      message: 'Заявка преобразована в проект, но открыть его автоматически не удалось. Обновите проекты и выберите объект.',
+                      primaryLabel: 'Обновить проекты',
+                      onPrimary: () => {
+                        void refreshProjects().catch((refreshError: unknown) => {
+                          reportError('jobLeads.convert.retryRefreshProjects', refreshError, {
+                            userId,
+                            projectId: converted.project_id,
+                          });
+                        });
+                      },
+                      secondaryLabel: 'На главную',
+                      onSecondary: () => replaceOsNav('/(customer)/(tabs)/', undefined, 'customer'),
+                    });
+                    return;
+                  }
+
+                  // loadProject already switches active project, emits project-data change
+                  // and refreshes inbox for the newly loaded object. Do not sync stale activeProject here.
+                  replaceOsNav('/(customer)/(tabs)/', undefined, 'customer');
+                })();
               }}
             />
           ) : null}
@@ -215,15 +293,31 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
                 placeholder="₽"
                 keyboardType="numeric"
                 value={quote[l.id] || ''}
-                onChangeText={(value: string) => setQuote({ ...quote, [l.id]: value })}
+                onChangeText={(value: string) => setQuote((prev) => ({ ...prev, [l.id]: value }))}
               />
               <PrimaryButton
                 title="КП"
-                onPress={async () => {
-                  await api.quoteJobLead(userId, l.id, parseFloat(quote[l.id] || '0'));
-                  await sync();
-                  load();
-                  alertJobLeadQuoted(osRole);
+                disabled={!quote[l.id]?.trim()}
+                onPress={() => {
+                  const amount = parseQuoteAmount(quote[l.id]);
+                  if (amount == null) {
+                    showActionConfirm({
+                      title: 'Сумма КП',
+                      message: 'Укажите сумму больше нуля.',
+                    });
+                    return;
+                  }
+                  void (async () => {
+                    try {
+                      await api.quoteJobLead(userId, l.id, amount);
+                    } catch (error) {
+                      showMutationFailure('jobLeads.quote.mutation', error, 'Не удалось отправить КП');
+                      return;
+                    }
+                    setQuote((prev) => ({ ...prev, [l.id]: '' }));
+                    alertJobLeadQuoted(osRole);
+                    void reconcileAfterCommit('quote');
+                  })();
                 }}
               />
             </View>
@@ -262,7 +356,10 @@ const s = StyleSheet.create({
   infoSub: { fontSize: 12, color: '#475569', lineHeight: 17 },
   box: { marginVertical: 10 },
   head: { fontWeight: '800', marginBottom: 8 },
-  err: { fontSize: 12, color: RenovaTheme.colors.danger, marginBottom: 8 },
+  loader: { marginVertical: 10 },
+  loadErrorBox: { gap: 8, marginBottom: 8 },
+  err: { fontSize: 12, color: RenovaTheme.colors.danger },
+  empty: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
   row: { backgroundColor: RenovaTheme.colors.surface, padding: 10, borderRadius: 8, marginBottom: 6 },
   n: { fontWeight: '600' },
   sub: { fontSize: 11, color: '#666', marginTop: 2 },
