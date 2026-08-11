@@ -242,8 +242,10 @@ async function emitQueueChanged(): Promise<void> {
   try {
     const { notifyOfflineFlush } = await import('@/lib/offline/flushBus');
     notifyOfflineFlush();
-  } catch {
-    /* test env */
+  } catch (error) {
+    // The queue mutation is already durable; notify failure must be visible without
+    // turning a committed offline operation into a false mutation failure.
+    reportError('offline.queueChanged.notify', error);
   }
 }
 
@@ -444,7 +446,16 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
         body: job.body,
       });
 
-      const errorText = response.ok ? '' : await response.text().catch(() => '');
+      const errorText = response.ok
+        ? ''
+        : await response.text().catch((error: unknown) => {
+            reportError('offline.flush.responseBody', error, {
+              jobId: job.id,
+              path: job.path,
+              status: response.status,
+            });
+            return '';
+          });
       const message = errorText || (response.ok ? 'ok' : `HTTP ${response.status}`);
       const attemptedAt = Date.now();
       const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'), attemptedAt);
