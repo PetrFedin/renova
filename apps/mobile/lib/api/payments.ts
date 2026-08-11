@@ -25,7 +25,15 @@ export const paymentsApi = {
     return items.filter((p) => p.status === 'pending').length;
   },
   checkoutYookassa: (userId: string, projectId: string, paymentId: string, body?: { portal_token?: string }) =>
-    req<{ demo?: boolean; payment_id?: string; yookassa_payment_id?: string | null; confirmation_url?: string | null; status?: string; message?: string }>(
+    req<{
+      demo?: boolean;
+      provider?: string;
+      payment_id?: string;
+      yookassa_payment_id?: string | null;
+      confirmation_url?: string | null;
+      status?: string;
+      message?: string;
+    }>(
       `/api/v1/projects/${projectId}/payments/${paymentId}/yookassa-checkout`,
       { method: 'POST', body: body ? JSON.stringify(body) : undefined },
       userId,

@@ -26,7 +26,7 @@ import { buildPaymentHistory, formatPaymentEventDate } from '@/lib/domain/paymen
 import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { alertPaymentConfirmed } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
@@ -79,6 +79,8 @@ export function PaymentDetailSheet({
   const [reqText, setReqText] = useState('');
   const [reqMissing, setReqMissing] = useState<string | null>(null);
   const [reqLoaded, setReqLoaded] = useState(false);
+  const [reqError, setReqError] = useState<string | null>(null);
+  const [reqReloadTick, setReqReloadTick] = useState(0);
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
   const [resolutionOpen, setResolutionOpen] = useState(false);
@@ -97,8 +99,8 @@ export function PaymentDetailSheet({
         setReceiptAttached(true);
         setStep((current) => (current === 'info' ? 'confirm' : current));
       }
-    } catch {
-      // Storage is only a fallback until the API receipt relation is synced.
+    } catch (error) {
+      reportError('payment.receiptFlag.storage', error, { paymentId: payment.id });
     }
   }, [payment?.id, payment?.receipt_id]);
 
@@ -132,6 +134,7 @@ export function PaymentDetailSheet({
     setReqLoaded(false);
     setReqText('');
     setReqMissing(null);
+    setReqError(null);
     void (async () => {
       try {
         const raw = await api.getPaymentRequisites(userId, projectId);
@@ -144,21 +147,21 @@ export function PaymentDetailSheet({
         });
         setReqText(built.text);
         setReqMissing(built.missingHint);
-      } catch {
+      } catch (error) {
         if (cancelled) return;
-        const built = buildPaymentRequisites({ amount: payment.amount, title: payment.title });
-        setReqText(built.text);
-        setReqMissing(built.missingHint);
+        reportError('payment.requisites.load', error, { userId, projectId, paymentId: payment.id });
+        setReqError('Не удалось подтвердить реквизиты на сервере. Не переводите средства до повторной проверки.');
       } finally {
         if (!cancelled) setReqLoaded(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [payment?.id, payment?.amount, payment?.title, userId, projectId]);
+  }, [payment?.id, payment?.amount, payment?.title, userId, projectId, reqReloadTick]);
 
   if (!payment) return null;
 
-  const requisites = reqText || buildPaymentRequisites({ amount: payment.amount, title: payment.title }).text;
+  const requisites = reqText;
+  const canUseRequisites = reqLoaded && !reqError && !reqMissing && Boolean(reqText.trim());
   const stage = stages.find((candidate) => candidate.id === payment.stage_id);
   const isCustomer = role === 'customer';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
@@ -186,6 +189,31 @@ export function PaymentDetailSheet({
     setMutation(null);
   };
 
+  const reconcileCommittedPayment = async (operation: string): Promise<boolean> => {
+    // Mutation truth comes first: ask the parent to refresh even if broader side effects fail.
+    onChanged?.();
+    if (!user || user.id !== userId) {
+      reportError('payment.postCommit.context', new Error('payment_user_context_mismatch'), {
+        operation,
+        userId,
+        contextUserId: user?.id ?? null,
+        projectId,
+        paymentId: payment.id,
+      });
+      return false;
+    }
+    try {
+      const project = activeProject?.id === projectId
+        ? activeProject
+        : await api.getProject(userId, projectId);
+      await syncProjectSideEffects({ user, project, role });
+      return true;
+    } catch (error) {
+      reportError('payment.postCommit.sync', error, { operation, userId, projectId, paymentId: payment.id });
+      return false;
+    }
+  };
+
   const openReceipt = () => {
     if (mutationRef.current) return;
     setReceiptAttached(true);
@@ -200,10 +228,21 @@ export function PaymentDetailSheet({
     });
   };
 
+  const showRequisitesUnavailable = () => {
+    showActionConfirm({
+      title: reqMissing ? 'Реквизиты не указаны' : 'Реквизиты не подтверждены',
+      message: reqMissing || reqError || 'Дождитесь загрузки реквизитов с сервера и повторите.',
+      primaryLabel: 'Повторить проверку',
+      onPrimary: () => setReqReloadTick((value) => value + 1),
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
   const openSbp = async () => {
     if (mutationRef.current) return;
-    if (reqMissing) {
-      showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
+    if (!canUseRequisites) {
+      showRequisitesUnavailable();
       return;
     }
     try {
@@ -221,8 +260,8 @@ export function PaymentDetailSheet({
           ? [{
               label: 'Открыть банк',
               onPress: () => showActionConfirm({
-                title: 'Реквизиты скопированы',
-                message: 'Откройте приложение вашего банка или СБП и вставьте реквизиты из буфера.',
+                title: 'Реквизиты подтверждены',
+                message: 'Откройте приложение вашего банка или СБП и используйте подтверждённые реквизиты выше.',
                 primaryLabel: 'Понятно',
                 onPrimary: () => undefined,
               }),
@@ -249,8 +288,8 @@ export function PaymentDetailSheet({
 
   const copyRequisites = async () => {
     if (mutationRef.current) return;
-    if (reqMissing) {
-      showActionConfirm({ title: 'Реквизиты не указаны', message: reqMissing });
+    if (!canUseRequisites) {
+      showRequisitesUnavailable();
       return;
     }
     try {
@@ -284,42 +323,58 @@ export function PaymentDetailSheet({
     if (!beginMutation('card')) return;
     try {
       const checkout = await api.checkoutYookassa(userId, projectId, payment.id);
-      if (checkout.demo) {
-        await syncProjectSideEffects({
-          user: user ?? ({ id: userId, role } as never),
-          project: activeProject ?? ({ id: projectId } as never),
-          role,
+      if (checkout.demo || checkout.status === 'demo' || checkout.provider === 'mock') {
+        reportError('payment.checkout.mockProvider', new Error('payment_checkout_mock_provider'), {
+          userId,
+          projectId,
+          paymentId: payment.id,
+          provider: checkout.provider,
+          status: checkout.status,
         });
-        onChanged?.();
-        onClose();
         showActionConfirm({
-          title: 'Оплата (demo)',
-          message: checkout.message || 'Тестовая оплата без реального списания. Для prod настройте YOOKASSA_* на сервере.',
+          title: 'Онлайн-оплата недоступна',
+          message: 'Платёжный провайдер находится в тестовом режиме. Реальное списание не выполняется. Используйте только подтверждённые реквизиты или повторите позже.',
           primaryLabel: 'Понятно',
           onPrimary: () => undefined,
         });
         return;
       }
-      if (checkout.confirmation_url) {
-        await WebBrowser.openBrowserAsync(checkout.confirmation_url);
+      if (!checkout.confirmation_url) {
+        reportError('payment.checkout.missingConfirmationUrl', new Error('payment_confirmation_url_missing'), {
+          userId,
+          projectId,
+          paymentId: payment.id,
+          provider: checkout.provider,
+          status: checkout.status,
+        });
         showActionConfirm({
-          title: 'ЮKassa',
-          message: 'После оплаты вы вернётесь в приложение. Статус счёта обновится автоматически.',
+          title: 'Онлайн-оплата недоступна',
+          message: 'Провайдер не вернул ссылку на безопасную оплату. Используйте перевод по подтверждённым реквизитам или повторите позже.',
           primaryLabel: 'Понятно',
           onPrimary: () => undefined,
         });
+        return;
       }
+      await WebBrowser.openBrowserAsync(checkout.confirmation_url);
+      onChanged?.();
+      showActionConfirm({
+        title: 'ЮKassa',
+        message: 'После оплаты статус счёта обновится после подтверждения платёжного провайдера.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 409) {
         confirmAcceptanceFirst(goToAcceptance);
       } else if (error instanceof ApiError && error.status === 503) {
         showActionConfirm({
           title: 'ЮKassa',
-          message: 'Карточная оплата не настроена на сервере. Используйте перевод по реквизитам или приложите чек.',
+          message: 'Карточная оплата не настроена на сервере. Используйте перевод по подтверждённым реквизитам или приложите чек.',
           primaryLabel: 'Понятно',
           onPrimary: () => undefined,
         });
       } else {
+        reportError('payment.checkout.open', error, { userId, projectId, paymentId: payment.id });
         showActionConfirm({ title: 'Ошибка оплаты', message: apiErrorMessage(error, 'Не удалось открыть оплату картой') });
       }
     } finally {
@@ -350,18 +405,34 @@ export function PaymentDetailSheet({
         void (async () => {
           if (!beginMutation('confirm')) return;
           try {
-            const confirmed = await api.confirmPayment(userId, projectId, payment.id, {
-              transfer_ack: Boolean(transferAck || receiptAttached),
-            });
+            let confirmed: Awaited<ReturnType<typeof api.confirmPayment>>;
+            try {
+              confirmed = await api.confirmPayment(userId, projectId, payment.id, {
+                transfer_ack: Boolean(transferAck || receiptAttached),
+              });
+            } catch (error: unknown) {
+              if (error instanceof ApiError && error.status === 409) {
+                confirmAcceptanceFirst(goToAcceptance);
+              } else {
+                reportError('payment.confirm.mutation', error, { userId, projectId, paymentId: payment.id });
+                showActionConfirm({ title: 'Оплата не подтверждена', message: apiErrorMessage(error, 'Повторите операцию.') });
+              }
+              return;
+            }
+
             await AsyncStorage.removeItem(paymentReceiptKey(payment.id)).catch(reportCatch('payment.receipt.remove'));
-            await syncProjectSideEffects({
-              user: user ?? ({ id: userId, role } as never),
-              project: activeProject ?? ({ id: projectId } as never),
-              role,
-            });
-            onChanged?.();
+            const reconciled = await reconcileCommittedPayment('confirm');
             onClose();
-            if (confirmed?.status === 'paid_unverified') {
+            if (!reconciled) {
+              showActionConfirm({
+                title: 'Оплата сохранена',
+                message: confirmed?.status === 'paid_unverified'
+                  ? 'Подтверждение принято без проверки. Не удалось обновить связанные данные — они синхронизируются при следующем обновлении.'
+                  : 'Статус оплаты сохранён. Не удалось обновить связанные данные — они синхронизируются при следующем обновлении.',
+                primaryLabel: 'Понятно',
+                onPrimary: () => undefined,
+              });
+            } else if (confirmed?.status === 'paid_unverified') {
               showActionConfirm({
                 title: 'Принято без проверки',
                 message: 'Статус «оплачено, не верифицировано». Прикрепите чек — тогда сумма войдёт в бюджет как подтверждённый факт.',
@@ -370,12 +441,6 @@ export function PaymentDetailSheet({
               });
             } else {
               alertPaymentConfirmed(role);
-            }
-          } catch (error: unknown) {
-            if (error instanceof ApiError && error.status === 409) {
-              confirmAcceptanceFirst(goToAcceptance);
-            } else {
-              showActionConfirm({ title: 'Оплата не подтверждена', message: apiErrorMessage(error, 'Повторите операцию.') });
             }
           } finally {
             endMutation();
@@ -408,24 +473,25 @@ export function PaymentDetailSheet({
         void (async () => {
           if (!beginMutation('dispute')) return;
           try {
-            await api.disputePayment(userId, projectId, payment.id, { reason });
-            await syncProjectSideEffects({
-              user: user ?? ({ id: userId, role } as never),
-              project: activeProject ?? ({ id: projectId } as never),
-              role,
-            }).catch(reportCatch('payment.dispute.sync'));
-            onChanged?.();
+            try {
+              await api.disputePayment(userId, projectId, payment.id, { reason });
+            } catch (error: unknown) {
+              reportError('payment.dispute.mutation', error, { userId, projectId, paymentId: payment.id });
+              showActionConfirm({
+                title: 'Спор не открыт',
+                message: apiErrorMessage(error, 'Проверьте статус оплаты и повторите операцию.'),
+                primaryLabel: 'Понятно',
+                onPrimary: () => undefined,
+              });
+              return;
+            }
+            const reconciled = await reconcileCommittedPayment('dispute');
             onClose();
             showActionConfirm({
               title: 'Спор открыт',
-              message: 'Оплата помечена как оспоренная и исключена из подтверждённого факта бюджета.',
-              primaryLabel: 'Понятно',
-              onPrimary: () => undefined,
-            });
-          } catch (error: unknown) {
-            showActionConfirm({
-              title: 'Спор не открыт',
-              message: apiErrorMessage(error, 'Проверьте статус оплаты и повторите операцию.'),
+              message: reconciled
+                ? 'Оплата помечена как оспоренная и исключена из подтверждённого факта бюджета.'
+                : 'Спор сохранён. Связанные данные не обновились сразу и синхронизируются при следующем обновлении.',
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
             });
@@ -459,26 +525,28 @@ export function PaymentDetailSheet({
         void (async () => {
           if (!beginMutation('resolveDispute')) return;
           try {
-            const result = await api.resolvePaymentDispute(userId, projectId, payment.id, { note });
-            await syncProjectSideEffects({
-              user: user ?? ({ id: userId, role } as never),
-              project: activeProject ?? ({ id: projectId } as never),
-              role,
-            }).catch(reportCatch('payment.dispute.resolve.sync'));
-            onChanged?.();
+            let result: Awaited<ReturnType<typeof api.resolvePaymentDispute>>;
+            try {
+              result = await api.resolvePaymentDispute(userId, projectId, payment.id, { note });
+            } catch (error: unknown) {
+              reportError('payment.dispute.resolve.mutation', error, { userId, projectId, paymentId: payment.id });
+              showActionConfirm({
+                title: 'Спор не отозван',
+                message: apiErrorMessage(error, 'Проверьте статус оплаты и повторите операцию.'),
+                primaryLabel: 'Понятно',
+                onPrimary: () => undefined,
+              });
+              return;
+            }
+            const reconciled = await reconcileCommittedPayment('resolve_dispute');
             onClose();
             showActionConfirm({
               title: 'Спор отозван',
-              message: result.payment.status === 'confirmed'
-                ? 'Оплата и связанный расход снова учитываются в подтверждённом факте бюджета.'
-                : 'Оплата возвращена в статус «оплачено, не верифицировано». Подтверждённый расход не создавался.',
-              primaryLabel: 'Понятно',
-              onPrimary: () => undefined,
-            });
-          } catch (error: unknown) {
-            showActionConfirm({
-              title: 'Спор не отозван',
-              message: apiErrorMessage(error, 'Проверьте статус оплаты и повторите операцию.'),
+              message: !reconciled
+                ? 'Решение сохранено. Связанные данные не обновились сразу и синхронизируются при следующем обновлении.'
+                : result.payment.status === 'confirmed'
+                  ? 'Оплата и связанный расход снова учитываются в подтверждённом факте бюджета.'
+                  : 'Оплата возвращена в статус «оплачено, не верифицировано». Подтверждённый расход не создавался.',
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
             });
@@ -507,7 +575,7 @@ export function PaymentDetailSheet({
       ) : null}
       {step === 'transfer' ? (
         <>
-          <PrimaryButton title="Я перевёл — дальше" onPress={() => { setTransferAck(true); setStep('confirm'); }} disabled={busy} fullWidth />
+          <PrimaryButton title="Я перевёл — дальше" onPress={() => { setTransferAck(true); setStep('confirm'); }} disabled={busy || !canUseRequisites} fullWidth />
           <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep('info')} disabled={busy} fullWidth />
         </>
       ) : null}
@@ -563,12 +631,14 @@ export function PaymentDetailSheet({
       {canConfirm && step === 'transfer' ? (
         <View style={sheetContentStyles.section}>
           <Text style={screenTypography.section}>Реквизиты</Text>
-          {reqMissing ? <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>{reqMissing}</Text> : null}
           {!reqLoaded ? <ActivityIndicator color={RenovaTheme.colors.primary} /> : null}
-          {requisites.split('\n').filter(Boolean).map((line, index) => <Text key={`${line}:${index}`} style={formMetaText.caption}>{line}</Text>)}
+          {reqError ? <InfoBanner tone="warning" title="Реквизиты не подтверждены" message={reqError} /> : null}
+          {reqMissing && !reqError ? <InfoBanner tone="warning" title="Реквизиты не заполнены" message={reqMissing} /> : null}
+          {canUseRequisites ? requisites.split('\n').filter(Boolean).map((line, index) => <Text key={`${line}:${index}`} style={formMetaText.caption}>{line}</Text>) : null}
+          {!canUseRequisites && reqLoaded ? <PrimaryButton title="Повторить проверку реквизитов" variant="outline" disabled={busy} onPress={() => setReqReloadTick((value) => value + 1)} fullWidth /> : null}
           <PrimaryButton title="Скопировать сумму" variant="outline" disabled={busy} onPress={() => { void copySbpAmount(); }} fullWidth />
-          <PrimaryButton title="Скопировать реквизиты" variant="outline" disabled={busy} onPress={() => { void copyRequisites(); }} fullWidth />
-          <PrimaryButton title="Открыть СБП / банк" variant="outline" disabled={busy} onPress={() => { void openSbp(); }} fullWidth />
+          <PrimaryButton title="Скопировать реквизиты" variant="outline" disabled={busy || !canUseRequisites} onPress={() => { void copyRequisites(); }} fullWidth />
+          <PrimaryButton title="Открыть СБП / банк" variant="outline" disabled={busy || !canUseRequisites} onPress={() => { void openSbp(); }} fullWidth />
         </View>
       ) : null}
 
