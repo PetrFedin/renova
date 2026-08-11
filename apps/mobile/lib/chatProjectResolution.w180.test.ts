@@ -6,6 +6,7 @@ function must(condition: unknown, message: string): asserts condition {
 
 const route = readFileSync('apps/mobile/app/chat/[threadId].tsx', 'utf8');
 const helper = readFileSync('apps/mobile/lib/chatProjectResolution.ts', 'utf8');
+const threadView = readFileSync('apps/mobile/components/renova/chat/ChatThreadView.tsx', 'utf8');
 
 must(
   route.includes('resolveChatProjectId({'),
@@ -42,6 +43,26 @@ must(
 must(
   !helper.includes('candidateProjectId ??'),
   'resolver must not fabricate a project fallback after a failed ACL read',
+);
+
+must(
+  threadView.includes('silent-catch-ok: active project is an optimistic ownership probe'),
+  'legacy active-project ownership probing must remain explicitly reviewed instead of becoming anonymous silent debt',
+);
+must(
+  threadView.includes("reportError('chat.markRead.sync', error, { threadId, projectId, knownUnread })"),
+  'read reconciliation failures must remain observable',
+);
+const readSyncIndex = threadView.indexOf('await syncAfterRead(projectId, threadId, knownUnread);');
+const markSuccessIndex = threadView.indexOf('markedReadRef.current = markKey;', readSyncIndex);
+const readSyncFailureIndex = threadView.indexOf("reportError('chat.markRead.sync'", readSyncIndex);
+must(readSyncIndex >= 0, 'ChatThreadView must synchronize read state before memoizing success');
+must(markSuccessIndex > readSyncIndex, 'read success may be memoized only after syncAfterRead resolves');
+must(readSyncFailureIndex > markSuccessIndex, 'read sync failure handling must follow the success assignment');
+const failureBlock = threadView.slice(readSyncFailureIndex, threadView.indexOf('\n    }', readSyncFailureIndex));
+must(
+  !failureBlock.includes('markedReadRef.current = markKey'),
+  'failed read reconciliation must not suppress the next retry',
 );
 
 console.log('chatProjectResolution.w180.test OK');
