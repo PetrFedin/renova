@@ -36,6 +36,7 @@ const inboxSync = readFileSync(join(mobile, 'lib/inboxSyncStore.ts'), 'utf8');
 const chatHooks = readFileSync(join(mobile, 'lib/useChatUnread.ts'), 'utf8');
 const chatList = readFileSync(join(mobile, 'components/renova/chat/ChatListView.tsx'), 'utf8');
 const rooms = readFileSync(join(mobile, 'components/screens/OsRoomsScreen.tsx'), 'utf8');
+const projectEmpty = readFileSync(join(mobile, 'components/renova/ProjectEmptyState.tsx'), 'utf8');
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
@@ -92,6 +93,43 @@ console.assert(
   'room-change mutation is acknowledged before its non-authoritative list refresh',
 );
 
+console.assert(
+  !projectEmpty.includes('Загрузить демо')
+    && !projectEmpty.includes('(W69)')
+    && projectEmpty.includes('Быстро начать с шаблона')
+    && projectEmpty.includes('Обновить проекты'),
+  'project empty state must expose production recovery instead of demo/internal CTAs',
+);
+console.assert(
+  projectEmpty.includes("reportError('projectEmptyState.pendingPayments'")
+    && !projectEmpty.includes('return [p.id, 0] as const;'),
+  'failed pending-payment reads must stay unknown instead of fabricating a completed project',
+);
+console.assert(
+  projectEmpty.includes("reportError('projectEmptyState.templateCreate'")
+    && projectEmpty.includes("reportError('projectEmptyState.templateRefreshProjects'")
+    && projectEmpty.includes("reportError('projectEmptyState.templateLoadProject'")
+    && projectEmpty.includes("reportError('projectEmptyState.templateSideEffects'"),
+  'template creation and each post-commit reconciliation phase must remain observable',
+);
+const templateCreateIndex = projectEmpty.indexOf('project = await api.createProjectFromTemplate');
+const templateRefreshIndex = projectEmpty.indexOf('await refreshProjects();', templateCreateIndex);
+const templateLoadIndex = projectEmpty.indexOf('await loadProject(project.id);', templateCreateIndex);
+const templateWarningIndex = projectEmpty.indexOf('Объект создан, но не удалось открыть его автоматически');
+console.assert(
+  templateCreateIndex >= 0
+    && templateRefreshIndex > templateCreateIndex
+    && templateLoadIndex > templateCreateIndex
+    && templateWarningIndex > templateLoadIndex,
+  'template create commit must be separated from refresh/load reconciliation and truthful partial-success UX',
+);
+console.assert(
+  projectEmpty.includes("showCreate && bucket === 'active' && role === 'customer'")
+    && projectEmpty.includes('title="Найти заявки"')
+    && projectEmpty.includes("pushOsNav('/job-leads', pathname, 'contractor')"),
+  'contractor no-project state must route to marketplace leads instead of manual project creation',
+);
+
 const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
   Boolean(repair?.params?.tab === 'control') &&
@@ -103,7 +141,10 @@ const ok =
   chatHooks.includes("throw new Error('chat_inbox_refresh_degraded')") &&
   chatList.includes('!displayThreads.length && loadError') &&
   rooms.includes("roomsState.status === 'loaded' && !filtered.length") &&
-  rooms.includes("reportError('rooms.customer.listRooms'");
+  rooms.includes("reportError('rooms.customer.listRooms'") &&
+  !projectEmpty.includes('Загрузить демо') &&
+  projectEmpty.includes("reportError('projectEmptyState.templateCreate'") &&
+  projectEmpty.includes('title="Обновить проекты"');
 
 if (!ok) process.exit(1);
 console.log('reliabilityUx.w152.test OK');

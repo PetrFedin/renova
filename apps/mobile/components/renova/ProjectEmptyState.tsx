@@ -19,7 +19,7 @@ import { useProjectLifecycleActions } from '@/lib/hooks/useProjectLifecycleActio
 import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecycleIcons';
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
 
 type Props = {
   role: OsRole;
@@ -34,6 +34,11 @@ type Props = {
   autoPick?: boolean;
   /** После выбора карточки — кастомный обработчик (onboarding) */
   onSelectProject?: (projectId: string) => void | Promise<void>;
+};
+
+type EmptyActionFeedback = {
+  tone: 'error' | 'warning';
+  text: string;
 };
 
 function phaseTone(phase: string): StatusTone {
@@ -166,11 +171,14 @@ export function ProjectEmptyState({
   onSelectProject,
 }: Props) {
   const pathname = usePathname();
-  const { user, projects, loadProject, showPaywall, recoverSession, ensureActiveProject, projectResolving, readOnly, refreshProjects } = useRenova();
+  const { user, projects, loadProject, showPaywall, ensureActiveProject, projectResolving, readOnly, refreshProjects } = useRenova();
   const canManageBuckets = user?.role === 'customer' && !readOnly;
   const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, loading: bucketLoading, reload: reloadBuckets } = useProjectBuckets(user?.id, canManageBuckets);
   const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
+  const [templateCreatingId, setTemplateCreatingId] = useState<string | null>(null);
+  const [refreshingProjects, setRefreshingProjects] = useState(false);
+  const [emptyActionFeedback, setEmptyActionFeedback] = useState<EmptyActionFeedback | null>(null);
 
   const displayProjects = bucket === 'active' ? projects : bucketItems;
   const { inProgress, completed } = useMemo(
@@ -204,12 +212,21 @@ export function ProjectEmptyState({
           try {
             const n = (await api.countPendingPayments(user.id, p.id)) || 0;
             return [p.id, n] as const;
-          } catch {
-            return [p.id, 0] as const;
+          } catch (error) {
+            // Unknown payment state must remain «Закрытие»; a failed read is not zero pending payments.
+            reportError('projectEmptyState.pendingPayments', error, { projectId: p.id });
+            return null;
           }
         }),
       ).then((rows) => {
-        if (!cancelled) setPendingById((prev) => ({ ...prev, ...Object.fromEntries(rows) }));
+        if (cancelled) return;
+        const confirmed: Record<string, number> = {};
+        for (const row of rows) {
+          if (row) confirmed[row[0]] = row[1];
+        }
+        if (Object.keys(confirmed).length) {
+          setPendingById((prev) => ({ ...prev, ...confirmed }));
+        }
       });
     }, 0);
     return () => {
@@ -240,6 +257,76 @@ export function ProjectEmptyState({
     loadProject(id).catch((error: unknown) => {
       if (isSubscriptionRequired(error)) showPaywall();
     });
+  };
+
+  const refreshEmptyProjects = async () => {
+    if (!user || refreshingProjects) return;
+    setRefreshingProjects(true);
+    setEmptyActionFeedback(null);
+    try {
+      await refreshProjects();
+    } catch (error) {
+      reportError('projectEmptyState.refreshProjects', error, { userId: user.id, role });
+      setEmptyActionFeedback({
+        tone: 'error',
+        text: 'Не удалось обновить проекты. Проверьте подключение и повторите.',
+      });
+    } finally {
+      setRefreshingProjects(false);
+    }
+  };
+
+  const createFromTemplate = async (templateId: string, name: string) => {
+    if (!user || templateCreatingId || refreshingProjects) return;
+    setTemplateCreatingId(templateId);
+    setEmptyActionFeedback(null);
+
+    const project = await api.createProjectFromTemplate(user.id, { template_id: templateId, name }).catch((error: unknown) => {
+      reportError('projectEmptyState.templateCreate', error, { userId: user.id, templateId });
+      if (isSubscriptionRequired(error)) {
+        showPaywall();
+      } else {
+        setEmptyActionFeedback({
+          tone: 'error',
+          text: 'Не удалось создать объект. Проверьте подключение и повторите.',
+        });
+      }
+      return null;
+    });
+    if (!project) {
+      setTemplateCreatingId(null);
+      return;
+    }
+
+    // The create mutation is already committed. Reconciliation failures below must
+    // never be reported to the user as a failed creation or trigger a duplicate create.
+    try {
+      await refreshProjects();
+    } catch (error) {
+      reportError('projectEmptyState.templateRefreshProjects', error, { projectId: project.id, templateId });
+    }
+
+    let opened = true;
+    try {
+      await loadProject(project.id);
+    } catch (error) {
+      opened = false;
+      reportError('projectEmptyState.templateLoadProject', error, { projectId: project.id, templateId });
+    }
+
+    try {
+      await syncProjectSideEffects({ user, project });
+    } catch (error) {
+      reportError('projectEmptyState.templateSideEffects', error, { projectId: project.id, templateId });
+    }
+
+    if (!opened) {
+      setEmptyActionFeedback({
+        tone: 'warning',
+        text: 'Объект создан, но не удалось открыть его автоматически. Обновите проекты и выберите объект.',
+      });
+    }
+    setTemplateCreatingId(null);
   };
 
   return (
@@ -284,45 +371,58 @@ export function ProjectEmptyState({
         <Text style={formMetaText.caption}>{bucket === 'active' ? 'Нет проектов' : bucket === 'archived' ? 'Архив пуст' : 'Корзина пуста'}</Text>
       )}
 
-      {showCreate && bucket === 'active' && (
+      {emptyActionFeedback ? (
+        <Text style={emptyActionFeedback.tone === 'error' ? s.actionError : s.actionWarning}>
+          {emptyActionFeedback.text}
+        </Text>
+      ) : null}
+
+      {showCreate && bucket === 'active' && role === 'customer' ? (
         <PrimaryButton
           title="Создать объект"
           variant={projects.length ? 'outline' : 'primary'}
-          onPress={() => pushOsNav('/wizard/type', pathname, role === 'contractor' ? 'contractor' : 'customer')}
+          disabled={Boolean(templateCreatingId) || refreshingProjects}
+          onPress={() => pushOsNav('/wizard/type', pathname, 'customer')}
         />
-      )}
-      {!projects.length && role === 'customer' ? (
+      ) : null}
+      {!projects.length && role === 'customer' && bucket === 'active' ? (
         <View style={{ gap: 8 }}>
-          <Text style={formMetaText.caption}>Или шаблон объекта (W69)</Text>
+          <Text style={formMetaText.caption}>Быстро начать с шаблона</Text>
           {([
             ['apartment_2room', '2-комнатная'],
             ['studio', 'Студия'],
             ['house', 'Дом'],
-          ] as const).map(([id, label]) => (
-            <PrimaryButton
-              key={id}
-              title={`Шаблон: ${label}`}
-              variant="outline"
-              onPress={async () => {
-                if (!user) return;
-                try {
-                  // Не «Студия»/«Studio» exact — иначе junk-фильтр picker скроет объект рядом с демо
-                  const name =
-                    id === 'studio' ? 'Моя студия' : id === 'house' ? 'Мой дом' : 'Моя квартира';
-                  const project = await api.createProjectFromTemplate(user.id, { template_id: id, name });
-                  await refreshProjects();
-                  await loadProject(project.id);
-                  await syncProjectSideEffects({ user, project });
-                } catch {
-                  /* noop */
-                }
-              }}
-            />
-          ))}
-          <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(reportCatch('components.renova.ProjectEmptyState.2'))} />
+          ] as const).map(([id, label]) => {
+            const name = id === 'studio' ? 'Моя студия' : id === 'house' ? 'Мой дом' : 'Моя квартира';
+            return (
+              <PrimaryButton
+                key={id}
+                title={`Шаблон: ${label}`}
+                variant="outline"
+                loading={templateCreatingId === id}
+                disabled={Boolean(templateCreatingId) || refreshingProjects}
+                onPress={() => void createFromTemplate(id, name)}
+              />
+            );
+          })}
         </View>
-      ) : !projects.length ? (
-        <PrimaryButton title="Загрузить демо" variant="outline" onPress={() => recoverSession().catch(reportCatch('components.renova.ProjectEmptyState.3'))} />
+      ) : null}
+      {!projects.length && role === 'contractor' && bucket === 'active' ? (
+        <PrimaryButton
+          title="Найти заявки"
+          variant="outline"
+          disabled={refreshingProjects}
+          onPress={() => pushOsNav('/job-leads', pathname, 'contractor')}
+        />
+      ) : null}
+      {!projects.length && bucket === 'active' ? (
+        <PrimaryButton
+          title="Обновить проекты"
+          variant="outline"
+          loading={refreshingProjects}
+          disabled={Boolean(templateCreatingId)}
+          onPress={() => void refreshEmptyProjects()}
+        />
       ) : null}
       {!hideHomeButton && (
         <PrimaryButton
@@ -342,7 +442,7 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.background,
     ...(Platform.OS === 'web' ? { overflowY: 'auto' as const } : null),
   },
-  wrapContent: { padding: 16, paddingBottom: 32, flexGrow: 1 },
+  wrapContent: { padding: 16, paddingBottom: 32, flexGrow: 1, gap: 8 },
   title: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 8 },
   sectionHead: {
     ...screenTypography.section,
@@ -360,4 +460,6 @@ const s = StyleSheet.create({
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   name: { flex: 1, fontWeight: '700', fontSize: 15, color: RenovaTheme.colors.text },
   progressLine: { fontSize: 12, color: RenovaTheme.colors.textSubtle, marginTop: 2 },
+  actionError: { fontSize: 12, color: RenovaTheme.colors.danger, lineHeight: 17 },
+  actionWarning: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17 },
 });
