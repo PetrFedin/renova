@@ -167,7 +167,7 @@ export function ChatThreadView({
         await api.getChat(user.id, activeProject.id, threadId);
         return activeProject.id;
       } catch {
-        /* чат на другом объекте */
+        /* silent-catch-ok: active project is an optimistic ownership probe; authoritative inbox resolution follows. */
       }
     }
     try {
@@ -207,8 +207,9 @@ export function ChatThreadView({
     try {
       await syncAfterRead(projectId, threadId, knownUnread);
       markedReadRef.current = markKey;
-    } catch {
-      /* badge подтянется следующим reload; не фиксируем ref */
+    } catch (error) {
+      reportError('chat.markRead.sync', error, { threadId, projectId, knownUnread });
+      /* Do not set markedReadRef: the next focus/WS reload must retry the read reconciliation. */
     }
   }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
 
