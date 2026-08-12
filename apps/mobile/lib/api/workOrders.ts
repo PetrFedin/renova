@@ -2,6 +2,11 @@
 import { req, ApiError } from './client';
 import type { WorkOrder } from './types';
 
+export type WorkOrderPatchBody = {
+  expected_updated_at: string;
+  [key: string]: unknown;
+};
+
 export const workOrdersApi = {
   listWorkOrders: (userId: string, projectId: string) =>
     req<WorkOrder[]>(`/api/v1/projects/${projectId}/work-orders`, {}, userId),
@@ -35,7 +40,13 @@ export const workOrdersApi = {
       throw new Error('offline_queued');
     }
   },
-  patchWorkOrder: async (userId: string, projectId: string, workOrderId: string, body: object) => {
+  patchWorkOrder: async (
+    userId: string,
+    projectId: string,
+    workOrderId: string,
+    body: WorkOrderPatchBody,
+  ) => {
+    if (!body.expected_updated_at) throw new Error('work_order_version_missing');
     try {
       return await req<WorkOrder>(
         `/api/v1/projects/${projectId}/work-orders/${workOrderId}`,
@@ -45,6 +56,8 @@ export const workOrdersApi = {
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
+      // Queue the exact optimistic token observed when the edit was made. On replay,
+      // a newer server revision returns 409 instead of silently losing another edit.
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-orders/${workOrderId}`,
         method: 'PATCH',
