@@ -23,6 +23,36 @@ console.assert(share.includes('planPunchRoute') && share.includes("'plan', 'floo
 console.assert(qc.includes("objectTabRoute(role, 'plan', 'floor')"), 'QC → floor');
 console.assert(control.includes('На план') && control.includes("'plan', 'floor'"), 'control → floor');
 
+console.assert(
+  floor.includes("reportError('components.renova.FloorPlanPanel.cameraPicker'") &&
+    floor.includes("reportError('components.renova.FloorPlanPanel.libraryPicker'") &&
+    floor.includes("reportError('components.renova.FloorPlanPanel.punchPhotoUpload'"),
+  'camera, library, and photo-upload failures must be observable',
+);
+console.assert(
+  floor.includes('повторно создавать замечание не нужно') &&
+    floor.includes('Связанные данные объекта обновятся при следующей синхронизации.'),
+  'committed punch must expose photo/sync partial success instead of inviting duplicate creation',
+);
+const punchCreateIndex = floor.indexOf('created = await api.createIssue');
+const punchSyncIndex = floor.indexOf("reportError('components.renova.FloorPlanPanel.punchPostCommitSync'");
+const punchConfirmIndex = floor.indexOf('setPunchSheet({', punchCreateIndex);
+console.assert(
+  punchCreateIndex >= 0 && punchSyncIndex > punchCreateIndex && punchConfirmIndex > punchSyncIndex,
+  'punch create is the commit boundary; post-commit sync degradation must be handled before confirmation',
+);
+const planCreateIndex = floor.indexOf('await api.createFloorPlan');
+const planSyncIndex = floor.indexOf("reportError('components.renova.FloorPlanPanel.planPostCommitSync'");
+const planConfirmIndex = floor.indexOf('setUploadSheet({ syncDegraded })');
+console.assert(
+  planCreateIndex >= 0 && planSyncIndex > planCreateIndex && planConfirmIndex > planSyncIndex,
+  'floor-plan create must stay successful when later reconciliation degrades',
+);
+console.assert(
+  floor.includes("reportError('components.renova.FloorPlanPanel.movePin'") && floor.includes('Позиция не сохранена'),
+  'failed online pin moves must be observable and visible instead of silently disappearing',
+);
+
 console.log('punchDiscovery.w150.test OK');
 
 if (
@@ -31,7 +61,15 @@ if (
     floor.includes("punchParam === '1'") &&
     overview.includes('Сфоткать дефект') &&
     inbox.includes('floor-punch') &&
-    qc.includes("objectTabRoute(role, 'plan', 'floor')")
+    qc.includes("objectTabRoute(role, 'plan', 'floor')") &&
+    floor.includes("reportError('components.renova.FloorPlanPanel.punchPhotoUpload'") &&
+    floor.includes('повторно создавать замечание не нужно') &&
+    punchCreateIndex >= 0 &&
+    punchSyncIndex > punchCreateIndex &&
+    punchConfirmIndex > punchSyncIndex &&
+    planCreateIndex >= 0 &&
+    planSyncIndex > planCreateIndex &&
+    planConfirmIndex > planSyncIndex
   )
 ) {
   process.exit(1);
