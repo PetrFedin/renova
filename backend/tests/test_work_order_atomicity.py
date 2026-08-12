@@ -397,7 +397,9 @@ async def test_hybrid_project_customer_executes_only_explicitly_assigned_work(
 
     for work_order_id in blocked_ids:
         contractor_work = await work_order_db.get(WorkOrder, work_order_id)
+        current_project = await work_order_db.get(Project, project_id)
         assert contractor_work is not None
+        assert current_project is not None
         with pytest.raises(ValueError, match="work_order_role_forbidden"):
             await work_order_service.transition(
                 work_order_db,
@@ -405,7 +407,7 @@ async def test_hybrid_project_customer_executes_only_explicitly_assigned_work(
                 WorkOrderStatus.in_progress.value,
                 customer_id,
                 actor_role=UserRole.customer,
-                project=project,
+                project=current_project,
             )
         await work_order_db.rollback()
 
