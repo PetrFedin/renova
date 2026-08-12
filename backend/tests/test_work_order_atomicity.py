@@ -1,4 +1,5 @@
 from datetime import date
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -271,3 +272,148 @@ async def test_work_order_transition_rejects_stale_prefetched_status(work_order_
         .select_from(DomainOutbox)
         .where(DomainOutbox.aggregate_id == work_order_id)
     ) == 0
+
+
+@pytest.mark.asyncio
+async def test_customer_only_project_can_execute_review_and_accept_own_work(
+    work_order_db,
+    monkeypatch,
+):
+    customer = User(id="customer-self-work", phone="+79990000311", role=UserRole.customer)
+    project = Project(
+        id="project-self-work",
+        name="Self managed renovation",
+        renovation_type="cosmetic",
+        customer_id=customer.id,
+        contractor_id=None,
+    )
+    work_order = WorkOrder(
+        id="work-order-self-managed",
+        project_id=project.id,
+        title="Покраска комнаты своими силами",
+        work_type="painting",
+        status=WorkOrderStatus.approved,
+        created_by=customer.id,
+    )
+    work_order_db.add_all([customer, project, work_order])
+    await work_order_db.commit()
+    inline_dispatch = AsyncMock(return_value=0)
+    monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", inline_dispatch)
+
+    work_order = await work_order_service.transition(
+        work_order_db,
+        work_order,
+        WorkOrderStatus.in_progress.value,
+        customer.id,
+        actor_role=UserRole.customer,
+        project=project,
+    )
+    work_order = await work_order_service.transition(
+        work_order_db,
+        work_order,
+        WorkOrderStatus.review.value,
+        customer.id,
+        actor_role=UserRole.customer,
+        project=project,
+    )
+    work_order = await work_order_service.transition(
+        work_order_db,
+        work_order,
+        WorkOrderStatus.done.value,
+        customer.id,
+        actor_role=UserRole.customer,
+        project=project,
+    )
+
+    assert work_order.status == WorkOrderStatus.done
+    assert work_order.actual_start == date.today()
+    assert work_order.actual_end == date.today()
+    activity_events = list(
+        (
+            await work_order_db.execute(
+                select(DomainOutbox).where(
+                    DomainOutbox.aggregate_id == work_order.id,
+                    DomainOutbox.event_type == outbox_service.ACTIVITY_EVENT,
+                )
+            )
+        ).scalars().all()
+    )
+    assert len(activity_events) == 3
+    assert all(
+        json.loads(event.payload_json)["body"] == "actor_role=customer"
+        for event in activity_events
+    )
+    assert inline_dispatch.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_hybrid_project_customer_executes_only_explicitly_assigned_work(
+    work_order_db,
+    monkeypatch,
+):
+    customer, contractor, project = await seed_project(work_order_db)
+    customer_id = customer.id
+    project_id = project.id
+    assigned_to_customer = WorkOrder(
+        id="work-order-hybrid-customer",
+        project_id=project_id,
+        title="Покраска ниши заказчиком",
+        work_type="painting",
+        status=WorkOrderStatus.approved,
+        assignee_id=customer_id,
+        created_by=customer_id,
+    )
+    unassigned = WorkOrder(
+        id="work-order-hybrid-unassigned",
+        project_id=project_id,
+        title="Монтаж дверей подрядчиком",
+        work_type="doors",
+        status=WorkOrderStatus.approved,
+        created_by=contractor.id,
+    )
+    assigned_to_contractor = WorkOrder(
+        id="work-order-hybrid-contractor",
+        project_id=project_id,
+        title="Монтаж электрики подрядчиком",
+        work_type="electrical",
+        status=WorkOrderStatus.approved,
+        assignee_id=contractor.id,
+        created_by=contractor.id,
+    )
+    blocked_ids = [unassigned.id, assigned_to_contractor.id]
+    work_order_db.add_all([assigned_to_customer, unassigned, assigned_to_contractor])
+    await work_order_db.commit()
+    monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", AsyncMock(return_value=0))
+
+    result = await work_order_service.transition(
+        work_order_db,
+        assigned_to_customer,
+        WorkOrderStatus.in_progress.value,
+        customer_id,
+        actor_role=UserRole.customer,
+        project=project,
+    )
+    assert result.status == WorkOrderStatus.in_progress
+
+    for work_order_id in blocked_ids:
+        contractor_work = await work_order_db.get(WorkOrder, work_order_id)
+        current_project = await work_order_db.get(Project, project_id)
+        assert contractor_work is not None
+        assert current_project is not None
+        with pytest.raises(ValueError, match="work_order_role_forbidden"):
+            await work_order_service.transition(
+                work_order_db,
+                contractor_work,
+                WorkOrderStatus.in_progress.value,
+                customer_id,
+                actor_role=UserRole.customer,
+                project=current_project,
+            )
+        await work_order_db.rollback()
+
+    assert await work_order_db.scalar(
+        select(WorkOrder.status).where(WorkOrder.id == blocked_ids[0])
+    ) == WorkOrderStatus.approved
+    assert await work_order_db.scalar(
+        select(WorkOrder.status).where(WorkOrder.id == blocked_ids[1])
+    ) == WorkOrderStatus.approved
