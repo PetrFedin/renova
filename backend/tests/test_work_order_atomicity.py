@@ -1,4 +1,5 @@
 from datetime import date
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -338,7 +339,10 @@ async def test_customer_only_project_can_execute_review_and_accept_own_work(
         ).scalars().all()
     )
     assert len(activity_events) == 3
-    assert all(event.payload["body"] == "actor_role=customer" for event in activity_events)
+    assert all(
+        json.loads(event.payload_json)["body"] == "actor_role=customer"
+        for event in activity_events
+    )
     assert inline_dispatch.await_count == 3
 
 
@@ -348,18 +352,20 @@ async def test_hybrid_project_customer_executes_only_explicitly_assigned_work(
     monkeypatch,
 ):
     customer, contractor, project = await seed_project(work_order_db)
+    customer_id = customer.id
+    project_id = project.id
     assigned_to_customer = WorkOrder(
         id="work-order-hybrid-customer",
-        project_id=project.id,
+        project_id=project_id,
         title="Покраска ниши заказчиком",
         work_type="painting",
         status=WorkOrderStatus.approved,
-        assignee_id=customer.id,
-        created_by=customer.id,
+        assignee_id=customer_id,
+        created_by=customer_id,
     )
     unassigned = WorkOrder(
         id="work-order-hybrid-unassigned",
-        project_id=project.id,
+        project_id=project_id,
         title="Монтаж дверей подрядчиком",
         work_type="doors",
         status=WorkOrderStatus.approved,
@@ -367,13 +373,14 @@ async def test_hybrid_project_customer_executes_only_explicitly_assigned_work(
     )
     assigned_to_contractor = WorkOrder(
         id="work-order-hybrid-contractor",
-        project_id=project.id,
+        project_id=project_id,
         title="Монтаж электрики подрядчиком",
         work_type="electrical",
         status=WorkOrderStatus.approved,
         assignee_id=contractor.id,
         created_by=contractor.id,
     )
+    blocked_ids = [unassigned.id, assigned_to_contractor.id]
     work_order_db.add_all([assigned_to_customer, unassigned, assigned_to_contractor])
     await work_order_db.commit()
     monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", AsyncMock(return_value=0))
@@ -382,27 +389,29 @@ async def test_hybrid_project_customer_executes_only_explicitly_assigned_work(
         work_order_db,
         assigned_to_customer,
         WorkOrderStatus.in_progress.value,
-        customer.id,
+        customer_id,
         actor_role=UserRole.customer,
         project=project,
     )
     assert result.status == WorkOrderStatus.in_progress
 
-    for contractor_work in (unassigned, assigned_to_contractor):
+    for work_order_id in blocked_ids:
+        contractor_work = await work_order_db.get(WorkOrder, work_order_id)
+        assert contractor_work is not None
         with pytest.raises(ValueError, match="work_order_role_forbidden"):
             await work_order_service.transition(
                 work_order_db,
                 contractor_work,
                 WorkOrderStatus.in_progress.value,
-                customer.id,
+                customer_id,
                 actor_role=UserRole.customer,
                 project=project,
             )
         await work_order_db.rollback()
 
     assert await work_order_db.scalar(
-        select(WorkOrder.status).where(WorkOrder.id == unassigned.id)
+        select(WorkOrder.status).where(WorkOrder.id == blocked_ids[0])
     ) == WorkOrderStatus.approved
     assert await work_order_db.scalar(
-        select(WorkOrder.status).where(WorkOrder.id == assigned_to_contractor.id)
+        select(WorkOrder.status).where(WorkOrder.id == blocked_ids[1])
     ) == WorkOrderStatus.approved
