@@ -32,6 +32,10 @@ ALLOWED: dict[str, set[str]] = {
 }
 
 _BOTH_ROLES = {UserRole.customer.value, UserRole.contractor.value}
+_EXECUTOR_TRANSITIONS = {
+    (WorkOrderStatus.approved.value, WorkOrderStatus.in_progress.value),
+    (WorkOrderStatus.in_progress.value, WorkOrderStatus.review.value),
+}
 ROLE_ALLOWED: dict[tuple[str, str], set[str]] = {
     (WorkOrderStatus.draft.value, WorkOrderStatus.published.value): _BOTH_ROLES,
     (WorkOrderStatus.draft.value, WorkOrderStatus.cancelled.value): _BOTH_ROLES,
@@ -232,13 +236,43 @@ def infer_actor_role(project: Project, user_id: str) -> UserRole:
     raise ValueError("work_order_actor_unknown")
 
 
-def validate_transition(current: str, new_status: str, actor_role: UserRole | str) -> None:
+def customer_can_execute_work_order(
+    project: Project,
+    work_order: WorkOrder,
+    user_id: str,
+) -> bool:
+    """Allow the project customer to execute only work they truly own.
+
+    A customer-only project may execute an unassigned work order because no contractor
+    exists. In a hybrid project, customer execution must be explicit through assignee_id;
+    an unassigned or contractor-owned task stays on the contractor side.
+    """
+    if user_id != project.customer_id:
+        return False
+    if work_order.assignee_id == user_id:
+        return True
+    return project.contractor_id is None and work_order.assignee_id is None
+
+
+def validate_transition(
+    current: str,
+    new_status: str,
+    actor_role: UserRole | str,
+    *,
+    customer_can_execute: bool = False,
+) -> None:
     if new_status == WorkOrderStatus.paid.value:
         raise ValueError("payment_transition_required")
     if new_status not in ALLOWED.get(current, set()):
         raise ValueError(f"invalid_work_order_transition:{current}:{new_status}")
     role = role_value(actor_role)
     if role not in ROLE_ALLOWED.get((current, new_status), set()):
+        if (
+            customer_can_execute
+            and role == UserRole.customer.value
+            and (current, new_status) in _EXECUTOR_TRANSITIONS
+        ):
+            return
         if new_status == WorkOrderStatus.done.value:
             raise ValueError("only_customer_can_accept_work_order")
         raise ValueError("work_order_role_forbidden")
@@ -256,7 +290,7 @@ def transition_notification_targets(project: Project, actor_id: str) -> list[str
 
 def transition_notification_copy(current: str, new_status: str, title: str) -> tuple[str, str, str]:
     if new_status == WorkOrderStatus.review.value:
-        return "stage_review", f"На приёмке: {title}", "Исполнитель передал работу на проверку."
+        return "stage_review", f"На приёмке: {title}", "Работа передана на проверку."
     if current == WorkOrderStatus.review.value and new_status == WorkOrderStatus.in_progress.value:
         return "issue", f"Доработка: {title}", "Работа возвращена в выполнение."
     if new_status == WorkOrderStatus.approved.value:
@@ -329,7 +363,16 @@ async def transition(
     effective_role = actor_role or infer_actor_role(project_row, user_id)
 
     current = _work_order_status(work_order)
-    validate_transition(current, new_status, effective_role)
+    validate_transition(
+        current,
+        new_status,
+        effective_role,
+        customer_can_execute=customer_can_execute_work_order(
+            project_row,
+            work_order,
+            user_id,
+        ),
+    )
 
     work_order.status = WorkOrderStatus(new_status)
     today = date.today()
