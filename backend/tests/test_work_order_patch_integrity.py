@@ -120,17 +120,19 @@ async def test_assignment_patch_preserves_customer_and_contractor_ownership_boun
 
     viewer = User(id="patch-viewer", phone="+79990000403", role=UserRole.customer)
     member = User(id="patch-member", phone="+79990000404", role=UserRole.contractor)
+    viewer_id = viewer.id
+    member_id = member.id
     team = Team(id="patch-team", name="Contractor team", owner_id=contractor_id)
     team_member = TeamMember(
         id="patch-team-member",
         team_id=team.id,
-        user_id=member.id,
+        user_id=member_id,
         role="member",
     )
     project_viewer = ProjectViewer(
         id="patch-project-viewer",
         project_id=project_id,
-        user_id=viewer.id,
+        user_id=viewer_id,
     )
     work_order_db.add_all([viewer, member, team, team_member, project_viewer])
     await work_order_db.commit()
@@ -159,6 +161,9 @@ async def test_assignment_patch_preserves_customer_and_contractor_ownership_boun
         work_order_id="patch-member-assignment",
         created_by=contractor_id,
     )
+    contractor_attempt_id = contractor_attempt.id
+    viewer_attempt_id = viewer_attempt.id
+    member_attempt_id = member_attempt.id
 
     assigned = await work_order_service.update_work_order(
         work_order_db,
@@ -181,20 +186,20 @@ async def test_assignment_patch_preserves_customer_and_contractor_ownership_boun
         )
 
     current_project = await work_order_db.get(Project, project_id)
-    current_viewer_attempt = await work_order_db.get(WorkOrder, viewer_attempt.id)
+    current_viewer_attempt = await work_order_db.get(WorkOrder, viewer_attempt_id)
     assert current_project is not None and current_viewer_attempt is not None
     with pytest.raises(ValueError, match="work_order_assignee_invalid"):
         await work_order_service.update_work_order(
             work_order_db,
             current_viewer_attempt,
-            {"assignee_id": viewer.id},
+            {"assignee_id": viewer_id},
             expected_updated_at=current_viewer_attempt.updated_at,
             actor_id=customer_id,
             project=current_project,
         )
 
     current_project = await work_order_db.get(Project, project_id)
-    current_member_attempt = await work_order_db.get(WorkOrder, member_attempt.id)
+    current_member_attempt = await work_order_db.get(WorkOrder, member_attempt_id)
     assert current_project is not None and current_member_attempt is not None
     with pytest.raises(ValueError, match="work_order_assignee_forbidden"):
         await work_order_service.update_work_order(
@@ -202,18 +207,18 @@ async def test_assignment_patch_preserves_customer_and_contractor_ownership_boun
             current_member_attempt,
             {"assignee_id": contractor_id},
             expected_updated_at=current_member_attempt.updated_at,
-            actor_id=member.id,
+            actor_id=member_id,
             project=current_project,
         )
 
     assert await work_order_db.scalar(
-        select(WorkOrder.assignee_id).where(WorkOrder.id == contractor_attempt.id)
+        select(WorkOrder.assignee_id).where(WorkOrder.id == contractor_attempt_id)
     ) is None
     assert await work_order_db.scalar(
-        select(WorkOrder.assignee_id).where(WorkOrder.id == viewer_attempt.id)
+        select(WorkOrder.assignee_id).where(WorkOrder.id == viewer_attempt_id)
     ) is None
     assert await work_order_db.scalar(
-        select(WorkOrder.assignee_id).where(WorkOrder.id == member_attempt.id)
+        select(WorkOrder.assignee_id).where(WorkOrder.id == member_attempt_id)
     ) is None
 
 
@@ -248,6 +253,9 @@ async def test_patch_rejects_foreign_or_archived_project_resources(work_order_db
         project_id=foreign_project.id,
         name="Foreign stage",
     )
+    foreign_room_id = foreign_room.id
+    archived_room_id = archived_room.id
+    foreign_stage_id = foreign_stage.id
     work_order_db.add_all([foreign_project, foreign_room, archived_room, foreign_stage])
     await work_order_db.commit()
     work_order = await add_work_order(
@@ -256,14 +264,15 @@ async def test_patch_rejects_foreign_or_archived_project_resources(work_order_db
         work_order_id="patch-resource-binding",
         created_by=customer_id,
     )
+    work_order_id = work_order.id
 
     for field, value, expected_error in (
-        ("room_id", foreign_room.id, "work_order_room_invalid"),
-        ("room_id", archived_room.id, "work_order_room_invalid"),
-        ("stage_id", foreign_stage.id, "work_order_stage_invalid"),
+        ("room_id", foreign_room_id, "work_order_room_invalid"),
+        ("room_id", archived_room_id, "work_order_room_invalid"),
+        ("stage_id", foreign_stage_id, "work_order_stage_invalid"),
     ):
         current_project = await work_order_db.get(Project, project_id)
-        current = await work_order_db.get(WorkOrder, work_order.id)
+        current = await work_order_db.get(WorkOrder, work_order_id)
         assert current_project is not None and current is not None
         with pytest.raises(ValueError, match=expected_error):
             await work_order_service.update_work_order(
@@ -276,10 +285,10 @@ async def test_patch_rejects_foreign_or_archived_project_resources(work_order_db
             )
 
     assert await work_order_db.scalar(
-        select(WorkOrder.room_id).where(WorkOrder.id == work_order.id)
+        select(WorkOrder.room_id).where(WorkOrder.id == work_order_id)
     ) is None
     assert await work_order_db.scalar(
-        select(WorkOrder.stage_id).where(WorkOrder.id == work_order.id)
+        select(WorkOrder.stage_id).where(WorkOrder.id == work_order_id)
     ) is None
 
     with pytest.raises(ValueError, match="work_order_room_invalid"):
@@ -289,7 +298,7 @@ async def test_patch_rejects_foreign_or_archived_project_resources(work_order_db
             user_id=customer_id,
             title="Must not bind foreign room",
             work_type="painting",
-            room_id=foreign_room.id,
+            room_id=foreign_room_id,
         )
     assert await work_order_db.scalar(
         select(WorkOrder.id).where(WorkOrder.title == "Must not bind foreign room")
@@ -307,6 +316,7 @@ async def test_patch_rejects_lifecycle_dates_invalid_schedule_and_budget(work_or
         work_order_id="patch-domain-fields",
         created_by=customer_id,
     )
+    work_order_id = work_order.id
 
     invalid_patches = (
         ({"actual_start": date.today()}, "work_order_lifecycle_field_forbidden"),
@@ -318,7 +328,7 @@ async def test_patch_rejects_lifecycle_dates_invalid_schedule_and_budget(work_or
     )
     for patch, expected_error in invalid_patches:
         current_project = await work_order_db.get(Project, project_id)
-        current = await work_order_db.get(WorkOrder, work_order.id)
+        current = await work_order_db.get(WorkOrder, work_order_id)
         assert current_project is not None and current is not None
         with pytest.raises(ValueError, match=expected_error):
             await work_order_service.update_work_order(
@@ -330,7 +340,7 @@ async def test_patch_rejects_lifecycle_dates_invalid_schedule_and_budget(work_or
                 project=current_project,
             )
 
-    current = await work_order_db.get(WorkOrder, work_order.id)
+    current = await work_order_db.get(WorkOrder, work_order_id)
     assert current is not None
     assert current.actual_start is None
     assert current.planned_start is None
