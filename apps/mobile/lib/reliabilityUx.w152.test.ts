@@ -39,6 +39,7 @@ const chatList = readFileSync(join(mobile, 'components/renova/chat/ChatListView.
 const rooms = readFileSync(join(mobile, 'components/screens/OsRoomsScreen.tsx'), 'utf8');
 const projectEmpty = readFileSync(join(mobile, 'components/renova/ProjectEmptyState.tsx'), 'utf8');
 const home = readFileSync(join(mobile, 'components/screens/OsHomeScreen.tsx'), 'utf8');
+const projectDataBus = readFileSync(join(mobile, 'lib/projectDataBus.ts'), 'utf8');
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
@@ -174,6 +175,21 @@ console.assert(
   'degraded home data must be visible to the user instead of looking authoritative',
 );
 
+console.assert(
+  projectDataBus.includes("reportError('projectDataBus.listener'")
+    && projectDataBus.includes("reportError('projectDataBus.inboxImport'")
+    && projectDataBus.includes("reportCatch('projectDataBus.inboxSync')"),
+  'project data propagation failures must be observable at listener, import, and inbox-refresh boundaries',
+);
+const inboxImportFailureIndex = projectDataBus.indexOf("reportError('projectDataBus.inboxImport'");
+const notifyAfterImportFailureIndex = projectDataBus.indexOf('notifyProjectDataChanged();', inboxImportFailureIndex);
+console.assert(
+  inboxImportFailureIndex >= 0
+    && notifyAfterImportFailureIndex > inboxImportFailureIndex
+    && !projectDataBus.includes('/* offline / test env без inboxSyncStore */'),
+  'inbox propagation degradation must not suppress home listeners or remain an anonymous fallback',
+);
+
 const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
   Boolean(repair?.params?.tab === 'control') &&
@@ -193,7 +209,9 @@ const ok =
   projectEmpty.includes('title="Обновить проекты"') &&
   home.includes("reportError('home.source.load'") &&
   home.includes('const generation = ++loadGenerationRef.current') &&
-  home.includes('title="Главная обновлена частично"');
+  home.includes('title="Главная обновлена частично"') &&
+  projectDataBus.includes("reportError('projectDataBus.listener'") &&
+  projectDataBus.includes("reportError('projectDataBus.inboxImport'");
 
 if (!ok) process.exit(1);
 console.log('reliabilityUx.w152.test OK');
