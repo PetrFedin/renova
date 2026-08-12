@@ -1,11 +1,11 @@
 /**
- * Хранение JWT: SecureStore на iOS/Android, AsyncStorage на web / если native stub.
- *
- * Важно: на web `expo-secure-store` экспортирует setItemAsync, но ExpoSecureStore.web = {},
- * и вызов падает с `setValueWithKeyAsync is not a function`. Всегда проверяем isAvailableAsync.
+ * Хранение JWT: SecureStore на iOS/Android, AsyncStorage только на web.
+ * Native secrets fail closed: недоступный/сломанный SecureStore никогда не
+ * понижает хранение токенов до обычного AsyncStorage.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { reportError } from '@/lib/reportError';
 
 type Store = {
   getItem: (key: string) => Promise<string | null>;
@@ -22,16 +22,21 @@ const asyncStore: Store = {
 let _store: Store | null = null;
 let _resolving: Promise<Store> | null = null;
 
+function normalizeError(error: unknown, code: string): Error {
+  return error instanceof Error ? error : new Error(code);
+}
+
 async function resolveStore(): Promise<Store> {
   if (_store) return _store;
   if (_resolving) return _resolving;
 
   _resolving = (async () => {
-    // Preview / Expo web: native SecureStore недоступен
+    // Browser storage is an explicit platform decision, not a native fallback.
     if (Platform.OS === 'web') {
       _store = asyncStore;
       return _store;
     }
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const SecureStore = require('expo-secure-store');
@@ -40,22 +45,25 @@ async function resolveStore(): Promise<Store> {
           ? await SecureStore.isAvailableAsync()
           : false;
       if (
-        available &&
-        typeof SecureStore.getItemAsync === 'function' &&
-        typeof SecureStore.setItemAsync === 'function'
+        !available ||
+        typeof SecureStore.getItemAsync !== 'function' ||
+        typeof SecureStore.setItemAsync !== 'function' ||
+        typeof SecureStore.deleteItemAsync !== 'function'
       ) {
-        _store = {
-          getItem: (k) => SecureStore.getItemAsync(k),
-          setItem: (k, v) => SecureStore.setItemAsync(k, v),
-          deleteItem: (k) => SecureStore.deleteItemAsync(k),
-        };
-        return _store;
+        throw new Error('secure_store_unavailable');
       }
-    } catch {
-      /* fall through */
+
+      _store = {
+        getItem: (k) => SecureStore.getItemAsync(k),
+        setItem: (k, v) => SecureStore.setItemAsync(k, v),
+        deleteItem: (k) => SecureStore.deleteItemAsync(k),
+      };
+      return _store;
+    } catch (error) {
+      const normalized = normalizeError(error, 'secure_store_unavailable');
+      reportError('secureTokenStore.resolve', normalized, { platform: Platform.OS });
+      throw normalized;
     }
-    _store = asyncStore;
-    return _store;
   })();
 
   try {
@@ -65,31 +73,39 @@ async function resolveStore(): Promise<Store> {
   }
 }
 
-/** При сбое native mid-flight — откат на AsyncStorage (не ломаем логин). */
-async function withStoreFallback<T>(op: (s: Store) => Promise<T>): Promise<T> {
+async function withStore<T>(
+  operation: 'get' | 'set' | 'delete' | 'multiDelete',
+  key: string | undefined,
+  op: (s: Store) => Promise<T>,
+): Promise<T> {
   const s = await resolveStore();
   try {
     return await op(s);
-  } catch {
-    _store = asyncStore;
-    return op(asyncStore);
+  } catch (error) {
+    const normalized = normalizeError(error, 'secure_token_store_failed');
+    reportError('secureTokenStore.operation', normalized, {
+      operation,
+      ...(key ? { key } : {}),
+      platform: Platform.OS,
+    });
+    throw normalized;
   }
 }
 
 export async function secureGet(key: string): Promise<string | null> {
-  return withStoreFallback((s) => s.getItem(key));
+  return withStore('get', key, (s) => s.getItem(key));
 }
 
 export async function secureSet(key: string, value: string): Promise<void> {
-  await withStoreFallback((s) => s.setItem(key, value));
+  await withStore('set', key, (s) => s.setItem(key, value));
 }
 
 export async function secureDelete(key: string): Promise<void> {
-  await withStoreFallback((s) => s.deleteItem(key));
+  await withStore('delete', key, (s) => s.deleteItem(key));
 }
 
 export async function secureMultiRemove(keys: string[]): Promise<void> {
-  await withStoreFallback(async (s) => {
+  await withStore('multiDelete', undefined, async (s) => {
     await Promise.all(keys.map((k) => s.deleteItem(k)));
   });
 }

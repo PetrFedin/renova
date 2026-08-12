@@ -101,6 +101,47 @@ const bridge = readFileSync(join(root, '../../backend/app/services/ws_redis_brid
 must(bridge.includes('INSTANCE_ID'), 'ws redis bridge has instance id');
 must(bridge.includes('redis_subscriber_loop'), 'ws redis bridge has subscriber loop');
 
+// Native credential storage: web may explicitly use AsyncStorage, native may not
+// silently downgrade tokens/snapshots when SecureStore is unavailable or fails.
+const secureTokenStore = readFileSync(join(root, 'lib/secureTokenStore.ts'), 'utf8');
+must(
+  secureTokenStore.includes("Platform.OS === 'web'") && secureTokenStore.includes('_store = asyncStore;'),
+  'AsyncStorage credential storage is an explicit web-only platform decision',
+);
+must(
+  secureTokenStore.includes("reportError('secureTokenStore.resolve'")
+    && secureTokenStore.includes("reportError('secureTokenStore.operation'"),
+  'Native secure-store resolution and operation failures are observable',
+);
+must(!secureTokenStore.includes('withStoreFallback'), 'Native secure storage must never use a fallback helper');
+must(!secureTokenStore.includes('return op(asyncStore)'), 'Native secure-store operation failure must never retry in AsyncStorage');
+must(
+  secureTokenStore.includes("throw new Error('secure_store_unavailable')") && secureTokenStore.includes('throw normalized;'),
+  'Unavailable/broken native secure storage must fail closed',
+);
+
+// WebSocket auth: a long-lived JWT may mint a short-lived ticket over HTTPS, but
+// the JWT itself must never be placed in a URL. Ticket failure leaves WS closed;
+// ChatThreadView already falls back to truthful polling while disconnected.
+const wsAuth = readFileSync(join(root, 'lib/wsAuthQuery.ts'), 'utf8');
+const chatWs = readFileSync(join(root, 'lib/useChatWebSocket.ts'), 'utf8');
+must(wsAuth.includes('/api/v1/auth/ws-ticket'), 'WebSocket auth must mint a short-lived ticket');
+must(wsAuth.includes("reportError('wsAuth.ticket'"), 'WebSocket ticket failures must be observable');
+must(wsAuth.includes("throw new Error('ws_auth_access_token_missing')"), 'WebSocket auth must fail closed without an access token');
+must(!wsAuth.includes('?token='), 'Long-lived JWT must never be embedded in a WebSocket URL');
+must(
+  wsAuth.includes('?ticket=') && wsAuth.includes('throw normalized;'),
+  'Only a confirmed short-lived ticket may produce a WebSocket auth query',
+);
+must(
+  chatWs.indexOf('const qs = await buildWsAuthQuery();') < chatWs.indexOf('const ws = new WebSocket('),
+  'WebSocket must not be created until ticket mint succeeds',
+);
+must(
+  chat.includes('useChatFallbackPoll(!wsConnected') && chat.includes("'○ опрос 15 с'"),
+  'Ticket/WS failure must remain a truthful polling fallback, not fake online state',
+);
+
 // Auth refresh/bootstrap: only an authoritative 401/403 may invalidate a persisted session.
 must(isAuthoritativeRefreshRejection(401), '401 refresh rejection is authoritative');
 must(isAuthoritativeRefreshRejection(403), '403 refresh rejection is authoritative');
