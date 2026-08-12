@@ -107,9 +107,12 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
         code = str(error)
         if code in ("only_customer_can_accept_work_order", "work_order_role_forbidden"):
             raise HTTPException(403, code) from error
-        if code == "payment_transition_required":
-            raise HTTPException(409, code) from error
-        if code == "work_order_project_missing":
+        if code in (
+            "payment_transition_required",
+            "work_order_project_missing",
+            "work_order_stale",
+            "work_order_missing",
+        ):
             raise HTTPException(409, code) from error
         raise HTTPException(400, code) from error
     return wo_svc.wo_dict(work_order)
