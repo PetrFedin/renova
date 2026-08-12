@@ -4,7 +4,7 @@ import { View, Text, TextInput, StyleSheet, Alert, Pressable } from 'react-nativ
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { api, type WorkOrder } from '@/lib/api';
+import { api, ApiError, type WorkOrder } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import {
@@ -47,9 +47,21 @@ export function WorkOrderDetailPanel({
   const status = (wo.status in WORK_STATUS_LABEL ? wo.status : 'draft') as WorkOrderStatus;
 
   async function saveNotes() {
+    const expectedUpdatedAt = wo.updated_at;
+    if (!expectedUpdatedAt) {
+      onUpdated();
+      Alert.alert(
+        'Нужно обновить задачу',
+        'Не удалось подтвердить текущую версию задачи. Данные обновляются — повторите сохранение после загрузки.',
+      );
+      return;
+    }
     setSaving(true);
     try {
-      await api.patchWorkOrder(userId, projectId, wo.id, { notes: notes.trim() || null });
+      await api.patchWorkOrder(userId, projectId, wo.id, {
+        expected_updated_at: expectedUpdatedAt,
+        notes: notes.trim() || null,
+      });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onUpdated();
       Alert.alert('Сохранено', 'Описание работы обновлено');
@@ -57,6 +69,14 @@ export function WorkOrderDetailPanel({
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Описание работы');
         onUpdated();
+        return;
+      }
+      if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_stale') {
+        onUpdated();
+        Alert.alert(
+          'Работа уже изменилась',
+          'Другой участник обновил эту задачу. Данные перезагружены — проверьте изменения и повторите сохранение.',
+        );
         return;
       }
       Alert.alert('Ошибка', 'Не удалось сохранить описание');

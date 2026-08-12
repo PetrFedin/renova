@@ -9,7 +9,7 @@ import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/doma
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { dayTaskCount, formatCalendarEventDates, isPeriodCalendarEvent, isWorkCalendarEvent } from '@/lib/domain/calendarEvents';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { CalendarEvent, WorkOrder } from '@/lib/api';
@@ -83,10 +83,23 @@ export function ScheduleDayDetail({
 
   const extendWork = async (wo: WorkOrder, days: number, note: string) => {
     if (!userId || !projectId || readOnly) return;
+    const expectedUpdatedAt = wo.updated_at;
+    if (!expectedUpdatedAt) {
+      onChanged?.();
+      Alert.alert(
+        'Нужно обновить задачу',
+        'Не удалось подтвердить текущую версию задачи. Календарь обновляется — повторите изменение после загрузки.',
+      );
+      return;
+    }
     const base = wo.planned_end || wo.planned_start || date;
     const nextEnd = addDays(base, days);
     try {
-      await api.patchWorkOrder(userId, projectId, wo.id, { planned_end: nextEnd, notes: note });
+      await api.patchWorkOrder(userId, projectId, wo.id, {
+        expected_updated_at: expectedUpdatedAt,
+        planned_end: nextEnd,
+        notes: note,
+      });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
       showActionConfirm({
@@ -102,6 +115,12 @@ export function ScheduleDayDetail({
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Продление срока');
+      } else if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_stale') {
+        onChanged?.();
+        Alert.alert(
+          'Задача уже изменилась',
+          'Другой участник обновил задачу. Календарь перезагружен — проверьте новый срок и повторите действие.',
+        );
       } else {
         Alert.alert('Ошибка', 'Не удалось продлить срок');
       }
