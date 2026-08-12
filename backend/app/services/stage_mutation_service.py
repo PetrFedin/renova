@@ -26,6 +26,19 @@ def _status(stage: Stage) -> StageStatus:
     return stage.status if isinstance(stage.status, StageStatus) else StageStatus(str(stage.status))
 
 
+def is_self_managed_project(project: Project) -> bool:
+    """A customer-only project has no contractor-side execution authority."""
+    return project.contractor_id is None and project.foreman_id is None
+
+
+def is_self_managed_customer(project: Project, actor: User) -> bool:
+    return (
+        is_self_managed_project(project)
+        and actor.role == UserRole.customer
+        and actor.id == project.customer_id
+    )
+
+
 async def _locked_project(db: AsyncSession, project_id: str) -> Project | None:
     query = select(Project).where(Project.id == project_id)
     try:
@@ -55,6 +68,8 @@ async def _require_schedule_actor(
     project: Project,
     actor: User,
 ) -> None:
+    if is_self_managed_customer(project, actor):
+        return
     if actor.role != UserRole.contractor:
         raise ValueError("stage_schedule_actor_forbidden")
     if actor.id in {project.contractor_id, project.foreman_id}:
@@ -67,6 +82,8 @@ async def _require_schedule_actor(
 def _executor_ids(project: Project, stage: Stage) -> set[str]:
     if stage.assignee_id:
         return {stage.assignee_id}
+    if is_self_managed_project(project) and project.customer_id:
+        return {project.customer_id}
     return {
         user_id
         for user_id in {project.contractor_id, project.foreman_id}
@@ -75,6 +92,8 @@ def _executor_ids(project: Project, stage: Stage) -> set[str]:
 
 
 def _require_execution_actor(project: Project, stage: Stage, actor: User) -> None:
+    if is_self_managed_customer(project, actor) and actor.id in _executor_ids(project, stage):
+        return
     if actor.role != UserRole.contractor or actor.id not in _executor_ids(project, stage):
         raise ValueError("stage_execution_actor_forbidden")
 
@@ -173,8 +192,9 @@ async def _enqueue_customer_notification(
     notification_type: str,
     title: str,
     body: str,
+    actor_id: str | None = None,
 ) -> None:
-    if not project.customer_id:
+    if not project.customer_id or project.customer_id == actor_id:
         return
     await outbox.enqueue(
         db,
@@ -314,6 +334,7 @@ async def create_stage(
             notification_type="stage_start",
             title="Добавлен этап работ",
             body=stage.name,
+            actor_id=actor_id,
         )
         candidate_id = stage.id
         created, entity_id = await commit_client_write(
@@ -375,14 +396,16 @@ async def start_stage(
             "status": status.value,
         }
 
-    gate = await project_document_service.project_contract_gate(db, project.id)
-    if not gate.get("ok"):
-        await db.rollback()
-        return None, {
-            "code": gate.get("code", "contract_not_signed"),
-            "message": gate.get("message"),
-            "pending_titles": gate.get("pending_titles", []),
-        }
+    # A customer doing their own renovation has no contractor agreement to sign.
+    if not is_self_managed_customer(project, actor):
+        gate = await project_document_service.project_contract_gate(db, project.id)
+        if not gate.get("ok"):
+            await db.rollback()
+            return None, {
+                "code": gate.get("code", "contract_not_signed"),
+                "message": gate.get("message"),
+                "pending_titles": gate.get("pending_titles", []),
+            }
     blocked = await dependency_service.evaluate_stage(
         db,
         stage,
@@ -416,6 +439,7 @@ async def start_stage(
             notification_type="stage_start",
             title=f"Начат этап: {stage.name}",
             body="Исполнитель приступил к работам",
+            actor_id=actor.id,
         )
         await db.commit()
     except BaseException:
@@ -476,6 +500,7 @@ async def update_dates(
             notification_type="stage_start",
             title="Изменены даты этапа",
             body=stage.name,
+            actor_id=actor.id,
         )
         await db.commit()
     except BaseException:
@@ -685,6 +710,8 @@ async def sync_dependencies(
             commit=False,
         )
         if count:
+            customer_link = "/(customer)/(tabs)/repair?tab=control"
+            contractor_link = "/(contractor)/(tabs)/repair?tab=works"
             await outbox.enqueue(
                 db,
                 aggregate_type="project",
@@ -696,7 +723,7 @@ async def sync_dependencies(
                     "kind": "StageDependenciesSynced",
                     "title": "Синхронизированы зависимости этапов",
                     "body": f"Добавлено: {count}",
-                    "link_path": "/(contractor)/(tabs)/repair?tab=works",
+                    "link_path": customer_link if is_self_managed_customer(project, actor) else contractor_link,
                 },
             )
         await db.commit()
