@@ -47,10 +47,19 @@ export function WorkOrderDetailPanel({
   const status = (wo.status in WORK_STATUS_LABEL ? wo.status : 'draft') as WorkOrderStatus;
 
   async function saveNotes() {
+    const expectedUpdatedAt = wo.updated_at;
+    if (!expectedUpdatedAt) {
+      onUpdated();
+      Alert.alert(
+        'Нужно обновить задачу',
+        'Не удалось подтвердить текущую версию задачи. Данные обновляются — повторите сохранение после загрузки.',
+      );
+      return;
+    }
     setSaving(true);
     try {
       await api.patchWorkOrder(userId, projectId, wo.id, {
-        expected_updated_at: wo.updated_at,
+        expected_updated_at: expectedUpdatedAt,
         notes: notes.trim() || null,
       });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
