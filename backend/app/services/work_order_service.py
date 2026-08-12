@@ -612,7 +612,7 @@ async def transition(
         work_order.actual_start = today
     if new_status == WorkOrderStatus.done.value and not work_order.actual_end:
         work_order.actual_end = today
-    work_order.updated_at = utc_now()
+    work_order.updated_at = _next_updated_at(work_order.updated_at)
 
     notification_type, notification_title, notification_body = transition_notification_copy(
         current,
