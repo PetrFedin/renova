@@ -222,16 +222,20 @@ async def create_work_order(
     notes: str | None = None,
     publish: bool = False,
 ) -> WorkOrder:
-    if not title.strip() or not work_type.strip():
-        raise ValueError("work_order_fields_invalid")
-    _validate_planned_dates(planned_start, planned_end)
-    normalized_budget = _validate_budget(budget_planned)
-    await _validate_resource_refs(
-        db,
-        project_id=project_id,
-        room_id=room_id,
-        stage_id=stage_id,
-    )
+    try:
+        if not title.strip() or not work_type.strip():
+            raise ValueError("work_order_fields_invalid")
+        _validate_planned_dates(planned_start, planned_end)
+        normalized_budget = _validate_budget(budget_planned)
+        await _validate_resource_refs(
+            db,
+            project_id=project_id,
+            room_id=room_id,
+            stage_id=stage_id,
+        )
+    except BaseException:
+        await db.rollback()
+        raise
 
     work_order = WorkOrder(
         project_id=project_id,
@@ -393,66 +397,61 @@ async def update_work_order(
         work_order,
         expected_updated_at=expected_updated_at,
     )
-    if project.id != current.project_id:
-        await db.rollback()
-        raise ValueError("work_order_project_missing")
-
-    if _LIFECYCLE_PATCH_FIELDS.intersection(patch):
-        await db.rollback()
-        raise ValueError("work_order_lifecycle_field_forbidden")
-
-    if "title" in patch:
-        title = patch["title"]
-        if not isinstance(title, str) or not title.strip():
-            await db.rollback()
-            raise ValueError("work_order_fields_invalid")
-        patch["title"] = title.strip()
-    if "work_type" in patch:
-        work_type = patch["work_type"]
-        if not isinstance(work_type, str) or not work_type.strip():
-            await db.rollback()
-            raise ValueError("work_order_fields_invalid")
-        patch["work_type"] = work_type.strip()
-    if "budget_planned" in patch:
-        patch["budget_planned"] = _validate_budget(patch["budget_planned"])
-    if "planned_start" in patch:
-        patch["planned_start"] = _normalize_date(patch["planned_start"])
-    if "planned_end" in patch:
-        patch["planned_end"] = _normalize_date(patch["planned_end"])
-
-    planned_start = patch.get("planned_start", current.planned_start)
-    planned_end = patch.get("planned_end", current.planned_end)
-    _validate_planned_dates(planned_start, planned_end)
-
-    await _validate_resource_refs(
-        db,
-        project_id=current.project_id,
-        room_id=patch.get("room_id"),
-        stage_id=patch.get("stage_id"),
-        validate_room="room_id" in patch,
-        validate_stage="stage_id" in patch,
-    )
-    if "assignee_id" in patch:
-        await _validate_assignee_change(
-            db,
-            project=project,
-            actor_id=actor_id,
-            assignee_id=patch["assignee_id"],
-        )
-
-    for key in ("title", "work_type", "room_id", "stage_id", "notes", "assignee_id", "budget_planned"):
-        if key in patch:
-            setattr(current, key, patch[key])
-    for key in ("planned_start", "planned_end"):
-        if key in patch:
-            setattr(current, key, patch[key])
-    current.updated_at = _next_updated_at(current.updated_at)
-
     try:
+        if project.id != current.project_id:
+            raise ValueError("work_order_project_missing")
+        if _LIFECYCLE_PATCH_FIELDS.intersection(patch):
+            raise ValueError("work_order_lifecycle_field_forbidden")
+
+        if "title" in patch:
+            title = patch["title"]
+            if not isinstance(title, str) or not title.strip():
+                raise ValueError("work_order_fields_invalid")
+            patch["title"] = title.strip()
+        if "work_type" in patch:
+            work_type = patch["work_type"]
+            if not isinstance(work_type, str) or not work_type.strip():
+                raise ValueError("work_order_fields_invalid")
+            patch["work_type"] = work_type.strip()
+        if "budget_planned" in patch:
+            patch["budget_planned"] = _validate_budget(patch["budget_planned"])
+        if "planned_start" in patch:
+            patch["planned_start"] = _normalize_date(patch["planned_start"])
+        if "planned_end" in patch:
+            patch["planned_end"] = _normalize_date(patch["planned_end"])
+
+        planned_start = patch.get("planned_start", current.planned_start)
+        planned_end = patch.get("planned_end", current.planned_end)
+        _validate_planned_dates(planned_start, planned_end)
+
+        await _validate_resource_refs(
+            db,
+            project_id=current.project_id,
+            room_id=patch.get("room_id"),
+            stage_id=patch.get("stage_id"),
+            validate_room="room_id" in patch,
+            validate_stage="stage_id" in patch,
+        )
+        if "assignee_id" in patch:
+            await _validate_assignee_change(
+                db,
+                project=project,
+                actor_id=actor_id,
+                assignee_id=patch["assignee_id"],
+            )
+
+        for key in ("title", "work_type", "room_id", "stage_id", "notes", "assignee_id", "budget_planned"):
+            if key in patch:
+                setattr(current, key, patch[key])
+        for key in ("planned_start", "planned_end"):
+            if key in patch:
+                setattr(current, key, patch[key])
+        current.updated_at = _next_updated_at(current.updated_at)
         await db.commit()
     except BaseException:
         await db.rollback()
         raise
+
     await db.refresh(current)
     return current
 
