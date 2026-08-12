@@ -1,9 +1,9 @@
 /** W81/W82: смена данных объекта → home/inbox без полного remount. */
 import type { ProjectDetail, User, UserRole } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
 
-type Listener = () => void;
+type Listener = (projectId?: string | null) => void;
 
 const listeners = new Set<Listener>();
 
@@ -14,12 +14,14 @@ export function subscribeProjectDataChanged(listener: Listener): () => void {
   };
 }
 
-export function notifyProjectDataChanged(): void {
+export function notifyProjectDataChanged(projectId?: string | null): void {
   [...listeners].forEach((listener) => {
     try {
-      listener();
-    } catch {
-      /* Один ошибочный listener не блокирует остальные экраны. */
+      listener(projectId || null);
+    } catch (error) {
+      // Один ошибочный listener не блокирует остальные экраны, но такой разрыв
+      // нельзя оставлять невидимым: иначе post-commit UI может остаться stale.
+      reportError('projectDataBus.listener', error, { projectId: projectId || null });
     }
   });
 }
@@ -82,10 +84,16 @@ async function performProjectSideEffects(opts: SyncOpts): Promise<void> {
       project: context.project,
       osRole: context.osRole,
     }).catch(reportCatch('projectDataBus.inboxSync'));
-  } catch {
-    /* offline / test env без inboxSyncStore */
+  } catch (error) {
+    // Dynamic import is intentionally optional in isolated test/runtime surfaces,
+    // but a production import failure must be observable. Home listeners still run.
+    reportError('projectDataBus.inboxImport', error, {
+      userId: context.user.id,
+      projectId: context.project.id,
+      role: context.osRole,
+    });
   }
-  notifyProjectDataChanged();
+  notifyProjectDataChanged(context.project.id);
 }
 
 function startSync(key: string, opts: SyncOpts): Promise<void> {
