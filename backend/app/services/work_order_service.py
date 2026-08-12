@@ -1,7 +1,8 @@
 """Заказы работ — детальные задачи по комнатам, датам, статусам."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+import math
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,11 +13,14 @@ from app.models.entities import (
     ChatMessageType,
     ChatThread,
     Project,
+    Room,
+    Stage,
     UserRole,
     WorkOrder,
     WorkOrderStatus,
 )
 from app.services import outbox_service as outbox
+from app.services.team_service import project_team_membership
 
 ALLOWED: dict[str, set[str]] = {
     WorkOrderStatus.draft.value: {WorkOrderStatus.published.value, WorkOrderStatus.cancelled.value},
@@ -61,6 +65,10 @@ _STATUS_LABELS = {
     WorkOrderStatus.done.value: "Выполнено",
     WorkOrderStatus.cancelled.value: "Отменено",
 }
+
+_ASSIGNMENT_MANAGER_TEAM_ROLES = {"owner", "foreman"}
+_EXECUTOR_TEAM_ROLES = {"owner", "foreman", "member"}
+_LIFECYCLE_PATCH_FIELDS = {"actual_start", "actual_end"}
 
 
 def wo_dict(w: WorkOrder) -> dict:
@@ -146,6 +154,59 @@ async def _dispatch_committed_effects(db: AsyncSession, *, source: str) -> None:
     await dispatch_best_effort(db, source=source, limit=10)
 
 
+def _normalize_date(value: date | str | None) -> date | None:
+    if isinstance(value, str):
+        return date.fromisoformat(value) if value else None
+    return value
+
+
+def _validate_planned_dates(planned_start: date | None, planned_end: date | None) -> None:
+    if planned_start is not None and planned_end is not None and planned_end < planned_start:
+        raise ValueError("work_order_dates_invalid")
+
+
+def _validate_budget(value: float | int | None) -> float:
+    if value is None:
+        raise ValueError("work_order_budget_invalid")
+    try:
+        normalized = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("work_order_budget_invalid") from error
+    if not math.isfinite(normalized) or normalized < 0:
+        raise ValueError("work_order_budget_invalid")
+    return normalized
+
+
+async def _validate_resource_refs(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    room_id: str | None = None,
+    stage_id: str | None = None,
+    validate_room: bool = True,
+    validate_stage: bool = True,
+) -> None:
+    if validate_room and room_id is not None:
+        room_exists = await db.scalar(
+            select(Room.id).where(
+                Room.id == room_id,
+                Room.project_id == project_id,
+                Room.is_archived.is_(False),
+            )
+        )
+        if room_exists is None:
+            raise ValueError("work_order_room_invalid")
+    if validate_stage and stage_id is not None:
+        stage_exists = await db.scalar(
+            select(Stage.id).where(
+                Stage.id == stage_id,
+                Stage.project_id == project_id,
+            )
+        )
+        if stage_exists is None:
+            raise ValueError("work_order_stage_invalid")
+
+
 async def create_work_order(
     db: AsyncSession,
     *,
@@ -161,16 +222,27 @@ async def create_work_order(
     notes: str | None = None,
     publish: bool = False,
 ) -> WorkOrder:
+    if not title.strip() or not work_type.strip():
+        raise ValueError("work_order_fields_invalid")
+    _validate_planned_dates(planned_start, planned_end)
+    normalized_budget = _validate_budget(budget_planned)
+    await _validate_resource_refs(
+        db,
+        project_id=project_id,
+        room_id=room_id,
+        stage_id=stage_id,
+    )
+
     work_order = WorkOrder(
         project_id=project_id,
         room_id=room_id,
         stage_id=stage_id,
-        work_type=work_type,
-        title=title,
+        work_type=work_type.strip(),
+        title=title.strip(),
         status=WorkOrderStatus.published if publish else WorkOrderStatus.draft,
         planned_start=planned_start,
         planned_end=planned_end or planned_start,
-        budget_planned=budget_planned,
+        budget_planned=normalized_budget,
         notes=notes,
         created_by=user_id,
     )
@@ -210,18 +282,179 @@ async def create_work_order(
     return work_order
 
 
-async def update_work_order(db: AsyncSession, work_order: WorkOrder, patch: dict) -> WorkOrder:
+def _normalize_expected_updated_at(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _next_updated_at(previous: datetime | None) -> datetime:
+    now = utc_now()
+    if now.tzinfo is not None:
+        now = now.astimezone(timezone.utc).replace(tzinfo=None)
+    if previous is not None:
+        previous = _normalize_expected_updated_at(previous)
+        if now <= previous:
+            return previous + timedelta(microseconds=1)
+    return now
+
+
+async def _lock_work_order_for_patch(
+    db: AsyncSession,
+    work_order: WorkOrder,
+    *,
+    expected_updated_at: datetime,
+) -> WorkOrder:
+    query = (
+        select(WorkOrder)
+        .where(
+            WorkOrder.id == work_order.id,
+            WorkOrder.project_id == work_order.project_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    try:
+        query = query.with_for_update()
+    except Exception:
+        pass
+    current = (await db.execute(query)).scalar_one_or_none()
+    if current is None:
+        await db.rollback()
+        raise ValueError("work_order_missing")
+    if current.updated_at is None or _normalize_expected_updated_at(current.updated_at) != _normalize_expected_updated_at(expected_updated_at):
+        await db.rollback()
+        raise ValueError("work_order_stale")
+    return current
+
+
+async def _actor_can_manage_assignment(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor_id: str,
+) -> bool:
+    if actor_id == project.customer_id:
+        return True
+    if actor_id in {project.contractor_id, project.foreman_id}:
+        return True
+    membership = await project_team_membership(
+        db,
+        user_id=actor_id,
+        contractor_id=project.contractor_id,
+    )
+    return membership is not None and membership.role in _ASSIGNMENT_MANAGER_TEAM_ROLES
+
+
+async def _is_project_executor(
+    db: AsyncSession,
+    *,
+    project: Project,
+    user_id: str,
+) -> bool:
+    if user_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+        return True
+    membership = await project_team_membership(
+        db,
+        user_id=user_id,
+        contractor_id=project.contractor_id,
+    )
+    return membership is not None and membership.role in _EXECUTOR_TEAM_ROLES
+
+
+async def _validate_assignee_change(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor_id: str,
+    assignee_id: str | None,
+) -> None:
+    if not await _actor_can_manage_assignment(db, project=project, actor_id=actor_id):
+        raise ValueError("work_order_assignee_forbidden")
+    if assignee_id is None:
+        return
+    # Contractor-side actors may never manufacture customer execution rights.
+    if assignee_id == project.customer_id and actor_id != project.customer_id:
+        raise ValueError("work_order_assignee_forbidden")
+    if not await _is_project_executor(db, project=project, user_id=assignee_id):
+        raise ValueError("work_order_assignee_invalid")
+
+
+async def update_work_order(
+    db: AsyncSession,
+    work_order: WorkOrder,
+    patch: dict,
+    *,
+    expected_updated_at: datetime,
+    actor_id: str,
+    project: Project,
+) -> WorkOrder:
+    current = await _lock_work_order_for_patch(
+        db,
+        work_order,
+        expected_updated_at=expected_updated_at,
+    )
+    if project.id != current.project_id:
+        await db.rollback()
+        raise ValueError("work_order_project_missing")
+
+    if _LIFECYCLE_PATCH_FIELDS.intersection(patch):
+        await db.rollback()
+        raise ValueError("work_order_lifecycle_field_forbidden")
+
+    if "title" in patch:
+        title = patch["title"]
+        if not isinstance(title, str) or not title.strip():
+            await db.rollback()
+            raise ValueError("work_order_fields_invalid")
+        patch["title"] = title.strip()
+    if "work_type" in patch:
+        work_type = patch["work_type"]
+        if not isinstance(work_type, str) or not work_type.strip():
+            await db.rollback()
+            raise ValueError("work_order_fields_invalid")
+        patch["work_type"] = work_type.strip()
+    if "budget_planned" in patch:
+        patch["budget_planned"] = _validate_budget(patch["budget_planned"])
+    if "planned_start" in patch:
+        patch["planned_start"] = _normalize_date(patch["planned_start"])
+    if "planned_end" in patch:
+        patch["planned_end"] = _normalize_date(patch["planned_end"])
+
+    planned_start = patch.get("planned_start", current.planned_start)
+    planned_end = patch.get("planned_end", current.planned_end)
+    _validate_planned_dates(planned_start, planned_end)
+
+    await _validate_resource_refs(
+        db,
+        project_id=current.project_id,
+        room_id=patch.get("room_id"),
+        stage_id=patch.get("stage_id"),
+        validate_room="room_id" in patch,
+        validate_stage="stage_id" in patch,
+    )
+    if "assignee_id" in patch:
+        await _validate_assignee_change(
+            db,
+            project=project,
+            actor_id=actor_id,
+            assignee_id=patch["assignee_id"],
+        )
+
     for key in ("title", "work_type", "room_id", "stage_id", "notes", "assignee_id", "budget_planned"):
         if key in patch:
-            setattr(work_order, key, patch[key])
-    for key in ("planned_start", "planned_end", "actual_start", "actual_end"):
+            setattr(current, key, patch[key])
+    for key in ("planned_start", "planned_end"):
         if key in patch:
-            value = patch[key]
-            setattr(work_order, key, date.fromisoformat(value) if isinstance(value, str) and value else value)
-    work_order.updated_at = utc_now()
-    await db.commit()
-    await db.refresh(work_order)
-    return work_order
+            setattr(current, key, patch[key])
+    current.updated_at = _next_updated_at(current.updated_at)
+
+    try:
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await db.refresh(current)
+    return current
 
 
 def role_value(role: UserRole | str) -> str:
