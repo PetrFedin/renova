@@ -272,6 +272,43 @@ def transition_notification_copy(current: str, new_status: str, title: str) -> t
     return "other", f"Статус работы: {title}", _STATUS_LABELS.get(new_status, new_status)
 
 
+def _work_order_status(work_order: WorkOrder) -> str:
+    return work_order.status.value if hasattr(work_order.status, "value") else str(work_order.status)
+
+
+async def _lock_current_work_order(
+    db: AsyncSession,
+    work_order: WorkOrder,
+) -> WorkOrder:
+    """Lock and refresh a prefetched work order before validating a state transition.
+
+    API handlers load the row before calling ``transition``. Another request may commit
+    between that read and this mutation. ``populate_existing`` makes SQLAlchemy replace
+    the identity-map snapshot with the value observed after the row lock is acquired.
+    """
+    expected_status = _work_order_status(work_order)
+    query = (
+        select(WorkOrder)
+        .where(
+            WorkOrder.id == work_order.id,
+            WorkOrder.project_id == work_order.project_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    try:
+        query = query.with_for_update()
+    except Exception:
+        pass
+    current = (await db.execute(query)).scalar_one_or_none()
+    if current is None:
+        await db.rollback()
+        raise ValueError("work_order_missing")
+    if _work_order_status(current) != expected_status:
+        await db.rollback()
+        raise ValueError("work_order_stale")
+    return current
+
+
 async def transition(
     db: AsyncSession,
     work_order: WorkOrder,
@@ -281,12 +318,17 @@ async def transition(
     *,
     project: Project | None = None,
 ) -> WorkOrder:
+    # Lightweight unit tests may pass a structural fake. Real ORM mutations always
+    # refresh under a row lock so a stale prefetched status cannot win by last write.
+    if isinstance(work_order, WorkOrder):
+        work_order = await _lock_current_work_order(db, work_order)
+
     project_row = project or await db.get(Project, work_order.project_id)
     if not project_row:
         raise ValueError("work_order_project_missing")
     effective_role = actor_role or infer_actor_role(project_row, user_id)
 
-    current = work_order.status.value if hasattr(work_order.status, "value") else str(work_order.status)
+    current = _work_order_status(work_order)
     validate_transition(current, new_status, effective_role)
 
     work_order.status = WorkOrderStatus(new_status)

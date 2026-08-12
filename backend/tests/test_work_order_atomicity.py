@@ -222,3 +222,52 @@ async def test_work_order_transition_rolls_back_status_when_notification_prepare
     ) is None
     assert await work_order_db.scalar(select(func.count()).select_from(DomainOutbox)) == 0
     assert await work_order_db.scalar(select(func.count()).select_from(DomainOutboxLease)) == 0
+
+
+@pytest.mark.asyncio
+async def test_work_order_transition_rejects_stale_prefetched_status(work_order_db):
+    _, contractor, project = await seed_project(work_order_db)
+    project_id = project.id
+    contractor_id = contractor.id
+    work_order_id = "work-order-stale-transition"
+
+    current = WorkOrder(
+        id=work_order_id,
+        project_id=project_id,
+        title="Монтаж электрики",
+        work_type="electrical",
+        status=WorkOrderStatus.cancelled,
+        created_by=contractor_id,
+    )
+    work_order_db.add(current)
+    await work_order_db.commit()
+
+    # This represents another request that prefetched the row while it was still
+    # approved. The authoritative row has since been cancelled by another actor.
+    stale = WorkOrder(
+        id=work_order_id,
+        project_id=project_id,
+        title="Монтаж электрики",
+        work_type="electrical",
+        status=WorkOrderStatus.approved,
+        created_by=contractor_id,
+    )
+
+    with pytest.raises(ValueError, match="work_order_stale"):
+        await work_order_service.transition(
+            work_order_db,
+            stale,
+            WorkOrderStatus.in_progress.value,
+            contractor_id,
+            actor_role=UserRole.contractor,
+            project=project,
+        )
+
+    assert await work_order_db.scalar(
+        select(WorkOrder.status).where(WorkOrder.id == work_order_id)
+    ) == WorkOrderStatus.cancelled
+    assert await work_order_db.scalar(
+        select(func.count())
+        .select_from(DomainOutbox)
+        .where(DomainOutbox.aggregate_id == work_order_id)
+    ) == 0
