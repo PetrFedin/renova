@@ -38,6 +38,7 @@ const chatHooks = readFileSync(join(mobile, 'lib/useChatUnread.ts'), 'utf8');
 const chatList = readFileSync(join(mobile, 'components/renova/chat/ChatListView.tsx'), 'utf8');
 const rooms = readFileSync(join(mobile, 'components/screens/OsRoomsScreen.tsx'), 'utf8');
 const projectEmpty = readFileSync(join(mobile, 'components/renova/ProjectEmptyState.tsx'), 'utf8');
+const home = readFileSync(join(mobile, 'components/screens/OsHomeScreen.tsx'), 'utf8');
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
@@ -145,6 +146,34 @@ console.assert(
   'contractor no-project state must route to marketplace leads instead of manual project creation',
 );
 
+console.assert(
+  home.includes("reportError('home.dashboard'")
+    && home.includes("reportError('home.pendingPayments'")
+    && home.includes("reportError('home.weeklyDigest'")
+    && home.includes("reportError('home.source.load'"),
+  'home source failures must remain observable instead of becoming fake healthy zeros',
+);
+console.assert(
+  home.includes('const sameProject = loadedProjectIdRef.current === projectId')
+    && home.includes('if (!sameProject && isCurrentLoad())')
+    && home.includes('resetProjectSnapshot();')
+    && !home.includes('const fallbacks = ['),
+  'home refresh preserves same-project confirmed values and clears snapshots only when project context changes',
+);
+console.assert(
+  home.includes('const generation = ++loadGenerationRef.current')
+    && home.includes('const isCurrentLoad = () => loadGenerationRef.current === generation')
+    && home.includes('if (!isCurrentLoad()) return;')
+    && home.includes('loadedProjectIdRef.current !== activeProject.id'),
+  'stale home requests must not overwrite a newer project or finish its loading state',
+);
+console.assert(
+  home.includes('title="Главная обновлена частично"')
+    && home.includes('последние подтверждённые значения')
+    && home.includes('нули и пустые блоки могут быть неполными'),
+  'degraded home data must be visible to the user instead of looking authoritative',
+);
+
 const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
   Boolean(repair?.params?.tab === 'control') &&
@@ -161,7 +190,10 @@ const ok =
   rooms.includes("reportError('rooms.customer.listRooms'") &&
   !projectEmpty.includes('Загрузить демо') &&
   projectEmpty.includes("reportError('projectEmptyState.templateCreate'") &&
-  projectEmpty.includes('title="Обновить проекты"');
+  projectEmpty.includes('title="Обновить проекты"') &&
+  home.includes("reportError('home.source.load'") &&
+  home.includes('const generation = ++loadGenerationRef.current') &&
+  home.includes('title="Главная обновлена частично"');
 
 if (!ok) process.exit(1);
 console.log('reliabilityUx.w152.test OK');

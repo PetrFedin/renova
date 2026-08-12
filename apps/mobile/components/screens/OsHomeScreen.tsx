@@ -1,5 +1,5 @@
 /** Единая главная Renova OS — заказчик и исполнитель */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { type BudgetAlert } from '@/components/renova/BudgetAlerts';
 import { HomeScreenBody } from '@/components/renova/os/home/HomeScreenBody';
+import { InfoBanner } from '@/components/ui/InfoBanner';
 import { homeLayout } from '@/constants/homeTypography';
 import { useHomeWidgets } from '@/lib/useHomeWidgets';
 import { useDetailLevel } from '@/lib/useDetailLevel';
@@ -25,7 +26,25 @@ import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyB
 import { getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
 import { mergeDigestInsight } from '@/lib/domain/digestHomeInsight';
 import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
+
+const HOME_SOURCE_NAMES = [
+  'receipts',
+  'material_picks',
+  'purchases',
+  'risks',
+  'schedule',
+  'insights',
+  'budget_alerts',
+  'budget',
+  'acceptances',
+  'work_schedule',
+  'warranty',
+  'change_orders',
+  'documents',
+  'offline_queue',
+  'closeout',
+] as const;
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
   const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading } = useRenova();
@@ -54,110 +73,174 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [closeoutNext, setCloseoutNext] = useState<string | null>(null);
   const [closeoutAllStagesDone, setCloseoutAllStagesDone] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const loadedProjectIdRef = useRef<string | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const snapRole = readOnly ? 'customer' : role === 'contractor' ? 'contractor' : 'customer';
   const { isVisible: isWidgetEnabled } = useHomeWidgets(role);
   const detailLevel = useDetailLevel();
   const isVisible = (id: HomeWidgetId) => isWidgetEnabled(id) && homeWidgetVisibleForLevel(id, detailLevel);
 
+  const resetProjectSnapshot = () => {
+    setDash(null);
+    setReceipts([]);
+    setPicks([]);
+    setApiRisks([]);
+    setPurchases([]);
+    setOsSchedule(null);
+    setInsights([]);
+    setBudgetAlerts([]);
+    setOsBudget(null);
+    setPendingAcceptance(0);
+    setPendingPayments(0);
+    setPendingPaymentTotal(0);
+    setWorkScheduleStatus(null);
+    setWarrantyOpen(0);
+    setWarrantyOverdue(0);
+    setPendingChangeOrders(0);
+    setPendingSignDocs(0);
+    setOfflinePending(0);
+    setOfflineBlocked(0);
+    setCloseoutReady(false);
+    setCloseoutArchived(false);
+    setCloseoutNext(null);
+    setCloseoutAllStagesDone(false);
+  };
+
   async function load() {
+    const generation = ++loadGenerationRef.current;
+    const isCurrentLoad = () => loadGenerationRef.current === generation;
+
     if (!user || !activeProject) {
-      setLoading(false);
+      if (isCurrentLoad()) {
+        loadedProjectIdRef.current = null;
+        setLoading(false);
+      }
       return;
+    }
+
+    const projectId = activeProject.id;
+    const sameProject = loadedProjectIdRef.current === projectId;
+    if (!sameProject && isCurrentLoad()) {
+      loadedProjectIdRef.current = null;
+      resetProjectSnapshot();
     }
     setLoading(true);
     setLoadError(null);
+    setLoadWarning(null);
+    const issues: string[] = [];
+
     try {
       try {
-        setDash(await api.dashboard(user.id, activeProject.id));
-      } catch {
-        setDash(fallbackDashboard(activeProject));
+        const nextDashboard = await api.dashboard(user.id, projectId);
+        if (!isCurrentLoad()) return;
+        setDash(nextDashboard);
+      } catch (error) {
+        if (!isCurrentLoad()) return;
+        reportError('home.dashboard', error, { userId: user.id, projectId });
+        issues.push('dashboard');
+        // A same-project refresh keeps the last confirmed dashboard. On first load,
+        // project-only fallback keeps navigation usable but is explicitly degraded.
+        if (!sameProject) setDash(fallbackDashboard(activeProject));
       }
 
       // W65: pending payments для обеих ролей (заказчик платит, исполнитель ждёт)
       try {
-        const items = await api.listPayments(user.id, activeProject.id);
+        const items = await api.listPayments(user.id, projectId);
+        if (!isCurrentLoad()) return;
         const pending = items.filter((p) => p.status === 'pending');
         setPendingPayments(pending.length);
         setPendingPaymentTotal(pending.reduce((sum, p) => sum + p.amount, 0));
-      } catch {
-        setPendingPayments(0);
-        setPendingPaymentTotal(0);
+      } catch (error) {
+        if (!isCurrentLoad()) return;
+        reportError('home.pendingPayments', error, { userId: user.id, projectId });
+        issues.push('payments');
+        // Preserve last confirmed same-project values. A zero after source failure is not fact.
       }
 
       const results = await Promise.allSettled([
-        api.listReceipts(user.id, activeProject.id).then(setReceipts),
-        api.listMaterialPicks(user.id, activeProject.id).then(setPicks),
-        api.listPurchases(user.id, activeProject.id).then(setPurchases),
-        api.osRisks(user.id, activeProject.id).then((r) => setApiRisks(r.items)),
-        api.osSchedule(user.id, activeProject.id).then(setOsSchedule),
-        api.osInsights(user.id, activeProject.id).then(async (r) => {
+        api.listReceipts(user.id, projectId).then((value) => { if (isCurrentLoad()) setReceipts(value); return value; }),
+        api.listMaterialPicks(user.id, projectId).then((value) => { if (isCurrentLoad()) setPicks(value); return value; }),
+        api.listPurchases(user.id, projectId).then((value) => { if (isCurrentLoad()) setPurchases(value); return value; }),
+        api.osRisks(user.id, projectId).then((value) => { if (isCurrentLoad()) setApiRisks(value.items); return value; }),
+        api.osSchedule(user.id, projectId).then((value) => { if (isCurrentLoad()) setOsSchedule(value); return value; }),
+        api.osInsights(user.id, projectId).then(async (r) => {
           let items = r.items || [];
           try {
-            const dig = await api.previewWeeklyDigest(user.id, activeProject.id);
+            const dig = await api.previewWeeklyDigest(user.id, projectId);
             items = mergeDigestInsight(items, dig);
-          } catch { /* noop */ }
-          setInsights(items);
+          } catch (error) {
+            reportError('home.weeklyDigest', error, { userId: user.id, projectId });
+            issues.push('weekly_digest');
+          }
+          if (isCurrentLoad()) setInsights(items);
+          return items;
         }),
-        api.budgetAlerts(user.id, activeProject.id).then(setBudgetAlerts),
-        api.osBudget(user.id, activeProject.id).then(setOsBudget),
-        api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)),
-        api.getActiveWorkSchedule(user.id, activeProject.id).then((s) => setWorkScheduleStatus(s?.status ?? null)),
+        api.budgetAlerts(user.id, projectId).then((value) => { if (isCurrentLoad()) setBudgetAlerts(value); return value; }),
+        api.osBudget(user.id, projectId).then((value) => { if (isCurrentLoad()) setOsBudget(value); return value; }),
+        api.acceptancesPendingCount(user.id, projectId).then((value) => { if (isCurrentLoad()) setPendingAcceptance(value.count); return value; }),
+        api.getActiveWorkSchedule(user.id, projectId).then((value) => { if (isCurrentLoad()) setWorkScheduleStatus(value?.status ?? null); return value; }),
         // W76: гарантия / ДО / черновики подписи → nextAction
-        api.listWarrantyClaims(user.id, activeProject.id).then((r) => {
-          setWarrantyOpen(r.open ?? 0);
-          setWarrantyOverdue(r.overdue ?? 0);
+        api.listWarrantyClaims(user.id, projectId).then((value) => {
+          if (isCurrentLoad()) {
+            setWarrantyOpen(value.open ?? 0);
+            setWarrantyOverdue(value.overdue ?? 0);
+          }
+          return value;
         }),
-        api.listChangeOrders(user.id, activeProject.id).then((orders) => {
-          setPendingChangeOrders(orders.filter((o) => o.status === 'pending').length);
+        api.listChangeOrders(user.id, projectId).then((orders) => {
+          if (isCurrentLoad()) setPendingChangeOrders(orders.filter((o) => o.status === 'pending').length);
+          return orders;
         }),
-        api.listProjectDocuments(user.id, activeProject.id).then((res) => {
-          setPendingSignDocs((res.items || []).filter((d) => d.status === 'draft').length);
+        api.listProjectDocuments(user.id, projectId).then((res) => {
+          if (isCurrentLoad()) setPendingSignDocs((res.items || []).filter((d) => d.status === 'draft').length);
+          return res;
         }),
         getOfflineOutboxStatus().then((st) => {
-          setOfflinePending(st.pending || 0);
-          setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
+          if (isCurrentLoad()) {
+            setOfflinePending(st.pending || 0);
+            setOfflineBlocked((st.blocked || 0) + (st.conflicts || 0));
+          }
+          return st;
         }),
-        api.closeoutChecklist(user.id, activeProject.id).then((cl) => {
-          setCloseoutReady(Boolean(cl.ready));
-          setCloseoutArchived(Boolean(cl.archived));
-          setCloseoutNext(cl.next_action || null);
-          setCloseoutAllStagesDone(Boolean(cl.all_stages_done));
+        api.closeoutChecklist(user.id, projectId).then((cl) => {
+          if (isCurrentLoad()) {
+            setCloseoutReady(Boolean(cl.ready));
+            setCloseoutArchived(Boolean(cl.archived));
+            setCloseoutNext(cl.next_action || null);
+            setCloseoutAllStagesDone(Boolean(cl.all_stages_done));
+          }
+          return cl;
         }),
       ]);
-      results.forEach((r, i) => {
-        if (r.status === 'rejected') {
-          const fallbacks = [
-            () => setReceipts([]),
-            () => setPicks([]),
-            () => setPurchases([]),
-            () => setApiRisks([]),
-            () => setOsSchedule(null),
-            () => setInsights([]),
-            () => setBudgetAlerts([]),
-            () => setOsBudget(null),
-            () => setPendingAcceptance(0),
-            () => setWorkScheduleStatus(null),
-            () => { setWarrantyOpen(0); setWarrantyOverdue(0); },
-            () => setPendingChangeOrders(0),
-            () => setPendingSignDocs(0),
-            () => { setOfflinePending(0); setOfflineBlocked(0); },
-            () => {
-              setCloseoutReady(false);
-              setCloseoutArchived(false);
-              setCloseoutNext(null);
-              setCloseoutAllStagesDone(false);
-            },
-          ];
-          fallbacks[i]?.();
-        }
+
+      if (!isCurrentLoad()) return;
+      results.forEach((result, index) => {
+        if (result.status !== 'rejected') return;
+        const source = HOME_SOURCE_NAMES[index] ?? `source_${index}`;
+        issues.push(source);
+        reportError('home.source.load', result.reason, { userId: user.id, projectId, source });
+        // Do not clear last confirmed same-project data. On a project switch the
+        // snapshot was reset before requests started, so no cross-project leak occurs.
       });
-    } catch (e) {
+
+      loadedProjectIdRef.current = projectId;
+      if (issues.length > 0) {
+        setLoadWarning('Часть данных главной не обновилась. Показаны доступные или последние подтверждённые значения; нули и пустые блоки могут быть неполными.');
+      }
+    } catch (error) {
+      if (!isCurrentLoad()) return;
+      reportError('home.load', error, { userId: user.id, projectId });
       setLoadError('Не удалось загрузить данные главной');
+      setLoadWarning('Не все данные удалось подтвердить. Повторите загрузку перед важным действием.');
     } finally {
-      setLoading(false);
+      if (isCurrentLoad()) {
+        loadedProjectIdRef.current = projectId;
+        setLoading(false);
+      }
     }
   }
 
@@ -179,7 +262,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   }), [user?.id, activeProject?.id]);
 
   const snap = useMemo(() => {
-    if (!activeProject || !dash) return null;
+    if (!activeProject || !dash || loadedProjectIdRef.current !== activeProject.id) return null;
     return buildProjectOsSnapshot(
       activeProject,
       dash,
@@ -285,8 +368,9 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+      {loadWarning ? <InfoBanner tone="warning" title="Главная обновлена частично" message={loadWarning} /> : null}
       <IntegrationHonestyBadge />
-        <HomeScreenBody
+      <HomeScreenBody
         role={role}
         user={user}
         activeProject={activeProject}
