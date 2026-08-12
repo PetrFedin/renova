@@ -1,13 +1,20 @@
 /**
- * WS auth query: prefer short-lived ticket over long JWT in URL (P2.20).
- * Falls back to ?token= if ticket mint fails (offline / old API).
+ * WS auth query: only a short-lived ticket may appear in the WebSocket URL.
+ * Long-lived access JWTs are used only in the HTTPS Authorization header that
+ * mints the ticket and are never downgraded into a URL query parameter.
  */
 import { API_BASE, getAccessToken } from '@/lib/api/client';
+import { reportError } from '@/lib/reportError';
+
+function asWsAuthError(error: unknown): Error {
+  return error instanceof Error ? error : new Error('ws_auth_ticket_unavailable');
+}
 
 export async function buildWsAuthQuery(): Promise<string> {
-  const tok = getAccessToken();
-  if (!tok) return '';
   try {
+    const tok = getAccessToken();
+    if (!tok) throw new Error('ws_auth_access_token_missing');
+
     const r = await fetch(`${API_BASE}/api/v1/auth/ws-ticket`, {
       method: 'POST',
       headers: {
@@ -15,14 +22,16 @@ export async function buildWsAuthQuery(): Promise<string> {
         'Content-Type': 'application/json',
       },
     });
-    if (r.ok) {
-      const j = (await r.json()) as { ticket?: string };
-      if (j.ticket) {
-        return `?ticket=${encodeURIComponent(j.ticket)}`;
-      }
-    }
-  } catch {
-    /* fall through to JWT query */
+    if (!r.ok) throw new Error(`ws_auth_ticket_http_${r.status}`);
+
+    const j = (await r.json()) as { ticket?: string };
+    const ticket = j.ticket?.trim();
+    if (!ticket) throw new Error('ws_auth_ticket_missing');
+
+    return `?ticket=${encodeURIComponent(ticket)}`;
+  } catch (error) {
+    const normalized = asWsAuthError(error);
+    reportError('wsAuth.ticket', normalized);
+    throw normalized;
   }
-  return `?token=${encodeURIComponent(tok)}`;
 }
