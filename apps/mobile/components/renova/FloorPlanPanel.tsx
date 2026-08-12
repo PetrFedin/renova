@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
@@ -7,7 +7,6 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
-import { pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { FurnitureLayer } from '@/components/renova/FurnitureLayer';
@@ -18,7 +17,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { openQcIssue } from '@/lib/qcNav';
 import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
 
@@ -27,6 +26,8 @@ const MAP_H = 180;
 
 type MapLayoutEvent = { nativeEvent?: { layout?: { width?: number } } };
 type MapPressEvent = { nativeEvent?: { locationX?: number; locationY?: number } };
+type PunchPhotoIssue = 'picker_unavailable' | 'upload_failed';
+type PunchPhotoCapture = { key?: string; photoIssue?: PunchPhotoIssue };
 
 /** W67 #33: punch = ProjectIssue в QC (единый статус). */
 function punchTone(severity: string, status: string) {
@@ -63,8 +64,13 @@ export function FloorPlanPanel({
   const [addingPunch, setAddingPunch] = useState(false);
   const planRef = useRef<FloorPlan | null>(null);
   /** Clarity B: sheet вместо Alert после punch / upload */
-  const [punchSheet, setPunchSheet] = useState<{ issueId?: string; hasPhoto: boolean } | null>(null);
-  const [uploadSheet, setUploadSheet] = useState(false);
+  const [punchSheet, setPunchSheet] = useState<{
+    issueId?: string;
+    hasPhoto: boolean;
+    photoIssue?: PunchPhotoIssue;
+    syncDegraded: boolean;
+  } | null>(null);
+  const [uploadSheet, setUploadSheet] = useState<{ syncDegraded: boolean } | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const sideEffectProject = activeProject?.id === projectId ? activeProject : null;
 
@@ -100,7 +106,16 @@ export function FloorPlanPanel({
       await api.moveFloorPin(userId, projectId, plan.id, pinId, x, y);
       load();
     } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Позиция на плане');
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Позиция на плане');
+        return;
+      }
+      reportError('components.renova.FloorPlanPanel.movePin', e, {
+        projectId,
+        floorPlanId: plan.id,
+        pinId,
+      });
+      Alert.alert('Позиция не сохранена', 'Не удалось сохранить положение метки. Повторите действие.');
     }
   };
 
@@ -109,24 +124,37 @@ export function FloorPlanPanel({
     if (typeof width === 'number') setMapW(width);
   };
 
-  const capturePunchPhoto = async (): Promise<string | undefined> => {
-    // Камера → иначе галерея (поле без камеры / отказ в permission)
+  const capturePunchPhoto = async (): Promise<PunchPhotoCapture> => {
+    // Камера → иначе галерея (поле без камеры / отказ в permission).
+    // Сбой picker наблюдаем, но не превращаем в ложный фатальный сбой QC: фото опционально.
     let uri: string | undefined;
+    let pickerFailed = false;
     try {
       const cam = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
       if (!cam.canceled && cam.assets[0]) uri = cam.assets[0].uri;
-    } catch { /* fall through */ }
+    } catch (error) {
+      pickerFailed = true;
+      reportError('components.renova.FloorPlanPanel.cameraPicker', error, {
+        projectId,
+        floorPlanId: planRef.current?.id ?? null,
+      });
+    }
     if (!uri) {
       try {
         const lib = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
         if (!lib.canceled && lib.assets[0]) uri = lib.assets[0].uri;
-      } catch {
-        return undefined;
+      } catch (error) {
+        reportError('components.renova.FloorPlanPanel.libraryPicker', error, {
+          projectId,
+          floorPlanId: planRef.current?.id ?? null,
+        });
+        return { photoIssue: 'picker_unavailable' };
       }
     }
-    if (!uri) return undefined;
+    if (!uri) return pickerFailed ? { photoIssue: 'picker_unavailable' } : {};
     const blob = await (await fetch(uri)).blob();
-    return uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+    const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+    return { key };
   };
 
   const addPunchAt = async (locationX: number, locationY: number) => {
@@ -136,53 +164,111 @@ export function FloorPlanPanel({
     setAddingPunch(true);
     try {
       let photo_key: string | undefined;
+      let photoIssue: PunchPhotoIssue | undefined;
       try {
-        photo_key = await capturePunchPhoto();
-      } catch {
-        /* punch без фото — допустимо */
+        const photo = await capturePunchPhoto();
+        photo_key = photo.key;
+        photoIssue = photo.photoIssue;
+      } catch (error) {
+        photoIssue = 'upload_failed';
+        reportError('components.renova.FloorPlanPanel.punchPhotoUpload', error, {
+          projectId,
+          floorPlanId: plan.id,
+        });
       }
-      const created = await api.createIssue(userId, projectId, {
-        title: 'Замечание на плане',
-        severity: 'medium',
-        floor_plan_id: plan.id,
-        x_pct,
-        y_pct,
-        ...(photo_key ? { photo_key } : {}),
-      });
-      await syncProjectSideEffects({ user, project: sideEffectProject });
-      await load();
-      setPunchMode(false);
-      // Clarity B: sheet с выбором — не Alert + авто-навигация одновременно
-      setPunchSheet({ issueId: created?.id, hasPhoto: Boolean(photo_key) });
-    } catch (e) {
-      if (isOfflineQueued(e)) {
-        notifyOfflineQueued('Замечание на плане');
-        setPunchMode(false);
+
+      let created: { id?: string } | undefined;
+      try {
+        created = await api.createIssue(userId, projectId, {
+          title: 'Замечание на плане',
+          severity: 'medium',
+          floor_plan_id: plan.id,
+          x_pct,
+          y_pct,
+          ...(photo_key ? { photo_key } : {}),
+        });
+      } catch (e) {
+        if (isOfflineQueued(e)) {
+          notifyOfflineQueued('Замечание на плане');
+          setPunchMode(false);
+          return;
+        }
+        reportError('components.renova.FloorPlanPanel.createPunch', e, {
+          projectId,
+          floorPlanId: plan.id,
+        });
+        Alert.alert('Ошибка', 'Не удалось добавить замечание');
         return;
       }
-      Alert.alert('Ошибка', 'Не удалось добавить замечание');
+
+      let syncDegraded = false;
+      try {
+        await syncProjectSideEffects({ user, project: sideEffectProject });
+      } catch (error) {
+        syncDegraded = true;
+        reportError('components.renova.FloorPlanPanel.punchPostCommitSync', error, {
+          projectId,
+          floorPlanId: plan.id,
+          issueId: created?.id ?? null,
+        });
+      }
+      load();
+      setPunchMode(false);
+      // Создание уже подтверждено сервером; деградация фото/refresh не должна предлагать повторную мутацию.
+      setPunchSheet({
+        issueId: created?.id,
+        hasPhoto: Boolean(photo_key),
+        photoIssue,
+        syncDegraded,
+      });
     } finally {
       setAddingPunch(false);
     }
   };
 
   const uploadPlan = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Доступ', 'Нужен доступ к галерее'); return; }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.92 });
-    if (res.canceled || !res.assets[0]) return;
+    let selectedAsset: { uri: string } | null = null;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Доступ', 'Нужен доступ к галерее');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.92 });
+      if (res.canceled || !res.assets[0]) return;
+      selectedAsset = res.assets[0];
+    } catch (error) {
+      reportError('components.renova.FloorPlanPanel.planPicker', error, { projectId, floor });
+      Alert.alert('Загрузка', 'Не удалось открыть галерею. Повторите действие.');
+      return;
+    }
+
     setUploading(true);
     try {
-      const asset = res.assets[0];
-      const blob = await (await fetch(asset.uri)).blob();
-      const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
-      await api.createFloorPlan(userId, projectId, { name: `Этаж ${floor}`, image_key: key, floor_level: floor });
-      await syncProjectSideEffects({ user, project: sideEffectProject });
+      try {
+        const blob = await (await fetch(selectedAsset.uri)).blob();
+        const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+        await api.createFloorPlan(userId, projectId, {
+          name: `Этаж ${floor}`,
+          image_key: key,
+          floor_level: floor,
+        });
+      } catch (error) {
+        reportError('components.renova.FloorPlanPanel.uploadPlan', error, { projectId, floor });
+        Alert.alert('Загрузка', 'Не удалось загрузить план');
+        return;
+      }
+
+      let syncDegraded = false;
+      try {
+        await syncProjectSideEffects({ user, project: sideEffectProject });
+      } catch (error) {
+        syncDegraded = true;
+        reportError('components.renova.FloorPlanPanel.planPostCommitSync', error, { projectId, floor });
+      }
       load();
-      // Clarity B: sheet вместо Alert
-      setUploadSheet(true);
-    } catch {
-      Alert.alert('Загрузка', 'Не удалось загрузить план');
+      // План уже создан. Ошибка refresh/sync не превращается в ложный create failure и не зовёт к дублю.
+      setUploadSheet({ syncDegraded });
     } finally {
       setUploading(false);
     }
@@ -190,6 +276,16 @@ export function FloorPlanPanel({
 
   const canPunch = role === 'customer' || role === 'contractor';
   const osRole = (role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+  const punchSheetMessage = punchSheet?.hasPhoto
+    ? 'Фото прикреплено. Откройте в Контроле качества или останьтесь на плане.'
+    : punchSheet?.photoIssue === 'upload_failed'
+      ? 'Замечание сохранено, но фото не удалось загрузить. Добавьте его в Контроле качества; повторно создавать замечание не нужно.'
+      : punchSheet?.photoIssue === 'picker_unavailable'
+        ? 'Замечание сохранено без фото: камера или галерея недоступна. Фото можно добавить в Контроле качества.'
+        : 'Фото не прикреплено. Можно дополнить замечание в Контроле качества.';
+  const punchSheetMessageWithSync = punchSheet?.syncDegraded
+    ? `${punchSheetMessage} Связанные данные объекта обновятся при следующей синхронизации.`
+    : punchSheetMessage;
 
   if (loadState === 'error') {
     return (
@@ -338,11 +434,7 @@ export function FloorPlanPanel({
       <ActionConfirmSheet
         visible={Boolean(punchSheet)}
         title="Замечание сохранено"
-        message={
-          punchSheet?.hasPhoto
-            ? 'Фото прикреплено. Откройте в Контроле качества или останьтесь на плане.'
-            : 'Можно дополнить описание в Контроле качества.'
-        }
+        message={punchSheetMessageWithSync}
         primaryLabel="Открыть в QC"
         onPrimary={() => openQcIssue(punchSheet?.issueId, pathname, osRole)}
         secondaryLabel="Остаться на плане"
@@ -350,14 +442,18 @@ export function FloorPlanPanel({
         onClose={() => setPunchSheet(null)}
       />
       <ActionConfirmSheet
-        visible={uploadSheet}
+        visible={Boolean(uploadSheet)}
         title="План загружен"
-        message="Отметьте замечания на плане или сверьте комнаты."
+        message={
+          uploadSheet?.syncDegraded
+            ? 'План сохранён. Связанные данные объекта обновятся при следующей синхронизации; повторно загружать план не нужно.'
+            : 'Отметьте замечания на плане или сверьте комнаты.'
+        }
         primaryLabel="Замечания на плане"
         onPrimary={() => setPunchMode(true)}
         secondaryLabel={onOpenRooms ? 'Комнаты' : undefined}
         onSecondary={onOpenRooms}
-        onClose={() => setUploadSheet(false)}
+        onClose={() => setUploadSheet(null)}
       />
     </View>
   );

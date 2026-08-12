@@ -29,7 +29,6 @@ const debtKey = (file: string, kind: DebtKind) => `${file}|${kind}`;
  * become observable or carry a narrow `silent-catch-ok:` comment.
  */
 const KNOWN_DEBT: Record<string, number> = {
-  [debtKey('components/renova/FloorPlanPanel.tsx', 'async')]: 3,
   [debtKey('lib/chatPrefs.ts', 'async')]: 1,
   [debtKey('lib/customerBudgetPrefs.ts', 'async')]: 1,
   [debtKey('lib/homeWidgetPrefs.ts', 'async')]: 1,
