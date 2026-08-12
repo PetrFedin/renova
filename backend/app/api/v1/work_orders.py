@@ -1,5 +1,5 @@
 """API заказов работ — детальное планирование по комнатам."""
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -26,12 +26,17 @@ class WorkOrderCreate(BaseModel):
 
 
 class WorkOrderPatch(BaseModel):
+    # Optimistic token returned by wo_dict(). It is mandatory so queued/offline
+    # mutations cannot silently overwrite a newer edit made by another user.
+    expected_updated_at: datetime
     title: str | None = None
     work_type: str | None = None
     room_id: str | None = None
     stage_id: str | None = None
     planned_start: date | None = None
     planned_end: date | None = None
+    # Lifecycle timestamps are kept in the schema only to return an explicit domain
+    # error to old clients; canonical status transitions own these fields.
     actual_start: date | None = None
     actual_end: date | None = None
     notes: str | None = None
@@ -52,20 +57,23 @@ async def list_work_orders(project_id: str, user: User = Depends(get_current_use
 @router.post("/{project_id}/work-orders")
 async def create_work_order(project_id: str, body: WorkOrderCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    work_order = await wo_svc.create_work_order(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        title=body.title,
-        work_type=body.work_type,
-        room_id=body.room_id,
-        stage_id=body.stage_id,
-        planned_start=body.planned_start,
-        planned_end=body.planned_end,
-        budget_planned=body.budget_planned,
-        notes=body.notes,
-        publish=body.publish,
-    )
+    try:
+        work_order = await wo_svc.create_work_order(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            title=body.title,
+            work_type=body.work_type,
+            room_id=body.room_id,
+            stage_id=body.stage_id,
+            planned_start=body.planned_start,
+            planned_end=body.planned_end,
+            budget_planned=body.budget_planned,
+            notes=body.notes,
+            publish=body.publish,
+        )
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
     return wo_svc.wo_dict(work_order)
 
 
@@ -80,11 +88,31 @@ async def get_work_order(project_id: str, work_order_id: str, user: User = Depen
 
 @router.patch("/{project_id}/work-orders/{work_order_id}")
 async def patch_work_order(project_id: str, work_order_id: str, body: WorkOrderPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     work_order = await wo_svc.get_work_order(db, work_order_id)
     if not work_order or work_order.project_id != project_id:
         raise HTTPException(404)
-    work_order = await wo_svc.update_work_order(db, work_order, body.model_dump(exclude_unset=True))
+
+    patch = body.model_dump(exclude_unset=True)
+    expected_updated_at = patch.pop("expected_updated_at")
+    try:
+        work_order = await wo_svc.update_work_order(
+            db,
+            work_order,
+            patch,
+            expected_updated_at=expected_updated_at,
+            actor_id=user.id,
+            project=project,
+        )
+    except ValueError as error:
+        code = str(error)
+        if code == "work_order_missing":
+            raise HTTPException(404, code) from error
+        if code in ("work_order_stale", "work_order_project_missing"):
+            raise HTTPException(409, code) from error
+        if code == "work_order_assignee_forbidden":
+            raise HTTPException(403, code) from error
+        raise HTTPException(400, code) from error
     return wo_svc.wo_dict(work_order)
 
 
