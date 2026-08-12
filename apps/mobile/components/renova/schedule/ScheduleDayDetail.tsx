@@ -83,11 +83,20 @@ export function ScheduleDayDetail({
 
   const extendWork = async (wo: WorkOrder, days: number, note: string) => {
     if (!userId || !projectId || readOnly) return;
+    const expectedUpdatedAt = wo.updated_at;
+    if (!expectedUpdatedAt) {
+      onChanged?.();
+      Alert.alert(
+        'Нужно обновить задачу',
+        'Не удалось подтвердить текущую версию задачи. Календарь обновляется — повторите изменение после загрузки.',
+      );
+      return;
+    }
     const base = wo.planned_end || wo.planned_start || date;
     const nextEnd = addDays(base, days);
     try {
       await api.patchWorkOrder(userId, projectId, wo.id, {
-        expected_updated_at: wo.updated_at,
+        expected_updated_at: expectedUpdatedAt,
         planned_end: nextEnd,
         notes: note,
       });
