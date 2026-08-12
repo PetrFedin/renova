@@ -40,6 +40,18 @@ def _stage_status(stage: Stage) -> StageStatus:
     return stage.status if isinstance(stage.status, StageStatus) else StageStatus(str(stage.status))
 
 
+def _is_self_managed_project(project: Project) -> bool:
+    return project.contractor_id is None and project.foreman_id is None
+
+
+def _is_self_managed_customer(project: Project, actor: User) -> bool:
+    return (
+        _is_self_managed_project(project)
+        and actor.role == UserRole.customer
+        and actor.id == project.customer_id
+    )
+
+
 async def _locked_stage(
     db: AsyncSession,
     *,
@@ -83,6 +95,8 @@ async def _latest_acceptance(
 def _executor_ids(project: Project, stage: Stage) -> list[str]:
     if stage.assignee_id:
         return [stage.assignee_id]
+    if _is_self_managed_project(project) and project.customer_id:
+        return [project.customer_id]
     return sorted(
         user_id
         for user_id in {project.contractor_id, project.foreman_id}
@@ -91,6 +105,8 @@ def _executor_ids(project: Project, stage: Stage) -> list[str]:
 
 
 def _require_submit_actor(project: Project, stage: Stage, actor: User) -> None:
+    if _is_self_managed_customer(project, actor) and actor.id in _executor_ids(project, stage):
+        return
     if actor.role != UserRole.contractor or actor.id not in _executor_ids(project, stage):
         raise ValueError("stage_submit_actor_forbidden")
 
