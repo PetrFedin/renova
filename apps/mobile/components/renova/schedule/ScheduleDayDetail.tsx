@@ -9,7 +9,7 @@ import { WORK_STATUS_LABEL, workActions, type WorkOrderStatus } from '@/lib/doma
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { dayTaskCount, formatCalendarEventDates, isPeriodCalendarEvent, isWorkCalendarEvent } from '@/lib/domain/calendarEvents';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import type { CalendarEvent, WorkOrder } from '@/lib/api';
@@ -86,7 +86,11 @@ export function ScheduleDayDetail({
     const base = wo.planned_end || wo.planned_start || date;
     const nextEnd = addDays(base, days);
     try {
-      await api.patchWorkOrder(userId, projectId, wo.id, { planned_end: nextEnd, notes: note });
+      await api.patchWorkOrder(userId, projectId, wo.id, {
+        expected_updated_at: wo.updated_at,
+        planned_end: nextEnd,
+        notes: note,
+      });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
       showActionConfirm({
@@ -102,6 +106,12 @@ export function ScheduleDayDetail({
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Продление срока');
+      } else if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_stale') {
+        onChanged?.();
+        Alert.alert(
+          'Задача уже изменилась',
+          'Другой участник обновил задачу. Календарь перезагружен — проверьте новый срок и повторите действие.',
+        );
       } else {
         Alert.alert('Ошибка', 'Не удалось продлить срок');
       }
