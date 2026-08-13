@@ -29,10 +29,28 @@ def _photos_before(stage: Stage) -> bool:
     return bool(getattr(stage, "photos", []) or [])
 
 
+def _effective_assignee_id(stage: Stage, project) -> str | None:
+    """Resolve the executor used by completion/read models without persisting it.
+
+    Existing contractor projects keep their historical contractor fallback. Only a
+    project with neither contractor nor foreman treats its customer as the implicit
+    executor, matching the canonical self-managed Stage ACL.
+    """
+    explicit = getattr(stage, "assignee_id", None)
+    if explicit:
+        return explicit
+    contractor_id = getattr(project, "contractor_id", None)
+    if contractor_id:
+        return contractor_id
+    if getattr(project, "foreman_id", None) is None:
+        return getattr(project, "customer_id", None)
+    return None
+
+
 async def completion_check(db: AsyncSession, stage: Stage, project) -> dict:
     """Проверки §3.21 перед завершением работы."""
     checks: list[dict] = []
-    assignee = getattr(stage, "assignee_id", None) or getattr(project, "contractor_id", None)
+    assignee = _effective_assignee_id(stage, project)
     if not assignee:
         checks.append({"id": "assignee", "ok": False, "message": "Назначьте исполнителя", "action": "assign", "button": "Назначить"})
 
@@ -134,7 +152,7 @@ async def build_work_snapshot(db: AsyncSession, stage: Stage, project, *, role: 
         "actual_start": stage.actual_start.isoformat() if getattr(stage, "actual_start", None) else None,
         "actual_end": stage.actual_end.isoformat() if getattr(stage, "actual_end", None) else None,
         "payment_amount": stage.payment_amount,
-        "assignee_id": getattr(stage, "assignee_id", None) or getattr(project, "contractor_id", None),
+        "assignee_id": _effective_assignee_id(stage, project),
         "checklist": cl,
         "checklist_progress": {"done": sum(1 for i in cl if i.get("done")), "total": len(cl), "percent": prog},
         "photos_count": len(photos),
