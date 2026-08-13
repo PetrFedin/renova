@@ -28,6 +28,14 @@ export type Stage = {
 
 export type StageChecklistItem = { id: string; text: string; done: boolean };
 
+/** Server-authoritative actor capabilities for one stage. */
+export type StageCapabilities = {
+  can_schedule: boolean;
+  can_start: boolean;
+  can_submit_for_review: boolean;
+  can_review: boolean;
+};
+
 /** Canonical `/projects/{id}/work-acceptances` wire shape. */
 export type WorkAcceptance = {
   id: string;
@@ -64,6 +72,11 @@ export type StageDetail = Stage & {
   contractor_ready_at: string | null;
   comments: { id: string; text: string; author_role: string; created_at: string }[];
   photos: StagePhoto[];
+  /**
+   * Optional only because cached pre-capability payloads can still exist on devices.
+   * UI write actions must treat a missing capability set as denied/fail-closed.
+   */
+  capabilities?: StageCapabilities;
 };
 
 export type ProjectPlan = {
