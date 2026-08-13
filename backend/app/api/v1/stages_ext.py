@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.api.v1 import stage_mutations as canonical
 from app.db.session import get_db
-from app.models.entities import User
+from app.models.entities import Project, Stage, StageStatus, User, UserRole
 from app.schemas.project import StageCommentIn, StageDatesIn, StagePhotoIn
+from app.services import stage_mutation_service as stage_mutation_svc
+from app.services import stage_review_service as stage_review_svc
 from app.services import stage_service as stage_svc
 
 router = APIRouter(prefix="/projects", tags=["stages"])
@@ -40,6 +42,74 @@ class WorkTypeIn(BaseModel):
 
 class DependsIn(BaseModel):
     depends_on_stage_id: str | None = None
+
+
+async def stage_schedule_capability(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+) -> bool:
+    """Project-level schedule capability derived from the canonical mutation ACL."""
+    try:
+        await stage_mutation_svc._require_schedule_actor(
+            db,
+            project=project,
+            actor=actor,
+        )
+        return True
+    except ValueError as exc:
+        if str(exc) != "stage_schedule_actor_forbidden":
+            raise
+        return False
+
+
+async def stage_detail_capabilities(
+    db: AsyncSession,
+    *,
+    project: Project,
+    stage: Stage,
+    actor: User,
+) -> dict[str, bool]:
+    """Read-only action hints derived from the same canonical ACL validators as mutations.
+
+    The client treats missing/false capabilities as fail-closed. Backend mutation ACLs
+    remain authoritative; these flags only prevent the UI from inventing role rules.
+    """
+    can_schedule = await stage_schedule_capability(db, project=project, actor=actor)
+
+    can_execute = False
+    try:
+        stage_mutation_svc._require_execution_actor(project, stage, actor)
+        can_execute = True
+    except ValueError as exc:
+        if str(exc) != "stage_execution_actor_forbidden":
+            raise
+
+    can_submit = False
+    try:
+        stage_review_svc._require_submit_actor(project, stage, actor)
+        can_submit = True
+    except ValueError as exc:
+        if str(exc) != "stage_submit_actor_forbidden":
+            raise
+
+    status = stage.status if isinstance(stage.status, StageStatus) else StageStatus(str(stage.status))
+    can_review = (
+        actor.role == UserRole.customer
+        and actor.id == project.customer_id
+        and status == StageStatus.review
+    )
+    return {
+        "can_schedule": can_schedule,
+        "can_start": can_execute and status == StageStatus.planned,
+        "can_submit_for_review": can_submit and status == StageStatus.active,
+        "can_review": can_review,
+        "payment_expected_on_accept": (
+            not stage_mutation_svc.is_self_managed_project(project)
+            and bool(stage.payment_amount and stage.payment_amount > 0)
+        ),
+    }
 
 
 @router.post("/{project_id}/stages")
@@ -71,11 +141,18 @@ async def stage_detail(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=False)
+    project = await require_project(db, project_id, user, write=False)
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404, "Этап не найден")
-    return stage_svc.stage_to_dict(stage)
+    payload = stage_svc.stage_to_dict(stage)
+    payload["capabilities"] = await stage_detail_capabilities(
+        db,
+        project=project,
+        stage=stage,
+        actor=user,
+    )
+    return payload
 
 
 @router.post("/{project_id}/stages/{stage_id}/comments")
@@ -220,6 +297,13 @@ async def project_plan(
             if project.planned_end_date
             else None
         ),
+        "capabilities": {
+            "can_schedule": await stage_schedule_capability(
+                db,
+                project=project,
+                actor=user,
+            )
+        },
         "stages": [stage_svc.stage_to_dict(stage) for stage in stages],
     }
 

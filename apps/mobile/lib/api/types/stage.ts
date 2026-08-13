@@ -28,6 +28,14 @@ export type Stage = {
 
 export type StageChecklistItem = { id: string; text: string; done: boolean };
 
+export type StageCapabilities = {
+  can_schedule: boolean;
+  can_start: boolean;
+  can_submit_for_review: boolean;
+  can_review: boolean;
+  payment_expected_on_accept: boolean;
+};
+
 /** Canonical `/projects/{id}/work-acceptances` wire shape. */
 export type WorkAcceptance = {
   id: string;
@@ -64,6 +72,8 @@ export type StageDetail = Stage & {
   contractor_ready_at: string | null;
   comments: { id: string; text: string; author_role: string; created_at: string }[];
   photos: StagePhoto[];
+  /** Cached payloads from older builds may omit capabilities; write UI must fail closed. */
+  capabilities?: StageCapabilities;
 };
 
 export type ProjectPlan = {
@@ -72,5 +82,6 @@ export type ProjectPlan = {
   property_type: string;
   planned_start_date: string | null;
   planned_end_date: string | null;
+  capabilities?: { can_schedule: boolean };
   stages: StageDetail[];
 };

@@ -34,6 +34,7 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
   const stageReturn = `/stage/${stageId}`;
   const chatTopic = `stage:${stageId}`;
   const chatTitle = `Этап: ${stage.name}`;
+  const canScheduleStage = canWrite && stage.capabilities?.can_schedule === true;
 
   async function openStageChat() {
     if (openingChat) return;
@@ -42,7 +43,6 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
       const chats = await api.listChats(user.id, project.id);
       const thread = findStageChatThread(chats, stage, project.rooms || []);
       if (thread) {
-        // W118: чат этапа → pushOsNav SoT
         pushOsNav(
           { pathname: '/chat/[threadId]', params: { threadId: thread.id } },
           stageReturn,
@@ -81,7 +81,7 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
         <StageRoomPicker
           rooms={project.rooms}
           selected={stage.room_ids || []}
-          disabled={!canWrite || user.role === 'customer'}
+          disabled={!canScheduleStage}
           onChange={async (room_ids) => {
             await api.patchStageRooms(user.id, project.id, stage.id, room_ids);
             await syncProjectSideEffects({ user, project });

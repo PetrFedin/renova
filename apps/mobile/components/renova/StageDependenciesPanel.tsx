@@ -36,10 +36,12 @@ export function StageDependenciesPanel({
   userId,
   projectId,
   role,
+  canSchedule = false,
 }: {
   userId: string;
   projectId: string;
   role: OsRole;
+  canSchedule?: boolean;
 }) {
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
@@ -65,7 +67,7 @@ export function StageDependenciesPanel({
     <View style={s.wrap}>
       <View style={s.headRow}>
         <Text style={s.head}>Зависимости · {blocked.length || items.length}</Text>
-        {canWrite && role === 'contractor' && (
+        {canWrite && canSchedule && (
           <PrimaryButton
             compact
             title={busy ? '…' : 'Синхр.'}
@@ -90,7 +92,7 @@ export function StageDependenciesPanel({
           />
         )}
       </View>
-      {!items.length && <Text style={s.empty}>Нет зависимостей. Нажмите «Синхр.» после изменения этапов.</Text>}
+      {!items.length && <Text style={s.empty}>Нет зависимостей.{canSchedule ? ' Нажмите «Синхр.» после изменения этапов.' : ''}</Text>}
       {items.slice(0, 6).map((d) => (
         <Pressable
           key={d.id}

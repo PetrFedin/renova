@@ -52,6 +52,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
   const isContractor = role === 'contractor';
   const isCustomer = role === 'customer';
   const [blockedMap, setBlockedMap] = useState<Record<string, { blocked: boolean; depends_on?: string; status_label?: string }>>({});
+  const [canScheduleStages, setCanScheduleStages] = useState(false);
   const [query, setQuery] = useState('');
   const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
   const [filter, setFilter] = useState(isCustomer ? 'now' : 'all');
@@ -95,13 +96,30 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     setBlockedMap(Object.fromEntries(entries));
   }, [user?.id, activeProject?.id, activeProject?.stages?.length]);
 
+  const reloadStageCapabilities = useCallback(async () => {
+    if (!user || !activeProject) {
+      setCanScheduleStages(false);
+      return;
+    }
+    try {
+      const plan = await api.getPlan(user.id, activeProject.id);
+      setCanScheduleStages(plan.capabilities?.can_schedule === true);
+    } catch (error) {
+      // Permission hints are fail-closed. A transient failure may hide a write action,
+      // but must never widen hybrid/customer permissions on stale role assumptions.
+      setCanScheduleStages(false);
+      reportError('works.stageCapabilities', error, { projectId: activeProject.id });
+    }
+  }, [user?.id, activeProject?.id]);
+
   const refreshWorks = useCallback(() => {
     if (activeProject) void loadProject(activeProject.id);
     void reloadBlocked();
+    void reloadStageCapabilities();
     if (isContractor && user && activeProject) {
       api.reworkSlaCheck(user.id, activeProject.id).catch(reportCatch('works.reworkSla'));
     }
-  }, [activeProject, loadProject, reloadBlocked, isContractor, user]);
+  }, [activeProject, loadProject, reloadBlocked, reloadStageCapabilities, isContractor, user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -209,7 +227,12 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           <>
             <RepairProcessTimeline stages={activeProject.stages || []} />
             <PrimaryButton title="Свернуть план" variant="ghost" compact onPress={() => setShowSecondaryPanels(false)} />
-            <StageDependenciesPanel userId={user.id} projectId={activeProject.id} role={role} />
+            <StageDependenciesPanel
+              userId={user.id}
+              projectId={activeProject.id}
+              role={role}
+              canSchedule={canScheduleStages && !readOnly}
+            />
             <WorkOrdersListPanel
               userId={user.id}
               projectId={activeProject.id}
@@ -218,10 +241,10 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
             />
           </>
         ) : null}
-        {isContractor && !readOnly && (
+        {!readOnly && (canScheduleStages || isContractor) && (
           <View style={s.createRow}>
-            <PrimaryButton title="+ Этап" onPress={() => setShowCreate(true)} />
-            <PrimaryButton title="+ Работа" variant="outline" onPress={() => setShowCreateWork(true)} />
+            {canScheduleStages ? <PrimaryButton title="+ Этап" onPress={() => setShowCreate(true)} /> : null}
+            {isContractor ? <PrimaryButton title="+ Работа" variant="outline" onPress={() => setShowCreateWork(true)} /> : null}
           </View>
         )}
         {isContractor && sel.size > 0 && (
@@ -263,17 +286,24 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         {!stages.length && !hasActiveFilter && (activeProject.stages?.length ?? 0) === 0 && (
           <EmptyActionState
             title="Этапов пока нет"
-            hint={isContractor ? 'Создайте первый этап — план ремонта станет прозрачным для заказчика.' : 'Этапы появятся после планирования ремонта. Можно написать исполнителю.'}
-            actionLabel={isContractor ? 'Создать этап' : 'Сообщения'}
+            hint={
+              canScheduleStages
+                ? 'Создайте первый этап — план ремонта станет рабочим и прозрачным.'
+                : isCustomer
+                  ? 'Этапы появятся после планирования ремонта. Можно написать исполнителю.'
+                  : 'Создание этапов доступно владельцу или прорабу бригады.'
+            }
+            actionLabel={canScheduleStages ? 'Создать этап' : isCustomer ? 'Сообщения' : 'Обновить'}
             actionVariant="primary"
             onAction={() => {
-              if (isContractor) setShowCreate(true);
-              else pushOsNav(tabsRoute(role, 'chat'), undefined, role);
+              if (canScheduleStages) setShowCreate(true);
+              else if (isCustomer) pushOsNav(tabsRoute(role, 'chat'), undefined, role);
+              else refreshWorks();
             }}
           />
         )}
       </ScrollView>
-      {user && isContractor && (
+      {user && canScheduleStages && !readOnly && (
         <CreateStageSheet
           visible={showCreate}
           project={activeProject}
@@ -283,6 +313,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
               await api.createStage(user.id, activeProject.id, body);
               await syncProjectSideEffects({ user, project: activeProject });
               await loadProject(activeProject.id);
+              await reloadStageCapabilities();
             } catch (e: unknown) {
               if (e instanceof Error && e.message === 'offline_queued') {
                 await syncProjectSideEffects({ user, project: activeProject });

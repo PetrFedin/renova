@@ -47,9 +47,17 @@ def project_member_ids(project: Project) -> list[str]:
     return result
 
 
+def is_self_managed_project(project: Project) -> bool:
+    return project.contractor_id is None and project.foreman_id is None
+
+
 async def ensure_stage_payment(
     db: AsyncSession, project: Project, stage: Stage, created_by: str
 ) -> Payment | None:
+    # Stage payments are contractor remuneration. A customer-only project must not
+    # manufacture a payable from the customer to themselves when they accept own work.
+    if is_self_managed_project(project):
+        return None
     existing = (
         await db.execute(
             select(Payment)
@@ -237,8 +245,6 @@ async def finalize_work_acceptance(
     return AcceptResult(acceptance=row, stage=stage, payment=payment, next_stage=next_stage)
 
 
-
-
 async def emit_acceptance_side_effects(
     db: AsyncSession,
     *,
@@ -299,8 +305,13 @@ async def emit_acceptance_side_effects(
             return_to="/(customer)/(tabs)/home",
         )
 
-    # W68 #46: авто-акт уже создан ensure_acceptance_act_document — пушим в Документы
+    # W68 #46: авто-акт уже создан ensure_acceptance_act_document — пушим в Документы.
+    # In a customer-only project, the accepting customer already performed this action;
+    # do not notify the same person about their own act creation.
+    self_managed = is_self_managed_project(project)
     for member_id in project_member_ids(project):
+        if self_managed and member_id == accepted_by:
+            continue
         await notif.notify(
             db,
             user_id=member_id,
@@ -314,6 +325,8 @@ async def emit_acceptance_side_effects(
 
     if next_stage:
         for member_id in project_member_ids(project):
+            if self_managed and member_id == accepted_by:
+                continue
             await notif.notify(
                 db,
                 user_id=member_id,

@@ -34,17 +34,26 @@ export function StageDetailPaymentBlock({
 }: Props) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [selected, setSelected] = useState<Payment | null>(null);
+  const [paymentExpectedOnAccept, setPaymentExpectedOnAccept] = useState(false);
 
   const reloadPayments = useCallback(() => {
-    api.listPayments(userId, projectId).then(setPayments).catch((e) => {
-      reportError('stage.payments', e, { projectId });
+    Promise.all([
+      api.listPayments(userId, projectId),
+      api.getStage(userId, projectId, stageId),
+    ]).then(([rows, detail]) => {
+      setPayments(rows);
+      // Missing capability on a durable pre-upgrade cache is denied/fail-closed.
+      setPaymentExpectedOnAccept(detail.capabilities?.payment_expected_on_accept === true);
+    }).catch((e) => {
+      reportError('stage.payments', e, { projectId, stageId });
       setPayments([]);
+      setPaymentExpectedOnAccept(false);
     });
-  }, [userId, projectId]);
+  }, [userId, projectId, stageId]);
 
   useEffect(() => {
     reloadPayments();
-  }, [reloadPayments, stageId, stageStatus]);
+  }, [reloadPayments, stageStatus]);
   // W95: после YuKassa/confirm на другом экране — блок оплаты этапа без remount
   useProjectDataReload(reloadPayments);
 
@@ -52,7 +61,7 @@ export function StageDetailPaymentBlock({
   const isCustomer = role === 'customer';
   const showContractorPending = role === 'contractor' && !!pending && stageStatus !== 'review';
 
-  if (stageStatus === 'review' && isCustomer && stagePaymentAmount > 0) {
+  if (stageStatus === 'review' && isCustomer && stagePaymentAmount > 0 && paymentExpectedOnAccept) {
     return (
       <View style={s.hintBox}>
         <Text style={s.hint}>После приёмки: оплатить {formatRub(stagePaymentAmount)}</Text>

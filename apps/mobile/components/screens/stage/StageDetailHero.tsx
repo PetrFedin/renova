@@ -43,8 +43,11 @@ export function StageDetailHero({
   const role: OsRole = isContractor ? 'contractor' : 'customer';
   const stageReturn = `/stage/${stage.id}`;
   const statusLabel = STAGE_STATUS_LABEL[stage.status] || stage.status;
-  const hasPrimaryFlowAction = (isContractor && (stage.status === 'planned' || stage.status === 'active'))
-    || (!isContractor && stage.status === 'review');
+  // Server capability is the sole source of truth for mutation affordances.
+  // A legacy/stale cached StageDetail without capabilities intentionally hides writes.
+  const canStart = stage.capabilities?.can_start === true;
+  const canSubmit = stage.capabilities?.can_submit_for_review === true;
+  const hasPrimaryFlowAction = canStart || canSubmit || (!isContractor && stage.status === 'review');
 
   const openDocs = () => pushOsNav('/documents', stageReturn, role);
 
@@ -70,7 +73,7 @@ export function StageDetailHero({
         showAction={!hasPrimaryFlowAction}
       />
 
-      {workSnap && !workSnap.completion.ok && workSnap.completion.failed.length > 0 && isContractor ? (
+      {workSnap && !workSnap.completion.ok && workSnap.completion.failed.length > 0 && canSubmit ? (
         <View style={s.warnBox}>
           <Text style={s.warnHead}>Перед сдачей:</Text>
           {workSnap.completion.failed.slice(0, 3).map((c) => (
@@ -95,7 +98,7 @@ export function StageDetailHero({
         </View>
       ) : null}
 
-      {isContractor && stage.status === 'planned' ? (
+      {canStart ? (
         <PrimaryButton
           disabled={!canWrite || blocked?.blocked}
           title={workSnap?.next_action?.button || 'Начать этап'}
@@ -145,7 +148,7 @@ export function StageDetailHero({
         />
       ) : null}
 
-      {isContractor && stage.status === 'active' ? (
+      {canSubmit ? (
         <PrimaryButton
           disabled={!canWrite || (workSnap ? !workSnap.completion.ok : false)}
           title={workSnap?.next_action?.button || 'Готово — на приёмку'}
