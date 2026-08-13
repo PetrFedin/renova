@@ -10,7 +10,7 @@ import app.models.client_write_request  # noqa: F401
 import app.models.outbox_runtime  # noqa: F401
 import app.models.project_documents  # noqa: F401
 import app.models.work_schedule  # noqa: F401
-from app.api.v1 import stage_mutations
+from app.api.v1 import stage_mutations, stages_ext
 from app.models.entities import (
     DomainOutbox,
     Payment,
@@ -87,6 +87,24 @@ async def test_customer_only_stage_runs_end_to_end_without_self_payment_or_self_
     assert created.replayed is False
     assert created.stage.status == StageStatus.planned
 
+    project = await db.get(Project, project_id)
+    customer = await db.get(User, customer_id)
+    stage = await db.get(Stage, stage_id)
+    assert project is not None and customer is not None and stage is not None
+    planned_caps = await stages_ext.stage_detail_capabilities(
+        db,
+        project=project,
+        stage=stage,
+        actor=customer,
+    )
+    assert planned_caps == {
+        "can_schedule": True,
+        "can_start": True,
+        "can_submit_for_review": False,
+        "can_review": False,
+        "payment_expected_on_accept": False,
+    }
+
     # Customer-only scheduling is real, not a create-only exception.
     changed = await mutations.update_dates(
         db,
@@ -116,6 +134,8 @@ async def test_customer_only_stage_runs_end_to_end_without_self_payment_or_self_
         "project_contract_gate",
         contract_gate_must_not_run,
     )
+    customer = await db.get(User, customer_id)
+    assert customer is not None
     started, start_error = await mutations.start_stage(
         db,
         project_id=project_id,
@@ -138,8 +158,21 @@ async def test_customer_only_stage_runs_end_to_end_without_self_payment_or_self_
         )
     ) == 0
 
+    project = await db.get(Project, project_id)
+    customer = await db.get(User, customer_id)
     stage = await db.get(Stage, stage_id)
-    assert stage is not None
+    assert project is not None and customer is not None and stage is not None
+    active_caps = await stages_ext.stage_detail_capabilities(
+        db,
+        project=project,
+        stage=stage,
+        actor=customer,
+    )
+    assert active_caps["can_schedule"] is True
+    assert active_caps["can_start"] is False
+    assert active_caps["can_submit_for_review"] is True
+    assert active_caps["payment_expected_on_accept"] is False
+
     stage.percent_complete = 100
     stage.payment_amount = 75_000
     stage.checklist_json = json.dumps(
@@ -167,7 +200,7 @@ async def test_customer_only_stage_runs_end_to_end_without_self_payment_or_self_
     )
     assert ready["status"] == StageStatus.review.value
     assert ready["acceptance_status"] == "requested"
-    acceptance_id = ready["acceptance_id"]
+    acceptance_id = str(ready["acceptance_id"])
 
     acceptance = await db.get(WorkAcceptance, acceptance_id)
     assert acceptance is not None
@@ -184,6 +217,29 @@ async def test_customer_only_stage_runs_end_to_end_without_self_payment_or_self_
 
     project = await db.get(Project, project_id)
     customer = await db.get(User, customer_id)
+    stage = await db.get(Stage, stage_id)
+    assert project is not None and customer is not None and stage is not None
+    review_caps = await stages_ext.stage_detail_capabilities(
+        db,
+        project=project,
+        stage=stage,
+        actor=customer,
+    )
+    assert review_caps["can_review"] is True
+    assert review_caps["payment_expected_on_accept"] is False
+
+    notified: list[str] = []
+
+    async def capture_notify(_db, *, user_id: str, **_kwargs):
+        notified.append(user_id)
+
+    # Capture the canonical outbox side effects during accept_work. Do not replay
+    # emit_acceptance_side_effects manually: duplicate dispatch would make the test
+    # exercise a non-production path.
+    monkeypatch.setattr(accept_orchestrator.notif, "notify", capture_notify)
+
+    project = await db.get(Project, project_id)
+    customer = await db.get(User, customer_id)
     assert project is not None and customer is not None
     accepted = await decisions.accept_work(
         db,
@@ -194,37 +250,19 @@ async def test_customer_only_stage_runs_end_to_end_without_self_payment_or_self_
     )
     assert accepted is not None
     assert accepted.replayed is False
-    assert accepted.stage.status == StageStatus.done
     assert accepted.payment_id is None
-    assert accepted.acceptance.requested_by == customer_id
-    assert accepted.acceptance.accepted_by == customer_id
+
+    final_stage = await db.get(Stage, stage_id)
+    final_acceptance = await db.get(WorkAcceptance, acceptance_id)
+    assert final_stage is not None and final_acceptance is not None
+    assert final_stage.status == StageStatus.done
+    assert final_acceptance.requested_by == customer_id
+    assert final_acceptance.accepted_by == customer_id
     assert await db.scalar(
         select(func.count())
         .select_from(Payment)
         .where(Payment.project_id == project_id, Payment.stage_id == stage_id)
     ) == 0
-
-    # The acceptance act may still be generated as an audit document, but a one-person
-    # project must not send the customer a notification about their own acceptance.
-    notified: list[str] = []
-
-    async def capture_notify(_db, *, user_id: str, **_kwargs):
-        notified.append(user_id)
-
-    async def ignore_activity(*_args, **_kwargs):
-        return None
-
-    monkeypatch.setattr(accept_orchestrator.notif, "notify", capture_notify)
-    monkeypatch.setattr(accept_orchestrator.act, "log_event", ignore_activity)
-    await accept_orchestrator.emit_acceptance_side_effects(
-        db,
-        project=project,
-        stage=accepted.stage,
-        accepted_by=customer_id,
-        comment="Проверено лично",
-        payment=None,
-        next_stage=None,
-    )
     assert notified == []
 
 
@@ -239,7 +277,8 @@ async def test_hybrid_customer_does_not_gain_stage_execution_by_self_managed_rul
         phone="+77019999999",
         role=UserRole.contractor,
     )
-    project.contractor_id = contractor.id
+    contractor_id = contractor.id
+    project.contractor_id = contractor_id
     stage = Stage(
         id="self-stage-hybrid-stage",
         project_id=project_id,
@@ -250,11 +289,28 @@ async def test_hybrid_customer_does_not_gain_stage_execution_by_self_managed_rul
         percent_complete=0,
         room_ids_json=json.dumps([room_id]),
     )
+    stage_id = stage.id
     db.add_all([contractor, project, stage])
     await db.commit()
 
     customer = await db.get(User, customer_id)
-    assert customer is not None
+    project = await db.get(Project, project_id)
+    stage = await db.get(Stage, stage_id)
+    assert customer is not None and project is not None and stage is not None
+    hybrid_caps = await stages_ext.stage_detail_capabilities(
+        db,
+        project=project,
+        stage=stage,
+        actor=customer,
+    )
+    assert hybrid_caps == {
+        "can_schedule": False,
+        "can_start": False,
+        "can_submit_for_review": False,
+        "can_review": False,
+        "payment_expected_on_accept": False,
+    }
+
     with pytest.raises(ValueError, match="stage_schedule_actor_forbidden"):
         await mutations.create_stage(
             db,
@@ -264,17 +320,21 @@ async def test_hybrid_customer_does_not_gain_stage_execution_by_self_managed_rul
             room_ids=[room_id],
         )
 
+    # create_stage rolls back on ACL failure, so refetch every ORM entity before
+    # the next operation instead of touching expired instances.
     customer = await db.get(User, customer_id)
-    assert customer is not None
+    stage = await db.get(Stage, stage_id)
+    assert customer is not None and stage is not None
     with pytest.raises(ValueError, match="stage_execution_actor_forbidden"):
         await mutations.start_stage(
             db,
             project_id=project_id,
-            stage_id=stage.id,
+            stage_id=stage_id,
             actor=customer,
         )
 
-    current = await db.get(Stage, stage.id)
+    # start_stage also rolls back on ACL failure; refetch again before mutation.
+    current = await db.get(Stage, stage_id)
     assert current is not None
     current.status = StageStatus.active
     current.percent_complete = 100
@@ -284,7 +344,7 @@ async def test_hybrid_customer_does_not_gain_stage_execution_by_self_managed_rul
     db.add(
         StagePhoto(
             id="self-stage-hybrid-photo",
-            stage_id=stage.id,
+            stage_id=stage_id,
             user_id=customer_id,
             image_url="https://example.com/hybrid.jpg",
         )
@@ -298,6 +358,6 @@ async def test_hybrid_customer_does_not_gain_stage_execution_by_self_managed_rul
         await stage_review_service.submit_for_review(
             db,
             project=project,
-            stage_id=stage.id,
+            stage_id=stage_id,
             actor=customer,
         )
