@@ -44,6 +44,26 @@ class DependsIn(BaseModel):
     depends_on_stage_id: str | None = None
 
 
+async def stage_schedule_capability(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+) -> bool:
+    """Project-level schedule capability derived from the canonical mutation ACL."""
+    try:
+        await stage_mutation_svc._require_schedule_actor(
+            db,
+            project=project,
+            actor=actor,
+        )
+        return True
+    except ValueError as exc:
+        if str(exc) != "stage_schedule_actor_forbidden":
+            raise
+        return False
+
+
 async def stage_detail_capabilities(
     db: AsyncSession,
     *,
@@ -56,17 +76,7 @@ async def stage_detail_capabilities(
     The client treats missing/false capabilities as fail-closed. Backend mutation ACLs
     remain authoritative; these flags only prevent the UI from inventing role rules.
     """
-    can_schedule = False
-    try:
-        await stage_mutation_svc._require_schedule_actor(
-            db,
-            project=project,
-            actor=actor,
-        )
-        can_schedule = True
-    except ValueError as exc:
-        if str(exc) != "stage_schedule_actor_forbidden":
-            raise
+    can_schedule = await stage_schedule_capability(db, project=project, actor=actor)
 
     can_execute = False
     try:
@@ -95,6 +105,10 @@ async def stage_detail_capabilities(
         "can_start": can_execute and status == StageStatus.planned,
         "can_submit_for_review": can_submit and status == StageStatus.active,
         "can_review": can_review,
+        "payment_expected_on_accept": (
+            not stage_mutation_svc.is_self_managed_project(project)
+            and bool(stage.payment_amount and stage.payment_amount > 0)
+        ),
     }
 
 
@@ -283,6 +297,13 @@ async def project_plan(
             if project.planned_end_date
             else None
         ),
+        "capabilities": {
+            "can_schedule": await stage_schedule_capability(
+                db,
+                project=project,
+                actor=user,
+            )
+        },
         "stages": [stage_svc.stage_to_dict(stage) for stage in stages],
     }
 
