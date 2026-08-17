@@ -133,7 +133,11 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
         )
     except ValueError as error:
         code = str(error)
-        if code in ("only_customer_can_accept_work_order", "work_order_role_forbidden"):
+        if code in (
+            "only_customer_can_accept_work_order",
+            "work_order_role_forbidden",
+            wo_svc.WORK_ORDER_FORBIDDEN,
+        ):
             raise HTTPException(403, code) from error
         if code in (
             "payment_transition_required",

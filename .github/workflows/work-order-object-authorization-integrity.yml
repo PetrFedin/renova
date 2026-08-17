@@ -1,0 +1,69 @@
+name: Work order object authorization integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/services/work_order_service.py"
+      - "backend/app/services/_work_order_service_core.py"
+      - "backend/app/services/team_service.py"
+      - "backend/app/api/v1/work_orders.py"
+      - "backend/tests/test_work_order_object_authorization.py"
+      - "backend/tests/test_work_order_transition_integrity.py"
+      - "backend/tests/test_work_order_atomicity.py"
+      - "backend/tests/test_work_order_patch_integrity.py"
+      - ".github/workflows/work-order-object-authorization-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/services/work_order_service.py"
+      - "backend/app/services/_work_order_service_core.py"
+      - "backend/app/services/team_service.py"
+      - "backend/app/api/v1/work_orders.py"
+      - "backend/tests/test_work_order_object_authorization.py"
+      - "backend/tests/test_work_order_transition_integrity.py"
+      - "backend/tests/test_work_order_atomicity.py"
+      - "backend/tests/test_work_order_patch_integrity.py"
+      - ".github/workflows/work-order-object-authorization-integrity.yml"
+
+jobs:
+  work-order-object-authorization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: "sqlite+aiosqlite:///./work-order-object-authorization-tests.db"
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: test-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Run work-order object authorization tests
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 300s poetry run pytest -vv -s --tb=short \
+            tests/test_work_order_object_authorization.py \
+            tests/test_work_order_transition_integrity.py \
+            tests/test_work_order_atomicity.py \
+            tests/test_work_order_patch_integrity.py \
+            2>&1 | tee work-order-object-authorization.log
+      - name: Upload work-order authorization diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-order-object-authorization-diagnostics
+          path: backend/work-order-object-authorization.log
+          if-no-files-found: warn
+          retention-days: 14
