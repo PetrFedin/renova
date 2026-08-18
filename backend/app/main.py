@@ -10,6 +10,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.environment import policy_for, resolve_policy_flag
 from app.core.logging_config import setup_logging
+from app.core.rate_limit import rate_limiter
 from app.core.runtime_policy import configured_runtime_warnings, validate_configured_runtime
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.audit import AuditMiddleware
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
     validate_esign_runtime()
     validate_document_ocr_runtime()
     await validate_otp_runtime()
+    await rate_limiter.ping()
     await init_db()
     validate_storage_runtime()
 
@@ -137,6 +139,7 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(redis_task, timeout=5)
         except Exception:
             redis_task.cancel()
+    await rate_limiter.close()
 
 
 setup_logging()
