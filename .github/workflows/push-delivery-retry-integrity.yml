@@ -81,6 +81,11 @@ jobs:
           set -euo pipefail
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/notificationDeliveryDedup.test.ts
+      - name: Verify async failure observability
+        run: |
+          set -euo pipefail
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/silentCatch.w146.test.ts
       - name: Run fail-closed mobile TypeScript integrity
         run: npm run typecheck:mobile
       - name: Verify cold-start and provider identity wiring
@@ -99,6 +104,7 @@ jobs:
               "createNotificationDeliveryRunner",
               "notificationDeliveryId(data)",
               "data?.return_to ?? data?.returnTo",
+              "onStorageError: (error) => onError?.('notifications.storage', error)",
               "registerNativePushToken",
               "scheduleNativeSyncConflictNotification",
               "setNotificationCategoryAsync('STAGE'",
