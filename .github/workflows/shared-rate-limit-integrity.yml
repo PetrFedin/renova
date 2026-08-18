@@ -1,0 +1,68 @@
+name: Shared public API rate-limit integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/core/rate_limit.py"
+      - "backend/app/core/request_auth.py"
+      - "backend/app/middleware/rate_limit.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_shared_rate_limit_integrity.py"
+      - ".github/workflows/shared-rate-limit-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/core/rate_limit.py"
+      - "backend/app/core/request_auth.py"
+      - "backend/app/middleware/rate_limit.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_shared_rate_limit_integrity.py"
+      - ".github/workflows/shared-rate-limit-integrity.yml"
+
+jobs:
+  shared-rate-limit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: "sqlite+aiosqlite:///./shared-rate-limit-tests.db"
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: test-secret-key-at-least-16
+      RATE_LIMIT_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+      - name: Run shared rate-limit integrity tests
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 300s poetry run pytest -vv -s --tb=short \
+            tests/test_shared_rate_limit_integrity.py \
+            2>&1 | tee shared-rate-limit.log
+      - name: Upload shared rate-limit diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-rate-limit-diagnostics
+          path: backend/shared-rate-limit.log
+          if-no-files-found: warn
+          retention-days: 14
