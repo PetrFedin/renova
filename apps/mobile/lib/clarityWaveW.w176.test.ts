@@ -162,22 +162,32 @@ if (!wo.includes("loadState === 'error'") || !wo.includes('Это не озна�
 }
 
 const workService = src('../../backend/app/services/work_order_service.py');
+const workCore = src('../../backend/app/services/_work_order_service_core.py');
 const workApi = src('../../backend/app/api/v1/work_orders.py');
-if (!workService.includes('ROLE_ALLOWED') || !workService.includes('def validate_transition(')) {
-  throw new Error('backend WO role matrix');
+if (
+  !workService.includes('from app.services import _work_order_service_core as _core') ||
+  !workService.includes('WORK_ORDER_FORBIDDEN') ||
+  !workService.includes('_execution_authorization_basis') ||
+  !workService.includes('async def transition(')
+) {
+  throw new Error('backend WO facade/object authorization boundary');
+}
+if (!workCore.includes('ROLE_ALLOWED') || !workCore.includes('def validate_transition(')) {
+  throw new Error('backend WO role matrix core');
 }
 if (
-  !workService.includes('payment_transition_required') ||
+  !workCore.includes('payment_transition_required') ||
   !workService.includes('event_type=outbox.NOTIFICATION_EVENT') ||
-  workService.includes('notif_svc.notify')
+  workService.includes('notif_svc.notify') ||
+  workCore.includes('notif_svc.notify')
 ) {
   throw new Error('backend WO payment boundary/durable notifications');
 }
 if (!workService.includes('"kind": "work_status"') || !workService.includes('actor_role=')) {
   throw new Error('backend WO durable audit evidence');
 }
-if (!workService.includes('_prepare_work_order_thread') || !workService.includes('ChatThread.topic == topic')) {
-  throw new Error('backend WO dedicated topic-bound chat');
+if (!workCore.includes('_prepare_work_order_thread') || !workCore.includes('ChatThread.topic == topic')) {
+  throw new Error('backend WO dedicated topic-bound chat core');
 }
 if (!workApi.includes('user.role') || !workApi.includes('HTTPException(409, code)')) {
   throw new Error('WO API role/payment enforcement');
