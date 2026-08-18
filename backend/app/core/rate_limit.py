@@ -49,15 +49,24 @@ def rate_limit_storage_key(prefix: str, identity: str) -> str:
 
 
 class SharedRateLimiter:
-    def __init__(self, redis_client: Redis | None = None) -> None:
+    def __init__(
+        self,
+        redis_client: Redis | None = None,
+        *,
+        deployed: bool | None = None,
+    ) -> None:
         self._redis = redis_client
         self._owns_redis = False
+        self._is_deployed = (
+            settings.normalized_environment in {"staging", "production"}
+            if deployed is None
+            else deployed
+        )
         self._local_lock = threading.Lock()
         self._local_windows: dict[str, tuple[int, float]] = {}
 
-    @staticmethod
-    def _deployed() -> bool:
-        return settings.normalized_environment in {"staging", "production"}
+    def _deployed(self) -> bool:
+        return self._is_deployed
 
     def _client(self) -> Redis | None:
         if self._redis is not None:
