@@ -82,7 +82,9 @@ export async function installNativeNotificationInteractions(
   };
   try {
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    runNotificationDelivery = createNotificationDeliveryRunner(AsyncStorage);
+    runNotificationDelivery = createNotificationDeliveryRunner(AsyncStorage, {
+      onStorageError: (error) => onError?.('notifications.storage', error),
+    });
   } catch (error) {
     onError?.('notifications.storage', error);
   }

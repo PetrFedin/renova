@@ -13,6 +13,7 @@ type NotificationDeliveryOptions = {
   retentionMs?: number;
   maxEntries?: number;
   storageKey?: string;
+  onStorageError?: (error: unknown) => void;
 };
 
 const DEFAULT_STORAGE_KEY = '@renova/handled-notification-deliveries:v1';
@@ -64,6 +65,7 @@ export function createNotificationDeliveryRunner(
   const retentionMs = options.retentionMs ?? DEFAULT_RETENTION_MS;
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const storageKey = options.storageKey ?? DEFAULT_STORAGE_KEY;
+  const onStorageError = options.onStorageError;
 
   if (!Number.isFinite(retentionMs) || retentionMs <= 0) {
     throw new Error('notification_delivery_retention_must_be_positive');
@@ -90,7 +92,8 @@ export function createNotificationDeliveryRunner(
       let entries: DeliveryEntry[];
       try {
         entries = parseEntries(await store.getItem(storageKey));
-      } catch {
+      } catch (error) {
+        onStorageError?.(error);
         await action();
         return true;
       }
@@ -108,9 +111,10 @@ export function createNotificationDeliveryRunner(
       ].slice(0, maxEntries);
       try {
         await store.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // Navigation already succeeded. Fail open rather than turning a storage
-        // outage into a notification that cannot be opened.
+      } catch (error) {
+        // silent-catch-ok: caller reporter observes storage failure; navigation
+        // already succeeded and must remain available during storage outages.
+        onStorageError?.(error);
       }
       return true;
     };

@@ -129,13 +129,37 @@ async function main(): Promise<void> {
       throw new Error('storage unavailable');
     },
   };
-  const runUnavailable = createNotificationDeliveryRunner(unavailableStore);
+  let readStorageErrors = 0;
+  const runUnavailable = createNotificationDeliveryRunner(unavailableStore, {
+    onStorageError: () => void (readStorageErrors += 1),
+  });
   let failOpenCount = 0;
   assert(
     await runUnavailable('delivery-storage-outage', () => void (failOpenCount += 1)),
     'storage outage must fail open',
   );
   assert(failOpenCount === 1, 'storage outage must not make notifications unopenable');
+  assert(readStorageErrors === 1, 'storage read failure must be observable');
+
+  const writeFailureStore: NotificationDeliveryStore = {
+    async getItem() {
+      return null;
+    },
+    async setItem() {
+      throw new Error('storage write unavailable');
+    },
+  };
+  let writeStorageErrors = 0;
+  const runWriteFailure = createNotificationDeliveryRunner(writeFailureStore, {
+    onStorageError: () => void (writeStorageErrors += 1),
+  });
+  let writeFailureOpens = 0;
+  assert(
+    await runWriteFailure('delivery-write-outage', () => void (writeFailureOpens += 1)),
+    'storage write outage must remain fail open after navigation',
+  );
+  assert(writeFailureOpens === 1, 'storage write failure must not roll back navigation');
+  assert(writeStorageErrors === 1, 'storage write failure must be observable');
 
   const legacyStore = new MemoryStore();
   const runLegacy = createNotificationDeliveryRunner(legacyStore);
