@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.v1.push import TokenIn, register_token
-from app.services import push_service
+from app.services import notification_service, push_service
 
 
 class ScalarRows:
@@ -20,12 +20,36 @@ class ScalarRows:
         return list(self._rows)
 
 
+class ScalarOneRow:
+    def __init__(self, row):
+        self._row = row
+
+    def scalar_one_or_none(self):
+        return self._row
+
+
 class FakeReadDb:
     def __init__(self, rows):
         self.rows = rows
 
     async def execute(self, _query):
         return ScalarRows(self.rows)
+
+
+class FakeOutboxNotificationDb:
+    def __init__(self, delivery, notification):
+        self.delivery = delivery
+        self.notification = notification
+        self.commits = 0
+
+    async def execute(self, _query):
+        return ScalarOneRow(self.delivery)
+
+    async def get(self, _model, entity_id):
+        return self.notification if entity_id == self.delivery.entity_id else None
+
+    async def commit(self):
+        self.commits += 1
 
 
 class FakeRegisterDb(FakeReadDb):
@@ -99,6 +123,21 @@ def install_client(monkeypatch, handler):
     return client
 
 
+def test_stable_push_delivery_id_is_deterministic_bounded_and_opaque():
+    source = "outbox:6e360415-cf44-4439-a5d1-e697e257ec96"
+
+    first = push_service.stable_push_delivery_id(source)
+    second = push_service.stable_push_delivery_id(source)
+
+    assert first == second
+    assert first.startswith("rn_")
+    assert len(first) <= 64
+    assert source not in first
+    assert first != push_service.stable_push_delivery_id(f"{source}:other")
+    with pytest.raises(ValueError, match="push_delivery_source_id_required"):
+        push_service.stable_push_delivery_id("  ")
+
+
 @pytest.mark.asyncio
 async def test_no_device_token_is_successful_noop(monkeypatch):
     cleanup = AsyncMock()
@@ -106,6 +145,94 @@ async def test_no_device_token_is_successful_noop(monkeypatch):
 
     assert await push_service.send_push(FakeReadDb([]), "user-1", "Title", "Body") is True
     cleanup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delivery_identity_reaches_payload_and_provider_collapse_fields(monkeypatch):
+    client = install_client(
+        monkeypatch,
+        lambda messages, _call: FakeResponse(
+            {"data": [{"status": "ok", "id": f"receipt-{message['to']}"} for message in messages]}
+        ),
+    )
+    cleanup = AsyncMock()
+    monkeypatch.setattr(push_service, "_remove_tokens_persistently", cleanup)
+    delivery_id = push_service.stable_push_delivery_id("outbox:outbox-1")
+
+    accepted = await push_service.send_push(
+        FakeReadDb([token_row(1)]),
+        "user-1",
+        "Title",
+        "Body",
+        {"outbox_id": "outbox-1"},
+        delivery_id=delivery_id,
+    )
+
+    assert accepted is True
+    message = client.calls[0]["json"][0]
+    assert message["collapseId"] == delivery_id
+    assert message["tag"] == delivery_id
+    assert message["mutableContent"] is True
+    assert message["data"]["delivery_id"] == delivery_id
+    assert message["data"]["outbox_id"] == "outbox-1"
+    assert message["data"]["_displayInForeground"] is True
+    assert "mutableContent" not in message["data"]
+    cleanup.assert_awaited_once_with(set())
+
+
+@pytest.mark.asyncio
+async def test_outbox_retry_reuses_same_delivery_identity(monkeypatch):
+    delivery = SimpleNamespace(entity_id="notification-1", delivered_at=None)
+    notification = SimpleNamespace(id="notification-1")
+    db = FakeOutboxNotificationDb(delivery, notification)
+    outcomes = iter([False, True])
+    attempts = []
+
+    async def fake_send_push(
+        _db,
+        user_id,
+        title,
+        body,
+        data=None,
+        *,
+        delivery_id=None,
+    ):
+        attempts.append(
+            {
+                "user_id": user_id,
+                "title": title,
+                "body": body,
+                "data": dict(data or {}),
+                "delivery_id": delivery_id,
+            }
+        )
+        return next(outcomes)
+
+    monkeypatch.setattr(notification_service, "send_push", fake_send_push)
+    call = {
+        "outbox_id": "outbox-retry-1",
+        "user_id": "user-1",
+        "project_id": "project-1",
+        "notification_type": "other",
+        "title": "Title",
+        "body": "Body",
+        "link_path": "/project/project-1",
+        "return_to": "/",
+    }
+
+    with pytest.raises(RuntimeError, match="push_delivery_failed"):
+        await notification_service.notify_from_outbox(db, **call)
+    assert delivery.delivered_at is None
+    assert db.commits == 0
+
+    result = await notification_service.notify_from_outbox(db, **call)
+
+    expected = push_service.stable_push_delivery_id("outbox:outbox-retry-1")
+    assert result is notification
+    assert [attempt["delivery_id"] for attempt in attempts] == [expected, expected]
+    assert all(attempt["data"]["outbox_id"] == "outbox-retry-1" for attempt in attempts)
+    assert delivery.delivered_at is not None
+    assert db.commits == 1
 
 
 @pytest.mark.asyncio

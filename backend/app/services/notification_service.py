@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import AppNotification, NotificationType
 from app.models.outbox_runtime import SideEffectDelivery
-from app.services.push_service import send_push
+from app.services.push_service import send_push, stable_push_delivery_id
 
 _TYPE_ALIASES: dict[str, str] = {
     "material": "materials",
@@ -84,12 +84,14 @@ async def notify(
     db.add(notification)
     await db.commit()
     await db.refresh(notification)
+    delivery_id = stable_push_delivery_id(f"notification:{notification.id}")
     await send_push(
         db,
         user_id,
         title,
         body,
         {"link_path": link_path, "returnTo": return_to or "/"},
+        delivery_id=delivery_id,
     )
     return notification
 
@@ -137,6 +139,7 @@ async def notify_from_outbox(
         await db.refresh(notification)
 
     if delivery.delivered_at is None:
+        delivery_id = stable_push_delivery_id(f"outbox:{outbox_id}")
         accepted = await send_push(
             db,
             user_id,
@@ -147,6 +150,7 @@ async def notify_from_outbox(
                 "returnTo": return_to or "/",
                 "outbox_id": outbox_id,
             },
+            delivery_id=delivery_id,
         )
         if not accepted:
             raise RuntimeError("push_delivery_failed")
