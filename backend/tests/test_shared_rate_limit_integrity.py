@@ -25,7 +25,12 @@ async def _ok(_request):
 
 
 def _app(limiter, *, window_seconds: float = 60) -> Starlette:
-    app = Starlette(routes=[Route("/api/v1/ping", _ok)])
+    app = Starlette(
+        routes=[
+            Route("/api/v1/ping", _ok),
+            Route("/health", _ok),
+        ]
+    )
     app.add_middleware(
         RateLimitMiddleware,
         limiter=limiter,
@@ -103,6 +108,20 @@ async def test_two_app_instances_share_quota_retry_after_and_window_expiry(
 
 
 @pytest.mark.asyncio
+async def test_different_identities_have_independent_shared_quotas(redis_pair):
+    limiter_a = SharedRateLimiter(redis_pair[0])
+    limiter_b = SharedRateLimiter(redis_pair[1])
+
+    first = await limiter_a.check("identity", "user:one", limit=1, window_seconds=5)
+    blocked = await limiter_b.check("identity", "user:one", limit=1, window_seconds=5)
+    independent = await limiter_b.check("identity", "user:two", limit=1, window_seconds=5)
+
+    assert first.allowed is True
+    assert blocked.allowed is False
+    assert independent.allowed is True
+
+
+@pytest.mark.asyncio
 async def test_atomic_shared_quota_cannot_be_oversubscribed(redis_pair):
     limiters = [SharedRateLimiter(redis_pair[0]), SharedRateLimiter(redis_pair[1])]
 
@@ -143,8 +162,12 @@ async def test_test_environment_falls_back_to_deterministic_local_quota(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_deployed_environment_fails_closed_when_redis_is_unavailable(monkeypatch):
-    monkeypatch.setattr(settings, "environment", "production")
+@pytest.mark.parametrize("environment", ["staging", "production"])
+async def test_deployed_environment_fails_closed_when_redis_is_unavailable(
+    monkeypatch,
+    environment,
+):
+    monkeypatch.setattr(settings, "environment", environment)
     limiter = SharedRateLimiter(_FailingRedis())
 
     with pytest.raises(RateLimitBackendUnavailable):
@@ -178,6 +201,21 @@ async def test_middleware_propagates_shared_window_retry_after(monkeypatch):
     assert response.status_code == 429
     assert response.json() == {"detail": "rate_limit"}
     assert response.headers["Retry-After"] == "17"
+
+
+@pytest.mark.asyncio
+async def test_health_path_bypasses_shared_rate_limit_backend(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")
+    app = _app(_UnavailableLimiter())
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 @pytest.mark.asyncio
