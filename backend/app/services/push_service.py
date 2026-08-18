@@ -1,6 +1,7 @@
 """Expo Push API with truthful ticket handling and permanent-token cleanup."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections.abc import Iterator, Sequence
@@ -15,6 +16,7 @@ from app.models.entities import PushToken
 EXPO_URL = "https://exp.host/--/api/v2/push/send"
 MAX_MESSAGES_PER_REQUEST = 100
 _TOKEN_RE = re.compile(r"^(?:ExponentPushToken|ExpoPushToken)\[[^\[\]\s]{6,480}\]$")
+_DELIVERY_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,22 @@ def normalize_expo_push_token(raw: str) -> str:
     if len(token) > 512 or not _TOKEN_RE.fullmatch(token):
         raise ValueError("invalid_expo_push_token")
     return token
+
+
+def stable_push_delivery_id(source_id: str) -> str:
+    """Derive an opaque stable provider/client delivery identity from durable state."""
+    source = str(source_id or "").strip()
+    if not source:
+        raise ValueError("push_delivery_source_id_required")
+    digest = hashlib.sha256(f"renova:push:{source}".encode("utf-8")).hexdigest()
+    return f"rn_{digest[:40]}"
+
+
+def normalize_push_delivery_id(raw: str) -> str:
+    delivery_id = str(raw or "").strip()
+    if not _DELIVERY_ID_RE.fullmatch(delivery_id):
+        raise ValueError("invalid_push_delivery_id")
+    return delivery_id
 
 
 def _chunks(values: Sequence[str], size: int = MAX_MESSAGES_PER_REQUEST) -> Iterator[list[str]]:
@@ -61,6 +79,8 @@ async def send_push(
     title: str,
     body: str,
     data: dict | None = None,
+    *,
+    delivery_id: str | None = None,
 ) -> bool:
     """Return whether all deliverable device tokens were accepted by Expo.
 
@@ -69,7 +89,15 @@ async def send_push(
     every push ticket must be inspected. DeviceNotRegistered tokens are removed
     permanently; transient/provider/payload errors return False so the outbox can
     retry instead of recording a false delivery.
+
+    Expo transport is still at-least-once. A stable delivery_id is propagated to
+    provider collapse/tag fields and to the app payload so retries can replace or
+    suppress duplicate user-visible effects without pretending the provider
+    offers request-level exactly-once semantics.
     """
+    normalized_delivery_id = (
+        normalize_push_delivery_id(delivery_id) if delivery_id is not None else None
+    )
     result = await db.execute(
         select(PushToken)
         .where(PushToken.user_id == user_id)
@@ -97,22 +125,26 @@ async def send_push(
         await _remove_tokens_persistently(permanently_invalid)
         return True
 
+    payload_data = {**(data or {}), "_displayInForeground": True}
+    if normalized_delivery_id:
+        payload_data["delivery_id"] = normalized_delivery_id
+
     all_deliverable_accepted = True
     async with httpx.AsyncClient(timeout=10) as client:
         for token_chunk in _chunks(tokens):
-            messages = [
-                {
+            messages: list[dict[str, object]] = []
+            for token in token_chunk:
+                message: dict[str, object] = {
                     "to": token,
                     "title": title,
                     "body": body,
-                    "data": {
-                        **(data or {}),
-                        "mutableContent": True,
-                        "_displayInForeground": True,
-                    },
+                    "data": dict(payload_data),
+                    "mutableContent": True,
                 }
-                for token in token_chunk
-            ]
+                if normalized_delivery_id:
+                    message["collapseId"] = normalized_delivery_id
+                    message["tag"] = normalized_delivery_id
+                messages.append(message)
             try:
                 response = await client.post(
                     EXPO_URL,

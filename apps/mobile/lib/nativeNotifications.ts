@@ -1,5 +1,9 @@
 import { Platform } from 'react-native';
 import {
+  createNotificationDeliveryRunner,
+  notificationDeliveryId,
+} from '@/lib/notificationDeliveryDedup';
+import {
   isNativeNotificationPlatform,
   shouldScheduleNativeConflictNotification,
 } from '@/lib/nativeNotificationPolicy';
@@ -11,9 +15,24 @@ export type NotificationNavigationPayload = {
 };
 
 type NotificationSetupError = (
-  scope: 'notifications.category' | 'notifications.listener',
+  scope:
+    | 'notifications.category'
+    | 'notifications.listener'
+    | 'notifications.response'
+    | 'notifications.cold_start'
+    | 'notifications.storage',
   error: unknown,
 ) => void;
+
+type NotificationResponseLike = {
+  notification: {
+    request: {
+      content: {
+        data?: unknown;
+      };
+    };
+  };
+};
 
 export function supportsNativeNotifications(platform = Platform.OS): boolean {
   return isNativeNotificationPlatform(platform);
@@ -21,7 +40,8 @@ export function supportsNativeNotifications(platform = Platform.OS): boolean {
 
 function navigationPayload(data: Record<string, unknown> | undefined): NotificationNavigationPayload {
   const linkPath = typeof data?.link_path === 'string' ? data.link_path : undefined;
-  const returnTo = typeof data?.return_to === 'string' ? data.return_to : undefined;
+  const returnToValue = data?.return_to ?? data?.returnTo;
+  const returnTo = typeof returnToValue === 'string' ? returnToValue : undefined;
   return {
     linkPath,
     returnTo,
@@ -29,11 +49,22 @@ function navigationPayload(data: Record<string, unknown> | undefined): Notificat
   };
 }
 
+function responseData(response: NotificationResponseLike): Record<string, unknown> | undefined {
+  const raw = response.notification.request.content.data;
+  return typeof raw === 'object' && raw !== null
+    ? (raw as Record<string, unknown>)
+    : undefined;
+}
+
 /**
  * Register notification actions and response navigation only on platforms where
  * expo-notifications implements them. The dynamic import is intentional: even
  * importing expo-notifications on web installs unsupported listeners and emits
  * runtime warnings that pollute release observability.
+ *
+ * Live and cold-start responses share one serialized delivery runner. A stable
+ * delivery identity is persisted only after navigation succeeds, so duplicate
+ * responses are suppressed without making a failed navigation unretryable.
  */
 export async function installNativeNotificationInteractions(
   onOpen: (payload: NotificationNavigationPayload) => void,
@@ -42,6 +73,25 @@ export async function installNativeNotificationInteractions(
   if (!supportsNativeNotifications()) return () => undefined;
 
   const Notifications = await import('expo-notifications');
+  let runNotificationDelivery = async (
+    _deliveryId: string | undefined,
+    action: () => void | Promise<void>,
+  ): Promise<boolean> => {
+    await action();
+    return true;
+  };
+  try {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    runNotificationDelivery = createNotificationDeliveryRunner(AsyncStorage);
+  } catch (error) {
+    onError?.('notifications.storage', error);
+  }
+
+  const handleResponse = async (response: NotificationResponseLike): Promise<void> => {
+    const data = responseData(response);
+    await runNotificationDelivery(notificationDeliveryId(data), () => onOpen(navigationPayload(data)));
+  };
+
   try {
     await Notifications.setNotificationCategoryAsync('STAGE', [
       {
@@ -54,17 +104,29 @@ export async function installNativeNotificationInteractions(
     onError?.('notifications.category', error);
   }
 
+  let subscription: { remove(): void };
   try {
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      onOpen(navigationPayload(
-        response.notification.request.content.data as Record<string, unknown> | undefined,
-      ));
+    subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      void handleResponse(response).catch((error) => {
+        onError?.('notifications.response', error);
+      });
     });
-    return () => subscription.remove();
   } catch (error) {
     onError?.('notifications.listener', error);
     return () => undefined;
   }
+
+  try {
+    const lastResponse = await Notifications.getLastNotificationResponseAsync();
+    if (lastResponse) {
+      await handleResponse(lastResponse);
+      await Notifications.clearLastNotificationResponseAsync();
+    }
+  } catch (error) {
+    onError?.('notifications.cold_start', error);
+  }
+
+  return () => subscription.remove();
 }
 
 /**

@@ -1,0 +1,125 @@
+name: Push delivery retry integrity
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/push_service.py"
+      - "backend/app/services/notification_service.py"
+      - "backend/tests/test_push_delivery_integrity.py"
+      - "apps/mobile/lib/nativeNotifications.ts"
+      - "apps/mobile/lib/notificationDeliveryDedup.ts"
+      - "apps/mobile/lib/notificationDeliveryDedup.test.ts"
+      - "apps/mobile/package.json"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/typecheck-mobile.sh"
+      - "scripts/typecheck-mobile-report.mjs"
+      - "docs/push-delivery-reliability.md"
+      - ".github/workflows/push-delivery-retry-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: push-delivery-retry-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-push-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./push-delivery-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Verify retry-safe push contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 480s poetry run pytest -vv -s --tb=short tests/test_push_delivery_integrity.py \
+            2>&1 | tee push-delivery-retry-integrity.log
+      - name: Upload backend push diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: push-delivery-backend-diagnostics
+          path: backend/push-delivery-retry-integrity.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  mobile-push-interactions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Verify durable notification interaction dedupe
+        run: |
+          set -euo pipefail
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/notificationDeliveryDedup.test.ts
+      - name: Run fail-closed mobile TypeScript integrity
+        run: npm run typecheck:mobile
+      - name: Verify cold-start and provider identity wiring
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          native = Path("apps/mobile/lib/nativeNotifications.ts").read_text(encoding="utf-8")
+          push = Path("backend/app/services/push_service.py").read_text(encoding="utf-8")
+          notification = Path("backend/app/services/notification_service.py").read_text(encoding="utf-8")
+
+          required_native = [
+              "getLastNotificationResponseAsync",
+              "clearLastNotificationResponseAsync",
+              "createNotificationDeliveryRunner",
+              "notificationDeliveryId(data)",
+              "data?.return_to ?? data?.returnTo",
+              "registerNativePushToken",
+              "scheduleNativeSyncConflictNotification",
+              "setNotificationCategoryAsync('STAGE'",
+          ]
+          missing_native = [token for token in required_native if token not in native]
+          if missing_native:
+              raise SystemExit(f"native notification retry contract missing: {missing_native}")
+
+          required_backend = [
+              'message["collapseId"] = normalized_delivery_id',
+              'message["tag"] = normalized_delivery_id',
+              '"mutableContent": True',
+              'payload_data["delivery_id"] = normalized_delivery_id',
+          ]
+          missing_backend = [token for token in required_backend if token not in push]
+          if missing_backend:
+              raise SystemExit(f"provider delivery identity contract missing: {missing_backend}")
+
+          if 'stable_push_delivery_id(f"outbox:{outbox_id}")' not in notification:
+              raise SystemExit("outbox retry is not wired to a stable push delivery id")
+          if 'stable_push_delivery_id(f"notification:{notification.id}")' not in notification:
+              raise SystemExit("direct notification is not wired to a stable push delivery id")
+          print("push delivery retry source contracts OK")
+          PY
