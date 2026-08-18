@@ -15,6 +15,7 @@ from app.models.entities import PushToken
 
 EXPO_URL = "https://exp.host/--/api/v2/push/send"
 MAX_MESSAGES_PER_REQUEST = 100
+PUSH_CATEGORY_ID = "STAGE"
 _TOKEN_RE = re.compile(r"^(?:ExponentPushToken|ExpoPushToken)\[[^\[\]\s]{6,480}\]$")
 _DELIVERY_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 
@@ -139,6 +140,7 @@ async def send_push(
                     "title": title,
                     "body": body,
                     "data": dict(payload_data),
+                    "categoryId": PUSH_CATEGORY_ID,
                     "mutableContent": True,
                 }
                 if normalized_delivery_id:

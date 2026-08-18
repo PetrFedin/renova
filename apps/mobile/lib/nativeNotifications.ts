@@ -160,6 +160,7 @@ export async function scheduleNativeSyncConflictNotification(conflicts: number):
       title: 'Конфликт синхронизации',
       body: `${Math.floor(conflicts)} изменений требуют решения`,
       data: { link_path: '/conflicts', return_to: '/' },
+      categoryIdentifier: 'STAGE',
     },
     trigger: null,
   });

@@ -102,6 +102,7 @@ jobs:
               "registerNativePushToken",
               "scheduleNativeSyncConflictNotification",
               "setNotificationCategoryAsync('STAGE'",
+              "categoryIdentifier: 'STAGE'",
           ]
           missing_native = [token for token in required_native if token not in native]
           if missing_native:
@@ -110,6 +111,7 @@ jobs:
           required_backend = [
               'message["collapseId"] = normalized_delivery_id',
               'message["tag"] = normalized_delivery_id',
+              '"categoryId": PUSH_CATEGORY_ID',
               '"mutableContent": True',
               'payload_data["delivery_id"] = normalized_delivery_id',
           ]
