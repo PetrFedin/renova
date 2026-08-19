@@ -11,6 +11,7 @@ on:
       - "backend/app/services/push_receipt_service.py"
       - "backend/app/services/push_receipt_worker.py"
       - "backend/alembic/versions/w12pushreceipt01_expo_push_receipts.py"
+      - "backend/tests/test_database_revision_guard.py"
       - "backend/tests/test_push_delivery_integrity.py"
       - "backend/tests/test_push_receipt_reconciliation_integrity.py"
       - "docs/push-delivery-reliability.md"
@@ -68,11 +69,12 @@ jobs:
           poetry run python -m alembic upgrade head
           poetry run python -m alembic downgrade w11refundreview01
           poetry run python -m alembic upgrade head
-      - name: Verify receipt persistence provider semantics and replica fencing
+      - name: Verify receipt persistence provider semantics replica fencing and revision head
         working-directory: backend
         run: |
           set -o pipefail
           timeout 600s poetry run pytest -vv -s --tb=short \
+            tests/test_database_revision_guard.py \
             tests/test_push_delivery_integrity.py \
             tests/test_push_receipt_reconciliation_integrity.py \
             2>&1 | tee push-receipt-reconciliation.log
@@ -87,6 +89,7 @@ jobs:
           config = Path("backend/app/core/config.py").read_text(encoding="utf-8")
           service = Path("backend/app/services/push_receipt_service.py").read_text(encoding="utf-8")
           push = Path("backend/app/services/push_service.py").read_text(encoding="utf-8")
+          revision_guard = Path("backend/tests/test_database_revision_guard.py").read_text(encoding="utf-8")
 
           required = {
               "main.py": ["push_receipt_worker_loop", "push_receipt_worker_interval_sec"],
@@ -100,6 +103,7 @@ jobs:
                   'status="expired"',
               ],
               "push_service.py": ["record_accepted_tickets_persistently", "AcceptedPushTicket"],
+              "revision_guard.py": ["w12pushreceipt01"],
           }
           sources = {
               "main.py": main,
@@ -107,6 +111,7 @@ jobs:
               "config.py": config,
               "push_receipt_service.py": service,
               "push_service.py": push,
+              "revision_guard.py": revision_guard,
           }
           for name, tokens in required.items():
               missing = [token for token in tokens if token not in sources[name]]
