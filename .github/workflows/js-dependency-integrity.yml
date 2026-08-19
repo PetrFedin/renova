@@ -1,0 +1,115 @@
+name: JS dependency integrity
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "apps/*/package.json"
+      - "packages/*/package.json"
+      - "scripts/check-npm-audit-baseline.mjs"
+      - ".github/workflows/js-dependency-integrity.yml"
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "apps/*/package.json"
+      - "packages/*/package.json"
+      - "scripts/check-npm-audit-baseline.mjs"
+      - ".github/workflows/js-dependency-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: js-dependency-integrity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.20.2"
+          cache: npm
+      - name: Install exactly from reviewed lockfile
+        run: npm ci
+      - name: Verify deterministic local test tooling
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const tsx = pkg.devDependencies?.tsx;
+          if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tsx ?? '')) {
+            throw new Error(`root devDependency tsx must be exact, got ${tsx}`);
+          }
+          if (lock.packages?.['']?.devDependencies?.tsx !== tsx) {
+            throw new Error('package-lock root tsx declaration does not match package.json');
+          }
+          const lockedTsx = lock.packages?.['node_modules/tsx'];
+          if (!lockedTsx || lockedTsx.version !== tsx || lockedTsx.dev !== true) {
+            throw new Error('package-lock must contain the exact dev-only tsx package');
+          }
+          const source = fs.readFileSync('package.json', 'utf8');
+          if (source.includes('npx tsx')) {
+            throw new Error('package scripts must execute the lockfile-installed tsx binary directly');
+          }
+          if (!fs.existsSync('node_modules/.bin/tsx')) {
+            throw new Error('npm ci did not install the reviewed local tsx binary');
+          }
+          console.log(`deterministic tsx ${tsx} is installed from package-lock.json`);
+          NODE
+      - name: Capture and enforce production audit baseline
+        run: |
+          set -euo pipefail
+          set +e
+          npm audit --omit=dev --json > npm-audit-production.json
+          audit_status=$?
+          set -e
+          node scripts/check-npm-audit-baseline.mjs npm-audit-production.json
+          echo "raw npm production audit exit=$audit_status; baseline policy passed"
+      - name: Capture full dependency audit
+        run: |
+          set -euo pipefail
+          set +e
+          npm audit --json > npm-audit-full.json
+          audit_status=$?
+          set -e
+          node - <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('npm-audit-full.json', 'utf8'));
+          if (report.error) throw new Error(`npm audit error: ${JSON.stringify(report.error)}`);
+          const v = report.metadata?.vulnerabilities ?? {};
+          console.log(`full audit total=${v.total ?? 'n/a'} critical=${v.critical ?? 'n/a'} high=${v.high ?? 'n/a'} moderate=${v.moderate ?? 'n/a'} low=${v.low ?? 'n/a'}`);
+          NODE
+          echo "raw npm full audit exit=$audit_status"
+      - name: Run mobile contracts without implicit package installation
+        run: |
+          set -o pipefail
+          npm run mobile:test 2>&1 | tee js-dependency-mobile-test.log
+          if grep -Fq "npm warn exec" js-dependency-mobile-test.log; then
+            echo "implicit npx package installation/resolution detected" >&2
+            exit 1
+          fi
+          if grep -Fq "will be installed:" js-dependency-mobile-test.log; then
+            echo "unreviewed package installation detected during tests" >&2
+            exit 1
+          fi
+      - name: Upload dependency diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-dependency-integrity-diagnostics
+          path: |
+            npm-audit-production.json
+            npm-audit-full.json
+            js-dependency-mobile-test.log
+          if-no-files-found: warn
+          retention-days: 14
