@@ -1,0 +1,58 @@
+name: JS dependency discovery
+
+on:
+  push:
+    branches:
+      - agent/js-dependency-supply-chain-hardening
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: js-dependency-discovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Resolve exact tsx development dependency
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --save-dev --save-exact tsx@4.23.12
+      - name: Capture dependency audits
+        run: |
+          set +e
+          npm audit --json > npm-audit-full.json
+          full_status=$?
+          npm audit --omit=dev --json > npm-audit-production.json
+          prod_status=$?
+          set -e
+          node - <<'NODE'
+          const fs = require('fs');
+          for (const file of ['npm-audit-full.json', 'npm-audit-production.json']) {
+            const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const v = report.metadata?.vulnerabilities || {};
+            console.log(`${file}: total=${v.total ?? 'n/a'} critical=${v.critical ?? 'n/a'} high=${v.high ?? 'n/a'} moderate=${v.moderate ?? 'n/a'} low=${v.low ?? 'n/a'}`);
+          }
+          NODE
+          echo "full_audit_exit=$full_status"
+          echo "production_audit_exit=$prod_status"
+      - name: Upload generated lock and audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-dependency-discovery
+          path: |
+            package.json
+            package-lock.json
+            npm-audit-full.json
+            npm-audit-production.json
+          if-no-files-found: error
+          retention-days: 7
