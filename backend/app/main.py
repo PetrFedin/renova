@@ -59,6 +59,11 @@ def _release_sha() -> str:
     return value or "unknown"
 
 
+def _release_digest() -> str:
+    value = (os.getenv("RENOVA_IMAGE_DIGEST") or "unknown").strip()
+    return value or "unknown"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     policy = validate_configured_runtime()
@@ -251,6 +256,7 @@ async def health():
         "version": "0.3.7",
         "environment": settings.normalized_environment,
         "release": _release_sha(),
+        "artifact_digest": _release_digest(),
     }
 
 
@@ -268,6 +274,7 @@ async def readiness():
                 "status": "not_ready",
                 "service": "renova-api",
                 "release": _release_sha(),
+                "artifact_digest": _release_digest(),
             },
         )
 
@@ -275,4 +282,5 @@ async def readiness():
         "status": "ready",
         "service": "renova-api",
         "release": _release_sha(),
+        "artifact_digest": _release_digest(),
     }
