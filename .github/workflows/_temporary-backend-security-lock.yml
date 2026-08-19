@@ -1,0 +1,53 @@
+name: Temporary backend security lock resolver
+
+on:
+  push:
+    branches: [agent/immutable-backend-image]
+    paths:
+      - ".github/workflows/_temporary-backend-security-lock.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  resolve-and-remove-self:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/immutable-backend-image
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Resolve only the reviewed backend security upgrade
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry update fastapi python-multipart --lock --no-interaction
+          poetry check --lock
+          python - <<'PY'
+          from pathlib import Path
+          lock = Path('poetry.lock').read_text()
+          for package, version in (
+              ('fastapi', '0.141.1'),
+              ('python-multipart', '0.0.32'),
+              ('starlette', '1.6.0'),
+          ):
+              marker = f'name = "{package}"\nversion = "{version}"'
+              if marker not in lock:
+                  raise SystemExit(f'locked {package} is not the reviewed {version}')
+          PY
+      - name: Commit resolver output and remove write-enabled workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Renova CI"
+          git config user.email "81327591+PetrFedin@users.noreply.github.com"
+          git rm .github/workflows/_temporary-backend-security-lock.yml
+          git add backend/poetry.lock
+          git diff --cached --check
+          git commit -m "Lock secure backend HTTP dependency graph"
+          git push origin HEAD:agent/immutable-backend-image
