@@ -1,10 +1,23 @@
-# Temporary same-repo migration runner; restores this file from main before committing.
 name: Backend dependency integrity
 
 on:
+  push:
+    paths:
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
+      - ".github/workflows/backend-dependency-integrity.yml"
   pull_request:
     paths:
-      - "backend/tests/test_calendar_mutation_integrity.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
       - ".github/workflows/backend-dependency-integrity.yml"
 
 concurrency:
@@ -15,70 +28,7 @@ permissions:
   contents: read
 
 jobs:
-  temporary-calendar-route-migration:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/immutable-backend-image' && github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/immutable-backend-image
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.13"
-
-      - name: Apply remaining public route-context migration
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("backend/tests/test_calendar_mutation_integrity.py")
-          text = path.read_text()
-
-          old_import = "import pytest\nfrom sqlalchemy import func, select\n"
-          new_import = "import pytest\nfrom fastapi.routing import iter_route_contexts\nfrom sqlalchemy import func, select\n"
-          if text.count(old_import) != 1:
-              raise SystemExit("calendar mutation import anchor drifted")
-          text = text.replace(old_import, new_import, 1)
-
-          old_loop = '''            route\n            for route in app.routes\n            if getattr(route, "path", None) == path\n            and method in (getattr(route, "methods", set()) or set())\n'''
-          new_loop = '''            route\n            for route in iter_route_contexts(app.routes)\n            if route.path == path\n            and method in (route.methods or set())\n'''
-          if text.count(old_loop) != 1:
-              raise SystemExit("calendar mutation route-loop anchor drifted")
-          path.write_text(text.replace(old_loop, new_loop, 1))
-          PY
-
-      - name: Verify complete calendar contracts
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check "poetry==2.4.1"
-          poetry sync --no-interaction
-          poetry run pytest -q \
-            tests/test_calendar_integrity.py \
-            tests/test_calendar_mutation_integrity.py \
-            tests/test_calendar_revoked_access.py
-
-      - name: Restore read-only workflow and commit migration
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1 --no-tags
-          git show FETCH_HEAD:.github/workflows/backend-dependency-integrity.yml > .github/workflows/backend-dependency-integrity.yml
-          git config user.name "Renova CI"
-          git config user.email "81327591+PetrFedin@users.noreply.github.com"
-          git add backend/tests/test_calendar_mutation_integrity.py .github/workflows/backend-dependency-integrity.yml
-          git diff --cached --check
-          git commit -m "Adapt calendar mutation route contract"
-          git push origin HEAD:agent/immutable-backend-image
-
   locked-backend-contract:
-    if: github.event_name != 'pull_request' || github.head_ref != 'agent/immutable-backend-image'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
