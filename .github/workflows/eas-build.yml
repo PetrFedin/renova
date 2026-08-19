@@ -26,6 +26,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
   preflight-and-build:
     runs-on: ubuntu-latest
@@ -35,12 +38,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.22.2"
           cache: npm
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.12.13"
 
       - name: Validate requested release path
         shell: bash
@@ -61,20 +64,22 @@ jobs:
       - name: Install workspace dependencies
         run: npm ci
 
-      - name: Install backend dependencies for release guards
+      - name: Install locked backend dependencies for release guards
         working-directory: backend
         run: |
           set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
 
       - name: Repo and EAS preflight
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: bash scripts/testflight-preflight.sh --ci --profile "${{ inputs.profile }}"
 
-      - name: EAS build and optional submit — wait for outcome
+      - name: EAS build and optional exact-build submit
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         shell: bash
@@ -85,19 +90,109 @@ jobs:
             exit 1
           fi
 
+          release_dir="${RUNNER_TEMP}/renova-eas-release"
+          build_json="${release_dir}/eas-build.json"
+          build_records="${release_dir}/build-records.tsv"
+          release_metadata="${release_dir}/release-metadata.json"
+          mkdir -p "$release_dir"
+
           cd apps/mobile
-          npx eas-cli@latest build \
+          app_version="$(node -p "require('./package.json').version")"
+          release_message="renova git=${GITHUB_SHA} version=${app_version} profile=${{ inputs.profile }}"
+
+          bash ../../scripts/eas-cli.sh build \
             --platform "${{ inputs.platform }}" \
             --profile "${{ inputs.profile }}" \
+            --message "$release_message" \
             --non-interactive \
-            --wait
+            --wait \
+            --json > "$build_json"
+
+          BUILD_JSON="$build_json" \
+          BUILD_RECORDS="$build_records" \
+          RELEASE_METADATA="$release_metadata" \
+          EXPECTED_PLATFORM="${{ inputs.platform }}" \
+          RELEASE_PROFILE="${{ inputs.profile }}" \
+          APP_VERSION="$app_version" \
+          RELEASE_MESSAGE="$release_message" \
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const parsed = JSON.parse(fs.readFileSync(process.env.BUILD_JSON, 'utf8'));
+          const builds = Array.isArray(parsed) ? parsed : [parsed];
+          if (builds.length === 0) throw new Error('EAS returned no build records');
+
+          const normalized = builds.map((build) => {
+            const id = String(build?.id ?? '').trim();
+            const platform = String(build?.platform ?? '').trim().toLowerCase();
+            if (!id) throw new Error(`EAS build record is missing id: ${JSON.stringify(build)}`);
+            if (!['ios', 'android'].includes(platform)) {
+              throw new Error(`EAS build ${id} has unsupported platform: ${platform || 'empty'}`);
+            }
+            return { id, platform };
+          });
+
+          const byPlatform = new Map();
+          for (const build of normalized) {
+            if (byPlatform.has(build.platform)) {
+              throw new Error(`EAS returned duplicate ${build.platform} build records`);
+            }
+            byPlatform.set(build.platform, build.id);
+          }
+
+          const expected = process.env.EXPECTED_PLATFORM === 'all'
+            ? ['android', 'ios']
+            : [process.env.EXPECTED_PLATFORM];
+          const actual = [...byPlatform.keys()].sort();
+          if (JSON.stringify(actual) !== JSON.stringify([...expected].sort())) {
+            throw new Error(`EAS build platforms mismatch: expected=${expected} actual=${actual}`);
+          }
+
+          const rows = actual.map((platform) => `${platform}\t${byPlatform.get(platform)}`);
+          fs.writeFileSync(process.env.BUILD_RECORDS, `${rows.join('\n')}\n`);
+          fs.writeFileSync(
+            process.env.RELEASE_METADATA,
+            `${JSON.stringify({
+              git_sha: process.env.GITHUB_SHA,
+              app_version: process.env.APP_VERSION,
+              profile: process.env.RELEASE_PROFILE,
+              requested_platform: process.env.EXPECTED_PLATFORM,
+              message: process.env.RELEASE_MESSAGE,
+              builds: actual.map((platform) => ({ platform, id: byPlatform.get(platform) })),
+            }, null, 2)}\n`,
+          );
+          NODE
 
           if [ "${{ inputs.submit }}" = "true" ]; then
-            submit_profile="${{ inputs.profile }}"
-            npx eas-cli@latest submit \
-              --platform "${{ inputs.platform }}" \
-              --profile "$submit_profile" \
-              --non-interactive \
-              --latest \
-              --wait
+            while IFS=$'\t' read -r build_platform build_id; do
+              test -n "$build_platform"
+              test -n "$build_id"
+              bash ../../scripts/eas-cli.sh submit \
+                --platform "$build_platform" \
+                --profile "${{ inputs.profile }}" \
+                --id "$build_id" \
+                --non-interactive \
+                --wait
+            done < "$build_records"
           fi
+
+          {
+            echo "### EAS release identity"
+            echo
+            echo "- Git SHA: \`${GITHUB_SHA}\`"
+            echo "- App version: \`${app_version}\`"
+            echo "- Profile: \`${{ inputs.profile }}\`"
+            echo "- Submit: \`${{ inputs.submit }}\`"
+            while IFS=$'\t' read -r build_platform build_id; do
+              echo "- ${build_platform} EAS build ID: \`${build_id}\`"
+            done < "$build_records"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release identity metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eas-release-identity
+          if-no-files-found: ignore
+          retention-days: 90
+          path: ${{ runner.temp }}/renova-eas-release/release-metadata.json
