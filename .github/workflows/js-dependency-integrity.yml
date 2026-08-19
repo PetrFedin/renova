@@ -2,13 +2,6 @@ name: JS dependency integrity
 
 on:
   pull_request:
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - "apps/*/package.json"
-      - "packages/*/package.json"
-      - "scripts/check-npm-audit-baseline.mjs"
-      - ".github/workflows/js-dependency-integrity.yml"
   push:
     branches: [main]
     paths:
@@ -18,6 +11,8 @@ on:
       - "packages/*/package.json"
       - "scripts/check-npm-audit-baseline.mjs"
       - ".github/workflows/js-dependency-integrity.yml"
+  schedule:
+    - cron: "17 5 * * *"
   workflow_dispatch:
 
 permissions:
@@ -75,6 +70,41 @@ jobs:
           set -e
           node scripts/check-npm-audit-baseline.mjs npm-audit-production.json
           echo "raw npm production audit exit=$audit_status; baseline policy passed"
+      - name: Prove audit baseline rejects a new high advisory
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('npm-audit-production.json', 'utf8'));
+          report.vulnerabilities ??= {};
+          report.vulnerabilities['renova-synthetic-high'] = {
+            name: 'renova-synthetic-high',
+            severity: 'high',
+            via: [{
+              source: 999999999,
+              name: 'renova-synthetic-high',
+              dependency: 'renova-synthetic-high',
+              title: 'synthetic unapproved high advisory',
+              url: 'https://github.com/advisories/GHSA-aaaa-bbbb-cccc',
+              severity: 'high',
+              range: '*',
+            }],
+            effects: [],
+            range: '*',
+            nodes: ['node_modules/renova-synthetic-high'],
+            fixAvailable: false,
+          };
+          report.metadata ??= {};
+          report.metadata.vulnerabilities ??= {};
+          report.metadata.vulnerabilities.high = Number(report.metadata.vulnerabilities.high ?? 0) + 1;
+          report.metadata.vulnerabilities.total = Number(report.metadata.vulnerabilities.total ?? 0) + 1;
+          fs.writeFileSync('npm-audit-synthetic-high.json', JSON.stringify(report));
+          NODE
+          if node scripts/check-npm-audit-baseline.mjs npm-audit-synthetic-high.json; then
+            echo "audit baseline accepted an unapproved synthetic high advisory" >&2
+            exit 1
+          fi
+          echo "audit baseline failed closed on synthetic high as required"
       - name: Capture full dependency audit
         run: |
           set -euo pipefail
@@ -91,6 +121,7 @@ jobs:
           NODE
           echo "raw npm full audit exit=$audit_status"
       - name: Run mobile contracts without implicit package installation
+        if: github.event_name != 'schedule'
         run: |
           set -o pipefail
           npm run mobile:test 2>&1 | tee js-dependency-mobile-test.log
@@ -109,6 +140,7 @@ jobs:
           name: js-dependency-integrity-diagnostics
           path: |
             npm-audit-production.json
+            npm-audit-synthetic-high.json
             npm-audit-full.json
             js-dependency-mobile-test.log
           if-no-files-found: warn
