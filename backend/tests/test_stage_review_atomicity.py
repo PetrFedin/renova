@@ -4,6 +4,7 @@ from datetime import date
 import json
 
 import pytest
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 
 from app.main import app
@@ -470,7 +471,7 @@ def test_runtime_has_one_canonical_submit_and_reject_handler():
         "/api/v1/projects/{project_id}/stages/{stage_id}/submit",
         "/api/v1/projects/{project_id}/stages/{stage_id}/reject",
     }
-    for route in app.routes:
+    for route in iter_route_contexts(app.routes):
         path = getattr(route, "path", "")
         methods = set(getattr(route, "methods", set()) or set())
         if path in expected and "POST" in methods:

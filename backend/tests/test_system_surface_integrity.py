@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 import re
 
-from fastapi.routing import APIRoute
+from fastapi.routing import iter_route_contexts
 
 from app.main import app
 
@@ -11,10 +11,16 @@ from app.main import app
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 PATH_PARAMETER_PATTERN = re.compile(r"\{([^{}]+)\}")
+FRAMEWORK_SURFACE_PATHS = {
+    "/openapi.json",
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+}
 
 
-def _api_routes() -> list[APIRoute]:
-    return [route for route in app.routes if isinstance(route, APIRoute)]
+def _api_routes() -> list:
+    return list(iter_route_contexts(app.routes))
 
 
 def test_runtime_has_no_duplicate_method_path_handlers() -> None:
@@ -64,11 +70,13 @@ def test_api_paths_are_canonical() -> None:
     violations: list[str] = []
     for route in _api_routes():
         path = route.path
+        if not path or path in FRAMEWORK_SURFACE_PATHS:
+            continue
         if "//" in path:
             violations.append(f"double slash: {path}")
         if path != "/" and path.endswith("/"):
             violations.append(f"trailing slash: {path}")
-        if path not in {"/health"} and not path.startswith(("/api/v1/", "/ws/")):
+        if path not in {"/health", "/ready"} and not path.startswith(("/api/v1/", "/ws/")):
             violations.append(f"outside canonical surface: {path}")
 
     assert not violations, "Non-canonical API paths:\n" + "\n".join(sorted(violations))

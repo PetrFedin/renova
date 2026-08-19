@@ -1,0 +1,177 @@
+name: Backend image integrity
+
+on:
+  pull_request:
+    paths:
+      - ".dockerignore"
+      - "backend/Dockerfile"
+      - "backend/poetry.lock"
+      - "backend/pyproject.toml"
+      - "backend/app/**"
+      - "backend/alembic/**"
+      - "backend/alembic.ini"
+      - ".github/workflows/backend-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".dockerignore"
+      - "backend/Dockerfile"
+      - "backend/poetry.lock"
+      - "backend/pyproject.toml"
+      - "backend/app/**"
+      - "backend/alembic/**"
+      - "backend/alembic.ini"
+      - ".github/workflows/backend-image.yml"
+
+concurrency:
+  group: backend-image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/petrfedin/renova-api
+
+jobs:
+  validate-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Build exact-commit image for validation
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          load: true
+          push: false
+          tags: renova-api:ci
+          build-args: |
+            VCS_REF=${{ github.sha }}
+
+      - name: Verify immutable metadata and non-root runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect --format '{{.Config.User}}' renova-api:ci)" = "10001:10001"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' renova-api:ci)" = "${GITHUB_SHA}"
+          docker run --rm --entrypoint sh renova-api:ci -c 'test "$(id -u):$(id -g)" = "10001:10001"'
+
+      - name: Fail on fixed high or critical image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: renova-api:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Exercise liveness, readiness and release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs renova-api-ci > /tmp/renova-backend-image.log 2>&1 || true
+            docker rm -f renova-api-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name renova-api-ci -p 18100:8100 \
+            -e ENVIRONMENT=development \
+            -e DATABASE_URL=sqlite+aiosqlite:////tmp/renova.db \
+            -e ALLOW_CREATE_ALL=true \
+            -e ALLOW_DEMO_SEED=false \
+            -e AUTOMATION_REMINDERS_ENABLED=false \
+            -e PUSH_RECEIPT_WORKER_ENABLED=false \
+            renova-api:ci >/dev/null
+
+          for _ in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:18100/health >/tmp/renova-image-health.json \
+              && curl -fsS http://127.0.0.1:18100/ready >/tmp/renova-image-ready.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:18100/health >/tmp/renova-image-health.json
+          curl -fsS http://127.0.0.1:18100/ready >/tmp/renova-image-ready.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          health = json.loads(Path('/tmp/renova-image-health.json').read_text())
+          ready = json.loads(Path('/tmp/renova-image-ready.json').read_text())
+          expected = os.environ['GITHUB_SHA']
+          assert health['status'] == 'ok', health
+          assert health['release'] == expected, health
+          assert ready['status'] == 'ready', ready
+          assert ready['release'] == expected, ready
+          PY
+
+      - name: Upload container diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image-diagnostics
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            /tmp/renova-backend-image.log
+            /tmp/renova-image-health.json
+            /tmp/renova-image-ready.json
+
+  publish-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.2.0
+      - uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish immutable SHA image with attestations
+        id: publish
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+          sbom: true
+          provenance: mode=max
+
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Keyless-sign the published digest
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DIGEST"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          {
+            echo "### Canonical backend image"
+            echo
+            echo "- Git SHA: \`${GITHUB_SHA}\`"
+            echo "- Tag: \`${IMAGE}:sha-${GITHUB_SHA}\`"
+            echo "- Digest: \`${DIGEST}\`"
+            echo "- SBOM/provenance: attached by BuildKit"
+            echo "- Signature: Sigstore keyless"
+          } >> "$GITHUB_STEP_SUMMARY"

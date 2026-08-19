@@ -4,6 +4,7 @@ from __future__ import annotations
 import inspect
 
 import pytest
+from fastapi.routing import iter_route_contexts
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
@@ -73,15 +74,15 @@ def test_article_admin_input_rejects_ambiguous_slugs_and_invalid_read_time():
 def test_static_article_admin_routes_precede_dynamic_public_slug():
     get_paths = [
         route.path
-        for route in app.routes
-        if "GET" in (getattr(route, "methods", set()) or set())
+        for route in iter_route_contexts(app.routes)
+        if "GET" in (route.methods or set())
     ]
     admin_index = get_paths.index("/api/v1/articles/admin")
     public_slug_index = get_paths.index("/api/v1/articles/{slug}")
 
     assert admin_index < public_slug_index
     assert "/api/v1/articles/admin/{slug}" in {
-        route.path for route in app.routes
+        route.path for route in iter_route_contexts(app.routes)
     }
 
 

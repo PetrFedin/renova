@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -81,7 +82,7 @@ async def seed_document(db):
 def _routes(path: str, method: str):
     return [
         route
-        for route in api_router.routes
+        for route in iter_route_contexts(api_router.routes)
         if getattr(route, "path", None) == f"/api/v1{path}"
         and method in set(getattr(route, "methods", set()) or set())
     ]

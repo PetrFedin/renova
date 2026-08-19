@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -50,6 +52,11 @@ def _demo_seed_allowed() -> bool:
         policy_allows=policy.allow_demo_seed,
         override=settings.allow_demo_seed,
     )
+
+
+def _release_sha() -> str:
+    value = (os.getenv("RENOVA_GIT_SHA") or "unknown").strip()
+    return value or "unknown"
 
 
 @asynccontextmanager
@@ -243,4 +250,29 @@ async def health():
         "service": "renova-api",
         "version": "0.3.7",
         "environment": settings.normalized_environment,
+        "release": _release_sha(),
+    }
+
+
+@app.get("/ready")
+async def readiness():
+    try:
+        async with SessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        await rate_limiter.ping()
+    except Exception:
+        logger.exception("readiness probe failed")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "renova-api",
+                "release": _release_sha(),
+            },
+        )
+
+    return {
+        "status": "ready",
+        "service": "renova-api",
+        "release": _release_sha(),
     }

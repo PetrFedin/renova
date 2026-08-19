@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 import pytest_asyncio
-from fastapi.routing import APIRoute
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -128,10 +128,9 @@ def test_runtime_has_one_canonical_sms_send_and_verify_handler():
     for path in ("/api/v1/auth/sms/send", "/api/v1/auth/sms/verify"):
         matches = [
             route
-            for route in app.routes
-            if isinstance(route, APIRoute)
-            and route.path == path
-            and "POST" in route.methods
+            for route in iter_route_contexts(app.routes)
+            if route.path == path
+            and "POST" in (route.methods or set())
         ]
         assert len(matches) == 1, (path, matches)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 
 from app.core.timeutil import utc_now
@@ -429,9 +430,9 @@ async def test_runtime_has_one_canonical_calendar_mutation_handler_per_method():
     for path, method in signatures:
         matches = [
             route
-            for route in app.routes
-            if getattr(route, "path", None) == path
-            and method in (getattr(route, "methods", set()) or set())
+            for route in iter_route_contexts(app.routes)
+            if route.path == path
+            and method in (route.methods or set())
         ]
         assert len(matches) == 1, (path, method, matches)
         assert matches[0].endpoint.__module__ == "app.api.v1.calendar_mutations"

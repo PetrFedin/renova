@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from fastapi.routing import APIRoute
+from fastapi.routing import iter_route_contexts
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
@@ -145,9 +145,8 @@ def test_account_lifecycle_runtime_routes_are_unique():
     for path, method in expected:
         matches = [
             route
-            for route in app.routes
-            if isinstance(route, APIRoute)
-            and route.path == path
+            for route in iter_route_contexts(app.routes)
+            if route.path == path
             and method in route.methods
         ]
         assert len(matches) == 1, (path, method, matches)

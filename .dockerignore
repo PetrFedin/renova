@@ -1,0 +1,10 @@
+**
+!backend/
+!backend/app/
+!backend/app/**
+!backend/alembic/
+!backend/alembic/**
+!backend/alembic.ini
+!backend/pyproject.toml
+!backend/poetry.lock
+!backend/README.md
