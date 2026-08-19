@@ -163,3 +163,78 @@ jobs:
       - name: Stop isolated dependencies
         if: always()
         run: docker compose -f docker-compose.staging.yml down -v --remove-orphans
+
+  database-logical-restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POSTGRES_IMAGE: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+      PGHOST: 127.0.0.1
+      PGPORT: "5436"
+      PGUSER: renova
+      PGPASSWORD: renova
+      SOURCE_DB: renova
+      RESTORE_DB: renova_restore
+      DR_DIR: ${{ runner.temp }}/renova-dr
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova
+        ports:
+          - 5436:5432
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Validate DR source contract
+        run: |
+          set -euo pipefail
+          node scripts/databaseRestoreTruth.test.mjs
+          bash -n scripts/database-restore-drill.sh
+          python -m py_compile backend/scripts/restore_drill_fixture.py
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Migrate and verify source schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run alembic upgrade head
+          poetry run python scripts/verify_migration_schema.py --expect present
+      - name: Seed deterministic synthetic source data
+        working-directory: backend
+        run: poetry run python scripts/restore_drill_fixture.py seed --manifest "$DR_DIR/source-manifest.json"
+      - name: Execute native backup and isolated restore
+        run: bash scripts/database-restore-drill.sh
+      - name: Verify restored schema and data fingerprint
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_restore
+        run: |
+          set -euo pipefail
+          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/restore_drill_fixture.py verify --expected "$DR_DIR/source-manifest.json"
+      - name: Delete synthetic database dump
+        if: always()
+        run: |
+          rm -f "$DR_DIR/renova.dump"
+          test ! -e "$DR_DIR/renova.dump"
