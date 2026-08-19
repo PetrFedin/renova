@@ -9,6 +9,10 @@ on:
       - "scripts/staging-env-smoke.sh"
       - "scripts/staging-credentials-probe.sh"
       - "scripts/staging-readiness-report.sh"
+      - "scripts/external-staging-release-smoke.sh"
+      - "scripts/externalStagingReleaseTruth.test.mjs"
+      - ".github/workflows/external-staging-release.yml"
+      - "docs/STAGING-RELEASE.md"
       - "backend/.env.example"
       - "backend/alembic/**"
       - "backend/alembic.ini"
@@ -32,6 +36,7 @@ on:
       - "backend/app/services/storage_service.py"
       - "backend/tests/test_admin_identity_deployment_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/tests/test_runtime_probe_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
   pull_request:
     paths:
@@ -41,6 +46,10 @@ on:
       - "scripts/staging-env-smoke.sh"
       - "scripts/staging-credentials-probe.sh"
       - "scripts/staging-readiness-report.sh"
+      - "scripts/external-staging-release-smoke.sh"
+      - "scripts/externalStagingReleaseTruth.test.mjs"
+      - ".github/workflows/external-staging-release.yml"
+      - "docs/STAGING-RELEASE.md"
       - "backend/.env.example"
       - "backend/alembic/**"
       - "backend/alembic.ini"
@@ -64,11 +73,15 @@ on:
       - "backend/app/services/storage_service.py"
       - "backend/tests/test_admin_identity_deployment_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/tests/test_runtime_probe_integrity.py"
       - ".github/workflows/staging-runtime-smoke.yml"
 
 concurrency:
   group: staging-runtime-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   postgres-redis-bearer-smoke:
@@ -76,6 +89,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12.13"
@@ -86,16 +102,18 @@ jobs:
           cd backend
           poetry config virtualenvs.in-project true
           poetry sync --no-interaction
-      - name: Validate staging shell syntax
+      - name: Validate staging shell and external release source contracts
         run: |
           set -euo pipefail
           bash -n scripts/staging-postgres-smoke.sh
           bash -n scripts/staging-env-smoke.sh
           bash -n scripts/staging-credentials-probe.sh
           bash -n scripts/staging-readiness-report.sh
-      - name: Run canonical preflight contracts
+          bash -n scripts/external-staging-release-smoke.sh
+          node scripts/externalStagingReleaseTruth.test.mjs
+      - name: Run canonical preflight and runtime probe contracts
         working-directory: backend
-        run: poetry run pytest -q tests/test_runtime_preflight_integrity.py tests/test_admin_identity_deployment_integrity.py
+        run: poetry run pytest -q tests/test_runtime_preflight_integrity.py tests/test_admin_identity_deployment_integrity.py tests/test_runtime_probe_integrity.py
       - name: Exercise static staging credentials probe
         env:
           ENV_FILE: /dev/null
@@ -114,7 +132,7 @@ jobs:
           TWILIO_TOKEN: ci-provider-token
           TWILIO_FROM: "+15005550006"
         run: bash scripts/staging-credentials-probe.sh
-      - name: Run full staging runtime smoke
+      - name: Run full isolated staging runtime smoke
         run: bash scripts/staging-postgres-smoke.sh
       - name: Upload API diagnostics
         if: always()

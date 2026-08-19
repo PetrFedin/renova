@@ -37,12 +37,14 @@ class _RateLimiter:
 @pytest.mark.asyncio
 async def test_health_exposes_build_release_without_claiming_dependency_readiness(monkeypatch):
     monkeypatch.setenv("RENOVA_GIT_SHA", "abc123")
+    monkeypatch.setenv("RENOVA_IMAGE_DIGEST", "sha256:" + "a" * 64)
 
     payload = await main.health()
 
     assert payload["status"] == "ok"
     assert payload["service"] == "renova-api"
     assert payload["release"] == "abc123"
+    assert payload["artifact_digest"] == "sha256:" + "a" * 64
 
 
 @pytest.mark.asyncio
@@ -50,6 +52,7 @@ async def test_readiness_requires_database_and_shared_rate_limit_backend(monkeyp
     session = _Session()
     limiter = _RateLimiter()
     monkeypatch.setenv("RENOVA_GIT_SHA", "release-sha")
+    monkeypatch.setenv("RENOVA_IMAGE_DIGEST", "sha256:" + "b" * 64)
     monkeypatch.setattr(main, "SessionLocal", lambda: session)
     monkeypatch.setattr(main, "rate_limiter", limiter)
 
@@ -61,6 +64,7 @@ async def test_readiness_requires_database_and_shared_rate_limit_backend(monkeyp
         "status": "ready",
         "service": "renova-api",
         "release": "release-sha",
+        "artifact_digest": "sha256:" + "b" * 64,
     }
 
 
@@ -70,6 +74,7 @@ async def test_readiness_fails_closed_without_leaking_provider_errors(monkeypatc
     session = _Session(fail=failure == "database")
     limiter = _RateLimiter(fail=failure == "redis")
     monkeypatch.setenv("RENOVA_GIT_SHA", "release-sha")
+    monkeypatch.setenv("RENOVA_IMAGE_DIGEST", "sha256:" + "c" * 64)
     monkeypatch.setattr(main, "SessionLocal", lambda: session)
     monkeypatch.setattr(main, "rate_limiter", limiter)
 
@@ -81,5 +86,11 @@ async def test_readiness_fails_closed_without_leaking_provider_errors(monkeypatc
         "status": "not_ready",
         "service": "renova-api",
         "release": "release-sha",
+        "artifact_digest": "sha256:" + "c" * 64,
     }
     assert failure not in response.body.decode("utf-8")
+
+
+def test_missing_artifact_digest_is_explicitly_unknown(monkeypatch):
+    monkeypatch.delenv("RENOVA_IMAGE_DIGEST", raising=False)
+    assert main._release_digest() == "unknown"
