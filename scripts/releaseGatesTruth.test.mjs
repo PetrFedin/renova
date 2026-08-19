@@ -21,6 +21,33 @@ contains(staging, 'remote staging verification required', 'remote-required mode 
 contains(staging, 'TOKEN is required when API_BASE is set', 'remote staging smoke must require Bearer token');
 contains(staging, 'API_BASE is still a placeholder', 'remote staging smoke must reject placeholder domains');
 
+const externalStaging = src('scripts/external-staging-release-smoke.sh');
+contains(externalStaging, 'EXPECTED_RELEASE_SHA', 'external staging must bind an exact Git SHA');
+contains(externalStaging, 'EXPECTED_IMAGE_DIGEST', 'external staging must bind an immutable image digest');
+contains(externalStaging, 'EXPECTED_ENVIRONMENT="${EXPECTED_ENVIRONMENT:-staging}"', 'external staging must be environment-bound');
+contains(externalStaging, 'API_BASE must use https://', 'external staging must require HTTPS');
+contains(externalStaging, 'API_BASE is placeholder/local', 'external staging must reject placeholder/local origins');
+contains(externalStaging, 'Authorization: Bearer $TOKEN', 'external staging must use Bearer auth for protected checks');
+contains(externalStaging, 'health.get("release") == expected_sha', 'external staging health must match expected Git SHA');
+contains(externalStaging, 'health.get("artifact_digest") == expected_digest', 'external staging health must match exact image digest');
+contains(externalStaging, 'ready.get("artifact_digest") == expected_digest', 'external staging readiness must match exact image digest');
+excludes(externalStaging, '/api/v1/auth/demo', 'external staging must never obtain demo auth');
+excludes(externalStaging, 'X-User-Id', 'external staging must never use header identity fallback');
+
+const externalStagingWorkflow = src('.github/workflows/external-staging-release.yml');
+contains(externalStagingWorkflow, 'environment: staging', 'external staging verification must use a protected staging environment');
+contains(externalStagingWorkflow, 'vars.STAGING_API_BASE_URL', 'external staging must use environment-scoped API origin');
+contains(externalStagingWorkflow, 'secrets.STAGING_ADMIN_BEARER_TOKEN', 'external staging must use environment-scoped Bearer secret');
+contains(externalStagingWorkflow, 'inputs.release_sha', 'external staging must receive explicit release SHA');
+contains(externalStagingWorkflow, 'inputs.image_digest', 'external staging must receive explicit image digest');
+contains(externalStagingWorkflow, 'bash scripts/external-staging-release-smoke.sh', 'external staging workflow must execute canonical smoke');
+excludes(externalStagingWorkflow, ':latest', 'external staging must not use mutable latest image tags');
+excludes(externalStagingWorkflow, '--latest', 'external staging must not promote mutable latest artifacts');
+
+const main = src('backend/app/main.py');
+contains(main, 'RENOVA_IMAGE_DIGEST', 'runtime probes must expose deployment-supplied image digest');
+contains(main, '"artifact_digest": _release_digest()', 'runtime probes must include artifact digest');
+
 const h0 = src('scripts/h0-check.sh');
 contains(h0, 'if [[ "$STRICT" -eq 1 ]]; then LIVE=1; fi', 'strict H0 must imply live mode');
 contains(h0, 'LIVE_TOKEN="${TOKEN:-${H0_TOKEN:-}}"', 'H0 must use an explicit Bearer token');
