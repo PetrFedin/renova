@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.12.13,<3.13"
 fastapi = "^0.115.0"
 uvicorn = {extras = ["standard"], version = "^0.32.0"}
 websockets = "^14.0"  # explicit: uvicorn[standard] often missing in venv → /ws/inbox 404
@@ -22,6 +22,7 @@ python-multipart = "^0.0.20"
 aiosqlite = "^0.20.0"
 alembic = "^1.14.0"
 redis = "^5.2.0"
+fpdf2 = "2.8.7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
@@ -32,5 +33,5 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core==2.4.1"]
 build-backend = "poetry.core.masonry.api"
