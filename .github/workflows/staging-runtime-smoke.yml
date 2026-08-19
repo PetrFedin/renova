@@ -175,7 +175,7 @@ jobs:
       PGPASSWORD: renova
       SOURCE_DB: renova
       RESTORE_DB: renova_restore
-      DR_DIR: ${{ runner.temp }}/renova-dr
+      DR_DIR: /tmp/renova-dr
       DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova
     services:
       postgres:
