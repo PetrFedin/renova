@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-_PRESENT_REVISION = "w11refundreview01"
+_PRESENT_REVISION = "w12pushreceipt01"
 _ABSENT_REVISION = "w6webhookdelivery01"
 
 
@@ -319,6 +319,72 @@ def _verify_subscription_refund_review_events(inspector) -> None:
         _require(not bool(index.get("unique")), f"{name} must not be unique")
 
 
+def _verify_push_receipts(inspector) -> None:
+    expected_columns = {
+        "id", "expo_receipt_id", "push_token_id", "token_fingerprint", "delivery_id",
+        "status", "attempts", "provider_error", "provider_message", "next_attempt_at",
+        "locked_at", "locked_by", "checked_at", "completed_at", "expires_at",
+        "created_at", "updated_at",
+    }
+    columns = {
+        column["name"]: column
+        for column in inspector.get_columns("expo_push_receipts")
+    }
+    missing = expected_columns - set(columns)
+    _require(not missing, f"expo_push_receipts columns are missing: {sorted(missing)}")
+    nullable = {
+        "push_token_id", "delivery_id", "provider_error", "provider_message",
+        "next_attempt_at", "locked_at", "locked_by", "checked_at", "completed_at",
+    }
+    for name in expected_columns:
+        _require(
+            bool(columns[name].get("nullable")) is (name in nullable),
+            f"expo_push_receipts.{name} nullable mismatch",
+        )
+    _require(
+        list(inspector.get_pk_constraint("expo_push_receipts").get("constrained_columns") or []) == ["id"],
+        "expo_push_receipts primary key must be id",
+    )
+    foreign_keys = inspector.get_foreign_keys("expo_push_receipts")
+    token_fk = next(
+        (
+            foreign_key
+            for foreign_key in foreign_keys
+            if list(foreign_key.get("constrained_columns") or []) == ["push_token_id"]
+        ),
+        None,
+    )
+    _require(token_fk is not None, "expo_push_receipts.push_token_id foreign key is missing")
+    _require(token_fk.get("referred_table") == "push_tokens", "push receipt token FK table mismatch")
+    _require(
+        list(token_fk.get("referred_columns") or []) == ["id"],
+        "push receipt token FK column mismatch",
+    )
+    _require(
+        str((token_fk.get("options") or {}).get("ondelete") or "").upper() == "SET NULL",
+        "push receipt token FK must use ON DELETE SET NULL",
+    )
+    indexes = {
+        index["name"]: index
+        for index in inspector.get_indexes("expo_push_receipts")
+        if index.get("name")
+    }
+    for name, (expected, unique) in {
+        "ix_expo_push_receipts_expo_receipt_id": (["expo_receipt_id"], True),
+        "ix_expo_push_receipts_push_token_id": (["push_token_id"], False),
+        "ix_expo_push_receipts_delivery_id": (["delivery_id"], False),
+        "ix_expo_push_receipts_status": (["status"], False),
+        "ix_expo_push_receipts_next_attempt_at": (["next_attempt_at"], False),
+        "ix_expo_push_receipts_locked_at": (["locked_at"], False),
+        "ix_expo_push_receipts_expires_at": (["expires_at"], False),
+        "ix_expo_push_receipts_created_at": (["created_at"], False),
+    }.items():
+        index = indexes.get(name)
+        _require(index is not None, f"{name} is missing")
+        _require(list(index.get("column_names") or []) == expected, f"{name} columns mismatch")
+        _require(bool(index.get("unique")) is unique, f"{name} unique mismatch")
+
+
 def _verify_present(sync_connection) -> None:
     _require(
         _current_revision(sync_connection) == _PRESENT_REVISION,
@@ -332,12 +398,14 @@ def _verify_present(sync_connection) -> None:
         "subscription_checkouts",
         "subscription_refunds",
         "subscription_refund_review_events",
+        "expo_push_receipts",
     ):
         _require(table in tables, f"{table} table is missing after Alembic upgrade")
     _verify_calendar(inspector)
     _verify_subscription_checkouts(inspector)
     _verify_subscription_refunds(inspector)
     _verify_subscription_refund_review_events(inspector)
+    _verify_push_receipts(inspector)
 
 
 def _verify_absent(sync_connection) -> None:
@@ -352,6 +420,7 @@ def _verify_absent(sync_connection) -> None:
         "subscription_checkouts",
         "subscription_refunds",
         "subscription_refund_review_events",
+        "expo_push_receipts",
     ):
         _require(table not in tables, f"{table} survived downgrade to the previous revision")
     _require("users" in tables, "users table disappeared during schema downgrade")

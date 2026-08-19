@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     document_ocr_worker_interval_sec: float = 5.0
     automation_reminders_enabled: bool = True
     automation_reminders_interval_sec: float = 900.0
+    push_receipt_worker_enabled: bool = True
+    push_receipt_worker_interval_sec: float = 60.0
     ops_alert_email: str | None = None
     ollama_base_url: str | None = None
     ollama_model: str = "qwen3"

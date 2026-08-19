@@ -90,6 +90,7 @@ async def release_health(
     from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.otp_redis_recovery import recovery_snapshot as otp_store_health
     from app.services.outbox_dead_letter_service import runtime_health as outbox_runtime_health
+    from app.services.push_receipt_service import runtime_snapshot as push_receipt_runtime_health
     from app.services.release_health_service import truthful_release_snapshot
     from app.services.runtime_health_truth import automation_worker_runtime_truth
     from app.services.yookassa_service import yookassa_health
@@ -148,6 +149,10 @@ async def release_health(
                 "outbox_status": worker_metrics.get("outbox_status"),
             },
             "outbox": await outbox_runtime_health(db),
+            "push_receipts": {
+                "worker_enabled": settings.push_receipt_worker_enabled,
+                **(await push_receipt_runtime_health(db)),
+            },
         },
     }
 
