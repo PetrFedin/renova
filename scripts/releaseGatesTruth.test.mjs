@@ -35,8 +35,14 @@ contains(preflight, 'v !== pkg.version', 'TestFlight preflight must tie app vers
 contains(preflight, 'example\\.com', 'TestFlight preflight must reject placeholder API URLs');
 contains(preflight, 'expo.extra.eas.projectId', 'TestFlight preflight must require EAS project binding');
 contains(preflight, 'EXPO_TOKEN is required', 'TestFlight preflight must require Expo auth');
-contains(preflight, 'npx eas-cli@latest whoami', 'TestFlight preflight must verify EAS identity');
-contains(preflight, 'npx eas-cli@latest project:info', 'TestFlight preflight must verify EAS project access');
+contains(preflight, 'bash ../../scripts/eas-cli.sh whoami', 'TestFlight preflight must verify EAS identity through the exact wrapper');
+contains(preflight, 'bash ../../scripts/eas-cli.sh project:info', 'TestFlight preflight must verify EAS project access through the exact wrapper');
+excludes(preflight, 'eas-cli@latest', 'TestFlight preflight must not use a mutable EAS CLI');
+
+const easWrapper = src('scripts/eas-cli.sh');
+contains(easWrapper, 'EAS_CLI_VERSION="21.4.0"', 'EAS wrapper must pin the reviewed CLI version');
+contains(easWrapper, 'npx --yes "eas-cli@${EAS_CLI_VERSION}"', 'EAS wrapper must execute the exact CLI package');
+excludes(easWrapper, 'eas-cli@latest', 'EAS wrapper must not use the mutable latest tag');
 
 const eas = src('.github/workflows/eas-build.yml');
 excludes(eas, '--no-wait', 'EAS workflow must not pass after merely triggering a cloud build');
@@ -44,6 +50,12 @@ contains(eas, '--wait', 'EAS build/submit workflow must wait for terminal outcom
 contains(eas, 'EXPO_TOKEN is required; a release workflow may not pass without starting EAS', 'EAS workflow must fail without Expo token');
 contains(eas, 'testflight profile is iOS-only', 'EAS workflow must reject invalid TestFlight platform');
 contains(eas, 'preview is internal distribution and cannot be submitted', 'EAS workflow must reject preview submission');
-contains(eas, '--platform "${{ inputs.platform }}"', 'EAS submit/build must use selected platform');
+contains(eas, '--platform "${{ inputs.platform }}"', 'EAS build must use selected platform');
+contains(eas, 'bash ../../scripts/eas-cli.sh build', 'EAS build must use the exact shared wrapper');
+contains(eas, '--json', 'EAS workflow must capture structured build identity');
+contains(eas, 'bash ../../scripts/eas-cli.sh submit', 'EAS submit must use the exact shared wrapper');
+contains(eas, '--id "$build_id"', 'EAS submit must target the exact build ID returned by the build step');
+excludes(eas, 'eas-cli@latest', 'EAS workflow must not use a mutable EAS CLI');
+excludes(eas, '--latest', 'EAS workflow must not submit a mutable latest build');
 
 console.log('releaseGatesTruth.test OK');
