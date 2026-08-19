@@ -86,7 +86,9 @@ async def seed_token(session_factory, suffix: str, *, token_value: str | None = 
             user_id=user.id,
             token=token_value,
         )
-        db.add_all([user, token])
+        db.add(user)
+        await db.flush()
+        db.add(token)
         await db.commit()
     return token_value, f"token-{suffix}"
 
@@ -314,6 +316,37 @@ async def test_transport_failure_backs_off_and_keeps_pending(receipt_store, monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [429, 503])
+async def test_http_backpressure_backs_off_and_keeps_pending(
+    receipt_store,
+    monkeypatch,
+    status_code,
+):
+    _engine, session_factory = receipt_store
+    row_id, _receipt_id, _token_id, _token_value = await seed_receipt(
+        session_factory, f"http-{status_code}"
+    )
+    install_client(
+        monkeypatch,
+        lambda _json, _call: FakeResponse({}, status_code=status_code),
+    )
+
+    async with session_factory() as db:
+        metrics = await receipts.reconcile_pending(
+            db,
+            worker_id=f"http-{status_code}-worker",
+        )
+    assert metrics["retried"] == 1
+    async with session_factory() as db:
+        row = await db.get(ExpoPushReceipt, row_id)
+    assert row.status == "pending"
+    assert row.attempts == 1
+    assert row.provider_error == "receipt_transport_error"
+    assert row.next_attempt_at > row.checked_at
+    assert row.locked_by is None
+
+
+@pytest.mark.asyncio
 async def test_expired_receipt_becomes_explicit_terminal_without_provider_call(
     receipt_store,
     monkeypatch,
@@ -370,27 +403,29 @@ async def test_postgres_replicas_cannot_claim_same_live_receipt():
     token_value = f"ExpoPushToken[token_pg_{suffix}]"
     try:
         async with session_factory() as db:
-            db.add_all(
-                [
-                    User(
-                        id=user_id,
-                        phone=f"+7988{int(suffix[:7], 16) % 10000000:07d}",
-                        role=UserRole.customer,
-                    ),
-                    PushToken(id=token_id, user_id=user_id, token=token_value),
-                    ExpoPushReceipt(
-                        id=row_id,
-                        expo_receipt_id=f"pg-expo-{suffix}",
-                        push_token_id=token_id,
-                        token_fingerprint=receipts.token_fingerprint(token_value),
-                        delivery_id=f"rn_pg_{suffix}",
-                        status="pending",
-                        next_attempt_at=now - timedelta(seconds=1),
-                        expires_at=now + timedelta(hours=1),
-                        created_at=now - timedelta(minutes=20),
-                        updated_at=now,
-                    ),
-                ]
+            db.add(
+                User(
+                    id=user_id,
+                    phone=f"+7988{int(suffix[:7], 16) % 10000000:07d}",
+                    role=UserRole.customer,
+                )
+            )
+            await db.flush()
+            db.add(PushToken(id=token_id, user_id=user_id, token=token_value))
+            await db.flush()
+            db.add(
+                ExpoPushReceipt(
+                    id=row_id,
+                    expo_receipt_id=f"pg-expo-{suffix}",
+                    push_token_id=token_id,
+                    token_fingerprint=receipts.token_fingerprint(token_value),
+                    delivery_id=f"rn_pg_{suffix}",
+                    status="pending",
+                    next_attempt_at=now - timedelta(seconds=1),
+                    expires_at=now + timedelta(hours=1),
+                    created_at=now - timedelta(minutes=20),
+                    updated_at=now,
+                )
             )
             await db.commit()
 
