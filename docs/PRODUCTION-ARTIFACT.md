@@ -34,7 +34,9 @@ The root `.dockerignore` makes the backend runtime files the only build context 
 
 The first container scan exposed fixed HIGH advisories in the previously locked HTTP stack and in package-manager tooling that was unnecessary at runtime. The image gate was not relaxed.
 
-The reviewed runtime graph now pins FastAPI `0.141.1` and `python-multipart` `0.0.32`; the lockfile resolves Starlette `1.6.0`. Build/package-manager tooling is removed from the final image rather than promoted into the application runtime solely to satisfy a scanner.
+The reviewed runtime graph pins FastAPI `0.139.2` and `python-multipart` `0.0.32`; the lockfile resolves Starlette `1.6.0`. FastAPI `0.139.2` is deliberately used instead of the later `0.140.x`/`0.141.x` line because it contains the upstream `_IncludedRouter` concurrent cache rebuild fix while avoiding a newer route-handler cache implementation that is not required by Renova. The route-integrity tests use FastAPI's public `iter_route_contexts()` API instead of assuming `router.routes` is a flat list.
+
+Build/package-manager tooling is removed from the final image rather than promoted into the application runtime solely to satisfy a scanner.
 
 Any later fixed HIGH or CRITICAL OS/library finding remains a release blocker in `Backend image integrity`. Unfixed findings remain visible to the scanner, but are not converted into invented patched versions or unsupported dependency overrides.
 
