@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import SessionLocal
 from app.models.entities import PushToken
+from app.services.push_receipt_service import (
+    AcceptedPushTicket,
+    record_accepted_tickets_persistently,
+)
 
 EXPO_URL = "https://exp.host/--/api/v2/push/send"
 MAX_MESSAGES_PER_REQUEST = 100
@@ -83,13 +87,14 @@ async def send_push(
     *,
     delivery_id: str | None = None,
 ) -> bool:
-    """Return whether all deliverable device tokens were accepted by Expo.
+    """Return whether all deliverable device tokens were accepted and ticketed.
 
     No registered token is a successful no-op because the durable in-app
     notification remains the canonical delivery. HTTP 200 alone is not success:
-    every push ticket must be inspected. DeviceNotRegistered tokens are removed
-    permanently; transient/provider/payload errors return False so the outbox can
-    retry instead of recording a false delivery.
+    every push ticket must be inspected. Successful ticket IDs are persisted in
+    an isolated receipt ledger before the caller may mark its side effect
+    delivered. DeviceNotRegistered ticket errors remove invalid tokens; other
+    provider/payload failures return False so the outbox can retry.
 
     Expo transport is still at-least-once. A stable delivery_id is propagated to
     provider collapse/tag fields and to the app payload so retries can replace or
@@ -109,6 +114,7 @@ async def send_push(
         return True
 
     tokens: list[str] = []
+    token_rows: dict[str, PushToken] = {}
     seen: set[str] = set()
     permanently_invalid: set[str] = set()
     for row in rows:
@@ -121,6 +127,7 @@ async def send_push(
             continue
         seen.add(token)
         tokens.append(token)
+        token_rows[token] = row
 
     if not tokens:
         await _remove_tokens_persistently(permanently_invalid)
@@ -177,6 +184,7 @@ async def send_push(
                 all_deliverable_accepted = False
                 break
 
+            accepted_tickets: list[AcceptedPushTicket] = []
             for token, ticket in zip(token_chunk, tickets, strict=True):
                 if not isinstance(ticket, dict):
                     all_deliverable_accepted = False
@@ -184,6 +192,15 @@ async def send_push(
                 status = ticket.get("status")
                 receipt_id = ticket.get("id")
                 if status == "ok" and isinstance(receipt_id, str) and receipt_id:
+                    row = token_rows[token]
+                    accepted_tickets.append(
+                        AcceptedPushTicket(
+                            receipt_id=receipt_id,
+                            push_token_id=row.id,
+                            token=token,
+                            delivery_id=normalized_delivery_id,
+                        )
+                    )
                     continue
                 error_code = _ticket_error_code(ticket)
                 if status == "error" and error_code == "DeviceNotRegistered":
@@ -197,6 +214,17 @@ async def send_push(
                     },
                 )
                 all_deliverable_accepted = False
+
+            if accepted_tickets:
+                try:
+                    await record_accepted_tickets_persistently(accepted_tickets)
+                except Exception as exc:
+                    logger.exception(
+                        "Expo ticket accepted but receipt ledger persistence failed",
+                        extra={"ticket_count": len(accepted_tickets)},
+                    )
+                    all_deliverable_accepted = False
+                    break
 
     await _remove_tokens_persistently(permanently_invalid)
     return all_deliverable_accepted

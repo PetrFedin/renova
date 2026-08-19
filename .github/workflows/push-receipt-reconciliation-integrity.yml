@@ -1,0 +1,126 @@
+name: Push receipt reconciliation integrity
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/core/config.py"
+      - "backend/app/main.py"
+      - "backend/app/api/v1/admin.py"
+      - "backend/app/models/outbox_runtime.py"
+      - "backend/app/services/push_service.py"
+      - "backend/app/services/push_receipt_service.py"
+      - "backend/app/services/push_receipt_worker.py"
+      - "backend/alembic/versions/w12pushreceipt01_expo_push_receipts.py"
+      - "backend/tests/test_push_delivery_integrity.py"
+      - "backend/tests/test_push_receipt_reconciliation_integrity.py"
+      - "docs/push-delivery-reliability.md"
+      - ".github/workflows/push-receipt-reconciliation-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: push-receipt-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  push-receipt-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova_push_receipts
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova_push_receipts
+      PUSH_RECEIPT_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova_push_receipts
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "false"
+      ALLOW_DEMO_SEED: "false"
+      PUSH_RECEIPT_WORKER_ENABLED: "false"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install poetry
+          poetry install --no-interaction
+          poetry run pip install fpdf2 alembic
+      - name: Verify migration upgrade downgrade upgrade
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run python -m alembic upgrade head
+          poetry run python -m alembic downgrade w11refundreview01
+          poetry run python -m alembic upgrade head
+      - name: Verify receipt persistence provider semantics and replica fencing
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 600s poetry run pytest -vv -s --tb=short \
+            tests/test_push_delivery_integrity.py \
+            tests/test_push_receipt_reconciliation_integrity.py \
+            2>&1 | tee push-receipt-reconciliation.log
+      - name: Verify lifecycle and admin wiring
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          main = Path("backend/app/main.py").read_text(encoding="utf-8")
+          admin = Path("backend/app/api/v1/admin.py").read_text(encoding="utf-8")
+          config = Path("backend/app/core/config.py").read_text(encoding="utf-8")
+          service = Path("backend/app/services/push_receipt_service.py").read_text(encoding="utf-8")
+          push = Path("backend/app/services/push_service.py").read_text(encoding="utf-8")
+
+          required = {
+              "main.py": ["push_receipt_worker_loop", "push_receipt_worker_interval_sec"],
+              "admin.py": ["push_receipts", "push_receipt_runtime_health"],
+              "config.py": ["push_receipt_worker_enabled", "push_receipt_worker_interval_sec"],
+              "push_receipt_service.py": [
+                  "MAX_RECEIPTS_PER_REQUEST = 1000",
+                  "RECEIPT_LEASE_TTL",
+                  "token_fingerprint",
+                  "locked_by == claim.claim_token",
+                  'status="expired"',
+              ],
+              "push_service.py": ["record_accepted_tickets_persistently", "AcceptedPushTicket"],
+          }
+          sources = {
+              "main.py": main,
+              "admin.py": admin,
+              "config.py": config,
+              "push_receipt_service.py": service,
+              "push_service.py": push,
+          }
+          for name, tokens in required.items():
+              missing = [token for token in tokens if token not in sources[name]]
+              if missing:
+                  raise SystemExit(f"{name} missing push receipt contract: {missing}")
+          if "token: Mapped" in Path("backend/app/models/outbox_runtime.py").read_text(encoding="utf-8"):
+              raise SystemExit("receipt ledger must not persist a raw Expo token")
+          print("push receipt lifecycle wiring OK")
+          PY
+      - name: Upload receipt diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: push-receipt-reconciliation-diagnostics
+          path: backend/push-receipt-reconciliation.log
+          if-no-files-found: warn
+          retention-days: 14

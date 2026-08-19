@@ -123,6 +123,13 @@ def install_client(monkeypatch, handler):
     return client
 
 
+@pytest.fixture(autouse=True)
+def isolate_receipt_ledger(monkeypatch):
+    persist = AsyncMock(return_value=1)
+    monkeypatch.setattr(push_service, "record_accepted_tickets_persistently", persist)
+    return persist
+
+
 def test_stable_push_delivery_id_is_deterministic_bounded_and_opaque():
     source = "outbox:6e360415-cf44-4439-a5d1-e697e257ec96"
 
@@ -148,7 +155,10 @@ async def test_no_device_token_is_successful_noop(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_delivery_identity_reaches_payload_and_provider_collapse_fields(monkeypatch):
+async def test_delivery_identity_reaches_payload_provider_and_receipt_ledger(
+    monkeypatch,
+    isolate_receipt_ledger,
+):
     client = install_client(
         monkeypatch,
         lambda messages, _call: FakeResponse(
@@ -177,7 +187,40 @@ async def test_delivery_identity_reaches_payload_and_provider_collapse_fields(mo
     assert message["data"]["outbox_id"] == "outbox-1"
     assert message["data"]["_displayInForeground"] is True
     assert "mutableContent" not in message["data"]
+    persisted = isolate_receipt_ledger.await_args.args[0]
+    assert len(persisted) == 1
+    assert persisted[0].receipt_id == f"receipt-{expo_token(1)}"
+    assert persisted[0].push_token_id == "row-0001"
+    assert persisted[0].token == expo_token(1)
+    assert persisted[0].delivery_id == delivery_id
     cleanup.assert_awaited_once_with(set())
+
+
+@pytest.mark.asyncio
+async def test_receipt_ledger_failure_fails_closed_for_outbox_retry(
+    monkeypatch,
+    isolate_receipt_ledger,
+):
+    install_client(
+        monkeypatch,
+        lambda messages, _call: FakeResponse(
+            {"data": [{"status": "ok", "id": f"receipt-{message['to']}"} for message in messages]}
+        ),
+    )
+    isolate_receipt_ledger.side_effect = RuntimeError("database unavailable")
+    cleanup = AsyncMock()
+    monkeypatch.setattr(push_service, "_remove_tokens_persistently", cleanup)
+
+    accepted = await push_service.send_push(
+        FakeReadDb([token_row(1)]),
+        "user-1",
+        "Title",
+        "Body",
+        delivery_id=push_service.stable_push_delivery_id("outbox:receipt-ledger-failure"),
+    )
+
+    assert accepted is False
+    isolate_receipt_ledger.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -32,10 +32,31 @@ The interaction installer registers the live response listener, then checks Expo
 
 ## Provider success and retries
 
-HTTP 200 from Expo is not considered delivery success by itself. Renova validates one push ticket per submitted token. A successful ticket must contain an Expo receipt id. Permanent `DeviceNotRegistered` tokens are removed; transient/provider/payload failures return failure to the outbox so it retries.
+HTTP 200 from Expo is not considered delivery success by itself. Renova validates one push ticket per submitted token. A successful ticket must contain an Expo receipt id. Permanent `DeviceNotRegistered` ticket errors are removed immediately; transient/provider/payload ticket failures return failure to the outbox so it retries.
+
+A successful ticket is also written to `expo_push_receipts` before the sending side effect may be committed as delivered. The receipt ledger stores the Expo receipt id, the durable delivery identity, a nullable push-token row reference, and a SHA-256 token fingerprint. It deliberately does **not** copy the raw Expo token.
+
+## Durable receipt reconciliation
+
+The receipt worker starts from the normal FastAPI lifespan and is safe to run on every API replica. A due receipt is claimed with a short lease carrying a unique fencing token. The database transaction is committed before the network call to Expo, so a slow provider request never holds a PostgreSQL row lock. Finalization, retry release, and token cleanup all require the current fencing token; after lease expiry a stale worker can no longer overwrite a newer claim.
+
+Receipt states are explicit:
+
+- `pending` — ticket persisted, waiting for provider receipt or retry;
+- `reconciled` — Expo reports successful handoff to APNs/FCM;
+- `error` — Expo reports a terminal provider/device error;
+- `expired` — the receipt aged beyond the bounded provider retention window without a terminal answer.
+
+Missing receipts remain `pending` and are retried without consuming a provider-failure attempt. Transport, HTTP and request-level failures remain pending with bounded exponential backoff. The worker never submits more than 1000 receipt IDs in one provider request.
+
+A delayed `DeviceNotRegistered` receipt deletes a token only when the current `push_tokens` row still has the fingerprint captured when the ticket was created. This prevents a late receipt for an old token value from deleting a replacement token that reused the same database row id.
+
+Receipt `reconciled` is intentionally **not** described as end-user delivery or display. It records successful provider handoff only; the mobile delivery identity/deduplication layer remains responsible for duplicate interaction safety.
+
+## Operations
+
+`/admin/release-health` exposes a token-free `push_receipts` snapshot with pending/due/reconciled/terminal/expired counts, active and stale leases, oldest pending age, last check time, worker enablement and the hard batch limit. Terminal errors remain durable for operator investigation instead of disappearing into worker logs.
+
+The dedicated `Push receipt reconciliation integrity` workflow verifies provider response handling, persistence, lease fencing, stale recovery, retry/expiry behavior, token fingerprint safety, PostgreSQL cross-replica claiming, and an Alembic upgrade → downgrade → upgrade cycle. The existing `Push delivery retry integrity` workflow continues to gate the client/provider delivery identity and mobile navigation semantics.
 
 This design intentionally does **not** claim provider-level exactly-once delivery. Stable collapse/tag identity plus client interaction deduplication reduces duplicate user-visible effects while keeping retries available for ambiguous failures.
-
-## Operational checks
-
-The `Push delivery retry integrity` workflow gates the focused backend ticket/retry tests, mobile dedupe behavior tests, full mobile type checking, cold-start wiring, and provider identity wiring. A regression that removes stable retry identity, cold-start response consumption, or mobile dedupe must fail CI before merge.
