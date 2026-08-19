@@ -38,13 +38,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["push_token_id"],
             ["push_tokens.id"],
-            name="fk_expo_push_receipts_push_token_id",
             ondelete="SET NULL",
         ),
-        sa.PrimaryKeyConstraint("id", name="pk_expo_push_receipts"),
+        sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
-        "ux_expo_push_receipts_receipt_id",
+        "ix_expo_push_receipts_expo_receipt_id",
         "expo_push_receipts",
         ["expo_receipt_id"],
         unique=True,
@@ -66,5 +65,5 @@ def downgrade() -> None:
     op.drop_index("ix_expo_push_receipts_status", table_name="expo_push_receipts")
     op.drop_index("ix_expo_push_receipts_delivery_id", table_name="expo_push_receipts")
     op.drop_index("ix_expo_push_receipts_push_token_id", table_name="expo_push_receipts")
-    op.drop_index("ux_expo_push_receipts_receipt_id", table_name="expo_push_receipts")
+    op.drop_index("ix_expo_push_receipts_expo_receipt_id", table_name="expo_push_receipts")
     op.drop_table("expo_push_receipts")
