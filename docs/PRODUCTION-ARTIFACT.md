@@ -1,0 +1,60 @@
+# Renova backend production artifact
+
+Renova deploys the backend as an immutable container artifact. A Git checkout, a Poetry resolution performed during deployment, or a mutable `latest` image is not a release artifact.
+
+## Canonical identity
+
+The canonical image is published only from `main` after the image validation job succeeds:
+
+```text
+ghcr.io/petrfedin/renova-api:sha-<40-character-git-sha>
+```
+
+The registry digest returned by the publish step is the authoritative artifact identity. Staging and production promotion must reference that digest (`ghcr.io/petrfedin/renova-api@sha256:...`), not rebuild the commit and not substitute a mutable tag.
+
+The image exposes the source Git SHA through the OCI `org.opencontainers.image.revision` label and the `RENOVA_GIT_SHA` runtime variable. `/health` and `/ready` return the same release identity so an operator can prove which commit is serving traffic.
+
+## Build contract
+
+`backend/Dockerfile`:
+
+- uses Python 3.12.13, matching the backend dependency contract;
+- pins the Docker Official Python base by registry digest so base-image movement requires a reviewed source change;
+- installs the exact Poetry 2.4.1 toolchain in the builder stage;
+- installs runtime dependencies only from the committed `backend/poetry.lock`;
+- copies only the runtime virtualenv, application code and migration files into the final stage;
+- runs as uid/gid `10001:10001`;
+- does not contain the repository, tests, local env files or Node workspace;
+- provides a liveness `HEALTHCHECK` against `/health`.
+
+The root `.dockerignore` makes the backend runtime files the only build context admitted to the image build.
+
+## Runtime probes
+
+`GET /health` is the liveness contract. It proves the API process can answer and includes the build release identity. It intentionally does not claim that PostgreSQL or Redis are healthy.
+
+`GET /ready` is the traffic-readiness contract. It executes a database probe and validates the deployed shared rate-limit Redis backend. Dependency failure returns HTTP 503 without exposing provider error details.
+
+A platform should use `/ready` for load-balancer readiness and `/health` for process liveness. A transient database/provider failure must remove an instance from traffic without pretending the process itself is dead.
+
+## CI and publication
+
+`.github/workflows/backend-image.yml` validates every image-affecting pull request by:
+
+1. building the image from the exact commit;
+2. proving the OCI revision label and non-root runtime user;
+3. failing on fixed high/critical OS or library vulnerabilities reported by Trivy;
+4. booting the image and exercising `/health` and `/ready`;
+5. proving the runtime release identity equals the workflow Git SHA.
+
+After the same validation succeeds on `main`, the workflow publishes exactly one SHA tag with BuildKit SBOM/provenance attestations and signs the resulting registry digest using Sigstore keyless signing.
+
+## Promotion rule
+
+The release lifecycle must preserve one artifact identity:
+
+```text
+commit -> build/publish once -> registry digest -> staging -> production
+```
+
+Staging and production may differ in configuration, credentials and scale. They must not differ by rebuilding application code or resolving dependencies again. Rollback therefore means selecting a previously validated digest; forward-fix means publishing a new Git SHA and a new digest.
