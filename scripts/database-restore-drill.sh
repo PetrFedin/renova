@@ -30,19 +30,7 @@ run_pg() {
     "$POSTGRES_IMAGE" "$@"
 }
 
-run_pg pg_dump \
-  -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$SOURCE_DB" \
-  --format=custom --compress=9 --no-owner --no-privileges \
-  --file=/tmp/renova.dump
-
-# Copy the dump out without printing its contents.
-container_id="$(docker create "$POSTGRES_IMAGE")"
-trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
-docker cp /dev/null "$container_id:/tmp/.keep" >/dev/null 2>&1 || true
-docker rm -f "$container_id" >/dev/null 2>&1 || true
-trap - EXIT
-
-# Re-run pg_dump with an explicit bind mount so the file never crosses stdout.
+# Create the synthetic dump exactly once in the controlled ephemeral directory.
 docker run --rm --network host \
   -e PGPASSWORD="$PGPASSWORD" \
   -v "$DR_DIR:/backup" \
@@ -62,6 +50,7 @@ grep -q "TABLE DATA public users" "$list_path"
 grep -q "TABLE DATA public projects" "$list_path"
 grep -q "TABLE DATA public stages" "$list_path"
 
+# The GitHub service is fresh for every job, so creation is intentionally non-destructive.
 run_pg createdb \
   -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -O "$PGUSER" "$RESTORE_DB"
 
