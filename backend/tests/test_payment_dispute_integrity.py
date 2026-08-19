@@ -1,6 +1,7 @@
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -328,7 +329,7 @@ def test_payment_dispute_route_is_registered_before_general_payments():
     path = "/api/v1/projects/{project_id}/payments/{payment_id}/dispute"
     matching = [
         route
-        for route in api_router.routes
+        for route in iter_route_contexts(api_router.routes)
         if getattr(route, "path", None) == path
         and "POST" in (getattr(route, "methods", set()) or set())
     ]

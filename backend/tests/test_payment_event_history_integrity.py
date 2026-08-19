@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 import pytest_asyncio
+from fastapi.routing import iter_route_contexts
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.v1 import payment_history
@@ -173,7 +174,7 @@ def test_payment_history_route_is_single_and_canonical():
     path = "/api/v1/projects/{project_id}/payments"
     matching = [
         route
-        for route in api_router.routes
+        for route in iter_route_contexts(api_router.routes)
         if getattr(route, "path", None) == path
         and "GET" in (getattr(route, "methods", set()) or set())
     ]

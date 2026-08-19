@@ -1,10 +1,23 @@
-# Temporary same-repo migration runner; restores this file from main before committing.
 name: Backend dependency integrity
 
 on:
+  push:
+    paths:
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
+      - ".github/workflows/backend-dependency-integrity.yml"
   pull_request:
     paths:
-      - "backend/tests/**"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
       - ".github/workflows/backend-dependency-integrity.yml"
 
 concurrency:
@@ -15,165 +28,7 @@ permissions:
   contents: read
 
 jobs:
-  temporary-route-surface-migration:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/immutable-backend-image' && github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/immutable-backend-image
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.13"
-
-      - name: Apply public route-context migration
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          affected = [
-              "backend/tests/test_account_lifecycle_integrity.py",
-              "backend/tests/test_bank_statement_integrity.py",
-              "backend/tests/test_dashboard_read_integrity.py",
-              "backend/tests/test_document_lifecycle_atomicity.py",
-              "backend/tests/test_expense_mutation_integrity.py",
-              "backend/tests/test_payment_dispute_integrity.py",
-              "backend/tests/test_payment_dispute_resolution_integrity.py",
-              "backend/tests/test_payment_event_history_integrity.py",
-              "backend/tests/test_portal_change_order_scope.py",
-              "backend/tests/test_stage_review_atomicity.py",
-              "backend/tests/test_system_surface_integrity.py",
-          ]
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement for {old!r}, found {count}")
-              file.write_text(text.replace(old, new, 1))
-
-          replace_once(
-              affected[0],
-              "from fastapi.routing import APIRoute\n",
-              "from fastapi.routing import iter_route_contexts\n",
-          )
-          replace_once(
-              affected[0],
-              "for route in app.routes",
-              "for route in iter_route_contexts(app.routes)",
-          )
-          replace_once(
-              affected[0],
-              "if isinstance(route, APIRoute)\n            and route.path == path",
-              "if route.path == path",
-          )
-
-          import_anchors = {
-              affected[1]: "import pytest_asyncio\n",
-              affected[2]: "import pytest\n",
-              affected[3]: "import pytest_asyncio\n",
-              affected[4]: "import pytest_asyncio\n",
-              affected[5]: "from fastapi import HTTPException\n",
-              affected[6]: "from fastapi import HTTPException\n",
-              affected[7]: "import pytest_asyncio\n",
-              affected[8]: "from fastapi import HTTPException\n",
-              affected[9]: "import pytest\n",
-          }
-          for path, anchor in import_anchors.items():
-              replace_once(path, anchor, anchor + "from fastapi.routing import iter_route_contexts\n")
-
-          for path in affected[1:9]:
-              replace_once(
-                  path,
-                  "for route in api_router.routes",
-                  "for route in iter_route_contexts(api_router.routes)",
-              )
-          replace_once(
-              affected[9],
-              "for route in app.routes",
-              "for route in iter_route_contexts(app.routes)",
-          )
-
-          replace_once(
-              affected[10],
-              "from fastapi.routing import APIRoute\n",
-              "from fastapi.routing import iter_route_contexts\n",
-          )
-          replace_once(
-              affected[10],
-              "def _api_routes() -> list[APIRoute]:\n    return [route for route in app.routes if isinstance(route, APIRoute)]\n",
-              "def _api_routes() -> list:\n    return list(iter_route_contexts(app.routes))\n",
-          )
-          replace_once(
-              affected[10],
-              'if path not in {"/health"} and not path.startswith(("/api/v1/", "/ws/")):',
-              'if path not in {"/health", "/ready"} and not path.startswith(("/api/v1/", "/ws/")):',
-          )
-          PY
-
-      - name: Prove affected contracts no longer assume flat route lists
-        shell: bash
-        run: |
-          set -euo pipefail
-          files=(
-            backend/tests/test_account_lifecycle_integrity.py
-            backend/tests/test_bank_statement_integrity.py
-            backend/tests/test_dashboard_read_integrity.py
-            backend/tests/test_document_lifecycle_atomicity.py
-            backend/tests/test_expense_mutation_integrity.py
-            backend/tests/test_payment_dispute_integrity.py
-            backend/tests/test_payment_dispute_resolution_integrity.py
-            backend/tests/test_payment_event_history_integrity.py
-            backend/tests/test_portal_change_order_scope.py
-            backend/tests/test_stage_review_atomicity.py
-            backend/tests/test_system_surface_integrity.py
-          )
-          if grep -nE 'for route in (app|api_router)\.routes' "${files[@]}"; then
-            echo "flat route introspection remains in migrated contracts" >&2
-            exit 1
-          fi
-
-      - name: Verify migrated route and system-surface contracts
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check "poetry==2.4.1"
-          poetry sync --no-interaction
-          poetry run pytest -q \
-            tests/test_account_lifecycle_integrity.py \
-            tests/test_bank_statement_integrity.py \
-            tests/test_dashboard_read_integrity.py \
-            tests/test_document_lifecycle_atomicity.py \
-            tests/test_expense_mutation_integrity.py \
-            tests/test_payment_dispute_integrity.py \
-            tests/test_payment_dispute_resolution_integrity.py \
-            tests/test_payment_event_history_integrity.py \
-            tests/test_portal_change_order_scope.py \
-            tests/test_stage_review_atomicity.py \
-            tests/test_system_surface_integrity.py
-
-      - name: Restore read-only workflow and commit migration
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1 --no-tags
-          git show FETCH_HEAD:.github/workflows/backend-dependency-integrity.yml > .github/workflows/backend-dependency-integrity.yml
-          git config user.name "Renova CI"
-          git config user.email "81327591+PetrFedin@users.noreply.github.com"
-          git add backend/tests .github/workflows/backend-dependency-integrity.yml
-          git diff --cached --check
-          git commit -m "Adapt remaining route surface integrity contracts"
-          git push origin HEAD:agent/immutable-backend-image
-
   locked-backend-contract:
-    if: github.event_name != 'pull_request' || github.head_ref != 'agent/immutable-backend-image'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

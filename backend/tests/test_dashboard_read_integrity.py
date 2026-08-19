@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.routing import iter_route_contexts
 
 from app.models.entities import PaymentStatus, StageStatus, UserRole
 from app.services import dashboard_integrity_service as dashboard_svc
@@ -176,7 +177,7 @@ def test_api_router_exposes_exactly_one_canonical_dashboard_route():
 
     matches = [
         route
-        for route in api_router.routes
+        for route in iter_route_contexts(api_router.routes)
         if getattr(route, "path", None) == "/api/v1/projects/{project_id}/dashboard"
         and "GET" in (getattr(route, "methods", None) or set())
     ]

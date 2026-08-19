@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from fastapi.routing import iter_route_contexts
 
 from app.api.v1 import portal
 from app.api.v1 import portal_change_order_decisions as decisions
@@ -138,6 +139,6 @@ def test_runtime_registers_one_canonical_route_per_decision():
         "/api/v1/portal/projects/{project_id}/change-orders/{order_id}/approve",
         "/api/v1/portal/projects/{project_id}/change-orders/{order_id}/reject",
     ):
-        matches = [route for route in api_router.routes if getattr(route, "path", None) == path]
+        matches = [route for route in iter_route_contexts(api_router.routes) if getattr(route, "path", None) == path]
         assert len(matches) == 1
         assert matches[0].endpoint.__module__ == decisions.__name__

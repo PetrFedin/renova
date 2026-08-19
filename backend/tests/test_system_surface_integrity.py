@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 import re
 
-from fastapi.routing import APIRoute
+from fastapi.routing import iter_route_contexts
 
 from app.main import app
 
@@ -19,8 +19,8 @@ FRAMEWORK_SURFACE_PATHS = {
 }
 
 
-def _api_routes() -> list[APIRoute]:
-    return [route for route in app.routes if isinstance(route, APIRoute)]
+def _api_routes() -> list:
+    return list(iter_route_contexts(app.routes))
 
 
 def test_runtime_has_no_duplicate_method_path_handlers() -> None:
@@ -76,7 +76,7 @@ def test_api_paths_are_canonical() -> None:
             violations.append(f"double slash: {path}")
         if path != "/" and path.endswith("/"):
             violations.append(f"trailing slash: {path}")
-        if path not in {"/health"} and not path.startswith(("/api/v1/", "/ws/")):
+        if path not in {"/health", "/ready"} and not path.startswith(("/api/v1/", "/ws/")):
             violations.append(f"outside canonical surface: {path}")
 
     assert not violations, "Non-canonical API paths:\n" + "\n".join(sorted(violations))

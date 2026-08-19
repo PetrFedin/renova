@@ -1,5 +1,6 @@
 import pytest
 import pytest_asyncio
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -364,7 +365,7 @@ def test_expense_mutation_routes_are_single_and_canonical():
     for method in ("PATCH", "DELETE"):
         matching = [
             route
-            for route in api_router.routes
+            for route in iter_route_contexts(api_router.routes)
             if getattr(route, "path", None) == path and method in (getattr(route, "methods", set()) or set())
         ]
         assert len(matching) == 1
