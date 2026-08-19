@@ -7,6 +7,7 @@ import pytest
 
 from app.api.v1 import admin as admin_api
 from app.api.v1 import automation_worker as worker_api
+from app.core.config import settings
 from app.services import (
     automation_reminders_worker,
     otp_redis_recovery,
@@ -98,7 +99,7 @@ async def test_release_health_and_worker_endpoint_cannot_diverge(monkeypatch):
     assert release_worker["healthy"] is False
     assert release_response["integrations"]["otp_store"] == otp_snapshot
     assert release_response["integrations"]["push_receipts"] == {
-        "worker_enabled": admin_api.settings.push_receipt_worker_enabled,
+        "worker_enabled": settings.push_receipt_worker_enabled,
         **_push_receipt_snapshot(),
     }
 
