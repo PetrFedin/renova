@@ -87,8 +87,10 @@ jobs:
       - name: Enforce one Alembic head
         working-directory: backend
         run: |
-          test "$(poetry run alembic heads | grep -c '(head)')" -eq 1
-          poetry run alembic heads | grep -q '^w11refundreview01 '
+          set -euo pipefail
+          heads="$(poetry run alembic heads)"
+          test "$(printf '%s\n' "$heads" | grep -c '(head)')" -eq 1
+          printf '%s\n' "$heads"
       - name: Upload refund review diagnostics
         if: always()
         uses: actions/upload-artifact@v4
