@@ -11,8 +11,24 @@ from app.services import (
     automation_reminders_worker,
     otp_redis_recovery,
     outbox_dead_letter_service,
+    push_receipt_service,
 )
 from app.services.runtime_health_truth import automation_worker_runtime_truth
+
+
+def _push_receipt_snapshot() -> dict[str, object]:
+    return {
+        "pending": 0,
+        "due": 0,
+        "reconciled": 0,
+        "terminal_errors": 0,
+        "expired": 0,
+        "active_leases": 0,
+        "stale_leases": 0,
+        "oldest_pending_age_seconds": None,
+        "last_checked_at": None,
+        "max_batch_size": 1000,
+    }
 
 
 @pytest.mark.parametrize(
@@ -66,6 +82,11 @@ async def test_release_health_and_worker_endpoint_cannot_diverge(monkeypatch):
         "runtime_health",
         AsyncMock(return_value={"status": "critical", "poisoned": 2}),
     )
+    monkeypatch.setattr(
+        push_receipt_service,
+        "runtime_snapshot",
+        AsyncMock(return_value=_push_receipt_snapshot()),
+    )
 
     worker_response = await worker_api.automation_worker_status(_user=object())
     release_response = await admin_api.release_health(user=object(), db=object())
@@ -76,6 +97,10 @@ async def test_release_health_and_worker_endpoint_cannot_diverge(monkeypatch):
     assert release_worker["status"] == "critical"
     assert release_worker["healthy"] is False
     assert release_response["integrations"]["otp_store"] == otp_snapshot
+    assert release_response["integrations"]["push_receipts"] == {
+        "worker_enabled": admin_api.settings.push_receipt_worker_enabled,
+        **_push_receipt_snapshot(),
+    }
 
 
 @pytest.mark.asyncio
@@ -100,6 +125,11 @@ async def test_release_health_otp_snapshot_is_bounded_and_secret_free(monkeypatc
         outbox_dead_letter_service,
         "runtime_health",
         AsyncMock(return_value={"status": "healthy"}),
+    )
+    monkeypatch.setattr(
+        push_receipt_service,
+        "runtime_snapshot",
+        AsyncMock(return_value=_push_receipt_snapshot()),
     )
 
     response = await admin_api.release_health(user=object(), db=object())

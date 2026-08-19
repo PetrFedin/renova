@@ -11,7 +11,10 @@ on:
       - "backend/app/services/push_receipt_service.py"
       - "backend/app/services/push_receipt_worker.py"
       - "backend/alembic/versions/w12pushreceipt01_expo_push_receipts.py"
+      - "backend/scripts/verify_migration_schema.py"
       - "backend/tests/test_database_revision_guard.py"
+      - "backend/tests/test_yookassa_claim_integrity.py"
+      - "backend/tests/test_release_runtime_health_coherence.py"
       - "backend/tests/test_push_delivery_integrity.py"
       - "backend/tests/test_push_receipt_reconciliation_integrity.py"
       - "docs/push-delivery-reliability.md"
@@ -62,19 +65,22 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-      - name: Verify migration upgrade downgrade upgrade
+      - name: Verify migration upgrade downgrade upgrade and reflected schema
         working-directory: backend
         run: |
           set -euo pipefail
           poetry run python -m alembic upgrade head
           poetry run python -m alembic downgrade w11refundreview01
           poetry run python -m alembic upgrade head
-      - name: Verify receipt persistence provider semantics replica fencing and revision head
+          poetry run python scripts/verify_migration_schema.py --expect present
+      - name: Verify receipt persistence provider semantics replica fencing and shared revision contracts
         working-directory: backend
         run: |
           set -o pipefail
           timeout 600s poetry run pytest -vv -s --tb=short \
             tests/test_database_revision_guard.py \
+            tests/test_yookassa_claim_integrity.py::test_alembic_graph_has_one_head \
+            tests/test_release_runtime_health_coherence.py \
             tests/test_push_delivery_integrity.py \
             tests/test_push_receipt_reconciliation_integrity.py \
             2>&1 | tee push-receipt-reconciliation.log
@@ -90,6 +96,7 @@ jobs:
           service = Path("backend/app/services/push_receipt_service.py").read_text(encoding="utf-8")
           push = Path("backend/app/services/push_service.py").read_text(encoding="utf-8")
           revision_guard = Path("backend/tests/test_database_revision_guard.py").read_text(encoding="utf-8")
+          schema_verifier = Path("backend/scripts/verify_migration_schema.py").read_text(encoding="utf-8")
 
           required = {
               "main.py": ["push_receipt_worker_loop", "push_receipt_worker_interval_sec"],
@@ -104,6 +111,7 @@ jobs:
               ],
               "push_service.py": ["record_accepted_tickets_persistently", "AcceptedPushTicket"],
               "revision_guard.py": ["w12pushreceipt01"],
+              "schema_verifier.py": ["w12pushreceipt01", "expo_push_receipts"],
           }
           sources = {
               "main.py": main,
@@ -112,6 +120,7 @@ jobs:
               "push_receipt_service.py": service,
               "push_service.py": push,
               "revision_guard.py": revision_guard,
+              "schema_verifier.py": schema_verifier,
           }
           for name, tokens in required.items():
               missing = [token for token in tokens if token not in sources[name]]
