@@ -1,3 +1,4 @@
+# Temporary resolver run; job restores this file from main before committing.
 name: Backend dependency integrity
 
 on:
