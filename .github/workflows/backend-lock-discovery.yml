@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - agent/backend-dependency-reproducibility
+  pull_request:
+
+concurrency:
+  group: backend-lock-discovery-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
