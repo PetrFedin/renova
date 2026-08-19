@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check "poetry==2.4.1"
-          poetry update fastapi python-multipart --lock --no-interaction
+          poetry update fastapi python-multipart starlette --lock --no-interaction
           poetry check --lock
           python - <<'PY'
           from pathlib import Path
