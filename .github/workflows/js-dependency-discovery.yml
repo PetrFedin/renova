@@ -4,13 +4,18 @@ on:
   push:
     branches:
       - agent/js-dependency-supply-chain-hardening
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/js-dependency-discovery.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: js-dependency-discovery-${{ github.ref }}
+  group: js-dependency-discovery-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
