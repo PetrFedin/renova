@@ -11,6 +11,12 @@ from app.main import app
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 PATH_PARAMETER_PATTERN = re.compile(r"\{([^{}]+)\}")
+FRAMEWORK_SURFACE_PATHS = {
+    "/openapi.json",
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+}
 
 
 def _api_routes() -> list[APIRoute]:
@@ -64,6 +70,8 @@ def test_api_paths_are_canonical() -> None:
     violations: list[str] = []
     for route in _api_routes():
         path = route.path
+        if not path or path in FRAMEWORK_SURFACE_PATHS:
+            continue
         if "//" in path:
             violations.append(f"double slash: {path}")
         if path != "/" and path.endswith("/"):
