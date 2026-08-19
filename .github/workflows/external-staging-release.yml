@@ -1,0 +1,102 @@
+name: External staging release
+
+on:
+  push:
+    paths:
+      - "backend/app/main.py"
+      - "backend/tests/test_runtime_probe_integrity.py"
+      - "scripts/external-staging-release-smoke.sh"
+      - "scripts/externalStagingReleaseTruth.test.mjs"
+      - ".github/workflows/external-staging-release.yml"
+      - "docs/STAGING-RELEASE.md"
+  pull_request:
+    paths:
+      - "backend/app/main.py"
+      - "backend/tests/test_runtime_probe_integrity.py"
+      - "scripts/external-staging-release-smoke.sh"
+      - "scripts/externalStagingReleaseTruth.test.mjs"
+      - ".github/workflows/external-staging-release.yml"
+      - "docs/STAGING-RELEASE.md"
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character Git SHA deployed to staging
+        required: true
+        type: string
+      image_digest:
+        description: Exact sha256 digest promoted to staging (without repository prefix)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-staging-release-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Validate external staging release contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/externalStagingReleaseTruth.test.mjs
+          bash -n scripts/external-staging-release-smoke.sh
+          python -m py_compile backend/app/main.py backend/tests/test_runtime_probe_integrity.py
+
+  verify-staging:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      API_BASE: ${{ vars.STAGING_API_BASE_URL }}
+      TOKEN: ${{ secrets.STAGING_ADMIN_BEARER_TOKEN }}
+      EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+      EXPECTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
+      EXPECTED_ENVIRONMENT: staging
+      OUT_DIR: ${{ runner.temp }}/renova-external-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Validate release gate source before remote execution
+        run: node scripts/externalStagingReleaseTruth.test.mjs
+      - name: Verify exact immutable release against external staging
+        shell: bash
+        run: bash scripts/external-staging-release-smoke.sh
+      - name: Record verified staging release
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### External staging release verified"
+            echo
+            echo "- Git SHA: \`${{ inputs.release_sha }}\`"
+            echo "- Image: \`ghcr.io/petrfedin/renova-api@${{ inputs.image_digest }}\`"
+            echo "- Environment: \`staging\`"
+            echo "- Result: health + readiness + protected H0 + release-health passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload sanitized staging verification record
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-staging-release-${{ inputs.release_sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: ${{ runner.temp }}/renova-external-staging/verified-release.json
