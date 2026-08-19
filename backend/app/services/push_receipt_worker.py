@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import socket
 import uuid
@@ -13,7 +14,8 @@ logger = logging.getLogger("renova.push.receipt_worker")
 
 
 def _worker_id() -> str:
-    return f"{socket.gethostname()}:{uuid.uuid4().hex[:12]}"
+    host = hashlib.sha256(socket.gethostname().encode("utf-8")).hexdigest()[:16]
+    return f"{host}:{uuid.uuid4().hex[:12]}"
 
 
 async def push_receipt_worker_loop(
