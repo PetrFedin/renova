@@ -16,7 +16,9 @@ RUN python -m pip install "poetry==${POETRY_VERSION}"
 COPY backend/pyproject.toml backend/poetry.lock backend/README.md ./
 RUN poetry check --lock \
     && poetry sync --only main --no-root --no-interaction --no-ansi \
-    && .venv/bin/python -m pip check
+    && .venv/bin/python -m pip check \
+    && .venv/bin/python -m pip uninstall -y pip setuptools wheel \
+    && .venv/bin/python -c "import fastapi, starlette, uvicorn, sqlalchemy, redis, multipart"
 
 FROM ${PYTHON_IMAGE} AS runtime
 ARG VCS_REF=unknown
@@ -32,7 +34,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     RENOVA_GIT_SHA="${VCS_REF}"
 
 WORKDIR /app
-RUN groupadd --gid 10001 renova \
+RUN rm -rf \
+      /usr/local/lib/python3.12/ensurepip \
+      /usr/local/lib/python3.12/site-packages/pip \
+      /usr/local/lib/python3.12/site-packages/pip-*.dist-info \
+      /usr/local/bin/pip \
+      /usr/local/bin/pip3 \
+      /usr/local/bin/pip3.12 \
+    && groupadd --gid 10001 renova \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin renova \
     && mkdir -p /app/uploads \
     && chown 10001:10001 /app/uploads
