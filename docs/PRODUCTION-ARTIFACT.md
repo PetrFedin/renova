@@ -12,7 +12,7 @@ ghcr.io/petrfedin/renova-api:sha-<40-character-git-sha>
 
 The registry digest returned by the publish step is the authoritative artifact identity. Staging and production promotion must reference that digest (`ghcr.io/petrfedin/renova-api@sha256:...`), not rebuild the commit and not substitute a mutable tag.
 
-The image exposes the source Git SHA through the OCI `org.opencontainers.image.revision` label and the `RENOVA_GIT_SHA` runtime variable. `/health` and `/ready` return the same release identity so an operator can prove which commit is serving traffic.
+The image exposes the source Git SHA through the OCI `org.opencontainers.image.revision` label and the `RENOVA_GIT_SHA` runtime variable. The deployment platform must also inject the exact promoted registry digest as `RENOVA_IMAGE_DIGEST=sha256:...`. `/health` and `/ready` return both the Git release identity and the deployment-supplied artifact digest so an external release gate can prove which commit and immutable image are serving traffic. A missing deployment digest is reported as `unknown`, never guessed.
 
 ## Build contract
 
@@ -44,9 +44,9 @@ Any later fixed HIGH or CRITICAL OS/library finding remains a release blocker in
 
 ## Runtime probes
 
-`GET /health` is the liveness contract. It proves the API process can answer and includes the build release identity. It intentionally does not claim that PostgreSQL or Redis are healthy.
+`GET /health` is the liveness contract. It proves the API process can answer and includes the Git release SHA plus `artifact_digest`. It intentionally does not claim that PostgreSQL or Redis are healthy.
 
-`GET /ready` is the traffic-readiness contract. It executes a database probe and validates the deployed shared rate-limit Redis backend. Dependency failure returns HTTP 503 without exposing provider error details.
+`GET /ready` is the traffic-readiness contract. It executes a database probe and validates the deployed shared rate-limit Redis backend. Success and fail-closed HTTP 503 responses include the same Git SHA and artifact digest without exposing provider error details.
 
 A platform should use `/ready` for load-balancer readiness and `/health` for process liveness. A transient database/provider failure must remove an instance from traffic without pretending the process itself is dead.
 
@@ -71,3 +71,5 @@ commit -> build/publish once -> registry digest -> staging -> production
 ```
 
 Staging and production may differ in configuration, credentials and scale. They must not differ by rebuilding application code or resolving dependencies again. Rollback therefore means selecting a previously validated digest; forward-fix means publishing a new Git SHA and a new digest.
+
+For external staging verification, see `docs/STAGING-RELEASE.md` and the `External staging release` workflow. That gate proves the externally served SHA and digest, but does not claim to provision a cloud environment by itself.
