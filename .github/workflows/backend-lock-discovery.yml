@@ -6,6 +6,7 @@ on:
       - agent/backend-dependency-reproducibility
     paths:
       - .github/workflows/backend-lock-discovery.yml
+      - backend/pyproject.toml
 
 permissions:
   contents: write
