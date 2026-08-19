@@ -3,6 +3,7 @@ import json
 
 import pytest
 from fastapi import HTTPException
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 
 import app.models.client_write_request  # noqa: F401
@@ -301,9 +302,9 @@ async def test_non_customer_cannot_use_canonical_creation_endpoint(db):
 
 def test_runtime_has_one_canonical_project_creation_handler():
     counts: dict[str, int] = {}
-    for route in app.routes:
-        methods = set(getattr(route, "methods", set()) or set())
-        path = getattr(route, "path", "")
+    for route in iter_route_contexts(app.routes):
+        methods = set(route.methods or set())
+        path = route.path
         if "POST" in methods and path in {
             "/api/v1/projects",
             "/api/v1/projects/from-template",

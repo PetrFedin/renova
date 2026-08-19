@@ -5,6 +5,7 @@ import json
 
 import pytest
 from fastapi import HTTPException
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 
 import app.models.client_write_request  # noqa: F401
@@ -567,9 +568,9 @@ async def test_runtime_has_one_canonical_handler_for_each_stage_mutation():
     for path, method in signatures:
         matches = [
             route
-            for route in app.routes
-            if getattr(route, "path", None) == path
-            and method in (getattr(route, "methods", set()) or set())
+            for route in iter_route_contexts(app.routes)
+            if route.path == path
+            and method in (route.methods or set())
         ]
         assert len(matches) == 1, (path, method, matches)
         assert matches[0].endpoint.__module__ == "app.api.v1.stage_mutations"

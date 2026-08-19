@@ -1,11 +1,23 @@
-# Temporary same-repo migration runner; restores this file from main before committing.
 name: Backend dependency integrity
 
 on:
+  push:
+    paths:
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
+      - ".github/workflows/backend-dependency-integrity.yml"
   pull_request:
     paths:
-      - "backend/tests/test_project_create_atomicity.py"
-      - "backend/tests/test_stage_mutation_integrity.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
       - ".github/workflows/backend-dependency-integrity.yml"
 
 concurrency:
@@ -16,90 +28,7 @@ permissions:
   contents: read
 
 jobs:
-  temporary-canonical-route-migration:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/immutable-backend-image' && github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/immutable-backend-image
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.13"
-
-      - name: Apply public route-context migration
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement, found {count}")
-              file.write_text(text.replace(old, new, 1))
-
-          replace_once(
-              "backend/tests/test_project_create_atomicity.py",
-              "from fastapi import HTTPException\n",
-              "from fastapi import HTTPException\nfrom fastapi.routing import iter_route_contexts\n",
-          )
-          replace_once(
-              "backend/tests/test_project_create_atomicity.py",
-              '''    for route in app.routes:\n        methods = set(getattr(route, "methods", set()) or set())\n        path = getattr(route, "path", "")\n''',
-              '''    for route in iter_route_contexts(app.routes):\n        methods = set(route.methods or set())\n        path = route.path\n''',
-          )
-
-          replace_once(
-              "backend/tests/test_stage_mutation_integrity.py",
-              "from fastapi import HTTPException\n",
-              "from fastapi import HTTPException\nfrom fastapi.routing import iter_route_contexts\n",
-          )
-          replace_once(
-              "backend/tests/test_stage_mutation_integrity.py",
-              '''            route\n            for route in app.routes\n            if getattr(route, "path", None) == path\n            and method in (getattr(route, "methods", set()) or set())\n''',
-              '''            route\n            for route in iter_route_contexts(app.routes)\n            if route.path == path\n            and method in (route.methods or set())\n''',
-          )
-          PY
-
-      - name: Verify project and stage canonical route contracts
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check "poetry==2.4.1"
-          poetry sync --no-interaction
-          poetry run pytest -q \
-            tests/test_project_create_atomicity.py \
-            tests/test_stage_mutation_integrity.py \
-            tests/test_stage_mutation_integrity_concurrency.py \
-            tests/test_stage_mutation_integrity_self_managed.py \
-            tests/test_stage_mutation_integrity_self_managed_retry.py
-
-      - name: Restore read-only workflow and commit migration
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main --depth=1 --no-tags
-          git show FETCH_HEAD:.github/workflows/backend-dependency-integrity.yml > .github/workflows/backend-dependency-integrity.yml
-          git config user.name "Renova CI"
-          git config user.email "81327591+PetrFedin@users.noreply.github.com"
-          git add \
-            backend/tests/test_project_create_atomicity.py \
-            backend/tests/test_stage_mutation_integrity.py \
-            .github/workflows/backend-dependency-integrity.yml
-          git diff --cached --check
-          git commit -m "Adapt remaining canonical route contracts"
-          git push origin HEAD:agent/immutable-backend-image
-
   locked-backend-contract:
-    if: github.event_name != 'pull_request' || github.head_ref != 'agent/immutable-backend-image'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
