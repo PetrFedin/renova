@@ -23,11 +23,20 @@ The image exposes the source Git SHA through the OCI `org.opencontainers.image.r
 - installs the exact Poetry 2.4.1 toolchain in the builder stage;
 - installs runtime dependencies only from the committed `backend/poetry.lock`;
 - copies only the runtime virtualenv, application code and migration files into the final stage;
+- removes `pip`, `setuptools`, `wheel` and Python `ensurepip` from the runtime artifact after dependency integrity has been checked in the builder;
 - runs as uid/gid `10001:10001`;
 - does not contain the repository, tests, local env files or Node workspace;
 - provides a liveness `HEALTHCHECK` against `/health`.
 
 The root `.dockerignore` makes the backend runtime files the only build context admitted to the image build.
+
+## Runtime dependency security
+
+The first container scan exposed fixed HIGH advisories in the previously locked HTTP stack and in package-manager tooling that was unnecessary at runtime. The image gate was not relaxed.
+
+The reviewed runtime graph now pins FastAPI `0.141.1` and `python-multipart` `0.0.32`; the lockfile resolves Starlette `1.6.0`. Build/package-manager tooling is removed from the final image rather than promoted into the application runtime solely to satisfy a scanner.
+
+Any later fixed HIGH or CRITICAL OS/library finding remains a release blocker in `Backend image integrity`. Unfixed findings remain visible to the scanner, but are not converted into invented patched versions or unsupported dependency overrides.
 
 ## Runtime probes
 
