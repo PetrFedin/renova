@@ -286,7 +286,11 @@ def test_environment_example_matches_working_runtime_contract():
     assert "Payments. Optional for API startup" in example
 
     for required in (
-        "REDIS_URL=redis://redis:6379/0",
+        "DATABASE_URL=postgresql+asyncpg://renova:CHANGE_ME@managed-postgres:5432/renova",
+        "REDIS_URL=redis://managed-redis:6379/0",
+        "RENOVA_IMAGE_DIGEST=sha256:replace-with-promoted-ghcr-digest",
+        "ghcr.io/petrfedin/renova-api@sha256:<DIGEST>",
+        "alembic upgrade head",
         "ADMIN_USER_IDS=replace-with-real-contractor-user-id",
         "AUTH_ALLOW_HEADER_USER_ID=false",
         "ALLOW_CREATE_ALL=false",
@@ -294,6 +298,10 @@ def test_environment_example_matches_working_runtime_contract():
         "TWILIO_SID=",
         "TWILIO_TOKEN=",
         "TWILIO_FROM=",
-        "python -m app.core.runtime_preflight",
+        "External staging release",
+        "Do not deploy staging by cloning the repository",
     ):
         assert required in staging_example
+
+    assert "poetry run uvicorn" not in staging_example
+    assert "poetry install" not in staging_example
