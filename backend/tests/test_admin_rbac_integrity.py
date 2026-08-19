@@ -5,6 +5,7 @@ import inspect
 
 import pytest
 from fastapi import HTTPException
+from fastapi.routing import iter_route_contexts
 
 from app.api.admin_access import admin_access_state, require_admin_user
 from app.api.v1 import admin, admin_outbox_dead_letters
@@ -91,8 +92,8 @@ def test_every_admin_route_uses_canonical_guard():
 
     get_paths = {
         route.path
-        for route in admin.router.routes
-        if "GET" in (getattr(route, "methods", set()) or set())
+        for route in iter_route_contexts(admin.router.routes)
+        if "GET" in (route.methods or set())
     }
     assert get_paths == {
         "/admin/stats",
@@ -106,8 +107,8 @@ def test_every_admin_route_uses_canonical_guard():
     }
     post_paths = {
         route.path
-        for route in admin.router.routes
-        if "POST" in (getattr(route, "methods", set()) or set())
+        for route in iter_route_contexts(admin.router.routes)
+        if "POST" in (route.methods or set())
     }
     assert post_paths == {
         "/admin/outbox/dead-letters/{outbox_id}/claim",
