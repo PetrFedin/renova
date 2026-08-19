@@ -1,0 +1,46 @@
+name: Mobile release integrity
+
+on:
+  push:
+    paths:
+      - "apps/mobile/eas.json"
+      - "apps/mobile/lib/__tests__/easProfiles.test.mjs"
+      - "scripts/eas-cli.sh"
+      - "scripts/testflight-preflight.sh"
+      - "scripts/check-mobile-release-integrity.mjs"
+      - ".github/workflows/eas-build.yml"
+      - ".github/workflows/mobile-release-integrity.yml"
+  pull_request:
+    paths:
+      - "apps/mobile/eas.json"
+      - "apps/mobile/lib/__tests__/easProfiles.test.mjs"
+      - "scripts/eas-cli.sh"
+      - "scripts/testflight-preflight.sh"
+      - "scripts/check-mobile-release-integrity.mjs"
+      - ".github/workflows/eas-build.yml"
+      - ".github/workflows/mobile-release-integrity.yml"
+
+concurrency:
+  group: mobile-release-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+      - name: Validate mobile release contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/check-mobile-release-integrity.mjs
+          node apps/mobile/lib/__tests__/easProfiles.test.mjs
+          bash -n scripts/eas-cli.sh
+          bash -n scripts/testflight-preflight.sh

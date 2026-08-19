@@ -36,6 +36,7 @@ npm run mobile:test
 
 echo "--- 2) EAS profile contracts ---"
 node apps/mobile/lib/__tests__/easProfiles.test.mjs
+node scripts/check-mobile-release-integrity.mjs
 
 
 echo "--- 2b) selected profile API must be real HTTPS, not placeholder ---"
@@ -84,8 +85,8 @@ fi
 
 echo "--- 6) EAS account/project probe ---"
 cd apps/mobile
-npx eas-cli@latest whoami
-npx eas-cli@latest project:info
+bash ../../scripts/eas-cli.sh whoami
+bash ../../scripts/eas-cli.sh project:info
 cd "$ROOT"
 
 if [[ "$CI_MODE" -eq 0 ]]; then

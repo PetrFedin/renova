@@ -1,12 +1,19 @@
 {
   "cli": {
-    "version": ">= 12.0.0",
+    "version": "21.4.0",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "node": "22.22.2",
+      "android": {
+        "image": "ubuntu-26.04-jdk-17-ndk-r27b"
+      },
+      "ios": {
+        "image": "macos-tahoe-26.4-xcode-26.4"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "http://127.0.0.1:8100",
         "EXPO_PUBLIC_DEMO": "1",
@@ -15,8 +22,13 @@
     },
     "preview": {
       "distribution": "internal",
+      "node": "22.22.2",
+      "android": {
+        "image": "ubuntu-26.04-jdk-17-ndk-r27b"
+      },
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "channel": "preview",
       "env": {
@@ -29,9 +41,11 @@
       "extends": "production",
       "distribution": "store",
       "channel": "testflight",
+      "node": "22.22.2",
       "ios": {
         "simulator": false,
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
@@ -41,6 +55,13 @@
     },
     "production": {
       "autoIncrement": true,
+      "node": "22.22.2",
+      "android": {
+        "image": "ubuntu-26.04-jdk-17-ndk-r27b"
+      },
+      "ios": {
+        "image": "macos-tahoe-26.4-xcode-26.4"
+      },
       "channel": "production",
       "distribution": "store",
       "env": {
@@ -55,6 +76,13 @@
       "extends": "preview",
       "distribution": "internal",
       "channel": "staging",
+      "node": "22.22.2",
+      "android": {
+        "image": "ubuntu-26.04-jdk-17-ndk-r27b"
+      },
+      "ios": {
+        "image": "macos-tahoe-26.4-xcode-26.4"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
         "EXPO_PUBLIC_DEMO": "0",
