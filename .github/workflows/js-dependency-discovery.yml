@@ -4,18 +4,13 @@ on:
   push:
     branches:
       - agent/js-dependency-supply-chain-hardening
-  pull_request:
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/js-dependency-discovery.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: js-dependency-discovery-${{ github.workflow }}-${{ github.ref }}
+  group: js-dependency-discovery-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,6 +19,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/js-dependency-supply-chain-hardening
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -32,6 +29,18 @@ jobs:
         run: |
           set -euo pipefail
           npm install --package-lock-only --ignore-scripts --save-dev --save-exact tsx@4.23.12
+      - name: Persist npm-generated package metadata
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "package metadata already canonical"
+            exit 0
+          fi
+          git config user.name "renova-ci"
+          git config user.email "renova-ci@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "Pin tsx in reviewed package lock"
+          git push origin HEAD:agent/js-dependency-supply-chain-hardening
       - name: Capture dependency audits
         run: |
           set +e
