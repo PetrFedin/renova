@@ -26,38 +26,6 @@ jobs:
           python-version: "3.12.13"
       - name: Install exact Poetry toolchain
         run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
-      - name: Normalize Poetry-based workflow toolchains
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          root = Path('.github/workflows')
-          current = Path('.github/workflows/backend-lock-discovery.yml')
-          for path in sorted(root.glob('*.yml')):
-              if path == current:
-                  continue
-              text = path.read_text(encoding='utf-8')
-              if 'poetry' not in text.lower():
-                  continue
-              original = text
-              text = re.sub(r'python-version:\s*["\u0027]?3\.12["\u0027]?', 'python-version: "3.12.13"', text)
-              text = re.sub(
-                  r'(?m)^(\s*)pip install poetry\s*$',
-                  r'\1python -m pip install --disable-pip-version-check "poetry==2.4.1"',
-                  text,
-              )
-              text = re.sub(
-                  r'(?m)^(\s*)python -m pip install poetry\s*$',
-                  r'\1python -m pip install --disable-pip-version-check "poetry==2.4.1"',
-                  text,
-              )
-              text = text.replace('poetry install', 'poetry sync')
-              text = re.sub(r'(?m)^\s*poetry run pip install fpdf2 alembic\s*\n?', '', text)
-              if text != original:
-                  path.write_text(text, encoding='utf-8')
-                  print(f'normalized {path}')
-          PY
       - name: Generate Poetry lockfile
         working-directory: backend
         run: |
@@ -66,15 +34,15 @@ jobs:
           python --version
           poetry lock
           poetry check --lock
-      - name: Commit generated production dependency contract
+      - name: Commit generated lockfile only
         run: |
           set -euo pipefail
-          if git diff --quiet -- backend/poetry.lock .github/workflows; then
-            echo "backend dependency contract is already current"
+          if git diff --quiet -- backend/poetry.lock; then
+            echo "backend/poetry.lock is already current"
             exit 0
           fi
           git config user.name "renova-ci"
           git config user.email "renova-ci@users.noreply.github.com"
-          git add backend/poetry.lock .github/workflows
-          git commit -m "Normalize locked backend dependency installs"
+          git add backend/poetry.lock
+          git commit -m "Regenerate backend Poetry lockfile"
           git push origin HEAD:agent/backend-dependency-reproducibility
