@@ -1,0 +1,52 @@
+name: Backend dependency integrity
+
+on:
+  push:
+    paths:
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
+      - ".github/workflows/backend-dependency-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/.python-version"
+      - "scripts/check-backend-dependency-integrity.py"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/staging-runtime-smoke.yml"
+      - ".github/workflows/backend-dependency-integrity.yml"
+
+concurrency:
+  group: backend-dependency-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  locked-backend-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install exact Poetry toolchain
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+      - name: Validate repository dependency contract
+        run: python scripts/check-backend-dependency-integrity.py
+      - name: Verify and install locked graph
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Verify declared PDF runtime dependency
+        working-directory: backend
+        run: poetry run pytest -q tests/test_pdf_glyph_integrity.py
