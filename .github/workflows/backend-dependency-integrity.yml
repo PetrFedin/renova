@@ -4,17 +4,7 @@ name: Backend dependency integrity
 on:
   pull_request:
     paths:
-      - "backend/tests/test_account_lifecycle_integrity.py"
-      - "backend/tests/test_bank_statement_integrity.py"
-      - "backend/tests/test_dashboard_read_integrity.py"
-      - "backend/tests/test_document_lifecycle_atomicity.py"
-      - "backend/tests/test_expense_mutation_integrity.py"
-      - "backend/tests/test_payment_dispute_integrity.py"
-      - "backend/tests/test_payment_dispute_resolution_integrity.py"
-      - "backend/tests/test_payment_event_history_integrity.py"
-      - "backend/tests/test_portal_change_order_scope.py"
-      - "backend/tests/test_stage_review_atomicity.py"
-      - "backend/tests/test_system_surface_integrity.py"
+      - "backend/tests/**"
       - ".github/workflows/backend-dependency-integrity.yml"
 
 concurrency:
@@ -47,120 +37,88 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          affected = [
+              "backend/tests/test_account_lifecycle_integrity.py",
+              "backend/tests/test_bank_statement_integrity.py",
+              "backend/tests/test_dashboard_read_integrity.py",
+              "backend/tests/test_document_lifecycle_atomicity.py",
+              "backend/tests/test_expense_mutation_integrity.py",
+              "backend/tests/test_payment_dispute_integrity.py",
+              "backend/tests/test_payment_dispute_resolution_integrity.py",
+              "backend/tests/test_payment_event_history_integrity.py",
+              "backend/tests/test_portal_change_order_scope.py",
+              "backend/tests/test_stage_review_atomicity.py",
+              "backend/tests/test_system_surface_integrity.py",
+          ]
+
           def replace_once(path: str, old: str, new: str) -> None:
               file = Path(path)
               text = file.read_text()
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement, found {count}")
+                  raise SystemExit(f"{path}: expected one replacement for {old!r}, found {count}")
               file.write_text(text.replace(old, new, 1))
 
           replace_once(
-              "backend/tests/test_account_lifecycle_integrity.py",
+              affected[0],
               "from fastapi.routing import APIRoute\n",
               "from fastapi.routing import iter_route_contexts\n",
           )
           replace_once(
-              "backend/tests/test_account_lifecycle_integrity.py",
-              '''            route\n            for route in app.routes\n            if isinstance(route, APIRoute)\n            and route.path == path\n            and method in route.methods\n''',
-              '''            route\n            for route in iter_route_contexts(app.routes)\n            if route.path == path\n            and method in (route.methods or set())\n''',
+              affected[0],
+              "for route in app.routes",
+              "for route in iter_route_contexts(app.routes)",
+          )
+          replace_once(
+              affected[0],
+              "if isinstance(route, APIRoute)\n            and route.path == path",
+              "if route.path == path",
           )
 
-          for path in (
-              "backend/tests/test_bank_statement_integrity.py",
-              "backend/tests/test_dashboard_read_integrity.py",
-              "backend/tests/test_document_lifecycle_atomicity.py",
-              "backend/tests/test_expense_mutation_integrity.py",
-              "backend/tests/test_payment_event_history_integrity.py",
-          ):
+          import_anchors = {
+              affected[1]: "import pytest_asyncio\n",
+              affected[2]: "import pytest\n",
+              affected[3]: "import pytest_asyncio\n",
+              affected[4]: "import pytest_asyncio\n",
+              affected[5]: "from fastapi import HTTPException\n",
+              affected[6]: "from fastapi import HTTPException\n",
+              affected[7]: "import pytest_asyncio\n",
+              affected[8]: "from fastapi import HTTPException\n",
+              affected[9]: "import pytest\n",
+          }
+          for path, anchor in import_anchors.items():
+              replace_once(path, anchor, anchor + "from fastapi.routing import iter_route_contexts\n")
+
+          for path in affected[1:9]:
               replace_once(
                   path,
-                  "import pytest_asyncio\n",
-                  "import pytest_asyncio\nfrom fastapi.routing import iter_route_contexts\n",
+                  "for route in api_router.routes",
+                  "for route in iter_route_contexts(api_router.routes)",
               )
-
           replace_once(
-              "backend/tests/test_bank_statement_integrity.py",
-              '''            route\n            for route in api_router.routes\n            if getattr(route, "path", None) == path and "POST" in (getattr(route, "methods", set()) or set())\n''',
-              '''            route\n            for route in iter_route_contexts(api_router.routes)\n            if route.path == path and "POST" in (route.methods or set())\n''',
-          )
-          replace_once(
-              "backend/tests/test_dashboard_read_integrity.py",
-              '''        route\n        for route in api_router.routes\n        if getattr(route, "path", None) == "/api/v1/projects/{project_id}/dashboard"\n        and "GET" in (getattr(route, "methods", None) or set())\n''',
-              '''        route\n        for route in iter_route_contexts(api_router.routes)\n        if route.path == "/api/v1/projects/{project_id}/dashboard"\n        and "GET" in (route.methods or set())\n''',
-          )
-          replace_once(
-              "backend/tests/test_document_lifecycle_atomicity.py",
-              '''        route\n        for route in api_router.routes\n        if getattr(route, "path", None) == f"/api/v1{path}"\n        and method in set(getattr(route, "methods", set()) or set())\n''',
-              '''        route\n        for route in iter_route_contexts(api_router.routes)\n        if route.path == f"/api/v1{path}"\n        and method in set(route.methods or set())\n''',
-          )
-          replace_once(
-              "backend/tests/test_expense_mutation_integrity.py",
-              '''            route\n            for route in api_router.routes\n            if getattr(route, "path", None) == path and method in (getattr(route, "methods", set()) or set())\n''',
-              '''            route\n            for route in iter_route_contexts(api_router.routes)\n            if route.path == path and method in (route.methods or set())\n''',
-          )
-          replace_once(
-              "backend/tests/test_payment_event_history_integrity.py",
-              '''        route\n        for route in api_router.routes\n        if getattr(route, "path", None) == path\n        and "GET" in (getattr(route, "methods", set()) or set())\n''',
-              '''        route\n        for route in iter_route_contexts(api_router.routes)\n        if route.path == path\n        and "GET" in (route.methods or set())\n''',
-          )
-
-          for path in (
-              "backend/tests/test_payment_dispute_integrity.py",
-              "backend/tests/test_payment_dispute_resolution_integrity.py",
-              "backend/tests/test_portal_change_order_scope.py",
-          ):
-              replace_once(
-                  path,
-                  "from fastapi import HTTPException\n",
-                  "from fastapi import HTTPException\nfrom fastapi.routing import iter_route_contexts\n",
-              )
-
-          replace_once(
-              "backend/tests/test_payment_dispute_integrity.py",
-              '''        route\n        for route in api_router.routes\n        if getattr(route, "path", None) == path\n        and "POST" in (getattr(route, "methods", set()) or set())\n''',
-              '''        route\n        for route in iter_route_contexts(api_router.routes)\n        if route.path == path\n        and "POST" in (route.methods or set())\n''',
-          )
-          replace_once(
-              "backend/tests/test_payment_dispute_resolution_integrity.py",
-              '''        route\n        for route in api_router.routes\n        if getattr(route, "path", None) == path\n        and "POST" in (getattr(route, "methods", set()) or set())\n''',
-              '''        route\n        for route in iter_route_contexts(api_router.routes)\n        if route.path == path\n        and "POST" in (route.methods or set())\n''',
-          )
-          replace_once(
-              "backend/tests/test_portal_change_order_scope.py",
-              '''        matches = [route for route in api_router.routes if getattr(route, "path", None) == path]\n''',
-              '''        matches = [route for route in iter_route_contexts(api_router.routes) if route.path == path]\n''',
+              affected[9],
+              "for route in app.routes",
+              "for route in iter_route_contexts(app.routes)",
           )
 
           replace_once(
-              "backend/tests/test_stage_review_atomicity.py",
-              "import pytest\n",
-              "import pytest\nfrom fastapi.routing import iter_route_contexts\n",
-          )
-          replace_once(
-              "backend/tests/test_stage_review_atomicity.py",
-              '''    for route in app.routes:\n        path = getattr(route, "path", "")\n        methods = set(getattr(route, "methods", set()) or set())\n''',
-              '''    for route in iter_route_contexts(app.routes):\n        path = route.path\n        methods = set(route.methods or set())\n''',
-          )
-
-          replace_once(
-              "backend/tests/test_system_surface_integrity.py",
+              affected[10],
               "from fastapi.routing import APIRoute\n",
               "from fastapi.routing import iter_route_contexts\n",
           )
           replace_once(
-              "backend/tests/test_system_surface_integrity.py",
-              '''def _api_routes() -> list[APIRoute]:\n    return [route for route in app.routes if isinstance(route, APIRoute)]\n''',
-              '''def _api_routes() -> list:\n    return list(iter_route_contexts(app.routes))\n''',
+              affected[10],
+              "def _api_routes() -> list[APIRoute]:\n    return [route for route in app.routes if isinstance(route, APIRoute)]\n",
+              "def _api_routes() -> list:\n    return list(iter_route_contexts(app.routes))\n",
           )
           replace_once(
-              "backend/tests/test_system_surface_integrity.py",
-              '''        if path not in {"/health"} and not path.startswith(("/api/v1/", "/ws/")):\n''',
-              '''        if path not in {"/health", "/ready"} and not path.startswith(("/api/v1/", "/ws/")):\n''',
+              affected[10],
+              'if path not in {"/health"} and not path.startswith(("/api/v1/", "/ws/")):',
+              'if path not in {"/health", "/ready"} and not path.startswith(("/api/v1/", "/ws/")):',
           )
           PY
 
-      - name: Prove no affected contract still assumes flat route lists
+      - name: Prove affected contracts no longer assume flat route lists
         shell: bash
         run: |
           set -euo pipefail
@@ -182,7 +140,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify all migrated route and surface contracts
+      - name: Verify migrated route and system-surface contracts
         working-directory: backend
         run: |
           set -euo pipefail
@@ -209,19 +167,7 @@ jobs:
           git show FETCH_HEAD:.github/workflows/backend-dependency-integrity.yml > .github/workflows/backend-dependency-integrity.yml
           git config user.name "Renova CI"
           git config user.email "81327591+PetrFedin@users.noreply.github.com"
-          git add \
-            backend/tests/test_account_lifecycle_integrity.py \
-            backend/tests/test_bank_statement_integrity.py \
-            backend/tests/test_dashboard_read_integrity.py \
-            backend/tests/test_document_lifecycle_atomicity.py \
-            backend/tests/test_expense_mutation_integrity.py \
-            backend/tests/test_payment_dispute_integrity.py \
-            backend/tests/test_payment_dispute_resolution_integrity.py \
-            backend/tests/test_payment_event_history_integrity.py \
-            backend/tests/test_portal_change_order_scope.py \
-            backend/tests/test_stage_review_atomicity.py \
-            backend/tests/test_system_surface_integrity.py \
-            .github/workflows/backend-dependency-integrity.yml
+          git add backend/tests .github/workflows/backend-dependency-integrity.yml
           git diff --cached --check
           git commit -m "Adapt remaining route surface integrity contracts"
           git push origin HEAD:agent/immutable-backend-image
