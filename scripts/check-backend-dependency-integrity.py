@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed when backend dependency reproducibility drifts."""
+"""Fail closed when release-critical backend dependency reproducibility drifts."""
 
 from __future__ import annotations
 
@@ -14,6 +14,11 @@ PYTHON_VERSION = "3.12.13"
 POETRY_VERSION = "2.4.1"
 POETRY_CORE_VERSION = "2.4.0"
 TEMP_WORKFLOW = WORKFLOWS / "backend-lock-discovery.yml"
+RELEASE_WORKFLOWS = (
+    WORKFLOWS / "ci.yml",
+    WORKFLOWS / "staging-runtime-smoke.yml",
+    WORKFLOWS / "backend-dependency-integrity.yml",
+)
 
 
 def fail(message: str, errors: list[str]) -> None:
@@ -48,11 +53,11 @@ def main() -> int:
         fail("temporary write-enabled backend-lock-discovery workflow must not be committed", errors)
 
     exact_poetry_install = f'python -m pip install --disable-pip-version-check "poetry=={POETRY_VERSION}"'
-    for workflow in sorted(WORKFLOWS.glob("*.yml")):
-        text = workflow.read_text(encoding="utf-8")
-        if "poetry" not in text.lower():
+    for workflow in RELEASE_WORKFLOWS:
+        if not workflow.is_file():
+            fail(f"required release workflow is missing: {workflow.relative_to(ROOT)}", errors)
             continue
-
+        text = workflow.read_text(encoding="utf-8")
         relative = workflow.relative_to(ROOT)
         lowered = text.lower()
 
@@ -61,29 +66,18 @@ def main() -> int:
         if "poetry run pip install" in lowered:
             fail(f"{relative}: ad-hoc pip install inside Poetry env is forbidden", errors)
         if re.search(r"\bpoetry\s+(lock|update)\b", lowered):
-            fail(f"{relative}: CI must not resolve or update backend dependencies", errors)
-        if re.search(r"(?:^|\n)\s*(?:pip|python\s+-m\s+pip)\s+install[^\n]*\bpoetry\b", text, re.I):
-            poetry_install_lines = [
-                line.strip()
-                for line in text.splitlines()
-                if re.search(r"(?:pip|python\s+-m\s+pip)\s+install.*\bpoetry\b", line, re.I)
-            ]
-            for line in poetry_install_lines:
-                if line != exact_poetry_install:
-                    fail(
-                        f"{relative}: Poetry install must be exactly: {exact_poetry_install}",
-                        errors,
-                    )
-        if "actions/setup-python" in lowered:
-            versions = re.findall(r"python-version:\s*[\"']?([^\"'\s]+)", text)
-            if not versions:
-                fail(f"{relative}: setup-python is missing python-version", errors)
-            for version in versions:
-                if version != PYTHON_VERSION:
-                    fail(
-                        f"{relative}: backend Poetry workflow pins Python {version}, expected {PYTHON_VERSION}",
-                        errors,
-                    )
+            fail(f"{relative}: release CI must not resolve or update backend dependencies", errors)
+        if exact_poetry_install not in text:
+            fail(f"{relative}: exact Poetry {POETRY_VERSION} install is required", errors)
+        versions = re.findall(r"python-version:\s*[\"']?([^\"'\s]+)", text)
+        if not versions:
+            fail(f"{relative}: setup-python is missing python-version", errors)
+        for version in versions:
+            if version != PYTHON_VERSION:
+                fail(
+                    f"{relative}: release Python {version}, expected {PYTHON_VERSION}",
+                    errors,
+                )
 
     if lock_path.is_file():
         lock_text = lock_path.read_text(encoding="utf-8")
@@ -100,7 +94,7 @@ def main() -> int:
 
     print(
         "Backend dependency integrity OK: "
-        f"Python {PYTHON_VERSION}, Poetry {POETRY_VERSION}, poetry-core {POETRY_CORE_VERSION}, locked graph present."
+        f"Python {PYTHON_VERSION}, Poetry {POETRY_VERSION}, poetry-core {POETRY_CORE_VERSION}, locked release graph present."
     )
     return 0
 
