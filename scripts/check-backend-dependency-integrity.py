@@ -12,6 +12,7 @@ BACKEND = ROOT / "backend"
 WORKFLOWS = ROOT / ".github" / "workflows"
 PYTHON_VERSION = "3.12.13"
 POETRY_VERSION = "2.4.1"
+POETRY_CORE_VERSION = "2.4.0"
 TEMP_WORKFLOW = WORKFLOWS / "backend-lock-discovery.yml"
 
 
@@ -36,7 +37,7 @@ def main() -> int:
     pyproject = pyproject_path.read_text(encoding="utf-8")
     required_pyproject_fragments = (
         f'python = ">={PYTHON_VERSION},<3.13"',
-        f'requires = ["poetry-core=={POETRY_VERSION}"]',
+        f'requires = ["poetry-core=={POETRY_CORE_VERSION}"]',
         'fpdf2 = "2.8.7"',
     )
     for fragment in required_pyproject_fragments:
@@ -98,7 +99,8 @@ def main() -> int:
         return 1
 
     print(
-        f"Backend dependency integrity OK: Python {PYTHON_VERSION}, Poetry {POETRY_VERSION}, locked graph present."
+        "Backend dependency integrity OK: "
+        f"Python {PYTHON_VERSION}, Poetry {POETRY_VERSION}, poetry-core {POETRY_CORE_VERSION}, locked graph present."
     )
     return 0
 
