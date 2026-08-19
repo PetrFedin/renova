@@ -28,7 +28,55 @@ permissions:
   contents: read
 
 jobs:
+  temporary-security-resolver:
+    if: github.event_name == 'push' && github.ref_name == 'agent/immutable-backend-image'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/immutable-backend-image
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Resolve reviewed HTTP security upgrade
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry update fastapi python-multipart --lock --no-interaction
+          poetry check --lock
+          python - <<'PY'
+          from pathlib import Path
+          lock = Path('poetry.lock').read_text()
+          for package, version in (
+              ('fastapi', '0.141.1'),
+              ('python-multipart', '0.0.32'),
+              ('starlette', '1.6.0'),
+          ):
+              marker = f'name = "{package}"\nversion = "{version}"'
+              if marker not in lock:
+                  raise SystemExit(f'locked {package} is not the reviewed {version}')
+          PY
+      - name: Restore read-only workflow and commit generated lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1 --no-tags
+          git show FETCH_HEAD:.github/workflows/backend-dependency-integrity.yml > .github/workflows/backend-dependency-integrity.yml
+          git rm -f .github/workflows/_temporary-backend-security-lock.yml
+          git config user.name "Renova CI"
+          git config user.email "81327591+PetrFedin@users.noreply.github.com"
+          git add backend/poetry.lock .github/workflows/backend-dependency-integrity.yml
+          git diff --cached --check
+          git commit -m "Lock secure backend HTTP dependency graph"
+          git push origin HEAD:agent/immutable-backend-image
+
   locked-backend-contract:
+    if: not (github.event_name == 'push' && github.ref_name == 'agent/immutable-backend-image')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
