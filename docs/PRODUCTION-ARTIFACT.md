@@ -34,7 +34,9 @@ The root `.dockerignore` makes the backend runtime files the only build context 
 
 The first container scan exposed fixed HIGH advisories in the previously locked HTTP stack and in package-manager tooling that was unnecessary at runtime. The image gate was not relaxed.
 
-The reviewed runtime graph pins FastAPI `0.139.2` and `python-multipart` `0.0.32`; the lockfile resolves Starlette `1.6.0`. FastAPI `0.139.2` is deliberately used instead of the later `0.140.x`/`0.141.x` line because it contains the upstream `_IncludedRouter` concurrent cache rebuild fix while avoiding a newer route-handler cache implementation that is not required by Renova. The route-integrity tests use FastAPI's public `iter_route_contexts()` API instead of assuming `router.routes` is a flat list. Calendar read and mutation contracts, OTP route uniqueness, administrative route/ordering guards, canonical project creation routes, and canonical stage mutation routes all use the same effective route-tree traversal.
+The reviewed runtime graph pins FastAPI `0.139.2` and `python-multipart` `0.0.32`; the lockfile resolves Starlette `1.6.0`. FastAPI `0.139.2` is deliberately used instead of the later `0.140.x`/`0.141.x` line because it contains the upstream `_IncludedRouter` concurrent cache rebuild fix while avoiding a newer route-handler cache implementation that is not required by Renova.
+
+Route-integrity contracts use FastAPI's public `iter_route_contexts()` API instead of assuming `router.routes` is a flat list. The effective route-tree guards now cover account lifecycle, bank import, dashboard, document lifecycle, expense mutation, payment disputes and history, portal change-order decisions, stage review, calendar, OTP, administration, project creation and stage mutation. The system-surface guard excludes only FastAPI's known documentation/OpenAPI routes and non-route intermediate contexts; any other HTTP path must remain under `/api/v1/*`, `/ws/*`, `/health` or `/ready`.
 
 Build/package-manager tooling is removed from the final image rather than promoted into the application runtime solely to satisfy a scanner.
 
