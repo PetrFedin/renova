@@ -76,7 +76,7 @@ jobs:
           git push origin HEAD:agent/immutable-backend-image
 
   locked-backend-contract:
-    if: not (github.event_name == 'push' && github.ref_name == 'agent/immutable-backend-image')
+    if: github.event_name != 'push' || github.ref_name != 'agent/immutable-backend-image'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
