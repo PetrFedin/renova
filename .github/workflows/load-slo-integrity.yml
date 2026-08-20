@@ -1,0 +1,199 @@
+name: Load SLO integrity
+
+on:
+  push:
+    paths:
+      - "load/**"
+      - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/external-load-reconciliation.sh"
+      - "scripts/external-staging-release-smoke.sh"
+      - ".github/workflows/load-slo-integrity.yml"
+      - "docs/LOAD-SLO.md"
+  pull_request:
+    paths:
+      - "load/**"
+      - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/external-load-reconciliation.sh"
+      - "scripts/external-staging-release-smoke.sh"
+      - ".github/workflows/load-slo-integrity.yml"
+      - "docs/LOAD-SLO.md"
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Production-auth staging scenario
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - load
+          - spike
+          - soak
+      release_sha:
+        description: Exact 40-character Git SHA deployed to staging
+        required: true
+        type: string
+      image_digest:
+        description: Exact sha256 backend image digest deployed to staging
+        required: true
+        type: string
+      enable_writes:
+        description: Enable bounded chat writes on dedicated load fixtures
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load-slo-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+      - name: Read immutable k6 image
+        id: k6-image
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="$(tr -d '\r\n' < load/K6_IMAGE)"
+          [[ "$ref" =~ ^grafana/k6:2\.1\.0@sha256:[0-9a-f]{64}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Validate load and SLO source contract
+        run: node --test scripts/loadSloIntegrity.test.mjs
+        env:
+          K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
+      - name: Validate reconciliation shell
+        run: bash -n scripts/external-load-reconciliation.sh
+      - name: Parse all k6 modules with exact runtime
+        env:
+          K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm "$K6_IMAGE" version
+          for script in k6-smoke.js k6-journey.js k6-load.js k6-spike.js k6-soak.js; do
+            docker run --rm \
+              -v "$PWD/load:/scripts:ro" \
+              -e API_BASE_URL=https://load-contract.invalid \
+              -e RENOVA_LOAD_TOKEN_POOL='[{"token":"ci-contract-token"}]' \
+              "$K6_IMAGE" inspect "/scripts/$script" >/dev/null
+          done
+
+  external-staging-load:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: staging
+    env:
+      API_BASE: ${{ vars.STAGING_API_BASE_URL }}
+      API_BASE_URL: ${{ vars.STAGING_API_BASE_URL }}
+      TOKEN: ${{ secrets.STAGING_ADMIN_BEARER_TOKEN }}
+      RENOVA_LOAD_TOKEN_POOL: ${{ secrets.STAGING_LOAD_TOKEN_POOL }}
+      EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+      EXPECTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
+      EXPECTED_ENVIRONMENT: staging
+      LOAD_ENABLE_WRITES: ${{ inputs.enable_writes }}
+      LOAD_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+      OUT_DIR: ${{ runner.temp }}/renova-load-slo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Read immutable k6 image
+        id: k6-image
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="$(tr -d '\r\n' < load/K6_IMAGE)"
+          [[ "$ref" =~ ^grafana/k6:2\.1\.0@sha256:[0-9a-f]{64}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Validate source contract before remote execution
+        run: node --test scripts/loadSloIntegrity.test.mjs
+        env:
+          K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
+      - name: Verify exact immutable staging release before load
+        shell: bash
+        run: bash scripts/external-staging-release-smoke.sh
+      - name: Run selected production-auth k6 scenario
+        id: k6
+        continue-on-error: true
+        env:
+          K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
+          SCENARIO: ${{ inputs.scenario }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR"
+          case "$SCENARIO" in
+            smoke) script=k6-smoke.js ;;
+            load) script=k6-load.js ;;
+            spike) script=k6-spike.js ;;
+            soak) script=k6-soak.js ;;
+            *) echo "unsupported scenario: $SCENARIO" >&2; exit 2 ;;
+          esac
+          docker run --rm \
+            -v "$PWD/load:/scripts:ro" \
+            -v "$OUT_DIR:/out" \
+            -e API_BASE_URL \
+            -e RENOVA_LOAD_TOKEN_POOL \
+            -e LOAD_ENABLE_WRITES \
+            -e LOAD_RUN_ID \
+            "$K6_IMAGE" run \
+            --summary-export /out/k6-summary.json \
+            "/scripts/$script"
+      - name: Reconcile queues after load
+        if: always() && steps.k6.outcome != 'skipped'
+        shell: bash
+        run: bash scripts/external-load-reconciliation.sh
+      - name: Record sanitized load evidence
+        if: always() && steps.k6.outcome != 'skipped'
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+          K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
+          K6_OUTCOME: ${{ steps.k6.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          out = Path(os.environ["OUT_DIR"])
+          payload = {
+              "release_sha": os.environ["EXPECTED_RELEASE_SHA"],
+              "image_digest": os.environ["EXPECTED_IMAGE_DIGEST"],
+              "scenario": os.environ["SCENARIO"],
+              "bounded_writes_enabled": os.environ.get("LOAD_ENABLE_WRITES") == "true",
+              "k6_image": os.environ["K6_IMAGE"],
+              "k6_outcome": os.environ["K6_OUTCOME"],
+              "capacity_proof_scope": "external_staging_only",
+          }
+          (out / "load-evidence.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          PY
+      - name: Upload staging load evidence
+        if: always() && steps.k6.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-slo-${{ inputs.scenario }}-${{ inputs.release_sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: ${{ runner.temp }}/renova-load-slo/
+      - name: Enforce k6 thresholds
+        if: always() && steps.k6.outcome == 'failure'
+        run: exit 1
