@@ -7,10 +7,11 @@ on:
       - "backend/alembic.ini"
       - "backend/app/db/migration_guard.py"
       - "backend/app/db/session.py"
-      - "backend/app/models/calendar.py"
-      - "backend/app/models/entities.py"
-      - "backend/app/models/subscription_checkout.py"
+      - "backend/app/models/**"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
   pull_request:
@@ -19,10 +20,11 @@ on:
       - "backend/alembic.ini"
       - "backend/app/db/migration_guard.py"
       - "backend/app/db/session.py"
-      - "backend/app/models/calendar.py"
-      - "backend/app/models/entities.py"
-      - "backend/app/models/subscription_checkout.py"
+      - "backend/app/models/**"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
 
@@ -30,20 +32,26 @@ concurrency:
   group: database-schema-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   postgres-schema-lifecycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
         env:
           POSTGRES_USER: renova
           POSTGRES_PASSWORD: renova
           POSTGRES_DB: renova
         ports: ["5433:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       ENVIRONMENT: staging
       DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
@@ -56,14 +64,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install backend dependencies
+          python-version: "3.12.13"
+      - name: Install exact locked backend environment
         working-directory: backend
         run: |
           set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
       - name: Run revision guard contracts
         working-directory: backend
         run: poetry run pytest -q tests/test_database_revision_guard.py
@@ -77,16 +87,19 @@ jobs:
           fi
       - name: Upgrade clean PostgreSQL database
         working-directory: backend
-        run: poetry run python -m alembic upgrade head
+        run: poetry run alembic upgrade head
       - name: Verify reflected application schema
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect present
+      - name: Verify complete ORM/Alembic column parity
+        working-directory: backend
+        run: poetry run python scripts/verify_orm_schema_parity.py
       - name: Accept migrated PostgreSQL database
         working-directory: backend
         run: poetry run python -m app.db.migration_guard
       - name: Downgrade new schema migrations
         working-directory: backend
-        run: poetry run python -m alembic downgrade w6webhookdelivery01
+        run: poetry run alembic downgrade w6webhookdelivery01
       - name: Verify migrated schema removal
         working-directory: backend
         run: poetry run python scripts/verify_migration_schema.py --expect absent
@@ -100,10 +113,13 @@ jobs:
           fi
       - name: Replay schema migrations
         working-directory: backend
-        run: poetry run python -m alembic upgrade head
+        run: poetry run alembic upgrade head
       - name: Verify replayed application schema
         working-directory: backend
-        run: poetry run python scripts/verify_migration_schema.py --expect present
+        run: |
+          set -euo pipefail
+          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_orm_schema_parity.py
       - name: Accept replayed PostgreSQL database
         working-directory: backend
         run: poetry run python -m app.db.migration_guard
