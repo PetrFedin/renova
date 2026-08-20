@@ -148,12 +148,15 @@ export function schedulePlanActions(
     role: 'customer' | 'contractor';
     readOnly?: boolean;
     canManageSchedule?: boolean;
+    /** Narrow project capability: may reject submitted plan, never confirm/edit it. */
+    canReviewSchedule?: boolean;
   },
 ): SchedulePlanActionFlags {
   const readOnly = Boolean(options.readOnly);
   const canManage = options.canManageSchedule !== false;
   const contractor = options.role === 'contractor' && !readOnly && canManage;
   const customer = options.role === 'customer' && !readOnly;
+  const technicalReviewer = Boolean(options.canReviewSchedule);
 
   if (
     state.status === 'idle'
@@ -175,7 +178,7 @@ export function schedulePlanActions(
     canCreate: false,
     canSubmit: contractor && (status === 'draft' || status === 'rejected'),
     canConfirm: customer && status === 'submitted',
-    canReject: customer && status === 'submitted',
+    canReject: (customer || technicalReviewer) && status === 'submitted',
     immutable: status === 'confirmed',
   };
 }
