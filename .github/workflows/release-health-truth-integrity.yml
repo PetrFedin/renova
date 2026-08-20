@@ -28,14 +28,15 @@ jobs:
         run: node scripts/releaseGatesTruth.test.mjs
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install focused backend dependencies
+          python-version: "3.12.13"
+      - name: Install exact locked backend environment
         working-directory: backend
         run: |
           set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
       - name: Reject divergent or fabricated runtime health
         working-directory: backend
         run: |
@@ -60,6 +61,7 @@ jobs:
           worker = Path("backend/app/api/v1/automation_worker.py").read_text(encoding="utf-8")
           helper = Path("backend/app/services/runtime_health_truth.py").read_text(encoding="utf-8")
           otp = Path("backend/app/services/otp_redis_recovery.py").read_text(encoding="utf-8")
+          release_health = Path("backend/app/services/release_health_service.py").read_text(encoding="utf-8")
 
           required = {
               "admin": [
@@ -73,8 +75,20 @@ jobs:
                   '"connected"',
                   'status = "critical"',
               ],
+              "release_health": [
+                  '"sentry_ingestion": False',
+                  '"otlp_ingestion": False',
+                  '"structured_log_ingestion": False',
+                  '"alert_delivery": False',
+              ],
           }
-          sources = {"admin": admin, "worker": worker, "helper": helper, "otp": otp}
+          sources = {
+              "admin": admin,
+              "worker": worker,
+              "helper": helper,
+              "otp": otp,
+              "release_health": release_health,
+          }
           missing = {
               name: [token for token in tokens if token not in sources[name]]
               for name, tokens in required.items()
