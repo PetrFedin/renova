@@ -133,6 +133,44 @@ def test_sentry_receives_release_environment_and_non_pii_tags(monkeypatch):
     assert ("artifact_digest", "sha256:deadbeef") in tags
 
 
+def test_otel_resource_carries_release_artifact_and_environment(monkeypatch):
+    configured = _settings(environment="staging", otel_service_name="renova-api")
+    monkeypatch.setenv("RENOVA_GIT_SHA", "abc123")
+    monkeypatch.setenv("RENOVA_IMAGE_DIGEST", "sha256:deadbeef")
+
+    attributes = observability._resource(configured).attributes
+
+    assert attributes["service.name"] == "renova-api"
+    assert attributes["service.version"] == "abc123"
+    assert attributes["deployment.environment.name"] == "staging"
+    assert attributes["container.image.id"] == "sha256:deadbeef"
+
+
+def test_server_span_receives_only_request_correlation_id():
+    class Span:
+        def __init__(self):
+            self.attributes: dict[str, str] = {}
+
+        def is_recording(self):
+            return True
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+    span = Span()
+    observability._server_request_hook(
+        span,
+        {
+            "state": {
+                "correlation_id": "request-123",
+                "user_id": "must-not-be-copied",
+            }
+        },
+    )
+
+    assert span.attributes == {"renova.correlation_id": "request-123"}
+
+
 def test_json_logs_include_release_environment_and_correlation_slot(monkeypatch):
     configured = _settings(environment="test", log_json=True)
     monkeypatch.setattr(logging_config, "settings", configured)
