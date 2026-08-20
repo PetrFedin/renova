@@ -9,15 +9,19 @@ on:
       - "backend/app/core/runtime_policy.py"
       - "backend/app/middleware/correlation.py"
       - "backend/app/main.py"
+      - "backend/app/services/release_health_service.py"
       - "backend/tests/test_observability_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/tests/test_release_health_truth_integrity.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
       - "backend/Dockerfile"
       - "backend/.env.example"
       - "env.staging.example"
       - "docs/OBSERVABILITY-ONCALL.md"
+      - "scripts/releaseGatesTruth.test.mjs"
       - ".github/workflows/observability-integrity.yml"
+      - ".github/workflows/release-health-truth-integrity.yml"
   pull_request:
     paths:
       - "backend/app/core/observability.py"
@@ -26,15 +30,19 @@ on:
       - "backend/app/core/runtime_policy.py"
       - "backend/app/middleware/correlation.py"
       - "backend/app/main.py"
+      - "backend/app/services/release_health_service.py"
       - "backend/tests/test_observability_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/tests/test_release_health_truth_integrity.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
       - "backend/Dockerfile"
       - "backend/.env.example"
       - "env.staging.example"
       - "docs/OBSERVABILITY-ONCALL.md"
+      - "scripts/releaseGatesTruth.test.mjs"
       - ".github/workflows/observability-integrity.yml"
+      - ".github/workflows/release-health-truth-integrity.yml"
 
 concurrency:
   group: observability-integrity-${{ github.event.pull_request.number || github.ref }}
@@ -67,4 +75,5 @@ jobs:
           set -euo pipefail
           poetry run pytest -q \
             tests/test_observability_integrity.py \
-            tests/test_runtime_preflight_integrity.py
+            tests/test_runtime_preflight_integrity.py \
+            tests/test_release_health_truth_integrity.py
