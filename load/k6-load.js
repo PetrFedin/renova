@@ -1,6 +1,14 @@
-import http from "k6/http"; import { check } from "k6";
-export const options = { stages: [{ duration: "30s", target: 50 }, { duration: "30s", target: 50 }, { duration: "10s", target: 0 }] };
-export default function () {
-  const r = http.get("http://127.0.0.1:8100/health");
-  check(r, { ok: (x) => x.status === 200 });
-}
+import { LAUNCH_THRESHOLDS } from "./lib/config.js";
+import { runUserJourney } from "./lib/journey.js";
+
+export const options = {
+  stages: [
+    { duration: "1m", target: 25 },
+    { duration: "2m", target: 50 },
+    { duration: "5m", target: 50 },
+    { duration: "1m", target: 0 },
+  ],
+  thresholds: LAUNCH_THRESHOLDS,
+};
+
+export default runUserJourney;
