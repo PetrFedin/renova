@@ -220,22 +220,13 @@ jobs:
           poetry run alembic upgrade head
           test "$(poetry run alembic current 2>/dev/null | awk '{print $1}')" = "w13ormparity01"
           poetry run python scripts/verify_orm_schema_parity.py
-      - name: Remove temporary generation path and commit reviewed migration
+      - name: Commit reviewed migration only
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('.github/workflows/database-restore-integrity.yml')
-          text = path.read_text(encoding='utf-8')
-          start = text.index('  schema-catchup-candidate:\n')
-          end = text.index('  logical-restore-drill:\n')
-          path.write_text(text[:start] + text[end:], encoding='utf-8')
-          PY
-          git rm .github/workflows/materialize-schema-catchup.yml
           git config user.name "Renova CI"
           git config user.email "81327591+PetrFedin@users.noreply.github.com"
-          git add backend/alembic/versions/w13ormparity01_*.py .github/workflows/database-restore-integrity.yml
+          git add backend/alembic/versions/w13ormparity01_*.py
           git diff --cached --check
           git commit -m "Materialize additive ORM schema catch-up"
           git push origin HEAD:agent/database-restore-drill
