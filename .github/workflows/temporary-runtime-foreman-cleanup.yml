@@ -20,22 +20,105 @@ jobs:
         with:
           ref: agent/database-restore-drill
           fetch-depth: 0
-      - name: Apply reviewed document audience cleanup and audit runtime
+      - name: Replace stale Project foreman runtime contracts
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('backend/app/services/document_lifecycle_service.py')
-          text = path.read_text(encoding='utf-8')
-          needle = "                project.foreman_id,\n"
-          count = text.count(needle)
-          if count != 1:
-              raise SystemExit(f'expected one Project.foreman_id document member entry, found {count}')
-          path.write_text(text.replace(needle, '', 1), encoding='utf-8')
+          def replace(path_str: str, old: str, new: str, expected: int = 1) -> None:
+              path = Path(path_str)
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'{path}: expected {expected} replacements, found {count} for {old!r}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          # Project-scoped audiences are the actual principals: customer + assigned contractor.
+          for path_str, old, new, expected in [
+              ('backend/app/services/document_lifecycle_service.py', '                project.foreman_id,\n', '', 1),
+              ('backend/app/services/document_state_lifecycle_service.py', '                project.foreman_id,\n', '', 1),
+              ('backend/app/services/purchase_service.py', 'for user_id in [project.customer_id, project.contractor_id, project.foreman_id]:', 'for user_id in [project.customer_id, project.contractor_id]:', 1),
+              ('backend/app/services/work_acceptance_side_effects.py', 'for user_id in (project.customer_id, project.contractor_id, project.foreman_id):', 'for user_id in (project.customer_id, project.contractor_id):', 1),
+              ('backend/app/services/change_order_service.py', 'for user_id in [project.customer_id, project.contractor_id, project.foreman_id]:', 'for user_id in [project.customer_id, project.contractor_id]:', 1),
+              ('backend/app/services/payment_dispute_service.py', 'for member_id in {project.contractor_id, project.foreman_id}:', 'for member_id in {project.contractor_id}:', 2),
+              ('backend/app/services/bank_statement_integrity.py', 'for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:', 'for member_id in {project.customer_id, project.contractor_id}:', 1),
+              ('backend/app/services/issue_service.py', 'for user_id in (project.customer_id, project.contractor_id, project.foreman_id)', 'for user_id in (project.customer_id, project.contractor_id)', 1),
+              ('backend/app/api/v1/purchases.py', 'ids = [project.customer_id, project.contractor_id, project.foreman_id]', 'ids = [project.customer_id, project.contractor_id]', 1),
+              ('backend/app/api/v1/esign.py', 'for recipient_id in {project.customer_id, project.contractor_id, project.foreman_id}:', 'for recipient_id in {project.customer_id, project.contractor_id}:', 1),
+              ('backend/app/api/v1/payments.py', 'for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:', 'for member_id in {project.customer_id, project.contractor_id}:', 1),
+          ]:
+              replace(path_str, old, new, expected)
+
+          # Room-change decisions preserve foreman authority through the assigned contractor team.
+          room = 'backend/app/services/room_change_service.py'
+          replace(room, 'from app.services import room_service\n', 'from app.services import room_service\nfrom app.services import team_service\n')
+          replace(
+              room,
+              'def _validate_actor(project: Project, actor: User) -> None:\n    if actor.id not in {project.contractor_id, project.foreman_id}:\n        raise ValueError("room_change_actor_forbidden")\n',
+              'async def _validate_actor(db: AsyncSession, project: Project, actor: User) -> None:\n    role = await team_service.team_role_for_project(db, actor, project)\n    if role not in {"owner", "foreman"}:\n        raise ValueError("room_change_actor_forbidden")\n',
+          )
+          replace(room, '_validate_actor(project, actor)\n', 'await _validate_actor(db, project, actor)\n')
+          replace(room, 'for value in {project.contractor_id, project.foreman_id}', 'for value in {project.contractor_id}')
+
+          # Waste lifecycle: owner/foreman team authority, principal-only notifications.
+          waste = 'backend/app/services/waste_order_service.py'
+          replace(waste, 'from app.services import outbox_service as outbox\n', 'from app.services import outbox_service as outbox\nfrom app.services import team_service\n')
+          replace(
+              waste,
+              'def _is_assigned_executor(project: Project, user_id: str) -> bool:\n    return user_id in {project.contractor_id, project.foreman_id}\n',
+              'def _is_assigned_executor(project: Project, user_id: str, team_role: str | None = None) -> bool:\n    return user_id == project.contractor_id or team_role in {"owner", "foreman"}\n',
+          )
+          replace(waste, '    target: WasteOrderStatus,\n) -> None:\n', '    target: WasteOrderStatus,\n    actor_team_role: str | None = None,\n) -> None:\n')
+          replace(waste, 'if not _is_assigned_executor(project, actor.id):', 'if not _is_assigned_executor(project, actor.id, actor_team_role):')
+          replace(
+              waste,
+              '    validate_transition(\n        project=project,\n        actor=actor,\n        current=current,\n        target=target,\n    )\n',
+              '    actor_team_role = await team_service.team_role_for_project(db, actor, project)\n    validate_transition(\n        project=project,\n        actor=actor,\n        current=current,\n        target=target,\n        actor_team_role=actor_team_role,\n    )\n',
+          )
+          replace(waste, 'candidates = {project.contractor_id, project.foreman_id}', 'candidates = {project.contractor_id}')
+
+          # Design lifecycle: owner/foreman team authority, principal-only notifications.
+          design = 'backend/app/services/design_package_service.py'
+          replace(design, 'from app.services import outbox_service as outbox\n', 'from app.services import outbox_service as outbox\nfrom app.services import team_service\n')
+          replace(
+              design,
+              'def _is_executor(project: Project, actor_id: str) -> bool:\n    return actor_id in {project.contractor_id, project.foreman_id}\n\n\ndef _validate_actor(project: Project, actor: User, action: DesignAction) -> None:\n    if action == "submit":\n        if not _is_executor(project, actor.id):\n            raise ValueError("design_decision_actor_forbidden")\n        return\n    if actor.id != project.customer_id:\n        raise ValueError("design_decision_actor_forbidden")\n',
+              'async def _is_executor(db: AsyncSession, project: Project, actor: User) -> bool:\n    role = await team_service.team_role_for_project(db, actor, project)\n    return role in {"owner", "foreman"}\n\n\nasync def _validate_actor(db: AsyncSession, project: Project, actor: User, action: DesignAction) -> None:\n    if action == "submit":\n        if not await _is_executor(db, project, actor):\n            raise ValueError("design_decision_actor_forbidden")\n        return\n    if actor.id != project.customer_id:\n        raise ValueError("design_decision_actor_forbidden")\n',
+          )
+          replace(design, 'if not _is_executor(project, actor.id):', 'if not await _is_executor(db, project, actor):')
+          replace(design, '_validate_actor(project, actor, action)\n', 'await _validate_actor(db, project, actor, action)\n')
+          replace(design, 'candidates = {project.contractor_id, project.foreman_id}', 'candidates = {project.contractor_id}')
+
+          # Work orders already have project-team membership resolution; remove the dead direct field shortcut.
+          work = 'backend/app/services/work_order_service.py'
+          replace(work, 'if actor_id in {project.contractor_id, project.foreman_id}:', 'if actor_id == project.contractor_id:')
+          replace(work, '    if actor_id == project.foreman_id:\n        return "project_foreman"\n\n', '')
+
+          core = 'backend/app/services/_work_order_service_core.py'
+          replace(core, 'if actor_id in {project.contractor_id, project.foreman_id}:', 'if actor_id == project.contractor_id:')
+          replace(core, 'if user_id in {project.customer_id, project.contractor_id, project.foreman_id}:', 'if user_id in {project.customer_id, project.contractor_id}:')
+          replace(core, 'if user_id in {project.contractor_id, project.foreman_id}:', 'if user_id == project.contractor_id:')
+          replace(core, 'for user_id in (project.customer_id, project.contractor_id, project.foreman_id)', 'for user_id in (project.customer_id, project.contractor_id)')
+
+          # Pending approvals expose room-change actions to owner/foreman through canonical team membership.
+          approvals = 'backend/app/api/v1/approvals.py'
+          replace(approvals, 'from app.services import approval_decision_service as decision_svc\n', 'from app.services import approval_decision_service as decision_svc\nfrom app.services import team_service\n')
+          replace(approvals, 'if user.id in {project.contractor_id, project.foreman_id}:', 'if (await team_service.team_role_for_project(db, user, project)) in {"owner", "foreman"}:')
+
+          # No runtime code may reference the removed ORM attribute after this point.
+          offenders: list[str] = []
+          for path in Path('backend/app').rglob('*.py'):
+              text = path.read_text(encoding='utf-8')
+              if 'project.foreman_id' in text:
+                  offenders.append(str(path))
+          if offenders:
+              raise SystemExit(f'stale Project.foreman_id runtime references remain: {offenders}')
           PY
-          git diff --check -- backend/app/services/document_lifecycle_service.py
+
+          python -m compileall -q backend/app
+          git diff --check -- backend/app
           if grep -R -n --include='*.py' -E 'project\.foreman_id' backend/app; then
             echo '::error::stale Project.foreman_id runtime reference remains'
             exit 1
@@ -47,7 +130,7 @@ jobs:
           set -euo pipefail
           git config user.name "Renova CI"
           git config user.email "81327591+PetrFedin@users.noreply.github.com"
-          git add -- backend/app/services/document_lifecycle_service.py
+          git add -- backend/app
           git diff --cached --check
-          git commit -m "Remove stale foreman document audience"
+          git commit -m "Use canonical team foreman runtime authority"
           git push origin HEAD:agent/database-restore-drill
