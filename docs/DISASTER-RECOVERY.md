@@ -4,18 +4,20 @@ Renova must not treat a backup as a recovery strategy until a restore has been e
 
 ## Current evidence
 
-The repository is intended to prove the **logical dump/restore procedure** with a synthetic PostgreSQL 17 database:
+The repository proves the **logical dump/restore procedure** with a synthetic PostgreSQL 17 database:
 
 1. apply the current Alembic head to a fresh PostgreSQL source database;
-2. validate the reflected migration schema;
+2. validate the reflected migration schema and complete ORM/Alembic mapped table-and-column parity;
 3. create deterministic synthetic Renova domain rows;
 4. create a native PostgreSQL custom-format dump with `pg_dump`;
 5. restore that dump into a separate fresh database with `pg_restore --exit-on-error`;
-6. re-run the reflected schema verifier against the restored database;
+6. re-run both the reflected migration verifier and ORM/Alembic parity verifier against the restored database;
 7. compare a deterministic SHA-256 data fingerprint between source and restored fixtures;
 8. delete the synthetic dump and retain only a sanitized verification record.
 
-This proves that the current schema and a representative set of Renova relational/domain data can survive the repository-defined logical restore path. It does **not** prove that a production provider is creating backups.
+The restore work exposed a production schema gap that the previous revision-only guard could not detect: the ORM contained mapped tables and columns that were absent from Alembic history. The additive `w13ormparity01` catch-up revision materializes the missing mapped schema on a clean PostgreSQL database, and the permanent PostgreSQL schema lifecycle gate now checks complete ORM/Alembic column parity after both upgrade and migration replay. This is a schema-integrity correction, not a product feature expansion.
+
+This repository evidence proves that the current migrated schema and a representative set of Renova relational/domain data can survive the repository-defined logical restore path. It does **not** prove that a production provider is creating backups, that provider snapshots are restorable, or that PITR is configured.
 
 ## Launch blockers that require a real provider
 
@@ -43,7 +45,7 @@ Before Renova can be marked production-ready, the selected managed PostgreSQL pl
 - a repeatable isolated restore procedure;
 - timestamps sufficient to calculate actual RPO and RTO during a drill.
 
-A provider-backed drill should restore into an isolated environment, never over the live production database. Application verification must use the same migration/schema checks as CI and must avoid exporting restored customer data into CI artifacts or logs.
+A provider-backed drill should restore into an isolated environment, never over the live production database. Application verification must use the same reflected migration, revision and ORM/Alembic parity checks as CI and must avoid exporting restored customer data into CI artifacts or logs.
 
 ## Evidence policy
 
