@@ -34,9 +34,10 @@ def _working_settings(**overrides) -> Settings:
     return Settings(_env_file=None, **values)
 
 
-def test_canonical_policy_accepts_minimum_working_runtime_without_optional_vendors():
+def test_canonical_policy_accepts_staging_with_explicit_observability_warnings():
     configured = _working_settings(
         sentry_dsn=None,
+        otel_exporter_otlp_endpoint=None,
         yookassa_shop_id=None,
         yookassa_secret=None,
         yookassa_webhook_secret=None,
@@ -47,7 +48,58 @@ def test_canonical_policy_accepts_minimum_working_runtime_without_optional_vendo
 
     assert policy.name == "staging"
     assert any("YOOKASSA_SHOP_ID" in warning for warning in warnings)
-    assert not any("SENTRY" in warning.upper() for warning in warnings)
+    assert any("SENTRY_DSN" in warning for warning in warnings)
+    assert any("OTEL_EXPORTER_OTLP_ENDPOINT" in warning for warning in warnings)
+
+
+def test_production_runtime_requires_external_observability_sinks():
+    common = {
+        "environment": "production",
+        "public_base_url": "https://api.renova.example",
+        "log_json": True,
+        "otel_exporter_otlp_endpoint": "https://otel.renova.example:4317",
+    }
+    with pytest.raises(ValueError, match="SENTRY_DSN"):
+        runtime_policy.validate_configured_runtime(
+            _working_settings(**common, sentry_dsn=None)
+        )
+
+    with pytest.raises(ValueError, match="OTEL_EXPORTER_OTLP_ENDPOINT"):
+        runtime_policy.validate_configured_runtime(
+            _working_settings(
+                environment="production",
+                public_base_url="https://api.renova.example",
+                log_json=True,
+                sentry_dsn="https://public@example.invalid/1",
+                otel_exporter_otlp_endpoint=None,
+            )
+        )
+
+
+def test_production_runtime_rejects_insecure_observability_transport_and_plain_logs():
+    with pytest.raises(ValueError, match="OTEL_EXPORTER_OTLP_INSECURE"):
+        runtime_policy.validate_configured_runtime(
+            _working_settings(
+                environment="production",
+                public_base_url="https://api.renova.example",
+                sentry_dsn="https://public@example.invalid/1",
+                otel_exporter_otlp_endpoint="otel.renova.example:4317",
+                otel_exporter_otlp_insecure=True,
+                log_json=True,
+            )
+        )
+
+    with pytest.raises(ValueError, match="LOG_JSON"):
+        runtime_policy.validate_configured_runtime(
+            _working_settings(
+                environment="production",
+                public_base_url="https://api.renova.example",
+                sentry_dsn="https://public@example.invalid/1",
+                otel_exporter_otlp_endpoint="https://otel.renova.example:4317",
+                otel_exporter_otlp_insecure=False,
+                log_json=False,
+            )
+        )
 
 
 @pytest.mark.parametrize(
@@ -110,6 +162,8 @@ async def test_static_preflight_is_network_free_and_reports_optional_warnings(
     ]
     assert live_storage_called is False
     assert any("YOOKASSA_SHOP_ID" in warning for warning in report.warnings)
+    assert any("SENTRY_DSN" in warning for warning in report.warnings)
+    assert any("OTEL_EXPORTER_OTLP_ENDPOINT" in warning for warning in report.warnings)
 
 
 @pytest.mark.asyncio
@@ -283,6 +337,9 @@ def test_environment_example_matches_working_runtime_contract():
     assert "DOCUMENT_OCR_MODE=metadata" in example
     assert "python -m app.core.runtime_preflight" in example
     assert "SENTRY_DSN=\n" in example
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=\n" in example
+    assert "OTEL_EXPORTER_OTLP_INSECURE=false" in example
+    assert "OTEL_SERVICE_NAME=renova-api" in example
     assert "Payments. Optional for API startup" in example
 
     for required in (
@@ -298,6 +355,11 @@ def test_environment_example_matches_working_runtime_contract():
         "TWILIO_SID=",
         "TWILIO_TOKEN=",
         "TWILIO_FROM=",
+        "SENTRY_DSN=",
+        "OTEL_EXPORTER_OTLP_ENDPOINT=",
+        "OTEL_EXPORTER_OTLP_INSECURE=false",
+        "OTEL_SERVICE_NAME=renova-api",
+        "LOG_JSON=true",
         "External staging release",
         "Do not deploy staging by cloning the repository",
     ):
