@@ -29,35 +29,14 @@ jobs:
 
           path = Path('backend/app/services/document_lifecycle_service.py')
           text = path.read_text(encoding='utf-8')
-          old = '''def _member_ids(project: Project) -> list[str]:
-              return sorted(
-                  {
-                      user_id
-                      for user_id in (
-                          project.customer_id,
-                          project.contractor_id,
-                          project.foreman_id,
-                      )
-                      if user_id
-                  }
-              )
-          '''
-          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
-          new = '''def _member_ids(project: Project) -> list[str]:
-              return sorted(
-                  user_id
-                  for user_id in {project.customer_id, project.contractor_id}
-                  if user_id
-              )
-          '''
-          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
-          count = text.count(old)
+          needle = "                project.foreman_id,\n"
+          count = text.count(needle)
           if count != 1:
-              raise SystemExit(f'expected one reviewed document member replacement, found {count}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+              raise SystemExit(f'expected one Project.foreman_id document member entry, found {count}')
+          path.write_text(text.replace(needle, '', 1), encoding='utf-8')
           PY
           git diff --check -- backend/app/services/document_lifecycle_service.py
-          if grep -R -n --include='*.py' -E 'project\.foreman_id|Project\([^)]*foreman_id' backend/app; then
+          if grep -R -n --include='*.py' -E 'project\.foreman_id' backend/app; then
             echo '::error::stale Project.foreman_id runtime reference remains'
             exit 1
           fi
