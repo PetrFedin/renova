@@ -15,6 +15,7 @@ for (const [token, message] of [
   ['RESTORE_DB: renova_restore', 'restore drill must restore into a distinct named database'],
   ['bash scripts/database-restore-drill.sh', 'workflow must execute the canonical native restore script'],
   ['scripts/verify_migration_schema.py --expect present', 'restore drill must verify reflected Alembic schema'],
+  ['scripts/verify_orm_schema_parity.py', 'restore drill must verify complete ORM/Alembic column parity'],
   ['scripts/restore_drill_fixture.py seed', 'restore drill must create deterministic source data'],
   ['scripts/restore_drill_fixture.py verify', 'restore drill must verify restored data fingerprint'],
   ['rm -f "$DR_DIR/renova.dump"', 'restore drill must delete the synthetic dump after verification'],
@@ -23,6 +24,7 @@ for (const [token, message] of [
   contains(workflow, token, message);
 }
 
+excludes(workflow, 'schema-catchup-candidate', 'temporary schema catch-up job must not remain in the permanent DR workflow');
 excludes(workflow, 'path: ${{ runner.temp }}/renova-dr/renova.dump', 'database dump must never be uploaded as a CI artifact');
 excludes(workflow, 'path: ${{ runner.temp }}/renova-dr\n', 'whole DR working directory must not be uploaded');
 excludes(workflow, ':latest', 'restore drill must not use mutable latest database images');
@@ -59,5 +61,6 @@ contains(doc, 'PITR: **NOT PROVEN**', 'DR docs must not overclaim PITR');
 contains(doc, 'RPO: **UNSET / launch blocker**', 'DR docs must keep RPO explicit until selected');
 contains(doc, 'RTO: **UNSET / launch blocker**', 'DR docs must keep RTO explicit until selected');
 contains(doc, 'logical dump/restore procedure', 'DR docs must distinguish the repository-proven restore drill');
+contains(doc, 'ORM/Alembic', 'DR docs must state that restored mapped schema parity is verified');
 
 console.log('databaseRestoreTruth.test OK');
