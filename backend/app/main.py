@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 import asyncio
 import logging
-import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +11,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.environment import policy_for, resolve_policy_flag
 from app.core.logging_config import setup_logging
+from app.core.observability import configure_observability, release_digest, release_sha
 from app.core.rate_limit import rate_limiter
 from app.core.runtime_policy import configured_runtime_warnings, validate_configured_runtime
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -52,16 +52,6 @@ def _demo_seed_allowed() -> bool:
         policy_allows=policy.allow_demo_seed,
         override=settings.allow_demo_seed,
     )
-
-
-def _release_sha() -> str:
-    value = (os.getenv("RENOVA_GIT_SHA") or "unknown").strip()
-    return value or "unknown"
-
-
-def _release_digest() -> str:
-    value = (os.getenv("RENOVA_IMAGE_DIGEST") or "unknown").strip()
-    return value or "unknown"
 
 
 @asynccontextmanager
@@ -175,23 +165,17 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(redis_task, timeout=5)
         except Exception:
             redis_task.cancel()
-    await rate_limiter.close()
+    try:
+        await rate_limiter.close()
+    finally:
+        observability_runtime = getattr(app.state, "observability_runtime", None)
+        if observability_runtime is not None:
+            await asyncio.to_thread(observability_runtime.shutdown)
 
 
 setup_logging()
-try:
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-except Exception:
-    FastAPIInstrumentor = None
-if settings.sentry_dsn:
-    try:
-        import sentry_sdk
-
-        sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1)
-    except Exception:
-        pass
-
 app = FastAPI(title=settings.app_name, version="0.3.7", lifespan=lifespan)
+configure_observability(app)
 
 
 @app.exception_handler(InvalidStorageKey)
@@ -236,12 +220,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-if FastAPIInstrumentor:
-    try:
-        FastAPIInstrumentor.instrument_app(app)
-    except Exception:
-        pass
 app.include_router(api_router)
 from app.api.v1 import ws
 
@@ -255,8 +233,8 @@ async def health():
         "service": "renova-api",
         "version": "0.3.7",
         "environment": settings.normalized_environment,
-        "release": _release_sha(),
-        "artifact_digest": _release_digest(),
+        "release": release_sha(),
+        "artifact_digest": release_digest(),
     }
 
 
@@ -273,14 +251,14 @@ async def readiness():
             content={
                 "status": "not_ready",
                 "service": "renova-api",
-                "release": _release_sha(),
-                "artifact_digest": _release_digest(),
+                "release": release_sha(),
+                "artifact_digest": release_digest(),
             },
         )
 
     return {
         "status": "ready",
         "service": "renova-api",
-        "release": _release_sha(),
-        "artifact_digest": _release_digest(),
+        "release": release_sha(),
+        "artifact_digest": release_digest(),
     }
