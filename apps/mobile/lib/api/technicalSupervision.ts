@@ -48,6 +48,18 @@ export type TechnicalQualityIssueInput = {
   photo_key?: string | null;
 };
 
+export type TechnicalReworkResult = {
+  ok: boolean;
+  status: string;
+  needs_rework: boolean;
+  rework_deadline?: string | null;
+  acceptance_id: string;
+  acceptance_status: string;
+  issue_id?: string | null;
+  reviewer_mode: string;
+  replayed: boolean;
+};
+
 export const technicalSupervisionApi = {
   getTechnicalSupervision: (userId: string, projectId: string) =>
     req<TechnicalSupervisionStatus>(
@@ -93,6 +105,17 @@ export const technicalSupervisionApi = {
     req<ProjectIssue>(
       `/api/v1/projects/${projectId}/technical-supervision/issues`,
       { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
+  returnStageForTechnicalRework: (
+    userId: string,
+    projectId: string,
+    stageId: string,
+    text: string,
+  ) =>
+    req<TechnicalReworkResult>(
+      `/api/v1/projects/${projectId}/stages/${stageId}/reject`,
+      { method: 'POST', body: JSON.stringify({ text }) },
       userId,
     ),
 };
