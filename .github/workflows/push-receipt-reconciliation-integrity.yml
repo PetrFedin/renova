@@ -110,8 +110,8 @@ jobs:
                   'status="expired"',
               ],
               "push_service.py": ["record_accepted_tickets_persistently", "AcceptedPushTicket"],
-              "revision_guard.py": ["w12pushreceipt01"],
-              "schema_verifier.py": ["w12pushreceipt01", "expo_push_receipts"],
+              "revision_guard.py": ["w13ormparity01"],
+              "schema_verifier.py": ["w13ormparity01", "expo_push_receipts"],
           }
           sources = {
               "main.py": main,
