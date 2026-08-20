@@ -130,43 +130,46 @@ async def test_replace_keeps_history_and_stale_client_cannot_revoke_new_assignme
     first_rep = await _user(db, "replace-a", role=UserRole.customer, profile_code="SUPA02")
     second_rep = await _user(db, "replace-b", role=UserRole.contractor, profile_code="SUPB02")
     project = await _project(db, "replace", customer=customer)
+    project_id = project.id
 
     first = await supervision.appoint_or_replace(
         db,
-        project_id=project.id,
+        project_id=project_id,
         actor=customer,
         profile_code=first_rep.profile_code or "",
         provider_type="individual",
         provider_name=None,
     )
     assert first.assignment is not None
+    first_assignment_id = first.assignment.id
     second = await supervision.appoint_or_replace(
         db,
-        project_id=project.id,
+        project_id=project_id,
         actor=customer,
         profile_code=second_rep.profile_code or "",
         provider_type="company",
         provider_name="Second QC",
-        expected_assignment_id=first.assignment.id,
+        expected_assignment_id=first_assignment_id,
     )
     assert second.assignment is not None
-    assert second.assignment.supersedes_assignment_id == first.assignment.id
+    second_assignment_id = second.assignment.id
+    assert second.assignment.supersedes_assignment_id == first_assignment_id
 
-    rows = await supervision.history(db, project.id)
-    assert [row.id for row, _ in rows][:2] == [second.assignment.id, first.assignment.id]
-    old = next(row for row, _ in rows if row.id == first.assignment.id)
+    rows = await supervision.history(db, project_id)
+    assert [row.id for row, _ in rows][:2] == [second_assignment_id, first_assignment_id]
+    old = next(row for row, _ in rows if row.id == first_assignment_id)
     assert old.revoked_at is not None
 
     with pytest.raises(ValueError, match="technical_supervision_assignment_changed"):
         await supervision.revoke(
             db,
-            project_id=project.id,
+            project_id=project_id,
             actor=customer,
-            expected_assignment_id=first.assignment.id,
+            expected_assignment_id=first_assignment_id,
         )
-    current = await supervision.active_assignment(db, project.id)
+    current = await supervision.active_assignment(db, project_id)
     assert current is not None
-    assert current.id == second.assignment.id
+    assert current.id == second_assignment_id
 
 
 @pytest.mark.asyncio
