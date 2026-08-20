@@ -1,0 +1,69 @@
+name: Technical supervision integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/models/technical_supervision.py"
+      - "backend/alembic/versions/w14techsupervision01_project_technical_supervision.py"
+      - "backend/app/services/technical_supervision_service.py"
+      - "backend/app/api/deps.py"
+      - "backend/app/api/v1/technical_supervision.py"
+      - "backend/app/api/v1/technical_supervision_project_access.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/tests/test_technical_supervision_integrity.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - ".github/workflows/technical-supervision-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/models/technical_supervision.py"
+      - "backend/alembic/versions/w14techsupervision01_project_technical_supervision.py"
+      - "backend/app/services/technical_supervision_service.py"
+      - "backend/app/api/deps.py"
+      - "backend/app/api/v1/technical_supervision.py"
+      - "backend/app/api/v1/technical_supervision_project_access.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/tests/test_technical_supervision_integrity.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - ".github/workflows/technical-supervision-integrity.yml"
+
+concurrency:
+  group: technical-supervision-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  technical-supervision-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./technical-supervision-integrity.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "false"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install exact Poetry toolchain
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+      - name: Verify locked dependency graph
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Run technical supervision lifecycle and ACL contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run pytest -q tests/test_technical_supervision_integrity.py
