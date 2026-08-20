@@ -92,8 +92,9 @@ jobs:
               'backend/tests/test_stage_mutation_integrity_self_managed_retry.py',
           ):
               text = Path(path_str).read_text(encoding='utf-8')
-              if 'foreman_id' in text:
-                  raise SystemExit(f'{path_str}: stale foreman_id remains')
+              for forbidden in ('project.foreman_id', 'foreman_id='):
+                  if forbidden in text:
+                      raise SystemExit(f'{path_str}: stale Project foreman contract remains: {forbidden}')
           PY
           git diff --check -- \
             backend/app/services/stage_mutation_service.py \
