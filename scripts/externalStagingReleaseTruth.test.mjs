@@ -46,7 +46,11 @@ excludes(workflow, ':latest', 'external staging workflow must not reference muta
 excludes(workflow, '--latest', 'external staging workflow must not promote or submit mutable latest artifacts');
 
 const main = src('backend/app/main.py');
-contains(main, 'RENOVA_IMAGE_DIGEST', 'runtime must expose the deployment-supplied immutable digest');
-contains(main, '"artifact_digest": _release_digest()', 'health/readiness must expose the artifact digest');
+const observability = src('backend/app/core/observability.py');
+contains(observability, 'RENOVA_IMAGE_DIGEST', 'canonical release helper must read deployment-supplied immutable digest');
+contains(observability, 'RENOVA_GIT_SHA', 'canonical release helper must read deployment-supplied Git SHA');
+contains(main, 'release_digest()', 'runtime must use canonical immutable digest helper');
+contains(main, '"artifact_digest": release_digest()', 'health/readiness must expose the artifact digest');
+contains(main, '"release": release_sha()', 'health/readiness must expose the exact Git SHA');
 
 console.log('externalStagingReleaseTruth.test OK');
