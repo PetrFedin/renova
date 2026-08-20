@@ -19,6 +19,8 @@ from app.api.v1 import stage_review_transitions
 from app.api.v1 import otp_auth
 from app.api.v1 import calendar_integrity
 from app.api.v1 import calendar_mutations
+from app.api.v1 import technical_supervision
+from app.api.v1 import technical_supervision_project_access
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -167,10 +169,21 @@ _STAGE_REVIEW_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/stages/{stage_id}/submit", "POST"),
     ("/projects/{project_id}/stages/{stage_id}/reject", "POST"),
 }
-_remove_replaced_routes(projects.router, _PROJECT_CREATION_ROUTES | _STAGE_REVIEW_ROUTES)
+_TECHNICAL_SUPERVISION_PROJECT_READ_ROUTES: set[RouteSignature] = {
+    ("/projects", "GET"),
+    ("/projects/{project_id}", "GET"),
+    ("/projects/{project_id}/dashboard", "GET"),
+}
+_remove_replaced_routes(
+    projects.router,
+    _PROJECT_CREATION_ROUTES | _STAGE_REVIEW_ROUTES | _TECHNICAL_SUPERVISION_PROJECT_READ_ROUTES,
+)
 api_router.include_router(project_creation.router)
 api_router.include_router(stage_review_transitions.router)
+# Keep existing static/legacy project routes before the canonical dynamic reader.
 api_router.include_router(projects.router)
+api_router.include_router(technical_supervision_project_access.router)
+api_router.include_router(technical_supervision.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
 api_router.include_router(calendar_integrity.router)
