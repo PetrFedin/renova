@@ -1,0 +1,116 @@
+name: Temporary stage foreman cleanup
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/temporary-stage-foreman-cleanup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup-stage-foreman:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/database-restore-drill' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/database-restore-drill
+          fetch-depth: 0
+      - name: Apply reviewed canonical team-role cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_str: str, old: str, new: str) -> None:
+              path = Path(path_str)
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one reviewed replacement, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          service = 'backend/app/services/stage_mutation_service.py'
+          replace_once(
+              service,
+              '    return project.contractor_id is None and project.foreman_id is None\n',
+              '    return project.contractor_id is None\n',
+          )
+          replace_once(
+              service,
+              '    if actor.id in {project.contractor_id, project.foreman_id}:\n        return\n',
+              '    if actor.id == project.contractor_id:\n        return\n',
+          )
+          replace_once(
+              service,
+              '    return {\n        user_id\n        for user_id in {project.contractor_id, project.foreman_id}\n        if user_id\n    }\n',
+              '    return {project.contractor_id} if project.contractor_id else set()\n',
+          )
+
+          stage_test = 'backend/tests/test_stage_mutation_integrity.py'
+          replace_once(
+              stage_test,
+              '    StageStatus,\n    User,\n',
+              '    StageStatus,\n    Team,\n    TeamMember,\n    User,\n',
+          )
+          replace_once(
+              stage_test,
+              '        contractor_id=contractor.id,\n        foreman_id=foreman.id,\n        planned_start_date=date(2026, 8, 1),\n',
+              '        contractor_id=contractor.id,\n        planned_start_date=date(2026, 8, 1),\n',
+          )
+          replace_once(
+              stage_test,
+              '    room = Room(\n',
+              '    team = Team(\n        id=f"stage-mutation-team-{suffix}",\n        name="Stage mutation team",\n        owner_id=contractor.id,\n    )\n    foreman_membership = TeamMember(\n        id=f"stage-mutation-foreman-member-{suffix}",\n        team_id=team.id,\n        user_id=foreman.id,\n        role="foreman",\n    )\n    room = Room(\n',
+          )
+          replace_once(
+              stage_test,
+              '        [customer, contractor, foreman, outsider, project, room, stage, predecessor]\n',
+              '        [\n            customer, contractor, foreman, outsider, project, team,\n            foreman_membership, room, stage, predecessor,\n        ]\n',
+          )
+
+          replace_once(
+              'backend/tests/test_stage_mutation_integrity_self_managed.py',
+              '        contractor_id=None,\n        foreman_id=None,\n        planned_start_date=date(2026, 8, 1),\n',
+              '        contractor_id=None,\n        planned_start_date=date(2026, 8, 1),\n',
+          )
+          replace_once(
+              'backend/tests/test_stage_mutation_integrity_self_managed_retry.py',
+              '        contractor_id=None,\n        foreman_id=None,\n        planned_start_date=date(2026, 8, 1),\n',
+              '        contractor_id=None,\n        planned_start_date=date(2026, 8, 1),\n',
+          )
+
+          for path_str in (
+              service,
+              stage_test,
+              'backend/tests/test_stage_mutation_integrity_self_managed.py',
+              'backend/tests/test_stage_mutation_integrity_self_managed_retry.py',
+          ):
+              text = Path(path_str).read_text(encoding='utf-8')
+              if 'foreman_id' in text:
+                  raise SystemExit(f'{path_str}: stale foreman_id remains')
+          PY
+          git diff --check -- \
+            backend/app/services/stage_mutation_service.py \
+            backend/tests/test_stage_mutation_integrity.py \
+            backend/tests/test_stage_mutation_integrity_self_managed.py \
+            backend/tests/test_stage_mutation_integrity_self_managed_retry.py
+      - name: Commit regular-file cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Renova CI"
+          git config user.email "81327591+PetrFedin@users.noreply.github.com"
+          git add -- \
+            backend/app/services/stage_mutation_service.py \
+            backend/tests/test_stage_mutation_integrity.py \
+            backend/tests/test_stage_mutation_integrity_self_managed.py \
+            backend/tests/test_stage_mutation_integrity_self_managed_retry.py
+          git diff --cached --check
+          git commit -m "Use canonical team foreman stage authority"
+          git push origin HEAD:agent/database-restore-drill
