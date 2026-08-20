@@ -107,9 +107,17 @@ def _require_submit_actor(project: Project, stage: Stage, actor: User) -> None:
         raise ValueError("stage_submit_actor_forbidden")
 
 
-def _require_reject_actor(project: Project, actor: User) -> None:
-    if actor.role != UserRole.customer or actor.id != project.customer_id:
-        raise ValueError("stage_reject_actor_forbidden")
+def _require_reject_actor(
+    project: Project,
+    actor: User,
+    *,
+    authorized_reviewer: bool = False,
+) -> None:
+    if actor.role == UserRole.customer and actor.id == project.customer_id:
+        return
+    if authorized_reviewer:
+        return
+    raise ValueError("stage_reject_actor_forbidden")
 
 
 async def _enqueue_activity(
@@ -317,6 +325,7 @@ async def reject_for_rework(
     expected_acceptance_id: str | None = None,
     quality_score: float | None = None,
     create_issue: bool = False,
+    authorized_reviewer: bool = False,
 ) -> StageReviewResult | None:
     """Return one reviewed stage to work with SLA, checklist task and durable evidence."""
     clean_reason = (reason or "").strip()
@@ -330,7 +339,11 @@ async def reject_for_rework(
         await db.rollback()
         return None
     try:
-        _require_reject_actor(project, actor)
+        _require_reject_actor(
+            project,
+            actor,
+            authorized_reviewer=authorized_reviewer,
+        )
     except ValueError:
         await db.rollback()
         raise
@@ -412,11 +425,16 @@ async def reject_for_rework(
             )
             db.add(issue)
 
+        reviewer_role = (
+            "customer"
+            if actor.id == project.customer_id
+            else "supervisor"
+        )
         db.add(
             StageComment(
                 stage_id=stage.id,
                 user_id=actor.id,
-                author_role="customer",
+                author_role=reviewer_role,
                 text=f"Отклонено: {clean_reason}",
             )
         )
@@ -438,6 +456,15 @@ async def reject_for_rework(
                     body=f"{stage.name}: {clean_reason}. Срок до {deadline.date().isoformat()}",
                     return_to="/(contractor)/(tabs)/plan",
                 )
+        if authorized_reviewer and project.customer_id != actor.id:
+            await _enqueue_notification(
+                db,
+                stage=stage,
+                user_id=project.customer_id,
+                title="Технадзор вернул этап на доработку",
+                body=f"{stage.name}: {clean_reason}",
+                return_to="/(customer)/(tabs)/repair?tab=control",
+            )
         await db.commit()
     except BaseException:
         await db.rollback()
