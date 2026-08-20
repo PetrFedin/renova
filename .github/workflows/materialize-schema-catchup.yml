@@ -213,11 +213,12 @@ jobs:
         run: |
           set -euo pipefail
           poetry run alembic upgrade head
-          poetry run python scripts/verify_migration_schema.py --expect present
+          test "$(poetry run alembic current 2>/dev/null | awk '{print $1}')" = "w13ormparity01"
           poetry run python scripts/verify_orm_schema_parity.py
           poetry run alembic downgrade w12pushreceipt01
+          test "$(poetry run alembic current 2>/dev/null | awk '{print $1}')" = "w12pushreceipt01"
           poetry run alembic upgrade head
-          poetry run python scripts/verify_migration_schema.py --expect present
+          test "$(poetry run alembic current 2>/dev/null | awk '{print $1}')" = "w13ormparity01"
           poetry run python scripts/verify_orm_schema_parity.py
       - name: Remove temporary generation path and commit reviewed migration
         shell: bash
