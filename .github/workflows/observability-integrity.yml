@@ -12,6 +12,7 @@ on:
       - "backend/app/services/release_health_service.py"
       - "backend/tests/test_observability_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/tests/test_runtime_probe_integrity.py"
       - "backend/tests/test_release_health_truth_integrity.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
@@ -33,6 +34,7 @@ on:
       - "backend/app/services/release_health_service.py"
       - "backend/tests/test_observability_integrity.py"
       - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/tests/test_runtime_probe_integrity.py"
       - "backend/tests/test_release_health_truth_integrity.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
@@ -76,4 +78,5 @@ jobs:
           poetry run pytest -q \
             tests/test_observability_integrity.py \
             tests/test_runtime_preflight_integrity.py \
+            tests/test_runtime_probe_integrity.py \
             tests/test_release_health_truth_integrity.py
