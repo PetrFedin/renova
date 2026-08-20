@@ -41,7 +41,7 @@ def _stage_status(stage: Stage) -> StageStatus:
 
 
 def _is_self_managed_project(project: Project) -> bool:
-    return project.contractor_id is None and project.foreman_id is None
+    return project.contractor_id is None
 
 
 def _is_self_managed_customer(project: Project, actor: User) -> bool:
@@ -97,11 +97,7 @@ def _executor_ids(project: Project, stage: Stage) -> list[str]:
         return [stage.assignee_id]
     if _is_self_managed_project(project) and project.customer_id:
         return [project.customer_id]
-    return sorted(
-        user_id
-        for user_id in {project.contractor_id, project.foreman_id}
-        if user_id
-    )
+    return [project.contractor_id] if project.contractor_id else []
 
 
 def _require_submit_actor(project: Project, stage: Stage, actor: User) -> None:
