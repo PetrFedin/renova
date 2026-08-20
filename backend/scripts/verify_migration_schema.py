@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-_PRESENT_REVISION = "w12pushreceipt01"
+_PRESENT_REVISION = "w13ormparity01"
 _ABSENT_REVISION = "w6webhookdelivery01"
 
 

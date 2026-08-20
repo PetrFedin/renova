@@ -20,6 +20,8 @@ from app.models.entities import (
     Stage,
     StagePhoto,
     StageStatus,
+    Team,
+    TeamMember,
     User,
     UserRole,
     WorkAcceptance,
@@ -59,9 +61,19 @@ async def seed_stage_project(db, suffix: str):
         renovation_type="cosmetic",
         customer_id=customer.id,
         contractor_id=contractor.id,
-        foreman_id=foreman.id,
         planned_start_date=date(2026, 8, 1),
         planned_end_date=date(2026, 10, 31),
+    )
+    team = Team(
+        id=f"stage-mutation-team-{suffix}",
+        name="Stage mutation team",
+        owner_id=contractor.id,
+    )
+    foreman_membership = TeamMember(
+        id=f"stage-mutation-foreman-member-{suffix}",
+        team_id=team.id,
+        user_id=foreman.id,
+        role="foreman",
     )
     room = Room(
         id=f"stage-mutation-room-{suffix}",
@@ -97,7 +109,10 @@ async def seed_stage_project(db, suffix: str):
         planned_end=date(2026, 8, 15),
     )
     db.add_all(
-        [customer, contractor, foreman, outsider, project, room, stage, predecessor]
+        [
+            customer, contractor, foreman, outsider, project, team,
+            foreman_membership, room, stage, predecessor,
+        ]
     )
     await db.commit()
     return customer, contractor, foreman, outsider, project, room, stage, predecessor

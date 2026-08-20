@@ -339,7 +339,7 @@ async def _actor_can_manage_assignment(
 ) -> bool:
     if actor_id == project.customer_id:
         return True
-    if actor_id in {project.contractor_id, project.foreman_id}:
+    if actor_id == project.contractor_id:
         return True
     membership = await project_team_membership(
         db,
@@ -355,7 +355,7 @@ async def _is_project_executor(
     project: Project,
     user_id: str,
 ) -> bool:
-    if user_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+    if user_id in {project.customer_id, project.contractor_id}:
         return True
     membership = await project_team_membership(
         db,
@@ -463,7 +463,7 @@ def role_value(role: UserRole | str) -> str:
 def infer_actor_role(project: Project, user_id: str) -> UserRole:
     if user_id == project.customer_id:
         return UserRole.customer
-    if user_id in {project.contractor_id, project.foreman_id}:
+    if user_id == project.contractor_id:
         return UserRole.contractor
     raise ValueError("work_order_actor_unknown")
 
@@ -514,7 +514,7 @@ def transition_notification_targets(project: Project, actor_id: str) -> list[str
     return sorted(
         {
             user_id
-            for user_id in (project.customer_id, project.contractor_id, project.foreman_id)
+            for user_id in (project.customer_id, project.contractor_id)
             if user_id and user_id != actor_id
         }
     )

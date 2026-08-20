@@ -349,7 +349,7 @@ async def confirm_payment(
             if unverified
             else f"Оплата подтверждена: {payment.title}"
         )
-        for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+        for member_id in {project.customer_id, project.contractor_id}:
             if not member_id or member_id == user.id:
                 continue
             await notif.notify(

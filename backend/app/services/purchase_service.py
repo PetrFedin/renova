@@ -181,7 +181,7 @@ async def create_from_picks(
 def _project_member_ids(project: Project) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
-    for user_id in [project.customer_id, project.contractor_id, project.foreman_id]:
+    for user_id in [project.customer_id, project.contractor_id]:
         if user_id and user_id not in seen:
             seen.add(user_id)
             result.append(user_id)

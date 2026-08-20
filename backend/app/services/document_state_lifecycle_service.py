@@ -18,7 +18,6 @@ def _member_ids(project: Project) -> list[str]:
             for user_id in (
                 project.customer_id,
                 project.contractor_id,
-                project.foreman_id,
             )
             if user_id
         }

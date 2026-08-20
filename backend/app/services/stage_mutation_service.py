@@ -28,7 +28,7 @@ def _status(stage: Stage) -> StageStatus:
 
 def is_self_managed_project(project: Project) -> bool:
     """A customer-only project has no contractor-side execution authority."""
-    return project.contractor_id is None and project.foreman_id is None
+    return project.contractor_id is None
 
 
 def is_self_managed_customer(project: Project, actor: User) -> bool:
@@ -72,7 +72,7 @@ async def _require_schedule_actor(
         return
     if actor.role != UserRole.contractor:
         raise ValueError("stage_schedule_actor_forbidden")
-    if actor.id in {project.contractor_id, project.foreman_id}:
+    if actor.id == project.contractor_id:
         return
     role = await team_service.team_role_for_project(db, actor, project)
     if role not in {"owner", "foreman"}:
@@ -84,11 +84,7 @@ def _executor_ids(project: Project, stage: Stage) -> set[str]:
         return {stage.assignee_id}
     if is_self_managed_project(project) and project.customer_id:
         return {project.customer_id}
-    return {
-        user_id
-        for user_id in {project.contractor_id, project.foreman_id}
-        if user_id
-    }
+    return {project.contractor_id} if project.contractor_id else set()
 
 
 def _require_execution_actor(project: Project, stage: Stage, actor: User) -> None:

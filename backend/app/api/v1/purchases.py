@@ -25,7 +25,7 @@ class StatusIn(BaseModel):
 
 
 def _project_member_ids(project: Project) -> list[str]:
-    ids = [project.customer_id, project.contractor_id, project.foreman_id]
+    ids = [project.customer_id, project.contractor_id]
     seen: set[str] = set()
     result: list[str] = []
     for user_id in ids:

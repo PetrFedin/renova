@@ -161,7 +161,7 @@ def issue_transition_targets(project: Project, actor_id: str) -> list[str]:
     return sorted(
         {
             user_id
-            for user_id in (project.customer_id, project.contractor_id, project.foreman_id)
+            for user_id in (project.customer_id, project.contractor_id)
             if user_id and user_id != actor_id
         }
     )

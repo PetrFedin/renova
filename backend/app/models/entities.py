@@ -84,7 +84,6 @@ class Project(Base):
     total_area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
     customer_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     contractor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
-    foreman_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     budget_planned: Mapped[float] = mapped_column(Float, default=0)
     budget_spent: Mapped[float] = mapped_column(Float, default=0)
     progress_percent: Mapped[float] = mapped_column(Float, default=0)

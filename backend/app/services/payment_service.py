@@ -135,7 +135,7 @@ async def _prepare_transition_side_effects(
     else:
         notification_title = f"Оплата подтверждена: {payment.title}"
 
-    for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+    for member_id in {project.customer_id, project.contractor_id}:
         if not member_id:
             continue
         if not machine_settlement and member_id == actor_user_id:

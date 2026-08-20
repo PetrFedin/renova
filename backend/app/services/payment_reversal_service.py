@@ -82,7 +82,7 @@ async def _enqueue_reversal_effects(
             "link_path": "/(customer)/(tabs)/budget?tab=payments",
         },
     )
-    for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+    for member_id in {project.customer_id, project.contractor_id}:
         if not member_id:
             continue
         customer_link = member_id == project.customer_id
