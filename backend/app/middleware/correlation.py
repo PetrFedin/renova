@@ -1,10 +1,22 @@
-"""X-Request-Id / correlation id for every response."""
+"""X-Request-Id / correlation id for every response and structured log."""
 from __future__ import annotations
 
+from contextvars import ContextVar
 import uuid
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+
+_correlation_id: ContextVar[str | None] = ContextVar(
+    "renova_correlation_id",
+    default=None,
+)
+
+
+def current_correlation_id() -> str | None:
+    """Return the request correlation id for logging/telemetry in this context."""
+    return _correlation_id.get()
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -13,7 +25,11 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         if not cid or len(cid) > 128:
             cid = str(uuid.uuid4())
         request.state.correlation_id = cid
-        response = await call_next(request)
-        response.headers["X-Request-Id"] = cid
-        response.headers["X-Correlation-Id"] = cid
-        return response
+        token = _correlation_id.set(cid)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-Id"] = cid
+            response.headers["X-Correlation-Id"] = cid
+            return response
+        finally:
+            _correlation_id.reset(token)

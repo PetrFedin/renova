@@ -46,9 +46,16 @@ class Settings(BaseSettings):
     cloudfront_key_id: str | None = None
     s3_public_url: str | None = None
 
+    # External observability sinks are optional only in local/test environments.
+    # Production policy requires both Sentry and an OTLP collector.
     sentry_dsn: str | None = None
-    cors_allowed_origins: str = ""
+    sentry_traces_sample_rate: float = 0.1
+    otel_exporter_otlp_endpoint: str | None = None
+    otel_exporter_otlp_insecure: bool = False
+    otel_service_name: str = "renova-api"
+    otel_traces_sample_rate: float = 0.1
     log_json: bool = False
+    cors_allowed_origins: str = ""
     rate_limit_rpm: int = 120
 
     twilio_sid: str | None = None

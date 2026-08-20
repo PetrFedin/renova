@@ -12,6 +12,8 @@ from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
 
 _RELEASE_ENV = (
+    "RENOVA_GIT_SHA",
+    "RENOVA_IMAGE_DIGEST",
     "RELEASE_VERSION",
     "APP_VERSION",
     "RELEASE_COMMIT_SHA",
@@ -31,6 +33,9 @@ async def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg.settings, "database_url", url)
     monkeypatch.setattr(cfg.settings, "environment", "development")
     monkeypatch.setattr(cfg.settings, "sentry_dsn", None)
+    monkeypatch.setattr(cfg.settings, "otel_exporter_otlp_endpoint", None)
+    monkeypatch.setattr(cfg.settings, "otel_exporter_otlp_insecure", False)
+    monkeypatch.setattr(cfg.settings, "log_json", False)
 
     from app.db import session as sess
 
@@ -65,11 +70,28 @@ def test_snapshot_has_no_fabricated_identity_or_metrics():
         "commit_source": None,
         "identified": False,
     }
-    assert snapshot["observability"]["status"] == "not_configured"
-    assert snapshot["observability"]["configured"] is False
-    assert snapshot["observability"]["sdk_active"] is False
-    assert snapshot["observability"]["runtime_error"] is None
-    assert snapshot["observability"]["metrics"] == {
+    observability = snapshot["observability"]
+    assert observability["status"] == "not_configured"
+    assert observability["configured"] is False
+    assert observability["sdk_active"] is False
+    assert observability["runtime_error"] is None
+    assert observability["sentry"] == {
+        "configured": False,
+        "sdk_active": False,
+        "external_ingestion_confirmed": False,
+    }
+    assert observability["otel"]["configured"] is False
+    assert observability["otel"]["external_ingestion_confirmed"] is False
+    assert observability["structured_logs"]["enabled"] is False
+    assert observability["structured_logs"]["external_ingestion_confirmed"] is False
+    assert observability["artifact"] == {"git_sha": None, "image_digest": None}
+    assert observability["external_confirmations"] == {
+        "sentry_ingestion": False,
+        "otlp_ingestion": False,
+        "structured_log_ingestion": False,
+        "alert_delivery": False,
+    }
+    assert observability["metrics"] == {
         "source": "unavailable",
         "available": False,
         "reason": "sentry_dsn_not_configured",
@@ -78,17 +100,44 @@ def test_snapshot_has_no_fabricated_identity_or_metrics():
     }
 
 
-def test_release_identity_comes_only_from_deployment_metadata(monkeypatch):
+def test_configured_observability_is_not_external_delivery_proof(monkeypatch):
+    monkeypatch.setattr(cfg.settings, "sentry_dsn", "https://public@example.invalid/1")
+    monkeypatch.setattr(
+        cfg.settings,
+        "otel_exporter_otlp_endpoint",
+        "https://otel.example.invalid:4317",
+    )
+    monkeypatch.setattr(cfg.settings, "log_json", True)
+    monkeypatch.setenv("RENOVA_GIT_SHA", "abc123")
+    monkeypatch.setenv("RENOVA_IMAGE_DIGEST", "sha256:deadbeef")
+
+    snapshot = truthful_release_snapshot()
+    observability = snapshot["observability"]
+
+    assert observability["status"] in {"configured_unverified", "degraded"}
+    assert observability["sentry"]["configured"] is True
+    assert observability["otel"]["configured"] is True
+    assert observability["structured_logs"]["enabled"] is True
+    assert observability["artifact"] == {
+        "git_sha": "abc123",
+        "image_digest": "sha256:deadbeef",
+    }
+    assert all(value is False for value in observability["external_confirmations"].values())
+    assert observability["metrics"]["available"] is False
+
+
+def test_release_identity_prefers_canonical_immutable_image_sha(monkeypatch):
     monkeypatch.setenv("RELEASE_VERSION", "2026.08.05")
-    monkeypatch.setenv("RELEASE_COMMIT_SHA", "abcdef1234567890")
+    monkeypatch.setenv("RENOVA_GIT_SHA", "canonicalabcdef1234567890")
+    monkeypatch.setenv("RELEASE_COMMIT_SHA", "legacyabcdef1234567890")
 
     release = truthful_release_snapshot()["release"]
 
     assert release == {
         "version": "2026.08.05",
         "version_source": "RELEASE_VERSION",
-        "commit_sha": "abcdef1234567890",
-        "commit_source": "RELEASE_COMMIT_SHA",
+        "commit_sha": "canonicalabcdef1234567890",
+        "commit_source": "RENOVA_GIT_SHA",
         "identified": True,
     }
 
@@ -123,6 +172,7 @@ async def test_release_health_api_is_truthful_and_backward_compatible(monkeypatc
     assert body["sessions"] is None
     assert body["source"] == "unavailable"
     assert body["observability"]["metrics"]["available"] is False
+    assert body["observability"]["external_confirmations"]["alert_delivery"] is False
     assert "dsn" not in body["observability"]
     assert body["integrations"]["outbox"] is not None
 

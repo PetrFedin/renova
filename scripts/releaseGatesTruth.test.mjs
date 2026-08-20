@@ -45,8 +45,12 @@ excludes(externalStagingWorkflow, ':latest', 'external staging must not use muta
 excludes(externalStagingWorkflow, '--latest', 'external staging must not promote mutable latest artifacts');
 
 const main = src('backend/app/main.py');
-contains(main, 'RENOVA_IMAGE_DIGEST', 'runtime probes must expose deployment-supplied image digest');
-contains(main, '"artifact_digest": _release_digest()', 'runtime probes must include artifact digest');
+const observability = src('backend/app/core/observability.py');
+contains(observability, 'RENOVA_IMAGE_DIGEST', 'release helper must read deployment-supplied image digest');
+contains(observability, 'RENOVA_GIT_SHA', 'release helper must read immutable Git SHA');
+contains(main, 'release_digest()', 'runtime probes must expose deployment-supplied image digest through canonical helper');
+contains(main, '"artifact_digest": release_digest()', 'runtime probes must include exact image digest');
+contains(main, '"release": release_sha()', 'runtime probes must include exact Git SHA');
 
 const h0 = src('scripts/h0-check.sh');
 contains(h0, 'if [[ "$STRICT" -eq 1 ]]; then LIVE=1; fi', 'strict H0 must imply live mode');

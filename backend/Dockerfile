@@ -18,7 +18,7 @@ RUN poetry check --lock \
     && poetry sync --only main --no-root --no-interaction --no-ansi \
     && .venv/bin/python -m pip check \
     && .venv/bin/python -m pip uninstall -y pip setuptools wheel \
-    && .venv/bin/python -c "import fastapi, starlette, uvicorn, sqlalchemy, redis, multipart"
+    && .venv/bin/python -c "import fastapi, starlette, uvicorn, sqlalchemy, redis, multipart, sentry_sdk; from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor; from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter; from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter"
 
 FROM ${PYTHON_IMAGE} AS runtime
 ARG VCS_REF=unknown
