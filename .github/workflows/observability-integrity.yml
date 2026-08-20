@@ -1,0 +1,70 @@
+name: Observability integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/core/observability.py"
+      - "backend/app/core/logging_config.py"
+      - "backend/app/core/config.py"
+      - "backend/app/core/runtime_policy.py"
+      - "backend/app/middleware/correlation.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_observability_integrity.py"
+      - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/Dockerfile"
+      - "backend/.env.example"
+      - "env.staging.example"
+      - "docs/OBSERVABILITY-ONCALL.md"
+      - ".github/workflows/observability-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/core/observability.py"
+      - "backend/app/core/logging_config.py"
+      - "backend/app/core/config.py"
+      - "backend/app/core/runtime_policy.py"
+      - "backend/app/middleware/correlation.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_observability_integrity.py"
+      - "backend/tests/test_runtime_preflight_integrity.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/Dockerfile"
+      - "backend/.env.example"
+      - "env.staging.example"
+      - "docs/OBSERVABILITY-ONCALL.md"
+      - ".github/workflows/observability-integrity.yml"
+
+concurrency:
+  group: observability-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  observability-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install exact Poetry toolchain
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+      - name: Verify locked dependency graph
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Run observability and runtime-policy contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run pytest -q \
+            tests/test_observability_integrity.py \
+            tests/test_runtime_preflight_integrity.py
