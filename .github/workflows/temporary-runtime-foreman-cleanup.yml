@@ -70,7 +70,11 @@ jobs:
               'def _is_assigned_executor(project: Project, user_id: str) -> bool:\n    return user_id in {project.contractor_id, project.foreman_id}\n',
               'def _is_assigned_executor(project: Project, user_id: str, team_role: str | None = None) -> bool:\n    return user_id == project.contractor_id or team_role in {"owner", "foreman"}\n',
           )
-          replace(waste, '    target: WasteOrderStatus,\n) -> None:\n', '    target: WasteOrderStatus,\n    actor_team_role: str | None = None,\n) -> None:\n')
+          replace(
+              waste,
+              'def validate_transition(\n    *,\n    project: Project,\n    actor: User,\n    current: WasteOrderStatus,\n    target: WasteOrderStatus,\n) -> None:\n',
+              'def validate_transition(\n    *,\n    project: Project,\n    actor: User,\n    current: WasteOrderStatus,\n    target: WasteOrderStatus,\n    actor_team_role: str | None = None,\n) -> None:\n',
+          )
           replace(waste, 'if not _is_assigned_executor(project, actor.id):', 'if not _is_assigned_executor(project, actor.id, actor_team_role):')
           replace(
               waste,
