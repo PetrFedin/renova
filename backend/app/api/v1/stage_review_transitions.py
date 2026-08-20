@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import stage_review_service as reviews
+from app.services import technical_supervision_service as supervision
 
 router = APIRouter(prefix="/projects/{project_id}/stages", tags=["stages"])
 
@@ -78,7 +79,13 @@ async def reject_stage(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=False)
+    reviewer_mode = await supervision.require_capability(
+        db,
+        user=user,
+        project=project,
+        capability="quality_review",
+    )
     try:
         result = await reviews.reject_for_rework(
             db,
@@ -86,6 +93,8 @@ async def reject_stage(
             stage_id=stage_id,
             actor=user,
             reason=body.text,
+            create_issue=reviewer_mode == "supervisor",
+            authorized_reviewer=reviewer_mode == "supervisor",
         )
     except ValueError as exc:
         raise _transition_error(exc) from exc
@@ -102,5 +111,7 @@ async def reject_stage(
         ),
         "acceptance_id": result.acceptance.id,
         "acceptance_status": result.acceptance.status,
+        "issue_id": result.issue_id,
+        "reviewer_mode": reviewer_mode,
         "replayed": result.replayed,
     }
