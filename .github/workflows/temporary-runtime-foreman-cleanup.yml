@@ -1,0 +1,74 @@
+name: Temporary runtime foreman cleanup
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/temporary-runtime-foreman-cleanup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup-runtime-foreman:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/database-restore-drill' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/database-restore-drill
+          fetch-depth: 0
+      - name: Apply reviewed document audience cleanup and audit runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/app/services/document_lifecycle_service.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def _member_ids(project: Project) -> list[str]:
+              return sorted(
+                  {
+                      user_id
+                      for user_id in (
+                          project.customer_id,
+                          project.contractor_id,
+                          project.foreman_id,
+                      )
+                      if user_id
+                  }
+              )
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''def _member_ids(project: Project) -> list[str]:
+              return sorted(
+                  user_id
+                  for user_id in {project.customer_id, project.contractor_id}
+                  if user_id
+              )
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one reviewed document member replacement, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git diff --check -- backend/app/services/document_lifecycle_service.py
+          if grep -R -n --include='*.py' -E 'project\.foreman_id|Project\([^)]*foreman_id' backend/app; then
+            echo '::error::stale Project.foreman_id runtime reference remains'
+            exit 1
+          fi
+          echo 'runtime Project.foreman_id audit OK'
+      - name: Commit regular-file cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Renova CI"
+          git config user.email "81327591+PetrFedin@users.noreply.github.com"
+          git add -- backend/app/services/document_lifecycle_service.py
+          git diff --cached --check
+          git commit -m "Remove stale foreman document audience"
+          git push origin HEAD:agent/database-restore-drill
