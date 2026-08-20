@@ -182,7 +182,7 @@ jobs:
               op.drop_column('projects', 'vat_rate')
               op.drop_column('projects', 'estimate_propose_snapshot_json')
           '''
-          additions = '\n'.join(line[10:] if line.startswith('          ') else line for line in additions.splitlines())
+          additions = '\n'.join(line[10:] if line.startswith('          ') else line for line in additions.splitlines()) + '\n'
 
           drop_tables = ''.join(f"    op.drop_table('{name}')\n" for name in reversed(expected_tables))
           enum_cleanup = '''
