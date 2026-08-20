@@ -14,13 +14,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.base import Base
 
-# Import every mapped-model module used by the application before reading metadata.
-import app.models.client_write_request  # noqa: F401,E402
-import app.models.entities  # noqa: F401,E402
-import app.models.outbox_runtime  # noqa: F401,E402
-import app.models.project_documents  # noqa: F401,E402
-import app.models.webhook_runtime  # noqa: F401,E402
-import app.models.work_schedule  # noqa: F401,E402
+# Import the canonical package registry before reading metadata.
+import app.models  # noqa: F401,E402
 
 
 class OrmSchemaMismatch(RuntimeError):
