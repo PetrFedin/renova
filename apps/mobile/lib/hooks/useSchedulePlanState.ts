@@ -105,16 +105,11 @@ export function useSchedulePlanState(options: {
     applyPlan,
     actionsFor: (
       role: 'customer' | 'contractor',
-      flags?: {
-        readOnly?: boolean;
-        canManageSchedule?: boolean;
-        canReviewSchedule?: boolean;
-      },
+      flags?: { readOnly?: boolean; canManageSchedule?: boolean },
     ) => schedulePlanActions(state, {
       role,
       readOnly: flags?.readOnly,
       canManageSchedule: flags?.canManageSchedule,
-      canReviewSchedule: flags?.canReviewSchedule,
     }),
   };
 }
