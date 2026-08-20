@@ -145,6 +145,16 @@ def _configure_sentry(current: Settings) -> bool:
     return True
 
 
+def _server_request_hook(span, scope: dict) -> None:
+    """Attach the already-sanitized request correlation id to server spans."""
+    if not span or not span.is_recording():
+        return
+    state = scope.get("state") or {}
+    correlation_id = state.get("correlation_id") if isinstance(state, dict) else None
+    if correlation_id:
+        span.set_attribute("renova.correlation_id", str(correlation_id))
+
+
 def _configure_otel(app: FastAPI, current: Settings) -> tuple[TracerProvider | None, MeterProvider | None]:
     endpoint = (current.otel_exporter_otlp_endpoint or "").strip()
     if not endpoint:
@@ -170,6 +180,7 @@ def _configure_otel(app: FastAPI, current: Settings) -> tuple[TracerProvider | N
         app,
         tracer_provider=tracer_provider,
         meter_provider=meter_provider,
+        server_request_hook=_server_request_hook,
     )
     return tracer_provider, meter_provider
 
