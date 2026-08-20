@@ -125,7 +125,7 @@ async def _side_effects_after_external_sign(
     project = await db.get(Project, doc.project_id)
     if not project:
         return
-    for recipient_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+    for recipient_id in {project.customer_id, project.contractor_id}:
         if not recipient_id or recipient_id == sig.signer_user_id:
             continue
         await notif.notify(

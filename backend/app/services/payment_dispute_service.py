@@ -117,7 +117,7 @@ async def _enqueue_dispute_effects(
             "link_path": "/(customer)/(tabs)/budget?tab=payments",
         },
     )
-    for member_id in {project.contractor_id, project.foreman_id}:
+    for member_id in {project.contractor_id}:
         if not member_id or member_id == actor_user_id:
             continue
         await outbox.enqueue(
@@ -163,7 +163,7 @@ async def _enqueue_resolution_effects(
             "link_path": "/(customer)/(tabs)/budget?tab=payments",
         },
     )
-    for member_id in {project.contractor_id, project.foreman_id}:
+    for member_id in {project.contractor_id}:
         if not member_id or member_id == actor_user_id:
             continue
         await outbox.enqueue(

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, User, WasteOrder, WasteOrderStatus
 from app.services import outbox_service as outbox
+from app.services import team_service
 
 _ALLOWED: dict[WasteOrderStatus, set[WasteOrderStatus]] = {
     WasteOrderStatus.draft: {WasteOrderStatus.requested},
@@ -23,8 +24,8 @@ def _status_value(status: WasteOrderStatus | str) -> str:
     return status.value if hasattr(status, "value") else str(status)
 
 
-def _is_assigned_executor(project: Project, user_id: str) -> bool:
-    return user_id in {project.contractor_id, project.foreman_id}
+def _is_assigned_executor(project: Project, user_id: str, team_role: str | None = None) -> bool:
+    return user_id == project.contractor_id or team_role in {"owner", "foreman"}
 
 
 def validate_transition(
@@ -33,6 +34,7 @@ def validate_transition(
     actor: User,
     current: WasteOrderStatus,
     target: WasteOrderStatus,
+    actor_team_role: str | None = None,
 ) -> None:
     if target not in _ALLOWED.get(current, set()):
         raise ValueError(
@@ -43,7 +45,7 @@ def validate_transition(
             raise ValueError("waste_order_actor_forbidden")
         return
     if target in {WasteOrderStatus.requested, WasteOrderStatus.done}:
-        if not _is_assigned_executor(project, actor.id):
+        if not _is_assigned_executor(project, actor.id, actor_team_role):
             raise ValueError("waste_order_actor_forbidden")
         return
     raise ValueError("waste_order_actor_forbidden")
@@ -105,7 +107,7 @@ def _notification_targets(
     if target in {WasteOrderStatus.requested, WasteOrderStatus.done}:
         candidates = {project.customer_id}
     else:
-        candidates = {project.contractor_id, project.foreman_id}
+        candidates = {project.contractor_id}
     return sorted(user_id for user_id in candidates if user_id and user_id != actor_id)
 
 
@@ -180,11 +182,13 @@ async def transition_order(
     current = WasteOrderStatus(_status_value(order.status))
     if current == target:
         return order, True
+    actor_team_role = await team_service.team_role_for_project(db, actor, project)
     validate_transition(
         project=project,
         actor=actor,
         current=current,
         target=target,
+        actor_team_role=actor_team_role,
     )
 
     order.status = target

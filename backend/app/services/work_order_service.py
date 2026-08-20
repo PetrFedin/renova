@@ -68,7 +68,7 @@ async def _resolve_transition_actor_role(
         return actor_role
     if actor_id == project.customer_id:
         return UserRole.customer
-    if actor_id in {project.contractor_id, project.foreman_id}:
+    if actor_id == project.contractor_id:
         return UserRole.contractor
     membership = await project_team_membership(
         db,
@@ -109,9 +109,6 @@ async def _execution_authorization_basis(
 
     if actor_id == project.contractor_id:
         return "project_contractor_owner"
-
-    if actor_id == project.foreman_id:
-        return "project_foreman"
 
     membership = await project_team_membership(
         db,

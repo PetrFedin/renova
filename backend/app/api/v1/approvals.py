@@ -23,6 +23,7 @@ from app.models.entities import (
     WasteOrderStatus,
 )
 from app.services import approval_decision_service as decision_svc
+from app.services import team_service
 
 router = APIRouter(prefix="/projects", tags=["approvals"])
 
@@ -188,7 +189,7 @@ async def approval_hub(
             )
 
     # Room changes are customer requests resolved by the assigned executor.
-    if user.id in {project.contractor_id, project.foreman_id}:
+    if (await team_service.team_role_for_project(db, user, project)) in {"owner", "foreman"}:
         room_rows = (
             await db.execute(
                 select(RoomChangeRequest).where(

@@ -17,6 +17,7 @@ from app.models.entities import (
 )
 from app.services import outbox_service as outbox
 from app.services import room_service
+from app.services import team_service
 
 RoomDecision = Literal["approve", "reject"]
 
@@ -29,8 +30,9 @@ def _target(decision: RoomDecision) -> RoomChangeStatus:
     )
 
 
-def _validate_actor(project: Project, actor: User) -> None:
-    if actor.id not in {project.contractor_id, project.foreman_id}:
+async def _validate_actor(db: AsyncSession, project: Project, actor: User) -> None:
+    role = await team_service.team_role_for_project(db, actor, project)
+    if role not in {"owner", "foreman"}:
         raise ValueError("room_change_actor_forbidden")
 
 
@@ -105,7 +107,7 @@ async def create_request(
     )
     for recipient_id in sorted(
         value
-        for value in {project.contractor_id, project.foreman_id}
+        for value in {project.contractor_id}
         if value and value != actor.id
     ):
         await outbox.enqueue(
@@ -201,7 +203,7 @@ async def decide_request(
     reason: str | None = None,
 ) -> tuple[RoomChangeRequest | None, Room | None, bool, dict[str, dict[str, object]]]:
     """Resolve one request exactly once and atomically apply its approved patch."""
-    _validate_actor(project, actor)
+    await _validate_actor(db, project, actor)
     query = select(RoomChangeRequest).where(
         RoomChangeRequest.id == request_id,
         RoomChangeRequest.project_id == project.id,

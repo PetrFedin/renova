@@ -10,7 +10,7 @@ from app.services import outbox_service as outbox
 def _member_ids(project: Project) -> list[str]:
     seen: set[str] = set()
     members: list[str] = []
-    for user_id in (project.customer_id, project.contractor_id, project.foreman_id):
+    for user_id in (project.customer_id, project.contractor_id):
         if user_id and user_id not in seen:
             seen.add(user_id)
             members.append(user_id)

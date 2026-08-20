@@ -344,7 +344,7 @@ async def confirm_matches(
             },
         )
         del activity
-        for member_id in {project.customer_id, project.contractor_id, project.foreman_id}:
+        for member_id in {project.customer_id, project.contractor_id}:
             if not member_id or member_id == actor_id:
                 continue
             customer_link = member_id == project.customer_id

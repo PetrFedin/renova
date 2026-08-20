@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import DesignPackage, Project, User
 from app.services import outbox_service as outbox
+from app.services import team_service
 
 DesignAction = Literal["submit", "approve", "reject"]
 
@@ -20,13 +21,14 @@ def _target(action: DesignAction) -> str:
     }[action]
 
 
-def _is_executor(project: Project, actor_id: str) -> bool:
-    return actor_id in {project.contractor_id, project.foreman_id}
+async def _is_executor(db: AsyncSession, project: Project, actor: User) -> bool:
+    role = await team_service.team_role_for_project(db, actor, project)
+    return role in {"owner", "foreman"}
 
 
-def _validate_actor(project: Project, actor: User, action: DesignAction) -> None:
+async def _validate_actor(db: AsyncSession, project: Project, actor: User, action: DesignAction) -> None:
     if action == "submit":
-        if not _is_executor(project, actor.id):
+        if not await _is_executor(db, project, actor):
             raise ValueError("design_decision_actor_forbidden")
         return
     if actor.id != project.customer_id:
@@ -72,7 +74,7 @@ def _notification_targets(project: Project, actor_id: str, action: DesignAction)
     if action == "submit":
         candidates = {project.customer_id}
     else:
-        candidates = {project.contractor_id, project.foreman_id}
+        candidates = {project.contractor_id}
     return sorted(value for value in candidates if value and value != actor_id)
 
 
@@ -86,7 +88,7 @@ async def create_package(
     notes: str | None = None,
 ) -> DesignPackage:
     """Create the next version with its audit event in one transaction."""
-    if not _is_executor(project, actor.id):
+    if not await _is_executor(db, project, actor):
         raise ValueError("design_decision_actor_forbidden")
     normalized_title = (title or "").strip()
     if not normalized_title or len(normalized_title) > 255:
@@ -217,7 +219,7 @@ async def transition_package(
     if package is None:
         return None, False
 
-    _validate_actor(project, actor, action)
+    await _validate_actor(db, project, actor, action)
     current = str(package.status or "")
     changed = _validate_transition(current, action)
     if not changed:
