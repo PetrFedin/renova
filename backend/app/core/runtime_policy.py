@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from app.core.config import Settings, settings
 from app.core.environment import EnvironmentPolicy, collect_warnings, validate_runtime_settings
+from app.core.observability import observability_warnings, validate_observability_configuration
 
 
 def _validate_admin_identity_configuration(
@@ -60,6 +61,7 @@ def validate_configured_runtime(
         twilio_from=current.twilio_from,
     )
     _validate_admin_identity_configuration(current, policy)
+    validate_observability_configuration(current)
     return policy
 
 
@@ -68,20 +70,24 @@ def configured_runtime_warnings(
 ) -> Sequence[str]:
     """Return startup warnings using the same Settings instance as validation."""
     current = configured or settings
-    return collect_warnings(
-        environment=current.environment,
-        database_url=current.database_url,
-        secret_key=current.secret_key,
-        kontur_mode=current.kontur_mode,
-        kontur_api_key=current.kontur_api_key,
-        yookassa_shop_id=current.yookassa_shop_id,
-        yookassa_secret=current.yookassa_secret,
-        esign_webhook_secret=current.esign_webhook_secret,
-        yookassa_webhook_secret=current.yookassa_webhook_secret,
-        ops_alert_email=current.ops_alert_email,
-        smtp_host=current.smtp_host,
-        redis_url=current.redis_url,
-        twilio_sid=current.twilio_sid,
-        twilio_token=current.twilio_token,
-        twilio_from=current.twilio_from,
+    warnings = list(
+        collect_warnings(
+            environment=current.environment,
+            database_url=current.database_url,
+            secret_key=current.secret_key,
+            kontur_mode=current.kontur_mode,
+            kontur_api_key=current.kontur_api_key,
+            yookassa_shop_id=current.yookassa_shop_id,
+            yookassa_secret=current.yookassa_secret,
+            esign_webhook_secret=current.esign_webhook_secret,
+            yookassa_webhook_secret=current.yookassa_webhook_secret,
+            ops_alert_email=current.ops_alert_email,
+            smtp_host=current.smtp_host,
+            redis_url=current.redis_url,
+            twilio_sid=current.twilio_sid,
+            twilio_token=current.twilio_token,
+            twilio_from=current.twilio_from,
+        )
     )
+    warnings.extend(observability_warnings(current))
+    return tuple(warnings)
