@@ -20,7 +20,10 @@ from app.api.v1 import otp_auth
 from app.api.v1 import calendar_integrity
 from app.api.v1 import calendar_mutations
 from app.api.v1 import technical_supervision
+from app.api.v1 import technical_supervision_actions
+from app.api.v1 import technical_supervision_chat
 from app.api.v1 import technical_supervision_project_access
+from app.api.v1 import technical_supervision_schedule
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -70,6 +73,12 @@ api_router.include_router(issue_transitions.router)
 api_router.include_router(budget_planner.router)
 api_router.include_router(activity.router)
 api_router.include_router(rework_sla.router)
+
+_TECHNICAL_SUPERVISION_SCHEDULE_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/work-schedules/{schedule_id}/reject", "POST"),
+}
+_remove_replaced_routes(project_work_schedule.router, _TECHNICAL_SUPERVISION_SCHEDULE_ROUTES)
+api_router.include_router(technical_supervision_schedule.router)
 api_router.include_router(project_work_schedule.router)
 
 _STAGE_MUTATION_ROUTES: set[RouteSignature] = {
@@ -184,12 +193,19 @@ api_router.include_router(stage_review_transitions.router)
 api_router.include_router(projects.router)
 api_router.include_router(technical_supervision_project_access.router)
 api_router.include_router(technical_supervision.router)
+api_router.include_router(technical_supervision_actions.router)
 api_router.include_router(rooms.router)
 api_router.include_router(room_requests.router)
 api_router.include_router(calendar_integrity.router)
 api_router.include_router(calendar_mutations.router)
 api_router.include_router(calendar.router)
 api_router.include_router(chat_inbox.router)
+
+_TECHNICAL_SUPERVISION_CHAT_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/chats/{thread_id}/messages", "POST"),
+}
+_remove_replaced_routes(chats.router, _TECHNICAL_SUPERVISION_CHAT_ROUTES)
+api_router.include_router(technical_supervision_chat.router)
 api_router.include_router(chats.router)
 
 # --- finance ---
