@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Alert, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { TechnicalSupervisionCard } from '@/components/renova/TechnicalSupervisionCard';
 import {
   ProjectProfileFields,
   type ProjectProfileValues,
@@ -90,6 +91,10 @@ export function OsProjectProfileScreen({
   if (!values) return null;
   const project = activeProject;
   const profileValues = values;
+  const canManageTechnicalSupervision =
+    role === 'customer'
+    && project.access_mode === 'owner'
+    && !readOnly;
 
   async function onSave() {
     const projectId = project.id;
@@ -169,6 +174,13 @@ export function OsProjectProfileScreen({
           setDirty(true);
         }}
       />
+      {user?.id ? (
+        <TechnicalSupervisionCard
+          userId={user.id}
+          projectId={project.id}
+          canManage={canManageTechnicalSupervision}
+        />
+      ) : null}
       <View style={s.footer}>
         <Pressable
           style={s.roomsLink}
