@@ -2,6 +2,8 @@
 import type { Room } from './room';
 import type { Stage } from './stage';
 
+export type ProjectAccessMode = 'owner' | 'contractor' | 'guest' | 'supervisor' | 'none';
+
 export type ProjectSummary = {
   id: string;
   name: string;
@@ -29,8 +31,9 @@ export type ProjectSummary = {
   /** W57: исполнитель предложил фиксацию — ждёт заказчика */
   estimate_lock_proposed_at?: string | null;
   estimate_lock_proposed_by?: string | null;
-  /** owner — можно archive/trash; guest — только просмотр в списке active */
-  access_mode?: 'owner' | 'contractor' | 'guest' | 'none';
+  /** supervisor — независимый проектный технадзор с capability-scoped actions. */
+  access_mode?: ProjectAccessMode;
+  technical_capabilities?: string[];
 };
 
 export type EstimateLine = {
@@ -63,7 +66,8 @@ export type BudgetBreakdown = {
 
 export type ProjectDetail = ProjectSummary & {
   read_only?: boolean;
-  access_mode?: 'owner' | 'contractor' | 'guest';
+  access_mode?: ProjectAccessMode;
+  technical_capabilities?: string[];
   estimate_lines: EstimateLine[];
   stages: Stage[];
   rooms?: Room[];
