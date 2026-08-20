@@ -3,6 +3,7 @@ import json
 import pytest
 
 from app import main
+from app.core.observability import release_digest
 
 
 class _Session:
@@ -93,4 +94,4 @@ async def test_readiness_fails_closed_without_leaking_provider_errors(monkeypatc
 
 def test_missing_artifact_digest_is_explicitly_unknown(monkeypatch):
     monkeypatch.delenv("RENOVA_IMAGE_DIGEST", raising=False)
-    assert main._release_digest() == "unknown"
+    assert release_digest() == "unknown"
