@@ -38,7 +38,6 @@ async def test_competing_self_managed_review_submissions_collapse_to_one_accepta
         renovation_type="cosmetic",
         customer_id=customer_id,
         contractor_id=None,
-        foreman_id=None,
         planned_start_date=date(2026, 8, 1),
         planned_end_date=date(2026, 9, 30),
     )

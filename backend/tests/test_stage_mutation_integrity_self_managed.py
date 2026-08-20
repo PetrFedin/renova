@@ -43,7 +43,6 @@ async def seed_self_managed_project(db, suffix: str = "self"):
         renovation_type="cosmetic",
         customer_id=customer.id,
         contractor_id=None,
-        foreman_id=None,
         planned_start_date=date(2026, 8, 1),
         planned_end_date=date(2026, 10, 31),
     )
