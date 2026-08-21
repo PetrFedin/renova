@@ -39,6 +39,8 @@ export function TechnicalSupervisionScheduleReview() {
   }, [load]);
 
   if (!canReview || !user || !activeProject) return null;
+  const userId = user.id;
+  const projectId = activeProject.id;
 
   function rejectSchedule() {
     if (!schedule || schedule.status !== 'submitted') return;
@@ -47,6 +49,7 @@ export function TechnicalSupervisionScheduleReview() {
       Alert.alert('План-график', 'Укажите техническую причину возврата графика.');
       return;
     }
+    const scheduleId = schedule.id;
     Alert.alert(
       'Вернуть график на доработку?',
       'Исполнитель получит причину возврата. Согласовать график от имени заказчика технадзор не может.',
@@ -60,17 +63,17 @@ export function TechnicalSupervisionScheduleReview() {
             setError(null);
             try {
               const next = await api.rejectWorkSchedule(
-                user.id,
-                activeProject.id,
-                schedule.id,
+                userId,
+                projectId,
+                scheduleId,
                 cleanReason,
               );
               setSchedule(next);
               setReason('');
             } catch (cause) {
               reportError('technicalSupervision.schedule.reject', cause, {
-                projectId: activeProject.id,
-                scheduleId: schedule.id,
+                projectId,
+                scheduleId,
               });
               setError('Не удалось вернуть график. Обновите данные и повторите действие.');
             } finally {
