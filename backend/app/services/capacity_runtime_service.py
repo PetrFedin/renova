@@ -5,6 +5,9 @@ reliably. It does not invent provider-level CPU/memory/Redis utilization.
 """
 from __future__ import annotations
 
+import hashlib
+import os
+import socket
 import time
 from typing import Any
 
@@ -14,6 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import engine
+
+
+def _api_instance_id() -> str:
+    identity = f"{socket.gethostname()}:{os.getpid()}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
 
 
 def _safe_pool_int(pool: object, name: str) -> int | None:
@@ -45,6 +53,7 @@ def database_pool_snapshot(pool: object | None = None) -> dict[str, Any]:
 
     return {
         "scope": "api_process",
+        "instance_id": _api_instance_id(),
         "supported": supported,
         "configured_pool_size": settings.db_pool_size if postgres_pool else None,
         "configured_max_overflow": settings.db_max_overflow if postgres_pool else None,
