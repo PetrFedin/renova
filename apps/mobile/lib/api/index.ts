@@ -23,6 +23,7 @@ import { scratchpadApi } from './scratchpad';
 import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
 import { selectionsApi } from './selections';
+import { technicalSupervisionApi } from './technicalSupervision';
 
 export const api = {
   ...authApi,
@@ -49,11 +50,20 @@ export const api = {
   ...workScheduleApi,
   ...miscApi,
   ...selectionsApi,
+  ...technicalSupervisionApi,
 };
 
 export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, API_BASE } from './client';
 export * from './types';
 export type { SelectionItem } from './selections';
+export type {
+  TechnicalQualityIssueInput,
+  TechnicalSupervisionAssignment,
+  TechnicalSupervisionAssignmentInput,
+  TechnicalSupervisionMutation,
+  TechnicalSupervisionProviderType,
+  TechnicalSupervisionStatus,
+} from './technicalSupervision';
 export type {
   WorkSchedule,
   WorkScheduleStatus,

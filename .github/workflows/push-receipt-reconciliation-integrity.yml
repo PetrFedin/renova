@@ -98,6 +98,10 @@ jobs:
           revision_guard = Path("backend/tests/test_database_revision_guard.py").read_text(encoding="utf-8")
           schema_verifier = Path("backend/scripts/verify_migration_schema.py").read_text(encoding="utf-8")
 
+          # Keep this static wiring contract domain-specific. The current Alembic
+          # head is intentionally NOT hard-coded here: future unrelated migrations
+          # must not break the push gate after the real revision-guard and migration
+          # tests above have already proved that the database is at the bundled head.
           required = {
               "main.py": ["push_receipt_worker_loop", "push_receipt_worker_interval_sec"],
               "admin.py": ["push_receipts", "push_receipt_runtime_health"],
@@ -110,8 +114,8 @@ jobs:
                   'status="expired"',
               ],
               "push_service.py": ["record_accepted_tickets_persistently", "AcceptedPushTicket"],
-              "revision_guard.py": ["w13ormparity01"],
-              "schema_verifier.py": ["w13ormparity01", "expo_push_receipts"],
+              "revision_guard.py": ["bundled_alembic_heads()", "assert_database_at_head"],
+              "schema_verifier.py": ["_verify_push_receipts", "expo_push_receipts"],
           }
           sources = {
               "main.py": main,

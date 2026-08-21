@@ -14,6 +14,7 @@ from app.services import room_service as room_svc
 from app.services import project_document_service as docs_svc
 from app.services import dashboard_integrity_service as dashboard_svc
 from app.services import project_viewer_service as viewer_svc
+from app.services import technical_supervision_service as supervision
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -30,8 +31,12 @@ def _filter_stages_for_user(p, user: User):
     ]
 
 
-
-def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
+def _project_out(
+    p,
+    *,
+    access_mode: str = "owner",
+    technical_capabilities: list[str] | None = None,
+) -> ProjectOut:
     payments = getattr(p, "payments", None) or []
     pending = sum(1 for pay in payments if pay.status == PaymentStatus.pending)
     customer_budget = getattr(p, "customer_budget", None)
@@ -57,14 +62,19 @@ def _project_out(p, *, access_mode: str = "owner") -> ProjectOut:
         estimate_lock_proposed_at=p.estimate_lock_proposed_at.isoformat() if getattr(p, "estimate_lock_proposed_at", None) else None,
         estimate_lock_proposed_by=getattr(p, "estimate_lock_proposed_by", None),
         access_mode=access_mode,
+        technical_capabilities=technical_capabilities or [],
     )
 
 
 async def _project_out_for_user(db, user: User, p) -> ProjectOut:
-    from app.services import team_service as team_svc
-
-    access_mode, _read_only = await team_svc.project_access_mode(db, user, p)
-    return _project_out(p, access_mode=access_mode)
+    access_mode, _read_only, capabilities = await supervision.project_access_descriptor(
+        db, user=user, project=p
+    )
+    return _project_out(
+        p,
+        access_mode=access_mode,
+        technical_capabilities=capabilities,
+    )
 
 
 def _lifecycle_http_error(e: ValueError) -> HTTPException:
@@ -79,6 +89,12 @@ def _lifecycle_http_error(e: ValueError) -> HTTPException:
 
 
 async def _detail(db, p, user: User | None = None) -> ProjectDetail:
+    read_only, access_mode, capabilities = False, "owner", []
+    if user:
+        access_mode, read_only, capabilities = await supervision.project_access_descriptor(
+            db, user=user, project=p
+        )
+
     lines = [
         EstimateLineOut(
             id=l.id,
@@ -96,6 +112,11 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
         )
         for l in p.estimate_lines
     ]
+    stage_source = (
+        sorted(p.stages or [], key=lambda x: x.sort_order)
+        if user is None or access_mode == "supervisor"
+        else _filter_stages_for_user(p, user)
+    )
     stages = [
         StageOut(
             id=s.id,
@@ -117,15 +138,15 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
             actual_start=s.actual_start.isoformat() if getattr(s, "actual_start", None) else None,
             actual_end=s.actual_end.isoformat() if getattr(s, "actual_end", None) else None,
         )
-        for s in (_filter_stages_for_user(p, user) if user else sorted(p.stages or [], key=lambda x: x.sort_order))
+        for s in stage_source
     ]
     rooms = [RoomOut(**room_svc.room_detail(r)) for r in p.rooms if not getattr(r, "is_archived", False)] if p.rooms else []
-    read_only, access_mode = False, "owner"
-    if user:
-        from app.services import team_service as team_svc
-        access_mode, read_only = await team_svc.project_access_mode(db, user, p)
     return ProjectDetail(
-        **_project_out(p, access_mode=access_mode).model_dump(),
+        **_project_out(
+            p,
+            access_mode=access_mode,
+            technical_capabilities=capabilities,
+        ).model_dump(),
         estimate_lines=lines,
         stages=stages,
         rooms=rooms,
@@ -141,7 +162,17 @@ async def list_projects(
 ):
     if bucket not in ("active", "archived", "trashed"):
         bucket = "active"
-    projects = await svc.list_projects_for_user(db, user, bucket=bucket)
+    base = await svc.list_projects_for_user(db, user, bucket=bucket)
+    supervised = await supervision.list_supervised_projects(
+        db, user_id=user.id, bucket=bucket
+    )
+    projects = list(base)
+    seen = {project.id for project in projects}
+    for project in supervised:
+        if project.id not in seen:
+            projects.append(project)
+            seen.add(project.id)
+    projects.sort(key=lambda project: project.created_at, reverse=True)
     return [await _project_out_for_user(db, user, p) for p in projects]
 
 
@@ -162,12 +193,6 @@ async def create_project(body: ProjectCreate, user: User = Depends(get_current_u
         rooms_data=[r.model_dump() for r in body.rooms],
     )
     return await _detail(db, p, user)
-
-
-
-
-
-
 
 
 class ProjectFromTemplateIn(BaseModel):
@@ -257,12 +282,14 @@ async def purge_project(project_id: str, user: User = Depends(get_current_user),
         raise _lifecycle_http_error(e)
     return {"ok": True}
 
+
 @router.patch("/{project_id}", response_model=ProjectDetail)
 async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     project = await require_project(db, project_id, user, write=True)
     data = body.model_dump(exclude_unset=True)
     p = await profile_svc.update_project_profile(db, project, data)
     return await _detail(db, p, user)
+
 
 @router.get("/{project_id}", response_model=ProjectDetail)
 async def get_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -277,10 +304,22 @@ async def dashboard(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=False)
-    stages = dashboard_svc.stages_for_user(project, user)
+    access_mode, _read_only, _capabilities = await supervision.project_access_descriptor(
+        db, user=user, project=project
+    )
+    stages = (
+        sorted(project.stages or [], key=lambda stage: stage.sort_order)
+        if access_mode == "supervisor"
+        else dashboard_svc.stages_for_user(project, user)
+    )
     result = dashboard_svc.build_dashboard_read_model(project, stages=stages)
-    role = getattr(getattr(user, "role", None), "value", None) or str(
-        getattr(user, "role", "") or ""
+    role = (
+        "supervisor"
+        if access_mode == "supervisor"
+        else (
+            getattr(getattr(user, "role", None), "value", None)
+            or str(getattr(user, "role", "") or "")
+        )
     )
     return await dashboard_svc.enrich_dashboard_read_only(
         project_id,
@@ -312,6 +351,7 @@ async def reject_stage(project_id: str, stage_id: str, body: dict, user: User = 
         raise HTTPException(404)
     return {"ok": True, "status": stage.status.value}
 
+
 @router.post("/{project_id}/stages/{stage_id}/accept")
 async def accept_stage(project_id: str, stage_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Deprecated: use POST /projects/{id}/work-acceptances/{acceptance_id}/accept."""
@@ -337,6 +377,7 @@ async def assign_contractor(project_id: str, user: User = Depends(get_current_us
     if not p:
         raise HTTPException(402, detail={"code": "subscription_required", "message": "Нужен Pro для нового объекта"})
     return await _detail(db, p, user)
+
 
 class ViewerShareIn(BaseModel):
     phone: str | None = None
@@ -407,12 +448,12 @@ async def share_viewer(project_id: str, body: ViewerShareIn, user: User = Depend
     return {"ok": True, "user_id": target.id, "full_name": target.full_name}
 
 
-
 @router.get("/{project_id}/contract-gate")
 async def get_contract_gate(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """P3-W9: статус договора до start_stage — для баннера на экране этапа."""
     await require_project(db, project_id, user, write=False)
     return await docs_svc.project_contract_gate(db, project_id)
+
 
 @router.delete("/{project_id}/viewers/{viewer_user_id}")
 async def remove_viewer(project_id: str, viewer_user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

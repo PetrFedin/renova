@@ -12,6 +12,14 @@ from app.services import chat_service as chat_svc
 router = APIRouter(prefix="/projects", tags=["chats"])
 
 
+def _author_role_label(author_role: str | None) -> str:
+    return {
+        "customer": "Заказчик",
+        "contractor": "Исполнитель",
+        "supervisor": "Технадзор",
+    }.get(author_role or "", "Система")
+
+
 async def _msgs_with_read(db, thread_id, messages):
     reads = await chat_svc.read_map(db, thread_id)
     out = []
@@ -220,6 +228,7 @@ async def search_messages(project_id: str, q: str, user: User = Depends(get_curr
     r = await db.execute(select(ChatMessage).join(ChatThread).where(ChatThread.project_id == project_id, ChatMessage.text.ilike(f"%{q}%")).limit(30))
     return [{"thread_id": m.thread_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in r.scalars().all()]
 
+
 @router.get("/{project_id}/chats/{thread_id}.pdf")
 async def chat_thread_pdf(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
@@ -233,7 +242,7 @@ async def chat_thread_pdf(project_id: str, thread_id: str, user: User = Depends(
     pdf_line(pdf, f"Экспорт: {user.full_name or user.phone or user.id[:8]}", size=10)
     pdf_line(pdf, "")
     for m in msgs:
-        role = {"customer": "Заказчик", "contractor": "Исполнитель"}.get(m.get("author_role"), "Система")
+        role = _author_role_label(m.get("author_role"))
         ts = (m.get("created_at") or "")[:16].replace("T", " ")
         body = m.get("text") or f"[{m.get('message_type', 'msg')}]"
         pdf_line(pdf, f"{ts} · {role}: {body[:200]}", size=9)

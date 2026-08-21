@@ -198,8 +198,10 @@ class ProjectOut(BaseModel):
     estimate_locked_at: str | None = None
     estimate_lock_proposed_at: str | None = None
     estimate_lock_proposed_by: str | None = None
-    # owner | contractor | guest | none — archive/trash только для owner
+    # owner | contractor | guest | supervisor | none — archive/trash только для owner
     access_mode: str = "owner"
+    # Capabilities are explicit and empty unless access_mode == supervisor.
+    technical_capabilities: list[str] = Field(default_factory=list)
 
 
 class ProjectDetail(ProjectOut):

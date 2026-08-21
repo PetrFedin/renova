@@ -115,7 +115,20 @@ async def require_project(
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404, "Проект не найден")
-    if not await team_svc.can_access_project(db, user, p, write=write):
+
+    has_access = await team_svc.can_access_project(db, user, p, write=write)
+    if not has_access and not write:
+        # Technical supervision is intentionally only a read fallback here.
+        # Explicit technical writes use capability-checked canonical routes;
+        # generic project writes remain closed.
+        from app.services import technical_supervision_service as supervision
+
+        has_access = await supervision.is_active_supervisor(
+            db,
+            project_id=p.id,
+            user_id=user.id,
+        )
+    if not has_access:
         raise HTTPException(403, "Нет доступа")
     if getattr(p, "trashed_at", None):
         raise HTTPException(404, "Проект в корзине")

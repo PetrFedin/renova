@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-_PRESENT_REVISION = "w13ormparity01"
+_PRESENT_REVISION = "w14techsupervision01"
 _ABSENT_REVISION = "w6webhookdelivery01"
 
 
@@ -385,6 +385,72 @@ def _verify_push_receipts(inspector) -> None:
         _require(bool(index.get("unique")) is unique, f"{name} unique mismatch")
 
 
+def _verify_technical_supervision(inspector) -> None:
+    table = "project_technical_supervisor_assignments"
+    expected_columns = {
+        "id", "project_id", "representative_user_id", "provider_type",
+        "provider_name", "appointed_by_user_id", "appointed_at", "revoked_at",
+        "revoked_by_user_id", "supersedes_assignment_id",
+    }
+    columns = {column["name"]: column for column in inspector.get_columns(table)}
+    missing = expected_columns - set(columns)
+    _require(not missing, f"{table} columns are missing: {sorted(missing)}")
+    nullable = {"revoked_at", "revoked_by_user_id", "supersedes_assignment_id"}
+    for name in expected_columns:
+        _require(
+            bool(columns[name].get("nullable")) is (name in nullable),
+            f"{table}.{name} nullable mismatch",
+        )
+    _require(
+        list(inspector.get_pk_constraint(table).get("constrained_columns") or []) == ["id"],
+        f"{table} primary key must be id",
+    )
+    foreign_keys = {
+        tuple(foreign_key.get("constrained_columns") or []): (
+            foreign_key.get("referred_table"),
+            tuple(foreign_key.get("referred_columns") or []),
+            str((foreign_key.get("options") or {}).get("ondelete") or "").upper(),
+        )
+        for foreign_key in inspector.get_foreign_keys(table)
+    }
+    expected_fks = {
+        ("project_id",): ("projects", ("id",), "CASCADE"),
+        ("representative_user_id",): ("users", ("id",), ""),
+        ("appointed_by_user_id",): ("users", ("id",), ""),
+        ("revoked_by_user_id",): ("users", ("id",), ""),
+        ("supersedes_assignment_id",): (table, ("id",), ""),
+    }
+    for columns_key, target in expected_fks.items():
+        _require(
+            foreign_keys.get(columns_key) == target,
+            f"{table} foreign key mismatch for {columns_key}: {foreign_keys.get(columns_key)}",
+        )
+    checks = {
+        constraint.get("name"): str(constraint.get("sqltext") or "")
+        for constraint in inspector.get_check_constraints(table)
+    }
+    _require(
+        "provider_type" in checks.get("ck_project_technical_supervisor_provider_type", ""),
+        "technical supervision provider_type check constraint is missing",
+    )
+    indexes = {
+        index["name"]: index
+        for index in inspector.get_indexes(table)
+        if index.get("name")
+    }
+    for name, (expected, unique) in {
+        "ix_project_technical_supervisor_assignments_project_id": (["project_id"], False),
+        "ix_project_tech_supervisor_rep_user": (["representative_user_id"], False),
+        "ix_project_technical_supervisor_assignments_revoked_at": (["revoked_at"], False),
+        "ix_project_technical_supervisor_rep_active": (["representative_user_id", "revoked_at"], False),
+        "ux_project_technical_supervisor_active_project": (["project_id"], True),
+    }.items():
+        index = indexes.get(name)
+        _require(index is not None, f"{name} is missing")
+        _require(list(index.get("column_names") or []) == expected, f"{name} columns mismatch")
+        _require(bool(index.get("unique")) is unique, f"{name} unique mismatch")
+
+
 def _verify_present(sync_connection) -> None:
     _require(
         _current_revision(sync_connection) == _PRESENT_REVISION,
@@ -399,6 +465,7 @@ def _verify_present(sync_connection) -> None:
         "subscription_refunds",
         "subscription_refund_review_events",
         "expo_push_receipts",
+        "project_technical_supervisor_assignments",
     ):
         _require(table in tables, f"{table} table is missing after Alembic upgrade")
     _verify_calendar(inspector)
@@ -406,6 +473,7 @@ def _verify_present(sync_connection) -> None:
     _verify_subscription_refunds(inspector)
     _verify_subscription_refund_review_events(inspector)
     _verify_push_receipts(inspector)
+    _verify_technical_supervision(inspector)
 
 
 def _verify_absent(sync_connection) -> None:
@@ -421,6 +489,7 @@ def _verify_absent(sync_connection) -> None:
         "subscription_refunds",
         "subscription_refund_review_events",
         "expo_push_receipts",
+        "project_technical_supervisor_assignments",
     ):
         _require(table not in tables, f"{table} survived downgrade to the previous revision")
     _require("users" in tables, "users table disappeared during schema downgrade")
