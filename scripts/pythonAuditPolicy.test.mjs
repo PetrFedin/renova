@@ -83,6 +83,51 @@ test("new Python advisory fails when baseline is empty", () => {
   assert.match(result.summary.failures.join("\n"), /example-package@1\.0\.0 GHSA-test-0000-0000/);
 });
 
+test("duplicate feed records collapse only when package version and primary id are exact", () => {
+  const report = {
+    dependencies: [
+      {
+        name: "example-package",
+        version: "1.0.0",
+        vulns: [
+          { id: "GHSA-same-0000-0001", aliases: ["CVE-2099-0001"], fix_versions: [] },
+          { id: "GHSA-same-0000-0001", aliases: ["PYSEC-2099-1"], fix_versions: ["1.0.1"] },
+          { id: "GHSA-distinct-0000-0002", aliases: [], fix_versions: ["1.0.2"] },
+        ],
+      },
+    ],
+  };
+  const baseline = {
+    version: 1,
+    exceptions: [
+      {
+        package: "example-package",
+        installed_version: "1.0.0",
+        vulnerability_id: "CVE-2099-0001",
+        reason: "Reviewed duplicate-feed record used to validate exact advisory normalization.",
+        review_issue: "#237",
+        expires_on: day(30),
+      },
+      {
+        package: "example-package",
+        installed_version: "1.0.0",
+        vulnerability_id: "GHSA-distinct-0000-0002",
+        reason: "Reviewed distinct advisory used to prove separate vulnerability IDs are preserved.",
+        review_issue: "#237",
+        expires_on: day(30),
+      },
+    ],
+  };
+  const result = runPolicy({ report, baseline, auditExitCode: 1 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.summary.findings.length, 2);
+  const duplicate = result.summary.findings.find(
+    (finding) => finding.vulnerability_id === "GHSA-same-0000-0001",
+  );
+  assert.deepEqual(duplicate.aliases, ["CVE-2099-0001", "PYSEC-2099-1"]);
+  assert.deepEqual(duplicate.fix_versions, ["1.0.1"]);
+});
+
 test("exact reviewed unexpired exception permits only its exact finding", () => {
   const baseline = {
     version: 1,
