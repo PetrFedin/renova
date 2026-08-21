@@ -5,7 +5,6 @@ from collections import defaultdict
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from jose import JWTError
 from sqlalchemy import select
 
 from app.core.request_auth import user_id_from_access_token
@@ -39,10 +38,7 @@ async def _authenticate_ws(websocket: WebSocket) -> str | None:
             token = auth.split(" ", 1)[1].strip()
     if not token:
         return None
-    try:
-        return user_id_from_access_token(token)
-    except JWTError:
-        return None
+    return user_id_from_access_token(token)
 
 
 async def _can_access_thread(user_id: str, thread_id: str) -> bool:
@@ -111,15 +107,16 @@ async def inbox_ws(websocket: WebSocket, user_id: str):
         inbox_rooms[user_id].discard(websocket)
 
 
-
 async def _redis_publish(channel: str, packed: str) -> None:
     """Best-effort cross-instance fanout when REDIS_URL set (packed = instance envelope)."""
     from app.core.config import settings
+
     url = (settings.redis_url or "").strip()
     if not url:
         return
     try:
         import redis.asyncio as redis  # type: ignore
+
         client = redis.from_url(url, decode_responses=True)
         try:
             await client.publish(channel, packed)

@@ -9,7 +9,8 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 
 from app.core.config import settings
 from app.core.security import ALGORITHM

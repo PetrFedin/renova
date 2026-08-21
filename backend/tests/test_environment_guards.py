@@ -2,6 +2,7 @@
 import pytest
 
 from app.core.environment import (
+    MIN_WORKING_SECRET_BYTES,
     collect_warnings,
     normalize_environment,
     policy_for,
@@ -34,7 +35,7 @@ def test_production_forbids_sqlite():
             environment="production",
             database_url="sqlite+aiosqlite:///./renova.db",
             public_base_url="https://api.renova.app",
-            secret_key="super-secret-key-32chars-min!!",
+            secret_key="p" * MIN_WORKING_SECRET_BYTES,
         )
 
 
@@ -44,7 +45,7 @@ def test_production_requires_https_and_secret():
             environment="production",
             database_url="postgresql+asyncpg://u:p@db/renova",
             public_base_url="http://api.renova.app",
-            secret_key="super-secret-key-32chars-min!!",
+            secret_key="p" * MIN_WORKING_SECRET_BYTES,
         )
     with pytest.raises(ValueError, match="SECRET_KEY"):
         validate_runtime_settings(
@@ -55,13 +56,27 @@ def test_production_requires_https_and_secret():
         )
 
 
+def test_working_environment_rejects_hs256_secret_shorter_than_32_bytes():
+    with pytest.raises(ValueError, match="32 байт"):
+        validate_runtime_settings(
+            environment="staging",
+            database_url="postgresql+asyncpg://u:p@db/renova",
+            public_base_url="https://api-staging.example.com",
+            secret_key="s" * (MIN_WORKING_SECRET_BYTES - 1),
+            redis_url="rediss://redis.example.com:6380/0",
+            twilio_sid="AC0123456789abcdef",
+            twilio_token="twilio-secret-token",
+            twilio_from="+12025550123",
+        )
+
+
 def test_staging_forbids_localhost_public_url():
     with pytest.raises(ValueError, match="localhost"):
         validate_runtime_settings(
             environment="staging",
             database_url="postgresql+asyncpg://u:p@db/renova",
             public_base_url="http://127.0.0.1:8100",
-            secret_key="staging-secret-key-16+",
+            secret_key="s" * MIN_WORKING_SECRET_BYTES,
         )
 
 
@@ -70,7 +85,7 @@ def test_staging_ok():
         environment="staging",
         database_url="postgresql+asyncpg://u:p@db/renova",
         public_base_url="https://api-staging.example.com",
-        secret_key="staging-secret-key-16+",
+        secret_key="s" * MIN_WORKING_SECRET_BYTES,
         redis_url="rediss://redis.example.com:6380/0",
         twilio_sid="AC0123456789abcdef",
         twilio_token="twilio-secret-token",
@@ -94,7 +109,7 @@ def test_staging_kontur_missing_api_key_warns():
     warnings = collect_warnings(
         environment="staging",
         database_url="postgresql+asyncpg://u:p@db/renova",
-        secret_key="staging-secret-key-16+",
+        secret_key="s" * MIN_WORKING_SECRET_BYTES,
         kontur_mode="sandbox",
         kontur_api_key=None,
     )
@@ -105,7 +120,7 @@ def test_staging_kontur_off_no_warning():
     warnings = collect_warnings(
         environment="staging",
         database_url="postgresql+asyncpg://u:p@db/renova",
-        secret_key="staging-secret-key-16+",
+        secret_key="s" * MIN_WORKING_SECRET_BYTES,
         kontur_mode="off",
         kontur_api_key=None,
     )
@@ -118,7 +133,7 @@ def test_production_forbids_auth_header_override():
             environment="production",
             database_url="postgresql+asyncpg://u:p@db/renova",
             public_base_url="https://api.example.com",
-            secret_key="production-secret-key-32chars!!",
+            secret_key="p" * MIN_WORKING_SECRET_BYTES,
             auth_allow_header_user_id=True,
         )
 

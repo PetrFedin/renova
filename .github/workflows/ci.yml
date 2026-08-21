@@ -247,7 +247,7 @@ jobs:
           ENVIRONMENT: staging
           DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
           PUBLIC_BASE_URL: https://ci-staging.example.com
-          SECRET_KEY: ci-staging-secret-key-32chars!!
+          SECRET_KEY: ci-staging-signing-key-at-least-32-bytes
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
         run: poetry run python -m alembic upgrade head
