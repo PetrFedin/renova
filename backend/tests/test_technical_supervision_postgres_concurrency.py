@@ -168,17 +168,17 @@ async def test_different_supervisors_concurrent_appointments_serialize_to_one_ac
         async with session_factory() as db:
             rows = (
                 await db.execute(
-                    select(ProjectTechnicalSupervisorAssignment)
-                    .where(
+                    select(ProjectTechnicalSupervisorAssignment).where(
                         ProjectTechnicalSupervisorAssignment.project_id
                         == "ts-pg-project-replace"
                     )
-                    .order_by(ProjectTechnicalSupervisorAssignment.appointed_at)
                 )
             ).scalars().all()
         assert len(rows) == 2
-        assert sum(row.revoked_at is None for row in rows) == 1
-        assert sum(row.revoked_at is not None for row in rows) == 1
-        assert rows[1].supersedes_assignment_id == rows[0].id
+        active_rows = [row for row in rows if row.revoked_at is None]
+        revoked_rows = [row for row in rows if row.revoked_at is not None]
+        assert len(active_rows) == 1
+        assert len(revoked_rows) == 1
+        assert active_rows[0].supersedes_assignment_id == revoked_rows[0].id
     finally:
         await engine.dispose()
