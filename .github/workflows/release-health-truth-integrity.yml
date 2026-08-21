@@ -77,7 +77,10 @@ jobs:
               "topology": [
                   'status = "missing"',
                   'status = "release_mismatch"',
+                  'status = "artifact_mismatch"',
+                  '"matching_sha_instances"',
                   '"matching_release_instances"',
+                  '"current_artifact_digest"',
               ],
               "otp": [
                   '"retry_after_seconds"',
