@@ -22,7 +22,7 @@ class ProjectTechnicalSupervisorAssignment(Base):
         String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
     representative_user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=False, index=True
+        String(36), ForeignKey("users.id"), nullable=False
     )
     provider_type: Mapped[str] = mapped_column(String(16), nullable=False)
     provider_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -42,6 +42,10 @@ class ProjectTechnicalSupervisorAssignment(Base):
         CheckConstraint(
             "provider_type IN ('individual', 'company')",
             name="ck_project_technical_supervisor_provider_type",
+        ),
+        Index(
+            "ix_project_tech_supervisor_rep_user",
+            "representative_user_id",
         ),
         Index(
             "ux_project_technical_supervisor_active_project",
