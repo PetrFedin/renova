@@ -5,8 +5,10 @@ on:
     paths:
       - "backend/app/core/config.py"
       - "backend/app/main.py"
+      - "backend/app/worker_main.py"
       - "backend/app/api/v1/admin.py"
       - "backend/app/models/outbox_runtime.py"
+      - "backend/app/services/runtime_topology.py"
       - "backend/app/services/push_service.py"
       - "backend/app/services/push_receipt_service.py"
       - "backend/app/services/push_receipt_worker.py"
@@ -17,6 +19,7 @@ on:
       - "backend/tests/test_release_runtime_health_coherence.py"
       - "backend/tests/test_push_delivery_integrity.py"
       - "backend/tests/test_push_receipt_reconciliation_integrity.py"
+      - "backend/tests/test_runtime_topology_integrity.py"
       - "docs/push-delivery-reliability.md"
       - ".github/workflows/push-receipt-reconciliation-integrity.yml"
   workflow_dispatch:
@@ -83,14 +86,16 @@ jobs:
             tests/test_release_runtime_health_coherence.py \
             tests/test_push_delivery_integrity.py \
             tests/test_push_receipt_reconciliation_integrity.py \
+            tests/test_runtime_topology_integrity.py \
             2>&1 | tee push-receipt-reconciliation.log
-      - name: Verify lifecycle and admin wiring
+      - name: Verify lifecycle and worker ownership wiring
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
           main = Path("backend/app/main.py").read_text(encoding="utf-8")
+          worker = Path("backend/app/worker_main.py").read_text(encoding="utf-8")
           admin = Path("backend/app/api/v1/admin.py").read_text(encoding="utf-8")
           config = Path("backend/app/core/config.py").read_text(encoding="utf-8")
           service = Path("backend/app/services/push_receipt_service.py").read_text(encoding="utf-8")
@@ -98,13 +103,9 @@ jobs:
           revision_guard = Path("backend/tests/test_database_revision_guard.py").read_text(encoding="utf-8")
           schema_verifier = Path("backend/scripts/verify_migration_schema.py").read_text(encoding="utf-8")
 
-          # Keep this static wiring contract domain-specific. The current Alembic
-          # head is intentionally NOT hard-coded here: future unrelated migrations
-          # must not break the push gate after the real revision-guard and migration
-          # tests above have already proved that the database is at the bundled head.
           required = {
-              "main.py": ["push_receipt_worker_loop", "push_receipt_worker_interval_sec"],
-              "admin.py": ["push_receipts", "push_receipt_runtime_health"],
+              "worker.py": ["push_receipt_worker_loop", "push_receipt_worker_interval_sec"],
+              "admin.py": ["push_receipts", "push_receipt_runtime_health", '"runtime_owner": "renova-worker"'],
               "config.py": ["push_receipt_worker_enabled", "push_receipt_worker_interval_sec"],
               "push_receipt_service.py": [
                   "MAX_RECEIPTS_PER_REQUEST = 1000",
@@ -118,7 +119,7 @@ jobs:
               "schema_verifier.py": ["_verify_push_receipts", "expo_push_receipts"],
           }
           sources = {
-              "main.py": main,
+              "worker.py": worker,
               "admin.py": admin,
               "config.py": config,
               "push_receipt_service.py": service,
@@ -130,9 +131,11 @@ jobs:
               missing = [token for token in tokens if token not in sources[name]]
               if missing:
                   raise SystemExit(f"{name} missing push receipt contract: {missing}")
+          if "push_receipt_worker_loop" in main:
+              raise SystemExit("API process still owns push receipt reconciliation")
           if "token: Mapped" in Path("backend/app/models/outbox_runtime.py").read_text(encoding="utf-8"):
               raise SystemExit("receipt ledger must not persist a raw Expo token")
-          print("push receipt lifecycle wiring OK")
+          print("push receipt lifecycle and worker ownership wiring OK")
           PY
       - name: Upload receipt diagnostics
         if: always()
