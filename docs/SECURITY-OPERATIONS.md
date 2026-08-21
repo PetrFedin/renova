@@ -8,14 +8,14 @@ A green repository pipeline is necessary but is not by itself proof that product
 
 ## Repository-enforced controls
 
-The current security control surface is intended to include all of the following independent layers:
+The current security control surface includes independent layers:
 
 | Layer | Repository control | Policy |
 |---|---|---|
 | JavaScript dependencies | `JS dependency integrity` | reviewed lockfile plus bounded production advisory baseline; no forced audit fix |
-| Python production dependencies | `Security operations integrity / python-runtime-advisories` | audit the exact Poetry production environment; every advisory must be fixed or explicitly time-bounded |
+| Python production dependencies | `Security operations integrity / python-runtime-advisories` | audit the exact Poetry production environment against OSV; every advisory must be fixed or explicitly time-bounded |
 | Container OS/libraries | `Backend image integrity` | Trivy blocks fixed HIGH/CRITICAL findings; unfixed findings remain visible rather than forcing unsafe upgrades |
-| Secret exposure | `Security operations integrity / full-history-secret-scan` | scan full Git history with redaction; any finding fails the gate |
+| Secret exposure | `Security operations integrity / full-history-secret-scan` | full Git-history Gitleaks scan with redaction, synthetic detection canary, and only narrow evidence-backed false-positive exceptions |
 | Static application analysis | `CodeQL SAST` | analyze Python and JavaScript/TypeScript and publish code-scanning findings |
 | Immutable release | backend image/release integrity workflows | exact Git SHA, image digest, SBOM/provenance and signing remain separate release controls |
 
@@ -23,7 +23,7 @@ These controls are complementary. Passing one does not waive another.
 
 ## Python advisory exception policy
 
-`security/python-audit-baseline.json` starts empty. A dependency advisory is not accepted merely because it is inconvenient to fix.
+`security/python-audit-baseline.json` starts empty. The audit targets the exact locked production dependency environment and uses the OSV vulnerability service explicitly. A dependency advisory is not accepted merely because it is inconvenient to fix.
 
 A temporary exception is permitted only when all of the following are true:
 
@@ -36,11 +36,17 @@ A temporary exception is permitted only when all of the following are true:
 
 The evaluator fails on expired, overlong, duplicate or stale exceptions. `pip-audit --fix`, broad dependency replacement and forced upgrades are not part of this gate.
 
+A scanner/feed mismatch is not converted into a baseline exception without verification. During initial rollout, the default pip-audit/PyPI path reported `PYSEC-2024-232` against `python-jose 3.5.0`; the package's current PyPI metadata and OSV/PyPA affected range showed that 3.5.0 is outside the vulnerable range. The gate was therefore switched to explicit OSV evaluation and the baseline was kept empty rather than suppressing an unverified finding.
+
 ## Secret exposure policy
 
 Secrets, credentials, private keys and production tokens must never be committed to Git, including test fixtures, examples, logs or generated artifacts.
 
 The full-history Gitleaks gate runs with redaction. Raw scanner output is deleted before evidence upload. Retained evidence contains only bounded metadata such as rule, file, line, commit and fingerprint; it does not persist the detected secret, matching string or source-line content.
+
+The scanner runtime is immutable and also has to pass a synthetic-secret canary before the repository scan. This prevents a broken scanner release from silently producing a green result. Renova currently pins Gitleaks v8.30.0 rather than v8.30.1 because a regression report exists for v8.30.1's detection behavior.
+
+The initial full-history scan identified one synthetic e-sign idempotency test value in `backend/tests/test_esign_idempotency_key.py`, repeated in two historical commits. The repository allowlist is therefore intentionally limited to the conjunction of the `generic-api-key` rule, that exact test path, and that exact synthetic test line. It is not a rule-wide, path-wide or commit-wide suppression.
 
 If a real credential is discovered in Git history, deleting the current file or rewriting Git history is **not** sufficient evidence of remediation. Treat the credential as exposed and perform this sequence:
 
@@ -72,6 +78,8 @@ The inventory requiring an owner and rotation procedure includes, when configure
 
 Rotating `SECRET_KEY` invalidates tokens signed with the previous key under the current single-key design. It therefore requires a controlled maintenance/release event rather than silent in-place replacement. This document does not introduce multi-key JWT support.
 
+A real provider credential-rotation drill requires access to the authoritative provider/account and remains external evidence; CI cannot prove that a production credential was actually revoked and replaced.
+
 ## Least privilege
 
 Production credentials must be scoped to the minimum required action and environment.
@@ -89,9 +97,9 @@ Required operating model:
 
 ## Branch and repository governance
 
-As verified through the GitHub repository API on **2026-08-21**, `main` currently reports `protected: false` and no required status checks. Therefore branch-governance enforcement is **NOT PROVEN / NOT READY** even though the CI workflows themselves exist. This remains tracked by **#247** and is an external launch blocker until GitHub branch protection/rulesets are enabled and re-verified.
+As verified through the GitHub repository API on **2026-08-21**, `main` reports `protected: false` and no required status checks. Therefore branch-governance enforcement is **NOT PROVEN / NOT READY** even though CI workflows exist. This remains tracked by **#247** and is an external launch blocker until GitHub branch protection/rulesets are enabled and re-verified.
 
-The repository connector available to this implementation does not provide a complete authoritative enumeration/modification workflow for every repository administrator and external organization permission. Repository/admin access review is therefore **NOT PROVEN** here. Before launch, an owner must review organization/repository administrators, outside collaborators, deploy keys, GitHub Apps, Actions environments/secrets and write-capable tokens. Repeat the review at least quarterly and after personnel/access changes.
+The repository connector available to this implementation does not provide a complete authoritative enumeration/modification workflow for every repository administrator and external organization permission. Repository/admin access review is therefore **NOT PROVEN** here. The real administrative review is tracked by **#256**. Before launch, an authorized owner must review organization/repository administrators, outside collaborators, deploy keys, GitHub Apps, Actions environments/secrets and write-capable tokens. Repeat the review at least quarterly and after personnel/access changes.
 
 A workflow being green is not equivalent to that workflow being required for merge while `main` remains unprotected.
 
@@ -99,7 +107,7 @@ A workflow being green is not equivalent to that workflow being required for mer
 
 CodeQL is static analysis, not a penetration test. Dependency, container and secret scanners also do not replace adversarial testing of the running product.
 
-The pre-launch abuse/penetration checklist is maintained in `docs/PRELAUNCH-SECURITY-TEST.md`. Its initial status is **NOT EXECUTED**. A broad production launch must not claim external penetration-test coverage until an identified tester has executed the checklist against an exact staging/release SHA and retained findings/remediation evidence.
+The pre-launch abuse/penetration checklist is maintained in `docs/PRELAUNCH-SECURITY-TEST.md`. Its initial status is **NOT EXECUTED**. Execution by an independent/qualified security reviewer is tracked by **#257**. A broad production launch must not claim external penetration-test coverage until an identified tester has executed the checklist against an exact staging/release SHA and retained findings/remediation evidence.
 
 Unresolved P0 security findings or high-confidence P1 security findings block launch. Lower-severity findings require an explicit owner, disposition and target date.
 
@@ -122,7 +130,7 @@ For a credible security incident or credential exposure:
 Repository-side scanners and policies can be proven by CI on each reviewed SHA. The following remain external evidence and must stay explicit until completed:
 
 - GitHub `main` branch protection / required checks: **NOT PROVEN / currently observed disabled — #247**;
-- repository/organization administrator review: **NOT PROVEN**;
+- repository/organization administrator review: **NOT PROVEN — #256**;
 - real provider credential rotation drill: **NOT PROVEN**;
-- external penetration/abuse test: **NOT EXECUTED**;
+- external penetration/abuse test: **NOT EXECUTED — #257**;
 - production response/on-call exercise: tracked with the wider observability/operations launch work.
