@@ -3,12 +3,16 @@ name: Automation worker health truth integrity
 on:
   pull_request:
     paths:
+      - "backend/app/main.py"
+      - "backend/app/worker_main.py"
       - "backend/app/api/v1/automation_worker.py"
       - "backend/app/api/v1/admin.py"
       - "backend/app/services/automation_reminders_worker.py"
       - "backend/app/services/runtime_health_truth.py"
+      - "backend/app/services/runtime_topology.py"
       - "backend/tests/test_automation_worker_health_truth.py"
       - "backend/tests/test_release_runtime_health_coherence.py"
+      - "backend/tests/test_runtime_topology_integrity.py"
       - "backend/tests/test_outbox_ops_alert_integrity.py"
       - "backend/tests/test_admin_rbac_integrity.py"
       - ".github/workflows/automation-worker-health-truth-integrity.yml"
@@ -48,32 +52,38 @@ jobs:
           pip install poetry
           poetry install --no-interaction
           poetry run pip install fpdf2 alembic
-      - name: Reject failure-only or divergent worker health
+      - name: Reject embedded or divergent worker health
         working-directory: backend
         run: |
           python - <<'PY'
           from pathlib import Path
 
+          main = Path("app/main.py").read_text(encoding="utf-8")
+          worker = Path("app/worker_main.py").read_text(encoding="utf-8")
           api = Path("app/api/v1/automation_worker.py").read_text(encoding="utf-8")
           admin = Path("app/api/v1/admin.py").read_text(encoding="utf-8")
-          classifier = Path("app/services/runtime_health_truth.py").read_text(encoding="utf-8")
+          topology = Path("app/services/runtime_topology.py").read_text(encoding="utf-8")
+
+          for token in ("outbox_worker_loop", "automation_reminders_loop", "push_receipt_worker_loop"):
+              if token in main:
+                  raise SystemExit(f"API still embeds background loop: {token}")
+              if token not in worker:
+                  raise SystemExit(f"worker runtime missing background loop: {token}")
+          if "redis_subscriber_loop" not in main or "redis_subscriber_loop" in worker:
+              raise SystemExit("websocket Redis bridge ownership is not API-local")
 
           required = {
-              "api": [
-                  "outbox_status",
-                  "tick_executed",
-                  "automation_worker_runtime_truth(metrics)",
-              ],
-              "admin": ["automation_worker_runtime_truth(worker_metrics)"],
-              "classifier": [
-                  "outbox_healthy",
-                  'outbox_status == "critical"',
-                  'status = "degraded"',
-                  'status = "unknown"',
+              "api": ["worker_pool_snapshot", '"runtime_owner": "renova-worker"', '"manual_tick"'],
+              "admin": ["worker_pool_snapshot", '"background_jobs_embedded": False', '"runtime_topology"'],
+              "topology": [
+                  "WORKER_REDIS_PREFIX",
+                  'status = "missing"',
+                  'status = "release_mismatch"',
                   'status = "healthy"',
+                  '"matching_release_instances"',
               ],
           }
-          sources = {"api": api, "admin": admin, "classifier": classifier}
+          sources = {"api": api, "admin": admin, "topology": topology}
           missing = {
               name: [token for token in tokens if token not in sources[name]]
               for name, tokens in required.items()
@@ -81,19 +91,16 @@ jobs:
           missing = {name: tokens for name, tokens in missing.items() if tokens}
           if missing:
               raise SystemExit(f"worker health truth contract missing: {missing}")
-
-          retired = 'int(worker.get("consecutive_failures") or 0) < 3'
-          if retired in admin:
-              raise SystemExit("release health still contains failure-only worker formula")
-          print("automation worker shared health truth scan OK")
+          print("shared worker pool health truth scan OK")
           PY
-      - name: Verify worker status and tick truth contracts
+      - name: Verify worker status, lifecycle and tick truth contracts
         working-directory: backend
         run: |
           set -o pipefail
           timeout 480s poetry run pytest -vv -s --tb=short \
             tests/test_automation_worker_health_truth.py \
             tests/test_release_runtime_health_coherence.py \
+            tests/test_runtime_topology_integrity.py \
             tests/test_outbox_ops_alert_integrity.py \
             tests/test_admin_rbac_integrity.py \
             2>&1 | tee automation-worker-health-truth-integrity.log
