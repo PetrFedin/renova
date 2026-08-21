@@ -4,6 +4,7 @@ import { Rate } from "k6/metrics";
 
 import { LAUNCH_THRESHOLDS } from "./lib/config.js";
 
+const journeyFailed = new Rate("renova_journey_failed");
 const webhookFailed = new Rate("renova_webhook_failed");
 
 function requiredEnv(name) {
@@ -50,7 +51,11 @@ export const options = {
 export default function () {
   // Safe staging-only envelope: the provider delivery ledger is exercised, but
   // business payment state is not mutated because the event kind is unsupported.
-  const eventId = `load-${runId}-${__VU}-${__ITER}-${Date.now()}`;
+  // IDs are bounded per run so repeated load tests do not create an unbounded
+  // number of delivery rows; later passes through a completed slot test durable
+  // duplicate handling as well as fresh claims.
+  const eventSlot = ((__VU - 1) % 100) * 50 + (__ITER % 50);
+  const eventId = `load-${runId}-${eventSlot}`;
   const body = JSON.stringify({
     event: "load.capacity_probe",
     object: {
@@ -80,5 +85,6 @@ export default function () {
     },
   });
   webhookFailed.add(ok ? 0 : 1);
+  journeyFailed.add(ok ? 0 : 1);
   sleep(0.01);
 }
