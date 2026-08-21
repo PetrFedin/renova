@@ -31,7 +31,7 @@ import app.models.webhook_runtime  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-# Startup policy wiring is implemented once in app.core.runtime_policy.  These
+# Startup policy wiring is implemented once in app.core.runtime_policy. These
 # explicit anchors document the Settings fields covered by that adapter and
 # preserve compatibility with older source-contract tests while behavior is
 # enforced by test_runtime_preflight_integrity.py.
@@ -83,51 +83,10 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("demo seed skipped (environment=%s)", policy.name)
 
-    reminder_stop: asyncio.Event | None = None
-    reminder_task: asyncio.Task | None = None
+    # API-local infrastructure only. Durable background processing belongs to
+    # the explicit `renova-worker` process from the same immutable image.
     redis_stop: asyncio.Event | None = None
     redis_task: asyncio.Task | None = None
-    outbox_stop: asyncio.Event | None = None
-    outbox_task: asyncio.Task | None = None
-    push_receipt_stop: asyncio.Event | None = None
-    push_receipt_task: asyncio.Task | None = None
-
-    if settings.automation_reminders_enabled:
-        from app.services.automation_reminders_worker import automation_reminders_loop
-
-        reminder_stop = asyncio.Event()
-        reminder_task = asyncio.create_task(
-            automation_reminders_loop(
-                reminder_stop,
-                interval_sec=float(settings.automation_reminders_interval_sec),
-            )
-        )
-        logger.info(
-            "automation reminders enabled (interval=%ss)",
-            settings.automation_reminders_interval_sec,
-        )
-
-    from app.services.outbox_worker import outbox_worker_loop
-
-    outbox_stop = asyncio.Event()
-    outbox_task = asyncio.create_task(outbox_worker_loop(outbox_stop, interval_sec=15.0))
-    logger.info("domain outbox worker enabled")
-
-    if settings.push_receipt_worker_enabled:
-        from app.services.push_receipt_worker import push_receipt_worker_loop
-
-        push_receipt_stop = asyncio.Event()
-        push_receipt_task = asyncio.create_task(
-            push_receipt_worker_loop(
-                push_receipt_stop,
-                interval_sec=float(settings.push_receipt_worker_interval_sec),
-            )
-        )
-        logger.info(
-            "Expo push receipt worker enabled (interval=%ss)",
-            settings.push_receipt_worker_interval_sec,
-        )
-
     if (settings.redis_url or "").strip():
         from app.services.ws_redis_bridge import redis_subscriber_loop
 
@@ -137,29 +96,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if reminder_stop is not None:
-        reminder_stop.set()
-    if outbox_stop is not None:
-        outbox_stop.set()
-    if push_receipt_stop is not None:
-        push_receipt_stop.set()
     if redis_stop is not None:
         redis_stop.set()
-    if reminder_task is not None:
-        try:
-            await asyncio.wait_for(reminder_task, timeout=5)
-        except Exception:
-            reminder_task.cancel()
-    if outbox_task is not None:
-        try:
-            await asyncio.wait_for(outbox_task, timeout=5)
-        except Exception:
-            outbox_task.cancel()
-    if push_receipt_task is not None:
-        try:
-            await asyncio.wait_for(push_receipt_task, timeout=5)
-        except Exception:
-            push_receipt_task.cancel()
     if redis_task is not None:
         try:
             await asyncio.wait_for(redis_task, timeout=5)
@@ -235,6 +173,7 @@ async def health():
         "environment": settings.normalized_environment,
         "release": release_sha(),
         "artifact_digest": release_digest(),
+        "background_runtime": "renova-worker",
     }
 
 
