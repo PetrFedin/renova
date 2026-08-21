@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 import app.models.technical_supervision  # noqa: F401
 from app.api import deps
-from app.api.v1 import technical_supervision_project_access as project_access_api
+from app.api.v1 import projects as project_access_api
 from app.models.entities import Project, Stage, Team, TeamMember, User, UserRole
 from app.models.technical_supervision import ProjectTechnicalSupervisorAssignment
 from app.services import technical_supervision_service as supervision
