@@ -71,15 +71,6 @@ def test_postgres_pool_capacity_uses_reviewed_configured_denominator(monkeypatch
     }
 
 
-def test_api_instance_id_is_bounded_and_non_secret(monkeypatch):
-    monkeypatch.setattr(capacity.socket, "gethostname", lambda: "private-api-host.example")
-    monkeypatch.setattr(capacity.os, "getpid", lambda: 4321)
-    value = capacity._api_instance_id()
-    assert len(value) == 20
-    assert "private-api-host" not in value
-    int(value, 16)
-
-
 def test_sqlite_pool_does_not_claim_postgres_capacity(monkeypatch):
     monkeypatch.setattr(settings, "database_url", "sqlite+aiosqlite:///./test.db")
     snapshot = capacity.database_pool_snapshot(FakePool())
@@ -103,32 +94,54 @@ def test_engine_options_make_postgres_capacity_explicit(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_capacity_snapshot_is_secret_free_and_reuses_worker_truth(monkeypatch):
+async def test_capacity_snapshot_is_secret_free_and_reuses_shared_topology(monkeypatch):
     monkeypatch.setattr(settings, "database_url", "postgresql+asyncpg://db-secret/db")
     monkeypatch.setattr(settings, "redis_url", "redis://redis-secret:6379/0")
     monkeypatch.setattr(settings, "db_pool_size", 5)
     monkeypatch.setattr(settings, "db_max_overflow", 10)
-    monkeypatch.setattr(capacity, "database_pool_snapshot", lambda: {"supported": True})
+    monkeypatch.setattr(
+        capacity,
+        "database_pool_snapshot",
+        lambda: {"supported": True, "instance_id": "api-local"},
+    )
     worker_pool = {
         "healthy": True,
         "status": "healthy",
         "runtime_owner": "renova-worker",
         "workers": [],
     }
+    api_pool = {
+        "healthy": True,
+        "status": "healthy",
+        "runtime_owner": "renova-api",
+        "live_instances": 2,
+        "matching_release_instances": 2,
+        "apis": [
+            {"instance_id": "api-a", "database_pool": {"utilization_percent": 20}},
+            {"instance_id": "api-b", "database_pool": {"utilization_percent": 30}},
+        ],
+    }
 
     snapshot = await capacity.capacity_runtime_snapshot(
         FakeDb(),
         worker_pool=worker_pool,
+        api_pool=api_pool,
         redis_client=FakeRedis(),
     )
 
+    assert snapshot["contract_version"] == 2
     assert snapshot["database"]["probe"]["available"] is True
     assert snapshot["database"]["probe"]["probe_latency_ms"] is not None
+    assert snapshot["database"]["local_pool"] == {
+        "supported": True,
+        "instance_id": "api-local",
+    }
+    assert snapshot["api_pool"] == api_pool
     assert snapshot["redis"]["available"] is True
     assert snapshot["redis"]["probe_latency_ms"] is not None
     assert snapshot["worker_pool"] == worker_pool
     assert snapshot["interpretation"] == {
-        "database_pool_scope": "one_api_process",
+        "database_pool_scope": "shared_api_registry_plus_local_process",
         "redis_utilization_available": False,
         "provider_cpu_memory_available": False,
     }
@@ -147,6 +160,7 @@ async def test_capacity_probe_failures_are_bounded(monkeypatch):
     snapshot = await capacity.capacity_runtime_snapshot(
         FakeDb(fail=True),
         worker_pool={"healthy": False, "status": "missing"},
+        api_pool={"healthy": False, "status": "missing", "apis": []},
         redis_client=FakeRedis(fail=True),
     )
 
