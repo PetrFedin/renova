@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+ROLE_FILE="${RENOVA_RUNTIME_ROLE_FILE:-/tmp/renova-runtime-role}"
+printf '%s\n' api > "$ROLE_FILE"
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8100}"
