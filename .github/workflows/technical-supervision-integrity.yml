@@ -9,15 +9,16 @@ on:
       - "backend/app/services/technical_supervision_action_service.py"
       - "backend/app/services/stage_review_service.py"
       - "backend/app/api/deps.py"
+      - "backend/app/api/v1/projects.py"
       - "backend/app/api/v1/technical_supervision.py"
       - "backend/app/api/v1/technical_supervision_actions.py"
       - "backend/app/api/v1/technical_supervision_chat.py"
-      - "backend/app/api/v1/technical_supervision_project_access.py"
       - "backend/app/api/v1/technical_supervision_schedule.py"
       - "backend/app/api/v1/stage_review_transitions.py"
       - "backend/app/api/v1/router.py"
       - "backend/tests/test_technical_supervision_integrity.py"
       - "backend/tests/test_technical_supervision_actions.py"
+      - "backend/tests/test_technical_supervision_postgres_concurrency.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
       - ".github/workflows/technical-supervision-integrity.yml"
@@ -29,15 +30,16 @@ on:
       - "backend/app/services/technical_supervision_action_service.py"
       - "backend/app/services/stage_review_service.py"
       - "backend/app/api/deps.py"
+      - "backend/app/api/v1/projects.py"
       - "backend/app/api/v1/technical_supervision.py"
       - "backend/app/api/v1/technical_supervision_actions.py"
       - "backend/app/api/v1/technical_supervision_chat.py"
-      - "backend/app/api/v1/technical_supervision_project_access.py"
       - "backend/app/api/v1/technical_supervision_schedule.py"
       - "backend/app/api/v1/stage_review_transitions.py"
       - "backend/app/api/v1/router.py"
       - "backend/tests/test_technical_supervision_integrity.py"
       - "backend/tests/test_technical_supervision_actions.py"
+      - "backend/tests/test_technical_supervision_postgres_concurrency.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
       - ".github/workflows/technical-supervision-integrity.yml"
@@ -53,9 +55,23 @@ jobs:
   technical-supervision-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova_technical_supervision
+        ports: ["5435:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova_technical_supervision"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./technical-supervision-integrity.db
+      TECHNICAL_SUPERVISION_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5435/renova_technical_supervision
       PUBLIC_BASE_URL: http://127.0.0.1:8100
       SECRET_KEY: ci-secret-key-at-least-16
       ALLOW_CREATE_ALL: "true"
@@ -76,10 +92,16 @@ jobs:
           poetry check --lock
           poetry sync --no-interaction
           poetry run python -m pip check
-      - name: Run technical supervision lifecycle, ACL and action contracts
+      - name: Upgrade dedicated PostgreSQL race database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          DATABASE_URL="$TECHNICAL_SUPERVISION_POSTGRES_URL" poetry run alembic upgrade head
+      - name: Run technical supervision lifecycle, ACL, action and PostgreSQL race contracts
         working-directory: backend
         run: |
           set -euo pipefail
           poetry run pytest -q \
             tests/test_technical_supervision_integrity.py \
-            tests/test_technical_supervision_actions.py
+            tests/test_technical_supervision_actions.py \
+            tests/test_technical_supervision_postgres_concurrency.py
