@@ -1,0 +1,12 @@
+title = "Renova Gitleaks policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic e-sign idempotency key used only by one unit test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^backend/tests/test_esign_idempotency_key\.py$''']
+regexTarget = "line"
+regexes = ['''idempotency_key="renova-durable-intent-123"''']
