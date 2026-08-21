@@ -4,19 +4,27 @@ on:
   push:
     paths:
       - "backend/app/main.py"
+      - "backend/app/worker_main.py"
+      - "backend/app/api/v1/admin.py"
+      - "backend/app/services/runtime_topology.py"
       - "backend/tests/test_runtime_probe_integrity.py"
       - "scripts/external-staging-release-smoke.sh"
       - "scripts/externalStagingReleaseTruth.test.mjs"
       - ".github/workflows/external-staging-release.yml"
       - "docs/STAGING-RELEASE.md"
+      - "docs/RUNTIME-TOPOLOGY.md"
   pull_request:
     paths:
       - "backend/app/main.py"
+      - "backend/app/worker_main.py"
+      - "backend/app/api/v1/admin.py"
+      - "backend/app/services/runtime_topology.py"
       - "backend/tests/test_runtime_probe_integrity.py"
       - "scripts/external-staging-release-smoke.sh"
       - "scripts/externalStagingReleaseTruth.test.mjs"
       - ".github/workflows/external-staging-release.yml"
       - "docs/STAGING-RELEASE.md"
+      - "docs/RUNTIME-TOPOLOGY.md"
   workflow_dispatch:
     inputs:
       release_sha:
@@ -54,7 +62,11 @@ jobs:
           set -euo pipefail
           node scripts/externalStagingReleaseTruth.test.mjs
           bash -n scripts/external-staging-release-smoke.sh
-          python -m py_compile backend/app/main.py backend/tests/test_runtime_probe_integrity.py
+          python -m py_compile \
+            backend/app/main.py \
+            backend/app/worker_main.py \
+            backend/app/services/runtime_topology.py \
+            backend/tests/test_runtime_probe_integrity.py
 
   verify-staging:
     if: github.event_name == 'workflow_dispatch'
@@ -91,7 +103,7 @@ jobs:
             echo "- Git SHA: \`${{ inputs.release_sha }}\`"
             echo "- Image: \`ghcr.io/petrfedin/renova-api@${{ inputs.image_digest }}\`"
             echo "- Environment: \`staging\`"
-            echo "- Result: health + readiness + protected H0 + release-health passed"
+            echo "- Result: API health/readiness + protected H0 + release-health + matching worker pool passed"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload sanitized staging verification record
         uses: actions/upload-artifact@v4
