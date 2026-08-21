@@ -3,6 +3,14 @@ export { api, ApiError, isRateLimitError, invalidateProjectsCache } from './api/
 export type * from './api/types';
 export type { SelectionItem } from './api/selections';
 export type {
+  TechnicalQualityIssueInput,
+  TechnicalSupervisionAssignment,
+  TechnicalSupervisionAssignmentInput,
+  TechnicalSupervisionMutation,
+  TechnicalSupervisionProviderType,
+  TechnicalSupervisionStatus,
+} from './api/technicalSupervision';
+export type {
   WorkSchedule,
   WorkScheduleStatus,
   WorkScheduleItem,
