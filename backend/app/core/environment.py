@@ -1,7 +1,7 @@
 """Runtime environment profiles and startup guards (A-06).
 
 Profiles: development | test | staging | production
-Staging/production forbid SQLite, create_all, demo seed, and default secrets.
+Staging/production forbid SQLite, create_all, demo seed, and weak/default secrets.
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from app.core.phone import InvalidPhoneNumber, normalize_phone
 
 ALLOWED_ENVIRONMENTS = frozenset({"development", "test", "staging", "production"})
+MIN_WORKING_SECRET_BYTES = 32
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,19 @@ def _is_default_secret(secret: str) -> bool:
     return value in DEFAULT_SECRETS
 
 
+def _is_weak_working_secret(secret: str) -> bool:
+    """HS256 requires at least a 256-bit key in staging/production.
+
+    Measure encoded bytes rather than characters because PyJWT signs the encoded
+    key material. This is a minimum key-size guard, not an entropy estimator;
+    operators must still provision a randomly generated secret.
+    """
+    value = secret.strip()
+    if _is_default_secret(value):
+        return True
+    return len(value.encode("utf-8")) < MIN_WORKING_SECRET_BYTES
+
+
 def _looks_like_email(value: str | None) -> bool:
     candidate = (value or "").strip()
     if not candidate or len(candidate) > 320 or "\r" in candidate or "\n" in candidate:
@@ -207,9 +221,10 @@ def validate_runtime_settings(
     if policy.require_https_public_url and not _is_https(public_base_url or ""):
         errors.append(f"{policy.name}: PUBLIC_BASE_URL должен начинаться с https://")
 
-    if policy.require_non_default_secret and _is_default_secret(secret_key or ""):
+    if policy.require_non_default_secret and _is_weak_working_secret(secret_key or ""):
         errors.append(
-            f"{policy.name}: SECRET_KEY должен быть уникальным (≥16 символов, не default)"
+            f"{policy.name}: SECRET_KEY должен быть уникальным случайным ключом "
+            f"(≥{MIN_WORKING_SECRET_BYTES} байт UTF-8 для HS256, не default)"
         )
 
     working_environment = policy.name in {"staging", "production"}
