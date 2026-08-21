@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+ROLE_FILE="${RENOVA_RUNTIME_ROLE_FILE:-/tmp/renova-runtime-role}"
+printf '%s\n' worker > "$ROLE_FILE"
+export OTEL_SERVICE_NAME="${RENOVA_WORKER_OTEL_SERVICE_NAME:-renova-worker}"
+exec python -m app.worker_main
