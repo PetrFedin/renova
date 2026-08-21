@@ -10,6 +10,9 @@ const securityWorkflow = read(".github/workflows/security-operations.yml");
 const codeqlWorkflow = read(".github/workflows/codeql.yml");
 const backendImageWorkflow = read(".github/workflows/backend-image.yml");
 const jsDependencyWorkflow = read(".github/workflows/js-dependency-integrity.yml");
+const backendPyproject = read("backend/pyproject.toml");
+const jwtSecurity = read("backend/app/core/security.py");
+const apiDeps = read("backend/app/api/deps.py");
 const pythonEvaluator = read("scripts/evaluatePythonAudit.mjs");
 const gitleaksSanitizer = read("scripts/sanitizeGitleaksReport.mjs");
 const gitleaksConfig = read(".gitleaks.toml");
@@ -18,13 +21,24 @@ const prelaunchDoc = read("docs/PRELAUNCH-SECURITY-TEST.md");
 
 const expectedGitleaksImage =
   "ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9";
+const assembledCanary = "8dyfuiRyq=vVc3RRr_edRk-fK__JItpZ";
 
 test("security tooling versions are exact and reviewed", () => {
   assert.equal(read("security/PIP_AUDIT_VERSION").trim(), "2.10.1");
   assert.equal(read("security/GITLEAKS_IMAGE").trim(), expectedGitleaksImage);
-  assert.equal(securityWorkflow.includes("latest"), false);
+  assert.doesNotMatch(securityWorkflow, /@latest|:latest/);
   assert.equal(securityWorkflow.includes("pip-audit --fix"), false);
   assert.equal(securityWorkflow.includes("npm audit fix --force"), false);
+});
+
+test("JWT runtime uses direct PyJWT and carries no python-jose dependency", () => {
+  assert.match(backendPyproject, /^pyjwt = "2\.13\.0"$/m);
+  assert.doesNotMatch(backendPyproject, /python-jose/);
+  assert.match(jwtSecurity, /^import jwt$/m);
+  assert.match(jwtSecurity, /InvalidTokenError as JWTError/);
+  assert.match(apiDeps, /InvalidTokenError as JWTError/);
+  assert.doesNotMatch(jwtSecurity, /from jose|import jose/);
+  assert.doesNotMatch(apiDeps, /from jose|import jose/);
 });
 
 test("Python audit materializes the exact production Poetry environment", () => {
@@ -42,8 +56,9 @@ test("Python audit materializes the exact production Poetry environment", () => 
   assert.match(securityWorkflow, /--desc off/);
   assert.match(securityWorkflow, /--strict/);
   assert.match(securityWorkflow, /evaluatePythonAudit\.mjs/);
+  assert.match(securityWorkflow, /pythonAuditPolicy\.test\.mjs/);
   assert.match(securityWorkflow, /python-audit-summary\.json/);
-  assert.equal(securityWorkflow.includes("pip-audit.json\n"), false);
+  assert.match(securityWorkflow, /rm -f .*pip-audit\.json/);
 });
 
 test("Python advisory exceptions are exact bounded reviewed and self-cleaning", () => {
@@ -59,18 +74,29 @@ test("Python advisory exceptions are exact bounded reviewed and self-cleaning", 
   assert.match(pythonEvaluator, /New or changed Python advisories require review/);
 });
 
-test("secret scanning covers full history, detects a canary and persists only sanitized evidence", () => {
+test("secret scanning proves its detector without committing a complete canary", () => {
   assert.match(securityWorkflow, /fetch-depth: 0/);
   assert.match(securityWorkflow, /gitleaks\/gitleaks:v8\.30\.0@sha256:/);
   assert.match(securityWorkflow, /Prove scanner detects a synthetic secret/);
-  assert.match(securityWorkflow, /ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789/);
+  assert.match(securityWorkflow, /first='8dyfuiRyq=vVc3RRr'/);
+  assert.match(securityWorkflow, /second='_edRk-fK__JItpZ'/);
+  assert.match(securityWorkflow, /printf 'api_key = \"%s%s\"/);
+  assert.equal(securityWorkflow.includes(assembledCanary), false);
   assert.match(securityWorkflow, /Gitleaks canary was not detected/);
-  assert.match(securityWorkflow, /git --no-banner --redact=100/);
   assert.match(securityWorkflow, /--config \/repo\/\.gitleaks\.toml/);
   assert.match(securityWorkflow, /--report-format json/);
+});
+
+test("secret scanning separates merged history from the proposed tree", () => {
+  assert.match(securityWorkflow, /BASE_REF: \$\{\{ github\.base_ref \|\| 'main' \}\}/);
+  assert.match(securityWorkflow, /refs\/heads\/\$\{BASE_REF\}:refs\/remotes\/origin\/\$\{BASE_REF\}/);
+  assert.match(securityWorkflow, /git --no-banner --redact=100/);
+  assert.match(securityWorkflow, /--log-opts="origin\/\$\{BASE_REF\}"/);
+  assert.match(securityWorkflow, /gitleaks-history-summary\.json/);
+  assert.match(securityWorkflow, /dir --no-banner --redact=100/);
+  assert.match(securityWorkflow, /gitleaks-tree-summary\.json/);
   assert.match(securityWorkflow, /sanitizeGitleaksReport\.mjs/);
-  assert.match(securityWorkflow, /rm -f .*gitleaks-raw\.json/);
-  assert.match(securityWorkflow, /gitleaks-summary\.json/);
+  assert.match(securityWorkflow, /rm -f .*gitleaks-history-raw\.json.*gitleaks-tree-raw\.json/);
   assert.match(gitleaksSanitizer, /secret: "never persisted/);
   assert.match(gitleaksSanitizer, /match: "never persisted/);
   assert.equal(gitleaksSanitizer.includes("finding.Secret"), false);
