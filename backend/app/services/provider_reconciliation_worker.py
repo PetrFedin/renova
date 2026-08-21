@@ -8,6 +8,7 @@ import socket
 import uuid
 
 from app.db.session import SessionLocal
+from app.models.provider_runtime import ProviderReconciliation
 from app.services import provider_reconciliation_handlers as handlers
 from app.services import provider_reconciliation_service as ledger
 
@@ -32,14 +33,13 @@ async def run_provider_reconciliation_batch(
         "failed": 0,
     }
 
-    # Bootstrap only domain rows that explicitly say reconciliation is pending.
     async with SessionLocal() as db:
         metrics["seeded"] = await handlers.seed_pending_fns_receipts(db, limit=100)
         await db.commit()
 
     async with SessionLocal() as db:
         claims = await ledger.claim_due(db, worker_id=worker_id, limit=limit)
-        await db.commit()  # make lease + fencing generation visible before network I/O
+        await db.commit()
     metrics["claimed"] = len(claims)
 
     for claim in claims:
@@ -55,7 +55,7 @@ async def run_provider_reconciliation_batch(
                     metrics["failed"] += 1
                     continue
                 await db.commit()
-                current = await db.get(__import__("app.models.provider_runtime", fromlist=["ProviderReconciliation"]).ProviderReconciliation, claim.id)
+                current = await db.get(ProviderReconciliation, claim.id)
                 if current and current.status == "retry":
                     metrics["deferred"] += 1
                 else:
@@ -65,8 +65,6 @@ async def run_provider_reconciliation_batch(
                 raise
             except Exception as exc:
                 await db.rollback()
-                # Preserve the already-committed claim generation and record only
-                # a hashed diagnostic. A stale worker loses this fenced write.
                 async with SessionLocal() as retry_db:
                     if await ledger.mark_retry(
                         retry_db,
