@@ -87,13 +87,15 @@ test("secret scanning proves its detector without committing a complete canary",
   assert.match(securityWorkflow, /--report-format json/);
 });
 
-test("secret scanning separates merged history from the proposed tree", () => {
+test("secret scanning separates merged history from a Git-metadata-free proposed tree", () => {
   assert.match(securityWorkflow, /BASE_REF: \$\{\{ github\.base_ref \|\| 'main' \}\}/);
   assert.match(securityWorkflow, /refs\/heads\/\$\{BASE_REF\}:refs\/remotes\/origin\/\$\{BASE_REF\}/);
   assert.match(securityWorkflow, /git --no-banner --redact=100/);
   assert.match(securityWorkflow, /--log-opts="origin\/\$\{BASE_REF\}"/);
   assert.match(securityWorkflow, /gitleaks-history-summary\.json/);
-  assert.match(securityWorkflow, /dir --no-banner --redact=100/);
+  assert.match(securityWorkflow, /git archive --format=tar HEAD \| tar -xf - -C/);
+  assert.match(securityWorkflow, /gitleaks-tree:\/tree:ro/);
+  assert.match(securityWorkflow, /dir --no-banner --redact=100[\s\S]*\/tree/);
   assert.match(securityWorkflow, /gitleaks-tree-summary\.json/);
   assert.match(securityWorkflow, /sanitizeGitleaksReport\.mjs/);
   assert.match(securityWorkflow, /rm -f .*gitleaks-history-raw\.json.*gitleaks-tree-raw\.json/);
