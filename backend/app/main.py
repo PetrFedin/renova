@@ -99,17 +99,33 @@ async def lifespan(app: FastAPI):
         from app.services.ws_redis_bridge import redis_subscriber_loop
 
         api_heartbeat_publisher = ApiHeartbeatPublisher()
-        # A deployed API must not start serving while its shared topology truth
-        # cannot be published. Runtime policy already requires Redis in staging/prod.
-        await api_heartbeat_publisher.publish()
-        api_heartbeat_stop = asyncio.Event()
-        api_heartbeat_task = asyncio.create_task(
-            api_heartbeat_loop(api_heartbeat_stop, api_heartbeat_publisher)
-        )
+        try:
+            # A deployed API must not start serving while its shared topology
+            # truth cannot be published. Local/test remains tolerant so a
+            # developer's optional stale Redis URL does not block the app.
+            await api_heartbeat_publisher.publish()
+        except Exception:
+            if policy.name in {"staging", "production"}:
+                await api_heartbeat_publisher.close()
+                raise
+            logger.warning(
+                "API topology heartbeat unavailable in local/test; continuing without registry",
+                exc_info=True,
+            )
+            await api_heartbeat_publisher.close()
+            api_heartbeat_publisher = None
+        else:
+            api_heartbeat_stop = asyncio.Event()
+            api_heartbeat_task = asyncio.create_task(
+                api_heartbeat_loop(api_heartbeat_stop, api_heartbeat_publisher)
+            )
 
         redis_stop = asyncio.Event()
         redis_task = asyncio.create_task(redis_subscriber_loop(redis_stop))
-        logger.info("ws redis bridge and API topology heartbeat enabled")
+        logger.info(
+            "ws redis bridge enabled; API topology heartbeat=%s",
+            "enabled" if api_heartbeat_publisher is not None else "unavailable_local",
+        )
 
     try:
         yield
