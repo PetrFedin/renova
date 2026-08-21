@@ -22,6 +22,10 @@ for (const [token, message] of [
   ['health.get("release") == expected_sha', 'health must prove the expected Git SHA'],
   ['health.get("artifact_digest") == expected_digest', 'health must prove the expected image digest'],
   ['ready.get("artifact_digest") == expected_digest', 'readiness must prove the expected image digest'],
+  ['worker_pool.get("healthy") is True', 'release verification must require a healthy worker pool'],
+  ['worker_pool.get("current_release") == expected_sha', 'worker pool must match the API release SHA'],
+  ['worker.get("artifact_digest") == expected_digest', 'at least one matching worker must use the promoted image digest'],
+  ['"domain_outbox" in (worker.get("active_tasks") or [])', 'matching worker must own durable outbox processing'],
 ]) {
   contains(smoke, token, message);
 }
@@ -46,11 +50,15 @@ excludes(workflow, ':latest', 'external staging workflow must not reference muta
 excludes(workflow, '--latest', 'external staging workflow must not promote or submit mutable latest artifacts');
 
 const main = src('backend/app/main.py');
+const workerMain = src('backend/app/worker_main.py');
 const observability = src('backend/app/core/observability.py');
 contains(observability, 'RENOVA_IMAGE_DIGEST', 'canonical release helper must read deployment-supplied immutable digest');
 contains(observability, 'RENOVA_GIT_SHA', 'canonical release helper must read deployment-supplied Git SHA');
 contains(main, 'release_digest()', 'runtime must use canonical immutable digest helper');
 contains(main, '"artifact_digest": release_digest()', 'health/readiness must expose the artifact digest');
 contains(main, '"release": release_sha()', 'health/readiness must expose the exact Git SHA');
+contains(main, '"background_runtime": "renova-worker"', 'API health must disclose the dedicated background runtime');
+excludes(main, 'outbox_worker_loop', 'API process must not embed durable outbox processing');
+contains(workerMain, 'outbox_worker_loop', 'worker process must own durable outbox processing');
 
 console.log('externalStagingReleaseTruth.test OK');

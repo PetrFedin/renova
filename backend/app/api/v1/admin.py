@@ -93,6 +93,7 @@ async def release_health(
     from app.services.push_receipt_service import runtime_snapshot as push_receipt_runtime_health
     from app.services.release_health_service import truthful_release_snapshot
     from app.services.runtime_health_truth import automation_worker_runtime_truth
+    from app.services.runtime_topology import worker_pool_snapshot
     from app.services.yookassa_service import yookassa_health
 
     release_snapshot = truthful_release_snapshot()
@@ -102,8 +103,9 @@ async def release_health(
 
     yk = yookassa_health()
     fns = fns_receipt_health()
-    worker_metrics = automation_worker_metrics()
-    worker_truth = automation_worker_runtime_truth(worker_metrics)
+    manual_tick_metrics = automation_worker_metrics()
+    manual_tick_truth = automation_worker_runtime_truth(manual_tick_metrics)
+    worker_pool = await worker_pool_snapshot()
     otp_store = otp_store_health()
     kontur_mode = (settings.kontur_mode or "off").strip().lower()
     esign = {
@@ -113,6 +115,8 @@ async def release_health(
         "webhook_secret_set": bool(settings.esign_webhook_secret),
         "providers": list_providers(),
     }
+    outbox_health = await outbox_runtime_health(db)
+    push_receipts = await push_receipt_runtime_health(db)
     return {
         "contract_version": release_snapshot["contract_version"],
         "generated_at": release_snapshot["generated_at"],
@@ -124,6 +128,14 @@ async def release_health(
         "environment": settings.normalized_environment,
         "release": release,
         "observability": observability,
+        "runtime_topology": {
+            "api": {
+                "role": "renova-api",
+                "background_jobs_embedded": False,
+                "websocket_bridge_local": bool((settings.redis_url or "").strip()),
+            },
+            "worker_pool": worker_pool,
+        },
         "integrations": {
             "yookassa": {
                 "configured": yk["configured"],
@@ -144,14 +156,24 @@ async def release_health(
             "otp_store": otp_store,
             "automation_worker": {
                 "enabled": settings.automation_reminders_enabled,
-                **worker_truth,
-                "consecutive_failures": worker_metrics.get("consecutive_failures"),
-                "outbox_status": worker_metrics.get("outbox_status"),
+                "runtime_owner": "renova-worker",
+                "healthy": worker_pool["healthy"],
+                "status": worker_pool["status"],
+                "worker_pool": worker_pool,
+                "manual_tick": {
+                    **manual_tick_truth,
+                    "consecutive_failures": manual_tick_metrics.get("consecutive_failures"),
+                    "outbox_status": manual_tick_metrics.get("outbox_status"),
+                },
             },
-            "outbox": await outbox_runtime_health(db),
+            "outbox": {
+                "runtime_owner": "renova-worker",
+                **outbox_health,
+            },
             "push_receipts": {
+                "runtime_owner": "renova-worker",
                 "worker_enabled": settings.push_receipt_worker_enabled,
-                **(await push_receipt_runtime_health(db)),
+                **push_receipts,
             },
         },
     }

@@ -80,6 +80,7 @@ assert health.get("status") == "ok", health
 assert health.get("environment") == expected_env, health
 assert health.get("release") == expected_sha, health
 assert health.get("artifact_digest") == expected_digest, health
+assert health.get("background_runtime") == "renova-worker", health
 
 assert ready.get("status") == "ready", ready
 assert ready.get("release") == expected_sha, ready
@@ -94,6 +95,28 @@ assert release.get("environment") == expected_env, release
 assert isinstance(release.get("integrations"), dict), release
 assert isinstance(release["integrations"].get("outbox"), dict), release
 
+topology = release.get("runtime_topology") or {}
+api = topology.get("api") or {}
+worker_pool = topology.get("worker_pool") or {}
+assert api.get("role") == "renova-api", release
+assert api.get("background_jobs_embedded") is False, release
+assert worker_pool.get("runtime_owner") == "renova-worker", release
+assert worker_pool.get("healthy") is True, release
+assert worker_pool.get("status") == "healthy", release
+assert worker_pool.get("current_release") == expected_sha, release
+assert int(worker_pool.get("live_instances") or 0) >= 1, release
+assert int(worker_pool.get("matching_release_instances") or 0) >= 1, release
+workers = worker_pool.get("workers") or []
+assert isinstance(workers, list), release
+matching_workers = [
+    worker
+    for worker in workers
+    if worker.get("release") == expected_sha
+    and worker.get("artifact_digest") == expected_digest
+]
+assert matching_workers, release
+assert any("domain_outbox" in (worker.get("active_tasks") or []) for worker in matching_workers), release
+
 summary = {
     "verified": True,
     "environment": expected_env,
@@ -103,6 +126,8 @@ summary = {
     "readiness": ready.get("status"),
     "h0_score": h0.get("score"),
     "h0_blockers": len(h0.get("blockers", [])),
+    "worker_instances": worker_pool.get("live_instances"),
+    "matching_worker_instances": worker_pool.get("matching_release_instances"),
 }
 Path(summary_path).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 print(json.dumps(summary, sort_keys=True))

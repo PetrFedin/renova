@@ -13,6 +13,7 @@ from app.services import (
     otp_redis_recovery,
     outbox_dead_letter_service,
     push_receipt_service,
+    runtime_topology,
 )
 from app.services.runtime_health_truth import automation_worker_runtime_truth
 
@@ -32,6 +33,20 @@ def _push_receipt_snapshot() -> dict[str, object]:
     }
 
 
+def _worker_pool(status: str = "healthy") -> dict[str, object]:
+    return {
+        "required": True,
+        "configured": True,
+        "runtime_owner": "renova-worker",
+        "healthy": status == "healthy",
+        "status": status,
+        "current_release": "sha",
+        "live_instances": 1 if status != "missing" else 0,
+        "matching_release_instances": 1 if status == "healthy" else 0,
+        "workers": [],
+    }
+
+
 @pytest.mark.parametrize(
     ("metrics", "expected_status"),
     [
@@ -42,7 +57,7 @@ def _push_receipt_snapshot() -> dict[str, object]:
         ({"consecutive_failures": 0, "outbox_status": "healthy"}, "healthy"),
     ],
 )
-def test_shared_worker_classifier_covers_tick_and_outbox_truth(metrics, expected_status):
+def test_shared_manual_tick_classifier_covers_tick_and_outbox_truth(metrics, expected_status):
     truth = automation_worker_runtime_truth(metrics)
 
     assert truth["status"] == expected_status
@@ -50,12 +65,13 @@ def test_shared_worker_classifier_covers_tick_and_outbox_truth(metrics, expected
 
 
 @pytest.mark.asyncio
-async def test_release_health_and_worker_endpoint_cannot_diverge(monkeypatch):
+async def test_release_health_and_worker_endpoint_share_worker_pool_truth(monkeypatch):
     metrics = {
         "consecutive_failures": 0,
         "outbox_status": "critical",
         "outbox_health": {"poisoned": 2},
     }
+    pool = _worker_pool("healthy")
     otp_snapshot = {
         "healthy": False,
         "status": "critical",
@@ -68,10 +84,16 @@ async def test_release_health_and_worker_endpoint_cannot_diverge(monkeypatch):
     }
 
     monkeypatch.setattr(worker_api, "automation_worker_metrics", lambda: dict(metrics))
+    monkeypatch.setattr(worker_api, "worker_pool_snapshot", AsyncMock(return_value=dict(pool)))
     monkeypatch.setattr(
         automation_reminders_worker,
         "automation_worker_metrics",
         lambda: dict(metrics),
+    )
+    monkeypatch.setattr(
+        runtime_topology,
+        "worker_pool_snapshot",
+        AsyncMock(return_value=dict(pool)),
     )
     monkeypatch.setattr(
         otp_redis_recovery,
@@ -93,12 +115,16 @@ async def test_release_health_and_worker_endpoint_cannot_diverge(monkeypatch):
     release_response = await admin_api.release_health(user=object(), db=object())
     release_worker = release_response["integrations"]["automation_worker"]
 
-    for key in ("healthy", "status", "tick_healthy", "outbox_healthy"):
-        assert release_worker[key] == worker_response[key]
-    assert release_worker["status"] == "critical"
-    assert release_worker["healthy"] is False
+    assert release_worker["worker_pool"] == worker_response["worker_pool"] == pool
+    assert release_worker["status"] == worker_response["status"] == "healthy"
+    assert release_worker["healthy"] is True
+    assert release_worker["manual_tick"]["status"] == "critical"
+    assert worker_response["manual_tick"]["status"] == "critical"
+    assert release_response["runtime_topology"]["api"]["background_jobs_embedded"] is False
+    assert release_response["runtime_topology"]["worker_pool"] == pool
     assert release_response["integrations"]["otp_store"] == otp_snapshot
     assert release_response["integrations"]["push_receipts"] == {
+        "runtime_owner": "renova-worker",
         "worker_enabled": settings.push_receipt_worker_enabled,
         **_push_receipt_snapshot(),
     }
@@ -122,6 +148,11 @@ async def test_release_health_otp_snapshot_is_bounded_and_secret_free(monkeypatc
         lambda: {"consecutive_failures": 0, "outbox_status": "healthy"},
     )
     monkeypatch.setattr(otp_redis_recovery, "recovery_snapshot", lambda: dict(snapshot))
+    monkeypatch.setattr(
+        runtime_topology,
+        "worker_pool_snapshot",
+        AsyncMock(return_value=_worker_pool()),
+    )
     monkeypatch.setattr(
         outbox_dead_letter_service,
         "runtime_health",
