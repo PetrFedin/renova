@@ -72,7 +72,10 @@ const dependencies = Array.isArray(report)
     : null;
 if (!dependencies) fail("pip-audit report does not contain a dependencies array");
 
-const findings = [];
+// Some advisory feeds can return the same canonical advisory record more than once.
+// Collapse only exact package/version/primary-id duplicates. Distinct advisory IDs are
+// always preserved, while aliases and fix versions are unioned for policy matching.
+const findingMap = new Map();
 for (const dependency of dependencies) {
   if (!dependency || typeof dependency !== "object") continue;
   const packageName = String(dependency.name || "").trim().toLowerCase();
@@ -90,15 +93,30 @@ for (const dependency of dependencies) {
     if (!packageName || !installedVersion || !vulnerabilityId) {
       fail("pip-audit returned an incomplete vulnerability record");
     }
-    findings.push({
+    const key = `${packageName}\u0000${installedVersion}\u0000${vulnerabilityId}`;
+    const existing = findingMap.get(key);
+    if (existing) {
+      for (const alias of aliases) existing.aliases.add(alias);
+      for (const fixVersion of fixVersions) existing.fix_versions.add(fixVersion);
+      continue;
+    }
+    findingMap.set(key, {
       package: packageName,
       installed_version: installedVersion,
       vulnerability_id: vulnerabilityId,
-      aliases,
-      fix_versions: fixVersions,
+      aliases: new Set(aliases),
+      fix_versions: new Set(fixVersions),
     });
   }
 }
+
+const findings = [...findingMap.values()].map((finding) => ({
+  package: finding.package,
+  installed_version: finding.installed_version,
+  vulnerability_id: finding.vulnerability_id,
+  aliases: [...finding.aliases].sort(),
+  fix_versions: [...finding.fix_versions].sort(),
+}));
 
 const today = utcDay();
 const maxExpiry = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
@@ -214,6 +232,7 @@ const summary = {
     exact_installed_version_required: true,
     review_issue_required: true,
     stale_exceptions_fail: true,
+    exact_primary_id_duplicates_collapsed: true,
   },
 };
 fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
