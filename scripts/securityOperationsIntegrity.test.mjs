@@ -13,6 +13,7 @@ const jsDependencyWorkflow = read(".github/workflows/js-dependency-integrity.yml
 const backendPyproject = read("backend/pyproject.toml");
 const jwtSecurity = read("backend/app/core/security.py");
 const apiDeps = read("backend/app/api/deps.py");
+const moyNalogOauth = read("backend/app/services/moy_nalog_oauth.py");
 const pythonEvaluator = read("scripts/evaluatePythonAudit.mjs");
 const gitleaksSanitizer = read("scripts/sanitizeGitleaksReport.mjs");
 const gitleaksConfig = read(".gitleaks.toml");
@@ -39,6 +40,11 @@ test("JWT runtime uses direct PyJWT and carries no python-jose dependency", () =
   assert.match(apiDeps, /InvalidTokenError as JWTError/);
   assert.doesNotMatch(jwtSecurity, /from jose|import jose/);
   assert.doesNotMatch(apiDeps, /from jose|import jose/);
+});
+
+test("direct cryptography use is declared explicitly instead of arriving transitively", () => {
+  assert.match(backendPyproject, /^cryptography = "50\.0\.0"$/m);
+  assert.match(moyNalogOauth, /from cryptography\.fernet import Fernet, InvalidToken/);
 });
 
 test("Python audit materializes the exact production Poetry environment", () => {
