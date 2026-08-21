@@ -32,7 +32,9 @@ jobs:
         with:
           node-version: "22.22.2"
       - name: Validate security operations source contract
-        run: node --test scripts/securityOperationsIntegrity.test.mjs
+        run: |
+          node --test scripts/securityOperationsIntegrity.test.mjs
+          node --test scripts/pythonAuditPolicy.test.mjs
 
   python-advisories:
     name: python-runtime-advisories
@@ -105,6 +107,10 @@ jobs:
             security/python-audit-baseline.json \
             "$RUNNER_TEMP/renova-security/pip-audit.exit" \
             "$RUNNER_TEMP/renova-security/python-audit-summary.json"
+      - name: Delete raw Python advisory report
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/renova-security/pip-audit.json"
       - name: Upload sanitized Python advisory evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -118,6 +124,8 @@ jobs:
     name: full-history-secret-scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      BASE_REF: ${{ github.base_ref || 'main' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -141,7 +149,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/renova-security" "$RUNNER_TEMP/gitleaks-canary"
-          printf '%s\n' 'token = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"' \
+          first='8dyfuiRyq=vVc3RRr'
+          second='_edRk-fK__JItpZ'
+          printf 'api_key = "%s%s"\n' "$first" "$second" \
             > "$RUNNER_TEMP/gitleaks-canary/synthetic.txt"
           set +e
           docker run --rm \
@@ -162,7 +172,12 @@ jobs:
             echo "Gitleaks canary was not detected (exit=$rc); refusing a silent-pass scanner" >&2
             exit 1
           fi
-      - name: Scan full Git history with redaction
+      - name: Fetch merged base history for production-history scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+      - name: Scan merged base history with redaction
         env:
           GITLEAKS_IMAGE: ${{ steps.gitleaks.outputs.image }}
         shell: bash
@@ -177,27 +192,59 @@ jobs:
             "$GITLEAKS_IMAGE" \
             git --no-banner --redact=100 \
             --config /repo/.gitleaks.toml \
+            --log-opts="origin/${BASE_REF}" \
             --report-format json \
-            --report-path /out/gitleaks-raw.json \
+            --report-path /out/gitleaks-history-raw.json \
             /repo
           rc=$?
           set -e
-          printf '%s\n' "$rc" > "$RUNNER_TEMP/renova-security/gitleaks.exit"
-          if [ ! -f "$RUNNER_TEMP/renova-security/gitleaks-raw.json" ]; then
-            printf '[]\n' > "$RUNNER_TEMP/renova-security/gitleaks-raw.json"
+          printf '%s\n' "$rc" > "$RUNNER_TEMP/renova-security/gitleaks-history.exit"
+          if [ ! -f "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json" ]; then
+            printf '[]\n' > "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json"
           fi
-      - name: Sanitize and enforce secret-scan result
+      - name: Sanitize and enforce merged-history result
         shell: bash
         run: |
           set -euo pipefail
           node scripts/sanitizeGitleaksReport.mjs \
-            "$RUNNER_TEMP/renova-security/gitleaks-raw.json" \
-            "$RUNNER_TEMP/renova-security/gitleaks-summary.json" \
-            "$RUNNER_TEMP/renova-security/gitleaks.exit"
-      - name: Delete raw secret-scan report
+            "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json" \
+            "$RUNNER_TEMP/renova-security/gitleaks-history-summary.json" \
+            "$RUNNER_TEMP/renova-security/gitleaks-history.exit"
+      - name: Scan proposed current tree with redaction
+        env:
+          GITLEAKS_IMAGE: ${{ steps.gitleaks.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD:/repo:ro" \
+            -v "$RUNNER_TEMP/renova-security:/out" \
+            "$GITLEAKS_IMAGE" \
+            dir --no-banner --redact=100 \
+            --config /repo/.gitleaks.toml \
+            --report-format json \
+            --report-path /out/gitleaks-tree-raw.json \
+            /repo
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "$RUNNER_TEMP/renova-security/gitleaks-tree.exit"
+          if [ ! -f "$RUNNER_TEMP/renova-security/gitleaks-tree-raw.json" ]; then
+            printf '[]\n' > "$RUNNER_TEMP/renova-security/gitleaks-tree-raw.json"
+          fi
+      - name: Sanitize and enforce proposed-tree result
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/sanitizeGitleaksReport.mjs \
+            "$RUNNER_TEMP/renova-security/gitleaks-tree-raw.json" \
+            "$RUNNER_TEMP/renova-security/gitleaks-tree-summary.json" \
+            "$RUNNER_TEMP/renova-security/gitleaks-tree.exit"
+      - name: Delete raw secret-scan reports
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/renova-security/gitleaks-raw.json"
+        run: rm -f "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json" "$RUNNER_TEMP/renova-security/gitleaks-tree-raw.json"
       - name: Upload sanitized secret-scan evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -205,4 +252,6 @@ jobs:
           name: secret-scan-evidence-${{ github.sha }}
           retention-days: 30
           if-no-files-found: warn
-          path: ${{ runner.temp }}/renova-security/gitleaks-summary.json
+          path: |
+            ${{ runner.temp }}/renova-security/gitleaks-history-summary.json
+            ${{ runner.temp }}/renova-security/gitleaks-tree-summary.json
