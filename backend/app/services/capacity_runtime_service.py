@@ -5,9 +5,6 @@ reliably. It does not invent provider-level CPU/memory/Redis utilization.
 """
 from __future__ import annotations
 
-import hashlib
-import os
-import socket
 import time
 from typing import Any
 
@@ -20,8 +17,9 @@ from app.db.session import engine
 
 
 def _api_instance_id() -> str:
-    identity = f"{socket.gethostname()}:{os.getpid()}"
-    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
+    from app.services.runtime_topology import api_instance_id
+
+    return api_instance_id()
 
 
 def _safe_pool_int(pool: object, name: str) -> int | None:
@@ -35,7 +33,7 @@ def _safe_pool_int(pool: object, name: str) -> int | None:
 
 
 def database_pool_snapshot(pool: object | None = None) -> dict[str, Any]:
-    """Return per-API-process SQLAlchemy pool pressure without private internals."""
+    """Return this API process' SQLAlchemy pool pressure without private internals."""
     current = pool or engine.sync_engine.pool
     checked_out = _safe_pool_int(current, "checkedout")
     pool_size = _safe_pool_int(current, "size")
@@ -124,25 +122,30 @@ async def capacity_runtime_snapshot(
     db: AsyncSession,
     *,
     worker_pool: dict[str, Any] | None = None,
+    api_pool: dict[str, Any] | None = None,
     redis_client: Redis | None = None,
 ) -> dict[str, Any]:
     """Build a secret-free capacity snapshot suitable for release evidence."""
-    from app.services.runtime_topology import worker_pool_snapshot
+    from app.services.runtime_topology import api_pool_snapshot, worker_pool_snapshot
 
     workers = worker_pool
     if workers is None:
         workers = await worker_pool_snapshot(redis_client)
+    apis = api_pool
+    if apis is None:
+        apis = await api_pool_snapshot(redis_client)
 
     return {
-        "contract_version": 1,
+        "contract_version": 2,
         "database": {
             "probe": await _database_probe(db),
-            "pool": database_pool_snapshot(),
+            "local_pool": database_pool_snapshot(),
         },
+        "api_pool": apis,
         "redis": await _redis_probe(redis_client),
         "worker_pool": workers,
         "interpretation": {
-            "database_pool_scope": "one_api_process",
+            "database_pool_scope": "shared_api_registry_plus_local_process",
             "redis_utilization_available": False,
             "provider_cpu_memory_available": False,
         },
