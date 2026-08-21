@@ -81,6 +81,8 @@ def main() -> None:
     push_due: list[int] = []
     push_pending: list[int] = []
     min_matching_workers: int | None = None
+    min_matching_apis: int | None = None
+    min_live_apis: int | None = None
 
     for index, sample in enumerate(samples):
         if sample.get("ok") is not True:
@@ -93,7 +95,6 @@ def main() -> None:
 
         database = sample.get("database") or {}
         probe = database.get("probe") or {}
-        pool = database.get("pool") or {}
         if probe.get("available") is not True:
             reasons.append(f"sample_{index}:database_unavailable")
         latency = as_number(probe.get("probe_latency_ms"))
@@ -102,16 +103,52 @@ def main() -> None:
         else:
             db_latencies.append(latency)
 
-        if pool.get("supported") is not True:
-            reasons.append(f"sample_{index}:database_pool_unsupported")
-        instance_id = str(pool.get("instance_id") or "").strip()
-        utilization = as_number(pool.get("utilization_percent"))
-        if not instance_id:
-            reasons.append(f"sample_{index}:api_instance_missing")
-        elif utilization is None:
-            reasons.append(f"sample_{index}:pool_utilization_missing")
-        else:
+        api_pool = sample.get("api_pool") or {}
+        if api_pool.get("healthy") is not True or api_pool.get("status") != "healthy":
+            reasons.append(f"sample_{index}:api_pool_unhealthy")
+        live_apis = as_int(api_pool.get("live_instances"))
+        matching_apis = as_int(api_pool.get("matching_release_instances"))
+        min_live_apis = live_apis if min_live_apis is None else min(min_live_apis, live_apis)
+        min_matching_apis = (
+            matching_apis
+            if min_matching_apis is None
+            else min(min_matching_apis, matching_apis)
+        )
+        if matching_apis < min_api_instances:
+            reasons.append(
+                f"sample_{index}:matching_api_instances:{matching_apis}<{min_api_instances}"
+            )
+        if live_apis != matching_apis:
+            reasons.append(f"sample_{index}:api_artifact_mixed")
+
+        raw_apis = api_pool.get("apis")
+        apis = raw_apis if isinstance(raw_apis, list) else []
+        exact_entries = 0
+        for api in apis:
+            if not isinstance(api, dict):
+                continue
+            if api.get("release") != expected_sha or api.get("artifact_digest") != expected_digest:
+                continue
+            exact_entries += 1
+            instance_id = str(api.get("instance_id") or "").strip()
+            pool = api.get("database_pool") or {}
+            if not instance_id:
+                reasons.append(f"sample_{index}:api_instance_missing")
+                continue
+            if pool.get("supported") is not True:
+                reasons.append(f"sample_{index}:{instance_id}:database_pool_unsupported")
+                continue
+            utilization = as_number(pool.get("utilization_percent"))
+            if utilization is None:
+                reasons.append(f"sample_{index}:{instance_id}:pool_utilization_missing")
+                continue
             pool_by_instance.setdefault(instance_id, []).append(utilization)
+        if exact_entries < min_api_instances:
+            reasons.append(
+                f"sample_{index}:api_registry_entries:{exact_entries}<{min_api_instances}"
+            )
+        if matching_apis != exact_entries:
+            reasons.append(f"sample_{index}:api_registry_count_mismatch")
 
         redis = sample.get("redis") or {}
         if redis.get("configured") is not True or redis.get("available") is not True:
@@ -125,9 +162,12 @@ def main() -> None:
         workers = sample.get("worker_pool") or {}
         if workers.get("healthy") is not True or workers.get("status") != "healthy":
             reasons.append(f"sample_{index}:worker_pool_unhealthy")
+        live_workers = as_int(workers.get("live_instances"))
         matching_workers = as_int(workers.get("matching_release_instances"))
         if matching_workers < 1:
             reasons.append(f"sample_{index}:matching_worker_missing")
+        if live_workers != matching_workers:
+            reasons.append(f"sample_{index}:worker_artifact_mixed")
         min_matching_workers = (
             matching_workers
             if min_matching_workers is None
@@ -193,11 +233,14 @@ def main() -> None:
             "database_probe_p95_max_ms": DB_PROBE_P95_MAX_MS,
             "redis_probe_p95_max_ms": REDIS_PROBE_P95_MAX_MS,
             "outbox_oldest_pending_max_seconds": OUTBOX_OLDEST_MAX_SECONDS,
-            "min_api_instances_observed": min_api_instances,
-            "min_matching_worker_instances": 1,
+            "min_exact_api_instances": min_api_instances,
+            "min_exact_worker_instances": 1,
+            "mixed_release_instances_allowed": False,
         },
         "observed": {
             "api_instances": observed_api_instances,
+            "min_live_api_instances": min_live_apis,
+            "min_matching_api_instances": min_matching_apis,
             "database_pool_max_percent_by_instance": pool_max_by_instance,
             "database_pool_max_percent": max_pool,
             "database_probe_p95_ms": db_p95,
@@ -209,7 +252,8 @@ def main() -> None:
             "max_push_receipts_due": max(push_due, default=0),
         },
         "notes": {
-            "database_pool_scope": "per_observed_api_process",
+            "database_pool_scope": "shared_api_heartbeat_registry",
+            "load_balancer_routing_dependency": "none_for_replica_count_or_pool_pressure",
             "redis_utilization_percent": "not_claimed",
             "provider_cpu_memory": "not_claimed",
             "push_pending_age": "recorded_but_not_thresholded_because_receipts_have_provider_delay",
