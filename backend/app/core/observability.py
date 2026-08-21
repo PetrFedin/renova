@@ -1,7 +1,7 @@
 """Production observability bootstrap for errors, traces and metrics.
 
-The runtime dependencies in this module are intentionally direct imports.  If the
-reviewed lockfile/image does not contain observability support, application import
+The runtime dependencies in this module are intentionally direct imports. If the
+reviewed lockfile/image does not contain observability support, process import
 must fail instead of silently starting without telemetry.
 """
 from __future__ import annotations
@@ -107,7 +107,7 @@ class ObservabilityRuntime:
     meter_provider: MeterProvider | None = None
 
     def shutdown(self) -> None:
-        """Flush provider buffers during graceful application shutdown."""
+        """Flush provider buffers during graceful process shutdown."""
         if self.meter_provider is not None:
             self.meter_provider.shutdown()
         if self.tracer_provider is not None:
@@ -155,7 +155,9 @@ def _server_request_hook(span, scope: dict) -> None:
         span.set_attribute("renova.correlation_id", str(correlation_id))
 
 
-def _configure_otel(app: FastAPI, current: Settings) -> tuple[TracerProvider | None, MeterProvider | None]:
+def _build_otel_providers(
+    current: Settings,
+) -> tuple[TracerProvider | None, MeterProvider | None]:
     endpoint = (current.otel_exporter_otlp_endpoint or "").strip()
     if not endpoint:
         return None, None
@@ -175,6 +177,16 @@ def _configure_otel(app: FastAPI, current: Settings) -> tuple[TracerProvider | N
         OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    return tracer_provider, meter_provider
+
+
+def _configure_otel(
+    app: FastAPI,
+    current: Settings,
+) -> tuple[TracerProvider | None, MeterProvider | None]:
+    tracer_provider, meter_provider = _build_otel_providers(current)
+    if tracer_provider is None or meter_provider is None:
+        return tracer_provider, meter_provider
 
     FastAPIInstrumentor.instrument_app(
         app,
@@ -185,27 +197,64 @@ def _configure_otel(app: FastAPI, current: Settings) -> tuple[TracerProvider | N
     return tracer_provider, meter_provider
 
 
-def configure_observability(
-    app: FastAPI,
-    configured: Settings | None = None,
+def _runtime(
+    *,
+    sentry_enabled: bool,
+    tracer_provider: TracerProvider | None,
+    meter_provider: MeterProvider | None,
 ) -> ObservabilityRuntime:
-    """Configure reviewed telemetry sinks once; configured failures are fatal."""
-    current = configured or settings
-    validate_observability_configuration(current)
-
-    # Deliberately no broad try/except: a configured sink that cannot initialize
-    # must stop startup rather than creating a false healthy-but-blind runtime.
-    sentry_enabled = _configure_sentry(current)
-    tracer_provider, meter_provider = _configure_otel(app, current)
-    runtime = ObservabilityRuntime(
+    return ObservabilityRuntime(
         sentry_enabled=sentry_enabled,
         otel_enabled=tracer_provider is not None,
         tracer_provider=tracer_provider,
         meter_provider=meter_provider,
     )
+
+
+def configure_observability(
+    app: FastAPI,
+    configured: Settings | None = None,
+) -> ObservabilityRuntime:
+    """Configure reviewed API telemetry sinks once; configured failures are fatal."""
+    current = configured or settings
+    validate_observability_configuration(current)
+
+    sentry_enabled = _configure_sentry(current)
+    tracer_provider, meter_provider = _configure_otel(app, current)
+    runtime = _runtime(
+        sentry_enabled=sentry_enabled,
+        tracer_provider=tracer_provider,
+        meter_provider=meter_provider,
+    )
     app.state.observability_runtime = runtime
     logger.info(
-        "observability configured (environment=%s sentry=%s otel=%s release=%s artifact_digest=%s)",
+        "observability configured (service=%s environment=%s sentry=%s otel=%s release=%s artifact_digest=%s)",
+        current.otel_service_name.strip(),
+        current.normalized_environment,
+        runtime.sentry_enabled,
+        runtime.otel_enabled,
+        release_sha(),
+        release_digest(),
+    )
+    return runtime
+
+
+def configure_worker_observability(
+    configured: Settings | None = None,
+) -> ObservabilityRuntime:
+    """Configure the same reviewed sinks without FastAPI HTTP instrumentation."""
+    current = configured or settings
+    validate_observability_configuration(current)
+    sentry_enabled = _configure_sentry(current)
+    tracer_provider, meter_provider = _build_otel_providers(current)
+    runtime = _runtime(
+        sentry_enabled=sentry_enabled,
+        tracer_provider=tracer_provider,
+        meter_provider=meter_provider,
+    )
+    logger.info(
+        "worker observability configured (service=%s environment=%s sentry=%s otel=%s release=%s artifact_digest=%s)",
+        current.otel_service_name.strip(),
         current.normalized_environment,
         runtime.sentry_enabled,
         runtime.otel_enabled,
