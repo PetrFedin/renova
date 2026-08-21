@@ -86,6 +86,7 @@ async def release_health(
 ):
     from app.core.config import settings
     from app.services.automation_reminders_worker import automation_worker_metrics
+    from app.services.capacity_runtime_service import capacity_runtime_snapshot
     from app.services.esign import list_providers
     from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.otp_redis_recovery import recovery_snapshot as otp_store_health
@@ -106,6 +107,7 @@ async def release_health(
     manual_tick_metrics = automation_worker_metrics()
     manual_tick_truth = automation_worker_runtime_truth(manual_tick_metrics)
     worker_pool = await worker_pool_snapshot()
+    capacity = await capacity_runtime_snapshot(db, worker_pool=worker_pool)
     otp_store = otp_store_health()
     kontur_mode = (settings.kontur_mode or "off").strip().lower()
     esign = {
@@ -128,6 +130,7 @@ async def release_health(
         "environment": settings.normalized_environment,
         "release": release,
         "observability": observability,
+        "capacity": capacity,
         "runtime_topology": {
             "api": {
                 "role": "renova-api",
