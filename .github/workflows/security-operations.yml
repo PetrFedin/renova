@@ -83,6 +83,9 @@ jobs:
           set +e
           pip-audit \
             --path "$site_packages" \
+            --vulnerability-service osv \
+            --aliases on \
+            --desc off \
             --strict \
             --progress-spinner off \
             --format json \
