@@ -21,7 +21,7 @@ test("staging and production require at least 256 bits of HS256 key material", (
   assert.match(environment, /^MIN_WORKING_SECRET_BYTES = 32$/m);
   assert.match(environment, /len\(value\.encode\("utf-8"\)\) < MIN_WORKING_SECRET_BYTES/);
   assert.match(environment, /_is_weak_working_secret\(secret_key or ""\)/);
-  assert.match(environment, /32 байт UTF-8 для HS256/);
+  assert.match(environment, /MIN_WORKING_SECRET_BYTES\} байт UTF-8 для HS256/);
   assert.match(environmentTests, /MIN_WORKING_SECRET_BYTES - 1/);
   assert.match(environmentTests, /match="32 байт"/);
 });
