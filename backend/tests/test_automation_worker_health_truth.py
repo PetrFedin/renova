@@ -1,4 +1,4 @@
-"""Automation worker API must separate tick execution from runtime health."""
+"""Automation worker API must separate shared worker runtime from manual ticks."""
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -9,7 +9,21 @@ from app.api.v1 import automation_worker as api
 pytestmark = pytest.mark.asyncio
 
 
-async def test_status_is_critical_when_outbox_is_critical(monkeypatch):
+def _pool(status: str = "healthy") -> dict[str, object]:
+    return {
+        "required": True,
+        "configured": True,
+        "runtime_owner": "renova-worker",
+        "healthy": status == "healthy",
+        "status": status,
+        "current_release": "sha",
+        "live_instances": 1 if status in {"healthy", "release_mismatch"} else 0,
+        "matching_release_instances": 1 if status == "healthy" else 0,
+        "workers": [],
+    }
+
+
+async def test_status_uses_shared_worker_pool_not_api_local_metrics(monkeypatch):
     monkeypatch.setattr(
         api,
         "automation_worker_metrics",
@@ -19,68 +33,32 @@ async def test_status_is_critical_when_outbox_is_critical(monkeypatch):
             "outbox_health": {"poisoned": 1},
         },
     )
+    monkeypatch.setattr(api, "worker_pool_snapshot", AsyncMock(return_value=_pool("healthy")))
 
     response = await api.automation_worker_status(_user=object())
 
-    assert response["healthy"] is False
-    assert response["status"] == "critical"
-    assert response["tick_healthy"] is True
-    assert response["outbox_healthy"] is False
-    assert response["outbox_health"] == {"poisoned": 1}
+    assert response["healthy"] is True
+    assert response["status"] == "healthy"
+    assert response["runtime_owner"] == "renova-worker"
+    assert response["worker_pool"]["healthy"] is True
+    assert response["manual_tick"]["status"] == "critical"
+    assert response["manual_tick"]["outbox_health"] == {"poisoned": 1}
 
 
-async def test_status_is_degraded_for_aging_outbox(monkeypatch):
+@pytest.mark.parametrize("pool_status", ["missing", "unavailable", "release_mismatch"])
+async def test_status_fails_closed_for_worker_pool_gaps(monkeypatch, pool_status):
     monkeypatch.setattr(
         api,
         "automation_worker_metrics",
-        lambda: {
-            "consecutive_failures": 0,
-            "outbox_status": "degraded",
-        },
+        lambda: {"consecutive_failures": 0, "outbox_status": "healthy"},
     )
+    monkeypatch.setattr(api, "worker_pool_snapshot", AsyncMock(return_value=_pool(pool_status)))
 
     response = await api.automation_worker_status(_user=object())
 
     assert response["healthy"] is False
-    assert response["status"] == "degraded"
-    assert response["tick_healthy"] is True
-    assert response["outbox_healthy"] is False
-
-
-async def test_status_is_unknown_before_first_outbox_observation(monkeypatch):
-    monkeypatch.setattr(
-        api,
-        "automation_worker_metrics",
-        lambda: {
-            "consecutive_failures": 0,
-            "outbox_status": "unknown",
-        },
-    )
-
-    response = await api.automation_worker_status(_user=object())
-
-    assert response["healthy"] is False
-    assert response["status"] == "unknown"
-    assert response["tick_healthy"] is True
-    assert response["outbox_healthy"] is False
-
-
-async def test_status_is_critical_after_failure_streak_even_with_healthy_outbox(monkeypatch):
-    monkeypatch.setattr(
-        api,
-        "automation_worker_metrics",
-        lambda: {
-            "consecutive_failures": 3,
-            "outbox_status": "healthy",
-        },
-    )
-
-    response = await api.automation_worker_status(_user=object())
-
-    assert response["healthy"] is False
-    assert response["status"] == "critical"
-    assert response["tick_healthy"] is False
-    assert response["outbox_healthy"] is True
+    assert response["status"] == pool_status
+    assert response["manual_tick"]["healthy"] is True
 
 
 async def test_manual_tick_reports_execution_but_not_success_for_critical_outbox(monkeypatch):
@@ -104,6 +82,7 @@ async def test_manual_tick_reports_execution_but_not_success_for_critical_outbox
     assert response["healthy"] is False
     assert response["status"] == "critical"
     assert response["code"] == "outbox_critical"
+    assert response["runtime_owner"] == "manual_admin_tick"
     record_ok.assert_called_once_with(run_tick.return_value)
 
 
