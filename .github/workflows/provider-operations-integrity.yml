@@ -5,15 +5,17 @@ on:
     branches: [main]
     paths:
       - "backend/app/models/provider_runtime.py"
-      - "backend/app/services/provider_reconciliation_service.py"
-      - "backend/tests/test_provider_reconciliation_integrity.py"
+      - "backend/app/services/provider_reconciliation_*.py"
+      - "backend/app/worker_main.py"
+      - "backend/tests/test_provider_reconciliation_*.py"
       - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
       - ".github/workflows/provider-operations-integrity.yml"
   pull_request:
     paths:
       - "backend/app/models/provider_runtime.py"
-      - "backend/app/services/provider_reconciliation_service.py"
-      - "backend/tests/test_provider_reconciliation_integrity.py"
+      - "backend/app/services/provider_reconciliation_*.py"
+      - "backend/app/worker_main.py"
+      - "backend/tests/test_provider_reconciliation_*.py"
       - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
       - ".github/workflows/provider-operations-integrity.yml"
 
@@ -65,9 +67,20 @@ jobs:
           poetry check --lock
           poetry sync --no-interaction
           poetry run python -m pip check
-      - name: Provider reconciliation lifecycle contracts
+      - name: Provider reconciliation lifecycle and FNS adapter contracts
         working-directory: backend
-        run: poetry run pytest -q tests/test_provider_reconciliation_integrity.py
+        run: |
+          poetry run pytest -q \
+            tests/test_provider_reconciliation_integrity.py \
+            tests/test_provider_reconciliation_handlers.py
+      - name: Worker source contract
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.worker_main import _task_names
+          assert "domain_outbox" in _task_names()
+          assert "provider_reconciliation" in _task_names()
+          PY
       - name: PostgreSQL migration from current production head
         working-directory: backend
         env:
