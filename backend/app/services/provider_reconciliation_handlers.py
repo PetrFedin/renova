@@ -5,19 +5,25 @@ payloads in the reconciliation ledger.
 """
 from __future__ import annotations
 
+import httpx
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Receipt
+from app.models.entities import Payment, PaymentStatus, Project, Receipt
+from app.services import payment_checkout_service as checkout
+from app.services import payment_reversal_service as reversal
+from app.services import payment_service
 from app.services import provider_reconciliation_service as ledger
 from app.services.fns import receipt_verify as fns
 
 FNS_PROVIDER = "fns"
 FNS_RECEIPT_OPERATION = "receipt_verify"
+YOOKASSA_PROVIDER = "yookassa"
+YOOKASSA_PAYMENT_OPERATION = "payment_status"
 
 
 async def seed_pending_fns_receipts(db: AsyncSession, *, limit: int = 100) -> int:
-    """Backfill/recover pending FNS intents without scanning completed history."""
     receipt_ids = (
         await db.execute(
             select(Receipt.id)
@@ -26,7 +32,6 @@ async def seed_pending_fns_receipts(db: AsyncSession, *, limit: int = 100) -> in
             .limit(max(1, min(int(limit), 500)))
         )
     ).scalars().all()
-    created_or_existing = 0
     for receipt_id in receipt_ids:
         await ledger.ensure_reconciliation(
             db,
@@ -35,9 +40,44 @@ async def seed_pending_fns_receipts(db: AsyncSession, *, limit: int = 100) -> in
             resource_type="receipt",
             resource_id=receipt_id,
         )
-        created_or_existing += 1
     await db.flush()
-    return created_or_existing
+    return len(receipt_ids)
+
+
+async def seed_pending_yookassa_payments(db: AsyncSession, *, limit: int = 100) -> int:
+    payment_ids = (
+        await db.execute(
+            select(Payment.id)
+            .where(
+                Payment.yookassa_payment_id.is_not(None),
+                Payment.status.in_((PaymentStatus.pending, PaymentStatus.processing)),
+            )
+            .order_by(Payment.created_at.asc())
+            .limit(max(1, min(int(limit), 500)))
+        )
+    ).scalars().all()
+    for payment_id in payment_ids:
+        payment = await db.get(Payment, payment_id)
+        if not payment or not payment.yookassa_payment_id:
+            continue
+        await ledger.ensure_reconciliation(
+            db,
+            provider=YOOKASSA_PROVIDER,
+            operation_type=YOOKASSA_PAYMENT_OPERATION,
+            resource_type="payment",
+            resource_id=payment.id,
+            provider_resource_id=payment.yookassa_payment_id,
+        )
+    await db.flush()
+    return len(payment_ids)
+
+
+async def seed_pending_provider_work(db: AsyncSession, *, limit: int = 100) -> int:
+    per_provider = max(1, min(int(limit), 500))
+    return (
+        await seed_pending_fns_receipts(db, limit=per_provider)
+        + await seed_pending_yookassa_payments(db, limit=per_provider)
+    )
 
 
 async def reconcile_fns_receipt(
@@ -46,7 +86,6 @@ async def reconcile_fns_receipt(
     *,
     worker_id: str,
 ) -> bool:
-    """Re-read FNS truth for one receipt and persist the existing domain status."""
     if (
         claim.provider != FNS_PROVIDER
         or claim.operation_type != FNS_RECEIPT_OPERATION
@@ -63,8 +102,6 @@ async def reconcile_fns_receipt(
             error_code="receipt_not_found",
         )
 
-    # A concurrent/live request may already have reached authoritative final
-    # truth after the worker claimed this row. Respect the domain SoT first.
     truth = fns.receipt_verification_truth(
         receipt.verification_status,
         receipt.fns_verified,
@@ -110,6 +147,201 @@ async def reconcile_fns_receipt(
     )
 
 
+async def _yookassa_transport_failure(
+    db: AsyncSession,
+    claim: ledger.ReconciliationClaim,
+    *,
+    worker_id: str,
+    exc: Exception,
+) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code
+        if status_code in (401, 403):
+            return await ledger.mark_terminal(
+                db,
+                claim,
+                worker_id=worker_id,
+                error_code="yookassa_credentials_rejected",
+                error=exc,
+                unavailable=True,
+            )
+        if status_code == 404:
+            return await ledger.mark_terminal(
+                db,
+                claim,
+                worker_id=worker_id,
+                error_code="yookassa_payment_not_found",
+                error=exc,
+            )
+        if status_code == 429 or status_code >= 500:
+            return await ledger.mark_retry(
+                db,
+                claim,
+                worker_id=worker_id,
+                error_code=f"yookassa_http_{status_code}",
+                error=exc,
+            )
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code=f"yookassa_http_{status_code}",
+            error=exc,
+        )
+    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
+        return await ledger.mark_retry(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="yookassa_transport_error",
+            error=exc,
+        )
+    return await ledger.mark_terminal(
+        db,
+        claim,
+        worker_id=worker_id,
+        error_code="yookassa_unavailable",
+        error=exc,
+        unavailable=True,
+    )
+
+
+async def reconcile_yookassa_payment(
+    db: AsyncSession,
+    claim: ledger.ReconciliationClaim,
+    *,
+    worker_id: str,
+) -> bool:
+    if (
+        claim.provider != YOOKASSA_PROVIDER
+        or claim.operation_type != YOOKASSA_PAYMENT_OPERATION
+        or claim.resource_type != "payment"
+    ):
+        return False
+
+    payment = await db.get(Payment, claim.resource_id)
+    if payment is None:
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="payment_not_found",
+        )
+    if payment.status in {
+        PaymentStatus.confirmed,
+        PaymentStatus.cancelled,
+        PaymentStatus.refunded,
+        PaymentStatus.disputed,
+    }:
+        return await ledger.mark_completed(
+            db,
+            claim,
+            worker_id=worker_id,
+            provider_status=f"local_{payment.status.value}",
+        )
+    provider_id = payment.yookassa_payment_id or claim.provider_resource_id
+    if not provider_id:
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="missing_provider_payment_id",
+        )
+
+    project = await db.get(Project, payment.project_id)
+    if project is None:
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="project_not_found",
+        )
+
+    try:
+        remote = await checkout._load_provider_payment(provider_id)
+        checkout._validate_provider_snapshot(payment, project.customer_id, remote)
+    except HTTPException as exc:
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="yookassa_snapshot_mismatch",
+            error=exc,
+        )
+    except Exception as exc:
+        return await _yookassa_transport_failure(
+            db,
+            claim,
+            worker_id=worker_id,
+            exc=exc,
+        )
+
+    status = remote.status
+    if status in {"pending", "waiting_for_capture"}:
+        return await ledger.mark_retry(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="yookassa_not_terminal",
+            provider_status=status,
+        )
+    if status == "succeeded":
+        confirmed = await payment_service.confirm_payment(
+            db,
+            payment.id,
+            project_id=payment.project_id,
+            allow_without_acceptance=False,
+            allow_without_settlement=True,
+            commit=False,
+        )
+        if confirmed is None:
+            return await ledger.mark_retry(
+                db,
+                claim,
+                worker_id=worker_id,
+                error_code="local_acceptance_pending",
+                provider_status=status,
+            )
+        return await ledger.mark_completed(
+            db,
+            claim,
+            worker_id=worker_id,
+            provider_status=status,
+        )
+    if status == "canceled":
+        result = await reversal.apply_provider_cancellation(
+            db,
+            payment_id=payment.id,
+            project_id=payment.project_id,
+            provider_id=provider_id,
+            amount=float(remote.amount),
+            currency=remote.currency,
+            reason="provider_reconciliation",
+            commit=False,
+        )
+        if result.handled:
+            return await ledger.mark_completed(
+                db,
+                claim,
+                worker_id=worker_id,
+                provider_status=status,
+            )
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code=f"yookassa_cancel_{result.reason or 'unhandled'}",
+            provider_status=status,
+        )
+    return await ledger.mark_retry(
+        db,
+        claim,
+        worker_id=worker_id,
+        error_code="yookassa_unknown_status",
+        provider_status=status,
+    )
+
+
 async def reconcile_claim(
     db: AsyncSession,
     claim: ledger.ReconciliationClaim,
@@ -118,6 +350,8 @@ async def reconcile_claim(
 ) -> bool:
     if claim.provider == FNS_PROVIDER and claim.operation_type == FNS_RECEIPT_OPERATION:
         return await reconcile_fns_receipt(db, claim, worker_id=worker_id)
+    if claim.provider == YOOKASSA_PROVIDER and claim.operation_type == YOOKASSA_PAYMENT_OPERATION:
+        return await reconcile_yookassa_payment(db, claim, worker_id=worker_id)
     return await ledger.mark_terminal(
         db,
         claim,
