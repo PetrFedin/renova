@@ -8,7 +8,7 @@ import pytest
 
 from app import runtime_healthcheck
 from app.core.config import settings
-from app.services import runtime_topology
+from app.services import capacity_runtime_service, runtime_topology
 
 
 class FakeRedis:
@@ -17,7 +17,10 @@ class FakeRedis:
         self.closed = False
 
     async def set(self, key, value, *, ex=None):
-        assert ex == runtime_topology.WORKER_HEARTBEAT_TTL_SEC
+        assert ex in {
+            runtime_topology.WORKER_HEARTBEAT_TTL_SEC,
+            runtime_topology.API_HEARTBEAT_TTL_SEC,
+        }
         self.values[str(key)] = str(value)
         return True
 
@@ -59,6 +62,39 @@ def _worker_payload(
     )
 
 
+def _api_payload(
+    *,
+    instance_id: str,
+    release: str,
+    artifact_digest: str = "sha256:test",
+    utilization_percent: float = 20.0,
+) -> str:
+    return json.dumps(
+        {
+            "role": "api",
+            "status": "healthy",
+            "instance_id": instance_id,
+            "release": release,
+            "artifact_digest": artifact_digest,
+            "started_at": "2026-08-21T10:00:00+00:00",
+            "heartbeat_at": "2026-08-21T10:00:05+00:00",
+            "database_pool": {
+                "scope": "api_process",
+                "instance_id": instance_id,
+                "supported": True,
+                "configured_pool_size": 5,
+                "configured_max_overflow": 10,
+                "configured_connection_capacity": 15,
+                "pool_timeout_seconds": 30.0,
+                "checked_out": 3,
+                "checked_in": 2,
+                "current_overflow": 0,
+                "utilization_percent": utilization_percent,
+            },
+        }
+    )
+
+
 def test_process_ownership_is_explicit_in_source():
     main = Path("app/main.py").read_text(encoding="utf-8")
     worker = Path("app/worker_main.py").read_text(encoding="utf-8")
@@ -72,6 +108,10 @@ def test_process_ownership_is_explicit_in_source():
         assert forbidden in worker
     assert "redis_subscriber_loop" in main
     assert "redis_subscriber_loop" not in worker
+    assert "ApiHeartbeatPublisher" in main
+    assert "api_heartbeat_loop" in main
+    assert "ApiHeartbeatPublisher" not in worker
+    assert "api_heartbeat_loop" not in worker
 
 
 def test_image_commands_are_explicit_and_role_aware():
@@ -117,6 +157,16 @@ def test_worker_healthcheck_requires_fresh_heartbeat(tmp_path, monkeypatch):
     )
 
 
+def test_api_instance_identity_is_anonymous_and_bounded(monkeypatch):
+    monkeypatch.delenv("RENOVA_API_INSTANCE_ID", raising=False)
+    monkeypatch.setattr(runtime_topology.socket, "gethostname", lambda: "private-api-host.example")
+    monkeypatch.setattr(runtime_topology.os, "getpid", lambda: 4321)
+    value = runtime_topology.api_instance_id()
+    assert len(value) == 20
+    assert "private-api-host" not in value
+    int(value, 16)
+
+
 @pytest.mark.asyncio
 async def test_worker_publisher_updates_shared_and_local_heartbeat(tmp_path, monkeypatch):
     heartbeat_file = tmp_path / "worker.json"
@@ -139,6 +189,37 @@ async def test_worker_publisher_updates_shared_and_local_heartbeat(tmp_path, mon
 
     await publisher.remove()
     assert not heartbeat_file.exists()
+    assert redis.values == {}
+
+
+@pytest.mark.asyncio
+async def test_api_publisher_updates_shared_pool_heartbeat(monkeypatch):
+    monkeypatch.setenv("RENOVA_API_INSTANCE_ID", "test-api-a")
+    monkeypatch.setattr(settings, "environment", "test")
+    monkeypatch.setattr(settings, "redis_url", None)
+    monkeypatch.setattr(
+        capacity_runtime_service,
+        "database_pool_snapshot",
+        lambda: {
+            "scope": "api_process",
+            "instance_id": runtime_topology.api_instance_id(),
+            "supported": True,
+            "configured_connection_capacity": 15,
+            "utilization_percent": 40.0,
+        },
+    )
+    redis = FakeRedis()
+    publisher = runtime_topology.ApiHeartbeatPublisher(redis_client=redis)
+
+    payload = await publisher.publish()
+
+    assert payload["role"] == "api"
+    assert payload["database_pool"]["utilization_percent"] == 40.0
+    assert payload["database_pool"]["instance_id"] == publisher.instance_id
+    keys = [key for key in redis.values if key.startswith(runtime_topology.API_REDIS_PREFIX)]
+    assert len(keys) == 1
+
+    await publisher.remove()
     assert redis.values == {}
 
 
@@ -188,6 +269,51 @@ async def test_worker_pool_requires_current_release_and_artifact(monkeypatch):
     assert healthy["matching_sha_instances"] == 2
     assert healthy["matching_release_instances"] == 1
     assert "redis://" not in json.dumps(healthy)
+
+
+@pytest.mark.asyncio
+async def test_api_pool_reports_all_replicas_and_exact_artifact_counts(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "redis_url", "redis://redacted.invalid/0")
+    monkeypatch.setenv("RENOVA_GIT_SHA", "release-current")
+    monkeypatch.setenv("RENOVA_IMAGE_DIGEST", "sha256:current")
+    redis = FakeRedis(
+        {
+            f"{runtime_topology.API_REDIS_PREFIX}a": _api_payload(
+                instance_id="api-a",
+                release="release-current",
+                artifact_digest="sha256:current",
+                utilization_percent=30.0,
+            ),
+            f"{runtime_topology.API_REDIS_PREFIX}b": _api_payload(
+                instance_id="api-b",
+                release="release-current",
+                artifact_digest="sha256:current",
+                utilization_percent=70.0,
+            ),
+            f"{runtime_topology.API_REDIS_PREFIX}old": _api_payload(
+                instance_id="api-old",
+                release="release-old",
+                artifact_digest="sha256:old",
+                utilization_percent=10.0,
+            ),
+        }
+    )
+
+    snapshot = await runtime_topology.api_pool_snapshot(redis)
+
+    assert snapshot["healthy"] is True
+    assert snapshot["status"] == "healthy"
+    assert snapshot["live_instances"] == 3
+    assert snapshot["matching_sha_instances"] == 2
+    assert snapshot["matching_release_instances"] == 2
+    assert [item["instance_id"] for item in snapshot["apis"]] == [
+        "api-a",
+        "api-b",
+        "api-old",
+    ]
+    assert snapshot["apis"][1]["database_pool"]["utilization_percent"] == 70.0
+    assert "redis://" not in json.dumps(snapshot)
 
 
 @pytest.mark.asyncio
