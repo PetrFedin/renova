@@ -40,6 +40,8 @@ A scanner/feed mismatch is not converted into a baseline exception without verif
 
 The explicit OSV run then found a separate real runtime finding: `ecdsa 0.19.2 / PYSEC-2026-1325`, introduced through the `python-jose` dependency chain. Renova's access-token implementation uses HS256 only and already had PyJWT 2.13.0 in the locked production graph. The remediation was therefore to remove `python-jose` from production, make `PyJWT==2.13.0` a direct dependency, migrate the JWT/error imports, regenerate the Poetry lock with Poetry 2.4.1 on Python 3.12.13, and retain the advisory baseline empty. The vulnerable dependency is not accepted through an exception.
 
+That cleanup also exposed an independent dependency-ownership defect: `moy_nalog_oauth.py` uses Fernet directly but previously received `cryptography` only transitively through the removed JWT stack. Renova now declares `cryptography==50.0.0` directly, regenerates the lock from that explicit runtime requirement, and subjects it to the same OSV and container gates. It must not be removed merely because the JWT implementation no longer needs it.
+
 ## Secret exposure policy
 
 Secrets, credentials, private keys and production tokens must never be committed to Git, including test fixtures, examples, logs or generated artifacts.
