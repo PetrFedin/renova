@@ -229,3 +229,36 @@ async def test_worker_main_treats_unexpected_loop_exit_as_process_failure(monkey
 
     assert await worker_main.run_worker() == 1
     runtime.shutdown.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_worker_startup_failure_after_first_heartbeat_always_cleans_up(monkeypatch):
+    from app import worker_main
+
+    monkeypatch.setattr(worker_main, "_validate_worker_runtime", AsyncMock())
+    monkeypatch.setattr(worker_main, "_install_signal_handlers", Mock())
+
+    runtime = Mock()
+    runtime.shutdown = Mock()
+    monkeypatch.setattr(worker_main, "configure_worker_observability", Mock(return_value=runtime))
+
+    publisher = Mock()
+    publisher.publish = AsyncMock(return_value={})
+    publisher.remove = AsyncMock()
+    publisher.close = AsyncMock()
+    monkeypatch.setattr(worker_main, "WorkerHeartbeatPublisher", Mock(return_value=publisher))
+    monkeypatch.setattr(
+        worker_main,
+        "_start_worker_tasks",
+        AsyncMock(side_effect=RuntimeError("task-bootstrap-failed")),
+    )
+    monkeypatch.setattr(worker_main.rate_limiter, "close", AsyncMock())
+
+    with pytest.raises(RuntimeError, match="task-bootstrap-failed"):
+        await worker_main.run_worker()
+
+    publisher.publish.assert_awaited_once()
+    publisher.remove.assert_awaited_once()
+    publisher.close.assert_awaited_once()
+    worker_main.rate_limiter.close.assert_awaited_once()
+    runtime.shutdown.assert_called_once()
