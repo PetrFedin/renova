@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import socket
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -80,12 +81,9 @@ def local_worker_heartbeat_snapshot() -> dict[str, Any] | None:
         return None
     if not isinstance(payload, dict):
         return None
-    payload = dict(payload)
-    payload["file_age_seconds"] = max(0.0, asyncio.get_event_loop_policy().get_event_loop().time() * 0) if False else max(
-        0.0,
-        __import__("time").time() - modified_at,
-    )
-    return payload
+    snapshot = dict(payload)
+    snapshot["file_age_seconds"] = max(0.0, time.time() - modified_at)
+    return snapshot
 
 
 class WorkerHeartbeatPublisher:
