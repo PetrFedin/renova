@@ -36,6 +36,9 @@ test("Python audit materializes the exact production Poetry environment", () => 
   assert.match(securityWorkflow, /poetry sync --only main --no-root/);
   assert.match(securityWorkflow, /python -m pip check/);
   assert.match(securityWorkflow, /pip-audit[\s\S]*--path/);
+  assert.match(securityWorkflow, /--vulnerability-service osv/);
+  assert.match(securityWorkflow, /--aliases on/);
+  assert.match(securityWorkflow, /--desc off/);
   assert.match(securityWorkflow, /--strict/);
   assert.match(securityWorkflow, /evaluatePythonAudit\.mjs/);
   assert.match(securityWorkflow, /python-audit-summary\.json/);
