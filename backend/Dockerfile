@@ -23,8 +23,8 @@ RUN poetry check --lock \
 FROM ${PYTHON_IMAGE} AS runtime
 ARG VCS_REF=unknown
 
-LABEL org.opencontainers.image.title="Renova API" \
-      org.opencontainers.image.description="Renova production backend API" \
+LABEL org.opencontainers.image.title="Renova Backend" \
+      org.opencontainers.image.description="Renova production API and background-worker runtime" \
       org.opencontainers.image.source="https://github.com/PetrFedin/renova" \
       org.opencontainers.image.revision="${VCS_REF}"
 
@@ -51,11 +51,15 @@ COPY --chown=10001:10001 backend/app /app/app
 COPY --chown=10001:10001 backend/alembic /app/alembic
 COPY --chown=10001:10001 backend/alembic.ini /app/alembic.ini
 COPY --chown=10001:10001 backend/pyproject.toml backend/poetry.lock /app/
+COPY --chmod=755 backend/docker/renova-api backend/docker/renova-worker /usr/local/bin/
 
 USER 10001:10001
 EXPOSE 8100
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=2).read()"]
+# One image has two process roles. The API command writes role=api and is
+# checked through /ready; the worker command writes role=worker and is checked
+# through its fresh local heartbeat. Unknown roles fail closed.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+  CMD ["python", "-m", "app.runtime_healthcheck"]
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["renova-api"]
