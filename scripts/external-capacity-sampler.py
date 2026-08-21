@@ -46,7 +46,7 @@ def get_json(url: str, token: str) -> dict[str, Any]:
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
-            "User-Agent": "renova-capacity-sampler/1",
+            "User-Agent": "renova-capacity-sampler/2",
         },
         method="GET",
     )
@@ -55,6 +55,51 @@ def get_json(url: str, token: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("release-health payload must be an object")
     return payload
+
+
+def _bounded_api_pool(raw: Any) -> dict[str, Any]:
+    pool = raw if isinstance(raw, dict) else {}
+    apis = pool.get("apis")
+    if not isinstance(apis, list):
+        apis = []
+    bounded_apis: list[dict[str, Any]] = []
+    for item in apis[:32]:
+        if not isinstance(item, dict):
+            continue
+        db_pool = item.get("database_pool")
+        if not isinstance(db_pool, dict):
+            db_pool = {}
+        bounded_apis.append(
+            {
+                "instance_id": item.get("instance_id"),
+                "release": item.get("release"),
+                "artifact_digest": item.get("artifact_digest"),
+                "heartbeat_at": item.get("heartbeat_at"),
+                "database_pool": {
+                    "scope": db_pool.get("scope"),
+                    "instance_id": db_pool.get("instance_id"),
+                    "supported": db_pool.get("supported"),
+                    "configured_pool_size": db_pool.get("configured_pool_size"),
+                    "configured_max_overflow": db_pool.get("configured_max_overflow"),
+                    "configured_connection_capacity": db_pool.get(
+                        "configured_connection_capacity"
+                    ),
+                    "pool_timeout_seconds": db_pool.get("pool_timeout_seconds"),
+                    "checked_out": db_pool.get("checked_out"),
+                    "checked_in": db_pool.get("checked_in"),
+                    "current_overflow": db_pool.get("current_overflow"),
+                    "utilization_percent": db_pool.get("utilization_percent"),
+                },
+            }
+        )
+    return {
+        "healthy": pool.get("healthy"),
+        "status": pool.get("status"),
+        "live_instances": pool.get("live_instances"),
+        "matching_sha_instances": pool.get("matching_sha_instances"),
+        "matching_release_instances": pool.get("matching_release_instances"),
+        "apis": bounded_apis,
+    }
 
 
 def sanitize(payload: dict[str, Any]) -> dict[str, Any]:
@@ -76,13 +121,15 @@ def sanitize(payload: dict[str, Any]) -> dict[str, Any]:
         "image_digest": artifact.get("image_digest"),
         "database": {
             "probe": database.get("probe"),
-            "pool": database.get("pool"),
+            "local_pool": database.get("local_pool"),
         },
+        "api_pool": _bounded_api_pool(capacity.get("api_pool")),
         "redis": redis,
         "worker_pool": {
             "healthy": worker_pool.get("healthy"),
             "status": worker_pool.get("status"),
             "live_instances": worker_pool.get("live_instances"),
+            "matching_sha_instances": worker_pool.get("matching_sha_instances"),
             "matching_release_instances": worker_pool.get("matching_release_instances"),
         },
         "outbox": {
