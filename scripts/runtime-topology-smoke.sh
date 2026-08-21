@@ -17,11 +17,14 @@ REDIS_URL="redis://${REDIS}:6379/0"
 SECRET_KEY="runtime-topology-ci-secret-at-least-32-chars"
 API_A_PORT="${RUNTIME_TOPOLOGY_API_A_PORT:-18111}"
 API_B_PORT="${RUNTIME_TOPOLOGY_API_B_PORT:-18112}"
+API_A_LOG="/tmp/renova-runtime-topology-api-a.log"
+API_B_LOG="/tmp/renova-runtime-topology-api-b.log"
+WORKER_LOG="/tmp/renova-runtime-topology-worker.log"
 
 capture_logs() {
-  docker logs "$API_A" > /tmp/renova-runtime-topology-api-a.log 2>&1 || true
-  docker logs "$API_B" > /tmp/renova-runtime-topology-api-b.log 2>&1 || true
-  docker logs "$WORKER" > /tmp/renova-runtime-topology-worker.log 2>&1 || true
+  docker logs "$API_A" >"$API_A_LOG" 2>&1 || true
+  docker logs "$API_B" >"$API_B_LOG" 2>&1 || true
+  docker logs "$WORKER" >"$WORKER_LOG" 2>&1 || true
   docker logs "$PG" > /tmp/renova-runtime-topology-postgres.log 2>&1 || true
   docker logs "$REDIS" > /tmp/renova-runtime-topology-redis.log 2>&1 || true
 }
@@ -54,9 +57,18 @@ wait_container_health() {
   return 1
 }
 
-worker_key_count() {
-  docker exec "$REDIS" redis-cli --raw --scan --pattern 'renova:runtime:worker:*' \
+redis_key_count() {
+  local pattern="$1"
+  docker exec "$REDIS" redis-cli --raw --scan --pattern "$pattern" \
     | awk 'NF {count += 1} END {print count + 0}'
+}
+
+worker_key_count() {
+  redis_key_count 'renova:runtime:worker:*'
+}
+
+api_key_count() {
+  redis_key_count 'renova:runtime:api:*'
 }
 
 common_env=(
@@ -128,11 +140,24 @@ docker exec "$API_A" sh -c 'test "$(cat /tmp/renova-runtime-role)" = api && test
 docker exec "$API_B" sh -c 'test "$(cat /tmp/renova-runtime-role)" = api && test ! -e /tmp/renova-worker-heartbeat.json'
 docker exec "$WORKER" sh -c 'test "$(cat /tmp/renova-runtime-role)" = worker && test -s /tmp/renova-worker-heartbeat.json'
 
+for _ in $(seq 1 10); do
+  if [ "$(worker_key_count)" -eq 1 ] && [ "$(api_key_count)" -eq 2 ]; then
+    break
+  fi
+  sleep 1
+done
 test "$(worker_key_count)" -eq 1
-docker logs "$API_A" 2>&1 | grep -q 'ws redis bridge enabled'
-docker logs "$API_B" 2>&1 | grep -q 'ws redis bridge enabled'
-docker logs "$WORKER" 2>&1 | grep -q 'renova worker started tasks=domain_outbox,automation_reminders,push_receipt_reconciliation'
-if docker logs "$WORKER" 2>&1 | grep -q 'ws redis bridge enabled'; then
+test "$(api_key_count)" -eq 2
+
+# Avoid `docker logs | grep -q` under pipefail: once grep finds a match it may
+# close the pipe while Docker is still writing, causing an unrelated SIGPIPE/141.
+docker logs "$API_A" >"$API_A_LOG" 2>&1
+docker logs "$API_B" >"$API_B_LOG" 2>&1
+docker logs "$WORKER" >"$WORKER_LOG" 2>&1
+grep -q 'ws redis bridge enabled' "$API_A_LOG"
+grep -q 'ws redis bridge enabled' "$API_B_LOG"
+grep -q 'renova worker started tasks=domain_outbox,automation_reminders,push_receipt_reconciliation' "$WORKER_LOG"
+if grep -q 'ws redis bridge enabled' "$WORKER_LOG"; then
   echo "FAIL: worker started API-local websocket bridge" >&2
   exit 1
 fi
@@ -146,6 +171,7 @@ for _ in $(seq 1 10); do
   sleep 1
 done
 test "$(worker_key_count)" -eq 0
+test "$(api_key_count)" -eq 2
 curl -fsS "http://127.0.0.1:${API_A_PORT}/ready" >/dev/null
 curl -fsS "http://127.0.0.1:${API_B_PORT}/ready" >/dev/null
 test "$(docker inspect --format '{{.State.Health.Status}}' "$API_A")" = healthy
@@ -161,9 +187,17 @@ for _ in $(seq 1 10); do
   sleep 1
 done
 test "$(worker_key_count)" -eq 1
+test "$(api_key_count)" -eq 2
 
 echo "=== runtime topology: one API failure must not take worker or peer API down ==="
 docker stop -t 10 "$API_A" >/dev/null
+for _ in $(seq 1 10); do
+  if [ "$(api_key_count)" -eq 1 ]; then
+    break
+  fi
+  sleep 1
+done
+test "$(api_key_count)" -eq 1
 curl -fsS "http://127.0.0.1:${API_B_PORT}/ready" >/dev/null
 test "$(docker inspect --format '{{.State.Health.Status}}' "$API_B")" = healthy
 test "$(docker inspect --format '{{.State.Health.Status}}' "$WORKER")" = healthy
