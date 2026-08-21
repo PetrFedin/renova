@@ -11,6 +11,7 @@ from app.services.automation_reminders_worker import (
     run_automation_reminder_tick,
 )
 from app.services.runtime_health_truth import automation_worker_runtime_truth
+from app.services.runtime_topology import worker_pool_snapshot
 
 router = APIRouter(prefix="/automation", tags=["automation"])
 
@@ -19,12 +20,21 @@ router = APIRouter(prefix="/automation", tags=["automation"])
 async def automation_worker_status(
     _user: User = Depends(require_admin_user),
 ):
+    """Report the external worker pool and keep API-local manual-tick metrics separate."""
     metrics = automation_worker_metrics()
+    manual_tick = {
+        **automation_worker_runtime_truth(metrics),
+        **metrics,
+    }
+    pool = await worker_pool_snapshot()
     return {
         "enabled": settings.automation_reminders_enabled,
         "interval_sec": settings.automation_reminders_interval_sec,
-        **automation_worker_runtime_truth(metrics),
-        **metrics,
+        "runtime_owner": "renova-worker",
+        "healthy": pool["healthy"],
+        "status": pool["status"],
+        "worker_pool": pool,
+        "manual_tick": manual_tick,
     }
 
 
@@ -32,7 +42,7 @@ async def automation_worker_status(
 async def automation_worker_tick(
     _user: User = Depends(require_admin_user),
 ):
-    """Run the global tick and report execution separately from runtime health."""
+    """Run one explicit admin tick; this does not become the background runtime."""
     try:
         result = await run_automation_reminder_tick()
         _record_ok(result)
@@ -44,6 +54,7 @@ async def automation_worker_tick(
             "healthy": runtime_healthy,
             "status": outbox_status,
             "code": None if runtime_healthy else f"outbox_{outbox_status}",
+            "runtime_owner": "manual_admin_tick",
             **result,
         }
     except Exception as exc:
