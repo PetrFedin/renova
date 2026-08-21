@@ -184,7 +184,7 @@ export function TechnicalSupervisionCard({
           <Text style={s.label}>{status?.active ? 'Заменить представителя' : 'Назначить представителя'}</Text>
           <TextInput
             value={profileCode}
-            onChangeText={(value) => setProfileCode(value.toUpperCase())}
+            onChangeText={(value: string) => setProfileCode(value.toUpperCase())}
             autoCapitalize="characters"
             autoCorrect={false}
             maxLength={8}
