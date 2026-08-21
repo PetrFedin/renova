@@ -197,5 +197,5 @@ test("documentation keeps capacity truth explicit", () => {
   assert.match(docs, /shared.*API.*heartbeat.*Redis/i);
   assert.match(docs, /load balancer/i);
   assert.match(docs, /real external staging/i);
-  assert.match(docs, /Redis utilization.*not.*claim/i);
+  assert.match(docs, /does \*\*not\*\* claim Redis utilization/i);
 });
