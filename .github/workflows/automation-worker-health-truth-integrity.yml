@@ -79,8 +79,11 @@ jobs:
                   "WORKER_REDIS_PREFIX",
                   'status = "missing"',
                   'status = "release_mismatch"',
+                  'status = "artifact_mismatch"',
                   'status = "healthy"',
+                  '"matching_sha_instances"',
                   '"matching_release_instances"',
+                  '"current_artifact_digest"',
               ],
           }
           sources = {"api": api, "admin": admin, "topology": topology}
