@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import "./jwtSecretPolicyIntegrity.test.mjs";
 
 const roots = ["backend/app", "backend/tests"];
 const joseImport = /^\s*(?:from\s+jose(?:\.|\s)|import\s+jose(?:\.|\s|,|$))/m;
