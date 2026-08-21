@@ -12,11 +12,12 @@ const backendImageWorkflow = read(".github/workflows/backend-image.yml");
 const jsDependencyWorkflow = read(".github/workflows/js-dependency-integrity.yml");
 const pythonEvaluator = read("scripts/evaluatePythonAudit.mjs");
 const gitleaksSanitizer = read("scripts/sanitizeGitleaksReport.mjs");
+const gitleaksConfig = read(".gitleaks.toml");
 const operationsDoc = read("docs/SECURITY-OPERATIONS.md");
 const prelaunchDoc = read("docs/PRELAUNCH-SECURITY-TEST.md");
 
 const expectedGitleaksImage =
-  "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f";
+  "ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9";
 
 test("security tooling versions are exact and reviewed", () => {
   assert.equal(read("security/PIP_AUDIT_VERSION").trim(), "2.10.1");
@@ -58,10 +59,14 @@ test("Python advisory exceptions are exact bounded reviewed and self-cleaning", 
   assert.match(pythonEvaluator, /New or changed Python advisories require review/);
 });
 
-test("secret scanning covers full history and persists only sanitized evidence", () => {
+test("secret scanning covers full history, detects a canary and persists only sanitized evidence", () => {
   assert.match(securityWorkflow, /fetch-depth: 0/);
-  assert.match(securityWorkflow, /gitleaks\/gitleaks:v8\.30\.1@sha256:/);
+  assert.match(securityWorkflow, /gitleaks\/gitleaks:v8\.30\.0@sha256:/);
+  assert.match(securityWorkflow, /Prove scanner detects a synthetic secret/);
+  assert.match(securityWorkflow, /ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789/);
+  assert.match(securityWorkflow, /Gitleaks canary was not detected/);
   assert.match(securityWorkflow, /git --no-banner --redact=100/);
+  assert.match(securityWorkflow, /--config \/repo\/\.gitleaks\.toml/);
   assert.match(securityWorkflow, /--report-format json/);
   assert.match(securityWorkflow, /sanitizeGitleaksReport\.mjs/);
   assert.match(securityWorkflow, /rm -f .*gitleaks-raw\.json/);
@@ -70,6 +75,17 @@ test("secret scanning covers full history and persists only sanitized evidence",
   assert.match(gitleaksSanitizer, /match: "never persisted/);
   assert.equal(gitleaksSanitizer.includes("finding.Secret"), false);
   assert.equal(gitleaksSanitizer.includes("finding.Match"), false);
+});
+
+test("Gitleaks allowlist is restricted to one synthetic test key", () => {
+  assert.match(gitleaksConfig, /useDefault = true/);
+  assert.match(gitleaksConfig, /targetRules = \["generic-api-key"\]/);
+  assert.match(gitleaksConfig, /condition = "AND"/);
+  assert.match(gitleaksConfig, /backend\/tests\/test_esign_idempotency_key\\\.py/);
+  assert.match(gitleaksConfig, /idempotency_key=\\?"renova-durable-intent-123\\?"/);
+  assert.equal((gitleaksConfig.match(/\[\[allowlists\]\]/g) || []).length, 1);
+  assert.equal(gitleaksConfig.includes("commits ="), false);
+  assert.equal(gitleaksConfig.includes("stopwords ="), false);
 });
 
 test("CodeQL scans both application languages with current major line", () => {
@@ -95,6 +111,8 @@ test("existing container and JavaScript advisory gates remain independent", () =
 test("security governance never equates CI with external readiness", () => {
   assert.match(operationsDoc, /protected: false/);
   assert.match(operationsDoc, /#247/);
+  assert.match(operationsDoc, /#256/);
+  assert.match(operationsDoc, /#257/);
   assert.match(operationsDoc, /NOT PROVEN \/ NOT READY/);
   assert.match(operationsDoc, /administrator review is therefore \*\*NOT PROVEN\*\*/);
   assert.match(operationsDoc, /external penetration\/abuse test: \*\*NOT EXECUTED\*\*/);
@@ -119,4 +137,5 @@ test("prelaunch abuse test remains explicitly unexecuted until evidence exists",
   assert.match(prelaunchDoc, /P1 \/ High/);
   assert.match(prelaunchDoc, /#238/);
   assert.match(prelaunchDoc, /#247/);
+  assert.match(prelaunchDoc, /#257/);
 });
