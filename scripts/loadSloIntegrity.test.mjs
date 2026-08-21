@@ -17,6 +17,14 @@ const capacityServicePath = path.join(
   "services",
   "capacity_runtime_service.py",
 );
+const runtimeTopologyPath = path.join(
+  root,
+  "backend",
+  "app",
+  "services",
+  "runtime_topology.py",
+);
+const apiMainPath = path.join(root, "backend", "app", "main.py");
 const expectedK6Image =
   "grafana/k6:2.1.0@sha256:65c920dc067d5e2e00befbf982af6ad6ad0117034e8b1c65817c7975c52d4669";
 
@@ -129,6 +137,21 @@ test("external staging load is protected release-bound and capacity-sampled", ()
   assert.match(workflow, /external-capacity-evaluate\.py/);
   assert.match(workflow, /CAPACITY_MIN_API_INSTANCES: "2"/);
   assert.match(workflow, /external-load-reconciliation\.sh/);
+  assert.match(workflow, /backend\/app\/services\/runtime_topology\.py/);
+  assert.match(workflow, /backend\/app\/main\.py/);
+});
+
+test("shared API topology truth is independent of load-balancer routing", () => {
+  const topology = fs.readFileSync(runtimeTopologyPath, "utf8");
+  const main = fs.readFileSync(apiMainPath, "utf8");
+  assert.match(topology, /API_REDIS_PREFIX = "renova:runtime:api:"/);
+  assert.match(topology, /class ApiHeartbeatPublisher/);
+  assert.match(topology, /async def api_heartbeat_loop/);
+  assert.match(topology, /async def api_pool_snapshot/);
+  assert.match(topology, /matching_release_instances/);
+  assert.match(main, /ApiHeartbeatPublisher/);
+  assert.match(main, /await api_heartbeat_publisher\.publish\(\)/);
+  assert.match(main, /policy\.name in \{"staging", "production"\}/);
 });
 
 test("runtime capacity evidence is bounded and refuses invented infrastructure metrics", () => {
@@ -137,16 +160,21 @@ test("runtime capacity evidence is bounded and refuses invented infrastructure m
   const evaluator = fs.readFileSync(evaluatorPath, "utf8");
   assert.match(service, /configured_connection_capacity/);
   assert.match(service, /utilization_percent/);
-  assert.match(service, /instance_id/);
+  assert.match(service, /api_pool/);
   assert.match(service, /probe_latency_ms/);
   assert.match(service, /redis_utilization_available/);
   assert.match(service, /provider_cpu_memory_available/);
   assert.match(sampler, /capacity-samples\.ndjson/);
   assert.match(sampler, /\/api\/v1\/admin\/release-health/);
+  assert.match(sampler, /_bounded_api_pool/);
+  assert.match(sampler, /matching_release_instances/);
   assert.match(evaluator, /DB_POOL_MAX_PERCENT = 90\.0/);
   assert.match(evaluator, /DB_PROBE_P95_MAX_MS = 250\.0/);
   assert.match(evaluator, /REDIS_PROBE_P95_MAX_MS = 100\.0/);
-  assert.match(evaluator, /api_instances_observed/);
+  assert.match(evaluator, /api_artifact_mixed/);
+  assert.match(evaluator, /worker_artifact_mixed/);
+  assert.match(evaluator, /shared_api_heartbeat_registry/);
+  assert.match(evaluator, /mixed_release_instances_allowed/);
   assert.match(evaluator, /redis_utilization_percent.*not_claimed/s);
 });
 
@@ -166,6 +194,8 @@ test("documentation keeps capacity truth explicit", () => {
   assert.match(docs, /WebSocket/);
   assert.match(docs, /webhook/i);
   assert.match(docs, /two API/i);
+  assert.match(docs, /shared.*API.*heartbeat.*Redis/i);
+  assert.match(docs, /load balancer/i);
   assert.match(docs, /real external staging/i);
   assert.match(docs, /Redis utilization.*not.*claim/i);
 });
