@@ -193,7 +193,7 @@ test("documentation keeps capacity truth explicit", () => {
   assert.match(docs, /Bearer/);
   assert.match(docs, /WebSocket/);
   assert.match(docs, /webhook/i);
-  assert.match(docs, /two API/i);
+  assert.match(docs, /at least `2` live.*API/i);
   assert.match(docs, /shared.*API.*heartbeat.*Redis/i);
   assert.match(docs, /load balancer/i);
   assert.match(docs, /real external staging/i);
