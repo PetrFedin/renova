@@ -36,6 +36,10 @@ async def _seed_user(session, *, user_id: str, phone: str, role: UserRole, profi
             profile_code=profile_code,
         )
     )
+    # The project mapper does not carry an ORM relationship to the customer, so
+    # persist the FK target explicitly before inserting the project. This keeps
+    # the test focused on assignment concurrency rather than fixture flush order.
+    await session.flush()
 
 
 @pytest.mark.asyncio
