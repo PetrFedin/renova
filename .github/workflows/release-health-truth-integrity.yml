@@ -45,6 +45,7 @@ jobs:
             tests/test_release_health_truth_integrity.py \
             tests/test_release_runtime_health_coherence.py \
             tests/test_automation_worker_health_truth.py \
+            tests/test_runtime_topology_integrity.py \
             tests/test_otp_redis_recovery_integrity.py \
             2>&1 | tee release-health-truth-contracts.log
       - name: Scan runtime code for retired health formulas and stubs
@@ -60,16 +61,24 @@ jobs:
           admin = Path("backend/app/api/v1/admin.py").read_text(encoding="utf-8")
           worker = Path("backend/app/api/v1/automation_worker.py").read_text(encoding="utf-8")
           helper = Path("backend/app/services/runtime_health_truth.py").read_text(encoding="utf-8")
+          topology = Path("backend/app/services/runtime_topology.py").read_text(encoding="utf-8")
           otp = Path("backend/app/services/otp_redis_recovery.py").read_text(encoding="utf-8")
           release_health = Path("backend/app/services/release_health_service.py").read_text(encoding="utf-8")
 
           required = {
               "admin": [
-                  "automation_worker_runtime_truth(worker_metrics)",
+                  "worker_pool_snapshot()",
+                  '"runtime_topology"',
+                  '"background_jobs_embedded": False',
                   '"otp_store": otp_store',
               ],
-              "worker": ["automation_worker_runtime_truth(metrics)"],
+              "worker": ["worker_pool_snapshot()", '"manual_tick"'],
               "helper": ["outbox_status == \"critical\"", "status = \"unknown\""],
+              "topology": [
+                  'status = "missing"',
+                  'status = "release_mismatch"',
+                  '"matching_release_instances"',
+              ],
               "otp": [
                   '"retry_after_seconds"',
                   '"connected"',
@@ -86,6 +95,7 @@ jobs:
               "admin": admin,
               "worker": worker,
               "helper": helper,
+              "topology": topology,
               "otp": otp,
               "release_health": release_health,
           }
