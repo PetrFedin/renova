@@ -1,4 +1,5 @@
 """Конфигурация backend Renova."""
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.admin_identity import AdminIdentityConfig, parse_admin_user_ids
@@ -11,6 +12,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     app_name: str = "Renova API"
     database_url: str = "sqlite+aiosqlite:///./renova.db"
+    # SQLAlchemy QueuePool defaults made explicit so capacity/saturation has a
+    # reviewed denominator instead of depending on implicit library defaults.
+    db_pool_size: int = Field(default=5, ge=1, le=200)
+    db_max_overflow: int = Field(default=10, ge=0, le=500)
+    db_pool_timeout_sec: float = Field(default=30.0, gt=0, le=300)
     redis_url: str | None = None
     allow_account_purge: bool = False
     account_purge_ops_secret: str | None = None
