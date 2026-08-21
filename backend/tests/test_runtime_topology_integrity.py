@@ -39,14 +39,19 @@ class FakeRedis:
         self.closed = True
 
 
-def _worker_payload(*, instance_id: str, release: str) -> str:
+def _worker_payload(
+    *,
+    instance_id: str,
+    release: str,
+    artifact_digest: str = "sha256:test",
+) -> str:
     return json.dumps(
         {
             "role": "worker",
             "status": "healthy",
             "instance_id": instance_id,
             "release": release,
-            "artifact_digest": "sha256:test",
+            "artifact_digest": artifact_digest,
             "started_at": "2026-08-21T10:00:00+00:00",
             "heartbeat_at": "2026-08-21T10:00:05+00:00",
             "active_tasks": ["domain_outbox", "automation_reminders"],
@@ -138,31 +143,49 @@ async def test_worker_publisher_updates_shared_and_local_heartbeat(tmp_path, mon
 
 
 @pytest.mark.asyncio
-async def test_worker_pool_requires_current_release(monkeypatch):
+async def test_worker_pool_requires_current_release_and_artifact(monkeypatch):
     monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "redis_url", "redis://redacted.invalid/0")
     monkeypatch.setenv("RENOVA_GIT_SHA", "release-current")
+    monkeypatch.setenv("RENOVA_IMAGE_DIGEST", "sha256:current")
     redis = FakeRedis(
         {
             f"{runtime_topology.WORKER_REDIS_PREFIX}a": _worker_payload(
-                instance_id="worker-a", release="release-old"
+                instance_id="worker-a",
+                release="release-old",
+                artifact_digest="sha256:current",
             )
         }
     )
 
-    mismatch = await runtime_topology.worker_pool_snapshot(redis)
-    assert mismatch["healthy"] is False
-    assert mismatch["status"] == "release_mismatch"
-    assert mismatch["live_instances"] == 1
-    assert mismatch["matching_release_instances"] == 0
+    release_mismatch = await runtime_topology.worker_pool_snapshot(redis)
+    assert release_mismatch["healthy"] is False
+    assert release_mismatch["status"] == "release_mismatch"
+    assert release_mismatch["live_instances"] == 1
+    assert release_mismatch["matching_sha_instances"] == 0
+    assert release_mismatch["matching_release_instances"] == 0
 
     redis.values[f"{runtime_topology.WORKER_REDIS_PREFIX}b"] = _worker_payload(
-        instance_id="worker-b", release="release-current"
+        instance_id="worker-b",
+        release="release-current",
+        artifact_digest="sha256:wrong",
+    )
+    artifact_mismatch = await runtime_topology.worker_pool_snapshot(redis)
+    assert artifact_mismatch["healthy"] is False
+    assert artifact_mismatch["status"] == "artifact_mismatch"
+    assert artifact_mismatch["matching_sha_instances"] == 1
+    assert artifact_mismatch["matching_release_instances"] == 0
+
+    redis.values[f"{runtime_topology.WORKER_REDIS_PREFIX}c"] = _worker_payload(
+        instance_id="worker-c",
+        release="release-current",
+        artifact_digest="sha256:current",
     )
     healthy = await runtime_topology.worker_pool_snapshot(redis)
     assert healthy["healthy"] is True
     assert healthy["status"] == "healthy"
-    assert healthy["live_instances"] == 2
+    assert healthy["live_instances"] == 3
+    assert healthy["matching_sha_instances"] == 2
     assert healthy["matching_release_instances"] == 1
     assert "redis://" not in json.dumps(healthy)
 
