@@ -207,12 +207,15 @@ async def worker_pool_snapshot(redis_client: Redis | None = None) -> dict[str, A
     deployed = settings.normalized_environment in {"staging", "production"}
     configured = redis_client is not None or bool(redis_url)
     current_release = release_sha()
+    current_digest = release_digest()
     base: dict[str, Any] = {
         "required": True,
         "configured": configured,
         "runtime_owner": "renova-worker",
         "current_release": current_release,
+        "current_artifact_digest": current_digest,
         "live_instances": 0,
+        "matching_sha_instances": 0,
         "matching_release_instances": 0,
         "workers": [],
     }
@@ -257,16 +260,26 @@ async def worker_pool_snapshot(redis_client: Redis | None = None) -> dict[str, A
     workers.sort(key=lambda item: item["instance_id"])
 
     live = len(workers)
-    matching = (
+    sha_matching = (
         live
         if current_release == "unknown"
         else sum(1 for item in workers if item["release"] == current_release)
     )
+
+    def matches_current_artifact(item: dict[str, Any]) -> bool:
+        sha_ok = current_release == "unknown" or item["release"] == current_release
+        digest_ok = current_digest == "unknown" or item["artifact_digest"] == current_digest
+        return sha_ok and digest_ok
+
+    matching = sum(1 for item in workers if matches_current_artifact(item))
     if live == 0:
         status = "missing"
         healthy = False
-    elif matching == 0:
+    elif sha_matching == 0:
         status = "release_mismatch"
+        healthy = False
+    elif matching == 0:
+        status = "artifact_mismatch"
         healthy = False
     else:
         status = "healthy"
@@ -276,6 +289,7 @@ async def worker_pool_snapshot(redis_client: Redis | None = None) -> dict[str, A
         "healthy": healthy,
         "status": status,
         "live_instances": live,
+        "matching_sha_instances": sha_matching,
         "matching_release_instances": matching,
         "workers": workers[:32],
     }
