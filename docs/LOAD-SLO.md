@@ -92,11 +92,12 @@ HTTP/k6 thresholds:
 
 Runtime-capacity thresholds sampled throughout the run:
 
-- observed API process count: `>= 2` distinct anonymized `instance_id` values;
-- maximum SQLAlchemy pool utilization for any observed API process: `< 90%`;
+- shared API registry: at least `2` live anonymized API `instance_id` values in every valid sample;
+- every live API replica must match the exact candidate Git SHA **and** image digest; mixed old/new API rollout state fails the run;
+- maximum SQLAlchemy pool utilization for any exact API process: `< 90%`;
 - internal `SELECT 1` database probe p95: `< 250 ms`;
 - Redis `PING` probe p95: `< 100 ms` and Redis available in every valid sample;
-- worker pool: healthy with at least one instance matching the exact release SHA/image digest throughout the run;
+- worker pool: healthy, at least one exact worker, and every live worker must match the candidate SHA/image digest during the capacity run;
 - outbox: no poisoned events, no stale leases, oldest pending age `<= 300 s`.
 
 Push receipt pending age is retained in evidence but is not given the same 300-second threshold because Expo receipts intentionally have a provider delay before reconciliation. Stale push-receipt leases still fail the capacity gate.
@@ -105,21 +106,37 @@ Renova does **not** claim Redis utilization percentage, provider CPU/memory satu
 
 These limits must be calibrated from real staging and pilot measurements before being promoted to contractual SLOs.
 
+## Shared API capacity registry
+
+Every API process with Redis configured publishes a short-lived, secret-free heartbeat into the shared API heartbeat registry in Redis. The heartbeat contains only:
+
+- anonymized `instance_id`;
+- release Git SHA and immutable image digest;
+- timestamps;
+- that process's SQLAlchemy pool configuration and current pressure.
+
+Heartbeats refresh every five seconds and expire after twenty seconds. Shutdown removes the key explicitly. Staging and production already require Redis; an API process must publish its first shared heartbeat before it starts serving. Local/test remains tolerant of an optional unavailable Redis configuration.
+
+`/api/v1/admin/release-health` aggregates the registry, so API replica count and pool pressure do not depend on which replica the load balancer happens to route the sampler to. This specifically prevents sticky load-balancer behavior from making one responding process look like the whole deployment.
+
+The shared registry is operational telemetry only. It does not move business work into the API and does not undo the `renova-api` / `renova-worker` runtime split.
+
 ## Runtime capacity sampling
 
 `scripts/external-capacity-sampler.py` calls the protected `/api/v1/admin/release-health` endpoint every five seconds while k6 is running. It writes only sanitized fields to `capacity-samples.ndjson`:
 
 - exact release SHA and image digest;
-- anonymized per-API-process SQLAlchemy pool state;
+- the shared API registry with exact-artifact counts and per-API SQLAlchemy pool state;
+- the responding API process's local pool as diagnostic context only;
 - database probe latency/availability;
 - Redis probe latency/availability;
 - shared worker-pool health/release match;
 - outbox pending/retryable/poison/stale/oldest age;
 - push receipt pending/due/stale information.
 
-The sampler does not persist bearer tokens, database URLs, Redis URLs, hostnames, exception messages, provider secrets or raw release-health payloads.
+The sampler does not persist bearer tokens, database URLs, Redis URLs, hostnames, process IDs, exception messages, provider secrets or raw release-health payloads.
 
-`scripts/external-capacity-evaluate.py` evaluates all retained samples after the scenario. If telemetry disappears during load, the release identity changes, fewer than two API instances are observed, the worker pool becomes unhealthy, or a candidate limit is crossed, the capacity step fails. A missing signal is incomplete evidence, not a pass.
+`scripts/external-capacity-evaluate.py` evaluates all retained samples after the scenario. If telemetry disappears during load, the release identity changes, fewer than two exact API instances are present, any live API/worker belongs to another release artifact, a pool value is missing, the worker pool becomes unhealthy, or a candidate limit is crossed, the capacity step fails. A missing signal is incomplete evidence, not a pass.
 
 ## Protected external staging execution
 
@@ -157,7 +174,7 @@ A pass requires all three layers to pass together:
 2. runtime capacity evaluation;
 3. post-load queue reconciliation.
 
-A run that meets HTTP thresholds while queues grow without recovery is a failed capacity result. A run with missing DB/Redis/worker telemetry is incomplete evidence. A run that samples only one API process is not production-like two-replica proof.
+A run that meets HTTP thresholds while queues grow without recovery is a failed capacity result. A run with missing DB/Redis/worker telemetry is incomplete evidence. A shared API registry with fewer than two exact-artifact replicas is not production-like two-replica proof. A mixed release during the test is also a failure, not something to average away.
 
 Real external Sentry/OTLP/log ingestion, cloud CPU/memory metrics, provider API degradation/reconciliation, paging delivery and human acknowledgement remain separate production proofs. This load gate does not fabricate them.
 
@@ -165,4 +182,4 @@ Real external Sentry/OTLP/log ingestion, cloud CPU/memory metrics, provider API 
 
 Do not state that Renova “supports N users” from scenario VU counts alone. Record the exact topology, fixture count, scenario, release identity, thresholds, queue state, observed API instances, resource pressure and any degraded providers.
 
-Capacity/SLO becomes **PROVEN for that tested staging topology only** when the manual external staging run succeeds, all evidence files are retained, and the exact release artifact matches the promotion candidate. Pull-request CI proves the gate exists and is internally consistent; it does not prove real-world capacity.
+Capacity/SLO becomes **PROVEN for that tested staging topology only** when the manual external staging run succeeds, all evidence files are retained, and every live API/worker used in the run belongs to the exact release artifact that is the promotion candidate. Pull-request CI proves the gate exists and is internally consistent; it does not prove real-world capacity.
