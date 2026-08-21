@@ -5,6 +5,7 @@ on:
     paths:
       - "load/**"
       - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/test_external_capacity_evidence.py"
       - "scripts/external-load-reconciliation.sh"
       - "scripts/external-capacity-sampler.py"
       - "scripts/external-capacity-evaluate.py"
@@ -20,6 +21,7 @@ on:
     paths:
       - "load/**"
       - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/test_external_capacity_evidence.py"
       - "scripts/external-load-reconciliation.sh"
       - "scripts/external-capacity-sampler.py"
       - "scripts/external-capacity-evaluate.py"
@@ -91,12 +93,14 @@ jobs:
         run: node --test scripts/loadSloIntegrity.test.mjs
         env:
           K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
+      - name: Validate capacity evidence semantics
+        run: python3 scripts/test_external_capacity_evidence.py
       - name: Validate operational scripts
         shell: bash
         run: |
           set -euo pipefail
           bash -n scripts/external-load-reconciliation.sh
-          python3 -m py_compile scripts/external-capacity-sampler.py scripts/external-capacity-evaluate.py
+          python3 -m py_compile scripts/external-capacity-sampler.py scripts/external-capacity-evaluate.py scripts/test_external_capacity_evidence.py
       - name: Parse all k6 modules with exact runtime
         env:
           K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
@@ -151,7 +155,11 @@ jobs:
           [[ "$ref" =~ ^grafana/k6:2\.1\.0@sha256:[0-9a-f]{64}$ ]]
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - name: Validate source contract before remote execution
-        run: node --test scripts/loadSloIntegrity.test.mjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/loadSloIntegrity.test.mjs
+          python3 scripts/test_external_capacity_evidence.py
         env:
           K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
       - name: Verify exact immutable staging release before load
