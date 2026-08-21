@@ -1,0 +1,85 @@
+name: Provider operations integrity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/app/models/provider_runtime.py"
+      - "backend/app/services/provider_reconciliation_service.py"
+      - "backend/tests/test_provider_reconciliation_integrity.py"
+      - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
+      - ".github/workflows/provider-operations-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/models/provider_runtime.py"
+      - "backend/app/services/provider_reconciliation_service.py"
+      - "backend/tests/test_provider_reconciliation_integrity.py"
+      - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
+      - ".github/workflows/provider-operations-integrity.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-operations-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  provider-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova
+        ports:
+          - 5441:5432
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./provider-operations-tests.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-provider-operations-test-secret
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12.13"
+          check-latest: false
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Provider reconciliation lifecycle contracts
+        working-directory: backend
+        run: poetry run pytest -q tests/test_provider_reconciliation_integrity.py
+      - name: PostgreSQL migration from current production head
+        working-directory: backend
+        env:
+          ENVIRONMENT: staging
+          DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5441/renova
+          PUBLIC_BASE_URL: https://ci-provider-ops.example.com
+          SECRET_KEY: ci-provider-operations-signing-key-32-bytes-minimum
+          REDIS_URL: redis://127.0.0.1:6379/0
+          TWILIO_SID: AC00000000000000000000000000000000
+          TWILIO_TOKEN: ci-provider-token
+          TWILIO_FROM: "+15005550006"
+        run: |
+          set -euo pipefail
+          poetry run alembic upgrade head
+          test "$(poetry run alembic current | awk '{print $1}')" = "w15providerops01"
