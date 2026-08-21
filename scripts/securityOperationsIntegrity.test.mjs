@@ -82,7 +82,7 @@ test("Python advisory exceptions are exact bounded reviewed and self-cleaning", 
 
 test("secret scanning proves its detector without committing a complete canary", () => {
   assert.match(securityWorkflow, /fetch-depth: 0/);
-  assert.match(securityWorkflow, /gitleaks\/gitleaks:v8\.30\.0@sha256:/);
+  assert.match(securityWorkflow, /security\/GITLEAKS_IMAGE/);
   assert.match(securityWorkflow, /Prove scanner detects a synthetic secret/);
   assert.match(securityWorkflow, /first='8dyfuiRyq=vVc3RRr'/);
   assert.match(securityWorkflow, /second='_edRk-fK__JItpZ'/);
@@ -115,7 +115,7 @@ test("Gitleaks allowlist is restricted to one synthetic test key", () => {
   assert.match(gitleaksConfig, /useDefault = true/);
   assert.match(gitleaksConfig, /targetRules = \["generic-api-key"\]/);
   assert.match(gitleaksConfig, /condition = "AND"/);
-  assert.match(gitleaksConfig, /backend\/tests\/test_esign_idempotency_key\\\.py/);
+  assert.match(gitleaksConfig, /\(\?:\^\|\/\)backend\/tests\/test_esign_idempotency_key\\\.py\$/);
   assert.match(gitleaksConfig, /idempotency_key=\\?"renova-durable-intent-123\\?"/);
   assert.equal((gitleaksConfig.match(/\[\[allowlists\]\]/g) || []).length, 1);
   assert.equal(gitleaksConfig.includes("commits ="), false);
@@ -148,8 +148,8 @@ test("security governance never equates CI with external readiness", () => {
   assert.match(operationsDoc, /#256/);
   assert.match(operationsDoc, /#257/);
   assert.match(operationsDoc, /NOT PROVEN \/ NOT READY/);
-  assert.match(operationsDoc, /administrator review is therefore \*\*NOT PROVEN\*\*/);
-  assert.match(operationsDoc, /external penetration\/abuse test: \*\*NOT EXECUTED\*\*/);
+  assert.match(operationsDoc, /Repository\/admin access review is therefore \*\*NOT PROVEN\*\*/);
+  assert.match(operationsDoc, /external penetration\/abuse test: \*\*NOT EXECUTED/);
   assert.match(operationsDoc, /90 days/);
   assert.match(operationsDoc, /Least privilege/);
   assert.match(operationsDoc, /revoke or rotate/);
