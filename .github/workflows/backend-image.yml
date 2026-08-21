@@ -5,6 +5,7 @@ on:
     paths:
       - ".dockerignore"
       - "backend/Dockerfile"
+      - "backend/docker/**"
       - "backend/poetry.lock"
       - "backend/pyproject.toml"
       - "backend/app/**"
@@ -16,6 +17,7 @@ on:
     paths:
       - ".dockerignore"
       - "backend/Dockerfile"
+      - "backend/docker/**"
       - "backend/poetry.lock"
       - "backend/pyproject.toml"
       - "backend/app/**"
@@ -52,13 +54,14 @@ jobs:
           build-args: |
             VCS_REF=${{ github.sha }}
 
-      - name: Verify immutable metadata and non-root runtime
+      - name: Verify immutable metadata, commands and non-root runtime
         shell: bash
         run: |
           set -euo pipefail
           test "$(docker image inspect --format '{{.Config.User}}' renova-api:ci)" = "10001:10001"
           test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' renova-api:ci)" = "${GITHUB_SHA}"
-          docker run --rm --entrypoint sh renova-api:ci -c 'test "$(id -u):$(id -g)" = "10001:10001"'
+          test "$(docker image inspect --format '{{json .Config.Cmd}}' renova-api:ci)" = '["renova-api"]'
+          docker run --rm --entrypoint sh renova-api:ci -c 'test "$(id -u):$(id -g)" = "10001:10001" && command -v renova-api && command -v renova-worker'
 
       - name: Fail on fixed high or critical image vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
@@ -70,7 +73,7 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL,HIGH
 
-      - name: Exercise liveness, readiness and release identity
+      - name: Exercise API liveness, readiness and release identity
         shell: bash
         run: |
           set -euo pipefail
@@ -91,7 +94,8 @@ jobs:
 
           for _ in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:18100/health >/tmp/renova-image-health.json \
-              && curl -fsS http://127.0.0.1:18100/ready >/tmp/renova-image-ready.json; then
+              && curl -fsS http://127.0.0.1:18100/ready >/tmp/renova-image-ready.json \
+              && test "$(docker inspect --format '{{.State.Health.Status}}' renova-api-ci)" = "healthy"; then
               break
             fi
             sleep 1
@@ -99,6 +103,7 @@ jobs:
 
           curl -fsS http://127.0.0.1:18100/health >/tmp/renova-image-health.json
           curl -fsS http://127.0.0.1:18100/ready >/tmp/renova-image-ready.json
+          test "$(docker inspect --format '{{.State.Health.Status}}' renova-api-ci)" = "healthy"
           python - <<'PY'
           import json
           import os
@@ -109,9 +114,44 @@ jobs:
           expected = os.environ['GITHUB_SHA']
           assert health['status'] == 'ok', health
           assert health['release'] == expected, health
+          assert health['background_runtime'] == 'renova-worker', health
           assert ready['status'] == 'ready', ready
           assert ready['release'] == expected, ready
           PY
+
+      - name: Exercise worker role-aware health from the same image
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs renova-worker-ci > /tmp/renova-backend-worker-image.log 2>&1 || true
+            docker rm -f renova-worker-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name renova-worker-ci \
+            -e ENVIRONMENT=development \
+            -e DATABASE_URL=sqlite+aiosqlite:////tmp/renova-worker.db \
+            -e ALLOW_CREATE_ALL=true \
+            -e ALLOW_DEMO_SEED=false \
+            -e AUTOMATION_REMINDERS_ENABLED=false \
+            -e PUSH_RECEIPT_WORKER_ENABLED=false \
+            renova-api:ci renova-worker >/dev/null
+
+          for _ in $(seq 1 45); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' renova-worker-ci)"
+            if [ "$status" = "healthy" ]; then
+              break
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' renova-worker-ci)" != "true" ]; then
+              docker logs renova-worker-ci >&2 || true
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$(docker inspect --format '{{.State.Health.Status}}' renova-worker-ci)" = "healthy"
+          docker exec renova-worker-ci sh -c 'test "$(cat /tmp/renova-runtime-role)" = worker && test -s /tmp/renova-worker-heartbeat.json'
+          docker logs renova-worker-ci 2>&1 | grep -q "renova worker started"
 
       - name: Upload container diagnostics
         if: always()
@@ -122,6 +162,7 @@ jobs:
           retention-days: 14
           path: |
             /tmp/renova-backend-image.log
+            /tmp/renova-backend-worker-image.log
             /tmp/renova-image-health.json
             /tmp/renova-image-ready.json
 
@@ -172,6 +213,7 @@ jobs:
             echo "- Git SHA: \`${GITHUB_SHA}\`"
             echo "- Tag: \`${IMAGE}:sha-${GITHUB_SHA}\`"
             echo "- Digest: \`${DIGEST}\`"
+            echo "- Process commands: \`renova-api\`, \`renova-worker\`"
             echo "- SBOM/provenance: attached by BuildKit"
             echo "- Signature: Sigstore keyless"
           } >> "$GITHUB_STEP_SUMMARY"
