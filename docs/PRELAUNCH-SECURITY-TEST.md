@@ -2,7 +2,7 @@
 
 **Status: NOT EXECUTED. No external penetration-test proof is claimed.**
 
-This checklist is the minimum adversarial review for the existing Renova product before broad production launch. It does not authorize testing against third-party provider production systems. Execute provider-related cases against approved sandbox/staging surfaces unless the provider explicitly authorizes otherwise.
+This checklist is the minimum adversarial review for the existing Renova product before broad production launch. It does not authorize testing against third-party provider production systems. Execute provider-related cases against approved sandbox/staging surfaces unless the provider explicitly authorizes otherwise. Actual independent execution and retest evidence are tracked by **#257**.
 
 ## Evidence header
 
@@ -131,6 +131,7 @@ The broader provider reconciliation/manual-recovery acceptance is tracked separa
 - a pull request introducing a Python advisory fails the Python advisory gate unless an exact, reviewed, unexpired exception exists;
 - stale/expired Python exceptions fail;
 - a synthetic/real secret in current history fails the full-history Gitleaks gate and retained evidence is redacted;
+- the Gitleaks scanner itself must detect the synthetic canary before the repository scan can proceed;
 - CodeQL runs for Python and JavaScript/TypeScript;
 - fixed HIGH/CRITICAL container vulnerabilities fail the existing Trivy image gate;
 - reviewed lockfiles remain deterministic; no runtime/release workflow performs implicit package resolution or `latest` tooling;
@@ -148,8 +149,8 @@ Before launch, an authorized repository/organization owner must separately verif
 - stale credentials/integrations are removed;
 - production environment approvals are configured where required.
 
-As of 2026-08-21, repository API evidence observed during this hardening reports `main` as unprotected; **#247 remains a launch blocker** until re-verified as enabled.
+As of 2026-08-21, repository API evidence observed during this hardening reports `main` as unprotected; **#247 remains a launch blocker** until re-verified as enabled. The broader authorized repository/organization access review is tracked by **#256** and is not satisfied by CI.
 
 ## Completion record
 
-This checklist remains **NOT EXECUTED** until a tester fills the evidence header, records findings and completes retesting. CodeQL, dependency scanners, CI and internal source review do not change that status by themselves.
+This checklist remains **NOT EXECUTED** until a tester fills the evidence header, records findings and completes retesting. CodeQL, dependency scanners, CI and internal source review do not change that status by themselves. The independent execution/retest task is **#257**.
