@@ -210,6 +210,13 @@ jobs:
             "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json" \
             "$RUNNER_TEMP/renova-security/gitleaks-history-summary.json" \
             "$RUNNER_TEMP/renova-security/gitleaks-history.exit"
+      - name: Materialize proposed tracked tree without Git metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/gitleaks-tree"
+          mkdir -p "$RUNNER_TEMP/gitleaks-tree"
+          git archive --format=tar HEAD | tar -xf - -C "$RUNNER_TEMP/gitleaks-tree"
       - name: Scan proposed current tree with redaction
         env:
           GITLEAKS_IMAGE: ${{ steps.gitleaks.outputs.image }}
@@ -220,13 +227,14 @@ jobs:
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             -v "$PWD:/repo:ro" \
+            -v "$RUNNER_TEMP/gitleaks-tree:/tree:ro" \
             -v "$RUNNER_TEMP/renova-security:/out" \
             "$GITLEAKS_IMAGE" \
             dir --no-banner --redact=100 \
             --config /repo/.gitleaks.toml \
             --report-format json \
             --report-path /out/gitleaks-tree-raw.json \
-            /repo
+            /tree
           rc=$?
           set -e
           printf '%s\n' "$rc" > "$RUNNER_TEMP/renova-security/gitleaks-tree.exit"
@@ -241,10 +249,12 @@ jobs:
             "$RUNNER_TEMP/renova-security/gitleaks-tree-raw.json" \
             "$RUNNER_TEMP/renova-security/gitleaks-tree-summary.json" \
             "$RUNNER_TEMP/renova-security/gitleaks-tree.exit"
-      - name: Delete raw secret-scan reports
+      - name: Delete raw secret-scan reports and materialized tree
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json" "$RUNNER_TEMP/renova-security/gitleaks-tree-raw.json"
+        run: |
+          rm -f "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json" "$RUNNER_TEMP/renova-security/gitleaks-tree-raw.json"
+          rm -rf "$RUNNER_TEMP/gitleaks-tree"
       - name: Upload sanitized secret-scan evidence
         if: always()
         uses: actions/upload-artifact@v4
