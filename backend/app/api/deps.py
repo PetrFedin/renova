@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import Depends, Header, HTTPException
-from jose import JWTError
+from jwt.exceptions import InvalidTokenError as JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
