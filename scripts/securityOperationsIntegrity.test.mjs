@@ -35,7 +35,7 @@ test("Python audit materializes the exact production Poetry environment", () => 
   assert.match(securityWorkflow, /poetry check --lock/);
   assert.match(securityWorkflow, /poetry sync --only main --no-root/);
   assert.match(securityWorkflow, /python -m pip check/);
-  assert.match(securityWorkflow, /pip-audit \\\n            --path/);
+  assert.match(securityWorkflow, /pip-audit[\s\S]*--path/);
   assert.match(securityWorkflow, /--strict/);
   assert.match(securityWorkflow, /evaluatePythonAudit\.mjs/);
   assert.match(securityWorkflow, /python-audit-summary\.json/);
@@ -75,6 +75,7 @@ test("CodeQL scans both application languages with current major line", () => {
   assert.match(codeqlWorkflow, /github\/codeql-action\/analyze@v4/);
   assert.match(codeqlWorkflow, /- python/);
   assert.match(codeqlWorkflow, /- javascript-typescript/);
+  assert.match(codeqlWorkflow, /build-mode: none/);
   assert.equal(codeqlWorkflow.includes("@latest"), false);
 });
 
