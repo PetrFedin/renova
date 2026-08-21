@@ -84,31 +84,62 @@ async def lifespan(app: FastAPI):
         logger.info("demo seed skipped (environment=%s)", policy.name)
 
     # API-local infrastructure only. Durable background processing belongs to
-    # the explicit `renova-worker` process from the same immutable image.
+    # the explicit `renova-worker` process from the same immutable image. The
+    # API heartbeat is operational topology truth, not a durable business job.
     redis_stop: asyncio.Event | None = None
     redis_task: asyncio.Task | None = None
+    api_heartbeat_stop: asyncio.Event | None = None
+    api_heartbeat_task: asyncio.Task | None = None
+    api_heartbeat_publisher = None
     if (settings.redis_url or "").strip():
+        from app.services.runtime_topology import (
+            ApiHeartbeatPublisher,
+            api_heartbeat_loop,
+        )
         from app.services.ws_redis_bridge import redis_subscriber_loop
+
+        api_heartbeat_publisher = ApiHeartbeatPublisher()
+        # A deployed API must not start serving while its shared topology truth
+        # cannot be published. Runtime policy already requires Redis in staging/prod.
+        await api_heartbeat_publisher.publish()
+        api_heartbeat_stop = asyncio.Event()
+        api_heartbeat_task = asyncio.create_task(
+            api_heartbeat_loop(api_heartbeat_stop, api_heartbeat_publisher)
+        )
 
         redis_stop = asyncio.Event()
         redis_task = asyncio.create_task(redis_subscriber_loop(redis_stop))
-        logger.info("ws redis bridge enabled")
+        logger.info("ws redis bridge and API topology heartbeat enabled")
 
-    yield
-
-    if redis_stop is not None:
-        redis_stop.set()
-    if redis_task is not None:
-        try:
-            await asyncio.wait_for(redis_task, timeout=5)
-        except Exception:
-            redis_task.cancel()
     try:
-        await rate_limiter.close()
+        yield
     finally:
-        observability_runtime = getattr(app.state, "observability_runtime", None)
-        if observability_runtime is not None:
-            await asyncio.to_thread(observability_runtime.shutdown)
+        if redis_stop is not None:
+            redis_stop.set()
+        if api_heartbeat_stop is not None:
+            api_heartbeat_stop.set()
+
+        if redis_task is not None:
+            try:
+                await asyncio.wait_for(redis_task, timeout=5)
+            except Exception:
+                redis_task.cancel()
+        if api_heartbeat_task is not None:
+            try:
+                await asyncio.wait_for(api_heartbeat_task, timeout=5)
+            except Exception:
+                api_heartbeat_task.cancel()
+
+        if api_heartbeat_publisher is not None:
+            await api_heartbeat_publisher.remove()
+            await api_heartbeat_publisher.close()
+
+        try:
+            await rate_limiter.close()
+        finally:
+            observability_runtime = getattr(app.state, "observability_runtime", None)
+            if observability_runtime is not None:
+                await asyncio.to_thread(observability_runtime.shutdown)
 
 
 setup_logging()
