@@ -15,7 +15,7 @@ The current security control surface includes independent layers:
 | JavaScript dependencies | `JS dependency integrity` | reviewed lockfile plus bounded production advisory baseline; no forced audit fix |
 | Python production dependencies | `Security operations integrity / python-runtime-advisories` | audit the exact Poetry production environment against OSV; every advisory must be fixed or explicitly time-bounded |
 | Container OS/libraries | `Backend image integrity` | Trivy blocks fixed HIGH/CRITICAL findings; unfixed findings remain visible rather than forcing unsafe upgrades |
-| Secret exposure | `Security operations integrity / full-history-secret-scan` | full Git-history Gitleaks scan with redaction, synthetic detection canary, and only narrow evidence-backed false-positive exceptions |
+| Secret exposure | `Security operations integrity / full-history-secret-scan` | scan merged base history plus the complete proposed working tree with redaction, a runtime-only detection canary, and only narrow evidence-backed false-positive exceptions |
 | Static application analysis | `CodeQL SAST` | analyze Python and JavaScript/TypeScript and publish code-scanning findings |
 | Immutable release | backend image/release integrity workflows | exact Git SHA, image digest, SBOM/provenance and signing remain separate release controls |
 
@@ -34,19 +34,23 @@ A temporary exception is permitted only when all of the following are true:
 - the exception expires no more than 90 days after review;
 - the exception is removed when the finding disappears or the dependency version changes.
 
-The evaluator fails on expired, overlong, duplicate or stale exceptions. `pip-audit --fix`, broad dependency replacement and forced upgrades are not part of this gate.
+The evaluator fails on expired, overlong, duplicate or stale exceptions. Exact duplicate advisory records from a feed are normalized only when package, installed version and primary advisory identifier are identical; distinct advisory identifiers remain distinct findings. `pip-audit --fix`, broad dependency replacement and forced upgrades are not part of this gate.
 
-A scanner/feed mismatch is not converted into a baseline exception without verification. During initial rollout, the default pip-audit/PyPI path reported `PYSEC-2024-232` against `python-jose 3.5.0`; the package's current PyPI metadata and OSV/PyPA affected range showed that 3.5.0 is outside the vulnerable range. The gate was therefore switched to explicit OSV evaluation and the baseline was kept empty rather than suppressing an unverified finding.
+A scanner/feed mismatch is not converted into a baseline exception without verification. During initial rollout, the default pip-audit/PyPI path reported `PYSEC-2024-232` against `python-jose 3.5.0`; the package metadata and OSV/PyPA affected range showed that 3.5.0 is outside that vulnerable range. The gate was therefore switched to explicit OSV evaluation and the baseline was kept empty rather than suppressing an unverified finding.
+
+The explicit OSV run then found a separate real runtime finding: `ecdsa 0.19.2 / PYSEC-2026-1325`, introduced through the `python-jose` dependency chain. Renova's access-token implementation uses HS256 only and already had PyJWT 2.13.0 in the locked production graph. The remediation was therefore to remove `python-jose` from production, make `PyJWT==2.13.0` a direct dependency, migrate the JWT/error imports, regenerate the Poetry lock with Poetry 2.4.1 on Python 3.12.13, and retain the advisory baseline empty. The vulnerable dependency is not accepted through an exception.
 
 ## Secret exposure policy
 
 Secrets, credentials, private keys and production tokens must never be committed to Git, including test fixtures, examples, logs or generated artifacts.
 
-The full-history Gitleaks gate runs with redaction. Raw scanner output is deleted before evidence upload. Retained evidence contains only bounded metadata such as rule, file, line, commit and fingerprint; it does not persist the detected secret, matching string or source-line content.
+The Gitleaks job uses two complementary scopes. On a pull request it scans the merged base branch history (`origin/${BASE_REF}`) as the production-history truth, then separately scans the complete proposed current tree. This is deliberate for squash-merge development: ephemeral feature-branch commits that will not enter `main` do not become permanent production-history findings, while every file proposed for merge is still scanned. On `main`, the base-history scope resolves to `main` itself.
 
-The scanner runtime is immutable and also has to pass a synthetic-secret canary before the repository scan. This prevents a broken scanner release from silently producing a green result. Renova currently pins Gitleaks v8.30.0 rather than v8.30.1 because a regression report exists for v8.30.1's detection behavior.
+Both scopes run with redaction. Raw scanner output is deleted before evidence upload. Retained evidence contains only bounded metadata such as rule, file, line, commit and fingerprint; it does not persist the detected secret, matching string or source-line content.
 
-The initial full-history scan identified one synthetic e-sign idempotency test value in `backend/tests/test_esign_idempotency_key.py`, repeated in two historical commits. The repository allowlist is therefore intentionally limited to the conjunction of the `generic-api-key` rule, that exact test path, and that exact synthetic test line. It is not a rule-wide, path-wide or commit-wide suppression.
+The scanner runtime is immutable and also has to pass a synthetic-secret canary before repository scanning. The complete canary value is assembled only inside the runner from separate fragments; the detectable value is not committed to source. This prevents a broken scanner release from silently producing a green result without adding a permanent fake credential to Git history. Renova currently pins Gitleaks v8.30.0 rather than v8.30.1 because a regression report exists for v8.30.1's detection behavior.
+
+The initial merged-history scan identified one synthetic e-sign idempotency test value in `backend/tests/test_esign_idempotency_key.py`, repeated in two historical commits. The repository allowlist is therefore intentionally limited to the conjunction of the `generic-api-key` rule, that exact test path, and that exact synthetic test line. It is not a rule-wide, path-wide or commit-wide suppression.
 
 If a real credential is discovered in Git history, deleting the current file or rewriting Git history is **not** sufficient evidence of remediation. Treat the credential as exposed and perform this sequence:
 
