@@ -36,6 +36,13 @@ async def _no_dispatch(*_args, **_kwargs):
     return None
 
 
+def test_chat_audit_export_preserves_supervisor_identity():
+    assert chats_api._author_role_label("customer") == "Заказчик"
+    assert chats_api._author_role_label("contractor") == "Исполнитель"
+    assert chats_api._author_role_label("supervisor") == "Технадзор"
+    assert chats_api._author_role_label("unknown") == "Система"
+
+
 async def _user(db, suffix: str, *, role: UserRole, profile_code: str) -> User:
     tail = sum((index + 1) * ord(char) for index, char in enumerate(suffix)) % 10_000_000
     row = User(
