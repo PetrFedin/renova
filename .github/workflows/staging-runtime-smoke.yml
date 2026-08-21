@@ -135,7 +135,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://renova:redacted@db.internal/renova
           REDIS_URL: rediss://default:redacted@redis.internal:6380/0
           PUBLIC_BASE_URL: https://api-staging.renova.example
-          SECRET_KEY: ci-staging-secret-key-32chars!!
+          SECRET_KEY: ci-staging-signing-key-at-least-32-bytes
           AUTH_ALLOW_HEADER_USER_ID: "false"
           ADMIN_USER_IDS: ci-admin-user
           ALLOW_CREATE_ALL: "false"
