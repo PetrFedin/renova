@@ -11,7 +11,21 @@ from app.db.migration_guard import assert_database_at_head
 
 logger = logging.getLogger(__name__)
 
-engine = create_async_engine(settings.database_url, echo=False)
+
+def _engine_options() -> dict[str, object]:
+    database_url = settings.database_url.strip().lower()
+    if database_url.startswith("sqlite"):
+        return {"echo": False}
+    return {
+        "echo": False,
+        "pool_size": settings.db_pool_size,
+        "max_overflow": settings.db_max_overflow,
+        "pool_timeout": settings.db_pool_timeout_sec,
+        "pool_pre_ping": True,
+    }
+
+
+engine = create_async_engine(settings.database_url, **_engine_options())
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

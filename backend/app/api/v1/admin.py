@@ -86,6 +86,7 @@ async def release_health(
 ):
     from app.core.config import settings
     from app.services.automation_reminders_worker import automation_worker_metrics
+    from app.services.capacity_runtime_service import capacity_runtime_snapshot
     from app.services.esign import list_providers
     from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.otp_redis_recovery import recovery_snapshot as otp_store_health
@@ -93,7 +94,7 @@ async def release_health(
     from app.services.push_receipt_service import runtime_snapshot as push_receipt_runtime_health
     from app.services.release_health_service import truthful_release_snapshot
     from app.services.runtime_health_truth import automation_worker_runtime_truth
-    from app.services.runtime_topology import worker_pool_snapshot
+    from app.services.runtime_topology import api_pool_snapshot, worker_pool_snapshot
     from app.services.yookassa_service import yookassa_health
 
     release_snapshot = truthful_release_snapshot()
@@ -106,6 +107,12 @@ async def release_health(
     manual_tick_metrics = automation_worker_metrics()
     manual_tick_truth = automation_worker_runtime_truth(manual_tick_metrics)
     worker_pool = await worker_pool_snapshot()
+    api_pool = await api_pool_snapshot()
+    capacity = await capacity_runtime_snapshot(
+        db,
+        worker_pool=worker_pool,
+        api_pool=api_pool,
+    )
     otp_store = otp_store_health()
     kontur_mode = (settings.kontur_mode or "off").strip().lower()
     esign = {
@@ -128,12 +135,14 @@ async def release_health(
         "environment": settings.normalized_environment,
         "release": release,
         "observability": observability,
+        "capacity": capacity,
         "runtime_topology": {
             "api": {
                 "role": "renova-api",
                 "background_jobs_embedded": False,
                 "websocket_bridge_local": bool((settings.redis_url or "").strip()),
             },
+            "api_pool": api_pool,
             "worker_pool": worker_pool,
         },
         "integrations": {
