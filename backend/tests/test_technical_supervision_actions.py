@@ -106,21 +106,15 @@ async def test_supervisor_creates_project_scoped_quality_issue(db, monkeypatch):
     persisted = await db.get(ProjectIssue, issue.id)
     assert persisted is not None
 
-    foreign_stage = Stage(
-        project_id="foreign-project",
-        name="Чужой этап",
-        sort_order=0,
-        status=StageStatus.active,
-    )
-    # Do not persist an invalid FK row; project-scope validation is separately
-    # exercised with an unknown id and must fail closed.
+    # Unknown/foreign stage references must fail closed instead of silently
+    # creating an unscoped project issue.
     with pytest.raises(HTTPException) as error:
         await actions.create_quality_issue(
             db,
             project=project,
             actor=inspector,
             title="Неверная привязка",
-            stage_id=foreign_stage.id,
+            stage_id="unknown-foreign-stage",
         )
     assert error.value.status_code == 404
 
