@@ -82,6 +82,10 @@ The inventory requiring an owner and rotation procedure includes, when configure
 - FNS receipt and Moy Nalog credentials;
 - staging/admin/load-test bearer credentials and any deployment-provider tokens.
 
+For HS256 JWT signing, staging and production enforce `SECRET_KEY` as non-default key material of at least **32 UTF-8 bytes (256 bits)**. The guard measures encoded bytes because that is what the signing implementation consumes; this is a minimum key-size check, not an entropy estimator. Operators must still provision a cryptographically random secret rather than a human-readable 32-character password. Development/test profiles remain permissive for deterministic fixtures, but those values must never be reused in staging or production.
+
+The 32-byte guard was added after the PyJWT migration surfaced `InsecureKeyLengthWarning` in test fixtures and a review showed that the previous working-environment policy accepted non-default keys as short as 16 characters. Synthetic staging CI fixtures are covered by the same minimum so CI cannot claim a working profile using key material that production would reject.
+
 Rotating `SECRET_KEY` invalidates tokens signed with the previous key under the current single-key design. It therefore requires a controlled maintenance/release event rather than silent in-place replacement. This document does not introduce multi-key JWT support.
 
 A real provider credential-rotation drill requires access to the authoritative provider/account and remains external evidence; CI cannot prove that a production credential was actually revoked and replaced.
