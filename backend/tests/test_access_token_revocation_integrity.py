@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
-from jose import JWTError
+from jwt.exceptions import InvalidTokenError as JWTError
 
 from app.api import deps
 from app.core.security import create_access_token, decode_access_token
