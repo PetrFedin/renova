@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Same-image runtime topology proof: two API replicas + one worker.
+# Same-image staging-policy topology proof: two API replicas + one worker.
 set -euo pipefail
 
 IMAGE="${RUNTIME_TOPOLOGY_IMAGE:-renova-backend:topology-ci}"
@@ -18,7 +18,16 @@ SECRET_KEY="runtime-topology-ci-secret-at-least-32-chars"
 API_A_PORT="${RUNTIME_TOPOLOGY_API_A_PORT:-18111}"
 API_B_PORT="${RUNTIME_TOPOLOGY_API_B_PORT:-18112}"
 
+capture_logs() {
+  docker logs "$API_A" > /tmp/renova-runtime-topology-api-a.log 2>&1 || true
+  docker logs "$API_B" > /tmp/renova-runtime-topology-api-b.log 2>&1 || true
+  docker logs "$WORKER" > /tmp/renova-runtime-topology-worker.log 2>&1 || true
+  docker logs "$PG" > /tmp/renova-runtime-topology-postgres.log 2>&1 || true
+  docker logs "$REDIS" > /tmp/renova-runtime-topology-redis.log 2>&1 || true
+}
+
 cleanup() {
+  capture_logs
   docker rm -f "$API_A" "$API_B" "$WORKER" "$PG" "$REDIS" >/dev/null 2>&1 || true
   docker network rm "$NETWORK" >/dev/null 2>&1 || true
 }
@@ -51,21 +60,26 @@ worker_key_count() {
 }
 
 common_env=(
-  -e ENVIRONMENT=test
+  -e ENVIRONMENT=staging
   -e DATABASE_URL="$DATABASE_URL"
   -e REDIS_URL="$REDIS_URL"
-  -e PUBLIC_BASE_URL=http://api.invalid
+  -e PUBLIC_BASE_URL=https://api-staging.renova.invalid
   -e SECRET_KEY="$SECRET_KEY"
+  -e ADMIN_USER_IDS=runtime-topology-admin
   -e ALLOW_CREATE_ALL=false
   -e ALLOW_DEMO_SEED=false
   -e AUTH_ALLOW_HEADER_USER_ID=false
+  -e DOCUMENT_OCR_MODE=metadata
+  -e TWILIO_SID=AC00000000000000000000000000000000
+  -e TWILIO_TOKEN=runtime-topology-provider-token
+  -e TWILIO_FROM=+15005550006
   -e AUTOMATION_REMINDERS_ENABLED=true
   -e AUTOMATION_REMINDERS_INTERVAL_SEC=2
   -e PUSH_RECEIPT_WORKER_ENABLED=true
   -e PUSH_RECEIPT_WORKER_INTERVAL_SEC=2
 )
 
-echo "=== runtime topology: start dependencies ==="
+echo "=== runtime topology: start PostgreSQL and Redis ==="
 docker network create "$NETWORK" >/dev/null
 docker run -d --name "$PG" --network "$NETWORK" \
   -e POSTGRES_USER=renova \
