@@ -31,6 +31,10 @@ contains(externalStaging, 'Authorization: Bearer $TOKEN', 'external staging must
 contains(externalStaging, 'health.get("release") == expected_sha', 'external staging health must match expected Git SHA');
 contains(externalStaging, 'health.get("artifact_digest") == expected_digest', 'external staging health must match exact image digest');
 contains(externalStaging, 'ready.get("artifact_digest") == expected_digest', 'external staging readiness must match exact image digest');
+contains(externalStaging, 'worker_pool.get("healthy") is True', 'external staging must require a healthy background worker pool');
+contains(externalStaging, 'worker_pool.get("current_release") == expected_sha', 'external staging worker pool must match the API release SHA');
+contains(externalStaging, 'worker.get("artifact_digest") == expected_digest', 'external staging must prove at least one worker uses the promoted image digest');
+contains(externalStaging, '"domain_outbox" in (worker.get("active_tasks") or [])', 'external staging must prove the worker owns durable outbox processing');
 excludes(externalStaging, '/api/v1/auth/demo', 'external staging must never obtain demo auth');
 excludes(externalStaging, 'X-User-Id', 'external staging must never use header identity fallback');
 
@@ -45,12 +49,16 @@ excludes(externalStagingWorkflow, ':latest', 'external staging must not use muta
 excludes(externalStagingWorkflow, '--latest', 'external staging must not promote mutable latest artifacts');
 
 const main = src('backend/app/main.py');
+const workerMain = src('backend/app/worker_main.py');
 const observability = src('backend/app/core/observability.py');
 contains(observability, 'RENOVA_IMAGE_DIGEST', 'release helper must read deployment-supplied image digest');
 contains(observability, 'RENOVA_GIT_SHA', 'release helper must read immutable Git SHA');
 contains(main, 'release_digest()', 'runtime probes must expose deployment-supplied image digest through canonical helper');
 contains(main, '"artifact_digest": release_digest()', 'runtime probes must include exact image digest');
 contains(main, '"release": release_sha()', 'runtime probes must include exact Git SHA');
+contains(main, '"background_runtime": "renova-worker"', 'API health must disclose the dedicated background runtime');
+excludes(main, 'outbox_worker_loop', 'API process must not own durable outbox processing');
+contains(workerMain, 'outbox_worker_loop', 'worker process must own durable outbox processing');
 
 const h0 = src('scripts/h0-check.sh');
 contains(h0, 'if [[ "$STRICT" -eq 1 ]]; then LIVE=1; fi', 'strict H0 must imply live mode');
