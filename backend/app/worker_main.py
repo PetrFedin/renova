@@ -74,25 +74,24 @@ async def _graceful_stop(tasks: list[asyncio.Task], *, timeout_sec: float = 10.0
         if task.cancelled():
             continue
         try:
-            task.result()
-        except Exception:
-            logger.exception("worker task failed during shutdown", exc_info=True)
+            error = task.exception()
+        except asyncio.CancelledError:
+            continue
+        if error is not None:
+            logger.error(
+                "worker task failed during shutdown: %s",
+                task.get_name(),
+                exc_info=(type(error), error, error.__traceback__),
+            )
 
 
-async def run_worker() -> int:
-    setup_logging()
-    await _validate_worker_runtime()
-    observability_runtime = configure_worker_observability()
-
-    stop = asyncio.Event()
-    _install_signal_handlers(stop)
-    active_tasks = _task_names()
-    started_at = utc_now().isoformat(timespec="seconds") + "Z"
-    publisher = WorkerHeartbeatPublisher()
-
-    # Fail startup if a deployed worker cannot publish the shared heartbeat.
-    await publisher.publish(active_tasks=active_tasks, started_at=started_at)
-
+async def _start_worker_tasks(
+    stop: asyncio.Event,
+    publisher: WorkerHeartbeatPublisher,
+    *,
+    active_tasks: tuple[str, ...],
+    started_at: str,
+) -> list[asyncio.Task]:
     from app.services.outbox_worker import outbox_worker_loop
 
     tasks: list[asyncio.Task] = [
@@ -139,11 +138,37 @@ async def run_worker() -> int:
             name="renova-worker-heartbeat",
         )
     )
-    logger.info("renova worker started tasks=%s", ",".join(active_tasks))
+    return tasks
 
-    stop_waiter = asyncio.create_task(stop.wait(), name="renova-worker-stop-waiter")
+
+async def run_worker() -> int:
+    setup_logging()
+    await _validate_worker_runtime()
+    observability_runtime = configure_worker_observability()
+
+    stop = asyncio.Event()
+    _install_signal_handlers(stop)
+    active_tasks = _task_names()
+    started_at = utc_now().isoformat(timespec="seconds") + "Z"
+    publisher = WorkerHeartbeatPublisher()
+    tasks: list[asyncio.Task] = []
+    stop_waiter: asyncio.Task | None = None
     exit_code = 0
+
     try:
+        # Fail startup if a deployed worker cannot publish the shared heartbeat.
+        # The surrounding finally guarantees cleanup even if the next import or
+        # task construction fails after this first successful publication.
+        await publisher.publish(active_tasks=active_tasks, started_at=started_at)
+        tasks = await _start_worker_tasks(
+            stop,
+            publisher,
+            active_tasks=active_tasks,
+            started_at=started_at,
+        )
+        logger.info("renova worker started tasks=%s", ",".join(active_tasks))
+
+        stop_waiter = asyncio.create_task(stop.wait(), name="renova-worker-stop-waiter")
         done, _pending = await asyncio.wait(
             [stop_waiter, *tasks],
             return_when=asyncio.FIRST_COMPLETED,
@@ -154,21 +179,23 @@ async def run_worker() -> int:
             for task in unexpected:
                 if task.cancelled():
                     logger.error("worker task exited unexpectedly: %s", task.get_name())
+                    continue
+                error = task.exception()
+                if error is None:
+                    logger.error("worker task returned unexpectedly: %s", task.get_name())
                 else:
-                    error = task.exception()
-                    if error is None:
-                        logger.error("worker task returned unexpectedly: %s", task.get_name())
-                    else:
-                        logger.error(
-                            "worker task crashed: %s (%s)",
-                            task.get_name(),
-                            type(error).__name__,
-                        )
+                    logger.error(
+                        "worker task crashed: %s (%s)",
+                        task.get_name(),
+                        type(error).__name__,
+                        exc_info=(type(error), error, error.__traceback__),
+                    )
             stop.set()
     finally:
         stop.set()
-        stop_waiter.cancel()
-        await asyncio.gather(stop_waiter, return_exceptions=True)
+        if stop_waiter is not None:
+            stop_waiter.cancel()
+            await asyncio.gather(stop_waiter, return_exceptions=True)
         await _graceful_stop(tasks)
         await publisher.remove()
         await publisher.close()
