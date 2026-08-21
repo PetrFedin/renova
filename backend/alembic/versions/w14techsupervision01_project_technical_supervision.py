@@ -50,7 +50,7 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(
-        "ix_project_technical_supervisor_assignments_representative_user_id",
+        "ix_project_tech_supervisor_rep_user",
         "project_technical_supervisor_assignments",
         ["representative_user_id"],
         unique=False,
@@ -91,7 +91,7 @@ def downgrade() -> None:
         table_name="project_technical_supervisor_assignments",
     )
     op.drop_index(
-        "ix_project_technical_supervisor_assignments_representative_user_id",
+        "ix_project_tech_supervisor_rep_user",
         table_name="project_technical_supervisor_assignments",
     )
     op.drop_index(
