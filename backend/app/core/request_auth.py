@@ -1,7 +1,7 @@
 """Extract authenticated subject from request headers (middleware + WS)."""
 from __future__ import annotations
 
-from jose import JWTError
+from jwt.exceptions import InvalidTokenError as JWTError
 
 from app.core.config import settings
 from app.core.security import bearer_user_id, decode_access_token
