@@ -52,11 +52,13 @@ def test_postgres_pool_capacity_uses_reviewed_configured_denominator(monkeypatch
     monkeypatch.setattr(settings, "db_pool_size", 5)
     monkeypatch.setattr(settings, "db_max_overflow", 10)
     monkeypatch.setattr(settings, "db_pool_timeout_sec", 30.0)
+    monkeypatch.setattr(capacity, "_api_instance_id", lambda: "api-test-instance")
 
     snapshot = capacity.database_pool_snapshot(FakePool())
 
     assert snapshot == {
         "scope": "api_process",
+        "instance_id": "api-test-instance",
         "supported": True,
         "configured_pool_size": 5,
         "configured_max_overflow": 10,
@@ -67,6 +69,15 @@ def test_postgres_pool_capacity_uses_reviewed_configured_denominator(monkeypatch
         "current_overflow": 1,
         "utilization_percent": 40.0,
     }
+
+
+def test_api_instance_id_is_bounded_and_non_secret(monkeypatch):
+    monkeypatch.setattr(capacity.socket, "gethostname", lambda: "private-api-host.example")
+    monkeypatch.setattr(capacity.os, "getpid", lambda: 4321)
+    value = capacity._api_instance_id()
+    assert len(value) == 20
+    assert "private-api-host" not in value
+    int(value, 16)
 
 
 def test_sqlite_pool_does_not_claim_postgres_capacity(monkeypatch):
