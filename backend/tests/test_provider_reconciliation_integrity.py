@@ -144,6 +144,70 @@ async def test_retry_uses_bounded_backoff_and_safe_error_metadata(session_factor
 
 
 @pytest.mark.asyncio
+async def test_legitimate_provider_pending_does_not_exhaust_attempt_budget(session_factory):
+    now = utc_now()
+    async with session_factory() as db:
+        row = await reconciliation.ensure_reconciliation(
+            db,
+            provider="yookassa",
+            operation_type="payment_status",
+            resource_type="payment",
+            resource_id="payment-long-pending",
+            next_attempt_at=now,
+        )
+        row.attempts = reconciliation.MAX_ATTEMPTS + 10
+        await db.commit()
+        claim = (await reconciliation.claim_due(db, worker_id="worker-long", now=now))[0]
+        await db.commit()
+
+        assert await reconciliation.mark_retry(
+            db,
+            claim,
+            worker_id="worker-long",
+            error_code="yookassa_not_terminal",
+            provider_status="pending",
+            now=now,
+            exhaustible=False,
+        )
+        await db.commit()
+
+        saved = await db.get(ProviderReconciliation, row.id)
+        assert saved.status == "retry"
+        assert saved.provider_status == "pending"
+        assert saved.last_error_code == "yookassa_not_terminal"
+        assert saved.next_attempt_at == now + timedelta(
+            seconds=reconciliation.MAX_BACKOFF_SECONDS
+        )
+
+
+@pytest.mark.asyncio
+async def test_expired_active_work_becomes_operator_visible_terminal(session_factory):
+    now = utc_now()
+    async with session_factory() as db:
+        row = await reconciliation.ensure_reconciliation(
+            db,
+            provider="fns",
+            operation_type="receipt_verify",
+            resource_type="receipt",
+            resource_id="receipt-expired",
+            next_attempt_at=now - timedelta(minutes=2),
+            expires_at=now - timedelta(seconds=1),
+        )
+        await db.commit()
+
+        claims = await reconciliation.claim_due(db, worker_id="worker-a", now=now)
+        await db.commit()
+
+        assert claims == []
+        saved = await db.get(ProviderReconciliation, row.id)
+        assert saved.status == "terminal"
+        assert saved.last_error_code == "reconciliation_expired"
+        assert saved.completed_at == now
+        snapshot = await reconciliation.runtime_snapshot(db)
+        assert snapshot["terminal_total"] == 1
+
+
+@pytest.mark.asyncio
 async def test_terminal_and_snapshot_are_provider_safe(session_factory):
     now = utc_now()
     async with session_factory() as db:
