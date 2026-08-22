@@ -34,7 +34,7 @@ async def run_provider_reconciliation_batch(
     }
 
     async with SessionLocal() as db:
-        metrics["seeded"] = await handlers.seed_pending_fns_receipts(db, limit=100)
+        metrics["seeded"] = await handlers.seed_pending_provider_work(db, limit=100)
         await db.commit()
 
     async with SessionLocal() as db:
