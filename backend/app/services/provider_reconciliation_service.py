@@ -2,7 +2,7 @@
 
 This module intentionally does not send provider side effects. DomainOutbox owns
 outbound delivery. ProviderReconciliation owns only repeated reads of external
-authoritative state and their bounded operational lifecycle.
+authoritative state and their operational lifecycle.
 """
 from __future__ import annotations
 
@@ -20,7 +20,9 @@ from app.models.provider_runtime import ProviderReconciliation
 ACTIVE_STATUSES = ("pending", "retry")
 TERMINAL_STATUSES = ("completed", "terminal", "unavailable")
 DEFAULT_LEASE_SECONDS = 60
-# Enough for multi-day provider degradation while remaining strictly bounded.
+# Technical/provider failures are bounded. Legitimate authoritative states may
+# opt out of attempt exhaustion and remain visible/reconcilable until resolved
+# or until an explicit expires_at policy ends them.
 MAX_ATTEMPTS = 32
 MAX_BACKOFF_SECONDS = 6 * 60 * 60
 
@@ -40,8 +42,6 @@ class ReconciliationClaim:
 def _fingerprint(error: BaseException | str | None) -> str | None:
     if error is None:
         return None
-    # Hash only. Provider messages may contain request IDs, URLs or other data
-    # we do not want persisted in operational state.
     value = f"{type(error).__name__}:{error}" if isinstance(error, BaseException) else str(error)
     return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
 
@@ -55,8 +55,6 @@ def _bounded_code(code: str | None) -> str | None:
 
 def retry_delay_seconds(attempts: int) -> int:
     attempt = max(1, int(attempts))
-    # The exponent is bounded separately from the final duration so pathological
-    # attempt counters cannot create giant integers before the cap is applied.
     return min(MAX_BACKOFF_SECONDS, 15 * (2 ** min(attempt - 1, 20)))
 
 
@@ -109,9 +107,6 @@ async def ensure_reconciliation(
             await db.flush()
         return row
     except IntegrityError:
-        # The savepoint has been rolled back, but the caller's outer transaction
-        # remains usable. Reload the winner and enrich only previously-empty
-        # provider identity/expiry fields.
         existing = (await db.execute(stmt)).scalar_one_or_none()
         if existing is None:
             raise
@@ -134,8 +129,8 @@ async def claim_due(
     current = now or utc_now()
     stale_before = current - timedelta(seconds=max(1, lease_seconds))
 
-    # Expired active operations must not become invisible forever. Move them to
-    # an operator-visible terminal state before selecting executable work.
+    # Expired work must never disappear from operator views merely because it is
+    # no longer executable.
     await db.execute(
         update(ProviderReconciliation)
         .where(
@@ -209,8 +204,6 @@ async def claim_due(
         claimed = await db.get(ProviderReconciliation, row_id)
         if claimed is None:
             continue
-        # Force authoritative DB state even when the entity was already present
-        # in an expire_on_commit=False identity map.
         await db.refresh(claimed)
         claims.append(
             ReconciliationClaim(
@@ -268,7 +261,6 @@ async def mark_completed(
     worker_id: str,
     provider_status: str | None = None,
 ) -> bool:
-    now = utc_now()
     return await _finish_claim(
         db,
         claim,
@@ -277,7 +269,7 @@ async def mark_completed(
             "status": "completed",
             "provider_status": _bounded_code(provider_status),
             "next_attempt_at": None,
-            "completed_at": now,
+            "completed_at": utc_now(),
             "last_error_code": None,
             "last_error_fingerprint": None,
         },
@@ -293,9 +285,17 @@ async def mark_retry(
     error: BaseException | str | None = None,
     provider_status: str | None = None,
     now: datetime | None = None,
+    exhaustible: bool = True,
 ) -> bool:
+    """Release a claim for retry.
+
+    `exhaustible=False` is reserved for an observed, legitimate provider/domain
+    state (for example a payment still pending at YooKassa). Technical failures
+    remain bounded by MAX_ATTEMPTS so broken credentials/transports surface to
+    operators instead of retrying forever.
+    """
     current = now or utc_now()
-    if claim.attempts >= MAX_ATTEMPTS:
+    if exhaustible and claim.attempts >= MAX_ATTEMPTS:
         return await mark_terminal(
             db,
             claim,
