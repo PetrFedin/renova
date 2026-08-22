@@ -6,6 +6,8 @@ on:
     paths:
       - "backend/app/models/provider_runtime.py"
       - "backend/app/services/provider_reconciliation_*.py"
+      - "backend/app/api/v1/admin_provider_reconciliations.py"
+      - "backend/app/api/v1/admin.py"
       - "backend/app/services/payment_checkout_service.py"
       - "backend/app/services/payment_service.py"
       - "backend/app/services/payment_reversal_service.py"
@@ -19,6 +21,8 @@ on:
     paths:
       - "backend/app/models/provider_runtime.py"
       - "backend/app/services/provider_reconciliation_*.py"
+      - "backend/app/api/v1/admin_provider_reconciliations.py"
+      - "backend/app/api/v1/admin.py"
       - "backend/app/services/payment_checkout_service.py"
       - "backend/app/services/payment_service.py"
       - "backend/app/services/payment_reversal_service.py"
@@ -77,13 +81,14 @@ jobs:
           poetry check --lock
           poetry sync --no-interaction
           poetry run python -m pip check
-      - name: Provider reconciliation lifecycle and adapter contracts
+      - name: Provider reconciliation lifecycle, adapters, and operator recovery contracts
         working-directory: backend
         run: |
           set -euo pipefail
           poetry run pytest -q \
             tests/test_provider_reconciliation_integrity.py \
-            tests/test_provider_reconciliation_handlers.py
+            tests/test_provider_reconciliation_handlers.py \
+            tests/test_provider_reconciliation_admin.py
       - name: Worker source contract
         working-directory: backend
         run: |
