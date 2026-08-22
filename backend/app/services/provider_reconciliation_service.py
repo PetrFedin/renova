@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
@@ -19,7 +20,8 @@ from app.models.provider_runtime import ProviderReconciliation
 ACTIVE_STATUSES = ("pending", "retry")
 TERMINAL_STATUSES = ("completed", "terminal", "unavailable")
 DEFAULT_LEASE_SECONDS = 60
-MAX_ATTEMPTS = 12
+# Enough for multi-day provider degradation while remaining strictly bounded.
+MAX_ATTEMPTS = 32
 MAX_BACKOFF_SECONDS = 6 * 60 * 60
 
 
@@ -53,7 +55,9 @@ def _bounded_code(code: str | None) -> str | None:
 
 def retry_delay_seconds(attempts: int) -> int:
     attempt = max(1, int(attempts))
-    return min(MAX_BACKOFF_SECONDS, 15 * (2 ** min(attempt - 1, 10)))
+    # The exponent is bounded separately from the final duration so pathological
+    # attempt counters cannot create giant integers before the cap is applied.
+    return min(MAX_BACKOFF_SECONDS, 15 * (2 ** min(attempt - 1, 20)))
 
 
 async def ensure_reconciliation(
@@ -69,8 +73,9 @@ async def ensure_reconciliation(
 ) -> ProviderReconciliation:
     """Return the deterministic ledger row for one provider-readable resource.
 
-    Callers should create it in the same transaction that makes reconciliation
-    necessary. No provider network call happens here.
+    A nested transaction makes the select-then-insert path race-safe without
+    rolling back the caller's surrounding domain transaction when another
+    replica inserts the same deterministic identity first.
     """
     stmt = select(ProviderReconciliation).where(
         ProviderReconciliation.provider == provider,
@@ -98,9 +103,23 @@ async def ensure_reconciliation(
         next_attempt_at=next_attempt_at or utc_now(),
         expires_at=expires_at,
     )
-    db.add(row)
-    await db.flush()
-    return row
+    try:
+        async with db.begin_nested():
+            db.add(row)
+            await db.flush()
+        return row
+    except IntegrityError:
+        # The savepoint has been rolled back, but the caller's outer transaction
+        # remains usable. Reload the winner and enrich only previously-empty
+        # provider identity/expiry fields.
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if existing is None:
+            raise
+        if provider_resource_id and not existing.provider_resource_id:
+            existing.provider_resource_id = provider_resource_id
+        if expires_at and not existing.expires_at:
+            existing.expires_at = expires_at
+        return existing
 
 
 async def claim_due(
@@ -114,6 +133,28 @@ async def claim_due(
     """Claim due rows with a fencing generation safe across API/worker replicas."""
     current = now or utc_now()
     stale_before = current - timedelta(seconds=max(1, lease_seconds))
+
+    # Expired active operations must not become invisible forever. Move them to
+    # an operator-visible terminal state before selecting executable work.
+    await db.execute(
+        update(ProviderReconciliation)
+        .where(
+            ProviderReconciliation.status.in_(ACTIVE_STATUSES),
+            ProviderReconciliation.expires_at.is_not(None),
+            ProviderReconciliation.expires_at <= current,
+        )
+        .values(
+            status="terminal",
+            next_attempt_at=None,
+            locked_at=None,
+            locked_by=None,
+            completed_at=current,
+            last_error_code="reconciliation_expired",
+            updated_at=current,
+        )
+        .execution_options(synchronize_session="fetch")
+    )
+
     due = and_(
         ProviderReconciliation.status.in_(ACTIVE_STATUSES),
         or_(
@@ -161,12 +202,16 @@ async def claim_due(
                 last_attempt_at=current,
                 updated_at=current,
             )
+            .execution_options(synchronize_session="fetch")
         )
         if result.rowcount != 1:
             continue
         claimed = await db.get(ProviderReconciliation, row_id)
         if claimed is None:
             continue
+        # Force authoritative DB state even when the entity was already present
+        # in an expire_on_commit=False identity map.
+        await db.refresh(claimed)
         claims.append(
             ReconciliationClaim(
                 id=claimed.id,
@@ -205,9 +250,15 @@ async def _finish_claim(
             locked_by=None,
             updated_at=current,
         )
+        .execution_options(synchronize_session="fetch")
     )
     await db.flush()
-    return result.rowcount == 1
+    if result.rowcount != 1:
+        return False
+    tracked = await db.get(ProviderReconciliation, claim.id)
+    if tracked is not None:
+        await db.refresh(tracked)
+    return True
 
 
 async def mark_completed(
