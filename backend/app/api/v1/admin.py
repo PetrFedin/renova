@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_access import require_admin_user
 from app.api.v1.admin_outbox_dead_letters import router as outbox_dead_letter_router
+from app.api.v1.admin_provider_reconciliations import router as provider_reconciliation_router
 from app.db.session import get_db
 from app.models.entities import AuditLog, Project, User
 
@@ -91,6 +92,7 @@ async def release_health(
     from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.otp_redis_recovery import recovery_snapshot as otp_store_health
     from app.services.outbox_dead_letter_service import runtime_health as outbox_runtime_health
+    from app.services.provider_reconciliation_service import runtime_snapshot as provider_reconciliation_runtime
     from app.services.push_receipt_service import runtime_snapshot as push_receipt_runtime_health
     from app.services.release_health_service import truthful_release_snapshot
     from app.services.runtime_health_truth import automation_worker_runtime_truth
@@ -124,6 +126,10 @@ async def release_health(
     }
     outbox_health = await outbox_runtime_health(db)
     push_receipts = await push_receipt_runtime_health(db)
+    provider_reconciliation = await provider_reconciliation_runtime(db)
+    provider_reconciliation_status = (
+        "critical" if int(provider_reconciliation["terminal_total"]) > 0 else "healthy"
+    )
     return {
         "contract_version": release_snapshot["contract_version"],
         "generated_at": release_snapshot["generated_at"],
@@ -179,6 +185,13 @@ async def release_health(
                 "runtime_owner": "renova-worker",
                 **outbox_health,
             },
+            "provider_reconciliation": {
+                "runtime_owner": "renova-worker",
+                "healthy": provider_reconciliation_status == "healthy",
+                "status": provider_reconciliation_status,
+                "recovery_ready": True,
+                **provider_reconciliation,
+            },
             "push_receipts": {
                 "runtime_owner": "renova-worker",
                 "worker_enabled": settings.push_receipt_worker_enabled,
@@ -200,3 +213,4 @@ async def h0_readiness(
 
 
 router.include_router(outbox_dead_letter_router)
+router.include_router(provider_reconciliation_router)

@@ -149,14 +149,12 @@ done
 test "$(worker_key_count)" -eq 1
 test "$(api_key_count)" -eq 2
 
-# Avoid `docker logs | grep -q` under pipefail: once grep finds a match it may
-# close the pipe while Docker is still writing, causing an unrelated SIGPIPE/141.
 docker logs "$API_A" >"$API_A_LOG" 2>&1
 docker logs "$API_B" >"$API_B_LOG" 2>&1
 docker logs "$WORKER" >"$WORKER_LOG" 2>&1
 grep -q 'ws redis bridge enabled' "$API_A_LOG"
 grep -q 'ws redis bridge enabled' "$API_B_LOG"
-grep -q 'renova worker started tasks=domain_outbox,automation_reminders,push_receipt_reconciliation' "$WORKER_LOG"
+grep -q 'renova worker started tasks=domain_outbox,provider_reconciliation,automation_reminders,push_receipt_reconciliation' "$WORKER_LOG"
 if grep -q 'ws redis bridge enabled' "$WORKER_LOG"; then
   echo "FAIL: worker started API-local websocket bridge" >&2
   exit 1

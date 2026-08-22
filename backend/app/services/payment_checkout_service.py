@@ -87,8 +87,11 @@ def validate_provider_snapshot(
     return provider_id
 
 
-async def _load_provider_payment(provider_payment_id: str, return_url: str) -> dict[str, Any]:
-    """Recover a provider checkout after the client lost the first response."""
+async def load_provider_payment(
+    provider_payment_id: str,
+    return_url: str = "",
+) -> dict[str, Any]:
+    """Read YooKassa payment state without creating provider side effects."""
     if not yk.yookassa_configured():
         if yk.demo_allowed():
             return {
@@ -127,6 +130,11 @@ async def _load_provider_payment(provider_payment_id: str, return_url: str) -> d
         "metadata": data.get("metadata"),
         "cancellation_reason": cancellation_reason,
     }
+
+
+async def _load_provider_payment(provider_payment_id: str, return_url: str) -> dict[str, Any]:
+    """Compatibility wrapper retained for existing checkout callers/tests."""
+    return await load_provider_payment(provider_payment_id, return_url)
 
 
 async def create_or_resume_checkout(
