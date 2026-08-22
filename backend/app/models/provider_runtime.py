@@ -1,6 +1,6 @@
 """Durable provider-read reconciliation state.
 
-Outbound side effects remain owned by DomainOutbox.  This ledger is only for
+Outbound side effects remain owned by DomainOutbox. This ledger is only for
 operations where Renova must periodically read authoritative provider truth
 (e.g. YooKassa payment state or FNS receipt verification).
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timeutil import utc_now
@@ -19,12 +19,22 @@ from app.models.entities import _uuid
 class ProviderReconciliation(Base):
     __tablename__ = "provider_reconciliations"
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'retry', 'completed', 'terminal', 'unavailable')",
+            name="ck_provider_reconciliations_status",
+        ),
         UniqueConstraint(
             "provider",
             "operation_type",
             "resource_type",
             "resource_id",
             name="uq_provider_reconciliation_resource",
+        ),
+        Index(
+            "ix_provider_reconciliations_due",
+            "status",
+            "next_attempt_at",
+            "locked_at",
         ),
     )
 
