@@ -104,6 +104,8 @@ def test_every_admin_route_uses_canonical_guard():
         "/admin/outbox/dead-letters",
         "/admin/outbox/dead-letters/{outbox_id}",
         "/admin/outbox/dead-letters/{outbox_id}/history",
+        "/admin/provider-reconciliations",
+        "/admin/provider-reconciliations/{reconciliation_id}",
     }
     post_paths = {
         route.path
@@ -114,4 +116,5 @@ def test_every_admin_route_uses_canonical_guard():
         "/admin/outbox/dead-letters/{outbox_id}/claim",
         "/admin/outbox/dead-letters/{outbox_id}/release",
         "/admin/outbox/dead-letters/{outbox_id}/replay",
+        "/admin/provider-reconciliations/{reconciliation_id}/requeue",
     }
