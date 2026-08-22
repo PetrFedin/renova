@@ -6,7 +6,6 @@ payloads in the reconciliation ledger.
 from __future__ import annotations
 
 import httpx
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -239,6 +238,7 @@ async def reconcile_yookassa_payment(
             worker_id=worker_id,
             provider_status=f"local_{payment.status.value}",
         )
+
     provider_id = payment.yookassa_payment_id or claim.provider_resource_id
     if not provider_id:
         return await ledger.mark_terminal(
@@ -258,16 +258,7 @@ async def reconcile_yookassa_payment(
         )
 
     try:
-        remote = await checkout._load_provider_payment(provider_id)
-        checkout._validate_provider_snapshot(payment, project.customer_id, remote)
-    except HTTPException as exc:
-        return await ledger.mark_terminal(
-            db,
-            claim,
-            worker_id=worker_id,
-            error_code="yookassa_snapshot_mismatch",
-            error=exc,
-        )
+        remote = await checkout.load_provider_payment(provider_id)
     except Exception as exc:
         return await _yookassa_transport_failure(
             db,
@@ -276,7 +267,52 @@ async def reconcile_yookassa_payment(
             exc=exc,
         )
 
-    status = remote.status
+    if remote.get("error"):
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="yookassa_not_configured",
+            unavailable=True,
+        )
+    if bool(remote.get("demo")):
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="yookassa_demo_not_authoritative",
+            unavailable=True,
+        )
+
+    try:
+        checkout.validate_provider_snapshot(
+            remote,
+            expected_provider_id=provider_id,
+            expected_amount=float(payment.amount),
+            expected_project_id=payment.project_id,
+            expected_payment_id=payment.id,
+            expected_user_id=project.customer_id,
+        )
+    except checkout.CheckoutIntegrityError as exc:
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code=exc.code or "yookassa_snapshot_mismatch",
+            error=exc,
+        )
+
+    remote_amount = remote.get("remote_amount")
+    remote_currency = remote.get("remote_currency")
+    if remote_amount is None or not remote_currency:
+        return await ledger.mark_terminal(
+            db,
+            claim,
+            worker_id=worker_id,
+            error_code="yookassa_money_missing",
+        )
+
+    status = str(remote.get("status") or "")
     if status in {"pending", "waiting_for_capture"}:
         return await ledger.mark_retry(
             db,
@@ -284,6 +320,7 @@ async def reconcile_yookassa_payment(
             worker_id=worker_id,
             error_code="yookassa_not_terminal",
             provider_status=status,
+            exhaustible=False,
         )
     if status == "succeeded":
         confirmed = await payment_service.confirm_payment(
@@ -292,15 +329,19 @@ async def reconcile_yookassa_payment(
             project_id=payment.project_id,
             allow_without_acceptance=False,
             allow_without_settlement=True,
+            machine_source="reconciliation",
             commit=False,
         )
         if confirmed is None:
+            # Provider truth is already final. Keep reconciling until the local
+            # acceptance invariant permits the corresponding financial move.
             return await ledger.mark_retry(
                 db,
                 claim,
                 worker_id=worker_id,
                 error_code="local_acceptance_pending",
                 provider_status=status,
+                exhaustible=False,
             )
         return await ledger.mark_completed(
             db,
@@ -314,9 +355,10 @@ async def reconcile_yookassa_payment(
             payment_id=payment.id,
             project_id=payment.project_id,
             provider_id=provider_id,
-            amount=float(remote.amount),
-            currency=remote.currency,
+            amount=float(remote_amount),
+            currency=str(remote_currency),
             reason="provider_reconciliation",
+            source="reconciliation",
             commit=False,
         )
         if result.handled:
@@ -338,7 +380,7 @@ async def reconcile_yookassa_payment(
         claim,
         worker_id=worker_id,
         error_code="yookassa_unknown_status",
-        provider_status=status,
+        provider_status=status or None,
     )
 
 
