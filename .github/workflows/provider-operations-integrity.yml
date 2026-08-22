@@ -6,16 +6,26 @@ on:
     paths:
       - "backend/app/models/provider_runtime.py"
       - "backend/app/services/provider_reconciliation_*.py"
+      - "backend/app/services/payment_checkout_service.py"
+      - "backend/app/services/payment_service.py"
+      - "backend/app/services/payment_reversal_service.py"
       - "backend/app/worker_main.py"
+      - "backend/scripts/verify_migration_schema.py"
       - "backend/tests/test_provider_reconciliation_*.py"
+      - "backend/tests/test_yookassa_claim_integrity.py"
       - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
       - ".github/workflows/provider-operations-integrity.yml"
   pull_request:
     paths:
       - "backend/app/models/provider_runtime.py"
       - "backend/app/services/provider_reconciliation_*.py"
+      - "backend/app/services/payment_checkout_service.py"
+      - "backend/app/services/payment_service.py"
+      - "backend/app/services/payment_reversal_service.py"
       - "backend/app/worker_main.py"
+      - "backend/scripts/verify_migration_schema.py"
       - "backend/tests/test_provider_reconciliation_*.py"
+      - "backend/tests/test_yookassa_claim_integrity.py"
       - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
       - ".github/workflows/provider-operations-integrity.yml"
 
@@ -67,9 +77,10 @@ jobs:
           poetry check --lock
           poetry sync --no-interaction
           poetry run python -m pip check
-      - name: Provider reconciliation lifecycle and FNS adapter contracts
+      - name: Provider reconciliation lifecycle and adapter contracts
         working-directory: backend
         run: |
+          set -euo pipefail
           poetry run pytest -q \
             tests/test_provider_reconciliation_integrity.py \
             tests/test_provider_reconciliation_handlers.py
@@ -81,7 +92,7 @@ jobs:
           assert "domain_outbox" in _task_names()
           assert "provider_reconciliation" in _task_names()
           PY
-      - name: PostgreSQL migration from current production head
+      - name: PostgreSQL migration, schema and concurrent identity contract
         working-directory: backend
         env:
           ENVIRONMENT: staging
@@ -96,3 +107,45 @@ jobs:
           set -euo pipefail
           poetry run alembic upgrade head
           test "$(poetry run alembic current | awk '{print $1}')" = "w15providerops01"
+          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python - <<'PY'
+          import asyncio
+          from sqlalchemy import func, select
+          from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+          from app.models.provider_runtime import ProviderReconciliation
+          from app.services.provider_reconciliation_service import ensure_reconciliation
+          from app.core.config import settings
+
+          async def main():
+              engine = create_async_engine(settings.database_url)
+              factory = async_sessionmaker(engine, expire_on_commit=False)
+
+              async def seed():
+                  async with factory() as db:
+                      row = await ensure_reconciliation(
+                          db,
+                          provider="ci-race",
+                          operation_type="payment_status",
+                          resource_type="payment",
+                          resource_id="same-resource",
+                          provider_resource_id="same-provider-id",
+                      )
+                      await db.commit()
+                      return row.id
+
+              first, second = await asyncio.gather(seed(), seed())
+              assert first == second
+              async with factory() as db:
+                  count = await db.scalar(
+                      select(func.count()).select_from(ProviderReconciliation).where(
+                          ProviderReconciliation.provider == "ci-race",
+                          ProviderReconciliation.operation_type == "payment_status",
+                          ProviderReconciliation.resource_type == "payment",
+                          ProviderReconciliation.resource_id == "same-resource",
+                      )
+                  )
+                  assert count == 1
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY
