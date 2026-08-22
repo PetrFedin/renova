@@ -182,9 +182,18 @@ async def confirm_payment(
     allow_without_acceptance: bool = False,
     transfer_ack: bool = False,
     allow_without_settlement: bool = False,
+    machine_source: str = "webhook",
     commit: bool = True,
 ) -> Payment | None:
-    """Move a payment once; retries of an achieved state return the same row."""
+    """Move a payment once; retries of an achieved state return the same row.
+
+    `machine_source` is evidence provenance, not authorization. It is used only
+    for provider-settled transitions and is deliberately constrained so a GET
+    reconciliation can never be recorded as a webhook delivery.
+    """
+    if allow_without_settlement and machine_source not in {"webhook", "reconciliation"}:
+        raise ValueError("unsupported_machine_payment_source")
+
     payment = await db.get(Payment, payment_id)
     if not payment or (project_id is not None and payment.project_id != project_id):
         return None
@@ -267,6 +276,7 @@ async def confirm_payment(
                 allow_without_acceptance=allow_without_acceptance,
                 transfer_ack=transfer_ack,
                 allow_without_settlement=allow_without_settlement,
+                machine_source=machine_source,
                 commit=commit,
             )
         return None
@@ -275,7 +285,12 @@ async def confirm_payment(
     if target_status == PaymentStatus.paid_unverified:
         evidence_type, evidence_ref, source, note = "transfer_ack", None, "manual", "ack_without_receipt"
     elif allow_without_settlement:
-        evidence_type, evidence_ref, source, note = "yookassa", payment.yookassa_payment_id, "webhook", "confirm_payment"
+        evidence_type, evidence_ref, source, note = (
+            "yookassa",
+            payment.yookassa_payment_id,
+            machine_source,
+            "confirm_payment",
+        )
     else:
         evidence_type, evidence_ref, source, note = "receipt", receipt_id, "manual", "confirm_payment"
 
