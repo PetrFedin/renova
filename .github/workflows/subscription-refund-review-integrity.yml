@@ -17,6 +17,7 @@ on:
       - "backend/tests/test_admin_rbac_integrity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/subscription-refund-review-integrity.yml"
+      - ".github/actions/setup-backend/**"
   pull_request:
     paths:
       - "backend/app/api/v1/admin_subscription_refunds.py"
@@ -33,6 +34,7 @@ on:
       - "backend/tests/test_admin_rbac_integrity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/subscription-refund-review-integrity.yml"
+      - ".github/actions/setup-backend/**"
 
 concurrency:
   group: subscription-refund-review-${{ github.event.pull_request.number || github.ref }}
@@ -53,16 +55,8 @@ jobs:
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install focused backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Compile refund review implementation
         working-directory: backend
         run: |
