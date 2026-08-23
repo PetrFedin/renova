@@ -1,0 +1,31 @@
+name: Setup locked backend toolchain
+description: Install the canonical pinned Python and Poetry environment from backend/poetry.lock.
+
+inputs:
+  python-version:
+    description: Exact CPython version used by Renova backend CI.
+    required: false
+    default: "3.12.13"
+  poetry-version:
+    description: Exact Poetry version used to materialize the lockfile.
+    required: false
+    default: "2.4.1"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up exact Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        check-latest: false
+
+    - name: Sync exact locked backend environment
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE/backend"
+        python -m pip install --disable-pip-version-check "poetry==${{ inputs.poetry-version }}"
+        poetry check --lock
+        poetry sync --no-interaction
+        poetry run python -m pip check
