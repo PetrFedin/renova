@@ -195,6 +195,10 @@ def oauth_readiness() -> OAuthReadiness:
         missing.append("MOY_NALOG_TOKEN_ENCRYPTION_KEYS_UNIQUE")
     if any(len(secret.encode("utf-8")) < 32 for secret in unique_keys):
         missing.append("MOY_NALOG_TOKEN_ENCRYPTION_KEYS_MIN_32_BYTES")
+    # The whole point of the provider keyring is an independent rotation domain.
+    # Reject reusing SECRET_KEY as either the primary or a retained previous key.
+    if any(secret == settings.secret_key for secret in unique_keys):
+        missing.append("MOY_NALOG_TOKEN_ENCRYPTION_KEYS_MUST_DIFFER_FROM_SECRET_KEY")
     return OAuthReadiness(ready=not missing, missing=tuple(missing))
 
 
