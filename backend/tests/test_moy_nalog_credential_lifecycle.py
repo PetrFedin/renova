@@ -222,6 +222,23 @@ async def test_corrupt_record_is_removed_but_fernet_shaped_unknown_key_is_retain
     assert configured_oauth.values[token_key] == foreign
 
 
+@pytest.mark.asyncio
+async def test_local_revocation_does_not_depend_on_provider_readiness(configured_oauth, monkeypatch):
+    await oauth.store_tokens("user-a", _tokens())
+    token_key = oauth._token_key("user-a")
+    assert token_key in configured_oauth.values
+
+    # Simulate broken/disabled provider configuration after a credential was
+    # persisted. Unlink must still be able to erase the local credential.
+    monkeypatch.setattr(settings, "moy_nalog_enabled", False)
+    monkeypatch.setattr(settings, "moy_nalog_token_url", None)
+    monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", "")
+    assert oauth.oauth_ready() is False
+
+    await oauth.revoke_tokens("user-a")
+    assert token_key not in configured_oauth.values
+
+
 def test_working_environment_requires_dedicated_unique_32_byte_keyring(monkeypatch):
     monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", "")
