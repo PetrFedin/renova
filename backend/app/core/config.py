@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     moy_nalog_redirect_uri: str | None = None
     moy_nalog_authorize_url: str = "https://lknpd.nalog.ru/api/v1/auth/login"
     moy_nalog_token_url: str | None = None
-    # Comma-separated encryption secrets, newest/primary first. This keyring is
+    # Provider-token keyring entries, newest/primary first. This keyring is
     # deliberately independent from SECRET_KEY so JWT signing-key rotation does
     # not make persisted provider credentials unreadable. Previous keys remain
     # configured only for decrypt-and-rewrap during a controlled rotation.
