@@ -219,9 +219,16 @@ def test_token_payload_requires_bearer_and_bounded_expiry():
 def test_api_source_forbids_fake_linked_and_demo_transitions():
     source = (Path(__file__).parents[1] / "app" / "api" / "v1" / "fns.py").read_text(encoding="utf-8")
     legacy = source[source.index('async def link_moy_nalog'):source.index('@router.post("/moy-nalog/unlink"')]
+    unlink = source[
+        source.index("async def unlink_moy_nalog"):
+        source.index("class MoyNalogOAuthStartResponse")
+    ]
     callback = source[source.index('async def moy_nalog_oauth_callback'):]
     assert "moy_nalog_legacy_link_removed" in legacy
     assert "moy_nalog_linked = True" not in legacy
+    assert "await oauth.revoke_tokens(user.id)" in unlink
+    assert "if oauth.oauth_ready()" not in unlink
+    assert unlink.index("await oauth.revoke_tokens(user.id)") < unlink.index("moy_nalog_linked = False")
     assert "moy_nalog_demo_disabled" in callback
     assert callback.index("await oauth.store_tokens") < callback.index("moy_nalog_linked = True")
     assert callback.index("await oauth.connection_active") < callback.index("moy_nalog_linked = True")
