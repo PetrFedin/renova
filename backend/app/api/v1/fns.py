@@ -39,18 +39,38 @@ def _oauth_error(error) -> HTTPException:
 
 
 @router.get("/health")
-async def fns_health(_user: User = Depends(get_current_user)):
-    """Provider readiness without secrets or simulated success."""
+async def fns_health(user: User = Depends(get_current_user)):
+    """Provider readiness plus the current user's secret-free OAuth state."""
     from app.services import moy_nalog_oauth as oauth
     from app.services.fns.receipt_verify import fns_receipt_health
 
     receipt = fns_receipt_health()
     readiness = oauth.oauth_readiness()
+    if readiness.ready:
+        try:
+            connection = (await oauth.connection_state(user.id)).public_dict()
+        except oauth.MoyNalogOAuthError:
+            connection = {
+                "status": "store_unavailable",
+                "active": False,
+                "expires_at": None,
+                "expires_in_seconds": None,
+                "refresh_token_retained": False,
+            }
+    else:
+        connection = {
+            "status": "not_configured",
+            "active": False,
+            "expires_at": None,
+            "expires_in_seconds": None,
+            "refresh_token_retained": False,
+        }
     return {
         **receipt,
         "npd_status_url_https": (settings.fns_npd_status_url or "").strip().lower().startswith("https://"),
         "moy_nalog_enabled": readiness.ready,
         "moy_nalog_missing": list(readiness.missing),
+        "moy_nalog_connection": connection,
     }
 
 
@@ -118,11 +138,13 @@ async def unlink_moy_nalog(
 ):
     from app.services import moy_nalog_oauth as oauth
 
-    if oauth.oauth_ready():
-        try:
-            await oauth.revoke_tokens(user.id)
-        except oauth.MoyNalogOAuthError as error:
-            raise _oauth_error(error) from error
+    # Local credential deletion must not depend on provider client/token URL or
+    # encryption-key readiness. If the credential store cannot confirm deletion,
+    # fail closed and do not claim a revoked DB state.
+    try:
+        await oauth.revoke_tokens(user.id)
+    except oauth.MoyNalogOAuthError as error:
+        raise _oauth_error(error) from error
     user.moy_nalog_linked = False
     user.moy_nalog_status = "revoked"
     await db.commit()
@@ -220,5 +242,5 @@ async def moy_nalog_oauth_callback(
     return MoyNalogLinkResponse(
         linked=True,
         status="connected",
-        message="OAuth подтверждён; access token зашифрован и сохранён с ограниченным TTL.",
+        message="OAuth подтверждён; действующий access token зашифрован отдельным credential keyring.",
     )

@@ -25,10 +25,18 @@ function browserPath(path: string): string {
   return path;
 }
 
-async function assertNoDeadInteractions(page: Page, routeId: string): Promise<void> {
-  const emptyControls = await page.locator('button:visible, [role="button"]:visible, a:visible').evaluateAll((nodes) =>
+type DeadInteraction = {
+  index: number;
+  tag: string;
+  label: string;
+  reasons: string[];
+};
+
+async function inspectDeadInteractions(page: Page): Promise<DeadInteraction[]> {
+  return page.locator('button:visible, [role="button"]:visible, a:visible').evaluateAll((nodes) =>
     nodes.flatMap((node, index) => {
       const element = node as HTMLElement;
+      if (!element.isConnected) return [];
       const tag = element.tagName.toLowerCase();
       const label = (
         element.getAttribute('aria-label') ||
@@ -38,8 +46,10 @@ async function assertNoDeadInteractions(page: Page, routeId: string): Promise<vo
         ''
       ).trim();
       const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
       const reasons: string[] = [];
       if (!label) reasons.push('missing accessible name');
+      if (style.display === 'none' || style.visibility === 'hidden') reasons.push('hidden interactive control');
       if (rect.width <= 0 || rect.height <= 0) reasons.push('zero-sized interactive control');
       if (tag === 'a') {
         const href = (element.getAttribute('href') || '').trim().toLowerCase();
@@ -48,8 +58,19 @@ async function assertNoDeadInteractions(page: Page, routeId: string): Promise<vo
       return reasons.length ? [{ index, tag, label, reasons }] : [];
     }),
   );
+}
 
-  expect(emptyControls, `${routeId}: dead or inaccessible controls`).toEqual([]);
+async function assertNoDeadInteractions(page: Page, routeId: string): Promise<void> {
+  // Expo web can temporarily expose pressable nodes while route/context updates
+  // replace the shell. Require the final rendered surface to converge to a valid
+  // interactive layout; do not hide persistent zero-size or inaccessible controls.
+  await expect
+    .poll(() => inspectDeadInteractions(page), {
+      message: `${routeId}: dead or inaccessible controls`,
+      timeout: 5_000,
+      intervals: [50, 100, 250, 500],
+    })
+    .toEqual([]);
 }
 
 for (const route of CUSTOMER_SURFACES) {

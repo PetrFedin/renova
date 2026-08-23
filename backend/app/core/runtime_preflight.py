@@ -43,6 +43,11 @@ class PreflightReport:
 def _redacted_error(exc: Exception) -> str:
     """Keep diagnostics actionable without echoing configuration secrets/DSNs."""
     detail = str(exc)
+    moy_nalog_keyring_members = tuple(
+        item.strip()
+        for item in (settings.moy_nalog_token_encryption_keys or "").split(",")
+        if item.strip()
+    )
     sensitive_values = (
         settings.secret_key,
         settings.database_url,
@@ -55,6 +60,8 @@ def _redacted_error(exc: Exception) -> str:
         settings.s3_access_key,
         settings.s3_secret_key,
         settings.moy_nalog_client_secret,
+        settings.moy_nalog_token_encryption_keys,
+        *moy_nalog_keyring_members,
         settings.kontur_api_key,
         settings.esign_webhook_secret,
         *settings.admin_identity_config.configured_ids,
@@ -99,6 +106,19 @@ def _run_sync_check(
     return PreflightCheck(name=name, ok=True, detail=success_detail)
 
 
+def _validate_moy_nalog_configuration() -> None:
+    """Validate enabled provider configuration without performing network I/O."""
+    if not settings.moy_nalog_enabled:
+        return
+    from app.services import moy_nalog_oauth
+
+    readiness = moy_nalog_oauth.oauth_readiness()
+    if not readiness.ready:
+        raise moy_nalog_oauth.MoyNalogConfigurationError(
+            "Интеграция «Мой налог» не настроена: " + ", ".join(readiness.missing)
+        )
+
+
 async def run_preflight(
     *,
     check_database: bool = True,
@@ -117,6 +137,7 @@ async def run_preflight(
     # Additional validators depend on policy-safe configuration. Avoid cascaded
     # network/errors when the configuration itself is already invalid.
     if policy_check.ok:
+        from app.services import moy_nalog_oauth
         from app.services.document_ocr_runtime import validate_document_ocr_runtime
         from app.services.esign.runtime import validate_esign_runtime
         from app.services.storage_runtime import (
@@ -145,6 +166,12 @@ async def run_preflight(
                 "storage mode configuration accepted",
             )
         )
+        moy_nalog_configuration = _run_sync_check(
+            "moy_nalog_oauth_configuration",
+            _validate_moy_nalog_configuration,
+            "disabled or OAuth credential configuration accepted",
+        )
+        checks.append(moy_nalog_configuration)
 
         if check_runtime_services:
             from app.services.otp_runtime import validate_otp_runtime
@@ -163,6 +190,14 @@ async def run_preflight(
                     "shared OTP/OAuth runtime reachable",
                 )
             )
+            if moy_nalog_configuration.ok:
+                checks.append(
+                    await _run_async_check(
+                        "moy_nalog_oauth_runtime",
+                        moy_nalog_oauth.validate_runtime,
+                        "disabled or OAuth credential store reachable",
+                    )
+                )
 
         if check_database:
             from app.db.migration_guard import assert_database_at_head

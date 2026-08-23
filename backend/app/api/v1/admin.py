@@ -86,6 +86,7 @@ async def release_health(
     db: AsyncSession = Depends(get_db),
 ):
     from app.core.config import settings
+    from app.services import moy_nalog_oauth
     from app.services.automation_reminders_worker import automation_worker_metrics
     from app.services.capacity_runtime_service import capacity_runtime_snapshot
     from app.services.esign import list_providers
@@ -106,6 +107,7 @@ async def release_health(
 
     yk = yookassa_health()
     fns = fns_receipt_health()
+    moy_nalog = await moy_nalog_oauth.runtime_health()
     manual_tick_metrics = automation_worker_metrics()
     manual_tick_truth = automation_worker_runtime_truth(manual_tick_metrics)
     worker_pool = await worker_pool_snapshot()
@@ -162,6 +164,7 @@ async def release_health(
                 "live_verify_ready": fns["live_verify_ready"],
                 "demo_verify_allowed": fns["demo_verify_allowed"],
             },
+            "moy_nalog": moy_nalog,
             "esign": esign,
             "smtp": {"configured": bool(settings.smtp_host)},
             "ollama_digest": {

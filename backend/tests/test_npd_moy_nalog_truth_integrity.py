@@ -101,6 +101,8 @@ def reset_integrations(monkeypatch):
     monkeypatch.setattr(settings, "moy_nalog_redirect_uri", "https://app.example.test/callback")
     monkeypatch.setattr(settings, "redis_url", "redis://redis.example.test/0")
     monkeypatch.setattr(settings, "secret_key", "test-secret-key-long-enough")
+    monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", "")
+    monkeypatch.setattr(settings, "moy_nalog_token_recovery_retention_days", 30)
     monkeypatch.setattr(oauth, "_redis", fake_redis)
     monkeypatch.setattr(oauth, "_redis_failed", False)
     yield fake_redis
@@ -179,20 +181,20 @@ async def test_oauth_state_is_shared_one_time_and_user_bound(reset_integrations)
 
 
 @pytest.mark.asyncio
-async def test_tokens_are_encrypted_ttl_bound_and_revocable(reset_integrations):
+async def test_tokens_are_encrypted_access_ttl_bound_and_recovery_retained(reset_integrations):
     tokens = {
         "access_token": "access-secret-value",
         "refresh_token": "refresh-secret-value",
         "token_type": "Bearer",
         "expires_in": 3600,
     }
-    ttl = await oauth.store_tokens("user-a", tokens)
-    assert ttl == 3600
+    access_ttl = await oauth.store_tokens("user-a", tokens)
+    assert access_ttl == 3600
     key = oauth._token_key("user-a")
     stored = reset_integrations.values[key]
     assert "access-secret-value" not in stored
     assert "refresh-secret-value" not in stored
-    assert reset_integrations.ttls[key] == 3600
+    assert reset_integrations.ttls[key] == 3600 + 30 * 86400
     assert await oauth.connection_active("user-a") is True
     await oauth.revoke_tokens("user-a")
     assert key not in reset_integrations.values
@@ -217,9 +219,16 @@ def test_token_payload_requires_bearer_and_bounded_expiry():
 def test_api_source_forbids_fake_linked_and_demo_transitions():
     source = (Path(__file__).parents[1] / "app" / "api" / "v1" / "fns.py").read_text(encoding="utf-8")
     legacy = source[source.index('async def link_moy_nalog'):source.index('@router.post("/moy-nalog/unlink"')]
+    unlink = source[
+        source.index("async def unlink_moy_nalog"):
+        source.index("class MoyNalogOAuthStartResponse")
+    ]
     callback = source[source.index('async def moy_nalog_oauth_callback'):]
     assert "moy_nalog_legacy_link_removed" in legacy
     assert "moy_nalog_linked = True" not in legacy
+    assert "await oauth.revoke_tokens(user.id)" in unlink
+    assert "if oauth.oauth_ready()" not in unlink
+    assert unlink.index("await oauth.revoke_tokens(user.id)") < unlink.index("moy_nalog_linked = False")
     assert "moy_nalog_demo_disabled" in callback
     assert callback.index("await oauth.store_tokens") < callback.index("moy_nalog_linked = True")
     assert callback.index("await oauth.connection_active") < callback.index("moy_nalog_linked = True")

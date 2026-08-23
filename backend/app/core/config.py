@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     moy_nalog_redirect_uri: str | None = None
     moy_nalog_authorize_url: str = "https://lknpd.nalog.ru/api/v1/auth/login"
     moy_nalog_token_url: str | None = None
+    # Provider-token keyring entries, newest/primary first. This keyring is
+    # deliberately independent from SECRET_KEY so JWT signing-key rotation does
+    # not make persisted provider credentials unreadable. Previous keys remain
+    # configured only for decrypt-and-rewrap during a controlled rotation.
+    moy_nalog_token_encryption_keys: str = ""
+    # Local encrypted retention after access-token expiry when a refresh token
+    # was actually returned. This is recovery storage only; it does not assert
+    # that the remote provider still accepts that refresh credential.
+    moy_nalog_token_recovery_retention_days: int = Field(default=30, ge=1, le=365)
+    moy_nalog_token_expiring_threshold_sec: int = Field(default=3600, ge=60, le=86400)
     s3_endpoint: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
