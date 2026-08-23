@@ -199,7 +199,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@v4.1.2
 
-      - name: Keyless-sign the published digest
+      - name: Keyless-sign the published digest and retain identity
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
         shell: bash
@@ -207,6 +207,32 @@ jobs:
           set -euo pipefail
           test -n "$DIGEST"
           cosign sign --yes "${IMAGE}@${DIGEST}"
+
+          identity_dir="${RUNNER_TEMP}/renova-backend-image-identity"
+          mkdir -p "$identity_dir"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          digest = os.environ['DIGEST'].strip()
+          if not digest.startswith('sha256:'):
+              raise SystemExit(f'invalid backend image digest: {digest!r}')
+          payload = {
+              'git_sha': os.environ['GITHUB_SHA'],
+              'image': os.environ['IMAGE'],
+              'tag': f"{os.environ['IMAGE']}:sha-{os.environ['GITHUB_SHA']}",
+              'digest': digest,
+              'runtime_commands': ['renova-api', 'renova-worker'],
+              'sbom': True,
+              'provenance': 'mode=max',
+              'signature': 'sigstore-keyless',
+              'evidence': f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }
+          path = Path(os.environ['RUNNER_TEMP']) / 'renova-backend-image-identity' / 'backend-image-identity.json'
+          path.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+
           {
             echo "### Canonical backend image"
             echo
@@ -217,3 +243,11 @@ jobs:
             echo "- SBOM/provenance: attached by BuildKit"
             echo "- Signature: Sigstore keyless"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable backend image identity
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image-identity
+          retention-days: 90
+          if-no-files-found: error
+          path: ${{ runner.temp }}/renova-backend-image-identity/backend-image-identity.json
