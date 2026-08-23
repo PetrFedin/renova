@@ -13,6 +13,7 @@ on:
       - "backend/app/api/v1/automation_worker.py"
       - "backend/app/services/outbox_worker.py"
       - "backend/app/services/push_receipt_worker.py"
+      - "backend/app/services/provider_reconciliation_worker.py"
       - "backend/app/services/automation_reminders_worker.py"
       - "backend/app/services/runtime_topology.py"
       - "backend/tests/test_runtime_topology_integrity.py"
@@ -26,6 +27,7 @@ on:
       - "backend/app/main.py"
       - "backend/app/worker_main.py"
       - "backend/app/runtime_healthcheck.py"
+      - "backend/app/services/provider_reconciliation_worker.py"
       - "backend/app/services/runtime_topology.py"
       - "scripts/runtime-topology-smoke.sh"
       - ".github/workflows/runtime-topology-integrity.yml"
@@ -55,6 +57,7 @@ jobs:
           python -m py_compile \
             backend/app/worker_main.py \
             backend/app/runtime_healthcheck.py \
+            backend/app/services/provider_reconciliation_worker.py \
             backend/app/services/runtime_topology.py
       - name: Build exact same-image topology artifact
         shell: bash

@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-_PRESENT_REVISION = "w14techsupervision01"
+_PRESENT_REVISION = "w15providerops01"
 _ABSENT_REVISION = "w6webhookdelivery01"
 
 
@@ -451,6 +451,74 @@ def _verify_technical_supervision(inspector) -> None:
         _require(bool(index.get("unique")) is unique, f"{name} unique mismatch")
 
 
+def _verify_provider_reconciliations(inspector) -> None:
+    table = "provider_reconciliations"
+    expected_columns = {
+        "id", "provider", "operation_type", "resource_type", "resource_id",
+        "provider_resource_id", "status", "provider_status", "attempts",
+        "claim_generation", "next_attempt_at", "locked_at", "locked_by",
+        "last_attempt_at", "completed_at", "expires_at", "last_error_code",
+        "last_error_fingerprint", "created_at", "updated_at",
+    }
+    columns = {column["name"]: column for column in inspector.get_columns(table)}
+    missing = expected_columns - set(columns)
+    _require(not missing, f"{table} columns are missing: {sorted(missing)}")
+    nullable = {
+        "provider_resource_id", "provider_status", "next_attempt_at", "locked_at",
+        "locked_by", "last_attempt_at", "completed_at", "expires_at",
+        "last_error_code", "last_error_fingerprint",
+    }
+    for name in expected_columns:
+        _require(
+            bool(columns[name].get("nullable")) is (name in nullable),
+            f"{table}.{name} nullable mismatch",
+        )
+    _require(
+        list(inspector.get_pk_constraint(table).get("constrained_columns") or []) == ["id"],
+        f"{table} primary key must be id",
+    )
+    unique_constraints = {
+        constraint.get("name"): list(constraint.get("column_names") or [])
+        for constraint in inspector.get_unique_constraints(table)
+        if constraint.get("name")
+    }
+    _require(
+        unique_constraints.get("uq_provider_reconciliation_resource")
+        == ["provider", "operation_type", "resource_type", "resource_id"],
+        "provider reconciliation deterministic identity constraint is missing",
+    )
+    checks = {
+        constraint.get("name"): str(constraint.get("sqltext") or "").lower()
+        for constraint in inspector.get_check_constraints(table)
+    }
+    status_check = checks.get("ck_provider_reconciliations_status", "")
+    _require("status" in status_check, "provider reconciliation status check is missing")
+    for value in ("pending", "retry", "completed", "terminal", "unavailable"):
+        _require(value in status_check, f"provider reconciliation status check misses {value}")
+    indexes = {
+        index["name"]: index
+        for index in inspector.get_indexes(table)
+        if index.get("name")
+    }
+    for name, expected in {
+        "ix_provider_reconciliations_provider": ["provider"],
+        "ix_provider_reconciliations_operation_type": ["operation_type"],
+        "ix_provider_reconciliations_resource_type": ["resource_type"],
+        "ix_provider_reconciliations_resource_id": ["resource_id"],
+        "ix_provider_reconciliations_provider_resource_id": ["provider_resource_id"],
+        "ix_provider_reconciliations_status": ["status"],
+        "ix_provider_reconciliations_next_attempt_at": ["next_attempt_at"],
+        "ix_provider_reconciliations_locked_at": ["locked_at"],
+        "ix_provider_reconciliations_expires_at": ["expires_at"],
+        "ix_provider_reconciliations_created_at": ["created_at"],
+        "ix_provider_reconciliations_due": ["status", "next_attempt_at", "locked_at"],
+    }.items():
+        index = indexes.get(name)
+        _require(index is not None, f"{name} is missing")
+        _require(list(index.get("column_names") or []) == expected, f"{name} columns mismatch")
+        _require(not bool(index.get("unique")), f"{name} must not be unique")
+
+
 def _verify_present(sync_connection) -> None:
     _require(
         _current_revision(sync_connection) == _PRESENT_REVISION,
@@ -466,6 +534,7 @@ def _verify_present(sync_connection) -> None:
         "subscription_refund_review_events",
         "expo_push_receipts",
         "project_technical_supervisor_assignments",
+        "provider_reconciliations",
     ):
         _require(table in tables, f"{table} table is missing after Alembic upgrade")
     _verify_calendar(inspector)
@@ -474,6 +543,7 @@ def _verify_present(sync_connection) -> None:
     _verify_subscription_refund_review_events(inspector)
     _verify_push_receipts(inspector)
     _verify_technical_supervision(inspector)
+    _verify_provider_reconciliations(inspector)
 
 
 def _verify_absent(sync_connection) -> None:
@@ -490,6 +560,7 @@ def _verify_absent(sync_connection) -> None:
         "subscription_refund_review_events",
         "expo_push_receipts",
         "project_technical_supervisor_assignments",
+        "provider_reconciliations",
     ):
         _require(table not in tables, f"{table} survived downgrade to the previous revision")
     _require("users" in tables, "users table disappeared during schema downgrade")

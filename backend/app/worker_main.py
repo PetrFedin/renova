@@ -25,7 +25,7 @@ logger = logging.getLogger("renova.worker")
 
 
 def _task_names() -> tuple[str, ...]:
-    names = ["domain_outbox"]
+    names = ["domain_outbox", "provider_reconciliation"]
     if settings.automation_reminders_enabled:
         names.append("automation_reminders")
     if settings.push_receipt_worker_enabled:
@@ -39,7 +39,6 @@ def _install_signal_handlers(stop: asyncio.Event) -> None:
         try:
             loop.add_signal_handler(sig, stop.set)
         except (NotImplementedError, RuntimeError):
-            # add_signal_handler is unavailable on some non-POSIX event loops.
             pass
 
 
@@ -93,12 +92,17 @@ async def _start_worker_tasks(
     started_at: str,
 ) -> list[asyncio.Task]:
     from app.services.outbox_worker import outbox_worker_loop
+    from app.services.provider_reconciliation_worker import provider_reconciliation_worker_loop
 
     tasks: list[asyncio.Task] = [
         asyncio.create_task(
             outbox_worker_loop(stop, interval_sec=15.0),
             name="renova-worker-domain-outbox",
-        )
+        ),
+        asyncio.create_task(
+            provider_reconciliation_worker_loop(stop, interval_sec=30.0),
+            name="renova-worker-provider-reconciliation",
+        ),
     ]
 
     if settings.automation_reminders_enabled:
@@ -156,9 +160,6 @@ async def run_worker() -> int:
     exit_code = 0
 
     try:
-        # Fail startup if a deployed worker cannot publish the shared heartbeat.
-        # The surrounding finally guarantees cleanup even if the next import or
-        # task construction fails after this first successful publication.
         await publisher.publish(active_tasks=active_tasks, started_at=started_at)
         tasks = await _start_worker_tasks(
             stop,

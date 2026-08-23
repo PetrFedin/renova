@@ -111,7 +111,10 @@ async def seed_user(
 
 def test_alembic_graph_has_one_head():
     script = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert script.get_heads() == ["w14techsupervision01"]
+    assert script.get_heads() == ["w15providerops01"]
+    provider_ops_revision = script.get_revision("w15providerops01")
+    assert provider_ops_revision is not None
+    assert provider_ops_revision.down_revision == "w14techsupervision01"
     supervision_revision = script.get_revision("w14techsupervision01")
     assert supervision_revision is not None
     assert supervision_revision.down_revision == "w13ormparity01"

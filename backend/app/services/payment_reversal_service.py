@@ -112,8 +112,11 @@ async def apply_provider_cancellation(
     amount: float,
     currency: str,
     reason: str | None,
+    source: str = "webhook",
     commit: bool = True,
 ) -> ReversalResult:
+    if source not in {"webhook", "reconciliation"}:
+        raise ValueError("unsupported_provider_cancellation_source")
     payment = await _locked_payment_by_id(db, payment_id=payment_id, project_id=project_id)
     if not payment:
         return ReversalResult(handled=False, reason="payment_not_found")
@@ -140,7 +143,7 @@ async def apply_provider_cancellation(
         PaymentEvent(
             id=_uuid(),
             payment_id=payment.id,
-            source="webhook",
+            source=source,
             old_status=old_status,
             new_status=PaymentStatus.cancelled.value,
             evidence_type="yookassa_cancellation",
@@ -275,6 +278,7 @@ async def process_provider_reversal(
             amount=amount,
             currency=currency,
             reason=str(cancellation.get("reason") or "payment.canceled"),
+            source="webhook",
             commit=commit,
         )
     if event == "refund.succeeded" and obj.get("status") == "succeeded":
