@@ -55,6 +55,7 @@ def _redacted_error(exc: Exception) -> str:
         settings.s3_access_key,
         settings.s3_secret_key,
         settings.moy_nalog_client_secret,
+        settings.moy_nalog_token_encryption_keys,
         settings.kontur_api_key,
         settings.esign_webhook_secret,
         *settings.admin_identity_config.configured_ids,
