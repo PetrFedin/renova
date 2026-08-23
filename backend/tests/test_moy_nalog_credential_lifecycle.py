@@ -253,6 +253,10 @@ def test_working_environment_requires_dedicated_unique_32_byte_keyring(monkeypat
     readiness = oauth.oauth_readiness()
     assert "MOY_NALOG_TOKEN_ENCRYPTION_KEYS_UNIQUE" in readiness.missing
 
+    monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", _OLD_SHARED)
+    readiness = oauth.oauth_readiness()
+    assert "MOY_NALOG_TOKEN_ENCRYPTION_KEYS_MUST_DIFFER_FROM_SECRET_KEY" in readiness.missing
+
     monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", f"{_KEY_B},{_KEY_A}")
     assert oauth.oauth_readiness().ready is True
 
