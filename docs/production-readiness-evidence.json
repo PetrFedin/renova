@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "observed_on": "2026-08-23",
+  "expected_repo_facts": {
+    "alembic_head": "w15providerops01",
+    "mobile_version": "0.3.7",
+    "ios_build_number": "3",
+    "android_version_code": 3
+  },
+  "backend_artifact": {
+    "status": "UNVERIFIED_CURRENT_DIGEST",
+    "image": "ghcr.io/petrfedin/renova-api",
+    "immutable_tag_contract": "sha-${GIT_SHA}",
+    "digest": null,
+    "git_sha": null,
+    "evidence": null,
+    "repo_contract": ".github/workflows/backend-image.yml",
+    "latest_repo_validation": {
+      "status": "SUCCESS",
+      "git_sha": "3bbdb16b774d197e48df1321f633108d23e78485",
+      "workflow_run_id": 32655970885,
+      "scope": "PR image build, metadata, Trivy, API and worker image health; not registry publish proof"
+    }
+  },
+  "environments": {
+    "staging": {
+      "status": "CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED",
+      "git_sha": "3bbdb16b774d197e48df1321f633108d23e78485",
+      "workflow_run_id": 32655970897,
+      "evidence": null,
+      "note": "Repository CI proved the isolated PostgreSQL/Redis/Bearer-auth staging topology. A real externally deployed production-like staging environment is not confirmed by this evidence."
+    },
+    "production": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "git_sha": null,
+      "artifact_digest": null,
+      "evidence": null,
+      "note": "No authoritative production deployment evidence is retained in the repository readiness manifest."
+    }
+  },
+  "providers": {
+    "yookassa": {
+      "repo_status": "DURABLE_RECONCILIATION_IMPLEMENTED",
+      "external_status": "LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED",
+      "issue": 238
+    },
+    "fns_receipts": {
+      "repo_status": "DURABLE_RECONCILIATION_IMPLEMENTED",
+      "external_status": "LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED",
+      "issue": 238
+    },
+    "moy_nalog": {
+      "repo_status": "CREDENTIAL_LIFECYCLE_HARDENED",
+      "external_status": "LIVE_OAUTH_AND_PROVIDER_REFRESH_CONTRACT_UNVERIFIED",
+      "automatic_refresh_supported": false,
+      "issue": 238
+    },
+    "esign_kontur": {
+      "repo_status": "DURABLE_IDEMPOTENT_SUBMIT_AND_WEBHOOK",
+      "external_status": "AUTHORITATIVE_READ_STATUS_CONTRACT_UNVERIFIED",
+      "issue": 238
+    },
+    "s3_media": {
+      "repo_status": "FAIL_CLOSED_CONFIGURATION_AND_RUNTIME_CHECKS",
+      "external_status": "AMBIGUOUS_WRITE_ORPHAN_RECOVERY_NOT_CLOSED",
+      "issue": 238
+    },
+    "push": {
+      "repo_status": "DELIVERY_AND_RECEIPT_RECONCILIATION_IMPLEMENTED",
+      "external_status": "LIVE_PROVIDER_LIVENESS_UNVERIFIED"
+    }
+  },
+  "slo": {
+    "status": "REPOSITORY_GATE_IMPLEMENTED_EXTERNAL_CAPACITY_NOT_PROVEN",
+    "candidate_thresholds": {
+      "http_failure_rate_lt": 0.01,
+      "http_p95_ms_lt": 1000,
+      "http_p99_ms_lt": 2500,
+      "websocket_delivery_failure_rate_lt": 0.01,
+      "websocket_delivery_p95_ms_lt": 1000,
+      "websocket_delivery_p99_ms_lt": 2500
+    },
+    "latest_repo_capacity_gate": {
+      "pr": 255,
+      "reviewed_head_sha": "00146fe47f4041e9378962f5e332d5ee28edcace",
+      "merge_sha": "bd77d4703336d1feba26735398bb14cc21c82616",
+      "status": "SUCCESS"
+    },
+    "latest_external_load_test": {
+      "status": "NOT_EXECUTED_OR_NOT_RETAINED",
+      "git_sha": null,
+      "artifact_digest": null,
+      "evidence": null,
+      "issue": 236
+    }
+  },
+  "restore": {
+    "latest_repo_restore_drill": {
+      "status": "SUCCESS",
+      "git_sha": "6b583f596b7dd004273ba08044bbb0dc82a85d6e",
+      "workflow_run_id": 32640629706,
+      "scope": "PostgreSQL logical backup, isolated restore, schema and deterministic data fingerprint verification",
+      "production_backup": false
+    },
+    "latest_production_restore_drill": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "evidence": null
+    }
+  },
+  "release": {
+    "mobile_source_version": "0.3.7",
+    "ios_build_number": "3",
+    "android_version_code": 3,
+    "latest_eas_release": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "git_sha": null,
+      "profile": null,
+      "builds": [],
+      "evidence": null
+    },
+    "repo_release_contract": ".github/workflows/eas-build.yml"
+  },
+  "security": {
+    "repo_controls": {
+      "status": "IMPLEMENTED",
+      "merge_sha": "0cc870fdea76aeca26aef1365daf88407f6e3f78",
+      "osv_exception_baseline": "EMPTY",
+      "codeql": "ENABLED",
+      "gitleaks_history_and_proposed_tree": "ENABLED",
+      "container_high_critical_fixed_vulnerability_gate": "ENABLED"
+    },
+    "accepted_risks": [],
+    "external_validation": {
+      "branch_protection": "OPEN_ISSUE_247",
+      "privileged_access_review": "OPEN_ISSUE_256",
+      "independent_pentest": "OPEN_ISSUE_257",
+      "provider_credential_rotation_drill": "NOT_EXTERNALLY_VERIFIED"
+    }
+  },
+  "open_launch_blockers": [
+    {
+      "issue": 247,
+      "priority": "P0",
+      "reason": "main branch protection and required production checks are still externally observed disabled"
+    },
+    {
+      "issue": 236,
+      "priority": "P1",
+      "reason": "real external production-like staging capacity/provider-degradation evidence is not proven"
+    },
+    {
+      "issue": 237,
+      "priority": "P1",
+      "reason": "external security acceptance remains incomplete"
+    },
+    {
+      "issue": 238,
+      "priority": "P1",
+      "reason": "e-sign authoritative read status and S3 ambiguous-write recovery remain incomplete"
+    },
+    {
+      "issue": 241,
+      "priority": "P1",
+      "reason": "controlled real-user pilot, product telemetry and launch operations are not complete"
+    },
+    {
+      "issue": 256,
+      "priority": "P1",
+      "reason": "real GitHub/org privileged-access review is not executed"
+    },
+    {
+      "issue": 257,
+      "priority": "P1",
+      "reason": "independent pre-launch penetration and abuse test is not executed"
+    }
+  ],
+  "launch_decision": {
+    "status": "BLOCKED_FOR_BROAD_PRODUCTION",
+    "reason": "Repository release gates are strong, but required external governance, capacity, provider and security evidence is incomplete."
+  }
+}

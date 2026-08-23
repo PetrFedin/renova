@@ -2,7 +2,7 @@
 
 **Repository:** https://github.com/PetrFedin/renova — отдельный продукт, не связан с [Syntha](https://github.com/PetrFedin/syntha).
 
-Монорепо MVP: мобильное приложение для заказчика и исполнителя, backend API, движок расчётов смет.
+Монорепозиторий продукта: мобильное приложение для заказчика и исполнителя, backend API, движок расчётов смет и production-operations контур.
 
 ## Стек
 
@@ -11,42 +11,43 @@
 | Mobile (iPhone) | Expo 56 + React Native + expo-router |
 | Backend | FastAPI + SQLAlchemy 2 + PostgreSQL |
 | Расчёты | `packages/calc-engine` (TypeScript, общий с mobile) |
-| ФНС MVP | Публичный API статуса самозанятого + проверка чеков |
-| ФНС v2 | Партнёрство «Мой налог» (SOAP/Open API после аккредитации) |
+| ФНС | Публичный API статуса самозанятого + проверка чеков |
+| «Мой налог» | OAuth/provider integration после получения реальных partner credentials |
 
 ## Быстрый старт
 
 ```bash
-# Backend
-cd backend && poetry install && cp .env.example .env
+# Backend: используем тот же lock contract, что и CI
+python -m pip install "poetry==2.4.1"
+cd backend && poetry check --lock && poetry sync --no-interaction && cp .env.example .env
 poetry run uvicorn app.main:app --reload --port 8100
 
 # iPhone (симулятор)
-cd apps/mobile && npm install && npm run ios
+cd apps/mobile && npm ci && npm run ios
 ```
 
 ## CI и локальные gates
 
 ```bash
-npm run test:priority              # priority gate (~49 tests)
+npm run test:priority              # priority gate
 bash scripts/ci-playwright.sh api  # Playwright API E2E (backend via script)
 npm run ci:playwright              # api + ui — как job playwright в CI
 ```
 
-Подробнее: `docs/P3-W18-CI-PLAYWRIGHT-SCRIPT-2026-07-18.md`, `docs/P3-W19-CI-WORKFLOW-PUSH-2026-07-18.md`.
-
 ## Документация
 
-- `docs/FULL-PROJECT-AUDIT-2026-07-31.md` — актуальный источник истины по аудитам, закрытиям и очереди исправлений
-- `docs/FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — исполняемый checklist текущих security/product/ops волн
-- `docs/MVP-SPEC-RU.md` — полная спецификация MVP
-- `docs/FNS-INTEGRATION-RU.md` — интеграция с ФНС и «Мой налог»
-- `docs/UX-FLOWS-RU.md` — экраны и сценарии
+- **`PRODUCTION-READINESS.md` — текущий source of truth по production readiness, evidence и launch blockers.**
+- `docs/production-readiness-evidence.json` — reviewable machine-readable evidence manifest; SHA-bound snapshot генерируется CI.
+- `docs/FULL-PROJECT-AUDIT-2026-07-31.md` — исторический аудит состояния на 31.07.2026; не использовать как текущий readiness status.
+- `docs/FULL-PROJECT-AUDIT-WAVE-X-CHECKLIST.md` — исторический/рабочий checklist security/product/ops волн; текущий launch verdict берётся из production readiness.
+- `docs/MVP-SPEC-RU.md` — историческая исходная спецификация продукта.
+- `docs/FNS-INTEGRATION-RU.md` — интеграция с ФНС и «Мой налог».
+- `docs/UX-FLOWS-RU.md` — экраны и сценарии.
 
 ## Роли
 
-- **Заказчик** — бесплатно: проект, смета, контроль, приёмка
-- **Исполнитель** — подписка: CRM, сметы, чеки НПД, рейтинг
+- **Заказчик** — проект, смета, контроль, приёмка.
+- **Исполнитель** — CRM, сметы, чеки НПД, рейтинг, подписка.
 
 ## Синхронизация и канон копий
 
