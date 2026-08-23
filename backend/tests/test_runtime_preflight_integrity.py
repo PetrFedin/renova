@@ -288,13 +288,15 @@ async def test_invalid_policy_short_circuits_live_checks(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_preflight_failure_redacts_all_configured_secrets(monkeypatch):
+    primary = "P" * 40
+    previous = "Q" * 40
     configured = _working_settings(
         yookassa_secret="payment-secret",
         smtp_password="smtp-secret",
         s3_access_key="storage-key",
         s3_secret_key="storage-secret",
         moy_nalog_client_secret="oauth-secret",
-        moy_nalog_token_encryption_keys="oauth-keyring-primary-000000000000001,oauth-keyring-previous-0000000000002",
+        moy_nalog_token_encryption_keys=f"{primary},{previous}",
         kontur_api_key="esign-key",
         esign_webhook_secret="esign-webhook-secret",
     )
