@@ -14,6 +14,7 @@ on:
       - "backend/tests/test_outbox_failure_isolation.py"
       - "backend/tests/test_outbox_dead_letter_operations_integrity.py"
       - ".github/workflows/outbox-ops-alert-integrity.yml"
+      - ".github/actions/setup-backend/**"
   workflow_dispatch:
 
 permissions:
@@ -40,16 +41,8 @@ jobs:
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install focused backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Reject secret-bearing outbox alert bodies
         working-directory: backend
         run: |
