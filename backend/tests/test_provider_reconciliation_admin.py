@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import pytest
 import pytest_asyncio
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, iter_route_contexts
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.admin_access import require_admin_user
@@ -199,14 +199,14 @@ def test_all_provider_admin_routes_require_platform_admin_dependency():
 
 
 def test_admin_router_exposes_provider_reconciliation_operations():
-    paths = {
-        route.path
-        for route in admin_api.router.routes
-        if isinstance(route, APIRoute)
+    signatures = {
+        (method, route.path)
+        for route in iter_route_contexts(admin_api.router.routes)
+        for method in (route.methods or set())
     }
-    assert "/admin/provider-reconciliations" in paths
-    assert "/admin/provider-reconciliations/{reconciliation_id}" in paths
-    assert "/admin/provider-reconciliations/{reconciliation_id}/requeue" in paths
+    assert ("GET", "/admin/provider-reconciliations") in signatures
+    assert ("GET", "/admin/provider-reconciliations/{reconciliation_id}") in signatures
+    assert ("POST", "/admin/provider-reconciliations/{reconciliation_id}/requeue") in signatures
 
 
 def test_release_health_includes_safe_provider_runtime_contract():
