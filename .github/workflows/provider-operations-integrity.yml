@@ -92,7 +92,7 @@ jobs:
       - name: Worker source contract
         working-directory: backend
         run: |
-          python - <<'PY'
+          poetry run python - <<'PY'
           from app.worker_main import _task_names
           assert "domain_outbox" in _task_names()
           assert "provider_reconciliation" in _task_names()
