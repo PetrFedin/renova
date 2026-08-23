@@ -9,6 +9,7 @@ on:
       - "backend/conftest.py"
       - "backend/tests/conftest.py"
       - ".github/workflows/fns-receipt-integrity.yml"
+      - ".github/actions/setup-backend/**"
   pull_request:
     paths:
       - "backend/app/services/fns/**"
@@ -17,21 +18,15 @@ on:
       - "backend/conftest.py"
       - "backend/tests/conftest.py"
       - ".github/workflows/fns-receipt-integrity.yml"
+      - ".github/actions/setup-backend/**"
 
 jobs:
   fns-receipt-integrity:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Run FNS receipt truth tests
         working-directory: backend
         env:
