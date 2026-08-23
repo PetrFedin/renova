@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI):
     for warning in configured_runtime_warnings():
         logger.warning(warning)
 
+    from app.services import moy_nalog_oauth
     from app.services.document_ocr_runtime import validate_document_ocr_runtime
     from app.services.esign.runtime import validate_esign_runtime
     from app.services.otp_runtime import validate_otp_runtime
@@ -68,6 +69,10 @@ async def lifespan(app: FastAPI):
     validate_esign_runtime()
     validate_document_ocr_runtime()
     await validate_otp_runtime()
+    # An enabled OAuth integration is a working runtime dependency. Fail before
+    # serving requests when its dedicated credential policy or Redis store is
+    # unusable; disabled mode remains a no-op.
+    await moy_nalog_oauth.validate_runtime()
     await rate_limiter.ping()
     await init_db()
     validate_storage_runtime()
