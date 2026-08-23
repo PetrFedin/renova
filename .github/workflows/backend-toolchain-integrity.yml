@@ -1,0 +1,40 @@
+name: Backend toolchain integrity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/actions/setup-backend/**"
+      - ".github/workflows/**"
+      - "scripts/verify_backend_workflow_toolchain.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+  pull_request:
+    paths:
+      - ".github/actions/setup-backend/**"
+      - ".github/workflows/**"
+      - "scripts/verify_backend_workflow_toolchain.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-toolchain-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+          check-latest: false
+      - name: Verify focused backend workflows use the locked toolchain
+        run: python scripts/verify_backend_workflow_toolchain.py

@@ -12,6 +12,7 @@ on:
       - "backend/tests/test_otp_auth_integrity.py"
       - "backend/tests/test_otp_atomic_consume.py"
       - ".github/workflows/otp-redis-recovery-integrity.yml"
+      - ".github/actions/setup-backend/**"
   workflow_dispatch:
 
 permissions:
@@ -36,16 +37,8 @@ jobs:
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install focused backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Reject permanent OTP Redis failure state
         working-directory: backend
         run: |

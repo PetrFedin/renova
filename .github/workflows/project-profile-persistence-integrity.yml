@@ -12,6 +12,7 @@ on:
       - "backend/alembic/versions/k1l2m3n4o5p6_customer_budget.py"
       - "backend/tests/test_project_profile_persistence_integrity.py"
       - ".github/workflows/project-profile-persistence-integrity.yml"
+      - ".github/actions/setup-backend/**"
   pull_request:
     paths:
       - "backend/app/models/__init__.py"
@@ -23,6 +24,7 @@ on:
       - "backend/alembic/versions/k1l2m3n4o5p6_customer_budget.py"
       - "backend/tests/test_project_profile_persistence_integrity.py"
       - ".github/workflows/project-profile-persistence-integrity.yml"
+      - ".github/actions/setup-backend/**"
 
 jobs:
   project-profile-persistence:
@@ -39,16 +41,8 @@ jobs:
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Run project profile persistence truth tests
         working-directory: backend
         run: |

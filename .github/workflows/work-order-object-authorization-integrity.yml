@@ -12,6 +12,7 @@ on:
       - "backend/tests/test_work_order_atomicity.py"
       - "backend/tests/test_work_order_patch_integrity.py"
       - ".github/workflows/work-order-object-authorization-integrity.yml"
+      - ".github/actions/setup-backend/**"
   pull_request:
     paths:
       - "backend/app/services/work_order_service.py"
@@ -23,6 +24,7 @@ on:
       - "backend/tests/test_work_order_atomicity.py"
       - "backend/tests/test_work_order_patch_integrity.py"
       - ".github/workflows/work-order-object-authorization-integrity.yml"
+      - ".github/actions/setup-backend/**"
 
 jobs:
   work-order-object-authorization:
@@ -39,16 +41,8 @@ jobs:
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Run work-order object authorization tests
         working-directory: backend
         run: |

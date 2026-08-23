@@ -22,6 +22,7 @@ on:
       - "backend/tests/test_runtime_topology_integrity.py"
       - "docs/push-delivery-reliability.md"
       - ".github/workflows/push-receipt-reconciliation-integrity.yml"
+      - ".github/actions/setup-backend/**"
   workflow_dispatch:
 
 permissions:
@@ -58,16 +59,8 @@ jobs:
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
-          poetry run pip install fpdf2 alembic
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Verify migration upgrade downgrade upgrade and reflected schema
         working-directory: backend
         run: |
