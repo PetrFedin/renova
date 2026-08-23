@@ -159,11 +159,42 @@ async def test_static_preflight_is_network_free_and_reports_optional_warnings(
         "document_ocr_runtime",
         "esign_runtime",
         "storage_configuration",
+        "moy_nalog_oauth_configuration",
     ]
     assert live_storage_called is False
     assert any("YOOKASSA_SHOP_ID" in warning for warning in report.warnings)
     assert any("SENTRY_DSN" in warning for warning in report.warnings)
     assert any("OTEL_EXPORTER_OTLP_ENDPOINT" in warning for warning in report.warnings)
+
+
+@pytest.mark.asyncio
+async def test_enabled_moy_nalog_without_dedicated_keyring_fails_static_preflight(
+    monkeypatch,
+):
+    from app.services import moy_nalog_oauth
+
+    configured = _working_settings(
+        moy_nalog_enabled=True,
+        moy_nalog_client_id="moy-client",
+        moy_nalog_client_secret="moy-client-secret",
+        moy_nalog_authorize_url="https://auth.example.test/oauth",
+        moy_nalog_token_url="https://auth.example.test/token",
+        moy_nalog_redirect_uri="https://api-staging.renova.example/api/v1/fns/moy-nalog/oauth/callback",
+        moy_nalog_token_encryption_keys="",
+    )
+    monkeypatch.setattr(runtime_preflight, "settings", configured)
+    monkeypatch.setattr(moy_nalog_oauth, "settings", configured)
+
+    report = await runtime_preflight.run_preflight(
+        check_database=False,
+        check_runtime_services=False,
+    )
+
+    checks = {check.name: check for check in report.checks}
+    assert report.ok is False
+    assert checks["moy_nalog_oauth_configuration"].ok is False
+    assert "MOY_NALOG_TOKEN_ENCRYPTION_KEYS" in checks["moy_nalog_oauth_configuration"].detail
+    assert configured.moy_nalog_client_secret not in checks["moy_nalog_oauth_configuration"].detail
 
 
 @pytest.mark.asyncio
@@ -207,6 +238,8 @@ async def test_live_preflight_runs_storage_and_shared_auth_checks(monkeypatch):
     assert checks["storage_configuration"].ok is True
     assert checks["storage_runtime"].ok is True
     assert checks["shared_auth_runtime"].ok is True
+    assert checks["moy_nalog_oauth_configuration"].ok is True
+    assert checks["moy_nalog_oauth_runtime"].ok is True
 
 
 @pytest.mark.asyncio
@@ -261,6 +294,7 @@ async def test_preflight_failure_redacts_all_configured_secrets(monkeypatch):
         s3_access_key="storage-key",
         s3_secret_key="storage-secret",
         moy_nalog_client_secret="oauth-secret",
+        moy_nalog_token_encryption_keys="oauth-keyring-primary-000000000000001,oauth-keyring-previous-0000000000002",
         kontur_api_key="esign-key",
         esign_webhook_secret="esign-webhook-secret",
     )
@@ -276,6 +310,7 @@ async def test_preflight_failure_redacts_all_configured_secrets(monkeypatch):
             configured.s3_access_key or "",
             configured.s3_secret_key or "",
             configured.moy_nalog_client_secret or "",
+            configured.moy_nalog_token_encryption_keys or "",
             configured.kontur_api_key or "",
             configured.esign_webhook_secret or "",
         ]
@@ -303,6 +338,7 @@ def test_fastapi_lifespan_uses_shared_runtime_policy_source():
     source = inspect.getsource(main.lifespan)
     assert "validate_configured_runtime()" in source
     assert "configured_runtime_warnings()" in source
+    assert "await moy_nalog_oauth.validate_runtime()" in source
     assert "validate_runtime_settings(" not in source
     assert "collect_warnings(" not in source
 
@@ -341,6 +377,7 @@ def test_environment_example_matches_working_runtime_contract():
     assert "OTEL_EXPORTER_OTLP_INSECURE=false" in example
     assert "OTEL_SERVICE_NAME=renova-api" in example
     assert "Payments. Optional for API startup" in example
+    assert "MOY_NALOG_TOKEN_ENCRYPTION_KEYS=" in example
 
     for required in (
         "DATABASE_URL=postgresql+asyncpg://renova:CHANGE_ME@managed-postgres:5432/renova",
@@ -360,6 +397,7 @@ def test_environment_example_matches_working_runtime_contract():
         "OTEL_EXPORTER_OTLP_INSECURE=false",
         "OTEL_SERVICE_NAME=renova-api",
         "LOG_JSON=true",
+        "MOY_NALOG_TOKEN_ENCRYPTION_KEYS=",
         "External staging release",
         "Do not deploy staging by cloning the repository",
     ):
