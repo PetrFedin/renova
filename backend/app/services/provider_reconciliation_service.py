@@ -128,27 +128,59 @@ async def claim_due(
     """Claim due rows with a fencing generation safe across API/worker replicas."""
     current = now or utc_now()
     stale_before = current - timedelta(seconds=max(1, lease_seconds))
+    bounded_limit = max(1, min(int(limit), 100))
 
     # Expired work must never disappear from operator views merely because it is
-    # no longer executable.
-    await db.execute(
-        update(ProviderReconciliation)
-        .where(
-            ProviderReconciliation.status.in_(ACTIVE_STATUSES),
-            ProviderReconciliation.expires_at.is_not(None),
-            ProviderReconciliation.expires_at <= current,
-        )
-        .values(
-            status="terminal",
-            next_attempt_at=None,
-            locked_at=None,
-            locked_by=None,
-            completed_at=current,
-            last_error_code="reconciliation_expired",
-            updated_at=current,
-        )
-        .execution_options(synchronize_session="fetch")
+    # no longer executable. Sweep a bounded number per tick so a large stale
+    # backlog cannot turn one reconciliation iteration into an unbounded write.
+    expired_ids = list(
+        (
+            await db.execute(
+                select(ProviderReconciliation.id)
+                .where(
+                    ProviderReconciliation.status.in_(ACTIVE_STATUSES),
+                    ProviderReconciliation.expires_at.is_not(None),
+                    ProviderReconciliation.expires_at <= current,
+                )
+                .order_by(
+                    ProviderReconciliation.expires_at.asc(),
+                    ProviderReconciliation.created_at.asc(),
+                )
+                .limit(min(bounded_limit * 4, 400))
+            )
+        ).scalars().all()
     )
+    if expired_ids:
+        expired_result = await db.execute(
+            update(ProviderReconciliation)
+            .where(
+                ProviderReconciliation.id.in_(expired_ids),
+                ProviderReconciliation.status.in_(ACTIVE_STATUSES),
+                ProviderReconciliation.expires_at.is_not(None),
+                ProviderReconciliation.expires_at <= current,
+            )
+            .values(
+                status="terminal",
+                next_attempt_at=None,
+                locked_at=None,
+                locked_by=None,
+                completed_at=current,
+                last_error_code="reconciliation_expired",
+                last_error_fingerprint=None,
+                updated_at=current,
+            )
+            .returning(ProviderReconciliation.id)
+            .execution_options(synchronize_session=False)
+        )
+        updated_expired_ids = list(expired_result.scalars().all())
+        await db.flush()
+        # Explicit refresh is intentional. Bulk UPDATE synchronization differs
+        # between SQLite/PostgreSQL and expire_on_commit=False sessions; callers
+        # must observe the same terminal truth that is already in the database.
+        for row_id in updated_expired_ids:
+            tracked = await db.get(ProviderReconciliation, row_id)
+            if tracked is not None:
+                await db.refresh(tracked)
 
     due = and_(
         ProviderReconciliation.status.in_(ACTIVE_STATUSES),
@@ -176,7 +208,7 @@ async def claim_due(
                 ProviderReconciliation.next_attempt_at.asc(),
                 ProviderReconciliation.created_at.asc(),
             )
-            .limit(max(1, min(int(limit), 100)))
+            .limit(bounded_limit)
         )
     ).all()
 
