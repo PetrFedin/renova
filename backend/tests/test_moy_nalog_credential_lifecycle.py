@@ -255,15 +255,15 @@ async def test_runtime_health_is_secret_free_and_does_not_claim_refresh_support(
     assert "client-secret" not in rendered
 
 
-def test_preflight_redacts_full_token_encryption_keyring(monkeypatch):
+def test_preflight_redacts_full_and_partial_token_encryption_keyring(monkeypatch):
     keyring = f"{_KEY_B},{_KEY_A}"
     monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", keyring)
 
-    rendered = runtime_preflight._redacted_error(
-        RuntimeError(f"provider credential configuration echoed {keyring}")
-    )
-
-    assert keyring not in rendered
-    assert _KEY_A not in rendered
-    assert _KEY_B not in rendered
-    assert "<redacted>" in rendered
+    for leaked_value in (keyring, _KEY_A, _KEY_B):
+        rendered = runtime_preflight._redacted_error(
+            RuntimeError(f"provider credential configuration echoed {leaked_value}")
+        )
+        assert keyring not in rendered
+        assert _KEY_A not in rendered
+        assert _KEY_B not in rendered
+        assert "<redacted>" in rendered
