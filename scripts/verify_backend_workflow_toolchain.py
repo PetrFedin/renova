@@ -12,8 +12,9 @@ EXACT_PYTHON = 'python-version: "3.12.13"'
 EXACT_POETRY = "poetry==2.4.1"
 
 # Broad/specialized workflows can legitimately own more setup (container image,
-# security audit, EAS/mobile build, external staging or load tooling). They still
-# may not use floating Python/Poetry or bypass the lock with ad-hoc installs.
+# security audit, EAS/mobile build, external staging, load tooling or same-image
+# topology smoke). They still may not use floating Python/Poetry or bypass the
+# lock with ad-hoc installs.
 SPECIALIZED_WORKFLOWS = {
     "backend-dependency-integrity.yml",
     "backend-image.yml",
@@ -21,6 +22,7 @@ SPECIALIZED_WORKFLOWS = {
     "eas-build.yml",
     "external-staging-release.yml",
     "load-slo-integrity.yml",
+    "runtime-topology-integrity.yml",
     "security-operations.yml",
     "staging-runtime-smoke.yml",
 }
