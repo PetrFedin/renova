@@ -9,6 +9,7 @@ on:
       - "backend/app/main.py"
       - "backend/tests/test_shared_rate_limit_integrity.py"
       - ".github/workflows/shared-rate-limit-integrity.yml"
+      - ".github/actions/setup-backend/**"
   pull_request:
     paths:
       - "backend/app/core/rate_limit.py"
@@ -17,6 +18,7 @@ on:
       - "backend/app/main.py"
       - "backend/tests/test_shared_rate_limit_integrity.py"
       - ".github/workflows/shared-rate-limit-integrity.yml"
+      - ".github/actions/setup-backend/**"
 
 jobs:
   shared-rate-limit:
@@ -42,15 +44,8 @@ jobs:
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pip install poetry
-          poetry install --no-interaction
+      - name: Set up locked backend environment
+        uses: ./.github/actions/setup-backend
       - name: Run shared rate-limit integrity tests
         working-directory: backend
         run: |
