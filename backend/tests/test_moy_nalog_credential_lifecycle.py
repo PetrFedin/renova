@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from app.core import runtime_preflight
 from app.core.config import settings
 from app.services import moy_nalog_oauth as oauth
 
@@ -185,7 +186,7 @@ async def test_corrupt_record_is_removed_but_fernet_shaped_unknown_key_is_retain
     assert token_key not in configured_oauth.values
 
     monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", _KEY_A)
-    foreign = oauth._encryption_key(_KEY_B).fernet.encrypt(b"{}" ).decode("ascii")
+    foreign = oauth._encryption_key(_KEY_B).fernet.encrypt(b"{}").decode("ascii")
     configured_oauth.setex(token_key, 3600, foreign)
     unknown = await oauth.connection_state("user-a")
     assert unknown.status == "encryption_key_unavailable"
@@ -223,3 +224,17 @@ async def test_runtime_health_is_secret_free_and_does_not_claim_refresh_support(
     assert _KEY_A not in rendered
     assert _OLD_SHARED not in rendered
     assert "client-secret" not in rendered
+
+
+def test_preflight_redacts_full_token_encryption_keyring(monkeypatch):
+    keyring = f"{_KEY_B},{_KEY_A}"
+    monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", keyring)
+
+    rendered = runtime_preflight._redacted_error(
+        RuntimeError(f"provider credential configuration echoed {keyring}")
+    )
+
+    assert keyring not in rendered
+    assert _KEY_A not in rendered
+    assert _KEY_B not in rendered
+    assert "<redacted>" in rendered
