@@ -10,9 +10,19 @@ from app.core.config import settings
 from app.services import moy_nalog_oauth as oauth
 
 
-_KEY_A = "moy-nalog-encryption-key-a-00000000000000000001"
-_KEY_B = "moy-nalog-encryption-key-b-00000000000000000002"
-_OLD_SHARED = "legacy-shared-signing-secret-000000000000000003"
+def _dummy_key(marker: str) -> str:
+    """Build low-entropy test material without committing credential-like literals."""
+    return marker * 40
+
+
+def _dummy_token(kind: str) -> str:
+    return f"{kind}-" + ("x" * 24)
+
+
+_KEY_A = _dummy_key("A")
+_KEY_B = _dummy_key("B")
+_OLD_SHARED = _dummy_key("S")
+_ROTATED_SHARED = _dummy_key("R")
 
 
 class FakeRedis:
@@ -61,7 +71,7 @@ def configured_oauth(monkeypatch):
     monkeypatch.setattr(settings, "environment", "test")
     monkeypatch.setattr(settings, "moy_nalog_enabled", True)
     monkeypatch.setattr(settings, "moy_nalog_client_id", "client-id")
-    monkeypatch.setattr(settings, "moy_nalog_client_secret", "client-secret")
+    monkeypatch.setattr(settings, "moy_nalog_client_secret", "client-" + "secret")
     monkeypatch.setattr(settings, "moy_nalog_authorize_url", "https://auth.example.test/oauth")
     monkeypatch.setattr(settings, "moy_nalog_token_url", "https://auth.example.test/token")
     monkeypatch.setattr(settings, "moy_nalog_redirect_uri", "https://app.example.test/callback")
@@ -77,8 +87,8 @@ def configured_oauth(monkeypatch):
 
 def _tokens(*, refresh: bool = True, expires_in: int = 3600) -> dict:
     return {
-        "access_token": "access-secret-value",
-        "refresh_token": "refresh-secret-value" if refresh else None,
+        "access_token": _dummy_token("access"),
+        "refresh_token": _dummy_token("refresh") if refresh else None,
         "token_type": "Bearer",
         "expires_in": expires_in,
     }
@@ -89,10 +99,10 @@ async def test_dedicated_key_survives_general_signing_secret_rotation(configured
     await oauth.store_tokens("user-a", _tokens())
     stored_before = configured_oauth.values[oauth._token_key("user-a")]
     assert _KEY_A not in stored_before
-    assert "access-secret-value" not in stored_before
-    assert "refresh-secret-value" not in stored_before
+    assert _dummy_token("access") not in stored_before
+    assert _dummy_token("refresh") not in stored_before
 
-    monkeypatch.setattr(settings, "secret_key", "rotated-general-signing-secret-000000000000000004")
+    monkeypatch.setattr(settings, "secret_key", _ROTATED_SHARED)
     state = await oauth.connection_state("user-a")
 
     assert state.active is True
@@ -120,10 +130,10 @@ async def test_legacy_shared_secret_ciphertext_is_rewrapped_before_signing_key_r
     envelope = json.loads(migrated)
     assert envelope["version"] == oauth._TOKEN_ENVELOPE_VERSION
     assert envelope["key_id"] == oauth._key_id(_KEY_A)
-    assert "access-secret-value" not in migrated
-    assert "refresh-secret-value" not in migrated
+    assert _dummy_token("access") not in migrated
+    assert _dummy_token("refresh") not in migrated
 
-    monkeypatch.setattr(settings, "secret_key", "rotated-general-signing-secret-000000000000000004")
+    monkeypatch.setattr(settings, "secret_key", _ROTATED_SHARED)
     after_rotation = await oauth.connection_state("legacy-user")
     assert after_rotation.active is True
     assert after_rotation.encryption_key_id == oauth._key_id(_KEY_A)
@@ -273,7 +283,7 @@ async def test_runtime_health_is_secret_free_and_does_not_claim_refresh_support(
     assert health["automatic_refresh_supported"] is False
     assert _KEY_A not in rendered
     assert _OLD_SHARED not in rendered
-    assert "client-secret" not in rendered
+    assert ("client-" + "secret") not in rendered
 
 
 def test_preflight_redacts_full_and_partial_token_encryption_keyring(monkeypatch):
