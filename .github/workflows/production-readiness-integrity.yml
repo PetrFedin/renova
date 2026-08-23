@@ -1,0 +1,144 @@
+name: Production readiness integrity
+
+on:
+  pull_request:
+    paths:
+      - "PRODUCTION-READINESS.md"
+      - "docs/production-readiness-evidence.json"
+      - "scripts/production_readiness.py"
+      - "apps/mobile/app.json"
+      - "backend/alembic/versions/**"
+      - ".github/workflows/backend-image.yml"
+      - ".github/workflows/eas-build.yml"
+      - ".github/workflows/production-readiness-integrity.yml"
+      - "README.md"
+  push:
+    branches: [main]
+    paths:
+      - "PRODUCTION-READINESS.md"
+      - "docs/production-readiness-evidence.json"
+      - "scripts/production_readiness.py"
+      - "apps/mobile/app.json"
+      - "backend/alembic/versions/**"
+      - ".github/workflows/backend-image.yml"
+      - ".github/workflows/eas-build.yml"
+      - ".github/workflows/production-readiness-integrity.yml"
+      - "README.md"
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Backend image integrity
+      - EAS Build & Submit
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+
+concurrency:
+  group: production-readiness-${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      READINESS_SHA: ${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha || github.sha }}
+      READINESS_REF: ${{ github.event.workflow_run.head_branch || github.head_ref || github.ref }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.READINESS_SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+          check-latest: false
+
+      - name: Download exact backend image identity from completed main publish
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Backend image integrity'
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-image-identity
+          path: ${{ runner.temp }}/readiness-input/backend-image
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Download exact EAS release identity from completed release workflow
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.name == 'EAS Build & Submit'
+        uses: actions/download-artifact@v4
+        with:
+          name: eas-release-identity
+          path: ${{ runner.temp }}/readiness-input/eas
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Render and validate SHA-bound readiness snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="${RUNNER_TEMP}/production-readiness"
+          mkdir -p "$out_dir"
+          args=(
+            --git-sha "$READINESS_SHA"
+            --ref "$READINESS_REF"
+            --github-repo "$GITHUB_REPOSITORY"
+            --output-json "$out_dir/production-readiness.json"
+            --output-md "$out_dir/production-readiness.md"
+          )
+          backend_identity="${RUNNER_TEMP}/readiness-input/backend-image/backend-image-identity.json"
+          eas_identity="${RUNNER_TEMP}/readiness-input/eas/release-metadata.json"
+          if [ -f "$backend_identity" ]; then
+            args+=(--backend-image-identity "$backend_identity")
+          fi
+          if [ -f "$eas_identity" ]; then
+            args+=(--eas-release-identity "$eas_identity")
+          fi
+          python scripts/production_readiness.py "${args[@]}"
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ['RUNNER_TEMP']) / 'production-readiness' / 'production-readiness.json'
+          snapshot = json.loads(path.read_text(encoding='utf-8'))
+          assert snapshot['snapshot']['evaluated_git_sha'] == os.environ['READINESS_SHA']
+          assert snapshot['snapshot']['github_metadata_checked'] is True
+          assert snapshot['snapshot']['current_main_sha']
+          assert snapshot['launch_decision']['status'] == 'BLOCKED_FOR_BROAD_PRODUCTION'
+          assert snapshot['live_blocker_issue_states']
+          PY
+
+          cat "$out_dir/production-readiness.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Reject stale README source-of-truth wording
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'PRODUCTION-READINESS.md' README.md
+          if grep -q 'FULL-PROJECT-AUDIT-2026-07-31.md.*актуальный источник истины' README.md; then
+            echo 'README still points to the July audit as current truth' >&2
+            exit 1
+          fi
+          if grep -q 'Монорепо MVP' README.md; then
+            echo 'README still describes the current product as MVP' >&2
+            exit 1
+          fi
+
+      - name: Upload production readiness snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-readiness-snapshot
+          retention-days: 90
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/production-readiness/production-readiness.json
+            ${{ runner.temp }}/production-readiness/production-readiness.md
