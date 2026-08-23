@@ -108,7 +108,11 @@ def _redirect_uri() -> str:
 
 
 def _raw_encryption_secrets() -> list[str]:
-    return [part.strip() for part in (settings.moy_nalog_token_encryption_keys or "").split(",") if part.strip()]
+    return [
+        part.strip()
+        for part in (settings.moy_nalog_token_encryption_keys or "").split(",")
+        if part.strip()
+    ]
 
 
 def _deduplicated_encryption_secrets() -> list[str]:
@@ -161,6 +165,11 @@ def _primary_encryption_key() -> _EncryptionKey:
     return _active_encryption_keys()[0]
 
 
+def _redis_url_ready() -> bool:
+    redis_url = (settings.redis_url or "").strip().lower()
+    return redis_url.startswith(("redis://", "rediss://"))
+
+
 def oauth_readiness() -> OAuthReadiness:
     missing: list[str] = []
     if not settings.moy_nalog_enabled:
@@ -175,8 +184,7 @@ def oauth_readiness() -> OAuthReadiness:
         missing.append("MOY_NALOG_TOKEN_URL_HTTPS")
     if not _https(_redirect_uri()):
         missing.append("MOY_NALOG_REDIRECT_URI_HTTPS")
-    redis_url = (settings.redis_url or "").strip().lower()
-    if not redis_url.startswith(("redis://", "rediss://")):
+    if not _redis_url_ready():
         missing.append("REDIS_URL")
 
     raw_keys = _raw_encryption_secrets()
@@ -194,13 +202,11 @@ def oauth_ready() -> bool:
     return oauth_readiness().ready
 
 
-def _redis_client():
+def _connect_redis():
+    """Return the credential store without requiring provider API readiness."""
     global _redis, _redis_failed
-    readiness = oauth_readiness()
-    if not readiness.ready:
-        raise MoyNalogConfigurationError(
-            "Интеграция «Мой налог» не настроена: " + ", ".join(readiness.missing)
-        )
+    if not _redis_url_ready():
+        raise MoyNalogStoreUnavailable("Хранилище OAuth не настроено")
     if _redis_failed:
         raise MoyNalogStoreUnavailable("Хранилище OAuth временно недоступно")
     if _redis is not None:
@@ -220,6 +226,21 @@ def _redis_client():
         _redis = None
         _redis_failed = True
         raise MoyNalogStoreUnavailable("Хранилище OAuth временно недоступно") from exc
+
+
+def _redis_client():
+    """Return the store only when the complete provider integration is ready."""
+    readiness = oauth_readiness()
+    if not readiness.ready:
+        raise MoyNalogConfigurationError(
+            "Интеграция «Мой налог» не настроена: " + ", ".join(readiness.missing)
+        )
+    return _connect_redis()
+
+
+def _credential_store_client():
+    """Return local credential storage for revocation even if provider config broke."""
+    return _connect_redis()
 
 
 def _state_key(state: str) -> str:
@@ -260,7 +281,9 @@ def _validate_token_payload(data: object) -> dict:
     if type(expires_in) is not int or expires_in < _MIN_TOKEN_TTL or expires_in > _MAX_TOKEN_TTL:
         raise MoyNalogProviderError("Token endpoint вернул некорректный expires_in")
     refresh_token = data.get("refresh_token")
-    if refresh_token is not None and (not isinstance(refresh_token, str) or not refresh_token.strip()):
+    if refresh_token is not None and (
+        not isinstance(refresh_token, str) or not refresh_token.strip()
+    ):
         raise MoyNalogProviderError("Token endpoint вернул некорректный refresh_token")
     return {
         "access_token": access_token.strip(),
@@ -271,7 +294,12 @@ def _validate_token_payload(data: object) -> dict:
     }
 
 
-def _token_record(validated: dict, *, now: datetime, access_ttl: int | None = None) -> dict:
+def _token_record(
+    validated: dict,
+    *,
+    now: datetime,
+    access_ttl: int | None = None,
+) -> dict:
     ttl = int(access_ttl if access_ttl is not None else validated["expires_in"])
     return {
         "version": _TOKEN_ENVELOPE_VERSION,
@@ -305,8 +333,16 @@ def _encode_record(record: dict) -> tuple[str, str]:
     serializable = {
         "version": _TOKEN_ENVELOPE_VERSION,
         "tokens": record["tokens"],
-        "stored_at": _iso(record["stored_at"]) if isinstance(record["stored_at"], datetime) else record["stored_at"],
-        "access_expires_at": _iso(record["access_expires_at"]) if isinstance(record["access_expires_at"], datetime) else record["access_expires_at"],
+        "stored_at": (
+            _iso(record["stored_at"])
+            if isinstance(record["stored_at"], datetime)
+            else record["stored_at"]
+        ),
+        "access_expires_at": (
+            _iso(record["access_expires_at"])
+            if isinstance(record["access_expires_at"], datetime)
+            else record["access_expires_at"]
+        ),
     }
     plaintext = json.dumps(serializable, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ciphertext = primary.fernet.encrypt(plaintext).decode("ascii")
@@ -345,13 +381,22 @@ def _decode_record(client, key: str, stored_value: str) -> tuple[dict, str | Non
         ciphertext = envelope.get("ciphertext")
         if not isinstance(key_id, str) or not isinstance(ciphertext, str):
             raise _TokenRecordCorrupt("invalid token envelope")
-        encryption_key = next((item for item in _active_encryption_keys() if item.key_id == key_id), None)
+        encryption_key = next(
+            (item for item in _active_encryption_keys() if item.key_id == key_id),
+            None,
+        )
         if encryption_key is None:
             raise _TokenEncryptionKeyUnavailable("token encryption key unavailable")
         try:
             plaintext = encryption_key.fernet.decrypt(ciphertext.encode("ascii"))
             record = _validate_record(json.loads(plaintext.decode("utf-8")))
-        except (InvalidToken, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        except (
+            InvalidToken,
+            UnicodeDecodeError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+        ) as exc:
             raise _TokenRecordCorrupt("invalid encrypted token record") from exc
         return record, key_id, False
 
@@ -365,13 +410,22 @@ def _decode_record(client, key: str, stored_value: str) -> tuple[dict, str | Non
         try:
             plaintext = candidate.fernet.decrypt(stored_value.encode("ascii"))
             validated = _validate_token_payload(json.loads(plaintext.decode("utf-8")))
-        except (InvalidToken, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError, MoyNalogProviderError):
+        except (
+            InvalidToken,
+            UnicodeDecodeError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+            MoyNalogProviderError,
+        ):
             continue
         remaining = _redis_ttl(client, key)
         if remaining is None:
             remaining = int(validated["expires_in"])
         remaining = max(1, min(int(validated["expires_in"]), remaining))
-        record = _validate_record(_token_record(validated, now=utc_now(), access_ttl=remaining))
+        record = _validate_record(
+            _token_record(validated, now=utc_now(), access_ttl=remaining)
+        )
         migrated_value, primary_id = _encode_record(record)
         storage_ttl = remaining
         if validated.get("refresh_token"):
@@ -481,7 +535,9 @@ async def exchange_code_for_tokens(code: str) -> dict:
     except (httpx.TimeoutException, httpx.NetworkError, httpx.RequestError) as exc:
         raise MoyNalogProviderError("Token endpoint временно недоступен") from exc
     if response.status_code < 200 or response.status_code >= 300:
-        raise MoyNalogProviderError(f"Token endpoint отклонил запрос: HTTP {response.status_code}")
+        raise MoyNalogProviderError(
+            f"Token endpoint отклонил запрос: HTTP {response.status_code}"
+        )
     try:
         data = response.json()
     except (ValueError, TypeError) as exc:
@@ -622,8 +678,10 @@ async def runtime_health() -> dict[str, object]:
 
 
 async def revoke_tokens(user_id: str) -> None:
+    """Delete local OAuth credentials without depending on provider API readiness."""
+
     def revoke() -> None:
-        _redis_client().delete(_token_key(user_id))
+        _credential_store_client().delete(_token_key(user_id))
 
     try:
         await asyncio.to_thread(revoke)
