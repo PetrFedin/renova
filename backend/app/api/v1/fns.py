@@ -138,11 +138,13 @@ async def unlink_moy_nalog(
 ):
     from app.services import moy_nalog_oauth as oauth
 
-    if oauth.oauth_ready():
-        try:
-            await oauth.revoke_tokens(user.id)
-        except oauth.MoyNalogOAuthError as error:
-            raise _oauth_error(error) from error
+    # Local credential deletion must not depend on provider client/token URL or
+    # encryption-key readiness. If the credential store cannot confirm deletion,
+    # fail closed and do not claim a revoked DB state.
+    try:
+        await oauth.revoke_tokens(user.id)
+    except oauth.MoyNalogOAuthError as error:
+        raise _oauth_error(error) from error
     user.moy_nalog_linked = False
     user.moy_nalog_status = "revoked"
     await db.commit()
