@@ -101,6 +101,35 @@ async def test_dedicated_key_survives_general_signing_secret_rotation(configured
 
 
 @pytest.mark.asyncio
+async def test_legacy_shared_secret_ciphertext_is_rewrapped_before_signing_key_rotation(
+    configured_oauth,
+    monkeypatch,
+):
+    token_key = oauth._token_key("legacy-user")
+    legacy_payload = json.dumps(_tokens(), sort_keys=True).encode("utf-8")
+    legacy_ciphertext = oauth._encryption_key(_OLD_SHARED).fernet.encrypt(legacy_payload).decode("ascii")
+    configured_oauth.setex(token_key, 3000, legacy_ciphertext)
+
+    state = await oauth.connection_state("legacy-user")
+    migrated = configured_oauth.values[token_key]
+
+    assert state.active is True
+    assert state.legacy_encryption is True
+    assert state.encryption_key_id == oauth._key_id(_KEY_A)
+    assert migrated != legacy_ciphertext
+    envelope = json.loads(migrated)
+    assert envelope["version"] == oauth._TOKEN_ENVELOPE_VERSION
+    assert envelope["key_id"] == oauth._key_id(_KEY_A)
+    assert "access-secret-value" not in migrated
+    assert "refresh-secret-value" not in migrated
+
+    monkeypatch.setattr(settings, "secret_key", "rotated-general-signing-secret-000000000000000004")
+    after_rotation = await oauth.connection_state("legacy-user")
+    assert after_rotation.active is True
+    assert after_rotation.encryption_key_id == oauth._key_id(_KEY_A)
+
+
+@pytest.mark.asyncio
 async def test_previous_key_keeps_connection_readable_during_keyring_rotation(configured_oauth, monkeypatch):
     await oauth.store_tokens("user-a", _tokens())
     monkeypatch.setattr(settings, "moy_nalog_token_encryption_keys", f"{_KEY_B},{_KEY_A}")
