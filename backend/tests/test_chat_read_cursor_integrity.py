@@ -138,6 +138,7 @@ async def test_read_api_requires_cursor_and_get_is_side_effect_free_by_contract(
     dynamic = "/projects/{project_id}/chats/{thread_id}"
     assert paths.index("/projects/{project_id}/chats/unread-count") < paths.index(dynamic)
     assert paths.index("/projects/{project_id}/chats/search") < paths.index(dynamic)
+    assert paths.index("/projects/{project_id}/chats/{thread_id}.pdf") < paths.index(dynamic)
 
 
 async def test_mobile_read_contract_is_visibility_gated_and_not_optimistic():
