@@ -1,7 +1,7 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
+  AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -31,6 +31,16 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { router } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
+
+function latestRenderedMessageId(messages: ChatMessage[]): string | null {
+  if (!messages.length) return null;
+  return [...messages]
+    .sort((a, b) => {
+      const byTime = a.created_at.localeCompare(b.created_at);
+      return byTime || a.id.localeCompare(b.id);
+    })
+    .slice(-1)[0]?.id ?? null;
+}
 
 function MessageBubble({
   m,
@@ -100,7 +110,6 @@ function MessageBubble({
       {m.work_order_id && (
         <Pressable
           onPress={() =>
-            // W119: WO из чата → pushOsNav SoT
             pushOsNav(
               { pathname: '/work-order/[id]', params: { id: m.work_order_id! } },
               returnTo,
@@ -131,12 +140,12 @@ function MessageBubble({
 
 export function ChatThreadView({
   threadId,
-  projectId: projectIdProp,
+  projectId,
   returnTo,
   highlightId,
 }: {
   threadId: string;
-  projectId?: string;
+  projectId: string;
   returnTo?: string;
   highlightId?: string;
 }) {
@@ -145,8 +154,11 @@ export function ChatThreadView({
   const canWrite = useWriteAllowed();
   const syncAfterRead = useChatReadSync(user?.id, user?.role);
   const [chat, setChat] = useState<ChatDetail | null>(null);
-  const [chatProjectId, setChatProjectId] = useState<string | null>(projectIdProp ?? null);
-  const markedReadRef = useRef<string | null>(null);
+  const [screenFocused, setScreenFocused] = useState(false);
+  const [appState, setAppState] = useState(AppState.currentState);
+  const [renderedReadCursor, setRenderedReadCursor] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const markedCursorRef = useRef<string | null>(null);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [typing, setTyping] = useState(false);
@@ -157,64 +169,43 @@ export function ChatThreadView({
   const [taskMsg, setTaskMsg] = useState<ChatMessage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-
-  const resolveProjectId = useCallback(async (): Promise<string | null> => {
-    if (projectIdProp) return projectIdProp;
-    if (chatProjectId) return chatProjectId;
-    if (!user) return null;
-    if (activeProject?.id) {
-      try {
-        await api.getChat(user.id, activeProject.id, threadId);
-        return activeProject.id;
-      } catch {
-        /* silent-catch-ok: active project is an optimistic ownership probe; authoritative inbox resolution follows. */
-      }
-    }
-    try {
-      const inbox = await api.chatInbox(user.id);
-      return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
-    } catch (e) {
-      reportError('chat.resolveProjectId.inbox', e, { threadId });
-      return activeProject?.id ?? null;
-    }
-  }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
+  const loadGenerationRef = useRef(0);
 
   const loadMessages = useCallback(async () => {
-    if (!user || !threadId) return;
-    const projectId = await resolveProjectId();
-    if (!projectId) return;
-    // Не трогаем state, если id тот же — иначе лишний ререндер и цикл focus-эффекта.
-    setChatProjectId((prev) => (prev === projectId ? prev : projectId));
+    if (!user || !threadId || !projectId) return;
+    const generation = ++loadGenerationRef.current;
     if (activeProject?.id !== projectId) {
-      await loadProject(projectId).catch((e) => reportError('chat.loadProject', e, { projectId }));
+      await loadProject(projectId).catch((error) => reportError('chat.loadProject', error, { projectId }));
     }
-    setChat(await api.getChat(user.id, projectId, threadId));
-  }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
-
-  const markThreadRead = useCallback(async (forcedProjectId?: string | null) => {
-    if (!user || !threadId) return;
-    const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
-    if (!projectId) return;
-    const markKey = `${threadId}:${projectId}`;
-    if (markedReadRef.current === markKey) return;
-    let knownUnread = 0;
+    if (generation !== loadGenerationRef.current) return;
     try {
-      const inbox = await api.chatInbox(user.id);
-      knownUnread = inbox.find((t) => t.id === threadId)?.unread_count ?? 0;
-    } catch (e) {
-      reportError('chat.markRead.inbox', e, { threadId });
-    }
-    try {
-      await syncAfterRead(projectId, threadId, knownUnread);
-      markedReadRef.current = markKey;
+      const detail = await api.getChat(user.id, projectId, threadId);
+      if (generation !== loadGenerationRef.current) return;
+      setRenderedReadCursor(null);
+      setChat(detail);
+      setLoadFailed(false);
     } catch (error) {
-      reportError('chat.markRead.sync', error, { threadId, projectId, knownUnread });
-      /* Do not set markedReadRef: the next focus/WS reload must retry the read reconciliation. */
+      if (generation !== loadGenerationRef.current) return;
+      setLoadFailed(true);
+      reportError('chat.loadMessages', error, { threadId, projectId });
+      throw error;
     }
-  }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
+  }, [user, threadId, projectId, activeProject?.id, loadProject]);
 
-  // Стабильные refs: useFocusEffect НЕ должен зависеть от identity load/mark —
-  // иначе setChatProjectId → новый callback → повторный focus → Maximum update depth.
+  const markThreadRead = useCallback(async (cursor: string) => {
+    if (!user || !threadId || !projectId || !cursor) return;
+    if (AppState.currentState !== 'active') return;
+    const markKey = `${threadId}:${projectId}:${cursor}`;
+    if (markedCursorRef.current === markKey) return;
+    try {
+      await syncAfterRead(projectId, threadId, cursor);
+      markedCursorRef.current = markKey;
+    } catch (error) {
+      reportError('chat.markRead.sync', error, { threadId, projectId, cursor });
+      // Do not record success: next visibility/load edge may safely retry the same cursor.
+    }
+  }, [user, threadId, projectId, syncAfterRead]);
+
   const loadMessagesRef = useRef(loadMessages);
   const markThreadReadRef = useRef(markThreadRead);
   loadMessagesRef.current = loadMessages;
@@ -222,19 +213,68 @@ export function ChatThreadView({
 
   useFocusEffect(
     useCallback(() => {
-      markedReadRef.current = null;
-      let cancelled = false;
-      (async () => {
-        await loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
-        if (!cancelled) await markThreadReadRef.current().catch(reportCatch('chat.markRead'));
-      })();
-      return () => { cancelled = true; };
-    }, [threadId, projectIdProp]),
+      setScreenFocused(true);
+      setRenderedReadCursor(null);
+      markedCursorRef.current = null;
+      setLoadFailed(false);
+      loadMessagesRef.current().catch(reportCatch('chat.loadMessages'));
+      return () => {
+        setScreenFocused(false);
+        setRenderedReadCursor(null);
+      };
+    }, [threadId, projectId]),
   );
 
   useEffect(() => {
-    markedReadRef.current = null;
-  }, [threadId, projectIdProp]);
+    markedCursorRef.current = null;
+    setRenderedReadCursor(null);
+  }, [threadId, projectId]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      setAppState(nextState);
+      if (nextState === 'active' && screenFocused) {
+        loadMessagesRef.current().catch(reportCatch('chat.loadMessages.foreground'));
+      }
+    });
+    return () => subscription.remove();
+  }, [screenFocused, threadId]);
+
+  useEffect(() => {
+    if (!chat || !screenFocused || appState !== 'active') {
+      setRenderedReadCursor(null);
+      return undefined;
+    }
+    const cursor = latestRenderedMessageId(chat.messages);
+    if (!cursor) {
+      setRenderedReadCursor(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => {
+      if (!cancelled) setRenderedReadCursor(cursor);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [chat, screenFocused, appState, threadId]);
+
+  const overlayBlocking = inviteOpen || settingsOpen || !!taskMsg;
+
+  useEffect(() => {
+    if (
+      !screenFocused
+      || appState !== 'active'
+      || AppState.currentState !== 'active'
+      || overlayBlocking
+      || !renderedReadCursor
+      || loadFailed
+    ) {
+      return;
+    }
+    markThreadReadRef.current(renderedReadCursor).catch(reportCatch('chat.markRead.visible'));
+  }, [screenFocused, appState, overlayBlocking, renderedReadCursor, loadFailed, threadId]);
 
   useEffect(() => {
     if (highlightId && chat?.messages.length) {
@@ -246,16 +286,14 @@ export function ChatThreadView({
   const reload = useCallback(() => loadMessages().catch(reportCatch('chat.reload')), [loadMessages]);
   useProjectDataReload(reload);
 
-  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
+  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!projectId, (payload) => {
     if (payload.type === 'typing') {
       setTyping(true);
       setTimeout(() => setTyping(false), 2000);
       return;
     }
-    // Новое сообщение в открытом треде — снова прочитать и сбросить badge.
-    markedReadRef.current = null;
+    // Delivery is not reading. Reload first; visibility+render gate decides later.
     reload();
-    markThreadRead().catch(reportCatch('chat.markRead.focus'));
   });
 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
@@ -263,7 +301,6 @@ export function ChatThreadView({
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   const openPaymentFlow = (paymentId?: string | null) => {
-    // Канон: финансы только через Budget → PaymentDetailSheet, не через chat confirm
     pushOsNav(
       budgetTabRoute(role, 'payments', {
         openPayment: '1',
@@ -274,21 +311,29 @@ export function ChatThreadView({
     );
   };
 
+  if (loadFailed && !chat && user) {
+    return (
+      <View style={s.root}>
+        <BackHeader title="Чат" returnTo={returnTo} />
+        <View style={s.center}>
+          <Text style={s.loadError}>Не удалось открыть чат. Сообщения не отмечены прочитанными.</Text>
+          <PrimaryButton
+            title="Повторить"
+            onPress={() => {
+              setLoadFailed(false);
+              loadMessagesRef.current().catch(reportCatch('chat.loadMessages.retry'));
+            }}
+          />
+        </View>
+      </View>
+    );
+  }
+
   if (!chat || !user) {
     return (
       <View style={s.root}>
         <BackHeader title="Чат" returnTo={returnTo} />
         <View style={s.center}><Text>Загрузка…</Text></View>
-      </View>
-    );
-  }
-
-  const projectId = chatProjectId ?? chat.project_id ?? activeProject?.id;
-  if (!projectId) {
-    return (
-      <View style={s.root}>
-        <BackHeader title="Чат" returnTo={returnTo} />
-        <View style={s.center}><Text>Чат не привязан к объекту</Text></View>
       </View>
     );
   }
@@ -486,7 +531,6 @@ export function ChatThreadView({
                 <Text style={s.toolBtn}>✓?</Text>
               </Pressable>
               <Pressable disabled={!canWrite} onPress={() => {
-                // W104: сумма на выбор → Payment в Бюджете (не hardcoded 10k)
                 const createInvoice = async (amount: number) => {
                   try {
                     await api.invoiceFromChat(user.id, projectId, threadId, {
@@ -504,7 +548,6 @@ export function ChatThreadView({
                     return;
                   }
                   await reconcileCommittedChatMutation('Invoice');
-                  // W131: счёт из чата — роль-aware оплаты
                   alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
                 };
                 const openPaymentForm = () => {
@@ -615,7 +658,8 @@ export function ChatThreadView({
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   wrap: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
+  loadError: { textAlign: 'center', color: RenovaTheme.colors.textMuted },
   topActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 4, gap: 8, flexWrap: 'wrap' },
   wsDot: { fontSize: 11, fontWeight: '700' },
   wsOn: { color: RenovaTheme.colors.success },

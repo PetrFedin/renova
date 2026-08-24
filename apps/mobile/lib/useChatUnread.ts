@@ -75,9 +75,15 @@ export function useChatUnread(userId?: string, userRole?: UserRole) {
 
 export function useChatReadSync(userId?: string, userRole?: UserRole) {
   return useCallback(
-    async (projectId: string, threadId: string, knownUnread = 0) => {
-      if (!userId || !projectId || !threadId) return;
-      await markChatReadAndSync(userId, projectId, threadId, userRole, knownUnread);
+    async (projectId: string, threadId: string, readThroughMessageId: string) => {
+      if (!userId || !projectId || !threadId || !readThroughMessageId) return;
+      await markChatReadAndSync(
+        userId,
+        projectId,
+        threadId,
+        readThroughMessageId,
+        userRole,
+      );
     }, [userId, userRole],
   );
 }

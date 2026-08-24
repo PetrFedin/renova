@@ -7,6 +7,8 @@ import secrets
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -70,15 +72,35 @@ def ensure_profile_code(user: User) -> str:
     return code
 
 
-async def _get_or_create_read(db: AsyncSession, thread_id: str, user_id: str) -> ChatThreadRead:
-    r = await db.execute(
-        select(ChatThreadRead).where(ChatThreadRead.thread_id == thread_id, ChatThreadRead.user_id == user_id)
+async def get_thread_read_state(
+    db: AsyncSession,
+    thread_id: str,
+    user_id: str,
+) -> ChatThreadRead | None:
+    """Read-only lookup. GET/list/count paths must never create read state.
+
+    ``mark_thread_read`` uses a Core upsert for database-level concurrency
+    fencing. ``populate_existing`` makes a subsequent ORM lookup refresh an
+    already-loaded identity-map row, so the authoritative unread response
+    cannot be computed from a pre-upsert ``last_read_at`` value.
+    """
+    result = await db.execute(
+        select(ChatThreadRead)
+        .where(
+            ChatThreadRead.thread_id == thread_id,
+            ChatThreadRead.user_id == user_id,
+        )
+        .execution_options(populate_existing=True)
     )
-    row = r.scalar_one_or_none()
+    return result.scalar_one_or_none()
+
+
+async def _get_or_create_read(db: AsyncSession, thread_id: str, user_id: str) -> ChatThreadRead:
+    """Mutation helper for pin/archive compatibility; never call from read-only paths."""
+    row = await get_thread_read_state(db, thread_id, user_id)
     if row:
         return row
-    # Не ставим utcnow(): иначе первое появление строки (inbox/pin) ложно «прочитывает» историю.
-    # Прочтение — только mark_thread_read / открытие треда (GET chat).
+    # Creating a preference row must not mark history as read.
     row = ChatThreadRead(thread_id=thread_id, user_id=user_id, last_read_at=datetime(1970, 1, 1))
     db.add(row)
     await db.flush()
@@ -86,8 +108,7 @@ async def _get_or_create_read(db: AsyncSession, thread_id: str, user_id: str) ->
 
 
 async def count_unread_in_thread(db: AsyncSession, thread_id: str, user_id: str) -> int:
-    r = await db.execute(select(ChatThreadRead).where(ChatThreadRead.thread_id == thread_id, ChatThreadRead.user_id == user_id))
-    read_row = r.scalar_one_or_none()
+    read_row = await get_thread_read_state(db, thread_id, user_id)
     since = read_row.last_read_at if read_row else datetime.min
     q = select(func.count()).select_from(ChatMessage).where(
         ChatMessage.thread_id == thread_id,
@@ -102,8 +123,8 @@ async def count_unread_project(db: AsyncSession, project_id: str, user_id: str) 
     threads = await list_threads(db, project_id)
     total = 0
     for t in threads:
-        st = await _get_or_create_read(db, t.id, user_id)
-        if st.is_archived:
+        state = await get_thread_read_state(db, t.id, user_id)
+        if state and state.is_archived:
             continue
         total += await count_unread_in_thread(db, t.id, user_id)
     return total
@@ -129,9 +150,18 @@ async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str)
     for t in threads:
         full = await get_thread(db, t.id)
         last = sorted(full.messages, key=lambda m: m.created_at)[-1] if full and full.messages else None
-        st = await _get_or_create_read(db, t.id, user_id)
+        state = await get_thread_read_state(db, t.id, user_id)
         unread = await count_unread_in_thread(db, t.id, user_id)
-        out.append(thread_dict(t, last, unread=unread, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at))
+        out.append(
+            thread_dict(
+                t,
+                last,
+                unread=unread,
+                is_pinned=bool(state and state.is_pinned),
+                is_archived=bool(state and state.is_archived),
+                pinned_at=state.pinned_at if state else None,
+            )
+        )
     out.sort(key=lambda x: (not x.get("is_pinned"), x.get("updated_at") or ""), reverse=True)
     return out
 
@@ -307,12 +337,93 @@ def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
     }
 
 
-async def mark_thread_read(db: AsyncSession, thread_id: str, user_id: str) -> None:
-    row = await _get_or_create_read(db, thread_id, user_id)
+async def _resolve_read_cursor(
+    db: AsyncSession,
+    thread_id: str,
+    read_through_message_id: str | None,
+) -> ChatMessage | None:
+    if read_through_message_id:
+        result = await db.execute(
+            select(ChatMessage).where(
+                ChatMessage.id == read_through_message_id,
+                ChatMessage.thread_id == thread_id,
+            )
+        )
+        message = result.scalar_one_or_none()
+        if not message:
+            raise ValueError("read_cursor_not_in_thread")
+        return message
+
+    # Internal/dev callers may intentionally mark through the current transcript.
+    # Never use request time as a cursor: only an existing server-authored message.
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread_id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def mark_thread_read(
+    db: AsyncSession,
+    thread_id: str,
+    user_id: str,
+    read_through_message_id: str | None = None,
+) -> int:
+    """Advance read state monotonically to an authoritative message cursor.
+
+    The upsert predicate is the concurrency fence: an older/equal concurrent
+    request cannot overwrite a newer cursor. The public API always supplies a
+    message id; the optional form exists only for deterministic seed/test code.
+    """
+    target = await _resolve_read_cursor(db, thread_id, read_through_message_id)
+    if not target:
+        return await count_unread_in_thread(db, thread_id, user_id)
+
+    target_at = target.created_at
     now = utc_now()
-    row.last_read_at = now
-    row.updated_at = now
+    dialect = db.bind.dialect.name if db.bind is not None else ""
+
+    if dialect in {"postgresql", "sqlite"}:
+        insert_fn = pg_insert if dialect == "postgresql" else sqlite_insert
+        stmt = insert_fn(ChatThreadRead).values(
+            thread_id=thread_id,
+            user_id=user_id,
+            last_read_at=target_at,
+            updated_at=now,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[ChatThreadRead.user_id, ChatThreadRead.thread_id],
+            set_={"last_read_at": target_at, "updated_at": now},
+            where=ChatThreadRead.last_read_at < target_at,
+        )
+        await db.execute(stmt)
+    else:
+        # Non-production fallback for unsupported SQLAlchemy dialects. The lock
+        # preserves monotonicity for an existing row; production uses Postgres.
+        result = await db.execute(
+            select(ChatThreadRead)
+            .where(
+                ChatThreadRead.thread_id == thread_id,
+                ChatThreadRead.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            row = ChatThreadRead(
+                thread_id=thread_id,
+                user_id=user_id,
+                last_read_at=target_at,
+            )
+            db.add(row)
+        elif row.last_read_at < target_at:
+            row.last_read_at = target_at
+            row.updated_at = now
+
     await db.commit()
+    return await count_unread_in_thread(db, thread_id, user_id)
 
 
 async def read_map(db: AsyncSession, thread_id: str) -> dict[str, datetime]:
