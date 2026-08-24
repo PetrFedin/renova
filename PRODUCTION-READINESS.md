@@ -156,15 +156,18 @@ Repo security controls реализованы через security-operations sli
 - #257 — независимый pre-launch penetration/abuse test;
 - #237 — общий external security acceptance, включая provider credential rotation/revocation drill.
 
-## 11. Product integrity gaps обнаруженные при legacy red-team
+## 11. Product integrity truth после chat red-team
 
-Очистка старого July PR backlog выявила три действующих разрыва, которые нельзя потерять при закрытии stale branches:
+Legacy red-team и clean-room исправление chat flow уточнили текущую картину. Один прежний P1 закрыт кодом и CI; два новых P1 обнаружены и не скрыты.
 
-- **#265 — manual payment evidence verification.** Current main уже различает `paid_unverified`, но customer `transfer_ack` не заменяет полный evidence lifecycle. Для broad production нужен canonical flow: evidence upload/version → authorized reviewer approve/reject → safe resubmit → ровно одно финансовое признание. Старый PR #27 нельзя переносить напрямую: его approve path одновременно увеличивал `Project.budget_spent` и вызывал `expense_from_payment`, что несовместимо с текущей финансовой семантикой и создаёт риск double counting.
-- **#266 — warranty create idempotency.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
-- **#269 — chat read truth.** Current backend `GET /chats/{thread}` сам меняет read-state; ChatList делает mark-read до navigation, а ChatThread после fetch/WS может сделать mark до render/foreground visibility. Одновременно current client sync использует optimistic unread=0 → POST → full reload без явного read-cursor fencing против pre-read inflight snapshot. Нужен side-effect-free GET, explicit monotonic read cursor и foreground/focus/render-gated read reconciliation.
+- **#265 — manual payment evidence verification — INCOMPLETE / P1.** Current main уже различает `paid_unverified`, но customer `transfer_ack` не заменяет полный evidence lifecycle. Для broad production нужен canonical flow: evidence upload/version → authorized reviewer approve/reject → safe resubmit → ровно одно финансовое признание. Старый PR #27 нельзя переносить напрямую: его approve path одновременно увеличивал `Project.budget_spent` и вызывал `expense_from_payment`, что несовместимо с текущей финансовой семантикой и создаёт риск double counting.
+- **#266 — warranty create idempotency — INCOMPLETE / P1.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
+- **#269 — chat read truth — CI VERIFIED.** PR #270, exact head `deef0d2eed413679d095f4e06d48d8bde963f759`, merge SHA `9a7b0babc530c4ed187f54ea9c67763393656763`, CI run `32734835634`. GET/list/count больше не меняют read state; public read mutation требует authoritative message cursor и двигает границу монотонно на DB-level; mobile отмечает прочитанным только после successful load + render frame + focused foreground visibility без blocking overlay; WebSocket delivery сама по себе не является read; ACK reconciliation fail-closed и не возвращает inbox к предыдущему project context. Exact head прошёл full backend regression, Playwright API/UI, CodeQL, mobile/typecheck contracts и PostgreSQL Alembic upgrade.
+- **#271 — exact equal-timestamp read cursor — TRACKED P2, не launch blocker.** Current canonical state сохраняет resolved message timestamp; два сообщения с абсолютно одинаковым `created_at` могут коалесцироваться на read boundary. Это не скрыто: follow-up должен расширить тот же canonical read state стабильным total-order cursor, без второй truth table.
+- **#272 — durable truthful phone chat invitation delivery — INCOMPLETE / P1.** Phone-only invite сейчас может проглотить SMS provider exception и вернуть ложный successful state. Нужны atomic invitation + delivery intent, canonical DomainOutbox/worker, idempotency, explicit queued/sent/terminal truth, retry/replay и operator recovery. Реальная доставка остаётся `NOT VERIFIED` без external staging evidence.
+- **#273 — archived chat new-message visibility — INCOMPLETE / P1.** Global unread исключает archived threads, но новое входящее сообщение сейчас не возвращает recipient thread в active visibility. Требуется явная политика archive != read, mute != archive, deterministic recipient unarchive/new-unread transition и concurrency/WS reconciliation tests.
 
-Все три пункта классифицированы **P1 launch blockers**: это не косметический backlog, а нарушения обязательной payment-verification / warranty / communication end-to-end integrity.
+Таким образом, #269 больше не является launch blocker после merge #270, но production readiness **не улучшается искусственно**: #272 и #273 добавлены как новые P1 blockers, потому что они нарушают communication end-to-end truth.
 
 ## 12. Open launch blockers и переход состояния
 
@@ -182,7 +185,8 @@ Readiness manifest перечисляет launch-blocking issues и CI пров�
 - **P1 #257** — independent penetration/abuse test.
 - **P1 #265** — complete manual bank-transfer evidence/reviewer/resubmission lifecycle on current finance truth.
 - **P1 #266** — atomic, durable and idempotent warranty claim creation across retry/offline/concurrency.
-- **P1 #269** — visibility-gated, monotonic and race-safe chat read/unread truth.
+- **P1 #272** — phone chat invitation delivery must stop returning false success on SMS failure and use durable recovery.
+- **P1 #273** — new incoming messages must not remain hidden in archived chats or disappear from unread truth.
 
 Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
 
