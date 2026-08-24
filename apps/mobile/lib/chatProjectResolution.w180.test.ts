@@ -46,23 +46,39 @@ must(
 );
 
 must(
-  threadView.includes('silent-catch-ok: active project is an optimistic ownership probe'),
-  'legacy active-project ownership probing must remain explicitly reviewed instead of becoming anonymous silent debt',
+  threadView.includes('projectId: string;'),
+  'ChatThreadView must require the route-resolved project id',
 );
 must(
-  threadView.includes("reportError('chat.markRead.sync', error, { threadId, projectId, knownUnread })"),
-  'read reconciliation failures must remain observable',
+  !threadView.includes('resolveProjectId'),
+  'ChatThreadView must not duplicate route-level project ownership resolution',
 );
-const readSyncIndex = threadView.indexOf('await syncAfterRead(projectId, threadId, knownUnread);');
-const markSuccessIndex = threadView.indexOf('markedReadRef.current = markKey;', readSyncIndex);
+must(
+  threadView.includes("reportError('chat.markRead.sync', error, { threadId, projectId, cursor })"),
+  'cursor read reconciliation failures must remain observable',
+);
+const readSyncIndex = threadView.indexOf('await syncAfterRead(projectId, threadId, cursor);');
+const markSuccessIndex = threadView.indexOf('markedCursorRef.current = markKey;', readSyncIndex);
 const readSyncFailureIndex = threadView.indexOf("reportError('chat.markRead.sync'", readSyncIndex);
-must(readSyncIndex >= 0, 'ChatThreadView must synchronize read state before memoizing success');
+must(readSyncIndex >= 0, 'ChatThreadView must synchronize the explicit read cursor before memoizing success');
 must(markSuccessIndex > readSyncIndex, 'read success may be memoized only after syncAfterRead resolves');
 must(readSyncFailureIndex > markSuccessIndex, 'read sync failure handling must follow the success assignment');
 const failureBlock = threadView.slice(readSyncFailureIndex, threadView.indexOf('\n    }', readSyncFailureIndex));
 must(
-  !failureBlock.includes('markedReadRef.current = markKey'),
-  'failed read reconciliation must not suppress the next retry',
+  !failureBlock.includes('markedCursorRef.current = markKey'),
+  'failed cursor reconciliation must not suppress the next retry',
+);
+must(
+  threadView.includes('requestAnimationFrame'),
+  'read cursor must not be emitted before the loaded transcript receives a render frame',
+);
+must(
+  threadView.includes("AppState.currentState !== 'active'"),
+  'background app state must not emit a read cursor',
+);
+must(
+  threadView.includes('overlayBlocking'),
+  'blocking sheets/modals must prevent read receipt emission',
 );
 
 console.log('chatProjectResolution.w180.test OK');
