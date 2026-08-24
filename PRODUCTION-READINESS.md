@@ -52,7 +52,7 @@ Repository-side production controls реализованы и регулярно
 - logical PostgreSQL backup → isolated restore → schema/data fingerprint verification;
 - exact locked Python `3.12.13` + Poetry `2.4.1` dependency graph across focused backend CI.
 
-Green CI **не означает**, что внешний production environment, provider credentials, capacity, store release или security review уже доказаны.
+Green CI **не означает**, что внешний production environment, provider credentials, capacity, store release, disaster recovery, alert delivery или security review уже доказаны.
 
 ## 4. Backend artifact identity
 
@@ -78,10 +78,10 @@ Production readiness требует **конкретный registry digest**, а
 | Environment | Статус | Что доказано |
 |---|---|---|
 | Isolated CI staging | `PASSED` | PostgreSQL/Redis/Bearer-auth/runtime topology на exact candidate |
-| External production-like staging | `UNVERIFIED` | Нет retained authoritative evidence реального deployed topology/load для текущего release candidate |
+| External production-like staging | `UNVERIFIED` | Нет retained authoritative evidence реального deployed topology и build-once/promote exact digest lifecycle; tracking #233 |
 | Production | `UNVERIFIED` | Нет retained authoritative deployment SHA + image digest + runtime evidence |
 
-Нельзя преобразовывать isolated staging CI в утверждение «staging/prod работает» без внешнего evidence.
+Нельзя преобразовывать isolated staging CI в утверждение «staging/prod работает» без внешнего evidence. #233 остаётся P0 launch blocker, пока persistent production-like staging и promotion lifecycle не доказаны реально.
 
 ## 6. Provider readiness
 
@@ -110,7 +110,7 @@ Repository-side capacity gate из #255 реализует:
 
 **Реальная capacity/SLO всё ещё NOT PROVEN.** Protected suite должен быть выполнен против внешнего production-like staging exact SHA/image digest; retained evidence пока не подтверждено. Tracking: #236.
 
-## 8. Restore evidence
+## 8. Restore и disaster recovery truth
 
 Последний repository restore drill, сохранённый в readiness evidence:
 
@@ -120,7 +120,7 @@ Repository-side capacity gate из #255 реализует:
 - PostgreSQL logical backup → isolated restore → schema verification → deterministic data fingerprint;
 - это synthetic/repository drill, **не доказательство восстановления production backup**.
 
-Production backup restore остаётся `NOT_EXTERNALLY_VERIFIED` до отдельного operator evidence.
+Production-grade backup/PITR configuration, retention и настоящий isolated restore из managed production-like backup остаются `NOT_EXTERNALLY_VERIFIED`. #234 поэтому остаётся **P0 launch blocker** до retained operator evidence с RPO/RTO и application read smoke.
 
 ## 9. Release identity
 
@@ -141,9 +141,11 @@ Readiness validator отклоняет EAS artifact от другого Git SHA,
 
 Нельзя считать исходный `app.json` доказательством загрузки в TestFlight/App Store/Google Play.
 
-## 10. Security risk and external acceptance
+## 10. Observability, security risk and external acceptance
 
-Repo controls реализованы через security-operations slice #258. OSV exception baseline пустой; CodeQL, Gitleaks и container/dependency gates обязательны в CI.
+Backend repository уже содержит observability controls, однако наличие кода не равно работающему production monitoring. Retained evidence реальной end-to-end alert delivery, mobile crash reporting и staging alert probe пока отсутствует. #235 остаётся **P0 launch blocker**.
+
+Repo security controls реализованы через security-operations slice #258. OSV exception baseline пустой; CodeQL, Gitleaks и container/dependency gates обязательны в CI.
 
 **Accepted security risks:** отсутствуют. Если residual risk будет принят, manifest требует минимум `id`, owner, expiry date и evidence. Запись без срока действия запрещена readiness validator.
 
@@ -158,6 +160,9 @@ Repo controls реализованы через security-operations slice #258. 
 
 Readiness manifest перечисляет launch-blocking issues и CI проверяет, что они действительно остаются `open`; если issue закрывается, manifest обязан быть пересмотрен.
 
+- **P0 #233** — real persistent production-like staging + exact-artifact promotion lifecycle.
+- **P0 #234** — managed backup/PITR + real external restore/DR evidence.
+- **P0 #235** — production observability + retained alert-delivery proof.
 - **P0 #247** — protect `main` and require production gates.
 - **P1 #236** — real external staging capacity/provider-degradation evidence.
 - **P1 #237** — external security acceptance.
@@ -168,7 +173,7 @@ Readiness manifest перечисляет launch-blocking issues и CI пров�
 
 Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
 
-Тем самым readiness больше не зафиксирован навсегда в `BLOCKED`, но убрать blockers вручную недостаточно для доказательства production readiness: external/operator evidence по staging, capacity, restore, providers, security и release остаётся отдельной truth boundary и должно быть сохранено авторитетно.
+Тем самым readiness больше не зафиксирован навсегда в `BLOCKED`, но удалить blockers вручную недостаточно как доказательство: каждый внешний P0/P1 должен быть закрыт только после retained evidence и синхронного пересмотра manifest.
 
 ## 12. Обновление source of truth
 
