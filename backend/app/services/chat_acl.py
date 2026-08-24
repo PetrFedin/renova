@@ -1,4 +1,4 @@
-"""Chat object ACL — thread must belong to project; optional message bind."""
+"""Chat object ACL — thread bind plus narrow invited-participant capability."""
 from __future__ import annotations
 
 from fastapi import HTTPException
@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_project
 from app.models.entities import ChatMessage, ChatThread, Project, User
-from app.services import chat_service as chat_svc
+from app.services import chat_participant_service
 
 
 async def require_chat_access(
@@ -16,12 +16,34 @@ async def require_chat_access(
     user: User,
     *,
     write: bool = False,
+    allow_participant: bool = False,
 ) -> tuple[Project, ChatThread]:
-    """Project membership + thread.project_id bind. 404 on mismatch (no leak)."""
-    project = await require_project(db, project_id, user, write=write)
-    thread = await chat_svc.get_thread(db, thread_id)
-    if not thread or thread.project_id != project.id:
+    """Authorize project authority or an explicitly allowed active participant.
+
+    ``allow_participant`` grants access only to this exact thread. Callers opt in
+    for thread-local operations (read/send/read-receipt/personal state). Project,
+    task and finance mutations keep the default and remain fail-closed.
+    """
+    thread = await db.get(ChatThread, thread_id)
+    if not thread or thread.project_id != project_id:
         raise HTTPException(404, "chat_not_found")
+
+    try:
+        project = await require_project(db, project_id, user, write=write)
+        return project, thread
+    except HTTPException as exc:
+        if exc.status_code != 403 or not allow_participant:
+            raise
+
+    project = await db.get(Project, project_id)
+    if not project or getattr(project, "trashed_at", None):
+        raise HTTPException(404, "chat_not_found")
+    if not await chat_participant_service.is_active_thread_participant(
+        db,
+        thread_id=thread_id,
+        user_id=user.id,
+    ):
+        raise HTTPException(403, "Нет доступа")
     return project, thread
 
 
