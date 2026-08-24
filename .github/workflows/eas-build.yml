@@ -98,7 +98,10 @@ jobs:
 
           cd apps/mobile
           app_version="$(node -p "require('./package.json').version")"
-          release_message="renova git=${GITHUB_SHA} version=${app_version} profile=${{ inputs.profile }}"
+          ios_build_number="$(node -p "String(require('./app.json').expo.ios.buildNumber)")"
+          android_version_code="$(node -p "String(require('./app.json').expo.android.versionCode)")"
+          release_message="renova git=${GITHUB_SHA} version=${app_version} ios_build=${ios_build_number} android_code=${android_version_code} profile=${{ inputs.profile }}"
+          release_evidence="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           bash ../../scripts/eas-cli.sh build \
             --platform "${{ inputs.platform }}" \
@@ -114,7 +117,10 @@ jobs:
           EXPECTED_PLATFORM="${{ inputs.platform }}" \
           RELEASE_PROFILE="${{ inputs.profile }}" \
           APP_VERSION="$app_version" \
+          IOS_BUILD_NUMBER="$ios_build_number" \
+          ANDROID_VERSION_CODE="$android_version_code" \
           RELEASE_MESSAGE="$release_message" \
+          RELEASE_EVIDENCE="$release_evidence" \
           node - <<'NODE'
           const fs = require('fs');
 
@@ -155,9 +161,12 @@ jobs:
             `${JSON.stringify({
               git_sha: process.env.GITHUB_SHA,
               app_version: process.env.APP_VERSION,
+              ios_build_number: process.env.IOS_BUILD_NUMBER,
+              android_version_code: Number(process.env.ANDROID_VERSION_CODE),
               profile: process.env.RELEASE_PROFILE,
               requested_platform: process.env.EXPECTED_PLATFORM,
               message: process.env.RELEASE_MESSAGE,
+              evidence: process.env.RELEASE_EVIDENCE,
               builds: actual.map((platform) => ({ platform, id: byPlatform.get(platform) })),
             }, null, 2)}\n`,
           );
@@ -181,6 +190,8 @@ jobs:
             echo
             echo "- Git SHA: \`${GITHUB_SHA}\`"
             echo "- App version: \`${app_version}\`"
+            echo "- iOS build: \`${ios_build_number}\`"
+            echo "- Android versionCode: \`${android_version_code}\`"
             echo "- Profile: \`${{ inputs.profile }}\`"
             echo "- Submit: \`${{ inputs.submit }}\`"
             while IFS=$'\t' read -r build_platform build_id; do
