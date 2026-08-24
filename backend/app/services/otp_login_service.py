@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token
 from app.models.entities import AuditLog, User, UserRole
-from app.services import chat_service, session_service
+from app.services import chat_participant_service, chat_service, session_service
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ async def complete_otp_login(
     user_agent: str | None,
     npd_verified: bool = False,
 ) -> OtpLoginResult:
-    """Persist user bootstrap, profile code, session and audit in one commit."""
+    """Persist user bootstrap, chat invites, session and audit in one commit."""
     created = False
     try:
         query = select(User).where(User.phone == phone)
@@ -55,6 +55,10 @@ async def complete_otp_login(
             created = True
         if not user.profile_code:
             chat_service.ensure_profile_code(user)
+        # Phone-only chat invitations are a thread-scoped capability. Linking
+        # them here makes SMS invite -> OTP registration -> inbox one atomic
+        # identity transition without granting access to the whole project.
+        await chat_participant_service.activate_pending_phone_invitations(db, user)
         _session, refresh_token = await session_service.create_session(
             db,
             user.id,
