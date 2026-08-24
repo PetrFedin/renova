@@ -66,6 +66,7 @@ let wsRefCount = 0;
 let wsCleanup: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let reloadInflight: { key: string; promise: Promise<void> } | null = null;
+const markReadInflight = new Map<string, { cursor: string; promise: Promise<void> }>();
 
 export function subscribeInboxSync(listener: Listener): () => void {
   listeners.add(listener);
@@ -88,13 +89,6 @@ function sumChatUnread(threads: ChatThread[]): number {
   return threads
     .filter((thread) => !thread.is_archived)
     .reduce((sum, thread) => sum + (thread.unread_count || 0), 0);
-}
-
-function applyLocalThreadUnread(threadId: string, unread = 0) {
-  chatThreads = chatThreads.map((thread) =>
-    thread.id === threadId ? { ...thread, unread_count: unread } : thread,
-  );
-  chatCount = sumChatUnread(chatThreads);
 }
 
 export function getChatUnreadSnapshot() {
@@ -220,7 +214,7 @@ function mergeReloadOpts(opts: ReloadOpts): ReloadOpts {
   };
 }
 
-/** После markChatRead / partial reload — синхронизировать строку чата и inboxBadge с chatCount */
+/** После authoritative reload — синхронизировать строку чата и inboxBadge с chatCount. */
 function refreshInboxChatRow(nextChat: number) {
   const unread = Math.max(0, nextChat || 0);
   if (unread <= 0) {
@@ -257,6 +251,7 @@ function resetForSignedOut() {
   confirmedInboxKey = '';
   activeUserId = undefined;
   cachedFullSync = null;
+  markReadInflight.clear();
   setInboxHealth('idle', [], false, null);
 }
 
@@ -277,6 +272,7 @@ function prepareReloadContext(merged: ReloadOpts) {
     inboxBadge = 0;
     inboxContextKey = '';
     confirmedInboxKey = '';
+    markReadInflight.clear();
     setInboxHealth('idle', [], false, null);
   }
 
@@ -295,47 +291,78 @@ function prepareReloadContext(merged: ReloadOpts) {
   notifyIfChanged(prev);
 }
 
-/** Прочитать тред: optimistic local + API + полный resync */
+/**
+ * Read receipt is not optimistic UI state. The server cursor must ACK first;
+ * then a forced authoritative reload increments reloadGeneration and fences
+ * any older in-flight inbox request. Network ambiguity keeps the previous
+ * unread visible rather than fabricating a zero.
+ */
 export async function markChatReadAndSync(
   userId: string,
   projectId: string,
   threadId: string,
+  readThroughMessageId: string,
   userRole?: UserRole,
-  knownUnread = 0,
 ): Promise<void> {
-  const previousThreads = chatThreads;
-  const previousChatCount = chatCount;
-  const prev = snapshotState();
-  void knownUnread;
-
-  applyLocalThreadUnread(threadId, 0);
-  refreshInboxChatRow(chatCount);
-  notifyIfChanged(prev);
-
-  try {
-    await api.markChatRead(userId, projectId, threadId);
-    chatFailed = false;
-  } catch (error) {
-    reportError('inbox.markChatRead', error, { userId, projectId, threadId });
-    const failedPrev = snapshotState();
-    chatThreads = previousThreads;
-    chatCount = previousChatCount;
-    chatFailed = true;
-    refreshInboxChatRow(chatCount);
-    notifyIfChanged(failedPrev);
+  if (!readThroughMessageId) return;
+  const key = `${userId}:${projectId}:${threadId}`;
+  const existing = markReadInflight.get(key);
+  if (existing?.cursor === readThroughMessageId) {
+    await existing.promise;
+    return;
+  }
+  if (existing) {
+    await existing.promise.catch(() => undefined);
   }
 
-  await reloadInboxSync(
-    {
-      userId,
-      userRole,
-      projectId,
-      project: cachedFullSync?.project,
-      osRole: cachedFullSync?.osRole,
-    },
-    true,
-  );
-  emitInboxWs();
+  let operation!: Promise<void>;
+  operation = (async () => {
+    let markError: unknown = null;
+    try {
+      await api.markChatRead(userId, projectId, threadId, readThroughMessageId);
+    } catch (error) {
+      markError = error;
+      reportError('inbox.markChatRead', error, {
+        userId,
+        projectId,
+        threadId,
+        readThroughMessageId,
+      });
+    }
+
+    try {
+      await reloadInboxSync(
+        {
+          userId,
+          userRole,
+          projectId,
+          project: cachedFullSync?.project,
+          osRole: cachedFullSync?.osRole,
+        },
+        true,
+      );
+      emitInboxWs();
+    } catch (reconcileError) {
+      reportError('inbox.markChatRead.reconcile', reconcileError, {
+        userId,
+        projectId,
+        threadId,
+        readThroughMessageId,
+      });
+      if (!markError) throw reconcileError;
+    }
+
+    if (markError) throw markError;
+  })();
+
+  markReadInflight.set(key, { cursor: readThroughMessageId, promise: operation });
+  try {
+    await operation;
+  } finally {
+    if (markReadInflight.get(key)?.promise === operation) {
+      markReadInflight.delete(key);
+    }
+  }
 }
 
 export async function reloadInboxSyncAfterChatRead(userId: string, userRole?: UserRole): Promise<void> {
