@@ -1,9 +1,9 @@
 """Durable chat invitation delivery on top of the canonical domain outbox.
 
 The SMS provider does not expose a Renova-controlled idempotency key for the
-classic message-create call.  Therefore an uncertain remote write must never be
+classic message-create call. Therefore an uncertain remote write must never be
 automatically repeated: a persisted SideEffectDelivery row fences the provider
-attempt before network I/O.  If that attempt becomes ambiguous, the outbox is
+attempt before network I/O. If that attempt becomes ambiguous, the outbox is
 poisoned for explicit operator replay instead of risking duplicate SMS.
 """
 from __future__ import annotations
@@ -167,9 +167,11 @@ async def process_sms_invitation(
     except SmsDeliveryAmbiguous as exc:
         # Keep the marker. No automatic retry is allowed after uncertain remote write.
         await _poison_and_raise(db, row, str(exc))
-    except SmsDeliveryFailed as exc:
-        # Unknown provider failures are treated conservatively as ambiguous.
-        await _poison_and_raise(db, row, f"sms_delivery_unknown:{exc}")
+    except SmsDeliveryFailed:
+        # Unknown provider failures are treated conservatively as ambiguous. Keep
+        # the dead-letter code bounded/sanitizable; raw provider exception text is
+        # already available only in structured server logs, not operator payloads.
+        await _poison_and_raise(db, row, "sms_delivery_unknown_unclassified")
 
     now = utc_now()
     marker = await _load_attempt_marker(db, row.id)
