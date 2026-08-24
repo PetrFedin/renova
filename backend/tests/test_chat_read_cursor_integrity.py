@@ -10,8 +10,8 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import app.models.calendar_event  # noqa: F401 - complete metadata for create_all
-import app.models.domain_outbox  # noqa: F401 - complete metadata for create_all
+import app.models.outbox_runtime  # noqa: F401 - complete metadata for create_all
+import app.models.project_documents  # noqa: F401 - complete metadata for create_all
 import app.models.work_schedule  # noqa: F401 - complete metadata for create_all
 from app.api.v1.chats import ReadBody, get_chat, router
 from app.db.base import Base
