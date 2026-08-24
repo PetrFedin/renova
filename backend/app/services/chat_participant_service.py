@@ -69,6 +69,7 @@ async def participant_inbox(
     *,
     user_id: str,
     exclude_project_ids: set[str],
+    project_id: str | None = None,
 ) -> list[dict]:
     """Return exact invited threads without widening access to sibling chats."""
     from app.services import chat_service as chat_svc
@@ -89,6 +90,8 @@ async def participant_inbox(
     )
     if exclude_project_ids:
         query = query.where(ChatThread.project_id.not_in(exclude_project_ids))
+    if project_id is not None:
+        query = query.where(ChatThread.project_id == project_id)
 
     seen: set[str] = set()
     out: list[dict] = []
@@ -122,12 +125,14 @@ async def participant_unread_total(
     *,
     user_id: str,
     exclude_project_ids: set[str],
+    project_id: str | None = None,
 ) -> int:
-    """Count only exact invited threads; never all chats in their projects."""
+    """Count only exact invited threads; never sibling chats in their projects."""
     items = await participant_inbox(
         db,
         user_id=user_id,
         exclude_project_ids=exclude_project_ids,
+        project_id=project_id,
     )
     return sum(
         int(item.get("unread_count") or 0)
