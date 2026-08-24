@@ -197,9 +197,29 @@
       "note": "Warranty create remains retryable/offline-capable without a durable create idempotency identity, leaving duplicate issue/document/event risk."
     },
     "chat_read_truth": {
-      "status": "INCOMPLETE",
+      "status": "CI_VERIFIED",
       "issue": 269,
-      "note": "Chat GET/list/thread flows can mark messages read before rendered foreground visibility, and current client reconciliation lacks explicit read-cursor fencing against stale unread reloads."
+      "pr": 270,
+      "reviewed_head_sha": "deef0d2eed413679d095f4e06d48d8bde963f759",
+      "merge_sha": "9a7b0babc530c4ed187f54ea9c67763393656763",
+      "workflow_run_id": 32734835634,
+      "note": "GET/list/count are side-effect-free; explicit server-resolved read cursor advances monotonically; mobile read receipt is foreground/focus/render/overlay gated; ACK reconciliation is fail-closed and project-switch safe. Exact head passed full backend regression, Playwright API/UI, CodeQL, mobile/typecheck contracts and PostgreSQL Alembic upgrade."
+    },
+    "chat_read_equal_timestamp_cursor": {
+      "status": "TRACKED_P2",
+      "issue": 271,
+      "launch_blocker": false,
+      "note": "Canonical read state still persists a timestamp after resolving the exact message id; equal-timestamp messages can coalesce at that boundary. A future schema extension must add a stable total-order cursor without creating a second read-state truth source."
+    },
+    "phone_chat_invitation_delivery": {
+      "status": "INCOMPLETE",
+      "issue": 272,
+      "note": "Phone-only chat invitation currently swallows SMS provider failures and can return a false successful state. Delivery intent must become atomic, durable and observable through the canonical DomainOutbox/worker pattern."
+    },
+    "archived_chat_new_message_visibility": {
+      "status": "INCOMPLETE",
+      "issue": 273,
+      "note": "Archived threads are excluded from global unread, while a new incoming message does not currently restore recipient visibility. Archive/read/mute semantics and the incoming-message transition must be made deterministic and race-safe."
     }
   },
   "open_launch_blockers": [
@@ -264,9 +284,14 @@
       "reason": "warranty claim creation is not durably idempotent across double-submit, timeout, offline replay and concurrent retry"
     },
     {
-      "issue": 269,
+      "issue": 272,
       "priority": "P1",
-      "reason": "chat read state can advance before the transcript is actually visible and client unread reconciliation is not race-safe"
+      "reason": "phone-only chat invitations can report success after an unobserved SMS provider failure and lack durable delivery intent/recovery"
+    },
+    {
+      "issue": 273,
+      "priority": "P1",
+      "reason": "new incoming messages can remain hidden in archived chats and excluded from the global unread truth"
     }
   ],
   "launch_decision": {
