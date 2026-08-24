@@ -6,6 +6,7 @@ on:
       - "PRODUCTION-READINESS.md"
       - "docs/production-readiness-evidence.json"
       - "scripts/production_readiness.py"
+      - "scripts/test_production_readiness.py"
       - "apps/mobile/app.json"
       - "backend/alembic/versions/**"
       - ".github/workflows/backend-image.yml"
@@ -18,6 +19,7 @@ on:
       - "PRODUCTION-READINESS.md"
       - "docs/production-readiness-evidence.json"
       - "scripts/production_readiness.py"
+      - "scripts/test_production_readiness.py"
       - "apps/mobile/app.json"
       - "backend/alembic/versions/**"
       - ".github/workflows/backend-image.yml"
@@ -61,6 +63,9 @@ jobs:
         with:
           python-version: "3.12.13"
           check-latest: false
+
+      - name: Test readiness state machine and release identity contract
+        run: python scripts/test_production_readiness.py
 
       - name: Download exact backend image identity from completed main publish
         if: github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Backend image integrity'
@@ -113,8 +118,21 @@ jobs:
           assert snapshot['snapshot']['evaluated_git_sha'] == os.environ['READINESS_SHA']
           assert snapshot['snapshot']['github_metadata_checked'] is True
           assert snapshot['snapshot']['current_main_sha']
-          assert snapshot['launch_decision']['status'] == 'BLOCKED_FOR_BROAD_PRODUCTION'
-          assert snapshot['live_blocker_issue_states']
+
+          status = snapshot['launch_decision']['status']
+          blockers = snapshot['open_launch_blockers']
+          assert status in {'BLOCKED_FOR_BROAD_PRODUCTION', 'READY_FOR_BROAD_PRODUCTION'}
+          assert snapshot['launch_decision']['reason'].strip()
+          if status == 'READY_FOR_BROAD_PRODUCTION':
+              assert blockers == []
+              assert snapshot['snapshot']['main_protected'] is True
+          else:
+              assert isinstance(blockers, list)
+
+          states = snapshot['live_blocker_issue_states']
+          expected_issue_numbers = {str(blocker['issue']) for blocker in blockers}
+          assert set(states) == expected_issue_numbers
+          assert all(state == 'open' for state in states.values())
           PY
 
           cat "$out_dir/production-readiness.md" >> "$GITHUB_STEP_SUMMARY"

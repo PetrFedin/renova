@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "observed_on": "2026-08-23",
+  "observed_on": "2026-08-24",
   "expected_repo_facts": {
     "alembic_head": "w15providerops01",
     "mobile_version": "0.3.7",
@@ -26,9 +26,11 @@
     "staging": {
       "status": "CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED",
       "git_sha": "3bbdb16b774d197e48df1321f633108d23e78485",
+      "artifact_digest": null,
       "workflow_run_id": 32655970897,
       "evidence": null,
-      "note": "Repository CI proved the isolated PostgreSQL/Redis/Bearer-auth staging topology. A real externally deployed production-like staging environment is not confirmed by this evidence."
+      "issue": 233,
+      "note": "Repository CI proved the isolated PostgreSQL/Redis/Bearer-auth staging topology. A real externally deployed production-like staging environment and build-once promotion lifecycle are not confirmed by this evidence."
     },
     "production": {
       "status": "NOT_EXTERNALLY_VERIFIED",
@@ -42,32 +44,44 @@
     "yookassa": {
       "repo_status": "DURABLE_RECONCILIATION_IMPLEMENTED",
       "external_status": "LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED",
+      "release_scope": true,
+      "evidence": null,
       "issue": 238
     },
     "fns_receipts": {
       "repo_status": "DURABLE_RECONCILIATION_IMPLEMENTED",
       "external_status": "LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED",
+      "release_scope": true,
+      "evidence": null,
       "issue": 238
     },
     "moy_nalog": {
       "repo_status": "CREDENTIAL_LIFECYCLE_HARDENED",
       "external_status": "LIVE_OAUTH_AND_PROVIDER_REFRESH_CONTRACT_UNVERIFIED",
       "automatic_refresh_supported": false,
+      "release_scope": true,
+      "evidence": null,
       "issue": 238
     },
     "esign_kontur": {
       "repo_status": "DURABLE_IDEMPOTENT_SUBMIT_AND_WEBHOOK",
       "external_status": "AUTHORITATIVE_READ_STATUS_CONTRACT_UNVERIFIED",
+      "release_scope": true,
+      "evidence": null,
       "issue": 238
     },
     "s3_media": {
       "repo_status": "FAIL_CLOSED_CONFIGURATION_AND_RUNTIME_CHECKS",
       "external_status": "AMBIGUOUS_WRITE_ORPHAN_RECOVERY_NOT_CLOSED",
+      "release_scope": true,
+      "evidence": null,
       "issue": 238
     },
     "push": {
       "repo_status": "DELIVERY_AND_RECEIPT_RECONCILIATION_IMPLEMENTED",
-      "external_status": "LIVE_PROVIDER_LIVENESS_UNVERIFIED"
+      "external_status": "LIVE_PROVIDER_LIVENESS_UNVERIFIED",
+      "release_scope": true,
+      "evidence": null
     }
   },
   "slo": {
@@ -104,8 +118,19 @@
     },
     "latest_production_restore_drill": {
       "status": "NOT_EXTERNALLY_VERIFIED",
-      "evidence": null
+      "evidence": null,
+      "rpo_minutes": null,
+      "rto_minutes": null,
+      "issue": 234
     }
+  },
+  "observability": {
+    "status": "REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED",
+    "evidence": null,
+    "alert_delivery_verified": false,
+    "mobile_crash_reporting_verified": false,
+    "issue": 235,
+    "note": "Backend observability controls exist in the repository, but production-grade end-to-end observability, mobile crash reporting and a retained staging alert-delivery probe are not yet proven complete."
   },
   "release": {
     "mobile_source_version": "0.3.7",
@@ -137,7 +162,45 @@
       "provider_credential_rotation_drill": "NOT_EXTERNALLY_VERIFIED"
     }
   },
+  "launch_acceptance": {
+    "controlled_pilot": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "evidence": null,
+      "issue": 241
+    },
+    "product_telemetry": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "evidence": null,
+      "issue": 241
+    },
+    "legal_privacy": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "evidence": null,
+      "issue": 241,
+      "note": "Terms/Privacy, retention, export/delete, subprocessors, payment/legal and jurisdiction validation require external approval evidence."
+    },
+    "support_incident_ops": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "evidence": null,
+      "issue": 241
+    }
+  },
   "open_launch_blockers": [
+    {
+      "issue": 233,
+      "priority": "P0",
+      "reason": "persistent external production-like staging and exact-artifact promotion lifecycle are not externally proven"
+    },
+    {
+      "issue": 234,
+      "priority": "P0",
+      "reason": "managed production backup/PITR and a real external restore disaster-recovery drill are not proven"
+    },
+    {
+      "issue": 235,
+      "priority": "P0",
+      "reason": "production observability and retained end-to-end alert-delivery evidence are incomplete"
+    },
     {
       "issue": 247,
       "priority": "P0",
@@ -161,7 +224,7 @@
     {
       "issue": 241,
       "priority": "P1",
-      "reason": "controlled real-user pilot, product telemetry and launch operations are not complete"
+      "reason": "controlled real-user pilot, product telemetry, legal/privacy acceptance and launch operations are not complete"
     },
     {
       "issue": 256,
@@ -176,6 +239,6 @@
   ],
   "launch_decision": {
     "status": "BLOCKED_FOR_BROAD_PRODUCTION",
-    "reason": "Repository release gates are strong, but required external governance, capacity, provider and security evidence is incomplete."
+    "reason": "Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, pilot/legal/operations and security evidence gaps."
   }
 }

@@ -24,6 +24,11 @@ APP_JSON_PATH = ROOT / "apps" / "mobile" / "app.json"
 ALEMBIC_DIR = ROOT / "backend" / "alembic" / "versions"
 DOC_PATH = ROOT / "PRODUCTION-READINESS.md"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+LAUNCH_STATUSES = {
+    "BLOCKED_FOR_BROAD_PRODUCTION",
+    "READY_FOR_BROAD_PRODUCTION",
+}
 VERIFIED_EXTERNAL_STATUSES = {"VERIFIED", "SUCCESS_EXTERNAL", "DEPLOYED_VERIFIED"}
 
 
@@ -91,11 +96,23 @@ def _validate_manifest(evidence: dict[str, Any], facts: dict[str, Any]) -> None:
     if expected != facts:
         raise ReadinessError(f"repo facts drifted: expected={expected!r} actual={facts!r}")
 
+    launch = evidence.get("launch_decision")
+    if not isinstance(launch, dict):
+        raise ReadinessError("launch_decision must be an object")
+    launch_status = launch.get("status")
+    if launch_status not in LAUNCH_STATUSES:
+        raise ReadinessError(f"invalid launch_decision.status: {launch_status!r}")
+    launch_reason = str(launch.get("reason") or "").strip()
+    if not launch_reason:
+        raise ReadinessError("launch_decision.reason must be non-empty")
+
     blockers = evidence.get("open_launch_blockers")
-    if not isinstance(blockers, list) or not blockers:
-        raise ReadinessError("open_launch_blockers must be a non-empty list while launch is blocked")
+    if not isinstance(blockers, list):
+        raise ReadinessError("open_launch_blockers must be a list")
     issue_numbers: set[int] = set()
     for blocker in blockers:
+        if not isinstance(blocker, dict):
+            raise ReadinessError(f"launch blocker must be an object: {blocker!r}")
         issue = blocker.get("issue")
         if type(issue) is not int or issue <= 0:
             raise ReadinessError(f"invalid blocker issue: {blocker!r}")
@@ -107,8 +124,7 @@ def _validate_manifest(evidence: dict[str, Any], facts: dict[str, Any]) -> None:
         if not str(blocker.get("reason") or "").strip():
             raise ReadinessError(f"missing blocker reason for #{issue}")
 
-    launch = evidence.get("launch_decision", {})
-    if launch.get("status") == "READY_FOR_BROAD_PRODUCTION" and blockers:
+    if launch_status == "READY_FOR_BROAD_PRODUCTION" and blockers:
         raise ReadinessError("broad-production READY is forbidden while launch blockers remain")
 
     risks = evidence.get("security", {}).get("accepted_risks", [])
@@ -180,17 +196,234 @@ def github_truth(repo: str | None, token: str | None, blockers: list[dict[str, A
     }
 
 
-def _load_optional_identity(path: str | None, kind: str) -> dict[str, Any] | None:
+def _load_optional_identity(
+    path: str | None,
+    kind: str,
+    *,
+    expected_sha: str,
+) -> dict[str, Any] | None:
     if not path:
         return None
     identity_path = Path(path)
     if not identity_path.is_file():
         raise ReadinessError(f"{kind} identity file not found: {path}")
     data = json.loads(identity_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ReadinessError(f"{kind} identity must be a JSON object")
     sha = str(data.get("git_sha") or "")
     if not SHA_RE.fullmatch(sha):
         raise ReadinessError(f"{kind} identity has invalid git_sha")
+    if sha != expected_sha:
+        raise ReadinessError(
+            f"{kind} identity git_sha {sha} does not match evaluated SHA {expected_sha}"
+        )
     return data
+
+
+def _validate_backend_image_identity(
+    identity: dict[str, Any],
+    backend_contract: dict[str, Any],
+    *,
+    expected_sha: str,
+) -> None:
+    expected_image = str(backend_contract.get("image") or "").strip()
+    if not expected_image:
+        raise ReadinessError("backend_artifact.image must be configured")
+    image = str(identity.get("image") or "").strip()
+    if image != expected_image:
+        raise ReadinessError(f"backend image identity mismatch: expected={expected_image!r} actual={image!r}")
+
+    expected_tag = f"{expected_image}:sha-{expected_sha}"
+    tag = str(identity.get("tag") or "").strip()
+    if tag != expected_tag:
+        raise ReadinessError(f"backend image tag mismatch: expected={expected_tag!r} actual={tag!r}")
+
+    oci_revision = str(identity.get("oci_revision") or "").strip()
+    if oci_revision != expected_sha:
+        raise ReadinessError(
+            f"backend OCI revision mismatch: expected={expected_sha!r} actual={oci_revision!r}"
+        )
+
+    digest = str(identity.get("digest") or "").strip()
+    if not DIGEST_RE.fullmatch(digest):
+        raise ReadinessError("verified backend image identity requires digest sha256:<64 lowercase hex>")
+
+    commands = identity.get("runtime_commands")
+    if commands != ["renova-api", "renova-worker"]:
+        raise ReadinessError("backend image identity runtime_commands must be ['renova-api', 'renova-worker']")
+    if identity.get("sbom") is not True:
+        raise ReadinessError("backend image identity must retain SBOM evidence")
+    if identity.get("provenance") != "mode=max":
+        raise ReadinessError("backend image identity must retain max provenance evidence")
+    if identity.get("signature") != "sigstore-keyless":
+        raise ReadinessError("backend image identity must retain Sigstore keyless signature evidence")
+    if not str(identity.get("evidence") or "").strip():
+        raise ReadinessError("backend image identity requires workflow evidence")
+
+
+def _validate_eas_release_identity(
+    identity: dict[str, Any],
+    facts: dict[str, Any],
+    *,
+    expected_sha: str,
+) -> None:
+    if str(identity.get("git_sha") or "") != expected_sha:
+        raise ReadinessError("EAS release identity git_sha does not match evaluated SHA")
+    if str(identity.get("app_version") or "") != facts["mobile_version"]:
+        raise ReadinessError("EAS release app_version does not match repository mobile version")
+    if str(identity.get("ios_build_number") or "") != facts["ios_build_number"]:
+        raise ReadinessError("EAS release iOS build number does not match repository app.json")
+    try:
+        android_version_code = int(identity.get("android_version_code"))
+    except (TypeError, ValueError) as exc:
+        raise ReadinessError("EAS release Android versionCode is invalid") from exc
+    if android_version_code != facts["android_version_code"]:
+        raise ReadinessError("EAS release Android versionCode does not match repository app.json")
+
+    profile = str(identity.get("profile") or "").strip()
+    if profile not in {"preview", "testflight", "production"}:
+        raise ReadinessError(f"EAS release identity has invalid profile: {profile!r}")
+
+    builds = identity.get("builds")
+    if not isinstance(builds, list) or not builds:
+        raise ReadinessError("EAS release identity must contain at least one exact build")
+    platforms: set[str] = set()
+    for build in builds:
+        if not isinstance(build, dict):
+            raise ReadinessError("EAS release build identity must be an object")
+        platform = str(build.get("platform") or "").lower()
+        build_id = str(build.get("id") or "").strip()
+        if platform not in {"ios", "android"} or not build_id:
+            raise ReadinessError(f"invalid EAS build identity: {build!r}")
+        if platform in platforms:
+            raise ReadinessError(f"duplicate EAS build platform: {platform}")
+        platforms.add(platform)
+
+    requested_platform = str(identity.get("requested_platform") or "").lower()
+    expected_platforms = {"ios", "android"} if requested_platform == "all" else {requested_platform}
+    if expected_platforms not in ({"ios"}, {"android"}, {"ios", "android"}):
+        raise ReadinessError(f"invalid EAS requested_platform: {requested_platform!r}")
+    if platforms != expected_platforms:
+        raise ReadinessError(
+            f"EAS build platforms mismatch: expected={sorted(expected_platforms)} actual={sorted(platforms)}"
+        )
+    if not str(identity.get("evidence") or "").strip():
+        raise ReadinessError("EAS release identity requires workflow evidence")
+
+
+def _require_verified_external(
+    area: str,
+    value: Any,
+    *,
+    expected_sha: str | None = None,
+    expected_digest: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ReadinessError(f"broad-production READY requires {area} evidence object")
+    status = str(value.get("status") or "")
+    if status not in VERIFIED_EXTERNAL_STATUSES:
+        raise ReadinessError(f"broad-production READY requires verified {area}; got {status or 'missing'}")
+    if not str(value.get("evidence") or "").strip():
+        raise ReadinessError(f"broad-production READY requires retained {area} evidence")
+    if expected_sha is not None and str(value.get("git_sha") or "") != expected_sha:
+        raise ReadinessError(f"broad-production READY requires {area} git_sha == evaluated SHA")
+    if expected_digest is not None and str(value.get("artifact_digest") or "") != expected_digest:
+        raise ReadinessError(f"broad-production READY requires {area} artifact_digest == backend digest")
+    return value
+
+
+def _validate_ready_snapshot(snapshot: dict[str, Any]) -> None:
+    if snapshot.get("launch_decision", {}).get("status") != "READY_FOR_BROAD_PRODUCTION":
+        return
+
+    metadata = snapshot.get("snapshot", {})
+    evaluated_sha = str(metadata.get("evaluated_git_sha") or "")
+    if metadata.get("github_metadata_checked") is not True:
+        raise ReadinessError("broad-production READY requires live GitHub metadata verification")
+    if metadata.get("main_protected") is not True:
+        raise ReadinessError("broad-production READY requires protected main")
+    if str(metadata.get("current_main_sha") or "") != evaluated_sha:
+        raise ReadinessError("broad-production READY must evaluate the current main SHA")
+    if snapshot.get("open_launch_blockers"):
+        raise ReadinessError("broad-production READY requires zero launch blockers")
+
+    backend = snapshot.get("backend_artifact", {})
+    if backend.get("status") != "VERIFIED":
+        raise ReadinessError("broad-production READY requires a verified immutable backend artifact")
+    if str(backend.get("git_sha") or "") != evaluated_sha:
+        raise ReadinessError("broad-production READY backend git_sha must equal evaluated SHA")
+    backend_digest = str(backend.get("digest") or "")
+    if not DIGEST_RE.fullmatch(backend_digest):
+        raise ReadinessError("broad-production READY requires a strict backend sha256 digest")
+
+    _require_verified_external(
+        "production-like staging",
+        snapshot.get("environments", {}).get("staging"),
+        expected_sha=evaluated_sha,
+        expected_digest=backend_digest,
+    )
+    _require_verified_external(
+        "external capacity/SLO",
+        snapshot.get("slo", {}).get("latest_external_load_test"),
+        expected_sha=evaluated_sha,
+        expected_digest=backend_digest,
+    )
+
+    restore = _require_verified_external(
+        "production backup restore/DR",
+        snapshot.get("restore", {}).get("latest_production_restore_drill"),
+    )
+    for metric in ("rpo_minutes", "rto_minutes"):
+        value = restore.get(metric)
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+            raise ReadinessError(f"broad-production READY requires non-negative {metric} in restore evidence")
+
+    release = _require_verified_external(
+        "EAS/mobile release",
+        snapshot.get("release", {}).get("latest_eas_release"),
+        expected_sha=evaluated_sha,
+    )
+    if not isinstance(release.get("builds"), list) or not release["builds"]:
+        raise ReadinessError("broad-production READY requires exact EAS build IDs")
+
+    observability = _require_verified_external(
+        "production observability/alert delivery",
+        snapshot.get("observability"),
+    )
+    if observability.get("alert_delivery_verified") is not True:
+        raise ReadinessError("broad-production READY requires a verified alert-delivery probe")
+    if observability.get("mobile_crash_reporting_verified") is not True:
+        raise ReadinessError("broad-production READY requires verified mobile crash reporting")
+
+    providers = snapshot.get("providers")
+    if not isinstance(providers, dict) or not providers:
+        raise ReadinessError("broad-production READY requires provider scope evidence")
+    for provider, state in providers.items():
+        if not isinstance(state, dict):
+            raise ReadinessError(f"provider {provider} evidence must be an object")
+        if state.get("release_scope", True) is False:
+            if not str(state.get("scope_reason") or "").strip():
+                raise ReadinessError(f"provider {provider} excluded from release scope without reason")
+            continue
+        external_status = str(state.get("external_status") or "")
+        if external_status not in VERIFIED_EXTERNAL_STATUSES:
+            raise ReadinessError(
+                f"broad-production READY requires verified provider {provider}; got {external_status or 'missing'}"
+            )
+        if not str(state.get("evidence") or "").strip():
+            raise ReadinessError(f"broad-production READY requires retained provider {provider} evidence")
+
+    external_security = snapshot.get("security", {}).get("external_validation")
+    if not isinstance(external_security, dict):
+        raise ReadinessError("broad-production READY requires external security validation evidence")
+    for key in ("privileged_access_review", "independent_pentest", "provider_credential_rotation_drill"):
+        _require_verified_external(f"security.{key}", external_security.get(key))
+
+    launch_acceptance = snapshot.get("launch_acceptance")
+    if not isinstance(launch_acceptance, dict):
+        raise ReadinessError("broad-production READY requires launch_acceptance evidence")
+    for key in ("controlled_pilot", "product_telemetry", "legal_privacy", "support_incident_ops"):
+        _require_verified_external(f"launch_acceptance.{key}", launch_acceptance.get(key))
 
 
 def build_snapshot(
@@ -208,6 +441,7 @@ def build_snapshot(
     facts = repo_facts()
     _validate_manifest(evidence, facts)
     dynamic = github_truth(repo, token, evidence["open_launch_blockers"])
+
     snapshot = deepcopy(evidence)
     snapshot["snapshot"] = {
         "evaluated_git_sha": evaluated_sha,
@@ -219,29 +453,51 @@ def build_snapshot(
     snapshot["repo_facts"] = facts
     snapshot["live_blocker_issue_states"] = dynamic["blocker_issue_states"]
 
-    image_identity = _load_optional_identity(backend_image_identity, "backend image")
+    image_identity = _load_optional_identity(
+        backend_image_identity,
+        "backend image",
+        expected_sha=evaluated_sha,
+    )
     if image_identity:
+        _validate_backend_image_identity(
+            image_identity,
+            snapshot["backend_artifact"],
+            expected_sha=evaluated_sha,
+        )
         snapshot["backend_artifact"] = {
             **snapshot["backend_artifact"],
             "status": "VERIFIED",
             "git_sha": image_identity["git_sha"],
-            "digest": image_identity.get("digest"),
-            "evidence": image_identity.get("evidence") or "backend-image-identity artifact",
+            "digest": image_identity["digest"],
+            "evidence": image_identity["evidence"],
             "identity": image_identity,
         }
-        if not snapshot["backend_artifact"]["digest"]:
-            raise ReadinessError("verified backend image identity is missing digest")
 
-    release_identity = _load_optional_identity(eas_release_identity, "EAS release")
+    release_identity = _load_optional_identity(
+        eas_release_identity,
+        "EAS release",
+        expected_sha=evaluated_sha,
+    )
     if release_identity:
+        _validate_eas_release_identity(
+            release_identity,
+            facts,
+            expected_sha=evaluated_sha,
+        )
         snapshot["release"]["latest_eas_release"] = {
             "status": "VERIFIED",
             "git_sha": release_identity["git_sha"],
-            "profile": release_identity.get("profile"),
-            "builds": release_identity.get("builds", []),
-            "evidence": release_identity.get("evidence") or "eas-release-identity artifact",
+            "app_version": release_identity["app_version"],
+            "ios_build_number": release_identity["ios_build_number"],
+            "android_version_code": release_identity["android_version_code"],
+            "profile": release_identity["profile"],
+            "requested_platform": release_identity["requested_platform"],
+            "builds": release_identity["builds"],
+            "evidence": release_identity["evidence"],
             "identity": release_identity,
         }
+
+    _validate_ready_snapshot(snapshot)
     return snapshot
 
 
@@ -301,12 +557,15 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
         "",
     ])
     live_states = snapshot.get("live_blocker_issue_states", {})
-    for blocker in blockers:
-        issue = blocker["issue"]
-        live = live_states.get(str(issue), "not-checked")
-        lines.append(
-            f"- **{blocker['priority']} #{issue}** (`{live}`): {blocker['reason']}"
-        )
+    if blockers:
+        for blocker in blockers:
+            issue = blocker["issue"]
+            live = live_states.get(str(issue), "not-checked")
+            lines.append(
+                f"- **{blocker['priority']} #{issue}** (`{live}`): {blocker['reason']}"
+            )
+    else:
+        lines.append("- None.")
     lines.extend([
         "",
         "## Truth boundary",

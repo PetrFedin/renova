@@ -199,7 +199,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@v4.1.2
 
-      - name: Keyless-sign the published digest and retain identity
+      - name: Keyless-sign published digest and retain verified identity
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
         shell: bash
@@ -208,18 +208,28 @@ jobs:
           test -n "$DIGEST"
           cosign sign --yes "${IMAGE}@${DIGEST}"
 
+          docker pull "${IMAGE}@${DIGEST}" >/dev/null
+          published_oci_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "${IMAGE}@${DIGEST}")"
+          test "$published_oci_revision" = "$GITHUB_SHA"
+          export PUBLISHED_OCI_REVISION="$published_oci_revision"
+
           identity_dir="${RUNNER_TEMP}/renova-backend-image-identity"
           mkdir -p "$identity_dir"
           python - <<'PY'
           import json
           import os
+          import re
           from pathlib import Path
 
           digest = os.environ['DIGEST'].strip()
-          if not digest.startswith('sha256:'):
+          if not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
               raise SystemExit(f'invalid backend image digest: {digest!r}')
+          oci_revision = os.environ['PUBLISHED_OCI_REVISION'].strip()
+          if oci_revision != os.environ['GITHUB_SHA']:
+              raise SystemExit(f'published OCI revision mismatch: {oci_revision!r}')
           payload = {
               'git_sha': os.environ['GITHUB_SHA'],
+              'oci_revision': oci_revision,
               'image': os.environ['IMAGE'],
               'tag': f"{os.environ['IMAGE']}:sha-{os.environ['GITHUB_SHA']}",
               'digest': digest,
@@ -237,6 +247,7 @@ jobs:
             echo "### Canonical backend image"
             echo
             echo "- Git SHA: \`${GITHUB_SHA}\`"
+            echo "- OCI revision: \`${PUBLISHED_OCI_REVISION}\`"
             echo "- Tag: \`${IMAGE}:sha-${GITHUB_SHA}\`"
             echo "- Digest: \`${DIGEST}\`"
             echo "- Process commands: \`renova-api\`, \`renova-worker\`"
