@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, require_project, require_project_dep
 from app.services.chat_acl import require_chat_access, require_chat_message
 from app.db.session import get_db
 from app.models.entities import User
+from app.services import chat_participant_service as chat_participant_svc
 from app.services import chat_service as chat_svc
 
 router = APIRouter(prefix="/projects", tags=["chats"])
@@ -29,6 +30,27 @@ async def _msgs_with_read(db, thread_id, messages):
     pinned = [x for x in out if x.get("is_pinned")]
     rest = [x for x in out if not x.get("is_pinned")]
     return pinned + rest
+
+
+async def _project_unread_for_actor(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user: User,
+) -> int:
+    """Do not leak sibling-chat unread counts to thread-only participants."""
+    try:
+        await require_project(db, project_id, user, write=False)
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+        return await chat_participant_svc.participant_unread_total(
+            db,
+            user_id=user.id,
+            exclude_project_ids=set(),
+            project_id=project_id,
+        )
+    return await chat_svc.count_unread_project(db, project_id, user.id)
 
 
 class ThreadCreate(BaseModel):
@@ -109,10 +131,9 @@ async def search_messages(project_id: str, q: str, user: User = Depends(get_curr
 @router.get("/{project_id}/chats/{thread_id}.pdf")
 async def chat_thread_pdf(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
-    await require_project(db, project_id, user, write=False)
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
+    _project, t = await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
     msgs = await _msgs_with_read(db, thread_id, t.messages)
     pdf = new_pdf()
     pdf_line(pdf, f"Чат: {t.title}", size=14)
@@ -128,16 +149,17 @@ async def chat_thread_pdf(project_id: str, thread_id: str, user: User = Depends(
 
 @router.patch("/{project_id}/chats/{thread_id}/state")
 async def patch_thread_state(project_id: str, thread_id: str, body: ThreadState, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    t = await chat_svc.get_thread(db, thread_id)
-    if not t or t.project_id != project_id:
-        raise HTTPException(404)
+    await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
     return await chat_svc.set_thread_state(db, thread_id, user.id, is_pinned=body.is_pinned, is_archived=body.is_archived)
 
 
 @router.post("/{project_id}/chats/{thread_id}/read")
 async def mark_read(project_id: str, thread_id: str, body: ReadBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_chat_access(db, project_id, thread_id, user, write=False)
+    await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
     try:
         thread_unread = await chat_svc.mark_thread_read(
             db,
@@ -149,7 +171,7 @@ async def mark_read(project_id: str, thread_id: str, body: ReadBody, user: User 
         if str(exc) == "read_cursor_not_in_thread":
             raise HTTPException(409, "read_cursor_not_in_thread") from exc
         raise
-    project_unread = await chat_svc.count_unread_project(db, project_id, user.id)
+    project_unread = await _project_unread_for_actor(db, project_id=project_id, user=user)
     return {
         "ok": True,
         "read_through_message_id": body.read_through_message_id,
@@ -160,7 +182,9 @@ async def mark_read(project_id: str, thread_id: str, body: ReadBody, user: User 
 
 @router.get("/{project_id}/chats/{thread_id}")
 async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    _p, t = await require_chat_access(db, project_id, thread_id, user, write=False)
+    _p, t = await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
     state = await chat_svc.get_thread_read_state(db, thread_id, user.id)
     unread = await chat_svc.count_unread_in_thread(db, thread_id, user.id)
     return {
@@ -178,7 +202,9 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
 
 @router.get("/{project_id}/chats/{thread_id}/participants")
 async def get_participants(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_chat_access(db, project_id, thread_id, user, write=False)
+    await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
     return await chat_svc.list_participants(db, thread_id)
 
 
@@ -209,7 +235,9 @@ async def invite_to_chat(project_id: str, thread_id: str, body: InviteBody, user
 
 @router.post("/{project_id}/chats/{thread_id}/messages")
 async def _post_message(project_id: str, thread_id: str, body: MessageCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    _project, t = await require_chat_access(db, project_id, thread_id, user, write=True)
+    _project, t = await require_chat_access(
+        db, project_id, thread_id, user, write=True, allow_participant=True,
+    )
     msg = await chat_svc.send_message(
         db, t, user.id, user.role.value, body.text, body.message_type, body.image_data, body.reply_to_id,
     )
@@ -253,7 +281,9 @@ async def _confirm_message(project_id: str, thread_id: str, message_id: str, use
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/react")
 async def react_message(project_id: str, thread_id: str, message_id: str, body: ReactionBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    _p, t = await require_chat_access(db, project_id, thread_id, user, write=False)
+    _p, t = await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
     await require_chat_message(db, t, message_id)
     reactions = await chat_svc.toggle_reaction(db, message_id, user.id, body.emoji)
     return {"reactions": reactions}
