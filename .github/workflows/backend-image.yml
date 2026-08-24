@@ -213,13 +213,15 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           from pathlib import Path
 
           digest = os.environ['DIGEST'].strip()
-          if not digest.startswith('sha256:'):
+          if not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
               raise SystemExit(f'invalid backend image digest: {digest!r}')
           payload = {
               'git_sha': os.environ['GITHUB_SHA'],
+              'oci_revision': os.environ['GITHUB_SHA'],
               'image': os.environ['IMAGE'],
               'tag': f"{os.environ['IMAGE']}:sha-{os.environ['GITHUB_SHA']}",
               'digest': digest,
@@ -237,6 +239,7 @@ jobs:
             echo "### Canonical backend image"
             echo
             echo "- Git SHA: \`${GITHUB_SHA}\`"
+            echo "- OCI revision: \`${GITHUB_SHA}\`"
             echo "- Tag: \`${IMAGE}:sha-${GITHUB_SHA}\`"
             echo "- Digest: \`${DIGEST}\`"
             echo "- Process commands: \`renova-api\`, \`renova-worker\`"
