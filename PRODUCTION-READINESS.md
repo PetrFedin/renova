@@ -65,7 +65,7 @@ Production readiness требует **конкретный registry digest**, а
 - `git_sha`;
 - фактически прочитанным `oci_revision`;
 - canonical image name;
-- immutable `sha-${GIT_SHA}` tag;
+- immutable `sha-${GITHUB_SHA}` tag;
 - строгим `sha256:<64 hex>` digest;
 - runtime commands `renova-api` / `renova-worker`;
 - SBOM/provenance/signature contract;
@@ -156,7 +156,17 @@ Repo security controls реализованы через security-operations sli
 - #257 — независимый pre-launch penetration/abuse test;
 - #237 — общий external security acceptance, включая provider credential rotation/revocation drill.
 
-## 11. Open launch blockers и переход состояния
+## 11. Product integrity gaps обнаруженные при legacy red-team
+
+Очистка старого July PR backlog выявила три действующих разрыва, которые нельзя потерять при закрытии stale branches:
+
+- **#265 — manual payment evidence verification.** Current main уже различает `paid_unverified`, но customer `transfer_ack` не заменяет полный evidence lifecycle. Для broad production нужен canonical flow: evidence upload/version → authorized reviewer approve/reject → safe resubmit → ровно одно финансовое признание. Старый PR #27 нельзя переносить напрямую: его approve path одновременно увеличивал `Project.budget_spent` и вызывал `expense_from_payment`, что несовместимо с текущей финансовой семантикой и создаёт риск double counting.
+- **#266 — warranty create idempotency.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
+- **#269 — chat read truth.** Current backend `GET /chats/{thread}` сам меняет read-state; ChatList делает mark-read до navigation, а ChatThread после fetch/WS может сделать mark до render/foreground visibility. Одновременно current client sync использует optimistic unread=0 → POST → full reload без явного read-cursor fencing против pre-read inflight snapshot. Нужен side-effect-free GET, explicit monotonic read cursor и foreground/focus/render-gated read reconciliation.
+
+Все три пункта классифицированы **P1 launch blockers**: это не косметический backlog, а нарушения обязательной payment-verification / warranty / communication end-to-end integrity.
+
+## 12. Open launch blockers и переход состояния
 
 Readiness manifest перечисляет launch-blocking issues и CI проверяет, что они действительно остаются `open`; если issue закрывается, manifest обязан быть пересмотрен.
 
@@ -170,12 +180,15 @@ Readiness manifest перечисляет launch-blocking issues и CI пров�
 - **P1 #241** — controlled production pilot, telemetry and launch operations.
 - **P1 #256** — privileged repository/org access review.
 - **P1 #257** — independent penetration/abuse test.
+- **P1 #265** — complete manual bank-transfer evidence/reviewer/resubmission lifecycle on current finance truth.
+- **P1 #266** — atomic, durable and idempotent warranty claim creation across retry/offline/concurrency.
+- **P1 #269** — visibility-gated, monotonic and race-safe chat read/unread truth.
 
 Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
 
-Тем самым readiness больше не зафиксирован навсегда в `BLOCKED`, но удалить blockers вручную недостаточно как доказательство: каждый внешний P0/P1 должен быть закрыт только после retained evidence и синхронного пересмотра manifest.
+Тем самым readiness больше не зафиксирован навсегда в `BLOCKED`, но удалить blockers вручную недостаточно как доказательство: каждый внешний или product-integrity P0/P1 должен быть закрыт только после retained evidence и синхронного пересмотра manifest.
 
-## 12. Обновление source of truth
+## 13. Обновление source of truth
 
 При изменении migration head, mobile build/version, provider readiness, SLO/restore/release evidence или launch blockers нужно обновить `docs/production-readiness-evidence.json` в том же PR. `Production readiness integrity` проверяет consistency, live blocker states и сохраняет SHA-bound snapshot.
 

@@ -185,6 +185,23 @@
       "issue": 241
     }
   },
+  "product_integrity": {
+    "manual_payment_evidence": {
+      "status": "INCOMPLETE",
+      "issue": 265,
+      "note": "Current main has paid_unverified transfer acknowledgement, but not the complete evidence upload, authorized reviewer approve/reject, safe resubmission and single-recognition financial lifecycle."
+    },
+    "warranty_claim_idempotency": {
+      "status": "INCOMPLETE",
+      "issue": 266,
+      "note": "Warranty create remains retryable/offline-capable without a durable create idempotency identity, leaving duplicate issue/document/event risk."
+    },
+    "chat_read_truth": {
+      "status": "INCOMPLETE",
+      "issue": 269,
+      "note": "Chat GET/list/thread flows can mark messages read before rendered foreground visibility, and current client reconciliation lacks explicit read-cursor fencing against stale unread reloads."
+    }
+  },
   "open_launch_blockers": [
     {
       "issue": 233,
@@ -235,10 +252,25 @@
       "issue": 257,
       "priority": "P1",
       "reason": "independent pre-launch penetration and abuse test is not executed"
+    },
+    {
+      "issue": 265,
+      "priority": "P1",
+      "reason": "manual bank-transfer payment verification lacks a complete evidence/reviewer/resubmission lifecycle on the current finance source of truth"
+    },
+    {
+      "issue": 266,
+      "priority": "P1",
+      "reason": "warranty claim creation is not durably idempotent across double-submit, timeout, offline replay and concurrent retry"
+    },
+    {
+      "issue": 269,
+      "priority": "P1",
+      "reason": "chat read state can advance before the transcript is actually visible and client unread reconciliation is not race-safe"
     }
   ],
   "launch_decision": {
     "status": "BLOCKED_FOR_BROAD_PRODUCTION",
-    "reason": "Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, pilot/legal/operations and security evidence gaps."
+    "reason": "Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, product-integrity, pilot/legal/operations and security evidence gaps."
   }
 }
