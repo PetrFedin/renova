@@ -311,6 +311,121 @@ def _validate_eas_release_identity(
         raise ReadinessError("EAS release identity requires workflow evidence")
 
 
+def _require_verified_external(
+    area: str,
+    value: Any,
+    *,
+    expected_sha: str | None = None,
+    expected_digest: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ReadinessError(f"broad-production READY requires {area} evidence object")
+    status = str(value.get("status") or "")
+    if status not in VERIFIED_EXTERNAL_STATUSES:
+        raise ReadinessError(f"broad-production READY requires verified {area}; got {status or 'missing'}")
+    if not str(value.get("evidence") or "").strip():
+        raise ReadinessError(f"broad-production READY requires retained {area} evidence")
+    if expected_sha is not None and str(value.get("git_sha") or "") != expected_sha:
+        raise ReadinessError(f"broad-production READY requires {area} git_sha == evaluated SHA")
+    if expected_digest is not None and str(value.get("artifact_digest") or "") != expected_digest:
+        raise ReadinessError(f"broad-production READY requires {area} artifact_digest == backend digest")
+    return value
+
+
+def _validate_ready_snapshot(snapshot: dict[str, Any]) -> None:
+    if snapshot.get("launch_decision", {}).get("status") != "READY_FOR_BROAD_PRODUCTION":
+        return
+
+    metadata = snapshot.get("snapshot", {})
+    evaluated_sha = str(metadata.get("evaluated_git_sha") or "")
+    if metadata.get("github_metadata_checked") is not True:
+        raise ReadinessError("broad-production READY requires live GitHub metadata verification")
+    if metadata.get("main_protected") is not True:
+        raise ReadinessError("broad-production READY requires protected main")
+    if str(metadata.get("current_main_sha") or "") != evaluated_sha:
+        raise ReadinessError("broad-production READY must evaluate the current main SHA")
+    if snapshot.get("open_launch_blockers"):
+        raise ReadinessError("broad-production READY requires zero launch blockers")
+
+    backend = snapshot.get("backend_artifact", {})
+    if backend.get("status") != "VERIFIED":
+        raise ReadinessError("broad-production READY requires a verified immutable backend artifact")
+    if str(backend.get("git_sha") or "") != evaluated_sha:
+        raise ReadinessError("broad-production READY backend git_sha must equal evaluated SHA")
+    backend_digest = str(backend.get("digest") or "")
+    if not DIGEST_RE.fullmatch(backend_digest):
+        raise ReadinessError("broad-production READY requires a strict backend sha256 digest")
+
+    _require_verified_external(
+        "production-like staging",
+        snapshot.get("environments", {}).get("staging"),
+        expected_sha=evaluated_sha,
+        expected_digest=backend_digest,
+    )
+    _require_verified_external(
+        "external capacity/SLO",
+        snapshot.get("slo", {}).get("latest_external_load_test"),
+        expected_sha=evaluated_sha,
+        expected_digest=backend_digest,
+    )
+
+    restore = _require_verified_external(
+        "production backup restore/DR",
+        snapshot.get("restore", {}).get("latest_production_restore_drill"),
+    )
+    for metric in ("rpo_minutes", "rto_minutes"):
+        value = restore.get(metric)
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+            raise ReadinessError(f"broad-production READY requires non-negative {metric} in restore evidence")
+
+    release = _require_verified_external(
+        "EAS/mobile release",
+        snapshot.get("release", {}).get("latest_eas_release"),
+        expected_sha=evaluated_sha,
+    )
+    if not isinstance(release.get("builds"), list) or not release["builds"]:
+        raise ReadinessError("broad-production READY requires exact EAS build IDs")
+
+    observability = _require_verified_external(
+        "production observability/alert delivery",
+        snapshot.get("observability"),
+    )
+    if observability.get("alert_delivery_verified") is not True:
+        raise ReadinessError("broad-production READY requires a verified alert-delivery probe")
+    if observability.get("mobile_crash_reporting_verified") is not True:
+        raise ReadinessError("broad-production READY requires verified mobile crash reporting")
+
+    providers = snapshot.get("providers")
+    if not isinstance(providers, dict) or not providers:
+        raise ReadinessError("broad-production READY requires provider scope evidence")
+    for provider, state in providers.items():
+        if not isinstance(state, dict):
+            raise ReadinessError(f"provider {provider} evidence must be an object")
+        if state.get("release_scope", True) is False:
+            if not str(state.get("scope_reason") or "").strip():
+                raise ReadinessError(f"provider {provider} excluded from release scope without reason")
+            continue
+        external_status = str(state.get("external_status") or "")
+        if external_status not in VERIFIED_EXTERNAL_STATUSES:
+            raise ReadinessError(
+                f"broad-production READY requires verified provider {provider}; got {external_status or 'missing'}"
+            )
+        if not str(state.get("evidence") or "").strip():
+            raise ReadinessError(f"broad-production READY requires retained provider {provider} evidence")
+
+    external_security = snapshot.get("security", {}).get("external_validation")
+    if not isinstance(external_security, dict):
+        raise ReadinessError("broad-production READY requires external security validation evidence")
+    for key in ("privileged_access_review", "independent_pentest", "provider_credential_rotation_drill"):
+        _require_verified_external(f"security.{key}", external_security.get(key))
+
+    launch_acceptance = snapshot.get("launch_acceptance")
+    if not isinstance(launch_acceptance, dict):
+        raise ReadinessError("broad-production READY requires launch_acceptance evidence")
+    for key in ("controlled_pilot", "product_telemetry", "legal_privacy", "support_incident_ops"):
+        _require_verified_external(f"launch_acceptance.{key}", launch_acceptance.get(key))
+
+
 def build_snapshot(
     *,
     evaluated_sha: str,
@@ -326,12 +441,6 @@ def build_snapshot(
     facts = repo_facts()
     _validate_manifest(evidence, facts)
     dynamic = github_truth(repo, token, evidence["open_launch_blockers"])
-
-    if evidence["launch_decision"]["status"] == "READY_FOR_BROAD_PRODUCTION":
-        if not dynamic["checked"]:
-            raise ReadinessError("broad-production READY requires live GitHub metadata verification")
-        if dynamic["main_protected"] is not True:
-            raise ReadinessError("broad-production READY requires protected main")
 
     snapshot = deepcopy(evidence)
     snapshot["snapshot"] = {
@@ -378,11 +487,17 @@ def build_snapshot(
         snapshot["release"]["latest_eas_release"] = {
             "status": "VERIFIED",
             "git_sha": release_identity["git_sha"],
+            "app_version": release_identity["app_version"],
+            "ios_build_number": release_identity["ios_build_number"],
+            "android_version_code": release_identity["android_version_code"],
             "profile": release_identity["profile"],
+            "requested_platform": release_identity["requested_platform"],
             "builds": release_identity["builds"],
             "evidence": release_identity["evidence"],
             "identity": release_identity,
         }
+
+    _validate_ready_snapshot(snapshot)
     return snapshot
 
 
