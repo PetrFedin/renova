@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.core.timeutil import utc_now
 import json
 import secrets
+import uuid
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -12,17 +13,24 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.phone import normalize_phone
 from app.models.entities import (
     ChatMessage,
     ChatMessageType,
     ChatThread,
     ChatThreadParticipant,
     ChatThreadRead,
+    DomainOutbox,
     Project,
     User,
 )
 from app.services import notification_service as notif_svc
+from app.services import outbox_inline_dispatch
+from app.services import outbox_service as outbox
 from app.services import storage_service as storage_svc
+from app.services.chat_invitation_delivery import delivery_status as sms_delivery_status
+
+_CHAT_INVITE_NAMESPACE = uuid.UUID("bf4e7a2d-07c1-4a79-a7c1-e7ed1583ecb5")
 
 
 def normalize_chat_title(title: str) -> str:
@@ -482,6 +490,118 @@ async def list_participants(db: AsyncSession, thread_id: str) -> list[dict]:
     return out
 
 
+def _participant_id(thread_id: str, target_key: str) -> str:
+    return str(uuid.uuid5(_CHAT_INVITE_NAMESPACE, f"{thread_id}:{target_key}"))
+
+
+async def _existing_participant(
+    db: AsyncSession,
+    thread_id: str,
+    *,
+    target: User | None,
+    normalized_phone: str | None,
+) -> ChatThreadParticipant | None:
+    if target is not None:
+        row = (
+            await db.execute(
+                select(ChatThreadParticipant).where(
+                    ChatThreadParticipant.thread_id == thread_id,
+                    ChatThreadParticipant.user_id == target.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            return row
+    if normalized_phone:
+        return (
+            await db.execute(
+                select(ChatThreadParticipant).where(
+                    ChatThreadParticipant.thread_id == thread_id,
+                    ChatThreadParticipant.phone == normalized_phone,
+                )
+                .order_by(ChatThreadParticipant.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    return None
+
+
+async def _ensure_participant(
+    db: AsyncSession,
+    thread: ChatThread,
+    inviter: User,
+    *,
+    target: User | None,
+    normalized_phone: str | None,
+    profile_code: str | None,
+) -> ChatThreadParticipant:
+    existing = await _existing_participant(
+        db,
+        thread.id,
+        target=target,
+        normalized_phone=normalized_phone,
+    )
+    if existing is not None:
+        if target is not None and existing.user_id is None:
+            existing.user_id = target.id
+            existing.status = "active"
+        if profile_code and not existing.profile_code:
+            existing.profile_code = profile_code
+        return existing
+
+    target_key = f"user:{target.id}" if target else f"phone:{normalized_phone}"
+    part_id = _participant_id(thread.id, target_key)
+    values = {
+        "id": part_id,
+        "thread_id": thread.id,
+        "user_id": target.id if target else None,
+        "phone": normalized_phone,
+        "profile_code": profile_code,
+        "invited_by": inviter.id,
+        "status": "active" if target else "pending",
+        "created_at": utc_now(),
+    }
+    dialect = db.bind.dialect.name if db.bind is not None else ""
+    if dialect in {"postgresql", "sqlite"}:
+        insert_fn = pg_insert if dialect == "postgresql" else sqlite_insert
+        await db.execute(
+            insert_fn(ChatThreadParticipant)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=[ChatThreadParticipant.id])
+        )
+        participant = await db.get(ChatThreadParticipant, part_id)
+        if participant is None:
+            raise RuntimeError("chat_invitation_participant_insert_failed")
+        return participant
+
+    participant = ChatThreadParticipant(**values)
+    db.add(participant)
+    await db.flush()
+    return participant
+
+
+async def _refresh_outbox(db: AsyncSession, outbox_id: str) -> DomainOutbox | None:
+    return (
+        await db.execute(
+            select(DomainOutbox)
+            .where(DomainOutbox.id == outbox_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+
+
+def _in_app_delivery_status(row: DomainOutbox | None) -> str:
+    if row is None:
+        return "not_queued"
+    if row.processed_at is not None:
+        return "in_app_notified"
+    if int(row.attempts or 0) >= outbox.MAX_ATTEMPTS:
+        return "in_app_failed_terminal"
+    if int(row.attempts or 0) > 0:
+        return "in_app_retrying"
+    return "in_app_queued"
+
+
 async def invite_participant(
     db: AsyncSession,
     thread: ChatThread,
@@ -490,46 +610,117 @@ async def invite_participant(
     phone: str | None = None,
     profile_code: str | None = None,
 ) -> dict:
+    """Create/adopt one invitation and persist delivery intent atomically."""
+    if bool(phone) == bool(profile_code):
+        raise ValueError("invite_requires_exactly_one_target")
+
+    normalized_phone: str | None = None
     target: User | None = None
-    if profile_code:
-        r = await db.execute(select(User).where(User.profile_code == profile_code.upper()))
-        target = r.scalar_one_or_none()
-    elif phone:
-        r = await db.execute(select(User).where(User.phone == phone))
-        target = r.scalar_one_or_none()
-
-    part = ChatThreadParticipant(
-        thread_id=thread.id,
-        user_id=target.id if target else None,
-        phone=phone,
-        profile_code=profile_code.upper() if profile_code else None,
-        invited_by=inviter.id,
-        status="active" if target else "pending",
-    )
-    db.add(part)
-    await db.flush()
-
-    invite_text = f"Вас пригласили в чат «{thread.title}». Установите Renova, зарегистрируйтесь — чат появится в разделе Сообщения."
-    if target:
-        await notif_svc.notify(
-            db,
-            user_id=target.id,
-            project_id=thread.project_id,
-            notification_type="chat_message",
-            title="Приглашение в чат",
-            body=invite_text,
-            link_path=f"/chat/{thread.id}",
-            return_to="/(customer)/(tabs)/chat",
-        )
-    elif phone:
+    normalized_code = profile_code.strip().upper() if profile_code else None
+    if normalized_code:
+        target = (
+            await db.execute(select(User).where(User.profile_code == normalized_code))
+        ).scalar_one_or_none()
+        if target is None:
+            raise ValueError("invite_profile_not_found")
+    else:
         try:
-            from app.services.sms_service import send_sms
-            await send_sms(phone, invite_text)
-        except Exception:
-            pass
+            normalized_phone = normalize_phone(phone or "")
+        except ValueError as exc:
+            raise ValueError("invite_phone_invalid") from exc
+        target = (
+            await db.execute(select(User).where(User.phone == normalized_phone))
+        ).scalar_one_or_none()
 
+    if target is not None and target.id == inviter.id:
+        raise ValueError("invite_self_not_allowed")
+
+    participant = await _ensure_participant(
+        db,
+        thread,
+        inviter,
+        target=target,
+        normalized_phone=normalized_phone,
+        profile_code=normalized_code,
+    )
+
+    invite_text = (
+        f"Вас пригласили в чат «{thread.title}». "
+        "Установите Renova, зарегистрируйтесь — чат появится в разделе Сообщения."
+    )
+    delivery_parent = f"chat-invite:{participant.id}"
+    if target is not None:
+        delivery = await outbox.enqueue_once(
+            db,
+            parent_outbox_id=delivery_parent,
+            effect_key="delivery:in_app",
+            aggregate_type="chat_invitation",
+            aggregate_id=participant.id,
+            event_type=outbox.NOTIFICATION_EVENT,
+            payload={
+                "user_id": target.id,
+                "project_id": thread.project_id,
+                "notification_type": "chat_message",
+                "title": "Приглашение в чат",
+                "body": invite_text,
+                "link_path": f"/chat/{thread.id}",
+                "return_to": "/(customer)/(tabs)/chat",
+            },
+        )
+        delivery_channel = "in_app"
+    else:
+        delivery = await outbox.enqueue_once(
+            db,
+            parent_outbox_id=delivery_parent,
+            effect_key="delivery:sms",
+            aggregate_type="chat_invitation",
+            aggregate_id=participant.id,
+            event_type=outbox.CHAT_INVITATION_SMS_EVENT,
+            payload={"participant_id": participant.id},
+        )
+        delivery_channel = "sms"
+
+    await outbox.enqueue_once(
+        db,
+        parent_outbox_id=delivery_parent,
+        effect_key="activity:invited",
+        aggregate_type="chat_invitation",
+        aggregate_id=participant.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": thread.project_id,
+            "user_id": inviter.id,
+            "kind": "ChatParticipantInvited",
+            "title": "Участник приглашён в чат",
+            "body": thread.title,
+            "link_path": f"/chat/{thread.id}",
+        },
+    )
+
+    # Participant + delivery intent + audit/activity intent are one durable commit.
     await db.commit()
-    return {"id": part.id, "status": part.status, "user_id": part.user_id}
+
+    # Acceleration is optional. Failure here never rolls back the accepted
+    # invitation; the canonical worker/DLQ owns delivery and recovery.
+    await outbox_inline_dispatch.dispatch_best_effort(
+        db,
+        source="chat.invitation",
+        limit=10,
+    )
+    delivery = await _refresh_outbox(db, delivery.id)
+    delivery_state = (
+        _in_app_delivery_status(delivery)
+        if delivery_channel == "in_app"
+        else sms_delivery_status(delivery)
+    )
+    return {
+        "id": participant.id,
+        "status": participant.status,
+        "user_id": participant.user_id,
+        "delivery_channel": delivery_channel,
+        "delivery_status": delivery_state,
+        "delivery_outbox_id": delivery.id if delivery else None,
+    }
 
 
 async def create_task_from_message(
