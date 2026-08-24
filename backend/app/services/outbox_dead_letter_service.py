@@ -358,7 +358,7 @@ async def _dispatch_specific(
         )
         return {"status": "processed"}
     try:
-        await outbox_service._handle(db, row)
+        await outbox_service._handle(db, row, operator_replay=True)
         delivered = await outbox_service._release_success(
             db,
             outbox_id=outbox_id,
