@@ -1,49 +1,113 @@
 ---
-description: Git и GitHub — ветки, коммиты, немедленный push после изменений в Renova
+description: Renova Git/GitHub workflow and production-truth rules. Always use current main as the engineering base and preserve evidence boundaries.
 alwaysApply: true
 ---
 
-# Renova — синхронизация с GitHub
+# Renova — canonical Git/GitHub workflow
 
-## Структура веток
+## Source of truth
 
-| Ветка | Назначение |
-|-------|------------|
-| `main` | продакшен, только через merge из `develop` |
-| `develop` | интеграция, база для feature-веток |
-| `feature/task-18` … `feature/task-24` | поэтапная разработка по задачам |
+Canonical repository: `PetrFedin/renova`.
 
-Рабочая ветка по умолчанию: **`develop`**. Feature — от `develop`, merge обратно в `develop`.
+Canonical branching flow:
 
-Remote: `origin` → `https://github.com/PetrFedin/renova.git`
+`main` → short-lived feature/fix/refactor/agent branch → PR → relevant CI/evidence → merge to `main`.
 
-## Обязательный workflow после любых изменений кода
+`develop` is a stale historical branch and is **not** the integration base. Do not create new work from `develop`, old `feature/task-18...24` branches, or July integration stacks.
 
-1. Убедиться, что открыт корень репозитория `/Users/petr/Projects/renova`.
-2. Работать в нужной `feature/task-XX` (или `develop`, если задача не выделена).
-3. После завершения логического блока работы — **сразу** commit + push, без ожидания отдельной просьбы пользователя.
-4. После push проверить: `git status` чистый, ветка не ahead of `origin`.
+Before starting a logical production-hardening slice:
+1. fetch/check current `main` SHA;
+2. inspect latest merged PRs;
+3. inspect open PRs and open P0/P1 issues;
+4. inspect current CI/workflow state;
+5. inspect Alembic head when backend/schema work is involved;
+6. inspect `PRODUCTION-READINESS.md` and `docs/production-readiness-evidence.json` for launch truth.
 
+## Branch discipline
+
+Use a short-lived branch from the exact current base, for example:
+- `fix/<scope>`;
+- `feature/<scope>`;
+- `refactor/<scope>`;
+- `agent/<scope>`.
+
+Do not edit `main` directly. Keep changes logically bounded so a PR has one reviewable purpose.
+
+After each coherent block:
 ```bash
-git add <релевантные файлы>
-git commit -m "краткое сообщение на английском или русском — суть why"
+git status
+git add <relevant files>
+git commit -m "type(scope): why this change exists"
 git push -u origin HEAD
 ```
 
-5. Если создана новая ветка — `git push -u origin <branch>` в той же сессии.
-6. Не оставлять локальные коммиты без push. Не оставлять feature-ветки только локально.
+Do not leave local commits unpushed.
 
-## Если push не прошёл
+If the remote branch moved, reconcile deliberately. Never force-push over unknown remote work merely to make history convenient.
 
-- Нет auth → сообщить пользователю, повторить после исправления.
-- Ветка на remote ушла вперёд → `git pull --rebase origin <branch>`, затем push снова.
-- Конфликт → разрешить, commit, push.
-- Не сдаваться после первой ошибки.
+## Pull-request truth
 
-## Что не коммитить
+A PR is not complete because code was pushed. Verify applicable gates:
+- focused unit/contract tests;
+- mobile typecheck/contracts;
+- backend full regression;
+- PostgreSQL/Alembic migration check;
+- API/Playwright E2E for user-flow changes;
+- security gates for security-boundary changes;
+- release/image/readiness gates for release-path changes.
 
-`.env`, ключи, credentials, локальные артефакты сборки.
+Keep separate evidence states:
+`IMPLEMENTED` → `TESTED` → `CI VERIFIED` → `STAGING VERIFIED` → `EXTERNALLY VERIFIED` → `PRODUCTION VERIFIED`.
 
-## Отчёт пользователю
+Never collapse these into a generic "done".
 
-После push кратко указать: ветка, хеш коммита, что ушло на GitHub.
+## Production readiness boundary
+
+`PRODUCTION-READINESS.md` and `docs/production-readiness-evidence.json` are the current launch-truth sources.
+
+Do not claim production readiness from:
+- green repository CI alone;
+- isolated CI staging;
+- mocked/synthetic provider success;
+- source `app.json` without exact EAS build evidence;
+- a tag without registry digest;
+- a synthetic restore drill instead of managed backup restore evidence.
+
+External infrastructure/provider/GitHub settings that cannot be verified from the current tool/environment remain `NOT VERIFIED` or `EXTERNAL ACTION REQUIRED`.
+
+GitHub currently tracks branch-protection enforcement separately. Do not close that blocker or claim required checks are enforced until the real ruleset is applied and a non-compliant change is demonstrably blocked.
+
+## Repository hygiene
+
+Before reusing an old PR/branch, compare it with current `main` and classify it:
+- MERGEABLE UNIQUE WORK;
+- SUPERSEDED;
+- STALE;
+- ALREADY IMPLEMENTED ELSEWHERE;
+- CONFLICTING;
+- ARCHIVAL ONLY.
+
+Do not blindly merge long-lived branches whose base predates current migrations/runtime/security architecture. Extract only still-missing unique work into a clean branch.
+
+## Never commit
+
+Do not commit:
+- `.env` files with secrets;
+- credentials/tokens/private keys;
+- local build/cache artifacts;
+- provider secrets;
+- ad-hoc local evidence presented as production proof.
+
+## Reporting after a wave
+
+Report:
+- exact branch and head SHA;
+- what changed and why;
+- tests/CI actually completed;
+- Alembic head if relevant;
+- what remains unverified;
+- external actions required;
+- remaining P0/P1 blockers;
+- next priority.
+
+Do not write "production ready" unless the machine-readable readiness state and external evidence actually support it.
