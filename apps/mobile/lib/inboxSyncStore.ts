@@ -312,7 +312,17 @@ export async function markChatReadAndSync(
     return;
   }
   if (existing) {
-    await existing.promise.catch(() => undefined);
+    try {
+      await existing.promise;
+    } catch (error) {
+      reportError('inbox.markChatRead.previous', error, {
+        userId,
+        projectId,
+        threadId,
+        previousCursor: existing.cursor,
+        nextCursor: readThroughMessageId,
+      });
+    }
   }
 
   let operation!: Promise<void>;
