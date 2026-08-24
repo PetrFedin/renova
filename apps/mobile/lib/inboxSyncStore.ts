@@ -294,8 +294,9 @@ function prepareReloadContext(merged: ReloadOpts) {
 /**
  * Read receipt is not optimistic UI state. The server cursor must ACK first;
  * then a forced authoritative reload increments reloadGeneration and fences
- * any older in-flight inbox request. Network ambiguity keeps the previous
- * unread visible rather than fabricating a zero.
+ * any older in-flight inbox request. The reload intentionally resolves the
+ * current cached project/role context instead of the project that initiated
+ * the read, so a late ACK cannot switch inbox task state backwards.
  */
 export async function markChatReadAndSync(
   userId: string,
@@ -341,16 +342,7 @@ export async function markChatReadAndSync(
     }
 
     try {
-      await reloadInboxSync(
-        {
-          userId,
-          userRole,
-          projectId,
-          project: cachedFullSync?.project,
-          osRole: cachedFullSync?.osRole,
-        },
-        true,
-      );
+      await reloadInboxSync({ userId, userRole }, true);
       emitInboxWs();
     } catch (reconcileError) {
       reportError('inbox.markChatRead.reconcile', reconcileError, {
@@ -546,7 +538,7 @@ function startInboxWebSocket(userId: string, onReload: () => void | Promise<void
             try {
               if (ws.readyState === WebSocket.OPEN) ws.send('ping');
             } catch {
-              /* connection close will drive reconnect */
+              /* silent-catch-ok: socket lifecycle; close/reconnect handles this */
             }
           }, 25_000);
         };
@@ -556,7 +548,7 @@ function startInboxWebSocket(userId: string, onReload: () => void | Promise<void
           try {
             JSON.parse(event.data) as InboxWsPayload;
           } catch {
-            /* server may send a non-JSON invalidation token */
+            /* silent-catch-ok: server may send a non-JSON invalidation token */
           }
           reloadScheduler.schedule();
         };
