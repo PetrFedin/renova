@@ -39,6 +39,8 @@ def delivery_status(row: DomainOutbox | None) -> str:
             return "sms_preview"
         if outcome == "provider_accepted":
             return "sms_provider_accepted"
+        if outcome == "target_registered_before_sms":
+            return "sms_skipped_registered"
         return "processed"
 
     from app.services import outbox_service
@@ -117,10 +119,24 @@ async def process_sms_invitation(
     participant = await db.get(ChatThreadParticipant, participant_id)
     if participant is None or participant.thread_id is None:
         await _poison_and_raise(db, row, "sms_invitation_participant_missing")
-    if participant.user_id is not None:
-        await _poison_and_raise(db, row, "sms_invitation_target_already_registered")
     if not participant.phone:
         await _poison_and_raise(db, row, "sms_invitation_phone_missing")
+
+    # The invitation can become fulfilled by registration before the worker gets
+    # to the SMS. That is a successful business outcome, not a provider failure.
+    # Finish without network I/O and without creating an operational dead letter.
+    if participant.user_id is not None and participant.status == "active":
+        payload.update(
+            {
+                "participant_id": participant.id,
+                "delivery_outcome": "target_registered_before_sms",
+                "provider_message_id": None,
+                "provider_accepted_at": None,
+            }
+        )
+        row.payload_json = json.dumps(payload, ensure_ascii=False)
+        await db.commit()
+        return
 
     thread = await db.get(ChatThread, participant.thread_id)
     if thread is None:
