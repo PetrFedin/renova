@@ -164,8 +164,9 @@ Legacy red-team и последующие исправления сейчас д
 - **#266 — warranty create idempotency: OPEN / P1.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
 - **#269 — chat read truth: CI VERIFIED / resolved by PR #270.** Exact head `deef0d2eed413679d095f4e06d48d8bde963f759` прошёл все 14 workflow runs, включая full backend regression, PostgreSQL Alembic upgrade, Playwright API/UI, CodeQL и mobile contracts; merge commit `9a7b0babc530c4ed187f54ea9c67763393656763`. GET/list/count больше не создают read-state, public mark-read требует authoritative message cursor, DB update monotonic, mobile ставит read только после foreground/focus/render visibility, а ACK reconciliation не откатывает project context. Редкая equal-timestamp точность вынесена в non-launch-blocking P2 #271.
 - **#272 — phone chat invitation delivery truth: OPEN / P1.** Phone-only invite сейчас вызывает SMS provider inline и подавляет исключение. В результате API может вернуть success, хотя delivery intent не durable и provider delivery не доказана. Требуется atomic invitation + DomainOutbox intent, idempotency, retry/backoff, terminal state и operator recovery без ложного «SMS отправлено».
+- **#273 — archived chat unread truth: OPEN / P1.** `count_unread_project()` исключает архивные треды из active/global unread, а новое входящее сообщение не снимает archive у получателя. Поэтому новая коммуникация может остаться скрытой в архиве и не попасть в dock/global count. Канон: archive ≠ read, sender state не меняется, новое incoming атомарно возвращает recipient thread в active inbox, а unread/inbox/WS сходятся к одной истине.
 
-Таким образом, #269 больше не является launch blocker после доказанного merge; #272 добавлен как новый P1, потому что нарушает contractor/team connection journey и общий запрет Renova на silent provider failures.
+Таким образом, #269 больше не является launch blocker после доказанного merge; #272 и #273 остаются P1 communication-integrity blockers. #271 остаётся явно отслеживаемым P2 precision debt и не подменяется launch blocker’ом.
 
 ## 12. Open launch blockers и переход состояния
 
@@ -184,6 +185,7 @@ Readiness manifest перечисляет launch-blocking issues и CI пров�
 - **P1 #265** — complete manual bank-transfer evidence/reviewer/resubmission lifecycle on current finance truth.
 - **P1 #266** — atomic, durable and idempotent warranty claim creation across retry/offline/concurrency.
 - **P1 #272** — durable and truthful phone-only chat invitation delivery; no silent SMS failure.
+- **P1 #273** — new incoming messages must not remain hidden in archived chats or disappear from active unread truth.
 
 Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
 
