@@ -77,12 +77,20 @@ async def get_thread_read_state(
     thread_id: str,
     user_id: str,
 ) -> ChatThreadRead | None:
-    """Read-only lookup. GET/list/count paths must never create read state."""
+    """Read-only lookup. GET/list/count paths must never create read state.
+
+    ``mark_thread_read`` uses a Core upsert for database-level concurrency
+    fencing. ``populate_existing`` makes a subsequent ORM lookup refresh an
+    already-loaded identity-map row, so the authoritative unread response
+    cannot be computed from a pre-upsert ``last_read_at`` value.
+    """
     result = await db.execute(
-        select(ChatThreadRead).where(
+        select(ChatThreadRead)
+        .where(
             ChatThreadRead.thread_id == thread_id,
             ChatThreadRead.user_id == user_id,
         )
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
