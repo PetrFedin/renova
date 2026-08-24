@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "observed_on": "2026-08-23",
+  "observed_on": "2026-08-24",
   "expected_repo_facts": {
     "alembic_head": "w15providerops01",
     "mobile_version": "0.3.7",
@@ -28,7 +28,8 @@
       "git_sha": "3bbdb16b774d197e48df1321f633108d23e78485",
       "workflow_run_id": 32655970897,
       "evidence": null,
-      "note": "Repository CI proved the isolated PostgreSQL/Redis/Bearer-auth staging topology. A real externally deployed production-like staging environment is not confirmed by this evidence."
+      "issue": 233,
+      "note": "Repository CI proved the isolated PostgreSQL/Redis/Bearer-auth staging topology. A real externally deployed production-like staging environment and build-once promotion lifecycle are not confirmed by this evidence."
     },
     "production": {
       "status": "NOT_EXTERNALLY_VERIFIED",
@@ -104,8 +105,15 @@
     },
     "latest_production_restore_drill": {
       "status": "NOT_EXTERNALLY_VERIFIED",
-      "evidence": null
+      "evidence": null,
+      "issue": 234
     }
+  },
+  "observability": {
+    "status": "REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED",
+    "evidence": null,
+    "issue": 235,
+    "note": "Backend observability controls exist in the repository, but production-grade end-to-end observability, mobile crash reporting and a retained staging alert-delivery probe are not yet proven complete."
   },
   "release": {
     "mobile_source_version": "0.3.7",
@@ -138,6 +146,21 @@
     }
   },
   "open_launch_blockers": [
+    {
+      "issue": 233,
+      "priority": "P0",
+      "reason": "persistent external production-like staging and exact-artifact promotion lifecycle are not externally proven"
+    },
+    {
+      "issue": 234,
+      "priority": "P0",
+      "reason": "managed production backup/PITR and a real external restore disaster-recovery drill are not proven"
+    },
+    {
+      "issue": 235,
+      "priority": "P0",
+      "reason": "production observability and retained end-to-end alert-delivery evidence are incomplete"
+    },
     {
       "issue": 247,
       "priority": "P0",
@@ -176,6 +199,6 @@
   ],
   "launch_decision": {
     "status": "BLOCKED_FOR_BROAD_PRODUCTION",
-    "reason": "Repository release gates are strong, but required external governance, capacity, provider and security evidence is incomplete."
+    "reason": "Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, pilot and security evidence gaps."
   }
 }
