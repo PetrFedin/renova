@@ -1,4 +1,4 @@
-/** Investor: code-only reliability — bare hubs, truthful calendar error, schedule dedupe, offline CTA */
+/** Investor: code-only reliability — bare hubs, truthful calendar/report errors, schedule dedupe, offline CTA */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { resolvePushLink } from './pushLinks';
@@ -40,6 +40,7 @@ const rooms = readFileSync(join(mobile, 'components/screens/OsRoomsScreen.tsx'),
 const projectEmpty = readFileSync(join(mobile, 'components/renova/ProjectEmptyState.tsx'), 'utf8');
 const home = readFileSync(join(mobile, 'components/screens/OsHomeScreen.tsx'), 'utf8');
 const projectDataBus = readFileSync(join(mobile, 'lib/projectDataBus.ts'), 'utf8');
+const reports = readFileSync(join(mobile, 'app/_stack/reports.tsx'), 'utf8');
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
@@ -176,6 +177,43 @@ console.assert(
 );
 
 console.assert(
+  reports.includes('useAsyncResource<DailyReport>')
+    && reports.includes('useAsyncResource<WeeklyReport>')
+    && reports.includes('useAsyncResource<FinalReport>')
+    && reports.includes('reports-daily:')
+    && reports.includes('reports-weekly:')
+    && reports.includes('reports-final:'),
+  'reports keep daily/weekly/final truth in independent context-bound resources',
+);
+console.assert(
+  reports.includes('asyncShowError(dailyResource)')
+    && reports.includes('asyncShowError(weeklyResource)')
+    && reports.includes('asyncShowError(finalResource)')
+    && reports.includes('Не удалось загрузить дневной отчёт')
+    && reports.includes('Не удалось загрузить недельный отчёт')
+    && reports.includes('Не удалось загрузить финальный отчёт'),
+  'initial report failures reach explicit retryable error UI instead of fake loading',
+);
+console.assert(
+  reports.includes('asyncShowStale(dailyResource)')
+    && reports.includes('asyncShowStale(weeklyResource)')
+    && reports.includes('asyncShowStale(finalResource)')
+    && reports.includes('последние подтверждённые данные')
+    && reports.includes('последняя подтверждённая версия')
+    && reports.includes('reloadDaily({ soft: true })')
+    && reports.includes('reloadWeekly({ soft: true })')
+    && reports.includes('reloadFinal({ soft: true })'),
+  'report refresh failure preserves last confirmed data, marks it stale and offers retry',
+);
+console.assert(
+  !reports.includes('setDaily(null)')
+    && !reports.includes('setWeekly(null)')
+    && !reports.includes('setFinalReport(null)')
+    && !reports.includes(') : <Text style={s.meta}>Загрузка…</Text>'),
+  'report failure must never be represented as indefinite loading or fabricated empty data',
+);
+
+console.assert(
   projectDataBus.includes("reportError('projectDataBus.listener'")
     && projectDataBus.includes("reportError('projectDataBus.inboxImport'")
     && projectDataBus.includes("reportCatch('projectDataBus.inboxSync')"),
@@ -210,6 +248,9 @@ const ok =
   home.includes("reportError('home.source.load'") &&
   home.includes('const generation = ++loadGenerationRef.current') &&
   home.includes('title="Главная обновлена частично"') &&
+  reports.includes('asyncShowError(dailyResource)') &&
+  reports.includes('asyncShowStale(weeklyResource)') &&
+  reports.includes('useAsyncResource<FinalReport>') &&
   projectDataBus.includes("reportError('projectDataBus.listener'") &&
   projectDataBus.includes("reportError('projectDataBus.inboxImport'");
 
