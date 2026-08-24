@@ -20,6 +20,7 @@ SHA = "a" * 40
 OTHER_SHA = "b" * 40
 IMAGE = "ghcr.io/petrfedin/renova-api"
 DIGEST = "sha256:" + "c" * 64
+EVIDENCE_URL = "https://github.com/PetrFedin/renova/actions/runs/1"
 
 
 class ProductionReadinessPolicyTests(unittest.TestCase):
@@ -100,7 +101,7 @@ class ProductionReadinessPolicyTests(unittest.TestCase):
             "sbom": True,
             "provenance": "mode=max",
             "signature": "sigstore-keyless",
-            "evidence": "https://github.com/PetrFedin/renova/actions/runs/1",
+            "evidence": EVIDENCE_URL,
         }
 
     def test_backend_identity_accepts_exact_release(self) -> None:
@@ -166,6 +167,109 @@ class ProductionReadinessPolicyTests(unittest.TestCase):
                         self.facts,
                         expected_sha=SHA,
                     )
+
+    @staticmethod
+    def _verified_external(**extra: object) -> dict[str, object]:
+        return {
+            "status": "VERIFIED",
+            "evidence": EVIDENCE_URL,
+            **extra,
+        }
+
+    def _fully_verified_ready_snapshot(self) -> dict[str, object]:
+        snapshot = deepcopy(self.evidence)
+        snapshot["launch_decision"] = {
+            "status": "READY_FOR_BROAD_PRODUCTION",
+            "reason": "All production gates have retained authoritative evidence.",
+        }
+        snapshot["open_launch_blockers"] = []
+        snapshot["snapshot"] = {
+            "evaluated_git_sha": SHA,
+            "git_ref": "main",
+            "current_main_sha": SHA,
+            "github_metadata_checked": True,
+            "main_protected": True,
+        }
+        snapshot["backend_artifact"] = {
+            **snapshot["backend_artifact"],
+            "status": "VERIFIED",
+            "git_sha": SHA,
+            "digest": DIGEST,
+            "evidence": EVIDENCE_URL,
+        }
+        snapshot["environments"]["staging"] = self._verified_external(
+            git_sha=SHA,
+            artifact_digest=DIGEST,
+        )
+        snapshot["slo"]["latest_external_load_test"] = self._verified_external(
+            git_sha=SHA,
+            artifact_digest=DIGEST,
+        )
+        snapshot["restore"]["latest_production_restore_drill"] = self._verified_external(
+            rpo_minutes=5,
+            rto_minutes=30,
+        )
+        snapshot["release"]["latest_eas_release"] = self._verified_external(
+            git_sha=SHA,
+            builds=[{"platform": "ios", "id": "eas-build-id"}],
+        )
+        snapshot["observability"] = self._verified_external(
+            alert_delivery_verified=True,
+            mobile_crash_reporting_verified=True,
+        )
+        for provider_state in snapshot["providers"].values():
+            provider_state["release_scope"] = True
+            provider_state["external_status"] = "VERIFIED"
+            provider_state["evidence"] = EVIDENCE_URL
+        snapshot["security"]["external_validation"] = {
+            "branch_protection": self._verified_external(),
+            "privileged_access_review": self._verified_external(),
+            "independent_pentest": self._verified_external(),
+            "provider_credential_rotation_drill": self._verified_external(),
+        }
+        snapshot["launch_acceptance"] = {
+            "controlled_pilot": self._verified_external(),
+            "product_telemetry": self._verified_external(),
+            "legal_privacy": self._verified_external(),
+            "support_incident_ops": self._verified_external(),
+        }
+        return snapshot
+
+    def test_zero_blockers_cannot_fake_ready_without_external_evidence(self) -> None:
+        snapshot = deepcopy(self.evidence)
+        snapshot["launch_decision"] = {
+            "status": "READY_FOR_BROAD_PRODUCTION",
+            "reason": "Pretend ready",
+        }
+        snapshot["open_launch_blockers"] = []
+        snapshot["snapshot"] = {
+            "evaluated_git_sha": SHA,
+            "git_ref": "main",
+            "current_main_sha": SHA,
+            "github_metadata_checked": True,
+            "main_protected": True,
+        }
+        with self.assertRaisesRegex(readiness.ReadinessError, "verified immutable backend artifact"):
+            readiness._validate_ready_snapshot(snapshot)
+
+    def test_fully_evidenced_ready_state_is_reachable(self) -> None:
+        snapshot = self._fully_verified_ready_snapshot()
+        readiness._validate_ready_snapshot(snapshot)
+
+    def test_ready_requires_same_sha_and_digest_for_staging_and_load(self) -> None:
+        snapshot = self._fully_verified_ready_snapshot()
+        snapshot["environments"]["staging"]["artifact_digest"] = "sha256:" + "d" * 64
+        with self.assertRaisesRegex(readiness.ReadinessError, "artifact_digest == backend digest"):
+            readiness._validate_ready_snapshot(snapshot)
+
+    def test_provider_exclusion_requires_explicit_scope_reason(self) -> None:
+        snapshot = self._fully_verified_ready_snapshot()
+        snapshot["providers"]["moy_nalog"] = {
+            "release_scope": False,
+            "scope_reason": "",
+        }
+        with self.assertRaisesRegex(readiness.ReadinessError, "excluded from release scope without reason"):
+            readiness._validate_ready_snapshot(snapshot)
 
 
 if __name__ == "__main__":
