@@ -140,12 +140,12 @@ function MessageBubble({
 
 export function ChatThreadView({
   threadId,
-  projectId: projectIdProp,
+  projectId,
   returnTo,
   highlightId,
 }: {
   threadId: string;
-  projectId?: string;
+  projectId: string;
   returnTo?: string;
   highlightId?: string;
 }) {
@@ -154,7 +154,6 @@ export function ChatThreadView({
   const canWrite = useWriteAllowed();
   const syncAfterRead = useChatReadSync(user?.id, user?.role);
   const [chat, setChat] = useState<ChatDetail | null>(null);
-  const [chatProjectId, setChatProjectId] = useState<string | null>(projectIdProp ?? null);
   const [screenFocused, setScreenFocused] = useState(false);
   const [appState, setAppState] = useState(AppState.currentState);
   const [renderedReadCursor, setRenderedReadCursor] = useState<string | null>(null);
@@ -172,43 +171,11 @@ export function ChatThreadView({
   const scrollRef = useRef<ScrollView>(null);
   const loadGenerationRef = useRef(0);
 
-  const resolveProjectId = useCallback(async (): Promise<string | null> => {
-    if (projectIdProp) return projectIdProp;
-    if (chatProjectId) return chatProjectId;
-    if (!user) return null;
-    if (activeProject?.id) {
-      try {
-        // GET is a safe access probe: it no longer mutates read state.
-        await api.getChat(user.id, activeProject.id, threadId);
-        return activeProject.id;
-      } catch (error) {
-        reportError('chat.resolveProjectId.activeProbe', error, {
-          threadId,
-          projectId: activeProject.id,
-        });
-      }
-    }
-    try {
-      const inbox = await api.chatInbox(user.id);
-      return inbox.find((t) => t.id === threadId)?.project_id ?? activeProject?.id ?? null;
-    } catch (e) {
-      reportError('chat.resolveProjectId.inbox', e, { threadId });
-      return activeProject?.id ?? null;
-    }
-  }, [user, activeProject?.id, threadId, projectIdProp, chatProjectId]);
-
   const loadMessages = useCallback(async () => {
-    if (!user || !threadId) return;
+    if (!user || !threadId || !projectId) return;
     const generation = ++loadGenerationRef.current;
-    const projectId = await resolveProjectId();
-    if (generation !== loadGenerationRef.current) return;
-    if (!projectId) {
-      setLoadFailed(true);
-      return;
-    }
-    setChatProjectId((prev) => (prev === projectId ? prev : projectId));
     if (activeProject?.id !== projectId) {
-      await loadProject(projectId).catch((e) => reportError('chat.loadProject', e, { projectId }));
+      await loadProject(projectId).catch((error) => reportError('chat.loadProject', error, { projectId }));
     }
     if (generation !== loadGenerationRef.current) return;
     try {
@@ -223,13 +190,11 @@ export function ChatThreadView({
       reportError('chat.loadMessages', error, { threadId, projectId });
       throw error;
     }
-  }, [user, threadId, resolveProjectId, activeProject?.id, loadProject]);
+  }, [user, threadId, projectId, activeProject?.id, loadProject]);
 
-  const markThreadRead = useCallback(async (cursor: string, forcedProjectId?: string | null) => {
-    if (!user || !threadId || !cursor) return;
+  const markThreadRead = useCallback(async (cursor: string) => {
+    if (!user || !threadId || !projectId || !cursor) return;
     if (AppState.currentState !== 'active') return;
-    const projectId = forcedProjectId ?? projectIdProp ?? chatProjectId ?? (await resolveProjectId());
-    if (!projectId || AppState.currentState !== 'active') return;
     const markKey = `${threadId}:${projectId}:${cursor}`;
     if (markedCursorRef.current === markKey) return;
     try {
@@ -239,7 +204,7 @@ export function ChatThreadView({
       reportError('chat.markRead.sync', error, { threadId, projectId, cursor });
       // Do not record success: next visibility/load edge may safely retry the same cursor.
     }
-  }, [user, threadId, projectIdProp, chatProjectId, resolveProjectId, syncAfterRead]);
+  }, [user, threadId, projectId, syncAfterRead]);
 
   const loadMessagesRef = useRef(loadMessages);
   const markThreadReadRef = useRef(markThreadRead);
@@ -257,13 +222,13 @@ export function ChatThreadView({
         setScreenFocused(false);
         setRenderedReadCursor(null);
       };
-    }, [threadId, projectIdProp]),
+    }, [threadId, projectId]),
   );
 
   useEffect(() => {
     markedCursorRef.current = null;
     setRenderedReadCursor(null);
-  }, [threadId, projectIdProp]);
+  }, [threadId, projectId]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -321,7 +286,7 @@ export function ChatThreadView({
   const reload = useCallback(() => loadMessages().catch(reportCatch('chat.reload')), [loadMessages]);
   useProjectDataReload(reload);
 
-  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!(chatProjectId || activeProject), (payload) => {
+  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!projectId, (payload) => {
     if (payload.type === 'typing') {
       setTyping(true);
       setTimeout(() => setTyping(false), 2000);
@@ -369,16 +334,6 @@ export function ChatThreadView({
       <View style={s.root}>
         <BackHeader title="Чат" returnTo={returnTo} />
         <View style={s.center}><Text>Загрузка…</Text></View>
-      </View>
-    );
-  }
-
-  const projectId = chatProjectId ?? chat.project_id ?? activeProject?.id;
-  if (!projectId) {
-    return (
-      <View style={s.root}>
-        <BackHeader title="Чат" returnTo={returnTo} />
-        <View style={s.center}><Text>Чат не привязан к объекту</Text></View>
       </View>
     );
   }
