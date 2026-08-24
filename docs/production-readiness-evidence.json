@@ -197,9 +197,18 @@
       "note": "Warranty create remains retryable/offline-capable without a durable create idempotency identity, leaving duplicate issue/document/event risk."
     },
     "chat_read_truth": {
-      "status": "INCOMPLETE",
+      "status": "CI_VERIFIED",
       "issue": 269,
-      "note": "Chat GET/list/thread flows can mark messages read before rendered foreground visibility, and current client reconciliation lacks explicit read-cursor fencing against stale unread reloads."
+      "pr": 270,
+      "head_sha": "deef0d2eed413679d095f4e06d48d8bde963f759",
+      "merge_sha": "9a7b0babc530c4ed187f54ea9c67763393656763",
+      "workflow_run_id": 32734835634,
+      "note": "Explicit server message cursor, side-effect-free reads, monotonic DB fencing, visibility-gated mobile read receipts and authoritative reconciliation are merged. Equal-timestamp precision is tracked separately as non-launch-blocking P2 #271."
+    },
+    "phone_chat_invitation_delivery": {
+      "status": "INCOMPLETE",
+      "issue": 272,
+      "note": "Phone-only chat invitation currently performs inline SMS delivery and suppresses provider exceptions, so the request can report success without durable delivery intent or provider evidence."
     }
   },
   "open_launch_blockers": [
@@ -264,9 +273,9 @@
       "reason": "warranty claim creation is not durably idempotent across double-submit, timeout, offline replay and concurrent retry"
     },
     {
-      "issue": 269,
+      "issue": 272,
       "priority": "P1",
-      "reason": "chat read state can advance before the transcript is actually visible and client unread reconciliation is not race-safe"
+      "reason": "phone-only chat invitations can report success after an SMS provider failure and lack durable outbox delivery/recovery truth"
     }
   ],
   "launch_decision": {
