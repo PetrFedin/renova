@@ -157,6 +157,8 @@ async def test_mobile_read_contract_is_visibility_gated_and_not_optimistic():
     )[0]
     assert "applyLocalThreadUnread" not in mark_block
     assert "await api.markChatRead(userId, projectId, threadId, readThroughMessageId)" in mark_block
+    assert "await reloadInboxSync({ userId, userRole }, true);" in mark_block
+    assert "project: cachedFullSync?.project" not in mark_block
     assert mark_block.index("await api.markChatRead") < mark_block.index("await reloadInboxSync")
 
     assert "requestAnimationFrame" in chat_thread
