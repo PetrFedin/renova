@@ -185,10 +185,26 @@ async def get_participants(project_id: str, thread_id: str, user: User = Depends
 @router.post("/{project_id}/chats/{thread_id}/invite")
 async def invite_to_chat(project_id: str, thread_id: str, body: InviteBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
-    if not body.phone and not body.profile_code:
-        raise HTTPException(400, "Укажите телефон или номер профиля")
+    if bool(body.phone) == bool(body.profile_code):
+        raise HTTPException(400, "invite_requires_exactly_one_target")
     chat_svc.ensure_profile_code(user)
-    return await chat_svc.invite_participant(db, t, user, phone=body.phone, profile_code=body.profile_code)
+    try:
+        return await chat_svc.invite_participant(
+            db,
+            t,
+            user,
+            phone=body.phone,
+            profile_code=body.profile_code,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "invite_profile_not_found":
+            raise HTTPException(404, code) from exc
+        if code == "invite_self_not_allowed":
+            raise HTTPException(409, code) from exc
+        if code in {"invite_requires_exactly_one_target", "invite_phone_invalid"}:
+            raise HTTPException(422, code) from exc
+        raise
 
 
 @router.post("/{project_id}/chats/{thread_id}/messages")
