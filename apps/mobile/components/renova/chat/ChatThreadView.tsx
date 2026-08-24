@@ -181,8 +181,11 @@ export function ChatThreadView({
         // GET is a safe access probe: it no longer mutates read state.
         await api.getChat(user.id, activeProject.id, threadId);
         return activeProject.id;
-      } catch {
-        /* active project is only an ownership probe; authoritative inbox resolution follows */
+      } catch (error) {
+        reportError('chat.resolveProjectId.activeProbe', error, {
+          threadId,
+          projectId: activeProject.id,
+        });
       }
     }
     try {
