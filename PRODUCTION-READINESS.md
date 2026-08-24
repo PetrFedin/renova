@@ -156,15 +156,16 @@ Repo security controls реализованы через security-operations sli
 - #257 — независимый pre-launch penetration/abuse test;
 - #237 — общий external security acceptance, включая provider credential rotation/revocation drill.
 
-## 11. Product integrity gaps обнаруженные при legacy red-team
+## 11. Product integrity truth
 
-Очистка старого July PR backlog выявила три действующих разрыва, которые нельзя потерять при закрытии stale branches:
+Legacy red-team и последующие исправления сейчас дают следующую доказанную картину:
 
-- **#265 — manual payment evidence verification.** Current main уже различает `paid_unverified`, но customer `transfer_ack` не заменяет полный evidence lifecycle. Для broad production нужен canonical flow: evidence upload/version → authorized reviewer approve/reject → safe resubmit → ровно одно финансовое признание. Старый PR #27 нельзя переносить напрямую: его approve path одновременно увеличивал `Project.budget_spent` и вызывал `expense_from_payment`, что несовместимо с текущей финансовой семантикой и создаёт риск double counting.
-- **#266 — warranty create idempotency.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
-- **#269 — chat read truth.** Current backend `GET /chats/{thread}` сам меняет read-state; ChatList делает mark-read до navigation, а ChatThread после fetch/WS может сделать mark до render/foreground visibility. Одновременно current client sync использует optimistic unread=0 → POST → full reload без явного read-cursor fencing против pre-read inflight snapshot. Нужен side-effect-free GET, explicit monotonic read cursor и foreground/focus/render-gated read reconciliation.
+- **#265 — manual payment evidence verification: OPEN / P1.** Current main уже различает `paid_unverified`, но customer `transfer_ack` не заменяет полный evidence lifecycle. Для broad production нужен canonical flow: evidence upload/version → authorized reviewer approve/reject → safe resubmit → ровно одно финансовое признание. Старый PR #27 нельзя переносить напрямую: его approve path одновременно увеличивал `Project.budget_spent` и вызывал `expense_from_payment`, что несовместимо с текущей финансовой семантикой и создаёт риск double counting.
+- **#266 — warranty create idempotency: OPEN / P1.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
+- **#269 — chat read truth: CI VERIFIED / resolved by PR #270.** Exact head `deef0d2eed413679d095f4e06d48d8bde963f759` прошёл все 14 workflow runs, включая full backend regression, PostgreSQL Alembic upgrade, Playwright API/UI, CodeQL и mobile contracts; merge commit `9a7b0babc530c4ed187f54ea9c67763393656763`. GET/list/count больше не создают read-state, public mark-read требует authoritative message cursor, DB update monotonic, mobile ставит read только после foreground/focus/render visibility, а ACK reconciliation не откатывает project context. Редкая equal-timestamp точность вынесена в non-launch-blocking P2 #271.
+- **#272 — phone chat invitation delivery truth: OPEN / P1.** Phone-only invite сейчас вызывает SMS provider inline и подавляет исключение. В результате API может вернуть success, хотя delivery intent не durable и provider delivery не доказана. Требуется atomic invitation + DomainOutbox intent, idempotency, retry/backoff, terminal state и operator recovery без ложного «SMS отправлено».
 
-Все три пункта классифицированы **P1 launch blockers**: это не косметический backlog, а нарушения обязательной payment-verification / warranty / communication end-to-end integrity.
+Таким образом, #269 больше не является launch blocker после доказанного merge; #272 добавлен как новый P1, потому что нарушает contractor/team connection journey и общий запрет Renova на silent provider failures.
 
 ## 12. Open launch blockers и переход состояния
 
@@ -182,7 +183,7 @@ Readiness manifest перечисляет launch-blocking issues и CI пров�
 - **P1 #257** — independent penetration/abuse test.
 - **P1 #265** — complete manual bank-transfer evidence/reviewer/resubmission lifecycle on current finance truth.
 - **P1 #266** — atomic, durable and idempotent warranty claim creation across retry/offline/concurrency.
-- **P1 #269** — visibility-gated, monotonic and race-safe chat read/unread truth.
+- **P1 #272** — durable and truthful phone-only chat invitation delivery; no silent SMS failure.
 
 Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
 
