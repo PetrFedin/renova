@@ -209,6 +209,11 @@
       "status": "INCOMPLETE",
       "issue": 272,
       "note": "Phone-only chat invitation currently performs inline SMS delivery and suppresses provider exceptions, so the request can report success without durable delivery intent or provider evidence."
+    },
+    "archived_chat_unread_truth": {
+      "status": "INCOMPLETE",
+      "issue": 273,
+      "note": "Archived threads are excluded from global unread while a later incoming message does not clear the recipient archive state, so new communication can remain hidden from the active inbox and dock count."
     }
   },
   "open_launch_blockers": [
@@ -276,6 +281,11 @@
       "issue": 272,
       "priority": "P1",
       "reason": "phone-only chat invitations can report success after an SMS provider failure and lack durable outbox delivery/recovery truth"
+    },
+    {
+      "issue": 273,
+      "priority": "P1",
+      "reason": "new incoming messages can remain hidden in archived chats and excluded from active global unread truth"
     }
   ],
   "launch_decision": {
