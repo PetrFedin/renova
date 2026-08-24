@@ -41,6 +41,10 @@ class ThreadState(BaseModel):
     is_archived: bool | None = None
 
 
+class ReadBody(BaseModel):
+    read_through_message_id: str = Field(min_length=1, max_length=36)
+
+
 class MessageCreate(BaseModel):
     text: str | None = None
     message_type: str = "text"
@@ -86,6 +90,22 @@ async def create_chat(project_id: str, body: ThreadCreate, user: User = Depends(
     return chat_svc.thread_dict(t)
 
 
+# Static chat collection routes must be registered before /{thread_id}.
+@router.get("/{project_id}/chats/unread-count")
+async def unread_count(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_project(db, project_id, user, write=False)
+    count = await chat_svc.count_unread_project(db, project_id, user.id)
+    return {"count": count}
+
+
+@router.get("/{project_id}/chats/search")
+async def search_messages(project_id: str, q: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), _=Depends(require_project_dep())):
+    from sqlalchemy import select
+    from app.models.entities import ChatMessage, ChatThread
+    r = await db.execute(select(ChatMessage).join(ChatThread).where(ChatThread.project_id == project_id, ChatMessage.text.ilike(f"%{q}%")).limit(30))
+    return [{"thread_id": m.thread_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in r.scalars().all()]
+
+
 @router.patch("/{project_id}/chats/{thread_id}/state")
 async def patch_thread_state(project_id: str, thread_id: str, body: ThreadState, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
@@ -96,20 +116,41 @@ async def patch_thread_state(project_id: str, thread_id: str, body: ThreadState,
 
 
 @router.post("/{project_id}/chats/{thread_id}/read")
-async def mark_read(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def mark_read(project_id: str, thread_id: str, body: ReadBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_chat_access(db, project_id, thread_id, user, write=False)
-    await chat_svc.mark_thread_read(db, thread_id, user.id)
-    return {"ok": True}
+    try:
+        thread_unread = await chat_svc.mark_thread_read(
+            db,
+            thread_id,
+            user.id,
+            body.read_through_message_id,
+        )
+    except ValueError as exc:
+        if str(exc) == "read_cursor_not_in_thread":
+            raise HTTPException(409, "read_cursor_not_in_thread") from exc
+        raise
+    project_unread = await chat_svc.count_unread_project(db, project_id, user.id)
+    return {
+        "ok": True,
+        "read_through_message_id": body.read_through_message_id,
+        "thread_unread": thread_unread,
+        "project_unread": project_unread,
+    }
 
 
 @router.get("/{project_id}/chats/{thread_id}")
 async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=False)
-    # Открытие треда = прочтение: иначе badge остаётся, если POST /read не дошёл с клиента.
-    await chat_svc.mark_thread_read(db, thread_id, user.id)
-    st = await chat_svc._get_or_create_read(db, thread_id, user.id)
+    state = await chat_svc.get_thread_read_state(db, thread_id, user.id)
+    unread = await chat_svc.count_unread_in_thread(db, thread_id, user.id)
     return {
-        **chat_svc.thread_dict(t, unread=0, is_pinned=st.is_pinned, is_archived=st.is_archived, pinned_at=st.pinned_at),
+        **chat_svc.thread_dict(
+            t,
+            unread=unread,
+            is_pinned=bool(state and state.is_pinned),
+            is_archived=bool(state and state.is_archived),
+            pinned_at=state.pinned_at if state else None,
+        ),
         "messages": await _msgs_with_read(db, thread_id, t.messages),
         "participants": await chat_svc.list_participants(db, thread_id),
     }
@@ -214,21 +255,6 @@ async def invoice_from_chat(project_id: str, thread_id: str, body: PaymentFromCh
     return chat_svc.msg_dict(msg)
 
 
-@router.get("/{project_id}/chats/unread-count")
-async def unread_count(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    count = await chat_svc.count_unread_project(db, project_id, user.id)
-    return {"count": count}
-
-
-@router.get("/{project_id}/chats/search")
-async def search_messages(project_id: str, q: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), _=Depends(require_project_dep())):
-    from sqlalchemy import select
-    from app.models.entities import ChatMessage, ChatThread
-    r = await db.execute(select(ChatMessage).join(ChatThread).where(ChatThread.project_id == project_id, ChatMessage.text.ilike(f"%{q}%")).limit(30))
-    return [{"thread_id": m.thread_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in r.scalars().all()]
-
-
 @router.get("/{project_id}/chats/{thread_id}.pdf")
 async def chat_thread_pdf(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
@@ -247,4 +273,3 @@ async def chat_thread_pdf(project_id: str, thread_id: str, user: User = Depends(
         body = m.get("text") or f"[{m.get('message_type', 'msg')}]"
         pdf_line(pdf, f"{ts} · {role}: {body[:200]}", size=9)
     return pdf_response(pdf, f"chat-{thread_id[:8]}.pdf")
-
