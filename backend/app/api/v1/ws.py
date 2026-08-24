@@ -5,11 +5,11 @@ from collections import defaultdict
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
 
 from app.core.request_auth import user_id_from_access_token
 from app.db.session import SessionLocal
-from app.models.entities import ChatThread, ChatThreadParticipant, Project, User
+from app.models.entities import ChatThread, Project, User
+from app.services import chat_participant_service as participant_svc
 from app.services import team_service as team_svc
 
 router = APIRouter()
@@ -46,19 +46,15 @@ async def _can_access_thread(user_id: str, thread_id: str) -> bool:
         thread = await db.get(ChatThread, thread_id)
         if not thread:
             return False
-        part = (
-            await db.execute(
-                select(ChatThreadParticipant).where(
-                    ChatThreadParticipant.thread_id == thread_id,
-                    ChatThreadParticipant.user_id == user_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if part:
+        if await participant_svc.is_active_thread_participant(
+            db,
+            thread_id=thread_id,
+            user_id=user_id,
+        ):
             return True
         user = await db.get(User, user_id)
         project = await db.get(Project, thread.project_id) if thread.project_id else None
-        if not user or not project:
+        if not user or not project or getattr(project, "trashed_at", None):
             return False
         mode, _ = await team_svc.project_access_mode(db, user, project)
         return mode != "none"
