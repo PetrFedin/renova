@@ -68,6 +68,17 @@ def _twilio_configuration() -> tuple[str, str, str] | None:
     return sid, token, sender
 
 
+def _provider_reported_error(payload: dict) -> bool:
+    """Twilio may return a message SID together with a terminal error_code.
+
+    A SID alone therefore cannot be treated as accepted/success evidence when
+    the same authoritative response already reports an error. Keep the check
+    intentionally narrow and fail-closed without surfacing raw provider text.
+    """
+    error_code = payload.get("error_code")
+    return error_code not in (None, "", 0, "0")
+
+
 async def send_sms(phone: str, text: str) -> SmsDeliveryResult:
     """Return success only after Twilio accepts and identifies a message.
 
@@ -121,7 +132,12 @@ async def send_sms(phone: str, text: str) -> SmsDeliveryResult:
     provider_id = payload.get("sid")
     if not isinstance(provider_id, str) or not provider_id.strip():
         raise SmsDeliveryAmbiguous("twilio_message_identity_ambiguous")
+    if _provider_reported_error(payload):
+        # The response itself proves the provider considers this message failed.
+        # Do not call it accepted merely because a SID exists.
+        raise SmsDeliveryRejected("twilio_message_rejected")
 
-    # A Twilio message SID is authoritative proof that the provider accepted a
-    # message resource. It is deliberately not described as handset delivery.
+    # A Twilio message SID without an accompanying provider error is evidence
+    # that the provider accepted/identified a message resource. It is deliberately
+    # not described as handset delivery.
     return SmsDeliveryResult(delivered=True, provider_id=provider_id.strip())
