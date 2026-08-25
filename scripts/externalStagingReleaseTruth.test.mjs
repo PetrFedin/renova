@@ -43,9 +43,12 @@ for (const [token, message] of [
   ['inputs.image_digest', 'external staging must receive an explicit image digest'],
   ['bash scripts/external-staging-release-smoke.sh', 'external staging workflow must run the canonical remote smoke'],
   ['node scripts/externalStagingReleaseTruth.test.mjs', 'PR CI must protect the external staging workflow itself'],
+  ['$RUNNER_TEMP/renova-external-staging', 'runner-owned temp path must be initialized only after a runner exists'],
+  ['GITHUB_ENV', 'runtime-derived evidence path must be exported to following steps'],
 ]) {
   contains(workflow, token, message);
 }
+excludes(workflow, '${{ runner.temp }}', 'job-level workflow expressions must not depend on unavailable runner context');
 excludes(workflow, ':latest', 'external staging workflow must not reference mutable latest image tags');
 excludes(workflow, '--latest', 'external staging workflow must not promote or submit mutable latest artifacts');
 
