@@ -5,6 +5,7 @@ on:
     paths:
       - "load/**"
       - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/workflowExpressionContextIntegrity.test.mjs"
       - "scripts/test_external_capacity_evidence.py"
       - "scripts/external-load-reconciliation.sh"
       - "scripts/external-capacity-sampler.py"
@@ -24,6 +25,7 @@ on:
     paths:
       - "load/**"
       - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/workflowExpressionContextIntegrity.test.mjs"
       - "scripts/test_external_capacity_evidence.py"
       - "scripts/external-load-reconciliation.sh"
       - "scripts/external-capacity-sampler.py"
@@ -96,7 +98,11 @@ jobs:
           [[ "$ref" =~ ^grafana/k6:2\.1\.0@sha256:[0-9a-f]{64}$ ]]
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - name: Validate load and SLO source contract
-        run: node --test scripts/loadSloIntegrity.test.mjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/loadSloIntegrity.test.mjs
+          node --test scripts/workflowExpressionContextIntegrity.test.mjs
         env:
           K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
       - name: Validate capacity evidence semantics
@@ -171,6 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test scripts/loadSloIntegrity.test.mjs
+          node --test scripts/workflowExpressionContextIntegrity.test.mjs
           python3 scripts/test_external_capacity_evidence.py
         env:
           K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
