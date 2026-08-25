@@ -274,29 +274,46 @@ async def send_message(
     await db.refresh(msg)
 
     proj = await db.get(Project, thread.project_id)
+    recipients: dict[str, User] = {}
     if proj:
-        targets = {proj.customer_id, proj.contractor_id}
-        targets.discard(user_id)
-        for target in targets:
-            if target:
-                await notif_svc.notify(
-                    db,
-                    user_id=target,
-                    project_id=thread.project_id,
-                    notification_type="chat_message",
-                    title=f"Новое сообщение: {thread.title}",
-                    body=text or "Вложение",
-                    link_path=f"/chat/{thread.id}",
-                    return_to="/(customer)/(tabs)/chat",
+        target_ids = {proj.customer_id, proj.contractor_id}
+        invited_ids = set(
+            (
+                await db.execute(
+                    select(ChatThreadParticipant.user_id).where(
+                        ChatThreadParticipant.thread_id == thread.id,
+                        ChatThreadParticipant.status == "active",
+                        ChatThreadParticipant.user_id.is_not(None),
+                    )
                 )
+            ).scalars().all()
+        )
+        target_ids.update(invited_ids)
+        target_ids.discard(user_id)
+        target_ids.discard(None)
+        for target_id in target_ids:
+            target_user = await db.get(User, target_id)
+            if target_user is None or getattr(target_user, "deleted_at", None) is not None:
+                continue
+            recipients[target_id] = target_user
+            target_role = target_user.role.value
+            await notif_svc.notify(
+                db,
+                user_id=target_id,
+                project_id=thread.project_id,
+                notification_type="chat_message",
+                title=f"Новое сообщение: {thread.title}",
+                body=text or "Вложение",
+                link_path=f"/chat/{thread.id}",
+                return_to=f"/({target_role})/(tabs)/chat",
+            )
     from app.api.v1.ws import broadcast, broadcast_inbox
 
     await broadcast(thread.id, {"type": "message", "message": msg_dict(msg)})
     if proj:
         payload = {"type": "inbox", "event": "message", "thread_id": thread.id, "project_id": thread.project_id}
-        for uid in {proj.customer_id, proj.contractor_id}:
-            if uid:
-                await broadcast_inbox(uid, payload)
+        for uid in recipients:
+            await broadcast_inbox(uid, payload)
     return msg
 
 
@@ -664,7 +681,7 @@ async def invite_participant(
                 "title": "Приглашение в чат",
                 "body": invite_text,
                 "link_path": f"/chat/{thread.id}",
-                "return_to": "/(customer)/(tabs)/chat",
+                "return_to": f"/({target.role.value})/(tabs)/chat",
             },
         )
         delivery_channel = "in_app"
