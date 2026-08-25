@@ -45,6 +45,11 @@ function chatInviteCopy(truth?: ChatInviteTruth): { title: string; message: stri
         title: 'SMS передано провайдеру',
         message: 'SMS-провайдер принял сообщение и выдал идентификатор. Доставка на устройство ещё не подтверждена.',
       };
+    case 'sms_skipped_registered':
+      return {
+        title: 'Приглашение активно',
+        message: 'Участник уже зарегистрировался до отправки SMS. Renova не отправляла лишнее сообщение.',
+      };
     case 'sms_preview':
       return {
         title: 'Приглашение сохранено',
