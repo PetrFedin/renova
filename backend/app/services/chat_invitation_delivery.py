@@ -28,6 +28,13 @@ from app.services.sms_service import (
 SMS_EFFECT_TYPE = "chat.invitation_sms.provider_attempt"
 
 
+def _is_ambiguous_error_code(code: str) -> bool:
+    """Recognize only bounded internal/provider codes, never raw error text."""
+    if code.startswith("sms_delivery_unknown"):
+        return True
+    return code.startswith("twilio_") and "ambiguous" in code
+
+
 def delivery_status(row: DomainOutbox | None) -> str:
     """Return a user-safe delivery truth without exposing provider internals."""
     if row is None:
@@ -48,7 +55,7 @@ def delivery_status(row: DomainOutbox | None) -> str:
     attempts = int(row.attempts or 0)
     if attempts >= outbox_service.MAX_ATTEMPTS:
         code = (row.last_error or "").splitlines()[0]
-        if code.startswith("sms_delivery_unknown"):
+        if _is_ambiguous_error_code(code):
             return "sms_delivery_unknown"
         return "sms_failed_terminal"
     if attempts > 0:
@@ -181,7 +188,8 @@ async def process_sms_invitation(
         await _clear_attempt_marker(db, row.id)
         await _poison_and_raise(db, row, str(exc))
     except SmsDeliveryAmbiguous as exc:
-        # Keep the marker. No automatic retry is allowed after uncertain remote write.
+        # Keep the marker. The exception carries only a bounded provider code;
+        # its user-facing state is mapped to delivery_unknown, never auto-retried.
         await _poison_and_raise(db, row, str(exc))
     except SmsDeliveryFailed:
         # Unknown provider failures are treated conservatively as ambiguous. Keep
