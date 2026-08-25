@@ -92,9 +92,10 @@ Production readiness требует **конкретный registry digest**, а
 | «Мой налог» | dedicated token keyring, legacy rewrap, expiry truth, safe health | live OAuth/provider refresh contract не подтверждён; automatic refresh не заявлен |
 | Контур/e-sign | durable idempotent submit через DomainOutbox + webhook | exact authoritative read-status API для configured Контур.Сайн contract не подтверждён |
 | S3/media | fail-closed configuration/runtime checks | ambiguous-write orphan/idempotency recovery остаётся открытым |
+| Twilio SMS | deterministic durable invite outbox, ambiguity fence, DLQ/operator replay, truthful provider-acceptance state | real staging credential round-trip/provider acceptance не подтверждены; handset delivery не заявляется |
 | Expo push | delivery identity + receipt reconciliation | live external provider availability не является CI-фактом |
 
-Канонический backlog provider operations — #238.
+Канонический backlog provider operations — #238. Новая Twilio invitation path доказана repository CI в #277, но real provider round-trip остаётся `NOT EXTERNALLY_VERIFIED` и не повышается до external evidence из unit/integration tests.
 
 ## 7. SLO и capacity
 
@@ -163,10 +164,10 @@ Legacy red-team и последующие исправления сейчас д
 - **#265 — manual payment evidence verification: OPEN / P1.** Current main уже различает `paid_unverified`, но customer `transfer_ack` не заменяет полный evidence lifecycle. Для broad production нужен canonical flow: evidence upload/version → authorized reviewer approve/reject → safe resubmit → ровно одно финансовое признание. Старый PR #27 нельзя переносить напрямую: его approve path одновременно увеличивал `Project.budget_spent` и вызывал `expense_from_payment`, что несовместимо с текущей финансовой семантикой и создаёт риск double counting.
 - **#266 — warranty create idempotency: OPEN / P1.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
 - **#269 — chat read truth: CI VERIFIED / resolved by PR #270.** Exact head `deef0d2eed413679d095f4e06d48d8bde963f759` прошёл все 14 workflow runs, включая full backend regression, PostgreSQL Alembic upgrade, Playwright API/UI, CodeQL и mobile contracts; merge commit `9a7b0babc530c4ed187f54ea9c67763393656763`. GET/list/count больше не создают read-state, public mark-read требует authoritative message cursor, DB update monotonic, mobile ставит read только после foreground/focus/render visibility, а ACK reconciliation не откатывает project context. Редкая equal-timestamp точность вынесена в non-launch-blocking P2 #271.
-- **#272 — phone chat invitation delivery truth: OPEN / P1.** Phone-only invite сейчас вызывает SMS provider inline и подавляет исключение. В результате API может вернуть success, хотя delivery intent не durable и provider delivery не доказана. Требуется atomic invitation + DomainOutbox intent, idempotency, retry/backoff, terminal state и operator recovery без ложного «SMS отправлено».
-- **#273 — archived chat unread truth: OPEN / P1.** `count_unread_project()` исключает архивные треды из active/global unread, а новое входящее сообщение не снимает archive у получателя. Поэтому новая коммуникация может остаться скрытой в архиве и не попасть в dock/global count. Канон: archive ≠ read, sender state не меняется, новое incoming атомарно возвращает recipient thread в active inbox, а unread/inbox/WS сходятся к одной истине.
+- **#272 — phone chat invitation delivery truth: CI VERIFIED / resolved by PR #277.** Exact head `1b60199972b363ede0fa1909e40c14b932c789d0` прошёл все 18 PR workflows; `CI` run `32833474753` дал **975 passed / 6 skipped**, PostgreSQL 17 clean Alembic upgrade до `w15providerops01`, Playwright, mobile typecheck/contracts, CodeQL, security и backend image checks — success. Merge commit `43df8ef555efb75ad4d6263297560529eecc660b`. Invitation identity теперь детерминирована; participant + delivery/activity intent durable; SMS идёт через общий DomainOutbox/worker/DLQ; ambiguous remote write fenced через `SideEffectDelivery` и не auto-retry; operator replay явный; OTP-login активирует pending invite; invitee получает только exact thread ACL/inbox/WS без project privilege; mobile показывает только доказанный delivery state. Real Twilio round-trip при этом остаётся `NOT EXTERNALLY_VERIFIED`.
+- **#273 — archived chat / message mutation truth: OPEN / P1.** Новое входящее всё ещё может остаться скрытым в recipient archive; `ChatMessage` не имеет durable `client_request_id`/unique constraint, mobile offline replay не несёт stable write identity, а `send_message()` commit'ит сообщение до downstream notification path. Канон следующего исправления: archive ≠ read/mute; same key+same payload → original, same key+different payload → 409; message + recipient visibility transition + audit + DomainOutbox в одной transaction; concurrency/offline/timeout tests. Дополнительно chat detail должен вернуть access capability/scope, чтобы thread-only participant не видел project-authority CTA, которые сервер корректно отклоняет 403.
 
-Таким образом, #269 больше не является launch blocker после доказанного merge; #272 и #273 остаются P1 communication-integrity blockers. #271 остаётся явно отслеживаемым P2 precision debt и не подменяется launch blocker’ом.
+Таким образом, #269 и #272 больше не являются launch blockers после доказанного merge; #273 остаётся P1 communication-integrity blocker. #271 остаётся явно отслеживаемым P2 precision debt и не подменяется launch blocker’ом.
 
 ## 12. Open launch blockers и переход состояния
 
@@ -184,8 +185,7 @@ Readiness manifest перечисляет launch-blocking issues и CI пров�
 - **P1 #257** — independent penetration/abuse test.
 - **P1 #265** — complete manual bank-transfer evidence/reviewer/resubmission lifecycle on current finance truth.
 - **P1 #266** — atomic, durable and idempotent warranty claim creation across retry/offline/concurrency.
-- **P1 #272** — durable and truthful phone-only chat invitation delivery; no silent SMS failure.
-- **P1 #273** — new incoming messages must not remain hidden in archived chats or disappear from active unread truth.
+- **P1 #273** — incoming chat communication must not remain hidden in archive; message writes must become durably idempotent/atomic and thread-only project-action UX must be capability-aware.
 
 Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
 
