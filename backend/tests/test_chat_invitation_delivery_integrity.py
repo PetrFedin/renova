@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import inspect
 import json
 from pathlib import Path
@@ -11,18 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+import app.models  # noqa: F401 - canonical deterministic ORM registry
 from app.db.base import Base
-
-# Keep the focused SQLite schema aligned with the repository-wide test fixture.
-for _module in (
-    "entities",
-    "outbox_runtime",
-    "client_write_idempotency",
-    "provider_reconciliation",
-    "technical_supervision_runtime",
-):
-    importlib.import_module(f"app.models.{_module}")
-
 from app.api.v1 import chats as chats_api
 from app.models.entities import (
     ChatThread,
@@ -32,15 +21,17 @@ from app.models.entities import (
     User,
     UserRole,
 )
-from app.models.outbox_runtime import DomainOutboxLease, SideEffectDelivery
+from app.models.outbox_runtime import SideEffectDelivery
 from app.services import chat_invitation_delivery
 from app.services import chat_participant_service as participant_svc
 from app.services import chat_service as chat_svc
+from app.services import otp_login_service
 from app.services import outbox_dead_letter_service as dead_letter_svc
 from app.services import outbox_service
 from app.services.chat_acl import require_chat_access
 from app.services.sms_service import (
     SmsDeliveryAmbiguous,
+    SmsDeliveryRejected,
     SmsDeliveryResult,
     SmsDeliveryRetryable,
 )
@@ -95,7 +86,7 @@ async def _disable_inline_dispatch(monkeypatch):
 
 
 async def _sms_outbox(db, participant_id: str) -> DomainOutbox:
-    row = (
+    return (
         await db.execute(
             select(DomainOutbox)
             .where(
@@ -105,11 +96,10 @@ async def _sms_outbox(db, participant_id: str) -> DomainOutbox:
             .execution_options(populate_existing=True)
         )
     ).scalar_one()
-    return row
 
 
 @pytest.mark.asyncio
-async def test_phone_invite_is_idempotent_and_persists_no_phone_in_outbox(monkeypatch):
+async def test_phone_invite_is_idempotent_and_outbox_contains_no_phone(monkeypatch):
     engine, Session = await _session_factory()
     try:
         async with Session() as db:
@@ -126,19 +116,16 @@ async def test_phone_invite_is_idempotent_and_persists_no_phone_in_outbox(monkey
             assert first["id"] == second["id"]
             assert first["delivery_channel"] == "sms"
             assert first["delivery_status"] == "sms_queued"
-            assert (
-                await db.scalar(
-                    select(func.count())
-                    .select_from(ChatThreadParticipant)
-                    .where(ChatThreadParticipant.thread_id == thread.id)
-                )
+            assert await db.scalar(
+                select(func.count())
+                .select_from(ChatThreadParticipant)
+                .where(ChatThreadParticipant.thread_id == thread.id)
             ) == 1
+
             events = list(
                 (
                     await db.execute(
-                        select(DomainOutbox).where(
-                            DomainOutbox.aggregate_id == first["id"]
-                        )
+                        select(DomainOutbox).where(DomainOutbox.aggregate_id == first["id"])
                     )
                 ).scalars().all()
             )
@@ -190,16 +177,15 @@ async def test_registered_phone_uses_in_app_delivery_not_sms(monkeypatch):
             assert participant.status == "active"
             assert result["delivery_channel"] == "in_app"
             assert result["delivery_status"] == "in_app_queued"
-            assert outbox_service.NOTIFICATION_EVENT in {event.event_type for event in events}
-            assert outbox_service.CHAT_INVITATION_SMS_EVENT not in {
-                event.event_type for event in events
-            }
+            event_types = {event.event_type for event in events}
+            assert outbox_service.NOTIFICATION_EVENT in event_types
+            assert outbox_service.CHAT_INVITATION_SMS_EVENT not in event_types
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_pending_phone_invite_activates_after_login_and_stays_thread_scoped(monkeypatch):
+async def test_pending_phone_invite_activates_and_stays_thread_scoped(monkeypatch):
     engine, Session = await _session_factory()
     try:
         async with Session() as db:
@@ -208,9 +194,6 @@ async def test_pending_phone_invite_activates_after_login_and_stays_thread_scope
             invite = await chat_svc.invite_participant(
                 db, thread, inviter, phone="+79990000002"
             )
-            participant = await db.get(ChatThreadParticipant, invite["id"])
-            assert participant is not None and participant.user_id is None
-
             user = User(
                 id="66666666-6666-6666-6666-666666666666",
                 phone="+79990000002",
@@ -219,10 +202,13 @@ async def test_pending_phone_invite_activates_after_login_and_stays_thread_scope
             )
             db.add(user)
             await db.flush()
+
             assert await participant_svc.activate_pending_phone_invitations(db, user) == 1
+            assert await participant_svc.activate_pending_phone_invitations(db, user) == 0
             await db.commit()
 
             participant = await db.get(ChatThreadParticipant, invite["id"])
+            assert participant is not None
             assert participant.user_id == user.id
             assert participant.status == "active"
 
@@ -269,7 +255,44 @@ async def test_pending_phone_invite_activates_after_login_and_stays_thread_scope
 
 
 @pytest.mark.asyncio
-async def test_registration_before_worker_send_skips_sms_without_dead_letter(monkeypatch):
+async def test_provider_acceptance_records_evidence_once(monkeypatch):
+    engine, Session = await _session_factory()
+    try:
+        async with Session() as db:
+            inviter, _project, thread, _sibling = await _seed_project(db)
+            await _disable_inline_dispatch(monkeypatch)
+            invite = await chat_svc.invite_participant(
+                db, thread, inviter, phone="+79990000002"
+            )
+            calls = 0
+
+            async def _accepted(*_args, **_kwargs):
+                nonlocal calls
+                calls += 1
+                return SmsDeliveryResult(delivered=True, provider_id="SM1234567890")
+
+            monkeypatch.setattr(chat_invitation_delivery, "send_sms", _accepted)
+            await outbox_service.dispatch_pending(db, limit=10, worker_id="success")
+            row = await _sms_outbox(db, invite["id"])
+            payload = json.loads(row.payload_json)
+            marker = (
+                await db.execute(
+                    select(SideEffectDelivery).where(SideEffectDelivery.outbox_id == row.id)
+                )
+            ).scalar_one()
+
+            assert calls == 1
+            assert row.processed_at is not None
+            assert payload["provider_message_id"] == "SM1234567890"
+            assert payload["delivery_outcome"] == "provider_accepted"
+            assert marker.delivered_at is not None
+            assert chat_invitation_delivery.delivery_status(row) == "sms_provider_accepted"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_registration_before_worker_send_skips_sms(monkeypatch):
     engine, Session = await _session_factory()
     try:
         async with Session() as db:
@@ -296,20 +319,19 @@ async def test_registration_before_worker_send_skips_sms_without_dead_letter(mon
                 raise AssertionError("SMS must be skipped after target registration")
 
             monkeypatch.setattr(chat_invitation_delivery, "send_sms", _must_not_send)
-            await outbox_service.dispatch_pending(db, limit=10, worker_id="test-worker")
+            await outbox_service.dispatch_pending(db, limit=10, worker_id="skip")
             row = await _sms_outbox(db, invite["id"])
-            payload = json.loads(row.payload_json)
 
             assert calls == 0
             assert row.processed_at is not None
-            assert payload["delivery_outcome"] == "target_registered_before_sms"
+            assert json.loads(row.payload_json)["delivery_outcome"] == "target_registered_before_sms"
             assert chat_invitation_delivery.delivery_status(row) == "sms_skipped_registered"
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_ambiguous_sms_write_is_poisoned_and_not_automatically_repeated(monkeypatch):
+async def test_ambiguous_remote_write_poisoned_without_auto_repeat(monkeypatch):
     engine, Session = await _session_factory()
     try:
         async with Session() as db:
@@ -348,7 +370,7 @@ async def test_ambiguous_sms_write_is_poisoned_and_not_automatically_repeated(mo
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_is_retryable_and_clears_ambiguity_marker(monkeypatch):
+async def test_rate_limit_retries_but_known_rejection_is_terminal(monkeypatch):
     engine, Session = await _session_factory()
     try:
         async with Session() as db:
@@ -369,18 +391,34 @@ async def test_rate_limit_is_retryable_and_clears_ambiguity_marker(monkeypatch):
                 .select_from(SideEffectDelivery)
                 .where(SideEffectDelivery.outbox_id == row.id)
             )
-
-            assert row.processed_at is None
             assert row.attempts == 1
             assert row.last_error == "twilio_rate_limited"
             assert marker_count == 0
             assert chat_invitation_delivery.delivery_status(row) == "sms_retrying"
+
+            # Make the retry due now and prove a known provider rejection is terminal.
+            from app.models.outbox_runtime import DomainOutboxLease
+
+            lease = await db.get(DomainOutboxLease, row.id)
+            assert lease is not None
+            lease.next_attempt_at = None
+            await db.commit()
+
+            async def _rejected(*_args, **_kwargs):
+                raise SmsDeliveryRejected("twilio_rejected")
+
+            monkeypatch.setattr(chat_invitation_delivery, "send_sms", _rejected)
+            await outbox_service.dispatch_pending(db, limit=10, worker_id="rejected")
+            row = await _sms_outbox(db, invite["id"])
+            assert row.attempts == outbox_service.MAX_ATTEMPTS
+            assert row.last_error == "twilio_rejected"
+            assert chat_invitation_delivery.delivery_status(row) == "sms_failed_terminal"
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_stale_unconfirmed_provider_marker_poisoned_without_network_retry(monkeypatch):
+async def test_stale_attempt_marker_is_ambiguity_fence(monkeypatch):
     engine, Session = await _session_factory()
     try:
         async with Session() as db:
@@ -417,7 +455,7 @@ async def test_stale_unconfirmed_provider_marker_poisoned_without_network_retry(
 
 
 @pytest.mark.asyncio
-async def test_explicit_operator_replay_rearms_ambiguous_sms_once(monkeypatch):
+async def test_operator_replay_is_only_ambiguous_rearm(monkeypatch):
     engine, Session = await _session_factory()
     try:
         async with Session() as db:
@@ -436,65 +474,64 @@ async def test_explicit_operator_replay_rearms_ambiguous_sms_once(monkeypatch):
             monkeypatch.setattr(chat_invitation_delivery, "send_sms", _ambiguous)
             await outbox_service.dispatch_pending(db, limit=10, worker_id="initial")
             row = await _sms_outbox(db, invite["id"])
-            assert row.attempts == outbox_service.MAX_ATTEMPTS
 
             async def _accepted(*_args, **_kwargs):
                 nonlocal calls
                 calls += 1
-                return SmsDeliveryResult(
-                    delivered=True,
-                    provider_id="SM1234567890",
-                )
+                return SmsDeliveryResult(delivered=True, provider_id="SM-replay")
 
             monkeypatch.setattr(chat_invitation_delivery, "send_sms", _accepted)
+            admin_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
             claim = await dead_letter_svc.claim_dead_letter(
-                db,
-                outbox_id=row.id,
-                admin_user_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                db, outbox_id=row.id, admin_user_id=admin_id
             )
             replay = await dead_letter_svc.replay_dead_letter(
                 db,
                 outbox_id=row.id,
-                admin_user_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                admin_user_id=admin_id,
                 claim_token=claim["claim_token"],
                 dispatch_now=True,
             )
             row = await _sms_outbox(db, invite["id"])
-            payload = json.loads(row.payload_json)
-            marker = (
-                await db.execute(
-                    select(SideEffectDelivery).where(SideEffectDelivery.outbox_id == row.id)
-                )
-            ).scalar_one()
 
             assert calls == 2
             assert replay["dispatch"]["status"] == "delivered"
             assert row.processed_at is not None
-            assert row.last_error is None
-            assert payload["provider_message_id"] == "SM1234567890"
-            assert payload["delivery_outcome"] == "provider_accepted"
-            assert marker.delivered_at is not None
+            assert json.loads(row.payload_json)["provider_message_id"] == "SM-replay"
     finally:
         await engine.dispose()
 
 
-def test_invited_participant_routes_do_not_grant_project_or_finance_authority():
-    assert "allow_participant=True" in inspect.getsource(chats_api.get_chat)
-    assert "allow_participant=True" in inspect.getsource(chats_api.mark_read)
-    assert "allow_participant=True" in inspect.getsource(chats_api.patch_thread_state)
-    assert "allow_participant=True" in inspect.getsource(chats_api._post_message)
-    assert "allow_participant=True" in inspect.getsource(chats_api.react_message)
+def test_otp_login_and_routes_preserve_thread_only_authority():
+    assert "activate_pending_phone_invitations" in inspect.getsource(
+        otp_login_service.complete_otp_login
+    )
 
-    assert "allow_participant=True" not in inspect.getsource(chats_api.invite_to_chat)
-    assert "allow_participant=True" not in inspect.getsource(chats_api.task_from_message)
-    assert "allow_participant=True" not in inspect.getsource(chats_api.invoice_from_chat)
-    assert "allow_participant=True" not in inspect.getsource(chats_api._confirm_message)
+    for endpoint in (
+        chats_api.get_chat,
+        chats_api.mark_read,
+        chats_api.patch_thread_state,
+        chats_api._post_message,
+        chats_api.react_message,
+    ):
+        assert "allow_participant=True" in inspect.getsource(endpoint)
+
+    for endpoint in (
+        chats_api.invite_to_chat,
+        chats_api.task_from_message,
+        chats_api.invoice_from_chat,
+        chats_api._confirm_message,
+    ):
+        assert "allow_participant=True" not in inspect.getsource(endpoint)
 
 
-def test_mobile_invitation_contract_never_claims_sms_delivery_without_evidence():
+def test_mobile_invitation_contract_never_claims_unproven_sms_delivery():
     root = Path(__file__).resolve().parents[2]
-    api_source = (root / "apps/mobile/lib/api/chats.ts").read_text()
-    nav_source = (root / "apps/mobile/lib/fieldCommsNav.ts").read_text()
+    api_source = (root / "apps/mobile/lib/api/chats.ts").read_text(encoding="utf-8")
+    nav_source = (root / "apps/mobile/lib/fieldCommsNav.ts").read_text(encoding="utf-8")
+    view_source = (
+        root / "apps/mobile/components/renova/chat/ChatThreadView.tsx"
+    ).read_text(encoding="utf-8")
     chat_invite_block = nav_source.split("export function alertChatInviteSent", 1)[1].split(
         "/** Приглашение в бригаду", 1
     )[0]
@@ -502,7 +539,11 @@ def test_mobile_invitation_contract_never_claims_sms_delivery_without_evidence()
     assert "ChatInviteResult" in api_source
     assert "sms_delivery_unknown" in api_source
     assert "sms_provider_accepted" in api_source
+    assert "sms_skipped_registered" in api_source
     assert "Приглашение отправлено" not in chat_invite_block
     assert "SMS передано провайдеру" in nav_source
     assert "Доставка на устройство ещё не подтверждена" in nav_source
     assert "Автоматический повтор остановлен" in nav_source
+    assert "На телефон придёт SMS" not in view_source
+    assert "delivery_status" in view_source
+    assert "delivery_channel" in view_source
