@@ -127,7 +127,7 @@ jobs:
               -e RENOVA_LOAD_TOKEN_POOL='[{"token":"ci-contract-token","project_id":"project","chat_thread_id":"thread"}]' \
               -e RENOVA_YOOKASSA_WEBHOOK_SECRET=ci-contract-secret \
               -e LOAD_ENABLE_WRITES=true \
-              "$K6_IMAGE" inspect "/scripts/$script" >/dev/null
+              "$K6_IMAGE" inspect --include-system-env-vars "/scripts/$script" >/dev/null
           done
 
   external-staging-load:
