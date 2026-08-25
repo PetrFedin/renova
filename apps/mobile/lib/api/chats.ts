@@ -1,6 +1,31 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
+
+export type ChatInviteDeliveryStatus =
+  | 'not_queued'
+  | 'in_app_queued'
+  | 'in_app_retrying'
+  | 'in_app_notified'
+  | 'in_app_failed_terminal'
+  | 'sms_queued'
+  | 'sms_retrying'
+  | 'sms_preview'
+  | 'sms_provider_accepted'
+  | 'sms_skipped_registered'
+  | 'sms_delivery_unknown'
+  | 'sms_failed_terminal'
+  | 'processed';
+
+export type ChatInviteResult = {
+  id: string;
+  status: string;
+  user_id: string | null;
+  delivery_channel: 'in_app' | 'sms';
+  delivery_status: ChatInviteDeliveryStatus;
+  delivery_outbox_id: string | null;
+};
+
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
     req<ChatThread[]>(`/api/v1/projects/${projectId}/chats?archived=${archived ? 'true' : 'false'}`, {}, userId),
@@ -41,8 +66,16 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  inviteToChat: (userId: string, projectId: string, threadId: string, body: { phone?: string; profile_code?: string }) =>
-    req(`/api/v1/projects/${projectId}/chats/${threadId}/invite`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  inviteToChat: (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    body: { phone?: string; profile_code?: string },
+  ) => req<ChatInviteResult>(
+    `/api/v1/projects/${projectId}/chats/${threadId}/invite`,
+    { method: 'POST', body: JSON.stringify(body) },
+    userId,
+  ),
   /** W115: реакции в чате — очередь офлайн */
   reactChatMessage: async (
     userId: string,

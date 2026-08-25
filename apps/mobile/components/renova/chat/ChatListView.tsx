@@ -77,7 +77,6 @@ export function ChatListView() {
   const [folder, setFolder] = useState<Folder>('active');
   const [projectFilter, setProjectFilterState] = useState<ChatProjectFilter>(CHAT_FILTER_ALL);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
-  const [localThreads, setLocalThreads] = useState<ChatThread[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -112,23 +111,18 @@ export function ChatListView() {
     if (!user) return;
     setLoadError(false);
     try {
-      if (projects.length > 0) {
-        await reloadStore();
-      } else if (activeProject) {
-        const list = await api.listChats(user.id, activeProject.id, folder === 'archive');
-        setLocalThreads(sortChatThreads(list));
-        indexChats(list);
-      }
+      // Global inbox is authoritative even when the user owns no projects:
+      // thread-only invitees must still see exact chats shared with them.
+      await reloadStore();
       await reloadUnread();
     } catch {
       setLoadError(true);
     }
-  }, [user?.id, activeProject?.id, folder, projects.length, reloadUnread, reloadStore]);
+  }, [user?.id, reloadUnread, reloadStore]);
 
-  const sourceThreads = projects.length > 0 ? storeThreads : localThreads;
   const threads = useMemo(
-    () => sourceThreads.filter((t) => (folder === 'archive' ? t.is_archived : !t.is_archived)),
-    [sourceThreads, folder],
+    () => storeThreads.filter((t) => (folder === 'archive' ? t.is_archived : !t.is_archived)),
+    [storeThreads, folder],
   );
 
   useEffect(() => {
@@ -152,7 +146,7 @@ export function ChatListView() {
   );
 
   const groupByProject = shouldGroupChatsByProject(projectFilter, projectOptions.length);
-  const showProjectInCard = !groupByProject && projectOptions.length > 1;
+  const showProjectInCard = !groupByProject && projectOptions.length !== 1;
 
   const grouped = useMemo(() => {
     if (!groupByProject) return [{ key: 'all', label: '', items: displayThreads }];
@@ -174,8 +168,8 @@ export function ChatListView() {
       Alert.alert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
       return;
     }
-    // Navigation is not evidence of reading. The thread screen marks only after
-    // the transcript is rendered, focused and foreground-visible.
+    // Navigation is not evidence of reading. Project context switching is best
+    // effort because a thread-only invite intentionally grants no project ACL.
     if (activeProject?.id !== t.project_id) {
       await loadProject(t.project_id).catch(reportCatch('components.renova.chat.ChatListView.6'));
     }
@@ -319,8 +313,8 @@ export function ChatListView() {
           />
         ) : (
           <EmptyActionState
-            title="Нет объектов для чата"
-            hint="Создайте или выберите объект, чтобы начать переписку."
+            title="Нет доступных чатов"
+            hint="Чаты появятся здесь после приглашения или подключения к объекту."
           />
         )
       ) : null}

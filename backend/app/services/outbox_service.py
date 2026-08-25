@@ -23,6 +23,7 @@ NOTIFICATION_EVENT = "notification.created"
 ACTIVITY_EVENT = "activity.created"
 ACCEPTANCE_SIDE_EFFECTS_EVENT = "acceptance.side_effects"
 ESIGN_SUBMISSION_EVENT = "esign.submission"
+CHAT_INVITATION_SMS_EVENT = "chat.invitation_sms"
 MAX_ATTEMPTS = 8
 LEASE_TTL = timedelta(minutes=2)
 RETRY_BASE_SECONDS = 5
@@ -620,8 +621,19 @@ async def _expand_acceptance_side_effects(
         )
 
 
-async def _handle(db: AsyncSession, row: DomainOutbox) -> None:
+async def _handle(
+    db: AsyncSession,
+    row: DomainOutbox,
+    *,
+    operator_replay: bool = False,
+) -> None:
     payload = json.loads(row.payload_json or "{}")
+    if row.event_type == CHAT_INVITATION_SMS_EVENT:
+        from app.services.chat_invitation_delivery import process_sms_invitation
+
+        await process_sms_invitation(db, row, operator_replay=operator_replay)
+        return
+
     if row.event_type == ESIGN_SUBMISSION_EVENT:
         from app.services.esign_submission_service import process_external_signature_submission
 

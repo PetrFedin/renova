@@ -14,15 +14,29 @@ class SmsError(RuntimeError):
 
 
 class SmsConfigurationError(SmsError):
-    pass
+    """Local/configuration validation failed before a remote message was accepted."""
 
 
 class SmsDeliveryFailed(SmsError):
-    pass
+    """Base class retained for existing callers."""
+
+
+class SmsDeliveryRetryable(SmsDeliveryFailed):
+    """Provider explicitly rejected the attempt before accepting a message."""
+
+
+class SmsDeliveryAmbiguous(SmsDeliveryFailed):
+    """The remote write may have succeeded; automatic resend is unsafe."""
+
+
+class SmsDeliveryRejected(SmsDeliveryFailed):
+    """Provider definitively rejected the request; operator remediation is required."""
 
 
 @dataclass(frozen=True)
 class SmsDeliveryResult:
+    # Historical field name retained for compatibility. True means the provider
+    # accepted and identified a message resource, not handset delivery.
     delivered: bool
     preview: bool = False
     provider_id: str | None = None
@@ -54,13 +68,30 @@ def _twilio_configuration() -> tuple[str, str, str] | None:
     return sid, token, sender
 
 
+def _provider_reported_error(payload: dict) -> bool:
+    """Twilio may return a message SID together with a terminal error_code.
+
+    A SID alone therefore cannot be treated as accepted/success evidence when
+    the same authoritative response already reports an error. Keep the check
+    intentionally narrow and fail-closed without surfacing raw provider text.
+    """
+    error_code = payload.get("error_code")
+    return error_code not in (None, "", 0, "0")
+
+
 async def send_sms(phone: str, text: str) -> SmsDeliveryResult:
-    """Return delivered=True only after Twilio accepts and identifies a message.
+    """Return success only after Twilio accepts and identifies a message.
 
     Development/test without Twilio is an explicit preview. Working environments
-    never degrade to demo success. The SMS body is never returned to callers.
+    never degrade to demo success. A network timeout/transport failure or a 5xx is
+    classified as *ambiguous*: the remote write may already exist, so callers must
+    not blindly repeat it unless a provider-specific idempotency contract proves
+    that resend is safe.
     """
-    recipient = normalize_phone(phone)
+    try:
+        recipient = normalize_phone(phone)
+    except ValueError as exc:
+        raise SmsConfigurationError("invalid_sms_recipient") from exc
     body = (text or "").strip()
     if not body or len(body) > 1600 or "\x00" in body:
         raise SmsConfigurationError("invalid_sms_body")
@@ -77,17 +108,36 @@ async def send_sms(phone: str, text: str) -> SmsDeliveryResult:
                 auth=(sid, token),
                 data={"To": recipient, "From": sender, "Body": body},
             )
-            response.raise_for_status()
-            payload = response.json()
-    except (httpx.HTTPError, ValueError, TypeError) as exc:
-        raise SmsDeliveryFailed("twilio_delivery_failed") from exc
+    except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as exc:
+        raise SmsDeliveryAmbiguous("twilio_delivery_ambiguous") from exc
+    except httpx.HTTPError as exc:
+        raise SmsDeliveryAmbiguous("twilio_delivery_ambiguous") from exc
+
+    if response.status_code == 429:
+        raise SmsDeliveryRetryable("twilio_rate_limited")
+    if response.status_code >= 500:
+        raise SmsDeliveryAmbiguous("twilio_server_response_ambiguous")
+    if response.status_code >= 400:
+        raise SmsDeliveryRejected(f"twilio_http_rejected_{response.status_code}")
+
+    try:
+        payload = response.json()
+    except (ValueError, TypeError) as exc:
+        # A successful HTTP response with an unreadable body can still correspond
+        # to an accepted remote message, therefore resend is unsafe.
+        raise SmsDeliveryAmbiguous("twilio_response_ambiguous") from exc
 
     if not isinstance(payload, dict):
-        raise SmsDeliveryFailed("twilio_invalid_response")
+        raise SmsDeliveryAmbiguous("twilio_response_ambiguous")
     provider_id = payload.get("sid")
     if not isinstance(provider_id, str) or not provider_id.strip():
-        raise SmsDeliveryFailed("twilio_message_sid_missing")
-    error_code = payload.get("error_code")
-    if error_code not in (None, "", 0):
-        raise SmsDeliveryFailed("twilio_message_rejected")
+        raise SmsDeliveryAmbiguous("twilio_message_identity_ambiguous")
+    if _provider_reported_error(payload):
+        # The response itself proves the provider considers this message failed.
+        # Do not call it accepted merely because a SID exists.
+        raise SmsDeliveryRejected("twilio_message_rejected")
+
+    # A Twilio message SID without an accompanying provider error is evidence
+    # that the provider accepted/identified a message resource. It is deliberately
+    # not described as handset delivery.
     return SmsDeliveryResult(delivered=True, provider_id=provider_id.strip())

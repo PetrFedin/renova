@@ -9,12 +9,84 @@ import {
   type OsRole,
 } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import type { ChatInviteDeliveryStatus } from '@/lib/api/chats';
 
-/** Приглашение в чат — участник появится в сообщениях */
-export function alertChatInviteSent(role: OsRole) {
+type ChatInviteTruth = {
+  channel: 'sms' | 'in_app';
+  status: ChatInviteDeliveryStatus;
+};
+
+function chatInviteCopy(truth?: ChatInviteTruth): { title: string; message: string } {
+  if (!truth) {
+    return {
+      title: 'Приглашение сохранено',
+      message: 'Статус доставки пока не подтверждён. Renova не считает это доказательством отправки сообщения.',
+    };
+  }
+  switch (truth.status) {
+    case 'in_app_notified':
+      return {
+        title: 'Приглашение сохранено',
+        message: 'Уведомление создано в Renova для зарегистрированного участника.',
+      };
+    case 'in_app_queued':
+    case 'in_app_retrying':
+      return {
+        title: 'Приглашение сохранено',
+        message: 'Уведомление участнику поставлено в надёжную очередь Renova.',
+      };
+    case 'in_app_failed_terminal':
+      return {
+        title: 'Приглашение сохранено',
+        message: 'Уведомление пока не доставлено. Ошибка сохранена для восстановления.',
+      };
+    case 'sms_provider_accepted':
+      return {
+        title: 'SMS передано провайдеру',
+        message: 'SMS-провайдер принял сообщение и выдал идентификатор. Доставка на устройство ещё не подтверждена.',
+      };
+    case 'sms_skipped_registered':
+      return {
+        title: 'Приглашение активно',
+        message: 'Участник уже зарегистрировался до отправки SMS. Renova не отправляла лишнее сообщение.',
+      };
+    case 'sms_preview':
+      return {
+        title: 'Приглашение сохранено',
+        message: 'В текущей среде SMS работает в preview-режиме и не считается реальной доставкой.',
+      };
+    case 'sms_queued':
+    case 'sms_retrying':
+      return {
+        title: 'Приглашение сохранено',
+        message: 'SMS поставлено в надёжную очередь. Renova не показывает его как отправленное до подтверждения провайдера.',
+      };
+    case 'sms_delivery_unknown':
+      return {
+        title: 'Приглашение сохранено',
+        message: 'После сетевого сбоя статус SMS неизвестен. Автоматический повтор остановлен, чтобы не отправить дубль.',
+      };
+    case 'sms_failed_terminal':
+      return {
+        title: 'Приглашение сохранено',
+        message: 'SMS не подтверждено. Ошибка зафиксирована и может быть восстановлена оператором.',
+      };
+    default:
+      return {
+        title: 'Приглашение сохранено',
+        message: truth.channel === 'sms'
+          ? 'Статус SMS уточняется; подтверждённая доставка не заявляется.'
+          : 'Статус уведомления уточняется.',
+      };
+  }
+}
+
+/** Приглашение в чат — статус текста зависит от реального delivery evidence. */
+export function alertChatInviteSent(role: OsRole, truth?: ChatInviteTruth) {
+  const copy = chatInviteCopy(truth);
   showActionConfirm({
-    title: 'Приглашение отправлено',
-    message: 'После регистрации чат появится у участника в Сообщениях.',
+    title: copy.title,
+    message: copy.message,
     primaryLabel: 'Чаты',
     onPrimary: () => pushOsNav(`/(${role})/(tabs)/chat`, undefined, role),
     secondaryLabel: 'Позже',
