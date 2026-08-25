@@ -79,7 +79,6 @@ jobs:
       EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
       EXPECTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
       EXPECTED_ENVIRONMENT: staging
-      OUT_DIR: ${{ runner.temp }}/renova-external-staging
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -88,6 +87,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12.13"
+      - name: Initialize staging evidence path
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="$RUNNER_TEMP/renova-external-staging"
+          mkdir -p "$out_dir"
+          echo "OUT_DIR=$out_dir" >> "$GITHUB_ENV"
       - name: Validate release gate source before remote execution
         run: node scripts/externalStagingReleaseTruth.test.mjs
       - name: Verify exact immutable release against external staging
@@ -111,4 +117,4 @@ jobs:
           name: external-staging-release-${{ inputs.release_sha }}
           retention-days: 90
           if-no-files-found: error
-          path: ${{ runner.temp }}/renova-external-staging/verified-release.json
+          path: ${{ env.OUT_DIR }}/verified-release.json
