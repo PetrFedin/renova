@@ -12,6 +12,7 @@ export type ChatInviteDeliveryStatus =
   | 'sms_retrying'
   | 'sms_preview'
   | 'sms_provider_accepted'
+  | 'sms_skipped_registered'
   | 'sms_delivery_unknown'
   | 'sms_failed_terminal'
   | 'processed';
