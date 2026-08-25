@@ -83,6 +83,8 @@ Production readiness требует **конкретный registry digest**, а
 
 Нельзя преобразовывать isolated staging CI в утверждение «staging/prod работает» без внешнего evidence. #233 остаётся P0 launch blocker, пока persistent production-like staging и promotion lifecycle не доказаны реально.
 
+PR #280 восстановил исполняемость repository-side `External staging release`: exact head `bfa2b9818ecc89cef9dda6c3e7527884730e84e8`, workflow run `32884123376`, real `contract` job — `SUCCESS`, merge `250dc8b1e4cc843d8874ee46dcdd2a40b00bc6a7`. Это **CI VERIFIED contract execution**, а не `STAGING VERIFIED`: dispatch-job `verify-staging` на PR был корректно skipped и должен быть выполнен отдельно против реального staging exact SHA+digest.
+
 ## 6. Provider readiness
 
 | Provider | Repo-proven | Внешняя граница |
@@ -108,6 +110,8 @@ Repository-side capacity gate из #255 реализует:
 - DB pool, Redis, worker/outbox backlog pressure signals;
 - retained sanitized capacity evidence;
 - launch-candidate thresholds: HTTP failures <1%, HTTP p95 <1s, p99 <2.5s; WebSocket delivery failures <1%, p95 <1s, p99 <2.5s.
+
+PR #280 также восстановил исполняемость `Load SLO integrity`: exact head `bfa2b9818ecc89cef9dda6c3e7527884730e84e8`, workflow run `32884123091`, pinned k6 contract — `SUCCESS`; `external-staging-load` на PR корректно skipped. Это доказывает, что gate теперь реально создаёт jobs и валидирует модули, но **не является capacity evidence**.
 
 **Реальная capacity/SLO всё ещё NOT PROVEN.** Protected suite должен быть выполнен против внешнего production-like staging exact SHA/image digest; retained evidence пока не подтверждено. Tracking: #236.
 
@@ -165,9 +169,10 @@ Legacy red-team и последующие исправления сейчас д
 - **#266 — warranty create idempotency: OPEN / P1.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
 - **#269 — chat read truth: CI VERIFIED / resolved by PR #270.** Exact head `deef0d2eed413679d095f4e06d48d8bde963f759` прошёл все 14 workflow runs, включая full backend regression, PostgreSQL Alembic upgrade, Playwright API/UI, CodeQL и mobile contracts; merge commit `9a7b0babc530c4ed187f54ea9c67763393656763`. GET/list/count больше не создают read-state, public mark-read требует authoritative message cursor, DB update monotonic, mobile ставит read только после foreground/focus/render visibility, а ACK reconciliation не откатывает project context. Редкая equal-timestamp точность вынесена в non-launch-blocking P2 #271.
 - **#272 — phone chat invitation delivery truth: CI VERIFIED / resolved by PR #277.** Exact head `1b60199972b363ede0fa1909e40c14b932c789d0` прошёл все 18 PR workflows; `CI` run `32833474753` дал **975 passed / 6 skipped**, PostgreSQL 17 clean Alembic upgrade до `w15providerops01`, Playwright, mobile typecheck/contracts, CodeQL, security и backend image checks — success. Merge commit `43df8ef555efb75ad4d6263297560529eecc660b`. Invitation identity теперь детерминирована; participant + delivery/activity intent durable; SMS идёт через общий DomainOutbox/worker/DLQ; ambiguous remote write fenced через `SideEffectDelivery` и не auto-retry; operator replay явный; OTP-login активирует pending invite; invitee получает только exact thread ACL/inbox/WS без project privilege; mobile показывает только доказанный delivery state. Real Twilio round-trip при этом остаётся `NOT EXTERNALLY_VERIFIED`.
-- **#273 — archived chat / message mutation truth: OPEN / P1.** Новое входящее всё ещё может остаться скрытым в recipient archive; `ChatMessage` не имеет durable `client_request_id`/unique constraint, mobile offline replay не несёт stable write identity, а `send_message()` commit'ит сообщение до downstream notification path. Канон следующего исправления: archive ≠ read/mute; same key+same payload → original, same key+different payload → 409; message + recipient visibility transition + audit + DomainOutbox в одной transaction; concurrency/offline/timeout tests. Дополнительно chat detail должен вернуть access capability/scope, чтобы thread-only participant не видел project-authority CTA, которые сервер корректно отклоняет 403.
+- **#273 — incoming chat message integrity: OPEN / P1.** Новое входящее всё ещё может остаться скрытым в recipient archive; public send не несёт stable client request identity, mobile offline replay может повторить committed POST, а `send_message()` commit'ит сообщение до downstream notification path. Канон следующего исправления: archive ≠ read/mute; existing `ClientWriteRequest` ledger используется для same key+same payload → original / same key+different payload → 409; message + recipient visibility transition + DomainOutbox в одной transaction; concurrency/offline/timeout tests; thread detail должен вернуть capability/scope, чтобы thread-only participant не видел project-authority CTA, которые сервер корректно отклоняет 403. S3 ambiguous-write/orphan recovery при attachments остаётся отдельным #238 и не считается решённым этим chat PR.
+- **#279 — canonical local production-topology runtime: OPEN / P1.** Current `docker-compose.yml` содержит PostgreSQL+MinIO, но не Redis/API/dedicated Worker; `npm run dev` использует assumed `.venv`, может ставить Python packages ad-hoc и выполняет `alembic upgrade head ... || true`, то есть migration failure не блокирует startup. Отсутствуют единые `dev:check`, `dev:reset`, `dev:logs`, `dev:seed`, `dev:stop`. Для production-grade разработки нужен один fail-fast runtime PostgreSQL+Redis+MinIO+API+Worker+Expo с locked Python/Poetry и health/worker-heartbeat gates.
 
-Таким образом, #269 и #272 больше не являются launch blockers после доказанного merge; #273 остаётся P1 communication-integrity blocker. #271 остаётся явно отслеживаемым P2 precision debt и не подменяется launch blocker’ом.
+Таким образом, #269 и #272 больше не являются launch blockers после доказанного merge; #273 и #279 остаются P1 product/reliability blockers. #271 остаётся явно отслеживаемым P2 precision debt и не подменяется launch blocker’ом.
 
 ## 12. Open launch blockers и переход состояния
 
@@ -186,6 +191,7 @@ Readiness manifest перечисляет launch-blocking issues и CI пров�
 - **P1 #265** — complete manual bank-transfer evidence/reviewer/resubmission lifecycle on current finance truth.
 - **P1 #266** — atomic, durable and idempotent warranty claim creation across retry/offline/concurrency.
 - **P1 #273** — incoming chat communication must not remain hidden in archive; message writes must become durably idempotent/atomic and thread-only project-action UX must be capability-aware.
+- **P1 #279** — local development runtime must reproduce PostgreSQL+Redis+S3/API/Worker topology, use locked dependencies and fail fast on migration/runtime health failures.
 
 Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
 
