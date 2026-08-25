@@ -10,6 +10,7 @@ on:
       - "backend/tests/test_runtime_probe_integrity.py"
       - "scripts/external-staging-release-smoke.sh"
       - "scripts/externalStagingReleaseTruth.test.mjs"
+      - "scripts/workflowExpressionContextIntegrity.test.mjs"
       - ".github/workflows/external-staging-release.yml"
       - "docs/STAGING-RELEASE.md"
       - "docs/RUNTIME-TOPOLOGY.md"
@@ -22,6 +23,7 @@ on:
       - "backend/tests/test_runtime_probe_integrity.py"
       - "scripts/external-staging-release-smoke.sh"
       - "scripts/externalStagingReleaseTruth.test.mjs"
+      - "scripts/workflowExpressionContextIntegrity.test.mjs"
       - ".github/workflows/external-staging-release.yml"
       - "docs/STAGING-RELEASE.md"
       - "docs/RUNTIME-TOPOLOGY.md"
@@ -61,6 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/externalStagingReleaseTruth.test.mjs
+          node --test scripts/workflowExpressionContextIntegrity.test.mjs
           bash -n scripts/external-staging-release-smoke.sh
           python -m py_compile \
             backend/app/main.py \
@@ -95,7 +98,9 @@ jobs:
           mkdir -p "$out_dir"
           echo "OUT_DIR=$out_dir" >> "$GITHUB_ENV"
       - name: Validate release gate source before remote execution
-        run: node scripts/externalStagingReleaseTruth.test.mjs
+        run: |
+          node scripts/externalStagingReleaseTruth.test.mjs
+          node --test scripts/workflowExpressionContextIntegrity.test.mjs
       - name: Verify exact immutable release against external staging
         shell: bash
         run: bash scripts/external-staging-release-smoke.sh
