@@ -178,6 +178,22 @@ Follow `.cursor/rules/renova-design-system.mdc` for UI primitives/tokens. Produc
 
 Critical approval/payment actions must show success only after authoritative server confirmation.
 
+### Chat invitation and participant boundary
+
+A chat participant is a thread-scoped capability, not implicit project membership.
+
+- a phone/profile invitation has one deterministic participant identity per `thread + canonical target`;
+- participant state plus delivery/activity intent must be committed before any external provider call;
+- phone delivery uses the shared `DomainOutbox`/worker/DLQ lifecycle, never best-effort SMS inside the request transaction;
+- an ambiguous remote SMS write must not be automatically repeated; operator replay is the explicit recovery boundary;
+- provider acceptance is not device delivery and UI copy must not claim more than retained evidence proves;
+- OTP login may activate matching pending phone invitations in the same login transaction;
+- an active invited participant may read/write only the exact invited thread unless normal project ACL separately grants broader access;
+- sibling chats, project finance, task/invoice creation, participant management and other project mutations remain fail-closed unless their own authority contract allows them;
+- global inbox/unread and WebSocket access may include the exact invited thread without granting access to the containing project;
+- new-message recipients are the project principals plus active users explicitly invited to that exact thread, excluding the sender and deleted/pending identities;
+- archive/read/mute semantics are separate. Incoming-message auto-unarchive and atomic message/outbox handling are tracked as their own communication-integrity contract rather than being inferred from invitation state.
+
 ## 13. Error contract
 
 Keep business and technical failures distinguishable:
