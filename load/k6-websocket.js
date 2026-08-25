@@ -95,7 +95,11 @@ export default function () {
 
       socket.on("open", () => {
         postStartedAt = Date.now();
-        const body = JSON.stringify({ text: marker, message_type: "text" });
+        const body = JSON.stringify({
+          client_request_id: `load-ws-${config.runId}-vu${__VU}-iter${__ITER}`,
+          text: marker,
+          message_type: "text",
+        });
         const postResponse = http.post(
           `${config.baseUrl}/api/v1/projects/${fixture.project_id}/chats/${fixture.chat_thread_id}/messages`,
           body,
