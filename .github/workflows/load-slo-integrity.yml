@@ -5,6 +5,7 @@ on:
     paths:
       - "load/**"
       - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/workflowExpressionContextIntegrity.test.mjs"
       - "scripts/test_external_capacity_evidence.py"
       - "scripts/external-load-reconciliation.sh"
       - "scripts/external-capacity-sampler.py"
@@ -24,6 +25,7 @@ on:
     paths:
       - "load/**"
       - "scripts/loadSloIntegrity.test.mjs"
+      - "scripts/workflowExpressionContextIntegrity.test.mjs"
       - "scripts/test_external_capacity_evidence.py"
       - "scripts/external-load-reconciliation.sh"
       - "scripts/external-capacity-sampler.py"
@@ -96,7 +98,11 @@ jobs:
           [[ "$ref" =~ ^grafana/k6:2\.1\.0@sha256:[0-9a-f]{64}$ ]]
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - name: Validate load and SLO source contract
-        run: node --test scripts/loadSloIntegrity.test.mjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/loadSloIntegrity.test.mjs
+          node --test scripts/workflowExpressionContextIntegrity.test.mjs
         env:
           K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
       - name: Validate capacity evidence semantics
@@ -140,8 +146,6 @@ jobs:
       EXPECTED_ENVIRONMENT: staging
       LOAD_ENABLE_WRITES: ${{ inputs.enable_writes }}
       LOAD_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
-      OUT_DIR: ${{ runner.temp }}/renova-load-slo
-      CAPACITY_SAMPLE_STOP_FILE: ${{ runner.temp }}/renova-load-slo/capacity-sampler.stop
       CAPACITY_SAMPLE_INTERVAL_SEC: "5"
       CAPACITY_MIN_API_INSTANCES: "2"
     steps:
@@ -152,6 +156,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12.13"
+      - name: Initialize load evidence paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="$RUNNER_TEMP/renova-load-slo"
+          mkdir -p "$out_dir"
+          echo "OUT_DIR=$out_dir" >> "$GITHUB_ENV"
+          echo "CAPACITY_SAMPLE_STOP_FILE=$out_dir/capacity-sampler.stop" >> "$GITHUB_ENV"
       - name: Read immutable k6 image
         id: k6-image
         shell: bash
@@ -165,6 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test scripts/loadSloIntegrity.test.mjs
+          node --test scripts/workflowExpressionContextIntegrity.test.mjs
           python3 scripts/test_external_capacity_evidence.py
         env:
           K6_IMAGE: ${{ steps.k6-image.outputs.ref }}
@@ -287,7 +300,7 @@ jobs:
           name: load-slo-${{ inputs.scenario }}-${{ inputs.release_sha }}
           retention-days: 90
           if-no-files-found: error
-          path: ${{ runner.temp }}/renova-load-slo/
+          path: ${{ env.OUT_DIR }}/
       - name: Enforce staging load and capacity gates
         if: always() && steps.k6.outcome != 'skipped'
         env:
