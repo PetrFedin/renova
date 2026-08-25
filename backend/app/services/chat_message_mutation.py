@@ -87,12 +87,14 @@ async def _active_recipients(
     *,
     thread: ChatThread,
     sender_id: str,
+    additional_recipient_ids: set[str] | None = None,
 ) -> dict[str, User]:
     project = await db.get(Project, thread.project_id)
     if project is None:
         return {}
 
     target_ids = {project.customer_id, project.contractor_id}
+    target_ids.update(additional_recipient_ids or set())
     target_ids.update(
         (
             await db.execute(
@@ -225,6 +227,7 @@ async def send_client_message(
     image_data: str | None = None,
     reply_to_id: str | None = None,
     meta: dict[str, Any] | None = None,
+    additional_recipient_ids: set[str] | None = None,
 ) -> ChatMessage:
     """Create exactly one logical client message and its durable recipient effects."""
     try:
@@ -278,7 +281,12 @@ async def send_client_message(
     thread.updated_at = utc_now()
     await db.flush()
 
-    recipients = await _active_recipients(db, thread=thread, sender_id=user_id)
+    recipients = await _active_recipients(
+        db,
+        thread=thread,
+        sender_id=user_id,
+        additional_recipient_ids=additional_recipient_ids,
+    )
     recipient_ids = set(recipients)
     await _restore_recipient_visibility(
         db,
