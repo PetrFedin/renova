@@ -605,10 +605,11 @@ export function ChatThreadView({
             <TextInput style={s.input} value={inviteCode} onChangeText={setInviteCode} placeholder="Номер профиля (6 символов)" autoCapitalize="characters" />
             <Text style={s.or}>или</Text>
             <TextInput style={s.input} value={invitePhone} onChangeText={setInvitePhone} placeholder="Телефон +7…" keyboardType="phone-pad" />
-            <Text style={s.hint}>На телефон придёт SMS: установите Renova и зарегистрируйтесь — чат появится в Сообщениях.</Text>
+            <Text style={s.hint}>Если участник ещё не зарегистрирован, Renova поставит SMS в надёжную очередь. Доставка подтверждается отдельно; после регистрации доступ будет только к этому чату.</Text>
             <PrimaryButton title="Пригласить" onPress={async () => {
+              let inviteResult;
               try {
-                await api.inviteToChat(user.id, projectId, threadId, {
+                inviteResult = await api.inviteToChat(user.id, projectId, threadId, {
                   phone: invitePhone || undefined,
                   profile_code: inviteCode || undefined,
                 });
@@ -621,7 +622,10 @@ export function ChatThreadView({
               setInvitePhone('');
               setInviteCode('');
               await reconcileCommittedChatMutation('Invite');
-              alertChatInviteSent((user.role === 'contractor' ? 'contractor' : 'customer'));
+              alertChatInviteSent((user.role === 'contractor' ? 'contractor' : 'customer'), {
+                channel: inviteResult.delivery_channel,
+                status: inviteResult.delivery_status,
+              });
             }} />
             <PrimaryButton title="Закрыть" variant="outline" onPress={() => setInviteOpen(false)} />
           </View>
