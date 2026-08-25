@@ -224,7 +224,12 @@
     "archived_chat_unread_truth": {
       "status": "INCOMPLETE",
       "issue": 273,
-      "note": "Archived threads can still remain hidden after later incoming communication; message creation still lacks a durable client request identity/unique constraint and the message/archive/audit/outbox mutation is not yet one atomic business transaction. Thread-only mobile project-action capability UX also remains to be closed."
+      "note": "Archived threads can still remain hidden after later incoming communication; message creation still lacks a durable client request identity and the message/archive/notification-outbox mutation is not yet one atomic business transaction. Thread-only mobile project-action capability UX also remains to be closed."
+    },
+    "development_runtime": {
+      "status": "INCOMPLETE",
+      "issue": 279,
+      "note": "Current local launcher does not reproduce the production topology: root compose lacks Redis/API/dedicated Worker, startup may install Python packages ad-hoc and swallows Alembic failure, and canonical dev check/reset/logs/seed/stop lifecycle commands are absent."
     }
   },
   "open_launch_blockers": [
@@ -292,10 +297,15 @@
       "issue": 273,
       "priority": "P1",
       "reason": "incoming chat communication can remain hidden in archived chats; message writes are not yet durably idempotent/atomic and thread-only project-action UX remains incomplete"
+    },
+    {
+      "issue": 279,
+      "priority": "P1",
+      "reason": "local development runtime does not reproduce production topology and can swallow migration failure, leaving Redis/worker/storage readiness outside the canonical dev lifecycle"
     }
   ],
   "launch_decision": {
     "status": "BLOCKED_FOR_BROAD_PRODUCTION",
-    "reason": "Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, product-integrity, pilot/legal/operations and security evidence gaps."
+    "reason": "Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, product-integrity, reproducible runtime, pilot/legal/operations and security evidence gaps."
   }
 }
