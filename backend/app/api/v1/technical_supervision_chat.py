@@ -5,10 +5,12 @@ from app.api.deps import get_current_user
 from app.api.v1.chats import MessageCreate
 from app.db.session import get_db
 from app.models.entities import User
+from app.services import chat_message_mutation as chat_message_svc
 from app.services import chat_service as chat_svc
 from app.services.chat_acl import require_chat_access
 from app.services import technical_supervision_action_service as actions
 from app.services import technical_supervision_service as supervision
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["chats"])
 
@@ -42,23 +44,30 @@ async def post_operational_message(
                 "message": "Технадзор может отправлять обычные сообщения и вложения, но не финансовые/системные действия.",
             },
         )
+
+    supervisor_id = await actions.active_supervisor_user_id(db, project.id)
+    extra_recipients = {supervisor_id} if supervisor_id else set()
     author_role = "supervisor" if actor_mode == "supervisor" else user.role.value
-    msg = await chat_svc.send_message(
-        db,
-        thread,
-        user.id,
-        author_role,
-        body.text,
-        body.message_type,
-        body.image_data,
-        body.reply_to_id,
-    )
-    await actions.notify_supervisor_chat_message(
-        db,
-        project=project,
-        actor_id=user.id,
-        thread_id=thread.id,
-        thread_title=thread.title,
-        body=body.text or "Вложение",
-    )
+    try:
+        msg = await chat_message_svc.send_client_message(
+            db,
+            thread=thread,
+            user_id=user.id,
+            role=author_role,
+            client_request_id=body.client_request_id,
+            text=body.text,
+            message_type=body.message_type,
+            image_data=body.image_data,
+            reply_to_id=body.reply_to_id,
+            additional_recipient_ids=extra_recipients,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(409, "idempotency_conflict") from exc
+    except ValueError as exc:
+        code = str(exc)
+        if code == "reply_target_not_in_thread":
+            raise HTTPException(409, code) from exc
+        if code == "invalid_message_type":
+            raise HTTPException(422, code) from exc
+        raise
     return chat_svc.msg_dict(msg)
