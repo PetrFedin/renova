@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "observed_on": "2026-08-24",
+  "observed_on": "2026-08-25",
   "expected_repo_facts": {
     "alembic_head": "w15providerops01",
     "mobile_version": "0.3.7",
@@ -76,6 +76,13 @@
       "release_scope": true,
       "evidence": null,
       "issue": 238
+    },
+    "twilio_sms": {
+      "repo_status": "DURABLE_OUTBOX_AND_AMBIGUOUS_WRITE_FENCING_CI_VERIFIED",
+      "external_status": "LIVE_PROVIDER_ROUND_TRIP_UNVERIFIED",
+      "release_scope": true,
+      "evidence": null,
+      "note": "PR #277 proves durable invitation intent, provider ambiguity fencing, terminal/DLQ recovery and truthful UI on exact code. No real external Twilio round-trip is retained, so provider acceptance/delivery is not externally verified."
     },
     "push": {
       "repo_status": "DELIVERY_AND_RECEIPT_RECONCILIATION_IMPLEMENTED",
@@ -206,14 +213,18 @@
       "note": "Explicit server message cursor, side-effect-free reads, monotonic DB fencing, visibility-gated mobile read receipts and authoritative reconciliation are merged. Equal-timestamp precision is tracked separately as non-launch-blocking P2 #271."
     },
     "phone_chat_invitation_delivery": {
-      "status": "INCOMPLETE",
+      "status": "CI_VERIFIED",
       "issue": 272,
-      "note": "Phone-only chat invitation currently performs inline SMS delivery and suppresses provider exceptions, so the request can report success without durable delivery intent or provider evidence."
+      "pr": 277,
+      "head_sha": "1b60199972b363ede0fa1909e40c14b932c789d0",
+      "merge_sha": "43df8ef555efb75ad4d6263297560529eecc660b",
+      "workflow_run_id": 32833474753,
+      "note": "Durable deterministic invitation identity, DomainOutbox delivery intent, SMS ambiguous-write fencing/operator recovery, OTP activation, exact thread-scoped ACL/inbox/WS, recipient notifications and truthful mobile delivery states are merged. Full backend regression passed 975 tests with 6 skipped; PostgreSQL Alembic and Playwright passed. Real Twilio provider round-trip remains externally unverified."
     },
     "archived_chat_unread_truth": {
       "status": "INCOMPLETE",
       "issue": 273,
-      "note": "Archived threads are excluded from global unread while a later incoming message does not clear the recipient archive state, so new communication can remain hidden from the active inbox and dock count."
+      "note": "Archived threads can still remain hidden after later incoming communication; message creation still lacks a durable client request identity/unique constraint and the message/archive/audit/outbox mutation is not yet one atomic business transaction. Thread-only mobile project-action capability UX also remains to be closed."
     }
   },
   "open_launch_blockers": [
@@ -278,14 +289,9 @@
       "reason": "warranty claim creation is not durably idempotent across double-submit, timeout, offline replay and concurrent retry"
     },
     {
-      "issue": 272,
-      "priority": "P1",
-      "reason": "phone-only chat invitations can report success after an SMS provider failure and lack durable outbox delivery/recovery truth"
-    },
-    {
       "issue": 273,
       "priority": "P1",
-      "reason": "new incoming messages can remain hidden in archived chats and excluded from active global unread truth"
+      "reason": "incoming chat communication can remain hidden in archived chats; message writes are not yet durably idempotent/atomic and thread-only project-action UX remains incomplete"
     }
   ],
   "launch_decision": {
