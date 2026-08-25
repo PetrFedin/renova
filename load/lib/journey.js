@@ -80,6 +80,7 @@ export function runUserJourney() {
 
   if (shouldWrite) {
     const body = JSON.stringify({
+      client_request_id: `load-${config.runId}-vu${__VU}-iter${__ITER}`,
       text: `load-check ${config.runId} vu=${__VU} iter=${__ITER}`,
       message_type: "text",
     });
