@@ -120,6 +120,11 @@ test("k6 runtime is pinned to one immutable image", () => {
   const workflow = fs.readFileSync(workflowPath, "utf8");
   assert.match(workflow, /K6_IMAGE: \$\{\{ steps\.k6-image\.outputs\.ref \}\}/);
   assert.match(workflow, /load\/K6_IMAGE/);
+  assert.match(
+    workflow,
+    /inspect --include-system-env-vars "/,
+    "k6 inspect must explicitly expose injected contract env to __ENV",
+  );
 });
 
 test("external staging load is protected release-bound and capacity-sampled", () => {
