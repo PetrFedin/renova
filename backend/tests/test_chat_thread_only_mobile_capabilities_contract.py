@@ -48,13 +48,17 @@ def test_thread_only_chat_keeps_composer_but_hides_project_authority_dead_ends()
     assert "await refreshChatAfterCommit(action);" in reconcile_block
     assert "if (hasProjectScope) await refreshProjectAfterCommit(action);" in reconcile_block
 
-    # Project/member/task/finance and project-only message actions are hidden
-    # rather than being rendered as guaranteed 403 dead ends.
+    # Project/member/task/finance and project-write-only message actions are
+    # hidden instead of being rendered as guaranteed 403 dead ends. Message
+    # pin/confirm require the same authoritative project-write capability as
+    # participant management, not merely project-read scope.
     assert "{canManageParticipants && (" in source
     assert "onTask={canCreateTask ? () => setTaskMsg(m) : undefined}" in source
     assert "{canCreateInvoice && (" in source
     assert "onPay={canViewProjectActions && m.message_type === 'payment'" in source
-    assert "onPin={hasProjectScope ? async () =>" in source
-    assert "onConfirm={hasProjectScope && m.message_type === 'confirm'" in source
+    assert "onPin={canManageParticipants ? async () =>" in source
+    assert "onConfirm={canManageParticipants && m.message_type === 'confirm'" in source
+    assert "onPin={hasProjectScope ? async () =>" not in source
+    assert "onConfirm={hasProjectScope && m.message_type === 'confirm'" not in source
     assert "visible={canManageParticipants && inviteOpen}" in source
     assert "visible={canCreateTask && !!taskMsg}" in source
