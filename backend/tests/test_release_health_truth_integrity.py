@@ -191,7 +191,8 @@ async def test_release_health_api_is_truthful_and_backward_compatible(monkeypatc
         "status": "metadata_only",
         "content_ocr_available": False,
         "content_read": False,
-        "runtime_owner": "renova-worker",
+        "background_worker_active": False,
+        "runtime_owner": None,
     }
 
     assert forbidden.status_code == 403
