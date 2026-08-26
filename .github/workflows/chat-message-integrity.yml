@@ -1,0 +1,96 @@
+name: Chat message integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/api/v1/chats.py"
+      - "backend/app/api/v1/technical_supervision_chat.py"
+      - "backend/app/services/chat_message_mutation.py"
+      - "backend/app/services/client_write_idempotency.py"
+      - "backend/app/services/outbox_service.py"
+      - "backend/app/services/outbox_inline_dispatch.py"
+      - "backend/tests/test_chat_message_atomicity.py"
+      - "backend/tests/test_chat_message_postgres_concurrency.py"
+      - "backend/tests/test_chat_participant_message_delivery.py"
+      - "backend/tests/test_chat_thread_only_mobile_inbox_contract.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - ".github/workflows/chat-message-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/api/v1/chats.py"
+      - "backend/app/api/v1/technical_supervision_chat.py"
+      - "backend/app/services/chat_message_mutation.py"
+      - "backend/app/services/client_write_idempotency.py"
+      - "backend/app/services/outbox_service.py"
+      - "backend/app/services/outbox_inline_dispatch.py"
+      - "backend/tests/test_chat_message_atomicity.py"
+      - "backend/tests/test_chat_message_postgres_concurrency.py"
+      - "backend/tests/test_chat_participant_message_delivery.py"
+      - "backend/tests/test_chat_thread_only_mobile_inbox_contract.py"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - ".github/workflows/chat-message-integrity.yml"
+
+concurrency:
+  group: chat-message-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  chat-message-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova_chat_integrity
+        ports: ["5436:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova_chat_integrity"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./chat-message-integrity.db
+      CHAT_MESSAGE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "false"
+      PYTHONHASHSEED: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install exact Poetry toolchain
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+      - name: Verify locked dependency graph
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Upgrade dedicated PostgreSQL race database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          DATABASE_URL="$CHAT_MESSAGE_POSTGRES_URL" poetry run alembic upgrade head
+      - name: Run chat atomicity, ACL and PostgreSQL race contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run pytest -q \
+            tests/test_chat_message_atomicity.py \
+            tests/test_chat_message_postgres_concurrency.py \
+            tests/test_chat_participant_message_delivery.py \
+            tests/test_chat_thread_only_mobile_inbox_contract.py
