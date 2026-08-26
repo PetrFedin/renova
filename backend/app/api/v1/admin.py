@@ -184,7 +184,10 @@ async def release_health(
                 "status": "metadata_only" if document_ocr_mode == "metadata" else "off",
                 "content_ocr_available": False,
                 "content_read": False,
-                "runtime_owner": "renova-worker",
+                # The dedicated worker validates this runtime mode but deliberately
+                # does not start the legacy metadata-classification loop.
+                "background_worker_active": False,
+                "runtime_owner": None,
             },
             "ollama_digest": {
                 "enabled": bool(settings.ollama_digest_enabled),
