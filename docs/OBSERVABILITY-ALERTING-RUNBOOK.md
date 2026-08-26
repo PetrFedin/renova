@@ -36,29 +36,31 @@ These are starting thresholds for staging/production calibration, not claimed hi
 | Domain outbox | dead letters | n/a | any new dead letter | Backend/Operations | Triage event type, attempts, error class, safe replay eligibility and business impact |
 | Payments | provider/webhook/reconciliation error | any isolated error with recovery | unresolved >5 min or repeated failures for same provider | Payments/Backend | Verify provider truth before changing local payment state; reconcile, never guess |
 | Push receipts | unresolved/failed receipt lag | >5 min | >15 min or sustained growth | Mobile/Backend | Inspect APNs/provider response, receipt worker and token invalidation path |
-| OCR / email | provider failures | >2 failures in 10 min | critical workflow blocked >15 min | Backend/Operations | Check provider mode, credentials, queue/outbox and fallback policy |
+| Document classification / OCR | runtime truth | any deployment that reports content OCR or an OCR worker as active | any workflow depends on content OCR while `content_ocr_available=false`, or unexpected legacy OCR backlog appears | Backend/Product | Current supported modes are `metadata`/`off`; do not advertise or page on a provider that does not exist. Remove the dependency or implement a real OCR engine before enabling it |
+| Email / ops alert channel | SMTP/provider acceptance vs destination delivery | configured but unverified, or isolated provider failure | delivery drill fails or a critical workflow cannot deliver for >15 min | Backend/Operations | Inspect SMTP/provider response, then prove destination delivery separately; provider acceptance is not acknowledgement |
 | External providers | reconciliation backlog | >5 min oldest unresolved | >15 min or business-critical mismatch | Backend/Operations | Use provider reconciliation truth; preserve provider request/response correlation without secrets |
 | Observability pipeline | synthetic staging drill | event emitted but not ingested within 2 min | no alert delivery within 5 min | Platform | Treat telemetry path as non-operational; do not promote staging evidence to production claim |
 
 ## 4. Staging alert-delivery drill
 
-Run the probe **inside the deployed staging backend artifact**, not from a developer laptop. The command is deliberately not an HTTP endpoint and requires an explicit confirmation flag.
+Run the probe **inside the deployed staging backend container from the exact immutable image digest being evaluated**, not from a developer checkout. The runtime image contains the CLI under `app`; it intentionally does not depend on Poetry or on `backend/scripts` being copied into the image. The command is deliberately not an HTTP endpoint and requires an explicit confirmation flag.
 
 ```bash
-cd backend
-poetry run python scripts/observability_alert_probe.py --confirm-staging --json
+python -m app.observability_alert_probe_cli --confirm-staging --json
 ```
 
 Optional deterministic operator correlation:
 
 ```bash
-poetry run python scripts/observability_alert_probe.py \
+python -m app.observability_alert_probe_cli \
   --confirm-staging \
   --probe-id 11111111-2222-4333-8444-555555555555 \
   --json
 ```
 
 The probe refuses to run unless all of the following are true: environment is `staging`; `SENTRY_DSN` is configured; OTLP endpoint is configured, external/non-local and secure; `LOG_JSON=true`; `RENOVA_GIT_SHA` and `RENOVA_IMAGE_DIGEST` are known. It emits one synthetic Sentry exception, one error span, one counter increment and one structured error log. The UUID is not added to metric labels, avoiding unbounded metric cardinality.
+
+Exit status `0` means all configured local telemetry APIs accepted the synthetic signal and the local non-secret receipt was created. Exit status `2` means the command/configuration was refused. Exit status `3` means at least one required local telemetry path failed to accept the probe. None of these statuses proves external ingestion or alert delivery.
 
 The local receipt intentionally reports `external_delivery_confirmed=false`. A successful command is **not** enough to pass the drill.
 
@@ -89,12 +91,16 @@ The probe contains no user payload, project data, credentials or provider secret
 
 After the drill, close the synthetic Sentry issue/alert according to the provider workflow and annotate it as a staging drill. Do not suppress the production rule globally. If the probe does not appear externally, diagnose exporter/network/routing configuration before retrying; repeated local emission without external evidence is not progress.
 
-## 7. Incident ownership
+## 7. Current OCR truth
+
+Renova currently has **no content OCR engine**. `DOCUMENT_OCR_MODE=metadata` produces metadata-based classification suggestions only; `off` disables that behavior. The dedicated production worker validates this mode but does not start the legacy metadata-classification queue loop. Therefore `/admin/release-health` must report `content_ocr_available=false`, `content_read=false`, `background_worker_active=false`, and no runtime owner for OCR. This limitation is intentional and must remain visible until a real OCR provider/engine and owned worker path exist.
+
+## 8. Incident ownership
 
 Platform owns telemetry transport, release identity, collector/log ingestion and pager delivery. Backend owns application error/latency, PostgreSQL pool behavior, Redis usage, worker topology, outbox and provider reconciliation. Payments owns payment-provider business truth jointly with Backend. Mobile owns push-device/token behavior jointly with Backend. Operations owns business impact triage and human acknowledgement/escalation.
 
 A page has one incident owner. Cross-domain responders may assist, but ownership is not transferred implicitly by commenting in a chat or restarting a service.
 
-## 8. Promotion gate
+## 9. Promotion gate
 
 Issue #235 must not be closed solely from repository tests. Code/tests can prove fail-fast configuration, safe telemetry enrichment and correct probe behavior. Closure requires at least one real staging evidence packet demonstrating external ingestion and alert delivery from the immutable deployed artifact. Production alerting should then use the same reviewed rules/destinations or an explicitly documented production-specific mapping.
