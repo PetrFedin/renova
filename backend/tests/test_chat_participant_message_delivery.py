@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 
 import pytest
@@ -12,11 +13,13 @@ from app.db.base import Base
 from app.models.entities import (
     ChatThread,
     ChatThreadParticipant,
+    ChatThreadRead,
     DomainOutbox,
     Project,
     User,
     UserRole,
 )
+from app.services import chat_message_mutation
 from app.services import chat_service
 from app.services import outbox_service
 
@@ -68,6 +71,96 @@ async def _seed(db):
     db.add_all([customer, contractor, invited, project, thread])
     await db.commit()
     return customer, contractor, invited, project, thread
+
+
+@pytest.mark.asyncio
+async def test_atomic_message_notifies_and_unarchives_exact_active_participant_once(monkeypatch):
+    engine, Session = await _session_factory()
+    try:
+        async with Session() as db:
+            customer, contractor, invited, _project, thread = await _seed(db)
+            original_cursor = datetime(2026, 1, 2, 9, 30, 0)
+            db.add(
+                ChatThreadParticipant(
+                    id="atomic-participant-0001",
+                    thread_id=thread.id,
+                    user_id=invited.id,
+                    profile_code=invited.profile_code,
+                    invited_by=customer.id,
+                    status="active",
+                )
+            )
+            db.add(
+                ChatThreadRead(
+                    id="atomic-participant-read-0001",
+                    thread_id=thread.id,
+                    user_id=invited.id,
+                    last_read_at=original_cursor,
+                    is_archived=True,
+                )
+            )
+            await db.commit()
+
+            dispatched_recipients: list[set[str]] = []
+
+            async def _no_inline(*_args, **_kwargs):
+                return 0
+
+            async def _capture_broadcast(*, recipient_ids: set[str], **_kwargs):
+                dispatched_recipients.append(set(recipient_ids))
+
+            monkeypatch.setattr(
+                chat_message_mutation.outbox_inline_dispatch,
+                "dispatch_best_effort",
+                _no_inline,
+            )
+            monkeypatch.setattr(
+                chat_message_mutation,
+                "_broadcast_after_commit",
+                _capture_broadcast,
+            )
+
+            first = await chat_message_mutation.send_client_message(
+                db,
+                thread=thread,
+                user_id=customer.id,
+                role=customer.role.value,
+                client_request_id="participant-atomic-request-0001",
+                text="Atomic participant delivery",
+            )
+            replay = await chat_message_mutation.send_client_message(
+                db,
+                thread=thread,
+                user_id=customer.id,
+                role=customer.role.value,
+                client_request_id="participant-atomic-request-0001",
+                text="Atomic participant delivery",
+            )
+            assert replay.id == first.id
+
+            state = await db.get(ChatThreadRead, "atomic-participant-read-0001")
+            assert state is not None
+            assert state.is_archived is False
+            assert state.last_read_at == original_cursor
+
+            events = (
+                await db.execute(
+                    select(DomainOutbox).where(
+                        DomainOutbox.aggregate_id == first.id,
+                        DomainOutbox.event_type == outbox_service.NOTIFICATION_EVENT,
+                    )
+                )
+            ).scalars().all()
+            payloads = [json.loads(event.payload_json) for event in events]
+            assert {payload["user_id"] for payload in payloads} == {
+                contractor.id,
+                invited.id,
+            }
+            assert all(payload["return_to"] == "/(contractor)/(tabs)/chat" for payload in payloads)
+            assert customer.id not in {payload["user_id"] for payload in payloads}
+            assert dispatched_recipients == [{contractor.id, invited.id}]
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
