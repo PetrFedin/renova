@@ -252,6 +252,7 @@ async def test_notification_intent_failure_rolls_back_message_archive_and_ledger
         )
         db.add(state)
         await db.commit()
+        state_id = state.id
 
         async def _fail_enqueue(*_args, **_kwargs):
             raise RuntimeError("outbox_write_failed")
@@ -268,7 +269,7 @@ async def test_notification_intent_failure_rolls_back_message_archive_and_ledger
             )
         await db.rollback()
 
-        restored_state = await db.get(ChatThreadRead, state.id)
+        restored_state = await db.get(ChatThreadRead, state_id)
         assert restored_state is not None
         assert restored_state.is_archived is True
         assert restored_state.last_read_at == original_cursor
