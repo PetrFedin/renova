@@ -240,14 +240,14 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
 
     sent_notifications: list[str] = []
 
-    async def capture_notify(_db, *, user_id: str, **_kwargs):
+    async def capture_notify_from_outbox(_db, *, user_id: str, **_kwargs):
         sent_notifications.append(user_id)
         return None
 
     async def no_broadcast(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(notification_service, "notify", capture_notify)
+    monkeypatch.setattr(notification_service, "notify_from_outbox", capture_notify_from_outbox)
     from app.api.v1 import ws
     monkeypatch.setattr(ws, "broadcast", no_broadcast)
     monkeypatch.setattr(ws, "broadcast_inbox", no_broadcast)
