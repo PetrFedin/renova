@@ -3,6 +3,9 @@ name: Chat message integrity
 on:
   push:
     paths:
+      - "apps/mobile/components/renova/chat/ChatThreadView.tsx"
+      - "apps/mobile/lib/api/chats.ts"
+      - "apps/mobile/lib/api/types/chat.ts"
       - "backend/app/api/v1/chats.py"
       - "backend/app/api/v1/technical_supervision_chat.py"
       - "backend/app/services/chat_message_mutation.py"
@@ -12,12 +15,20 @@ on:
       - "backend/tests/test_chat_message_atomicity.py"
       - "backend/tests/test_chat_message_postgres_concurrency.py"
       - "backend/tests/test_chat_participant_message_delivery.py"
+      - "backend/tests/test_chat_thread_only_mobile_capabilities_contract.py"
       - "backend/tests/test_chat_thread_only_mobile_inbox_contract.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/typecheck-mobile.sh"
+      - "scripts/typecheck-mobile-report.mjs"
       - ".github/workflows/chat-message-integrity.yml"
   pull_request:
     paths:
+      - "apps/mobile/components/renova/chat/ChatThreadView.tsx"
+      - "apps/mobile/lib/api/chats.ts"
+      - "apps/mobile/lib/api/types/chat.ts"
       - "backend/app/api/v1/chats.py"
       - "backend/app/api/v1/technical_supervision_chat.py"
       - "backend/app/services/chat_message_mutation.py"
@@ -27,9 +38,14 @@ on:
       - "backend/tests/test_chat_message_atomicity.py"
       - "backend/tests/test_chat_message_postgres_concurrency.py"
       - "backend/tests/test_chat_participant_message_delivery.py"
+      - "backend/tests/test_chat_thread_only_mobile_capabilities_contract.py"
       - "backend/tests/test_chat_thread_only_mobile_inbox_contract.py"
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/typecheck-mobile.sh"
+      - "scripts/typecheck-mobile-report.mjs"
       - ".github/workflows/chat-message-integrity.yml"
 
 concurrency:
@@ -42,7 +58,7 @@ permissions:
 jobs:
   chat-message-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
@@ -93,4 +109,13 @@ jobs:
             tests/test_chat_message_atomicity.py \
             tests/test_chat_message_postgres_concurrency.py \
             tests/test_chat_participant_message_delivery.py \
+            tests/test_chat_thread_only_mobile_capabilities_contract.py \
             tests/test_chat_thread_only_mobile_inbox_contract.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install mobile workspace dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Typecheck mobile capability surface
+        run: npm run typecheck:mobile
