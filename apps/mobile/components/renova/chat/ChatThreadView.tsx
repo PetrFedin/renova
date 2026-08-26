@@ -439,7 +439,7 @@ export function ChatThreadView({
               }
               await refreshChatAfterCommit('Reaction');
             }}
-            onPin={hasProjectScope ? async () => {
+            onPin={canManageParticipants ? async () => {
               try {
                 await api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned);
               } catch (e) {
@@ -455,7 +455,7 @@ export function ChatThreadView({
             } : undefined}
             onReply={() => setReplyTo(m)}
             onTask={canCreateTask ? () => setTaskMsg(m) : undefined}
-            onConfirm={hasProjectScope && m.message_type === 'confirm' ? async () => {
+            onConfirm={canManageParticipants && m.message_type === 'confirm' ? async () => {
               try {
                 await api.confirmChatMessage(user.id, projectId, threadId, m.id);
               } catch (e) {
