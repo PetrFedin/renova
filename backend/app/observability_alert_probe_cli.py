@@ -8,6 +8,7 @@ import sys
 from app.core.logging_config import setup_logging
 from app.core.observability_alert_probe import (
     AlertProbeConfigurationError,
+    AlertProbeEmissionError,
     emit_staging_alert_probe,
 )
 
@@ -64,6 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     except AlertProbeConfigurationError as exc:
         print(f"observability alert probe refused: {exc}", file=sys.stderr)
         return 2
+    except AlertProbeEmissionError as exc:
+        print(f"observability alert probe failed locally: {exc}", file=sys.stderr)
+        return 3
 
     if args.json:
         print(json.dumps(receipt, ensure_ascii=False, sort_keys=True))
