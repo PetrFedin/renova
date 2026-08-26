@@ -244,8 +244,9 @@ async def test_notification_intent_failure_rolls_back_message_archive_and_ledger
     async with Session() as db:
         customer, contractor, _project, thread = await _seed(db)
         original_cursor = datetime(2026, 2, 1, 8, 0, 0)
+        thread_id = thread.id
         state = ChatThreadRead(
-            thread_id=thread.id,
+            thread_id=thread_id,
             user_id=contractor.id,
             last_read_at=original_cursor,
             is_archived=True,
@@ -276,7 +277,7 @@ async def test_notification_intent_failure_rolls_back_message_archive_and_ledger
         assert (
             await db.execute(
                 select(func.count()).select_from(ChatMessage).where(
-                    ChatMessage.thread_id == thread.id,
+                    ChatMessage.thread_id == thread_id,
                     ChatMessage.text == "Must roll back",
                 )
             )
