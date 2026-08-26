@@ -23,6 +23,7 @@ from app.api.v1 import technical_supervision
 from app.api.v1 import technical_supervision_actions
 from app.api.v1 import technical_supervision_chat
 from app.api.v1 import technical_supervision_schedule
+from app.api.v1 import warranty
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -221,8 +222,12 @@ _BANK_STATEMENT_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/import/bank-statement", "POST"),
     ("/projects/{project_id}/import/bank-statement/confirm", "POST"),
 }
-_remove_replaced_routes(export.router, _BANK_STATEMENT_ROUTES)
+_WARRANTY_MUTATION_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/warranty-claims", "POST"),
+}
+_remove_replaced_routes(export.router, _BANK_STATEMENT_ROUTES | _WARRANTY_MUTATION_ROUTES)
 api_router.include_router(bank_statements.router)
+api_router.include_router(warranty.router)
 api_router.include_router(export.router)
 api_router.include_router(receipts.router)
 api_router.include_router(purchases.router)
