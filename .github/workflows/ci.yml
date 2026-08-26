@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           DATABASE_URL="$CHAT_MESSAGE_POSTGRES_URL" poetry run alembic upgrade head
-      - name: Run chat atomicity, ACL, mobile capability and PostgreSQL race contracts
+      - name: Run chat atomicity, ACL, reconciliation, mobile capability and PostgreSQL race contracts
         working-directory: backend
         run: |
           set -euo pipefail
@@ -83,6 +83,8 @@ jobs:
             tests/test_chat_message_atomicity.py \
             tests/test_chat_message_postgres_concurrency.py \
             tests/test_chat_participant_message_delivery.py \
+            tests/test_chat_reconciliation_contract.py \
+            tests/test_chat_thread_only_acl_contract.py \
             tests/test_chat_thread_only_mobile_capabilities_contract.py \
             tests/test_chat_thread_only_mobile_inbox_contract.py
 
