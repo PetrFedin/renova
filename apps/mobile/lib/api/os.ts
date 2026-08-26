@@ -14,6 +14,13 @@ export type BudgetHubResponse = {
   threshold_pct: number;
 };
 
+function newWarrantyClientRequestId(): string {
+  const now = Date.now().toString(36);
+  const randomA = Math.random().toString(36).slice(2, 12);
+  const randomB = Math.random().toString(36).slice(2, 12);
+  return `warranty-${now}-${randomA}-${randomB}`;
+}
+
 export const osApi = {
   osBudget: (userId: string, projectId: string) => req<OsBudgetSummary>(`/api/v1/projects/${projectId}/os/budget`, {}, userId),
   budgetSummaryHub: async (userId: string, projectId: string) => {
@@ -182,20 +189,21 @@ export const osApi = {
     projectId: string,
     body: { title?: string; description?: string },
   ) => {
+    const client_request_id = newWarrantyClientRequestId();
+    const serialized = JSON.stringify({ ...body, client_request_id });
     try {
-      return await req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string; due_at?: string | null; post_closeout?: boolean; sla_days?: number }>(
+      return await req<{ ok: boolean; issue_id: string; document_id: string; qc_path?: string; due_at?: string | null; post_closeout?: boolean; sla_days?: number; idempotent_replay?: boolean }>(
         `/api/v1/projects/${projectId}/warranty-claims`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (e) {
-      const { ApiError } = await import('./client');
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/warranty-claims`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
@@ -216,7 +224,6 @@ export const osApi = {
     try {
       return await req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId);
     } catch (e) {
-      const { ApiError } = await import('./client');
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
