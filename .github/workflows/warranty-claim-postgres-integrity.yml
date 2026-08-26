@@ -1,0 +1,89 @@
+name: Warranty claim PostgreSQL integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/api/v1/router.py"
+      - "backend/app/api/v1/warranty.py"
+      - "backend/app/services/client_write_idempotency.py"
+      - "backend/app/services/client_write_side_effects.py"
+      - "backend/app/services/warranty_claim_service.py"
+      - "backend/tests/test_warranty_claim_atomicity.py"
+      - "backend/tests/test_warranty_claim_postgres_concurrency.py"
+      - "backend/tests/test_warranty_mobile_identity_contract.py"
+      - "apps/mobile/lib/api/os.ts"
+      - "apps/mobile/lib/offlineQueue.ts"
+      - ".github/workflows/warranty-claim-postgres-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/api/v1/router.py"
+      - "backend/app/api/v1/warranty.py"
+      - "backend/app/services/client_write_idempotency.py"
+      - "backend/app/services/client_write_side_effects.py"
+      - "backend/app/services/warranty_claim_service.py"
+      - "backend/tests/test_warranty_claim_atomicity.py"
+      - "backend/tests/test_warranty_claim_postgres_concurrency.py"
+      - "backend/tests/test_warranty_mobile_identity_contract.py"
+      - "apps/mobile/lib/api/os.ts"
+      - "apps/mobile/lib/offlineQueue.ts"
+      - ".github/workflows/warranty-claim-postgres-integrity.yml"
+
+concurrency:
+  group: warranty-claim-postgres-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  warranty-postgres-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      WARRANTY_CLAIM_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PUBLIC_BASE_URL: https://ci-staging.example.com
+      SECRET_KEY: ci-staging-secret-key-32chars!!
+      ALLOW_CREATE_ALL: "false"
+      ALLOW_DEMO_SEED: "false"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Upgrade PostgreSQL to canonical schema
+        working-directory: backend
+        run: poetry run alembic upgrade head
+      - name: Run warranty atomicity and offline identity contracts
+        working-directory: backend
+        run: |
+          poetry run pytest -q \
+            tests/test_warranty_claim_atomicity.py \
+            tests/test_warranty_mobile_identity_contract.py
+      - name: Run real concurrent PostgreSQL race
+        working-directory: backend
+        run: poetry run pytest -q tests/test_warranty_claim_postgres_concurrency.py
