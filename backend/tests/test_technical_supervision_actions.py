@@ -255,7 +255,11 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
     supervisor_message = await supervision_chat_api.post_operational_message(
         project_id=project.id,
         thread_id=thread.id,
-        body=chats_api.MessageCreate(text="Проверьте узел до закрытия", message_type="text"),
+        body=chats_api.MessageCreate(
+            text="Проверьте узел до закрытия",
+            message_type="text",
+            client_request_id="supervision-chat-0001",
+        ),
         user=inspector,
         db=db,
     )
@@ -268,7 +272,11 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
         await supervision_chat_api.post_operational_message(
             project_id=project.id,
             thread_id=thread.id,
-            body=chats_api.MessageCreate(text="pay", message_type="payment"),
+            body=chats_api.MessageCreate(
+                text="pay",
+                message_type="payment",
+                client_request_id="supervision-chat-0002",
+            ),
             user=inspector,
             db=db,
         )
@@ -288,7 +296,11 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
     customer_message = await supervision_chat_api.post_operational_message(
         project_id=project.id,
         thread_id=thread.id,
-        body=chats_api.MessageCreate(text="Заказчик добавил уточнение", message_type="text"),
+        body=chats_api.MessageCreate(
+            text="Заказчик добавил уточнение",
+            message_type="text",
+            client_request_id="supervision-chat-0003",
+        ),
         user=customer,
         db=db,
     )
