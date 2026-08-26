@@ -36,6 +36,10 @@ async def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg.settings, "otel_exporter_otlp_endpoint", None)
     monkeypatch.setattr(cfg.settings, "otel_exporter_otlp_insecure", False)
     monkeypatch.setattr(cfg.settings, "log_json", False)
+    monkeypatch.setattr(cfg.settings, "smtp_host", None)
+    monkeypatch.setattr(cfg.settings, "ops_alert_email", None)
+    monkeypatch.setattr(cfg.settings, "smtp_use_tls", True)
+    monkeypatch.setattr(cfg.settings, "document_ocr_mode", "metadata")
 
     from app.db import session as sess
 
