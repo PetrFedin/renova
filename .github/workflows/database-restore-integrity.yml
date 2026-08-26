@@ -9,6 +9,7 @@ on:
       - "backend/scripts/verify_migration_schema.py"
       - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/scripts/restore_drill_fixture.py"
+      - "backend/scripts/restore_application_smoke.py"
       - "scripts/database-restore-drill.sh"
       - "scripts/databaseRestoreTruth.test.mjs"
       - ".github/workflows/database-restore-integrity.yml"
@@ -21,6 +22,7 @@ on:
       - "backend/scripts/verify_migration_schema.py"
       - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/scripts/restore_drill_fixture.py"
+      - "backend/scripts/restore_application_smoke.py"
       - "scripts/database-restore-drill.sh"
       - "scripts/databaseRestoreTruth.test.mjs"
       - ".github/workflows/database-restore-integrity.yml"
@@ -77,6 +79,7 @@ jobs:
           bash -n scripts/database-restore-drill.sh
           python -m py_compile \
             backend/scripts/restore_drill_fixture.py \
+            backend/scripts/restore_application_smoke.py \
             backend/scripts/verify_orm_schema_parity.py
 
       - name: Install exact locked backend environment
@@ -116,6 +119,23 @@ jobs:
             --expected "$DR_DIR/source-manifest.json" \
             --manifest "$DR_DIR/restored-manifest.json"
 
+      - name: Boot application and readiness against restored database
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_restore
+          ENVIRONMENT: test
+          ALLOW_DEMO_SEED: "false"
+          ALLOW_CREATE_ALL: "false"
+          AUTH_ALLOW_HEADER_USER_ID: "false"
+          REDIS_URL: ""
+        run: |
+          set -euo pipefail
+          poetry run python scripts/restore_application_smoke.py \
+            --record "$DR_DIR/application-health.json"
+          poetry run python scripts/restore_drill_fixture.py verify \
+            --expected "$DR_DIR/source-manifest.json" \
+            --manifest "$DR_DIR/post-application-manifest.json"
+
       - name: Write sanitized restore verification record
         run: |
           set -euo pipefail
@@ -127,16 +147,29 @@ jobs:
           root = Path(os.environ["DR_DIR"])
           source = json.loads((root / "source-manifest.json").read_text())
           restored = json.loads((root / "restored-manifest.json").read_text())
-          if source != restored:
-              raise SystemExit("source/restored manifests diverged")
+          post_application = json.loads((root / "post-application-manifest.json").read_text())
+          application = json.loads((root / "application-health.json").read_text())
+          timing = json.loads((root / "native-restore-timing.json").read_text())
+          if source != restored or source != post_application:
+              raise SystemExit("source/restored/post-application manifests diverged")
+          if application.get("application_health_verified") is not True:
+              raise SystemExit("restored application health was not verified")
+          if application.get("database") != os.environ["RESTORE_DB"]:
+              raise SystemExit("application smoke targeted unexpected restore database")
           record = {
               "verified": True,
               "database_engine": "PostgreSQL 17",
               "backup_format": "pg_dump custom",
               "alembic_revision": source["snapshot"]["alembic_revision"],
               "fixture_fingerprint_sha256": source["fingerprint_sha256"],
+              "post_application_fingerprint_sha256": post_application["fingerprint_sha256"],
               "dump_bytes": (root / "renova.dump").stat().st_size,
               "restore_target": "isolated-renova_restore",
+              "application_health_verified": True,
+              "application_health_status": application["health_status"],
+              "application_ready_status": application["ready_status"],
+              "native_backup_restore_seconds": timing["native_backup_restore_seconds"],
+              "timing_scope": timing["scope"],
           }
           (root / "restore-verification.json").write_text(
               json.dumps(record, indent=2, sort_keys=True) + "\n",
