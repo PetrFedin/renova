@@ -49,6 +49,7 @@ function MessageBubble({
   query,
   returnTo,
   osRole,
+  canOpenProjectActions,
   onReact,
   onPin,
   onReply,
@@ -62,10 +63,11 @@ function MessageBubble({
   query?: string;
   returnTo?: string;
   osRole: OsRole;
+  canOpenProjectActions: boolean;
   onReact: (emoji: string) => void;
-  onPin: () => void;
+  onPin?: () => void;
   onReply: () => void;
-  onTask: () => void;
+  onTask?: () => void;
   onConfirm?: () => void;
   onPay?: () => void;
 }) {
@@ -90,9 +92,9 @@ function MessageBubble({
           message: 'Реакция или действие',
           actions: [
             ...REACTIONS.map((e) => ({ label: e, onPress: () => onReact(e) })),
-            { label: m.is_pinned ? 'Открепить' : 'Закрепить', onPress: onPin },
+            ...(onPin ? [{ label: m.is_pinned ? 'Открепить' : 'Закрепить', onPress: onPin }] : []),
             { label: 'Ответить', onPress: onReply },
-            { label: 'Создать задачу', onPress: onTask },
+            ...(onTask ? [{ label: 'Создать задачу', onPress: onTask }] : []),
           ],
         });
       }}
@@ -107,7 +109,7 @@ function MessageBubble({
         <PrimaryButton title="Подтвердить" compact onPress={onConfirm} />
       )}
       {m.confirmed && <Text style={s.ok}>✓ Подтверждено</Text>}
-      {m.work_order_id && (
+      {m.work_order_id && canOpenProjectActions && (
         <Pressable
           onPress={() =>
             pushOsNav(
@@ -170,17 +172,22 @@ export function ChatThreadView({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const loadGenerationRef = useRef(0);
+  const hasProjectScope = chat?.capabilities?.access_scope === 'project';
+  const canViewProjectActions = hasProjectScope && chat?.capabilities?.can_view_project_actions === true;
+  const canManageParticipants = hasProjectScope && chat?.capabilities?.can_manage_participants === true;
+  const canCreateTask = hasProjectScope && chat?.capabilities?.can_create_task === true;
+  const canCreateInvoice = hasProjectScope && chat?.capabilities?.can_create_invoice === true;
 
   const loadMessages = useCallback(async () => {
     if (!user || !threadId || !projectId) return;
     const generation = ++loadGenerationRef.current;
-    if (activeProject?.id !== projectId) {
-      await loadProject(projectId).catch((error) => reportError('chat.loadProject', error, { projectId }));
-    }
-    if (generation !== loadGenerationRef.current) return;
     try {
       const detail = await api.getChat(user.id, projectId, threadId);
       if (generation !== loadGenerationRef.current) return;
+      if (detail.capabilities?.access_scope === 'project' && activeProject?.id !== projectId) {
+        await loadProject(projectId).catch((error) => reportError('chat.loadProject', error, { projectId }));
+        if (generation !== loadGenerationRef.current) return;
+      }
       setRenderedReadCursor(null);
       setChat(detail);
       setLoadFailed(false);
@@ -260,7 +267,7 @@ export function ChatThreadView({
     };
   }, [chat, screenFocused, appState, threadId]);
 
-  const overlayBlocking = inviteOpen || settingsOpen || !!taskMsg;
+  const overlayBlocking = (canManageParticipants && inviteOpen) || settingsOpen || (canCreateTask && !!taskMsg);
 
   useEffect(() => {
     if (
@@ -357,7 +364,7 @@ export function ChatThreadView({
 
   const reconcileCommittedChatMutation = async (action: string) => {
     await refreshChatAfterCommit(action);
-    await refreshProjectAfterCommit(action);
+    if (hasProjectScope) await refreshProjectAfterCommit(action);
   };
 
   const sendText = async (body: string, type = 'text', image?: string) => {
@@ -381,7 +388,9 @@ export function ChatThreadView({
       <BackHeader title={chat.title} returnTo={returnTo} />
       <View style={s.topActions}>
         <Text style={[s.wsDot, wsConnected ? s.wsOn : s.wsOff]}>{wsConnected ? '● онлайн' : '○ опрос 15 с'}</Text>
-        <Pressable onPress={() => setInviteOpen(true)}><Text style={s.topLink}>+ Участник</Text></Pressable>
+        {canManageParticipants && (
+          <Pressable onPress={() => setInviteOpen(true)}><Text style={s.topLink}>+ Участник</Text></Pressable>
+        )}
         <Pressable onPress={() => setSettingsOpen(true)}><Text style={s.topLink}>Настройки</Text></Pressable>
         <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch(() => Alert.alert('Ошибка', 'Не удалось экспортировать документ'))}>
           <Text style={s.topLink}>Документ</Text>
@@ -415,6 +424,7 @@ export function ChatThreadView({
             query={chatQuery.trim() || undefined}
             returnTo={returnTo || `/chat/${threadId}`}
             osRole={role}
+            canOpenProjectActions={canViewProjectActions}
             onReact={async (emoji) => {
               try {
                 await api.reactChatMessage(user.id, projectId, threadId, m.id, emoji);
@@ -429,7 +439,7 @@ export function ChatThreadView({
               }
               await refreshChatAfterCommit('Reaction');
             }}
-            onPin={async () => {
+            onPin={hasProjectScope ? async () => {
               try {
                 await api.pinChatMessage(user.id, projectId, threadId, m.id, !m.is_pinned);
               } catch (e) {
@@ -442,10 +452,10 @@ export function ChatThreadView({
                 return;
               }
               await refreshChatAfterCommit('MessagePin');
-            }}
+            } : undefined}
             onReply={() => setReplyTo(m)}
-            onTask={() => setTaskMsg(m)}
-            onConfirm={m.message_type === 'confirm' ? async () => {
+            onTask={canCreateTask ? () => setTaskMsg(m) : undefined}
+            onConfirm={hasProjectScope && m.message_type === 'confirm' ? async () => {
               try {
                 await api.confirmChatMessage(user.id, projectId, threadId, m.id);
               } catch (e) {
@@ -459,7 +469,7 @@ export function ChatThreadView({
               }
               await reconcileCommittedChatMutation('Confirm');
             } : undefined}
-            onPay={m.message_type === 'payment' ? () => {
+            onPay={canViewProjectActions && m.message_type === 'payment' ? () => {
               const meta = (m as { meta?: { payment_id?: string }; payment_id?: string });
               openPaymentFlow(meta.meta?.payment_id || meta.payment_id);
             } : undefined}
@@ -530,42 +540,44 @@ export function ChatThreadView({
               }}>
                 <Text style={s.toolBtn}>✓?</Text>
               </Pressable>
-              <Pressable disabled={!canWrite} onPress={() => {
-                const createInvoice = async (amount: number) => {
-                  try {
-                    await api.invoiceFromChat(user.id, projectId, threadId, {
-                      title: 'Оплата работ',
-                      amount,
-                      payment_type: 'stage',
-                    });
-                  } catch (e: unknown) {
-                    if (isOfflineQueued(e)) {
-                      notifyOfflineQueued('Счёт');
-                    } else {
-                      reportError('ChatThreadView.Invoice.Mutation', e, { threadId, projectId, amount });
-                      Alert.alert('Ошибка', 'Не удалось создать счёт');
+              {canCreateInvoice && (
+                <Pressable disabled={!canWrite} onPress={() => {
+                  const createInvoice = async (amount: number) => {
+                    try {
+                      await api.invoiceFromChat(user.id, projectId, threadId, {
+                        title: 'Оплата работ',
+                        amount,
+                        payment_type: 'stage',
+                      });
+                    } catch (e: unknown) {
+                      if (isOfflineQueued(e)) {
+                        notifyOfflineQueued('Счёт');
+                      } else {
+                        reportError('ChatThreadView.Invoice.Mutation', e, { threadId, projectId, amount });
+                        Alert.alert('Ошибка', 'Не удалось создать счёт');
+                      }
+                      return;
                     }
-                    return;
-                  }
-                  await reconcileCommittedChatMutation('Invoice');
-                  alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
-                };
-                const openPaymentForm = () => {
-                  const osRole = role === 'contractor' ? 'contractor' : 'customer';
-                  pushOsNav(budgetTabRoute(osRole, 'payments', { openPayment: '1' }), returnTo || pathname, osRole);
-                };
-                showActionConfirm({
-                  title: 'Счёт в бюджете',
-                  message: 'Быстрая сумма или полная форма (сумма / этап / тип). Заказчик увидит счёт в «Деньги → Оплаты».',
-                  actions: [
-                    { label: '5 000 ₽', onPress: () => { createInvoice(5000).catch(reportCatch('chat.invoice')); } },
-                    { label: '10 000 ₽', onPress: () => { createInvoice(10000).catch(reportCatch('chat.invoice')); } },
-                    { label: '25 000 ₽', onPress: () => { createInvoice(25000).catch(reportCatch('chat.invoice')); } },
-                    { label: 'Другая сумма…', onPress: openPaymentForm },
-                    { label: 'Открыть оплаты', onPress: openPaymentForm },
-                  ],
-                });
-              }}><Text style={s.toolBtn}>💳</Text></Pressable>
+                    await reconcileCommittedChatMutation('Invoice');
+                    alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
+                  };
+                  const openPaymentForm = () => {
+                    const osRole = role === 'contractor' ? 'contractor' : 'customer';
+                    pushOsNav(budgetTabRoute(osRole, 'payments', { openPayment: '1' }), returnTo || pathname, osRole);
+                  };
+                  showActionConfirm({
+                    title: 'Счёт в бюджете',
+                    message: 'Быстрая сумма или полная форма (сумма / этап / тип). Заказчик увидит счёт в «Деньги → Оплаты».',
+                    actions: [
+                      { label: '5 000 ₽', onPress: () => { createInvoice(5000).catch(reportCatch('chat.invoice')); } },
+                      { label: '10 000 ₽', onPress: () => { createInvoice(10000).catch(reportCatch('chat.invoice')); } },
+                      { label: '25 000 ₽', onPress: () => { createInvoice(25000).catch(reportCatch('chat.invoice')); } },
+                      { label: 'Другая сумма…', onPress: openPaymentForm },
+                      { label: 'Открыть оплаты', onPress: openPaymentForm },
+                    ],
+                  });
+                }}><Text style={s.toolBtn}>💳</Text></Pressable>
+              )}
             </>
           )}
         </View>
@@ -598,7 +610,7 @@ export function ChatThreadView({
         </View>
       </Modal>
 
-      <Modal visible={inviteOpen} transparent animationType="slide">
+      <Modal visible={canManageParticipants && inviteOpen} transparent animationType="slide">
         <View style={s.modalBg}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>Пригласить в чат</Text>
@@ -633,12 +645,12 @@ export function ChatThreadView({
       </Modal>
 
       <ChatTaskSheet
-        visible={!!taskMsg}
+        visible={canCreateTask && !!taskMsg}
         defaultTitle={taskMsg?.text?.slice(0, 80) || 'Задача из чата'}
         userId={user.id}
         onClose={() => setTaskMsg(null)}
         onSubmit={async (body) => {
-          if (!taskMsg) return;
+          if (!taskMsg || !canCreateTask) return;
           try {
             await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
           } catch (e) {
