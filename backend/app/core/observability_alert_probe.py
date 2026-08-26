@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import logging
-import os
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -30,6 +29,10 @@ logger = logging.getLogger("renova.observability.alert_probe")
 
 class AlertProbeConfigurationError(RuntimeError):
     """Raised when a drill could be unsafe or could produce ambiguous evidence."""
+
+
+class AlertProbeEmissionError(RuntimeError):
+    """Raised when one of the locally configured telemetry paths did not accept the probe."""
 
 
 class SyntheticAlertProbeError(RuntimeError):
@@ -175,6 +178,20 @@ def emit_staging_alert_probe(
                 },
             )
             metric_emitted = True
+
+        missing = [
+            name
+            for name, emitted in (
+                ("sentry", sentry_emitted),
+                ("trace", trace_emitted),
+                ("metric", metric_emitted),
+            )
+            if not emitted
+        ]
+        if missing:
+            raise AlertProbeEmissionError(
+                "local observability probe emission incomplete: " + ",".join(missing)
+            )
 
         logger.error(
             "staging observability alert probe emitted probe_id=%s external_delivery_confirmed=false",
