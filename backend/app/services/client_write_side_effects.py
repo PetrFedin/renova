@@ -9,7 +9,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChangeOrder, Expense, Payment, Project, Receipt
+from app.models.entities import ChangeOrder, Expense, Payment, Project, ProjectIssue, Receipt
 from app.services import outbox_service as outbox
 
 
@@ -142,6 +142,64 @@ async def prepare_client_write_side_effects(
                     effect_type="notification",
                     outbox_id=notification_row.id,
                     match_key=project.customer_id,
+                )
+            )
+        return effects
+
+    if scope == "warranty_claim.create":
+        issue = await db.get(ProjectIssue, entity_id)
+        project = await db.get(Project, project_id)
+        if not issue or not project:
+            return effects
+
+        creator_is_contractor = bool(project.contractor_id and user_id == project.contractor_id)
+        activity_row = await outbox.enqueue(
+            db,
+            aggregate_type="warranty_claim",
+            aggregate_id=issue.id,
+            event_type=outbox.ACTIVITY_EVENT,
+            payload={
+                "project_id": project_id,
+                "user_id": user_id,
+                "kind": "WarrantyClaim",
+                "title": issue.title,
+                "body": issue.description,
+                "link_path": "/quality-control" if creator_is_contractor else "/documents",
+            },
+        )
+        effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
+
+        other_user_id = (
+            project.contractor_id
+            if user_id == project.customer_id
+            else project.customer_id
+        )
+        if other_user_id:
+            recipient_is_contractor = other_user_id == project.contractor_id
+            notification_row = await outbox.enqueue(
+                db,
+                aggregate_type="warranty_claim",
+                aggregate_id=issue.id,
+                event_type=outbox.NOTIFICATION_EVENT,
+                payload={
+                    "user_id": other_user_id,
+                    "project_id": project_id,
+                    "notification_type": "issue",
+                    "title": issue.title,
+                    "body": issue.description or "Новое гарантийное обращение",
+                    "link_path": "/quality-control" if recipient_is_contractor else "/documents",
+                    "return_to": (
+                        "/(contractor)/(tabs)/home"
+                        if recipient_is_contractor
+                        else "/(customer)/(tabs)/home"
+                    ),
+                },
+            )
+            effects.append(
+                PreparedSideEffect(
+                    effect_type="notification",
+                    outbox_id=notification_row.id,
+                    match_key=other_user_id,
                 )
             )
         return effects
