@@ -175,6 +175,20 @@ async def test_release_health_api_is_truthful_and_backward_compatible(monkeypatc
     assert body["observability"]["external_confirmations"]["alert_delivery"] is False
     assert "dsn" not in body["observability"]
     assert body["integrations"]["outbox"] is not None
+    assert body["integrations"]["smtp"] == {
+        "configured": False,
+        "ops_alert_recipient_configured": False,
+        "tls_enabled": True,
+        "status": "not_configured",
+        "external_delivery_confirmed": False,
+    }
+    assert body["integrations"]["document_ocr"] == {
+        "mode": "metadata",
+        "status": "metadata_only",
+        "content_ocr_available": False,
+        "content_read": False,
+        "runtime_owner": "renova-worker",
+    }
 
     assert forbidden.status_code == 403
 
