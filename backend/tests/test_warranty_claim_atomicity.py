@@ -15,8 +15,6 @@ from app.services import outbox_service as outbox
 from app.services import warranty_claim_service as warranty
 from app.services.client_write_idempotency import IdempotencyConflict
 
-pytestmark = pytest.mark.asyncio
-
 
 async def _no_inline(*_args, **_kwargs) -> int:
     return 0
@@ -97,6 +95,7 @@ async def _count_claim_rows(db, *, project_id: str, request_id: str, issue_id: s
     }
 
 
+@pytest.mark.asyncio
 async def test_same_request_replays_one_claim_and_one_effect_set(db, monkeypatch):
     monkeypatch.setattr(warranty.outbox_inline_dispatch, "dispatch_best_effort", _no_inline)
     customer, _, project = await _seed_project(db, suffix="1")
@@ -132,9 +131,11 @@ async def test_same_request_replays_one_claim_and_one_effect_set(db, monkeypatch
     ) == {"issues": 1, "documents": 1, "ledger": 1, "outbox": 2}
 
 
+@pytest.mark.asyncio
 async def test_same_request_with_different_payload_is_conflict(db, monkeypatch):
     monkeypatch.setattr(warranty.outbox_inline_dispatch, "dispatch_best_effort", _no_inline)
     customer, _, project = await _seed_project(db, suffix="2")
+    project_id = project.id
     request_id = "warranty-conflict-request-0002"
 
     first = await warranty.create_or_replay_warranty_claim(
@@ -158,15 +159,17 @@ async def test_same_request_with_different_payload_is_conflict(db, monkeypatch):
 
     assert await _count_claim_rows(
         db,
-        project_id=project.id,
+        project_id=project_id,
         request_id=request_id,
         issue_id=first.issue_id,
     ) == {"issues": 1, "documents": 1, "ledger": 1, "outbox": 2}
 
 
+@pytest.mark.asyncio
 async def test_document_failure_rolls_back_issue_ledger_and_outbox(db, monkeypatch):
     monkeypatch.setattr(warranty.outbox_inline_dispatch, "dispatch_best_effort", _no_inline)
     customer, _, project = await _seed_project(db, suffix="3")
+    project_id = project.id
     request_id = "warranty-rollback-request-0003"
 
     async def fail_document(*_args, **_kwargs):
@@ -187,7 +190,7 @@ async def test_document_failure_rolls_back_issue_ledger_and_outbox(db, monkeypat
     assert int(
         await db.scalar(
             select(func.count()).select_from(ProjectIssue).where(
-                ProjectIssue.project_id == project.id,
+                ProjectIssue.project_id == project_id,
                 ProjectIssue.title == "[Гарантия] Rollback claim",
             )
         )
@@ -196,7 +199,7 @@ async def test_document_failure_rolls_back_issue_ledger_and_outbox(db, monkeypat
     assert int(
         await db.scalar(
             select(func.count()).select_from(ProjectDocument).where(
-                ProjectDocument.project_id == project.id,
+                ProjectDocument.project_id == project_id,
                 ProjectDocument.document_type == DocumentType.warranty.value,
             )
         )
@@ -220,6 +223,7 @@ async def test_document_failure_rolls_back_issue_ledger_and_outbox(db, monkeypat
     ) == 0
 
 
+@pytest.mark.asyncio
 async def test_idempotency_scope_is_user_and_project_specific(db, monkeypatch):
     monkeypatch.setattr(warranty.outbox_inline_dispatch, "dispatch_best_effort", _no_inline)
     customer, contractor, project = await _seed_project(db, suffix="4")
@@ -265,13 +269,14 @@ def test_router_has_one_canonical_create_and_keeps_legacy_reads_and_close():
     matching = []
     for route in api_router.routes:
         path = getattr(route, "path", "")
+        canonical_path = path.removeprefix("/api/v1")
         methods = set(getattr(route, "methods", set()) or set())
-        if "warranty-claims" in path:
-            matching.append((path, methods, getattr(route, "endpoint", None)))
+        if "warranty-claims" in canonical_path:
+            matching.append((canonical_path, methods, getattr(route, "endpoint", None)))
 
-    creates = [item for item in matching if item[0] == "/api/v1/projects/{project_id}/warranty-claims" and "POST" in item[1]]
-    reads = [item for item in matching if item[0] == "/api/v1/projects/{project_id}/warranty-claims" and "GET" in item[1]]
-    closes = [item for item in matching if item[0] == "/api/v1/projects/{project_id}/warranty-claims/{issue_id}/close" and "POST" in item[1]]
+    creates = [item for item in matching if item[0] == "/projects/{project_id}/warranty-claims" and "POST" in item[1]]
+    reads = [item for item in matching if item[0] == "/projects/{project_id}/warranty-claims" and "GET" in item[1]]
+    closes = [item for item in matching if item[0] == "/projects/{project_id}/warranty-claims/{issue_id}/close" and "POST" in item[1]]
 
     assert len(creates) == 1
     assert creates[0][2].__module__ == "app.api.v1.warranty"
