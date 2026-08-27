@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${RENOVA_LOCAL_ENV_FILE:-${ROOT}/.env.local}"
 ENV_EXAMPLE="${ROOT}/env.local.example"
 COMPOSE_FILE="${ROOT}/docker-compose.yml"
+LOCAL_COMPOSE_PROJECT="renova-local"
 API_URL="${RENOVA_LOCAL_API_URL:-http://127.0.0.1:8100}"
 MINIO_HEALTH_URL="${RENOVA_LOCAL_MINIO_HEALTH_URL:-http://127.0.0.1:9000/minio/health/live}"
 NODE_MAJOR="20"
@@ -39,20 +40,20 @@ load_local_env() {
   esac
 
   case "${DATABASE_URL:-}" in
-    *127.0.0.1*|*localhost*) ;;
-    *) fail "local DATABASE_URL must target localhost/127.0.0.1" ;;
+    postgresql+asyncpg://*@127.0.0.1:5433/renova|postgresql+asyncpg://*@localhost:5433/renova) ;;
+    *) fail "canonical local DATABASE_URL must target localhost/127.0.0.1:5433/renova" ;;
   esac
   case "${REDIS_URL:-}" in
-    redis://127.0.0.1:*|redis://localhost:*) ;;
-    *) fail "local REDIS_URL must target localhost/127.0.0.1" ;;
+    redis://127.0.0.1:6380/0|redis://localhost:6380/0) ;;
+    *) fail "canonical local REDIS_URL must target localhost/127.0.0.1:6380/0" ;;
   esac
   case "${S3_ENDPOINT:-}" in
-    http://127.0.0.1:*|http://localhost:*) ;;
-    *) fail "local S3_ENDPOINT must target localhost/127.0.0.1" ;;
+    http://127.0.0.1:9000|http://localhost:9000) ;;
+    *) fail "canonical local S3_ENDPOINT must target localhost/127.0.0.1:9000" ;;
   esac
   case "${PUBLIC_BASE_URL:-}" in
-    http://127.0.0.1:*|http://localhost:*) ;;
-    *) fail "local PUBLIC_BASE_URL must target localhost/127.0.0.1" ;;
+    http://127.0.0.1:8100|http://localhost:8100) ;;
+    *) fail "canonical local PUBLIC_BASE_URL must target localhost/127.0.0.1:8100" ;;
   esac
 
   [ "${ALLOW_CREATE_ALL:-}" = "false" ] || fail "local runtime requires ALLOW_CREATE_ALL=false; schema is Alembic-only"
@@ -63,7 +64,7 @@ load_local_env() {
 }
 
 compose() {
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  docker compose --project-name "$LOCAL_COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
 python_cmd() {
@@ -76,6 +77,22 @@ python_cmd() {
   fi
 }
 
+assert_local_docker_context() {
+  case "${DOCKER_HOST:-}" in
+    ""|unix://*|npipe://*) ;;
+    *) fail "canonical local runtime refuses remote DOCKER_HOST=${DOCKER_HOST}; use a local unix/npipe Docker daemon" ;;
+  esac
+
+  local context endpoint
+  context="$(docker context show)"
+  endpoint="$(docker context inspect "$context" --format '{{(index .Endpoints "docker").Host}}')"
+  case "$endpoint" in
+    unix://*|npipe://*) ;;
+    *) fail "canonical local runtime refuses Docker context ${context} endpoint ${endpoint}; select a local unix/npipe context" ;;
+  esac
+  log "Docker context local: ${context} (${endpoint})"
+}
+
 doctor() {
   load_local_env
   require_cmd docker
@@ -84,6 +101,7 @@ doctor() {
   require_cmd poetry
   require_cmd curl
   docker compose version >/dev/null
+  assert_local_docker_context
 
   local node_major
   node_major="$(node -p 'process.versions.node.split(".")[0]')"
@@ -100,7 +118,7 @@ doctor() {
   [ -f "$ROOT/backend/poetry.lock" ] || fail "backend/poetry.lock missing"
   [ -f "$ROOT/backend/.python-version" ] || fail "backend/.python-version missing"
 
-  log "prerequisites OK: Node ${NODE_MAJOR}.x, Python ${PYTHON_VERSION}, Poetry ${POETRY_VERSION}, Docker Compose"
+  log "prerequisites OK: Node ${NODE_MAJOR}.x, Python ${PYTHON_VERSION}, Poetry ${POETRY_VERSION}, Docker Compose; project=${LOCAL_COMPOSE_PROJECT}"
 }
 
 validate_dependencies() {
@@ -186,6 +204,7 @@ check() {
   local failed=0
 
   printf '\nRenova local runtime status\n'
+  printf 'INFO Compose project %s\n' "$LOCAL_COMPOSE_PROJECT"
   if compose exec -T postgres pg_isready -U renova -d renova >/dev/null 2>&1; then
     printf 'OK   PostgreSQL 127.0.0.1:5433\n'
   else
@@ -256,7 +275,7 @@ stop() {
 
 reset() {
   load_local_env
-  log "destroying LOCAL development volumes only"
+  log "destroying LOCAL development volumes only (project=${LOCAL_COMPOSE_PROJECT})"
   compose down -v --remove-orphans
   backend_up
   seed
@@ -325,13 +344,13 @@ usage() {
   cat <<'EOF'
 Usage: scripts/dev-runtime.sh <command>
 
-  doctor        verify tools, exact versions, and local-only env
+  doctor        verify tools, exact versions, local-only env, and local Docker context
   bootstrap     install exact npm/Poetry lock environments explicitly
   infra         start PostgreSQL + Redis + MinIO and wait for health
   start         start full local topology; Expo stays foreground unless RENOVA_DEV_NO_EXPO=1
   check         verify infra, Alembic, API health/readiness, worker heartbeats, mobile API URL
   seed          run deterministic idempotent development seed
-  reset         destroy LOCAL volumes, rebuild runtime, migrate, seed, and check
+  reset         destroy LOCAL renova-local volumes, rebuild runtime, migrate, seed, and check
   logs          follow local runtime logs
   stop          stop local containers without deleting volumes
   test-focused  run runtime/source contracts and focused backend/mobile tests
