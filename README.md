@@ -23,9 +23,9 @@
 - `AGENTS.md` — **единый authoritative engineering context** для человека, Cursor и Claude Code: branching, local runtime, transactions, outbox, finance, security, navigation и Definition of Done;
 - `CLAUDE.md` — короткий bootstrap-pointer на `AGENTS.md`, не отдельный набор правил;
 - `.cursor/rules/renova-agent-runtime.mdc` — bootstrap-pointer Cursor на тот же `AGENTS.md`;
-- `.cursor/rules/renova-git-sync.mdc` — актуальный Git/GitHub workflow;
-- `.cursor/rules/renova-design-system.mdc` — mobile UI canon;
-- `docs/DEVELOPMENT-CANON.md` — environment/evidence/development rules;
+- `.cursor/rules/renova-git-sync.mdc` — Git/GitHub bootstrap-pointer на соответствующие разделы `AGENTS.md`, не отдельный policy source;
+- `.cursor/rules/renova-design-system.mdc` — scoped mobile UI canon для файлов интерфейса;
+- `docs/DEVELOPMENT-CANON.md` — environment/evidence/development reference; при policy-конфликте приоритет у `AGENTS.md` и текущего кода/CI;
 - `PRODUCTION-READINESS.md` — текущий launch verdict и границы доказанного;
 - `docs/production-readiness-evidence.json` — machine-readable readiness evidence.
 
