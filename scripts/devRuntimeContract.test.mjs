@@ -18,6 +18,7 @@ const backendEnv = read('backend/.env.example');
 const agents = read('AGENTS.md');
 const claude = read('CLAUDE.md');
 const cursor = read('.cursor/rules/renova-agent-runtime.mdc');
+const gitSync = read('.cursor/rules/renova-git-sync.mdc');
 const backendReadme = read('backend/README.md');
 const backendPyproject = read('backend/pyproject.toml');
 const backendDockerfile = read('backend/Dockerfile');
@@ -128,6 +129,11 @@ assert.ok(backendDockerfile.includes('from botocore.client import Config'), 'pro
 assert.ok(claude.includes('AGENTS.md'), 'CLAUDE.md must delegate to AGENTS.md');
 assert.ok(cursor.includes('alwaysApply: true'), 'Cursor runtime entrypoint must always apply');
 assert.ok(cursor.includes('AGENTS.md'), 'Cursor runtime entrypoint must delegate to AGENTS.md');
+assert.ok(gitSync.includes('alwaysApply: true'), 'Cursor Git pointer must remain available on every repository session');
+assert.ok(gitSync.includes('AGENTS.md'), 'Cursor Git pointer must delegate policy to AGENTS.md');
+assert.ok(gitSync.includes('does **not** duplicate that policy'), 'Cursor Git pointer must explicitly reject policy duplication');
+assert.ok(!gitSync.includes('## Branch discipline'), 'Cursor Git pointer must not carry a second branching-policy body');
+assert.ok(!gitSync.includes('## Production readiness boundary'), 'Cursor Git pointer must not carry a second readiness-policy body');
 for (const command of ['npm run dev -- doctor', 'npm run dev -- check', 'npm run dev -- test-focused', 'npm run dev -- test-full']) {
   assert.ok(agents.includes(command), `AGENTS.md must expose ${command}`);
 }
