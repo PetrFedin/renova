@@ -1,0 +1,30 @@
+name: Temporary Poetry lock diagnostic
+
+on:
+  push:
+    branches:
+      - fix/canonical-local-runtime-agents
+    paths:
+      - "backend/pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  lock-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install exact Poetry
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+      - name: Generate lock diff without mutating repository
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry lock
+          poetry check --lock
+          git diff --no-ext-diff --unified=3 -- poetry.lock
