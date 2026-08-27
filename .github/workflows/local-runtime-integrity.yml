@@ -109,6 +109,32 @@ jobs:
       - name: Materialize canonical local profile
         run: cp env.local.example .env.local
 
+      - name: Prove local safety guards fail closed
+        run: |
+          set -euo pipefail
+
+          if DOCKER_HOST=tcp://127.0.0.1:65535 bash scripts/dev-runtime.sh stop >/tmp/renova-remote-docker.out 2>&1; then
+            echo "remote Docker daemon was incorrectly accepted" >&2
+            exit 1
+          fi
+          grep -F "refuses remote DOCKER_HOST=tcp://127.0.0.1:65535" /tmp/renova-remote-docker.out
+
+          cp .env.local /tmp/renova-staging.env
+          sed -i 's/^ENVIRONMENT=development$/ENVIRONMENT=staging/' /tmp/renova-staging.env
+          if RENOVA_LOCAL_ENV_FILE=/tmp/renova-staging.env bash scripts/dev-runtime.sh doctor >/tmp/renova-staging.out 2>&1; then
+            echo "staging environment was incorrectly accepted as local" >&2
+            exit 1
+          fi
+          grep -F "refuses ENVIRONMENT=staging" /tmp/renova-staging.out
+
+          cp .env.local /tmp/renova-provider.env
+          printf '\nTWILIO_TOKEN=must-not-be-accepted-locally\n' >>/tmp/renova-provider.env
+          if RENOVA_LOCAL_ENV_FILE=/tmp/renova-provider.env bash scripts/dev-runtime.sh doctor >/tmp/renova-provider.out 2>&1; then
+            echo "external provider credential was incorrectly accepted locally" >&2
+            exit 1
+          fi
+          grep -F "refuses non-empty external credential/sink: TWILIO_TOKEN" /tmp/renova-provider.out
+
       - name: Prove explicit locked bootstrap
         run: |
           set -euo pipefail
