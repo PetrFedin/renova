@@ -1,6 +1,8 @@
-# Renova development canon
+# Renova development reference
 
-This document defines the current engineering workflow and truth boundaries for production-grade Renova development. It is intentionally separate from historical MVP/audit material.
+`AGENTS.md` is the single authoritative engineering policy for Renova. This document is a supporting development reference that explains the same current workflow and truth boundaries in more detail; it must not override or independently redefine `AGENTS.md`. If the two drift, update this reference to match `AGENTS.md` and current code/CI rather than creating another policy fork.
+
+It is intentionally separate from historical MVP/audit material.
 
 ## 1. Priority order
 
@@ -75,7 +77,7 @@ The canonical local topology is:
 
 `PostgreSQL + Redis + MinIO + API + Worker + Expo`, with optional OTel/Jaeger/Grafana profile.
 
-`AGENTS.md` owns the authoritative agent instructions. `CLAUDE.md` and `.cursor/rules/renova-agent-runtime.mdc` are pointer/bootstrap files only and must not become independent policy copies.
+`AGENTS.md` owns the authoritative agent instructions. `CLAUDE.md`, `.cursor/rules/renova-agent-runtime.mdc`, and `.cursor/rules/renova-git-sync.mdc` are pointer/bootstrap files only and must not become independent policy copies. `.cursor/rules/renova-design-system.mdc` is intentionally separate only as a scoped mobile UI implementation rule.
 
 Canonical local profile is `env.local.example` → ignored `.env.local`. Local runtime scripts must refuse staging/production environment profiles and must never read real staging/production credentials as a convenience fallback.
 
