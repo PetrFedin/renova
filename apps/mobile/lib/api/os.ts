@@ -198,7 +198,7 @@ export const osApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/warranty-claims`,

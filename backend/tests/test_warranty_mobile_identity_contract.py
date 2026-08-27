@@ -34,6 +34,17 @@ def test_same_serialized_body_is_used_for_online_attempt_and_offline_queue():
     assert "await enqueue({" in block
 
 
+def test_network_and_server_failures_queue_but_authoritative_4xx_do_not():
+    block = _warranty_create_block()
+
+    # req() normalizes network/timeout failures to ApiError(status=0). Those and
+    # ambiguous 5xx responses must retain the exact request for safe replay;
+    # deterministic 4xx responses (including idempotency conflict) must not.
+    assert "e instanceof ApiError && e.status >= 400 && e.status < 500" in block
+    assert "if (e instanceof ApiError) throw e;" not in block
+    assert block.index("e.status >= 400") < block.index("await enqueue({")
+
+
 def test_offline_flush_replays_stored_body_without_rebuilding_warranty_payload():
     source = OFFLINE_QUEUE.read_text(encoding="utf-8")
 
