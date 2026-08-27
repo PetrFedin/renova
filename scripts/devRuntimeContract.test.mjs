@@ -27,6 +27,7 @@ assert.ok(launcher.includes('dev-runtime.sh'), 'root launcher must delegate to t
 assert.ok(launcher.includes('set -- start'), 'npm run dev without arguments must start the canonical runtime');
 assert.ok(launcher.includes('"$@"'), 'root launcher must forward requested dev subcommands exactly');
 
+assert.match(compose, /^name:\s*renova-local\s*$/m, 'canonical local Compose file must declare the isolated renova-local project');
 for (const service of ['postgres:', 'redis:', 'minio:', 'migrate:', 'api:', 'worker:']) {
   assert.ok(compose.includes(service), `docker-compose.yml missing ${service}`);
 }
