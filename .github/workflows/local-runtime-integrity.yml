@@ -2,6 +2,8 @@ name: Canonical local runtime integrity
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "AGENTS.md"
       - "CLAUDE.md"
