@@ -1,113 +1,21 @@
 ---
-description: Renova Git/GitHub workflow and production-truth rules. Always use current main as the engineering base and preserve evidence boundaries.
+description: Renova Git/GitHub bootstrap pointer. AGENTS.md is authoritative; never maintain a second branching, CI, release or readiness policy here.
 alwaysApply: true
 ---
 
-# Renova — canonical Git/GitHub workflow
+# Renova Git/GitHub pointer
 
-## Source of truth
+`AGENTS.md` is the single authoritative engineering instruction set for this repository, including repository workflow, branching, evidence states, migration rules, CI expectations and production-readiness boundaries.
 
-Canonical repository: `PetrFedin/renova`.
+Before any Git/GitHub operation, read and follow the current `AGENTS.md`. This Cursor rule intentionally does **not** duplicate that policy so the two files cannot drift.
 
-Canonical branching flow:
+Minimal operational reminder only:
 
-`main` → short-lived feature/fix/refactor/agent branch → PR → relevant CI/evidence → merge to `main`.
+- canonical repository: `PetrFedin/renova`;
+- current `main` is the engineering base unless `AGENTS.md` explicitly says otherwise;
+- use a short-lived branch and pull request rather than direct product changes to `main`;
+- do not force-push over unknown remote work;
+- report the exact branch/head SHA and only the evidence level actually proved;
+- local/CI success is never external staging or production evidence.
 
-`develop` is a stale historical branch and is **not** the integration base. Do not create new work from `develop`, old `feature/task-18...24` branches, or July integration stacks.
-
-Before starting a logical production-hardening slice:
-1. fetch/check current `main` SHA;
-2. inspect latest merged PRs;
-3. inspect open PRs and open P0/P1 issues;
-4. inspect current CI/workflow state;
-5. inspect Alembic head when backend/schema work is involved;
-6. inspect `PRODUCTION-READINESS.md` and `docs/production-readiness-evidence.json` for launch truth.
-
-## Branch discipline
-
-Use a short-lived branch from the exact current base, for example:
-- `fix/<scope>`;
-- `feature/<scope>`;
-- `refactor/<scope>`;
-- `agent/<scope>`.
-
-Do not edit `main` directly. Keep changes logically bounded so a PR has one reviewable purpose.
-
-After each coherent block:
-```bash
-git status
-git add <relevant files>
-git commit -m "type(scope): why this change exists"
-git push -u origin HEAD
-```
-
-Do not leave local commits unpushed.
-
-If the remote branch moved, reconcile deliberately. Never force-push over unknown remote work merely to make history convenient.
-
-## Pull-request truth
-
-A PR is not complete because code was pushed. Verify applicable gates:
-- focused unit/contract tests;
-- mobile typecheck/contracts;
-- backend full regression;
-- PostgreSQL/Alembic migration check;
-- API/Playwright E2E for user-flow changes;
-- security gates for security-boundary changes;
-- release/image/readiness gates for release-path changes.
-
-Keep separate evidence states:
-`IMPLEMENTED` → `TESTED` → `CI VERIFIED` → `STAGING VERIFIED` → `EXTERNALLY VERIFIED` → `PRODUCTION VERIFIED`.
-
-Never collapse these into a generic "done".
-
-## Production readiness boundary
-
-`PRODUCTION-READINESS.md` and `docs/production-readiness-evidence.json` are the current launch-truth sources.
-
-Do not claim production readiness from:
-- green repository CI alone;
-- isolated CI staging;
-- mocked/synthetic provider success;
-- source `app.json` without exact EAS build evidence;
-- a tag without registry digest;
-- a synthetic restore drill instead of managed backup restore evidence.
-
-External infrastructure/provider/GitHub settings that cannot be verified from the current tool/environment remain `NOT VERIFIED` or `EXTERNAL ACTION REQUIRED`.
-
-GitHub currently tracks branch-protection enforcement separately. Do not close that blocker or claim required checks are enforced until the real ruleset is applied and a non-compliant change is demonstrably blocked.
-
-## Repository hygiene
-
-Before reusing an old PR/branch, compare it with current `main` and classify it:
-- MERGEABLE UNIQUE WORK;
-- SUPERSEDED;
-- STALE;
-- ALREADY IMPLEMENTED ELSEWHERE;
-- CONFLICTING;
-- ARCHIVAL ONLY.
-
-Do not blindly merge long-lived branches whose base predates current migrations/runtime/security architecture. Extract only still-missing unique work into a clean branch.
-
-## Never commit
-
-Do not commit:
-- `.env` files with secrets;
-- credentials/tokens/private keys;
-- local build/cache artifacts;
-- provider secrets;
-- ad-hoc local evidence presented as production proof.
-
-## Reporting after a wave
-
-Report:
-- exact branch and head SHA;
-- what changed and why;
-- tests/CI actually completed;
-- Alembic head if relevant;
-- what remains unverified;
-- external actions required;
-- remaining P0/P1 blockers;
-- next priority.
-
-Do not write "production ready" unless the machine-readable readiness state and external evidence actually support it.
+If this file ever conflicts with `AGENTS.md`, current code/CI, or `PRODUCTION-READINESS.md`, treat `AGENTS.md` plus the current repository truth as authoritative and update/remove the stale pointer rather than creating another policy fork.
