@@ -11,6 +11,7 @@ MINIO_HEALTH_URL="http://127.0.0.1:9000/minio/health/live"
 NODE_MAJOR="20"
 PYTHON_VERSION="3.12.13"
 POETRY_VERSION="2.4.1"
+LOCAL_DOCKER_CONTEXT_VERIFIED=0
 
 log() { printf '[renova-dev] %s\n' "$*"; }
 fail() { printf '[renova-dev] ERROR: %s\n' "$*" >&2; exit 2; }
@@ -78,10 +79,6 @@ load_local_env() {
   assert_no_external_local_configuration
 }
 
-compose() {
-  docker compose --project-name "$LOCAL_COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
-}
-
 python_cmd() {
   if command -v python3 >/dev/null 2>&1; then
     printf '%s\n' python3
@@ -93,6 +90,9 @@ python_cmd() {
 }
 
 assert_local_docker_context() {
+  [ "$LOCAL_DOCKER_CONTEXT_VERIFIED" = "1" ] && return 0
+  require_cmd docker
+
   case "${DOCKER_HOST:-}" in
     ""|unix://*|npipe://*) ;;
     *) fail "canonical local runtime refuses remote DOCKER_HOST=${DOCKER_HOST}; use a local unix/npipe Docker daemon" ;;
@@ -105,7 +105,14 @@ assert_local_docker_context() {
     unix://*|npipe://*) ;;
     *) fail "canonical local runtime refuses Docker context ${context} endpoint ${endpoint}; select a local unix/npipe context" ;;
   esac
+
+  LOCAL_DOCKER_CONTEXT_VERIFIED=1
   log "Docker context local: ${context} (${endpoint})"
+}
+
+compose() {
+  assert_local_docker_context
+  docker compose --project-name "$LOCAL_COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
 doctor() {
@@ -115,8 +122,8 @@ doctor() {
   require_cmd npm
   require_cmd poetry
   require_cmd curl
-  docker compose version >/dev/null
   assert_local_docker_context
+  docker compose version >/dev/null
 
   local node_major
   node_major="$(node -p 'process.versions.node.split(".")[0]')"
