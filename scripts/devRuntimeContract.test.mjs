@@ -41,7 +41,8 @@ for (const token of [
   'poetry sync --no-interaction',
   'python -m pip check',
   'compose run --rm migrate',
-  'app.core.runtime_preflight',
+  'app.db.migration_guard',
+  'app.core.runtime_preflight --skip-database',
   '/health',
   '/ready',
   'app.runtime_healthcheck',
@@ -51,11 +52,13 @@ for (const token of [
 }
 assert.ok(!runtime.includes('pip install'), 'dev runtime must not perform ad-hoc pip installation');
 assert.ok(!runtime.includes('alembic upgrade head 2>/dev/null || true'), 'dev runtime must not swallow Alembic failures');
+assert.ok(!runtime.includes('npm run dev:bootstrap'), 'dev runtime diagnostics must not point to a nonexistent npm alias');
 assert.ok(runtime.includes('refuses ENVIRONMENT='), 'dev runtime must fail closed outside development');
 
 assert.ok(!dependencyHook.includes('execSync'), 'postinstall must never fetch or install missing packages dynamically');
 assert.ok(!dependencyHook.includes('npm install ${missing'), 'postinstall must never mutate the npm lock/workspace');
 assert.ok(dependencyHook.includes('process.exit(2)'), 'missing locked mobile dependencies must fail bootstrap');
+assert.ok(dependencyHook.includes("path.join(mobile, 'node_modules', name)"), 'workspace verification must accept a valid nested mobile dependency location');
 
 for (const token of [
   'ENVIRONMENT=development',

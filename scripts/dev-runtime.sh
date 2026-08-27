@@ -104,8 +104,8 @@ doctor() {
 }
 
 validate_dependencies() {
-  [ -d "$ROOT/node_modules" ] || fail "node_modules missing; run: npm run dev:bootstrap"
-  [ -x "$ROOT/backend/.venv/bin/python" ] || fail "backend/.venv missing; run: npm run dev:bootstrap"
+  [ -d "$ROOT/node_modules" ] || fail "node_modules missing; run: npm run dev -- bootstrap"
+  [ -x "$ROOT/backend/.venv/bin/python" ] || fail "backend/.venv missing; run: npm run dev -- bootstrap"
   (
     cd "$ROOT/backend"
     POETRY_VIRTUALENVS_IN_PROJECT=true poetry check --lock
@@ -168,8 +168,10 @@ infra() {
 migrate_and_preflight() {
   log "running fail-fast Alembic upgrade"
   compose run --rm migrate
-  log "running canonical runtime preflight against local services"
-  compose run --rm --no-deps api python -m app.core.runtime_preflight
+  log "verifying database is exactly at bundled Alembic head"
+  compose run --rm --no-deps api python -m app.db.migration_guard
+  log "running canonical runtime-service preflight (deployment-only admin identity gate excluded locally)"
+  compose run --rm --no-deps api python -m app.core.runtime_preflight --skip-database
 }
 
 backend_up() {
