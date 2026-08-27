@@ -19,6 +19,7 @@ const agents = read('AGENTS.md');
 const claude = read('CLAUDE.md');
 const cursor = read('.cursor/rules/renova-agent-runtime.mdc');
 const gitSync = read('.cursor/rules/renova-git-sync.mdc');
+const developmentReference = read('docs/DEVELOPMENT-CANON.md');
 const backendReadme = read('backend/README.md');
 const backendPyproject = read('backend/pyproject.toml');
 const backendDockerfile = read('backend/Dockerfile');
@@ -134,6 +135,9 @@ assert.ok(gitSync.includes('AGENTS.md'), 'Cursor Git pointer must delegate polic
 assert.ok(gitSync.includes('does **not** duplicate that policy'), 'Cursor Git pointer must explicitly reject policy duplication');
 assert.ok(!gitSync.includes('## Branch discipline'), 'Cursor Git pointer must not carry a second branching-policy body');
 assert.ok(!gitSync.includes('## Production readiness boundary'), 'Cursor Git pointer must not carry a second readiness-policy body');
+assert.ok(developmentReference.startsWith('# Renova development reference'), 'development companion must identify itself as a reference, not a second canon');
+assert.ok(developmentReference.includes('`AGENTS.md` is the single authoritative engineering policy'), 'development reference must explicitly defer to AGENTS.md');
+assert.ok(developmentReference.includes('.cursor/rules/renova-git-sync.mdc` are pointer/bootstrap files only'), 'development reference must keep every global Cursor rule subordinate to AGENTS.md');
 for (const command of ['npm run dev -- doctor', 'npm run dev -- check', 'npm run dev -- test-focused', 'npm run dev -- test-full']) {
   assert.ok(agents.includes(command), `AGENTS.md must expose ${command}`);
 }
