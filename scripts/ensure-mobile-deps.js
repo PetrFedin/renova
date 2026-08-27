@@ -4,13 +4,14 @@
  *
  * This hook must never mutate package.json/package-lock.json or fetch missing
  * packages opportunistically. `npm ci` is authoritative: if a declared/locked
- * dependency is absent, bootstrap fails and the lock/workspace must be repaired
- * explicitly in a reviewed change.
+ * dependency is absent from both valid npm-workspace resolution locations,
+ * bootstrap fails and the lock/workspace must be repaired explicitly.
  */
 const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+const mobile = path.join(root, 'apps', 'mobile');
 const mustExist = [
   'expo-asset',
   'expo-router',
@@ -19,7 +20,15 @@ const mustExist = [
   'inline-style-prefixer',
   'postcss-value-parser',
 ];
-const missing = mustExist.filter((name) => !fs.existsSync(path.join(root, 'node_modules', name)));
+
+function dependencyExists(name) {
+  return [
+    path.join(root, 'node_modules', name),
+    path.join(mobile, 'node_modules', name),
+  ].some((candidate) => fs.existsSync(candidate));
+}
+
+const missing = mustExist.filter((name) => !dependencyExists(name));
 
 if (missing.length > 0) {
   console.error(
