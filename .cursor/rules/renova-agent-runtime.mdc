@@ -1,0 +1,22 @@
+---
+description: Renova agent entrypoint. AGENTS.md is authoritative; local runtime must use the canonical development commands and never staging/production profiles.
+alwaysApply: true
+---
+
+# Renova agent runtime entrypoint
+
+Before editing or running the repository, read `AGENTS.md`. It is the single authoritative engineering instruction set. This Cursor rule is only a bootstrap pointer and must not grow into a second architecture/policy document.
+
+Canonical local sequence:
+
+```bash
+npm run dev -- doctor
+npm run dev -- bootstrap
+npm run dev
+npm run dev -- check
+npm run dev -- test-focused
+npm run dev -- test-full
+npm run dev -- stop
+```
+
+`env.local.example` / `.env.local` are local-development only. Never load `env.staging.example`, `backend/.env.staging.example`, or production examples into the canonical local runtime. Local green status is not staging/production evidence.

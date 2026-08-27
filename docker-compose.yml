@@ -1,8 +1,38 @@
-# Renova local infra.
-# Staging smoke uses: docker compose -f docker-compose.staging.yml up -d
+# Renova canonical local runtime.
+# This file is DEVELOPMENT ONLY. Staging uses docker-compose.staging.yml and
+# production is deployed through the release/runtime path documented elsewhere.
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: backend/Dockerfile
+  args:
+    VCS_REF: ${RENOVA_GIT_SHA:-local-development}
+
+x-backend-environment: &backend-environment
+  ENVIRONMENT: development
+  DATABASE_URL: postgresql+asyncpg://renova:renova@postgres:5432/renova
+  REDIS_URL: redis://redis:6379/0
+  S3_ENDPOINT: http://minio:9000
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-renova}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-renova123}
+  S3_BUCKET: ${S3_BUCKET:-renova}
+  PUBLIC_BASE_URL: http://127.0.0.1:8100
+  SECRET_KEY: ${SECRET_KEY:-renova-local-development-secret-key-32-bytes-only}
+  ALLOW_CREATE_ALL: "false"
+  ALLOW_DEMO_SEED: "true"
+  AUTH_ALLOW_HEADER_USER_ID: "true"
+  ADMIN_USER_IDS: ""
+  KONTUR_MODE: "off"
+  GOSKEY_MODE: "off"
+  MOY_NALOG_ENABLED: "false"
+  SENTRY_DSN: ""
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  LOG_JSON: "false"
+  PUSH_RECEIPT_WORKER_ENABLED: "false"
+
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
     environment:
       POSTGRES_USER: renova
       POSTGRES_PASSWORD: renova
@@ -13,45 +43,112 @@ services:
       - renova_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U renova -d renova"]
-      interval: 3s
+      interval: 2s
       timeout: 3s
-      retries: 20
+      retries: 30
+
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: renova
-      MINIO_ROOT_PASSWORD: renova123
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-renova}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-renova123}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - renova_minio:/data
 
-  # Optional observability (explicit profile)
+  migrate:
+    build: *backend-build
+    image: renova-backend-local:dev
+    env_file:
+      - .env.local
+    environment: *backend-environment
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: *backend-build
+    image: renova-backend-local:dev
+    env_file:
+      - .env.local
+    environment:
+      <<: *backend-environment
+      RENOVA_API_INSTANCE_ID: local-api-1
+    # Direct compose startup cannot bypass the same Alembic-head truth that the
+    # orchestrator proves before launch.
+    command: ["sh", "-ec", "python -m app.db.migration_guard && exec renova-api"]
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build: *backend-build
+    image: renova-backend-local:dev
+    env_file:
+      - .env.local
+    environment:
+      <<: *backend-environment
+      RENOVA_WORKER_INSTANCE_ID: local-worker-1
+    command: ["sh", "-ec", "python -m app.db.migration_guard && exec renova-worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    restart: unless-stopped
+
+  # Optional observability profile. It is useful for local debugging only and
+  # is not evidence that #283 external alert delivery is verified.
   otel-collector:
     profiles: ["obs"]
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector:0.123.0
     command: ["--config=/etc/otel-config.yaml"]
     volumes:
-      - ./infra/otel-config.yaml:/etc/otel-config.yaml
+      - ./infra/otel-config.yaml:/etc/otel-config.yaml:ro
     ports:
       - "4318:4318"
 
   jaeger:
     profiles: ["obs"]
-    image: jaegertracing/all-in-one:latest
-    ports: ["16686:16686", "4317:4317"]
+    image: jaegertracing/all-in-one:1.68.0
+    ports:
+      - "16686:16686"
+      - "4317:4317"
 
   grafana:
     profiles: ["obs"]
-    image: grafana/grafana:latest
-    ports: ["3000:3000"]
+    image: grafana/grafana:11.5.2
+    ports:
+      - "3000:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: renova
     volumes:
-      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
 
 volumes:
   renova_pg:

@@ -224,3 +224,49 @@ Do not reintroduce as canonical behavior:
 - external `VERIFIED` claims without retained evidence.
 
 When old code or documents conflict with current runtime, route registry, CI, or readiness evidence, prefer the newest authoritative source and either migrate or explicitly mark the older material historical.
+
+## 14. Canonical local development for agents
+
+`AGENTS.md` is the single authoritative engineering instruction set for Cursor, Claude Code and other coding agents. `CLAUDE.md` and `.cursor/rules/renova-agent-runtime.mdc` are bootstrap pointers only; do not duplicate architecture or policy into them.
+
+The canonical local environment is **development only** and uses `env.local.example` → ignored `.env.local`. Never load `env.staging.example`, `backend/.env.staging.example`, `.env.production*`, or real provider credentials into the local runtime.
+
+Local topology:
+
+`PostgreSQL + Redis + MinIO + renova-api + renova-worker + optional Expo`.
+
+Use the existing root entrypoint and its explicit subcommands:
+
+```bash
+npm run dev -- doctor
+npm run dev -- bootstrap
+npm run dev
+npm run dev -- check
+npm run dev -- seed
+npm run dev -- test-focused
+npm run dev -- test-full
+npm run dev -- logs
+npm run dev -- stop
+```
+
+`npm run dev -- reset` is intentionally destructive but is constrained to the canonical **local** Compose project/volumes. Do not use it against shared environments.
+
+For non-interactive backend-only agent verification:
+
+```bash
+RENOVA_DEV_NO_EXPO=1 npm run dev
+npm run dev -- check
+npm run dev -- test-focused
+```
+
+Required behavior:
+- `doctor` verifies Docker Compose, Node 20, Python 3.12.13, Poetry 2.4.1 and the repository lock files;
+- `bootstrap` is the only explicit dependency-install step: `npm ci`, `poetry check --lock`, `poetry sync --no-interaction`, `pip check`;
+- normal `dev` startup never installs packages opportunistically;
+- startup is fail-fast: local env guard → infrastructure health → Alembic `upgrade head` → canonical runtime preflight → API/worker → `/health` + `/ready` + worker heartbeat → Expo;
+- migration failure is fatal; never add `alembic ... || true` or equivalent swallowing;
+- `check` must return non-zero when PostgreSQL, Redis, MinIO, API health/readiness, Alembic head or worker heartbeat is unhealthy;
+- `seed` is development-only, idempotent and must refuse non-development environments;
+- `test-focused` is the fast local contract gate; `test-full` is the broader local backend/mobile regression. GitHub Actions and dedicated PostgreSQL/E2E workflows remain stronger evidence where applicable.
+
+A successful local run is **local TESTED evidence only**. A successful PR workflow is `CI VERIFIED` only for the exact candidate. Neither proves external staging, production provider delivery, managed backup restore, alert delivery, store release, or production readiness.

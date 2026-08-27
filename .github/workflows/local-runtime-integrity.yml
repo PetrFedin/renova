@@ -1,0 +1,112 @@
+name: Canonical local runtime integrity
+
+on:
+  push:
+    paths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - ".cursor/rules/renova-agent-runtime.mdc"
+      - "README.md"
+      - "backend/README.md"
+      - "docs/DEVELOPMENT-CANON.md"
+      - "env.local.example"
+      - ".env.example"
+      - "backend/.env.example"
+      - ".nvmrc"
+      - "docker-compose.yml"
+      - "backend/Dockerfile"
+      - "backend/.python-version"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/app/dev_seed.py"
+      - "backend/app/core/runtime_preflight.py"
+      - "backend/app/runtime_healthcheck.py"
+      - "backend/app/services/runtime_topology.py"
+      - "scripts/dev-runtime.sh"
+      - "scripts/start-dev.sh"
+      - "scripts/ensure-mobile-deps.js"
+      - "scripts/devRuntimeContract.test.mjs"
+      - ".github/workflows/local-runtime-integrity.yml"
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - ".cursor/rules/renova-agent-runtime.mdc"
+      - "README.md"
+      - "backend/README.md"
+      - "docs/DEVELOPMENT-CANON.md"
+      - "env.local.example"
+      - ".env.example"
+      - "backend/.env.example"
+      - ".nvmrc"
+      - "docker-compose.yml"
+      - "backend/Dockerfile"
+      - "backend/.python-version"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/app/dev_seed.py"
+      - "backend/app/core/runtime_preflight.py"
+      - "backend/app/runtime_healthcheck.py"
+      - "backend/app/services/runtime_topology.py"
+      - "scripts/dev-runtime.sh"
+      - "scripts/start-dev.sh"
+      - "scripts/ensure-mobile-deps.js"
+      - "scripts/devRuntimeContract.test.mjs"
+      - ".github/workflows/local-runtime-integrity.yml"
+
+concurrency:
+  group: local-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+
+      - name: Install exact Poetry tool prerequisite
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+
+      - name: Materialize canonical local profile
+        run: cp env.local.example .env.local
+
+      - name: Prove explicit locked bootstrap
+        run: bash scripts/dev-runtime.sh bootstrap
+
+      - name: Verify source contract and Compose graph
+        run: |
+          set -euo pipefail
+          node scripts/devRuntimeContract.test.mjs
+          docker compose --env-file .env.local -f docker-compose.yml config >/tmp/renova-compose.yml
+
+      - name: Start full backend topology without Expo
+        env:
+          RENOVA_DEV_NO_EXPO: "1"
+        run: bash scripts/dev-runtime.sh start
+
+      - name: Verify runtime truth
+        run: bash scripts/dev-runtime.sh check
+
+      - name: Run focused local contracts
+        run: bash scripts/dev-runtime.sh test-focused
+
+      - name: Capture runtime diagnostics
+        if: failure()
+        run: |
+          docker compose --env-file .env.local -f docker-compose.yml ps || true
+          docker compose --env-file .env.local -f docker-compose.yml logs --no-color --tail=200 postgres redis minio migrate api worker || true
+
+      - name: Stop local runtime
+        if: always()
+        run: bash scripts/dev-runtime.sh stop || true

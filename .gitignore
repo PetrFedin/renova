@@ -1,6 +1,7 @@
 *.pyc
 .DS_Store
 .env
+.env.local
 .expo/
 .sync-last
 .sync.log
@@ -9,6 +10,8 @@ backend/__pycache__/
 backend/logs/
 backend/renova.db
 backend/uploads/
+backend/.dev-focused-tests.db
+backend/.dev-full-tests.db
 dist/
 node_modules/
 test-results/
