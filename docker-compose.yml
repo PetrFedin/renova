@@ -15,22 +15,50 @@ x-backend-environment: &backend-environment
   DATABASE_URL: postgresql+asyncpg://renova:renova@postgres:5432/renova
   REDIS_URL: redis://redis:6379/0
   S3_ENDPOINT: http://minio:9000
-  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-renova}
-  S3_SECRET_KEY: ${S3_SECRET_KEY:-renova123}
-  S3_BUCKET: ${S3_BUCKET:-renova}
+  S3_ACCESS_KEY: renova
+  S3_SECRET_KEY: renova123
+  S3_BUCKET: renova
+  S3_PUBLIC_URL: ""
+  CLOUDFRONT_DOMAIN: ""
+  CLOUDFRONT_KEY_ID: ""
   PUBLIC_BASE_URL: http://127.0.0.1:8100
-  SECRET_KEY: ${SECRET_KEY:-renova-local-development-secret-key-32-bytes-only}
+  SECRET_KEY: renova-local-development-secret-key-32-bytes-only
   ALLOW_CREATE_ALL: "false"
   ALLOW_DEMO_SEED: "true"
   AUTH_ALLOW_HEADER_USER_ID: "true"
   ADMIN_USER_IDS: ""
+  YOOKASSA_SHOP_ID: ""
+  YOOKASSA_SECRET: ""
+  YOOKASSA_WEBHOOK_SECRET: ""
+  TWILIO_SID: ""
+  TWILIO_TOKEN: ""
+  TWILIO_FROM: ""
   KONTUR_MODE: "off"
+  KONTUR_API_KEY: ""
   GOSKEY_MODE: "off"
+  GOSKEY_CLIENT_ID: ""
+  ESIGN_WEBHOOK_SECRET: ""
   MOY_NALOG_ENABLED: "false"
+  MOY_NALOG_CLIENT_ID: ""
+  MOY_NALOG_CLIENT_SECRET: ""
+  MOY_NALOG_REDIRECT_URI: ""
+  MOY_NALOG_TOKEN_URL: ""
+  MOY_NALOG_TOKEN_ENCRYPTION_KEYS: ""
+  FNS_RECEIPT_LOGIN: ""
+  FNS_RECEIPT_PASSWORD: ""
   SENTRY_DSN: ""
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   LOG_JSON: "false"
+  OPS_ALERT_EMAIL: ""
+  SMTP_HOST: ""
+  SMTP_USER: ""
+  SMTP_PASSWORD: ""
+  SMTP_FROM: ""
+  OLLAMA_DIGEST_ENABLED: "false"
+  OLLAMA_BASE_URL: ""
   PUSH_RECEIPT_WORKER_ENABLED: "false"
+  ALLOW_ACCOUNT_PURGE: "false"
+  ACCOUNT_PURGE_OPS_SECRET: ""
 
 services:
   postgres:
@@ -64,8 +92,8 @@ services:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-renova}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-renova123}
+      MINIO_ROOT_USER: renova
+      MINIO_ROOT_PASSWORD: renova123
     ports:
       - "9000:9000"
       - "9001:9001"
