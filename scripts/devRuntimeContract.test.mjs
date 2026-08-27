@@ -35,6 +35,29 @@ assert.ok(!compose.includes(':latest'), 'canonical local compose must not use mu
 assert.ok(compose.includes('["alembic", "upgrade", "head"]'), 'compose migrate service must be fail-fast Alembic');
 assert.ok(compose.includes('python -m app.db.migration_guard && exec renova-api'), 'local API must reject stale schema even on direct Compose startup');
 assert.ok(compose.includes('python -m app.db.migration_guard && exec renova-worker'), 'local worker must reject stale schema even on direct Compose startup');
+assert.ok(compose.includes('S3_ACCESS_KEY: renova'), 'Compose must force the local MinIO identity');
+assert.ok(compose.includes('S3_SECRET_KEY: renova123'), 'Compose must force the local MinIO secret');
+assert.ok(compose.includes('SECRET_KEY: renova-local-development-secret-key-32-bytes-only'), 'Compose must force the non-production local signing key');
+assert.ok(!compose.includes('${S3_ACCESS_KEY'), 'Compose must not interpolate external S3 identities into local MinIO');
+assert.ok(!compose.includes('${S3_SECRET_KEY'), 'Compose must not interpolate external S3 secrets into local MinIO');
+
+const externalLocalKeys = [
+  'YOOKASSA_SHOP_ID', 'YOOKASSA_SECRET', 'YOOKASSA_WEBHOOK_SECRET',
+  'TWILIO_SID', 'TWILIO_TOKEN', 'TWILIO_FROM',
+  'KONTUR_API_KEY', 'GOSKEY_CLIENT_ID', 'ESIGN_WEBHOOK_SECRET',
+  'MOY_NALOG_CLIENT_ID', 'MOY_NALOG_CLIENT_SECRET', 'MOY_NALOG_REDIRECT_URI',
+  'MOY_NALOG_TOKEN_URL', 'MOY_NALOG_TOKEN_ENCRYPTION_KEYS',
+  'FNS_RECEIPT_LOGIN', 'FNS_RECEIPT_PASSWORD',
+  'S3_PUBLIC_URL', 'CLOUDFRONT_DOMAIN', 'CLOUDFRONT_KEY_ID',
+  'SENTRY_DSN', 'OTEL_EXPORTER_OTLP_ENDPOINT', 'OPS_ALERT_EMAIL',
+  'SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM',
+  'OLLAMA_BASE_URL', 'ACCOUNT_PURGE_OPS_SECRET',
+];
+for (const key of externalLocalKeys) {
+  assert.match(envLocal, new RegExp(`^${key}=$`, 'm'), `env.local.example must explicitly clear ${key}`);
+  assert.ok(compose.includes(`${key}: ""`), `Compose must neutralize ${key} even on direct local startup`);
+}
+assert.match(envLocal, /^EXPO_PUBLIC_SENTRY_DSN=$/m, 'mobile local profile must clear external Sentry DSN');
 
 assert.ok(!launcher.includes('pip install'), 'root launcher must never install packages at startup');
 assert.ok(!launcher.includes('alembic upgrade head 2>/dev/null || true'), 'root launcher must never swallow migrations');
@@ -62,10 +85,11 @@ assert.ok(runtime.includes('--project-name "$LOCAL_COMPOSE_PROJECT"'), 'every ca
 assert.ok(runtime.includes('refuses remote DOCKER_HOST='), 'doctor must reject explicitly configured remote Docker daemons');
 assert.ok(runtime.includes('docker context inspect'), 'doctor must inspect the active Docker context endpoint');
 assert.ok(runtime.includes('refuses Docker context'), 'doctor must fail closed on non-local Docker contexts');
-assert.ok(!runtime.includes('*127.0.0.1*|*localhost*'), 'database locality check must not accept arbitrary hostnames containing localhost');
-assert.ok(runtime.includes('postgresql+asyncpg://*@127.0.0.1:5433/renova'), 'database guard must bind the canonical local PostgreSQL endpoint');
-assert.ok(runtime.includes('redis://127.0.0.1:6380/0'), 'Redis guard must bind the canonical local Redis endpoint');
-assert.ok(runtime.includes('http://127.0.0.1:9000'), 'S3 guard must bind the canonical local MinIO endpoint');
+assert.ok(runtime.includes('canonical local profile refuses non-empty external credential/sink'), 'local env guard must reject provider credentials and external sinks');
+assert.ok(runtime.includes('postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova'), 'database guard must bind the exact canonical local PostgreSQL profile');
+assert.ok(runtime.includes('redis://127.0.0.1:6380/0'), 'Redis guard must bind the exact canonical local Redis profile');
+assert.ok(runtime.includes('http://127.0.0.1:9000'), 'S3 guard must bind the exact canonical local MinIO endpoint');
+assert.ok(runtime.includes('renova-local-development-secret-key-32-bytes-only'), 'runtime guard must reject reused staging/production signing keys');
 
 const fullTestsBody = runtime.match(/full_tests\(\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
 assert.ok(fullTestsBody.includes('focused_tests'), 'test-full must run the focused gate before the broader regression');
