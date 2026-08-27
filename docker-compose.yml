@@ -2,6 +2,8 @@
 # This file is DEVELOPMENT ONLY. Staging uses docker-compose.staging.yml and
 # production is deployed through the release/runtime path documented elsewhere.
 
+name: renova-local
+
 x-backend-build: &backend-build
   context: .
   dockerfile: backend/Dockerfile
