@@ -235,6 +235,8 @@ Local topology:
 
 `PostgreSQL + Redis + MinIO + renova-api + renova-worker + optional Expo`.
 
+The canonical Docker Compose project is **`renova-local`**. Local commands must operate only through a local Unix/npipe Docker daemon; `doctor` must refuse remote `DOCKER_HOST` or remote Docker contexts rather than treating a shared/staging daemon as local.
+
 Use the existing root entrypoint and its explicit subcommands:
 
 ```bash
@@ -249,7 +251,7 @@ npm run dev -- logs
 npm run dev -- stop
 ```
 
-`npm run dev -- reset` is intentionally destructive but is constrained to the canonical **local** Compose project/volumes. Do not use it against shared environments.
+`npm run dev -- reset` is intentionally destructive but is constrained to the canonical **local `renova-local`** Compose project/volumes. Do not use it against shared environments.
 
 For non-interactive backend-only agent verification:
 
@@ -260,13 +262,13 @@ npm run dev -- test-focused
 ```
 
 Required behavior:
-- `doctor` verifies Docker Compose, Node 20, Python 3.12.13, Poetry 2.4.1 and the repository lock files;
+- `doctor` verifies a local Docker context, Docker Compose, Node 20, Python 3.12.13, Poetry 2.4.1 and the repository lock files;
 - `bootstrap` is the only explicit dependency-install step: `npm ci`, `poetry check --lock`, `poetry sync --no-interaction`, `pip check`;
 - normal `dev` startup never installs packages opportunistically;
 - startup is fail-fast: local env guard → infrastructure health → Alembic `upgrade head` → canonical runtime preflight → API/worker → `/health` + `/ready` + worker heartbeat → Expo;
 - migration failure is fatal; never add `alembic ... || true` or equivalent swallowing;
 - `check` must return non-zero when PostgreSQL, Redis, MinIO, API health/readiness, Alembic head or worker heartbeat is unhealthy;
 - `seed` is development-only, idempotent and must refuse non-development environments;
-- `test-focused` is the fast local contract gate; `test-full` is the broader local backend/mobile regression. GitHub Actions and dedicated PostgreSQL/E2E workflows remain stronger evidence where applicable.
+- `test-focused` is the fast local contract gate; `test-full` is the broader local backend/mobile regression and must execute the focused gate first. GitHub Actions and dedicated PostgreSQL/E2E workflows remain stronger evidence where applicable.
 
 A successful local run is **local TESTED evidence only**. A successful PR workflow is `CI VERIFIED` only for the exact candidate. Neither proves external staging, production provider delivery, managed backup restore, alert delivery, store release, or production readiness.
