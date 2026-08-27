@@ -19,6 +19,8 @@ const agents = read('AGENTS.md');
 const claude = read('CLAUDE.md');
 const cursor = read('.cursor/rules/renova-agent-runtime.mdc');
 const backendReadme = read('backend/README.md');
+const backendPyproject = read('backend/pyproject.toml');
+const backendDockerfile = read('backend/Dockerfile');
 
 assert.equal(pkg.scripts?.dev, 'bash scripts/start-dev.sh', 'existing npm run dev must remain the stable root entrypoint');
 assert.ok(launcher.includes('dev-runtime.sh'), 'root launcher must delegate to the canonical runtime');
@@ -54,6 +56,21 @@ assert.ok(!runtime.includes('pip install'), 'dev runtime must not perform ad-hoc
 assert.ok(!runtime.includes('alembic upgrade head 2>/dev/null || true'), 'dev runtime must not swallow Alembic failures');
 assert.ok(!runtime.includes('npm run dev:bootstrap'), 'dev runtime diagnostics must not point to a nonexistent npm alias');
 assert.ok(runtime.includes('refuses ENVIRONMENT='), 'dev runtime must fail closed outside development');
+assert.ok(runtime.includes('LOCAL_COMPOSE_PROJECT="renova-local"'), 'canonical local Compose project must be explicit and isolated');
+assert.ok(runtime.includes('--project-name "$LOCAL_COMPOSE_PROJECT"'), 'every canonical local Compose call must select the isolated project');
+assert.ok(runtime.includes('refuses remote DOCKER_HOST='), 'doctor must reject explicitly configured remote Docker daemons');
+assert.ok(runtime.includes('docker context inspect'), 'doctor must inspect the active Docker context endpoint');
+assert.ok(runtime.includes('refuses Docker context'), 'doctor must fail closed on non-local Docker contexts');
+assert.ok(!runtime.includes('*127.0.0.1*|*localhost*'), 'database locality check must not accept arbitrary hostnames containing localhost');
+assert.ok(runtime.includes('postgresql+asyncpg://*@127.0.0.1:5433/renova'), 'database guard must bind the canonical local PostgreSQL endpoint');
+assert.ok(runtime.includes('redis://127.0.0.1:6380/0'), 'Redis guard must bind the canonical local Redis endpoint');
+assert.ok(runtime.includes('http://127.0.0.1:9000'), 'S3 guard must bind the canonical local MinIO endpoint');
+
+const fullTestsBody = runtime.match(/full_tests\(\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+assert.ok(fullTestsBody.includes('focused_tests'), 'test-full must run the focused gate before the broader regression');
+assert.ok(fullTestsBody.includes('poetry run pytest -q'), 'test-full must run the full backend pytest regression');
+assert.ok(fullTestsBody.includes('npm run typecheck:mobile'), 'test-full must run mobile typecheck');
+assert.ok(fullTestsBody.includes('npm run mobile:test'), 'test-full must run mobile contracts');
 
 assert.ok(!dependencyHook.includes('execSync'), 'postinstall must never fetch or install missing packages dynamically');
 assert.ok(!dependencyHook.includes('npm install ${missing'), 'postinstall must never mutate the npm lock/workspace');
@@ -75,7 +92,13 @@ for (const token of [
 }
 assert.ok(!envLocal.includes('ENVIRONMENT=staging'), 'local env must not embed staging profile');
 assert.ok(!envLocal.includes('ENVIRONMENT=production'), 'local env must not embed production profile');
+assert.ok(!envLocal.includes('npm run dev:bootstrap'), 'local env instructions must not advertise a nonexistent bootstrap alias');
+assert.ok(envLocal.includes('npm run dev -- bootstrap'), 'local env instructions must advertise the canonical bootstrap command');
 assert.ok(backendEnv.includes('Canonical full-stack LOCAL runtime is root `env.local.example`'), 'backend env reference must point agents to the canonical local profile');
+
+assert.match(backendPyproject, /^boto3\s*=\s*"[^"]+"/m, 'S3-backed runtime requires boto3 as a locked main dependency');
+assert.ok(backendDockerfile.includes('import boto3'), 'production image build must prove boto3 is importable after locked sync');
+assert.ok(backendDockerfile.includes('from botocore.client import Config'), 'production image build must prove botocore runtime support used by storage');
 
 assert.ok(claude.includes('AGENTS.md'), 'CLAUDE.md must delegate to AGENTS.md');
 assert.ok(cursor.includes('alwaysApply: true'), 'Cursor runtime entrypoint must always apply');
