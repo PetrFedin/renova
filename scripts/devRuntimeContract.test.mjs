@@ -87,6 +87,9 @@ assert.ok(runtime.includes('--project-name "$LOCAL_COMPOSE_PROJECT"'), 'every ca
 assert.ok(runtime.includes('refuses remote DOCKER_HOST='), 'doctor must reject explicitly configured remote Docker daemons');
 assert.ok(runtime.includes('docker context inspect'), 'doctor must inspect the active Docker context endpoint');
 assert.ok(runtime.includes('refuses Docker context'), 'doctor must fail closed on non-local Docker contexts');
+const composeWrapperBody = runtime.match(/compose\(\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+assert.ok(composeWrapperBody.includes('assert_local_docker_context'), 'every canonical Compose operation must pass through the local-daemon gate');
+assert.ok(runtime.includes('LOCAL_DOCKER_CONTEXT_VERIFIED=1'), 'local-daemon verification may be cached only after a successful context check');
 assert.ok(runtime.includes('canonical local profile refuses non-empty external credential/sink'), 'local env guard must reject provider credentials and external sinks');
 assert.ok(runtime.includes('postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova'), 'database guard must bind the exact canonical local PostgreSQL profile');
 assert.ok(runtime.includes('redis://127.0.0.1:6380/0'), 'Redis guard must bind the exact canonical local Redis profile');
