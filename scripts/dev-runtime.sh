@@ -6,8 +6,8 @@ ENV_FILE="${RENOVA_LOCAL_ENV_FILE:-${ROOT}/.env.local}"
 ENV_EXAMPLE="${ROOT}/env.local.example"
 COMPOSE_FILE="${ROOT}/docker-compose.yml"
 LOCAL_COMPOSE_PROJECT="renova-local"
-API_URL="${RENOVA_LOCAL_API_URL:-http://127.0.0.1:8100}"
-MINIO_HEALTH_URL="${RENOVA_LOCAL_MINIO_HEALTH_URL:-http://127.0.0.1:9000/minio/health/live}"
+API_URL="http://127.0.0.1:8100"
+MINIO_HEALTH_URL="http://127.0.0.1:9000/minio/health/live"
 NODE_MAJOR="20"
 PYTHON_VERSION="3.12.13"
 POETRY_VERSION="2.4.1"
@@ -27,6 +27,31 @@ ensure_env_file() {
   fi
 }
 
+assert_no_external_local_configuration() {
+  local key value
+  for key in \
+    YOOKASSA_SHOP_ID YOOKASSA_SECRET YOOKASSA_WEBHOOK_SECRET \
+    TWILIO_SID TWILIO_TOKEN TWILIO_FROM \
+    KONTUR_API_KEY GOSKEY_CLIENT_ID ESIGN_WEBHOOK_SECRET \
+    MOY_NALOG_CLIENT_ID MOY_NALOG_CLIENT_SECRET MOY_NALOG_REDIRECT_URI \
+    MOY_NALOG_TOKEN_URL MOY_NALOG_TOKEN_ENCRYPTION_KEYS \
+    FNS_RECEIPT_LOGIN FNS_RECEIPT_PASSWORD \
+    S3_PUBLIC_URL CLOUDFRONT_DOMAIN CLOUDFRONT_KEY_ID \
+    SENTRY_DSN EXPO_PUBLIC_SENTRY_DSN OTEL_EXPORTER_OTLP_ENDPOINT \
+    OPS_ALERT_EMAIL SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM \
+    OLLAMA_BASE_URL ACCOUNT_PURGE_OPS_SECRET; do
+    value="${!key:-}"
+    [ -z "$value" ] || fail "canonical local profile refuses non-empty external credential/sink: ${key}"
+  done
+
+  [ "${KONTUR_MODE:-}" = "off" ] || fail "canonical local runtime requires KONTUR_MODE=off"
+  [ "${GOSKEY_MODE:-}" = "off" ] || fail "canonical local runtime requires GOSKEY_MODE=off"
+  [ "${MOY_NALOG_ENABLED:-}" = "false" ] || fail "canonical local runtime requires MOY_NALOG_ENABLED=false"
+  [ "${PUSH_RECEIPT_WORKER_ENABLED:-}" = "false" ] || fail "canonical local runtime requires PUSH_RECEIPT_WORKER_ENABLED=false"
+  [ "${OLLAMA_DIGEST_ENABLED:-}" = "false" ] || fail "canonical local runtime requires OLLAMA_DIGEST_ENABLED=false"
+  [ "${ALLOW_ACCOUNT_PURGE:-}" = "false" ] || fail "canonical local runtime requires ALLOW_ACCOUNT_PURGE=false"
+}
+
 load_local_env() {
   ensure_env_file
   set -a
@@ -34,33 +59,23 @@ load_local_env() {
   source "$ENV_FILE"
   set +a
 
-  case "${ENVIRONMENT:-}" in
-    development|dev|local) ;;
-    *) fail "dev runtime refuses ENVIRONMENT=${ENVIRONMENT:-<empty>}; use only development" ;;
-  esac
-
-  case "${DATABASE_URL:-}" in
-    postgresql+asyncpg://*@127.0.0.1:5433/renova|postgresql+asyncpg://*@localhost:5433/renova) ;;
-    *) fail "canonical local DATABASE_URL must target localhost/127.0.0.1:5433/renova" ;;
-  esac
-  case "${REDIS_URL:-}" in
-    redis://127.0.0.1:6380/0|redis://localhost:6380/0) ;;
-    *) fail "canonical local REDIS_URL must target localhost/127.0.0.1:6380/0" ;;
-  esac
-  case "${S3_ENDPOINT:-}" in
-    http://127.0.0.1:9000|http://localhost:9000) ;;
-    *) fail "canonical local S3_ENDPOINT must target localhost/127.0.0.1:9000" ;;
-  esac
-  case "${PUBLIC_BASE_URL:-}" in
-    http://127.0.0.1:8100|http://localhost:8100) ;;
-    *) fail "canonical local PUBLIC_BASE_URL must target localhost/127.0.0.1:8100" ;;
-  esac
+  [ "${ENVIRONMENT:-}" = "development" ] || fail "dev runtime refuses ENVIRONMENT=${ENVIRONMENT:-<empty>}; use only development"
+  [ "${DATABASE_URL:-}" = "postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova" ] || fail "canonical local DATABASE_URL must equal the isolated PostgreSQL profile"
+  [ "${REDIS_URL:-}" = "redis://127.0.0.1:6380/0" ] || fail "canonical local REDIS_URL must equal the isolated Redis profile"
+  [ "${S3_ENDPOINT:-}" = "http://127.0.0.1:9000" ] || fail "canonical local S3_ENDPOINT must equal the MinIO profile"
+  [ "${S3_ACCESS_KEY:-}" = "renova" ] || fail "canonical local S3_ACCESS_KEY must use the local MinIO identity"
+  [ "${S3_SECRET_KEY:-}" = "renova123" ] || fail "canonical local S3_SECRET_KEY must use the local MinIO secret"
+  [ "${S3_BUCKET:-}" = "renova" ] || fail "canonical local S3_BUCKET must be renova"
+  [ "${PUBLIC_BASE_URL:-}" = "$API_URL" ] || fail "canonical local PUBLIC_BASE_URL must equal ${API_URL}"
+  [ "${SECRET_KEY:-}" = "renova-local-development-secret-key-32-bytes-only" ] || fail "canonical local SECRET_KEY must use the non-production development value"
 
   [ "${ALLOW_CREATE_ALL:-}" = "false" ] || fail "local runtime requires ALLOW_CREATE_ALL=false; schema is Alembic-only"
   [ "${ALLOW_DEMO_SEED:-}" = "true" ] || fail "local runtime requires ALLOW_DEMO_SEED=true"
   [ "${AUTH_ALLOW_HEADER_USER_ID:-}" = "true" ] || fail "local runtime requires AUTH_ALLOW_HEADER_USER_ID=true"
   [ "${EXPO_PUBLIC_APP_ENV:-}" = "development" ] || fail "EXPO_PUBLIC_APP_ENV must be development"
   [ "${EXPO_PUBLIC_API_URL:-}" = "$API_URL" ] || fail "EXPO_PUBLIC_API_URL must match ${API_URL}"
+
+  assert_no_external_local_configuration
 }
 
 compose() {
