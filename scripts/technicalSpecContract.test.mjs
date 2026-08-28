@@ -9,6 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const spec = read('docs/RENOVA-TECHNICAL-SPECIFICATION.md');
+const roadmap = read('docs/technical-spec/CHANGELOG-ROADMAP.md');
 
 const requiredSections = [
   '# 1. Назначение продукта и границы системы',
@@ -37,12 +38,24 @@ for (const token of [
   '**TBD / UNVERIFIED',
   '#282', '#283', '#284', '#287', '#286',
   'w16legacystatus01',
+  'w17chatmessageenum01',
+  'CHANGELOG-ROADMAP.md',
   'renova-local',
   'npm run dev -- doctor',
+  'npm run dev -- seed',
   'npm run dev -- test-focused',
   'npm run dev -- test-full',
 ]) {
   assert.ok(spec.includes(token), `technical specification missing contract token: ${token}`);
+}
+
+for (const token of [
+  'наблюдение → решение → source → test → evidence → next step',
+  'P0.1. Закрыть canonical local runtime end-to-end',
+  'P0.2. Полная native PostgreSQL enum parity',
+  'P1.1. Полный screen contract inventory',
+]) {
+  assert.ok(roadmap.includes(token), `technical roadmap missing governance token: ${token}`);
 }
 
 function gitBlobSha(content) {
@@ -58,6 +71,10 @@ const trackedSources = [
   'AGENTS.md',
   'backend/app/api/v1/router.py',
   'backend/app/models/entities.py',
+  'backend/app/main.py',
+  'backend/app/services/seed_demo.py',
+  'backend/scripts/verify_orm_schema_parity.py',
+  'backend/scripts/verify_current_migration_schema.py',
   'apps/mobile/lib/routeRegistry.ts',
   'apps/mobile/constants/Theme.ts',
   'apps/mobile/constants/typography.ts',
@@ -73,6 +90,8 @@ const trackedSources = [
   'package.json',
   '.github/workflows/local-runtime-integrity.yml',
   'backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py',
+  'backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py',
+  'docs/technical-spec/CHANGELOG-ROADMAP.md',
 ];
 
 for (const file of trackedSources) {
