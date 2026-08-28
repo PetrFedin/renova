@@ -9,7 +9,6 @@ from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.environment import policy_for, resolve_policy_flag
 from app.core.logging_config import setup_logging
 from app.core.observability import configure_observability, release_digest, release_sha
 from app.core.rate_limit import rate_limiter
@@ -46,14 +45,6 @@ logger = logging.getLogger(__name__)
 # twilio_from=settings.twilio_from
 
 
-def _demo_seed_allowed() -> bool:
-    policy = policy_for(settings.normalized_environment)
-    return resolve_policy_flag(
-        policy_allows=policy.allow_demo_seed,
-        override=settings.allow_demo_seed,
-    )
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     policy = validate_configured_runtime()
@@ -77,16 +68,16 @@ async def lifespan(app: FastAPI):
     await init_db()
     validate_storage_runtime()
 
-    if _demo_seed_allowed():
-        from app.services.seed_demo import ensure_demo_users
-        from app.services.seed_articles import seed_articles
-
-        async with SessionLocal() as db:
-            await ensure_demo_users(db)
-            await seed_articles(db)
-        logger.info("demo seed applied (environment=%s)", policy.name)
-    else:
-        logger.info("demo seed skipped (environment=%s)", policy.name)
+    # Startup must not mutate demo/business data. Demo materialization is an
+    # explicit local operator action (`python -m app.dev_seed`, surfaced as
+    # `npm run dev -- seed`) after the database is migrated and runtime-ready.
+    # Keeping seeding outside lifespan makes API restarts deterministic and
+    # prevents a restart from deleting/re-writing developer project data.
+    logger.info(
+        "demo seed is explicit; API startup does not mutate demo business data "
+        "(environment=%s)",
+        policy.name,
+    )
 
     # API-local infrastructure only. Durable background processing belongs to
     # the explicit `renova-worker` process from the same immutable image. The
