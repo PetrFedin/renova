@@ -1,0 +1,74 @@
+name: Renova technical specification integrity
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/RENOVA-TECHNICAL-SPECIFICATION.md"
+      - "scripts/technicalSpecContract.test.mjs"
+      - "scripts/technicalSpecAlembicContract.test.mjs"
+      - "AGENTS.md"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/entities.py"
+      - "backend/alembic/**"
+      - "apps/mobile/lib/routeRegistry.ts"
+      - "apps/mobile/constants/Theme.ts"
+      - "apps/mobile/constants/typography.ts"
+      - "apps/mobile/constants/screenTypography.ts"
+      - "apps/mobile/constants/uiTokens.ts"
+      - "apps/mobile/constants/screenLayout.ts"
+      - "apps/mobile/constants/budgetTabs.ts"
+      - "apps/mobile/components/renova/os/OsHubTabs.tsx"
+      - "apps/mobile/components/screens/OsObjectHubScreen.tsx"
+      - "apps/mobile/components/screens/OsRepairHubScreen.tsx"
+      - "apps/mobile/components/screens/OsBudgetHubScreen.tsx"
+      - ".cursor/rules/renova-design-system.mdc"
+      - "package.json"
+      - ".github/workflows/local-runtime-integrity.yml"
+      - ".github/workflows/technical-spec-integrity.yml"
+  pull_request:
+    paths:
+      - "docs/RENOVA-TECHNICAL-SPECIFICATION.md"
+      - "scripts/technicalSpecContract.test.mjs"
+      - "scripts/technicalSpecAlembicContract.test.mjs"
+      - "AGENTS.md"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/entities.py"
+      - "backend/alembic/**"
+      - "apps/mobile/lib/routeRegistry.ts"
+      - "apps/mobile/constants/Theme.ts"
+      - "apps/mobile/constants/typography.ts"
+      - "apps/mobile/constants/screenTypography.ts"
+      - "apps/mobile/constants/uiTokens.ts"
+      - "apps/mobile/constants/screenLayout.ts"
+      - "apps/mobile/constants/budgetTabs.ts"
+      - "apps/mobile/components/renova/os/OsHubTabs.tsx"
+      - "apps/mobile/components/screens/OsObjectHubScreen.tsx"
+      - "apps/mobile/components/screens/OsRepairHubScreen.tsx"
+      - "apps/mobile/components/screens/OsBudgetHubScreen.tsx"
+      - ".cursor/rules/renova-design-system.mdc"
+      - "package.json"
+      - ".github/workflows/local-runtime-integrity.yml"
+      - ".github/workflows/technical-spec-integrity.yml"
+
+concurrency:
+  group: technical-spec-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify living technical specification source contract
+        run: node scripts/technicalSpecContract.test.mjs
+      - name: Verify documented Alembic head
+        run: node scripts/technicalSpecAlembicContract.test.mjs
