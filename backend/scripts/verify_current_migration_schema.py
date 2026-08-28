@@ -2,7 +2,7 @@
 
 `verify_migration_schema.py` owns the reflected structural checks accumulated
 through w15. This wrapper binds those checks to the actual bundled Alembic
-head and adds migration-owned native-enum assertions introduced by w16/w17.
+head and adds migration-owned native-enum assertions introduced by w16-w18.
 Future migrations must extend this verifier when they introduce new reflected
 schema invariants.
 """
@@ -35,6 +35,45 @@ _EXPECTED_ENUMS: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {
     ("chat_messages", "message_type"): (
         "chatmessagetype",
         ("text", "photo", "file", "confirm", "system", "task", "invoice", "payment"),
+    ),
+    ("app_notifications", "notification_type"): (
+        "notificationtype",
+        (
+            "stage_review",
+            "stage_started",
+            "room_updated",
+            "room_created",
+            "payment_pending",
+            "payment_confirmed",
+            "change_order",
+            "room_change",
+            "chat_message",
+            "budget_alert",
+            "reaction",
+            "materials",
+            "approval",
+            "issue",
+            "deadline",
+            "waste_reminder",
+            "document",
+            "other",
+        ),
+    ),
+    ("job_leads", "status"): (
+        "jobleadstatus",
+        ("open", "quoted", "taken", "closed"),
+    ),
+    ("payments", "status"): (
+        "paymentstatus",
+        (
+            "pending",
+            "processing",
+            "paid_unverified",
+            "confirmed",
+            "cancelled",
+            "disputed",
+            "refunded",
+        ),
     ),
 }
 
