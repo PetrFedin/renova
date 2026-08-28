@@ -14,7 +14,7 @@ for (const [token, message] of [
   ['"poetry==2.4.1"', 'restore drill must pin Poetry'],
   ['RESTORE_DB: renova_restore', 'restore drill must restore into a distinct named database'],
   ['bash scripts/database-restore-drill.sh', 'workflow must execute the canonical native restore script'],
-  ['scripts/verify_migration_schema.py --expect present', 'restore drill must verify reflected Alembic schema'],
+  ['scripts/verify_current_migration_schema.py', 'restore drill must verify the reflected schema at the current bundled Alembic head'],
   ['scripts/verify_orm_schema_parity.py', 'restore drill must verify complete ORM/Alembic column parity'],
   ['scripts/restore_drill_fixture.py seed', 'restore drill must create deterministic source data'],
   ['scripts/restore_drill_fixture.py verify', 'restore drill must verify restored data fingerprint'],
