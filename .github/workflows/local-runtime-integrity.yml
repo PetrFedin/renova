@@ -28,7 +28,9 @@ on:
       - "backend/poetry.lock"
       - "backend/alembic.ini"
       - "backend/alembic/**"
+      - "backend/app/main.py"
       - "backend/app/dev_seed.py"
+      - "backend/app/services/seed_demo.py"
       - "backend/app/core/config.py"
       - "backend/app/core/runtime_policy.py"
       - "backend/app/core/runtime_preflight.py"
@@ -38,6 +40,8 @@ on:
       - "backend/app/services/runtime_topology.py"
       - "backend/app/services/storage_runtime.py"
       - "backend/app/services/storage_service.py"
+      - "backend/scripts/verify_current_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
       - "scripts/dev-runtime.sh"
       - "scripts/start-dev.sh"
       - "scripts/ensure-mobile-deps.js"
@@ -68,7 +72,9 @@ on:
       - "backend/poetry.lock"
       - "backend/alembic.ini"
       - "backend/alembic/**"
+      - "backend/app/main.py"
       - "backend/app/dev_seed.py"
+      - "backend/app/services/seed_demo.py"
       - "backend/app/core/config.py"
       - "backend/app/core/runtime_policy.py"
       - "backend/app/core/runtime_preflight.py"
@@ -78,6 +84,8 @@ on:
       - "backend/app/services/runtime_topology.py"
       - "backend/app/services/storage_runtime.py"
       - "backend/app/services/storage_service.py"
+      - "backend/scripts/verify_current_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
       - "scripts/dev-runtime.sh"
       - "scripts/start-dev.sh"
       - "scripts/ensure-mobile-deps.js"
@@ -156,6 +164,13 @@ jobs:
 
       - name: Verify runtime truth
         run: bash scripts/dev-runtime.sh check
+
+      - name: Prove explicit demo seed is repeatable
+        run: |
+          set -euo pipefail
+          bash scripts/dev-runtime.sh seed
+          bash scripts/dev-runtime.sh seed
+          bash scripts/dev-runtime.sh check
 
       - name: Run focused local contracts
         run: bash scripts/dev-runtime.sh test-focused
