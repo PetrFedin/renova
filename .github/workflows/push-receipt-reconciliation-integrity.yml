@@ -14,6 +14,7 @@ on:
       - "backend/app/services/push_receipt_worker.py"
       - "backend/alembic/versions/w12pushreceipt01_expo_push_receipts.py"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/tests/test_database_revision_guard.py"
       - "backend/tests/test_yookassa_claim_integrity.py"
       - "backend/tests/test_release_runtime_health_coherence.py"
@@ -68,7 +69,7 @@ jobs:
           poetry run python -m alembic upgrade head
           poetry run python -m alembic downgrade w11refundreview01
           poetry run python -m alembic upgrade head
-          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_current_migration_schema.py
       - name: Verify receipt persistence provider semantics replica fencing and shared revision contracts
         working-directory: backend
         run: |
@@ -94,7 +95,7 @@ jobs:
           service = Path("backend/app/services/push_receipt_service.py").read_text(encoding="utf-8")
           push = Path("backend/app/services/push_service.py").read_text(encoding="utf-8")
           revision_guard = Path("backend/tests/test_database_revision_guard.py").read_text(encoding="utf-8")
-          schema_verifier = Path("backend/scripts/verify_migration_schema.py").read_text(encoding="utf-8")
+          schema_verifier = Path("backend/scripts/verify_current_migration_schema.py").read_text(encoding="utf-8")
 
           required = {
               "worker.py": ["push_receipt_worker_loop", "push_receipt_worker_interval_sec"],
@@ -109,7 +110,7 @@ jobs:
               ],
               "push_service.py": ["record_accepted_tickets_persistently", "AcceptedPushTicket"],
               "revision_guard.py": ["bundled_alembic_heads()", "assert_database_at_head"],
-              "schema_verifier.py": ["_verify_push_receipts", "expo_push_receipts"],
+              "schema_verifier.py": ["_verify_current", "expo_push_receipts", "materialpickstatus"],
           }
           sources = {
               "worker.py": worker,
