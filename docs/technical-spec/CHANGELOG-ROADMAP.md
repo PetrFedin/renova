@@ -30,6 +30,188 @@
 
 # 2. Change log
 
+## 2026-08-28 — P0 — полный остаточный native PostgreSQL enum parity: `w18nativeenumparity01`
+
+### Исходный факт
+
+После добавления generic native-enum проверки exact candidate `df759e37f9afdf1f983c2c770acf5c66865bae9e` успешно прошёл:
+
+- revision guard;
+- reject empty PostgreSQL;
+- clean `alembic upgrade head` через `w17chatmessageenum01`;
+- `verify_current_migration_schema.py` для migration-owned w16/w17 invariants.
+
+Затем `verify_orm_schema_parity.py` честно остановил `Database schema integrity` и показал **ровно три** оставшихся historical mismatch. Это считается полезным red-team evidence, а не поводом ослаблять verifier.
+
+### Mismatch 1 — `app_notifications.notification_type`
+
+**Migration history:**
+
+- base `14ef20b1cf11_v14.py` создал `notificationtype`:
+
+```text
+stage_review
+payment_pending
+change_order
+room_change
+chat_message
+```
+
+- `w7x8y9z0a1b2_payment_confirmed_notification.py` добавил только `payment_confirmed` через `ALTER TYPE ... ADD VALUE`;
+- current ORM `NotificationType` содержит 18 labels:
+
+```text
+stage_review
+stage_started
+room_updated
+room_created
+payment_pending
+payment_confirmed
+change_order
+room_change
+chat_message
+budget_alert
+reaction
+materials
+approval
+issue
+deadline
+waste_reminder
+document
+other
+```
+
+**Вывод:** это доказанный model-only enum growth без соответствующих migrations.
+
+### Mismatch 2 — `job_leads.status`
+
+**Migration history:** `w1softdelete01_soft_delete_lead_quotes.py` прямо создавал `job_leads.status` как:
+
+```text
+VARCHAR(32) DEFAULT 'open'
+```
+
+поскольку таблица исторически жила только через `create_all`/SQLite.
+
+Current ORM связывает колонку с native `JobLeadStatus`:
+
+```text
+open | quoted | taken | closed
+```
+
+**Вывод:** тот же подтверждённый storage/model drift class, что и legacy status columns в `w16`.
+
+### Mismatch 3 — `payments.status`
+
+**Migration history:**
+
+- base v14 создал `paymentstatus` в порядке:
+
+```text
+pending | confirmed | cancelled
+```
+
+- `z0a1b2c3d4e5_payment_status_sm.py` затем последовательно append'ил:
+
+```text
+processing | paid_unverified | disputed | refunded
+```
+
+Физический PG order стал:
+
+```text
+pending
+confirmed
+cancelled
+processing
+paid_unverified
+disputed
+refunded
+```
+
+Current ORM order:
+
+```text
+pending
+processing
+paid_unverified
+confirmed
+cancelled
+disputed
+refunded
+```
+
+Проверка `payment_service.py` показывает, что state machine задаётся explicit equality/`IN`/allowed-from sets. Ordinal comparison PostgreSQL enum не является business rule. Поэтому historical append order — случайный storage artifact, а не каноническая последовательность состояния.
+
+### Принятое решение — `w18nativeenumparity01`
+
+Одна migration закрывает **полный список**, полученный generic verifier после w17:
+
+1. `notificationtype` пересоздаётся в exact ORM order и расширяется до 18 labels;
+2. `job_leads.status` валидируется и переводится `VARCHAR(32) → native jobleadstatus`;
+3. `paymentstatus` losslessly пересоздаётся с тем же набором labels, но exact ORM order.
+
+### Fail-closed правила
+
+- migration принимает только точное известное historical либо уже exact current состояние;
+- все persisted values проверяются до преобразования;
+- неизвестный row value или неожиданный PG enum state останавливает upgrade;
+- `JobLead` сохраняет server default `open` после conversion;
+- Payment rebuild не меняет набор values, только canonical order;
+- downgrade Notification разрешён только если строки ещё не используют labels, отсутствующие в historical enum;
+- downgrade Payment lossless — набор labels одинаков;
+- downgrade JobLead возвращает `VARCHAR(32) DEFAULT 'open'`.
+
+### Почему generic verifier остаётся строгим по order
+
+Ordered PG enum labels являются частью физической schema semantics: PostgreSQL поддерживает enum comparison/order. Даже если конкретный сервис сейчас не использует `<`/`>`, silent divergence создаёт скрытую будущую семантику. Поэтому verifier сравнивает exact ordered labels, а state-machine code обязан использовать explicit transition rules вместо ordinal enum ordering.
+
+### Verification chain
+
+После `w18` обязательны:
+
+```text
+clean PostgreSQL
+→ upgrade to w18
+→ reflected current-schema invariants
+→ generic ORM table/column/native-enum parity
+→ accept current head
+→ downgrade new migrations
+→ verify removal / reject stale schema
+→ replay to w18
+→ reflected + generic parity again
+→ accept current head
+```
+
+И отдельно canonical local:
+
+```text
+start
+→ check
+→ seed
+→ seed повторно
+→ check
+→ focused contracts
+```
+
+### Authoritative sources
+
+- `backend/alembic/versions/14ef20b1cf11_v14.py`
+- `backend/alembic/versions/w7x8y9z0a1b2_payment_confirmed_notification.py`
+- `backend/alembic/versions/z0a1b2c3d4e5_payment_status_sm.py`
+- `backend/alembic/versions/w1softdelete01_soft_delete_lead_quotes.py`
+- `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py`
+- `backend/app/models/entities.py`
+- `backend/app/services/payment_service.py`
+- `backend/scripts/verify_orm_schema_parity.py`
+- `backend/scripts/verify_current_migration_schema.py`
+
+### Статус
+
+**PENDING REVERIFY.** Реализация записана; закрытие требует exact-head CI после синхронизации master dossier и drift gates.
+
+---
+
 ## 2026-08-28 — P0 — canonical local runtime: второй schema/model enum drift
 
 ### Исходный факт
@@ -55,7 +237,7 @@ Runtime дошёл через Docker/locked bootstrap/Compose/PostgreSQL/Redis/M
    - `invoice`;
    - `payment`.
 3. `verify_orm_schema_parity.py` до исправления проверял таблицы/имена колонок, но **не** native PostgreSQL enum name/labels, поэтому этот drift не был виден в schema CI.
-4. `create_work_order()` создаёт domain-owned thread `work:<work_order_id>` и сохраняет FK в `work_orders.chat_thread_id`.
+4. `create_work_order()` создаёт domain-owned thread `work:<id>` и сохраняет FK в `work_orders.chat_thread_id`.
 5. Legacy demo seed удалял любой project chat, не входящий в список demo-title. После частично выполненного seed это приводило к попытке удалить work-order thread и FK failure.
 6. API lifespan автоматически запускал demo seed при каждом startup/restart, хотя canonical developer interface уже разделяет `start` и explicit `seed`.
 
@@ -189,7 +371,7 @@ Migration валидирует existing values до cast; downgrade возвра
 - living technical specification integrity;
 - остальные domain integrity workflows — всего 26/27 workflows.
 
-После появления `w17` этот evidence остаётся исторически полезным, но current final candidate должен пройти повторную exact-head проверку.
+После появления `w17/w18` этот evidence остаётся исторически полезным, но current final candidate должен пройти повторную exact-head проверку.
 
 ---
 
@@ -201,7 +383,7 @@ Roadmap не является списком пожеланий. Работу в
 
 ### P0.1. Закрыть canonical local runtime end-to-end
 
-**Gate:** `Canonical local runtime integrity = success` на exact final SHA после `w17` и seed-lifecycle changes.
+**Gate:** `Canonical local runtime integrity = success` на exact final SHA после `w18` и seed-lifecycle changes.
 
 Definition of Done:
 
@@ -216,16 +398,22 @@ Definition of Done:
 
 ### P0.2. Полная native PostgreSQL enum parity
 
-**Gate:** enhanced `verify_orm_schema_parity.py` на clean PostgreSQL.
+**Gate:** enhanced `verify_orm_schema_parity.py` на clean PostgreSQL после `w18nativeenumparity01`.
 
-Если generic verifier выявит дополнительные enum mismatches, каждый mismatch:
+Current verified repair set:
 
-1. классифицируется по migration history;
-2. исправляется отдельной fail-closed migration/invariant;
-3. документируется в master dossier;
-4. проходит upgrade/downgrade/replay где downgrade семантически безопасен.
+- w16: Purchase / MaterialPick / Selection legacy VARCHAR statuses;
+- w17: ChatMessageType missing labels;
+- w18: NotificationType missing labels/order, JobLead VARCHAR status, PaymentStatus order.
 
-Не допускается ослаблять verifier ради зелёного CI.
+Definition of Done:
+
+- generic verifier сообщает zero mismatch;
+- current verifier фиксирует migration-owned enum invariants;
+- clean upgrade + downgrade/replay проходят;
+- verifier не ослаблен до unordered/set-only comparison.
+
+Если после w18 verifier всё же выявит дополнительный mismatch, он снова классифицируется по migration history и добавляется сюда как новый доказанный факт; mass-cast без анализа запрещён.
 
 ### P0.3. Rebase/merge ordering критических PR
 
