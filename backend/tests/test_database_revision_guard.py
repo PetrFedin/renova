@@ -38,11 +38,12 @@ def test_bundled_heads_are_resolved_independently_of_process_cwd(
     monkeypatch,
     tmp_path,
 ):
+    expected_heads = migration_guard.bundled_alembic_heads()
+    assert len(expected_heads) == 1
+
     monkeypatch.chdir(tmp_path)
 
-    assert migration_guard.bundled_alembic_heads() == (
-        "w15providerops01",
-    )
+    assert migration_guard.bundled_alembic_heads() == expected_heads
 
 
 @pytest.mark.asyncio
