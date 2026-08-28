@@ -10,6 +10,7 @@ const root = path.resolve(here, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const calculation = read('docs/technical-spec/CALCULATION-REGISTRY.md');
 const screens = read('docs/technical-spec/SCREEN-CONTRACT-CATALOG.md');
+const screenSources = read('docs/technical-spec/SCREEN-SOURCE-SNAPSHOT.md');
 
 function gitBlobSha(content) {
   const bytes = Buffer.from(content, 'utf8');
@@ -70,7 +71,7 @@ for (const file of [
   'apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx',
   'apps/mobile/components/renova/os/OsHubTabs.tsx',
 ]) {
-  requireBlobReference(screens, file);
+  requireBlobReference(screenSources, file);
 }
 
 for (const screenToken of [
