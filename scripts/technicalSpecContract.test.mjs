@@ -77,10 +77,9 @@ const trackedSources = [
 
 for (const file of trackedSources) {
   const actualSha = gitBlobSha(read(file));
-  const rowPattern = new RegExp(`\\| \\`${file.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\` \\| \\`${actualSha}\\` \\|`);
-  assert.match(
-    spec,
-    rowPattern,
+  const expectedRowPrefix = `| \`${file}\` | \`${actualSha}\` |`;
+  assert.ok(
+    spec.includes(expectedRowPrefix),
     `technical specification source snapshot is stale for ${file}; update the affected documentation and blob SHA`,
   );
 }
