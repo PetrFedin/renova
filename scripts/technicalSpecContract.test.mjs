@@ -39,6 +39,7 @@ for (const token of [
   '#282', '#283', '#284', '#287', '#286',
   'w16legacystatus01',
   'w17chatmessageenum01',
+  'w18nativeenumparity01',
   'CHANGELOG-ROADMAP.md',
   'renova-local',
   'npm run dev -- doctor',
@@ -91,6 +92,7 @@ const trackedSources = [
   '.github/workflows/local-runtime-integrity.yml',
   'backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py',
   'backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py',
+  'backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py',
   'docs/technical-spec/CHANGELOG-ROADMAP.md',
 ];
 
