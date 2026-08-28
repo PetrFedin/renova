@@ -23,6 +23,9 @@ const developmentReference = read('docs/DEVELOPMENT-CANON.md');
 const backendReadme = read('backend/README.md');
 const backendPyproject = read('backend/pyproject.toml');
 const backendDockerfile = read('backend/Dockerfile');
+const apiMain = read('backend/app/main.py');
+const explicitSeed = read('backend/app/dev_seed.py');
+const demoSeed = read('backend/app/services/seed_demo.py');
 
 assert.equal(pkg.scripts?.dev, 'bash scripts/start-dev.sh', 'existing npm run dev must remain the stable root entrypoint');
 assert.ok(launcher.includes('dev-runtime.sh'), 'root launcher must delegate to the canonical runtime');
@@ -75,6 +78,7 @@ for (const token of [
   '/ready',
   'app.runtime_healthcheck',
   'renova:runtime:worker:*',
+  'compose exec -T api python -m app.dev_seed',
 ]) {
   assert.ok(runtime.includes(token), `dev runtime missing contract token: ${token}`);
 }
@@ -95,6 +99,18 @@ assert.ok(runtime.includes('postgresql+asyncpg://renova:renova@127.0.0.1:5433/re
 assert.ok(runtime.includes('redis://127.0.0.1:6380/0'), 'Redis guard must bind the exact canonical local Redis profile');
 assert.ok(runtime.includes('http://127.0.0.1:9000'), 'S3 guard must bind the exact canonical local MinIO endpoint');
 assert.ok(runtime.includes('renova-local-development-secret-key-32-bytes-only'), 'runtime guard must reject reused staging/production signing keys');
+
+// Demo data is an explicit operator action, never an API startup side effect.
+assert.ok(!apiMain.includes('from app.services.seed_demo import ensure_demo_users'), 'API lifespan must not import the demo business-data seed');
+assert.ok(!apiMain.includes('await ensure_demo_users(db)'), 'API lifespan must not mutate demo business data on restart');
+assert.ok(!apiMain.includes('await seed_articles(db)'), 'API lifespan must not seed content on restart');
+assert.ok(apiMain.includes('demo seed is explicit'), 'API startup must document the explicit-seed boundary');
+assert.ok(explicitSeed.includes('await assert_database_at_head(engine)'), 'explicit demo seed must require the exact bundled Alembic head');
+assert.ok(explicitSeed.includes('await ensure_demo_users(db)'), 'explicit seed command must own demo business-data materialization');
+assert.ok(explicitSeed.includes('await seed_articles(db)'), 'explicit seed command must own demo article materialization');
+assert.ok(demoSeed.includes('async def _dedupe_project_demo_chats'), 'demo seed must expose canonical-demo-only deduplication');
+assert.ok(demoSeed.includes('if normalized not in allowed:\n            continue'), 'demo seed must preserve every non-demo project chat');
+assert.ok(!demoSeed.includes('JUNK_TITLE_PREFIXES'), 'demo seed must not classify arbitrary project chats as disposable junk');
 
 const fullTestsBody = runtime.match(/full_tests\(\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
 assert.ok(fullTestsBody.includes('focused_tests'), 'test-full must run the focused gate before the broader regression');
