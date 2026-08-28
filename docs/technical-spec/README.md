@@ -11,6 +11,17 @@
 
 ## Текущие приложения
 
+### `CHANGELOG-ROADMAP.md`
+
+Управляемый журнал развития проекта:
+
+- каждое существенное изменение как `наблюдение → решение → source → test → evidence → next step`;
+- история обнаруженных runtime/schema/UI/data defects;
+- exact SHA/evidence status без переноса green результатов между кандидатами;
+- приоритизированный P0/P1/P2 roadmap;
+- Definition of Done и residual risk по каждому активному направлению;
+- обязательная фиксация дальнейших изменений до/вместе с реализацией.
+
 ### `CALCULATION-REGISTRY.md`
 
 Реестр подтверждённых формул и derived metrics:
@@ -40,6 +51,10 @@
 - filters, badges, actions, state transitions, cross-links;
 - consistency debt и обязательный backlog remaining screens.
 
+### `SCREEN-SOURCE-SNAPSHOT.md`
+
+Machine-readable source snapshot экранов и shared UI sources, используемый drift contract.
+
 ## Drift protection
 
 Workflow: `.github/workflows/technical-spec-integrity.yml`.
@@ -51,6 +66,24 @@ Contracts:
 - `scripts/technicalSpecAnnexContract.test.mjs` — calculation/screen annexes ↔ implementation blob snapshots + semantic tokens.
 
 Изменение tracked source без соответствующего обновления документации должно делать этот workflow красным.
+
+## Обязательный рабочий цикл развития
+
+Каждый следующий проход проекта выполняется так:
+
+```text
+прочитать master dossier + CHANGELOG-ROADMAP
+→ сверить current code/CI/evidence
+→ выбрать верхний незакрытый P0/P1
+→ изменить implementation
+→ изменить ТЗ/annex в том же контуре
+→ добавить/усилить automated proof
+→ получить exact-head CI
+→ записать итоговый evidence/status
+→ только затем переходить к следующему пункту
+```
+
+Запрещено наращивать backlog новыми идеями, пока существует доказанный P0 correctness/runtime/data-loss blocker выше по приоритету.
 
 ## Правило расширения
 
