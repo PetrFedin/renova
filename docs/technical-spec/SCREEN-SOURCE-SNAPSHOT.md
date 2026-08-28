@@ -8,7 +8,7 @@
 | `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
-| `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `5eb40edd4de8869aadcd71770669d813dd66e3c2` | Materials/procurement |
+| `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `c1244143d4854663dbdbdac43d5366436933d190` | Materials/procurement |
 | `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `9ccb7fa6b1df87d21372369de73b748f8c7779e1` | Selections |
 | `apps/mobile/components/screens/OsControlScreen.tsx` | `b33fe8343d7629fd5ac859009ebdff36da629810` | role/access-mode control router |
 | `apps/mobile/components/screens/control/CustomerControlView.tsx` | `da4faeed719c936af4daf0b7b7b6b69b7c16c0e9` | customer acceptance/QC/warranty view |
