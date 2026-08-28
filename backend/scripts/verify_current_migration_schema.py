@@ -2,8 +2,9 @@
 
 `verify_migration_schema.py` owns the reflected structural checks accumulated
 through w15. This wrapper binds those checks to the actual bundled Alembic
-head and adds the w16 native-enum parity assertions. Future migrations must
-extend this verifier when they introduce new reflected schema invariants.
+head and adds migration-owned native-enum assertions introduced by w16/w17.
+Future migrations must extend this verifier when they introduce new reflected
+schema invariants.
 """
 from __future__ import annotations
 
@@ -18,18 +19,22 @@ from app.db.migration_guard import bundled_alembic_heads
 import verify_migration_schema as legacy_schema
 
 
-_EXPECTED_ENUMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "purchases": (
+_EXPECTED_ENUMS: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {
+    ("purchases", "status"): (
         "purchasestatus",
         ("draft", "approved", "ordered", "paid", "partial", "delivered", "cancelled", "returned"),
     ),
-    "material_picks": (
+    ("material_picks", "status"): (
         "materialpickstatus",
         ("draft", "pending", "approved", "purchased"),
     ),
-    "selection_items": (
+    ("selection_items", "status"): (
         "selectionstatus",
         ("draft", "proposed", "approved", "rejected"),
+    ),
+    ("chat_messages", "message_type"): (
+        "chatmessagetype",
+        ("text", "photo", "file", "confirm", "system", "task", "invoice", "payment"),
     ),
 }
 
@@ -48,21 +53,22 @@ def _verify_current(sync_connection) -> None:
     legacy_schema._verify_present(sync_connection)
 
     inspector = inspect(sync_connection)
-    for table, (expected_name, expected_values) in _EXPECTED_ENUMS.items():
-        columns = {column["name"]: column for column in inspector.get_columns(table)}
-        legacy_schema._require("status" in columns, f"{table}.status is missing")
-        status_type = columns["status"]["type"]
+    for (table, column), (expected_name, expected_values) in _EXPECTED_ENUMS.items():
+        columns = {item["name"]: item for item in inspector.get_columns(table)}
+        legacy_schema._require(column in columns, f"{table}.{column} is missing")
+        enum_type = columns[column]["type"]
         legacy_schema._require(
-            isinstance(status_type, ENUM),
-            f"{table}.status must be a native PostgreSQL enum, got {status_type!r}",
+            isinstance(enum_type, ENUM),
+            f"{table}.{column} must be a native PostgreSQL enum, got {enum_type!r}",
         )
         legacy_schema._require(
-            status_type.name == expected_name,
-            f"{table}.status enum name must be {expected_name}, got {status_type.name!r}",
+            enum_type.name == expected_name,
+            f"{table}.{column} enum name must be {expected_name}, got {enum_type.name!r}",
         )
         legacy_schema._require(
-            tuple(status_type.enums) == expected_values,
-            f"{table}.status enum values mismatch: expected={expected_values!r} actual={tuple(status_type.enums)!r}",
+            tuple(enum_type.enums) == expected_values,
+            f"{table}.{column} enum values mismatch: "
+            f"expected={expected_values!r} actual={tuple(enum_type.enums)!r}",
         )
 
 
