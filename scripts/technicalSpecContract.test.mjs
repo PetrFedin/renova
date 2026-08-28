@@ -50,7 +50,7 @@ for (const token of [
 }
 
 for (const token of [
-  'наблюдение → решение → source → test → evidence → next step',
+  'наблюдение → решение → код/данные → тест → evidence → следующий шаг',
   'P0.1. Закрыть canonical local runtime end-to-end',
   'P0.2. Полная native PostgreSQL enum parity',
   'P1.1. Полный screen contract inventory',
