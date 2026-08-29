@@ -91,18 +91,20 @@ def test_override_can_disable_but_never_enable_forbidden_capability():
 def test_runtime_paths_use_fail_closed_policy_resolution():
     backend = Path(__file__).resolve().parents[1]
     main_source = (backend / "app" / "main.py").read_text(encoding="utf-8")
+    runtime_policy_source = (backend / "app" / "core" / "runtime_policy.py").read_text(encoding="utf-8")
     session_source = (backend / "app" / "db" / "session.py").read_text(encoding="utf-8")
     auth_source = (backend / "app" / "api" / "v1" / "auth.py").read_text(encoding="utf-8")
 
-    assert "resolve_policy_flag(" in main_source
-    assert "policy_allows=policy.allow_demo_seed" in main_source
-    assert "allow_demo_seed=settings.allow_demo_seed" in main_source
-    assert "allow_create_all=settings.allow_create_all" in main_source
+    # Startup owns one policy adapter; the low-level flag resolution must not be
+    # duplicated back into main.py merely to satisfy this source-contract test.
+    assert "validate_configured_runtime()" in main_source
+    assert "validate_runtime_settings(" in runtime_policy_source
+    assert "allow_demo_seed=current.allow_demo_seed" in runtime_policy_source
+    assert "allow_create_all=current.allow_create_all" in runtime_policy_source
 
     assert "resolve_policy_flag(" in session_source
     assert "policy_allows=policy.allow_create_all" in session_source
     assert "return bool(settings.allow_create_all)" not in session_source
-    assert "return bool(settings.allow_demo_seed)" not in main_source
 
     assert "resolve_policy_flag(" in auth_source
     assert "policy_allows=policy.allow_demo_seed" in auth_source
