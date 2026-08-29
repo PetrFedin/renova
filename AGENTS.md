@@ -15,7 +15,11 @@ Canonical development flow:
 Rules:
 - never direct-push product changes to `main`;
 - keep PRs logically bounded;
-- fetch current `main`, open PRs/issues, CI, migrations, and readiness before starting a production-hardening slice;
+- fetch current `main`, open PRs/issues, CI, migrations, readiness and the living technical specification before starting a production-hardening slice;
+- every governed implementation change must update `docs/RENOVA-TECHNICAL-SPECIFICATION.md` or its relevant governed annex in the same logical change;
+- before editing a bounded area, scan its complete end-to-end path for dead ends, broken links, duplicate sources/routes/calculations/state machines, stale mutating legacy paths, missing states and missing transaction/idempotency/concurrency/recovery boundaries;
+- confirmed P0/P1 gaps found by that scan must be fixed or recorded in the living specification/roadmap with an explicit blocker/evidence boundary; they must not remain only in chat or an untracked TODO;
+- follow `docs/technical-spec/END-TO-END-GOVERNANCE.md` as the mandatory specification-governance annex;
 - do not call work complete merely because code exists;
 - distinguish `IMPLEMENTED`, `TESTED`, `CI VERIFIED`, `STAGING VERIFIED`, `EXTERNALLY VERIFIED`, and `PRODUCTION VERIFIED`;
 - external provider/infrastructure/GitHub settings without authoritative evidence remain `NOT VERIFIED` or `EXTERNAL ACTION REQUIRED`.
@@ -197,6 +201,7 @@ The authoritative full backend regression runs in GitHub CI with locked Python/P
 
 A production-facing block is not done until the applicable items are true:
 - implementation is canonical, with no duplicate legacy path;
+- the affected end-to-end chain is traced from entry/auth/input through transaction/state/side effects/reconciliation/read model/UI/recovery/audit where applicable;
 - authorization and object scope are explicit;
 - error and retry semantics are explicit;
 - idempotency is defined;
@@ -206,8 +211,12 @@ A production-facing block is not done until the applicable items are true:
 - mobile UX has complete loading/error/success behavior;
 - tests exist and relevant CI is green;
 - migration impact is verified when applicable;
+- the living technical specification and relevant annexes are synchronized in the same logical change;
+- discovered dead ends, broken links, duplicates and missing boundaries are fixed or explicitly retained as governed blockers;
 - documentation/readiness truth is updated;
 - external integration evidence is retained or the status remains `NOT VERIFIED`.
+
+Green implementation with stale or incomplete living specification is **not** Definition of Done.
 
 ## 13. Forbidden legacy resurrection
 
