@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "observed_on": "2026-08-25",
+  "observed_on": "2026-08-29",
   "expected_repo_facts": {
-    "alembic_head": "w16legacystatus01",
+    "alembic_head": "w18nativeenumparity01",
     "mobile_version": "0.3.7",
     "ios_build_number": "3",
     "android_version_code": 3
@@ -41,271 +41,60 @@
     }
   },
   "providers": {
-    "yookassa": {
-      "repo_status": "DURABLE_RECONCILIATION_IMPLEMENTED",
-      "external_status": "LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED",
-      "release_scope": true,
-      "evidence": null,
-      "issue": 238
-    },
-    "fns_receipts": {
-      "repo_status": "DURABLE_RECONCILIATION_IMPLEMENTED",
-      "external_status": "LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED",
-      "release_scope": true,
-      "evidence": null,
-      "issue": 238
-    },
-    "moy_nalog": {
-      "repo_status": "CREDENTIAL_LIFECYCLE_HARDENED",
-      "external_status": "LIVE_OAUTH_AND_PROVIDER_REFRESH_CONTRACT_UNVERIFIED",
-      "automatic_refresh_supported": false,
-      "release_scope": true,
-      "evidence": null,
-      "issue": 238
-    },
-    "esign_kontur": {
-      "repo_status": "DURABLE_IDEMPOTENT_SUBMIT_AND_WEBHOOK",
-      "external_status": "AUTHORITATIVE_READ_STATUS_CONTRACT_UNVERIFIED",
-      "release_scope": true,
-      "evidence": null,
-      "issue": 238
-    },
-    "s3_media": {
-      "repo_status": "FAIL_CLOSED_CONFIGURATION_AND_RUNTIME_CHECKS",
-      "external_status": "AMBIGUOUS_WRITE_ORPHAN_RECOVERY_NOT_CLOSED",
-      "release_scope": true,
-      "evidence": null,
-      "issue": 238
-    },
-    "twilio_sms": {
-      "repo_status": "DURABLE_OUTBOX_AND_AMBIGUOUS_WRITE_FENCING_CI_VERIFIED",
-      "external_status": "LIVE_PROVIDER_ROUND_TRIP_UNVERIFIED",
-      "release_scope": true,
-      "evidence": null,
-      "note": "PR #277 proves durable invitation intent, provider ambiguity fencing, terminal/DLQ recovery and truthful UI on exact code. No real external Twilio round-trip is retained, so provider acceptance/delivery is not externally verified."
-    },
-    "push": {
-      "repo_status": "DELIVERY_AND_RECEIPT_RECONCILIATION_IMPLEMENTED",
-      "external_status": "LIVE_PROVIDER_LIVENESS_UNVERIFIED",
-      "release_scope": true,
-      "evidence": null
-    }
+    "yookassa": {"repo_status":"DURABLE_RECONCILIATION_IMPLEMENTED","external_status":"LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED","release_scope":true,"evidence":null,"issue":238},
+    "fns_receipts": {"repo_status":"DURABLE_RECONCILIATION_IMPLEMENTED","external_status":"LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED","release_scope":true,"evidence":null,"issue":238},
+    "moy_nalog": {"repo_status":"CREDENTIAL_LIFECYCLE_HARDENED","external_status":"LIVE_OAUTH_AND_PROVIDER_REFRESH_CONTRACT_UNVERIFIED","automatic_refresh_supported":false,"release_scope":true,"evidence":null,"issue":238},
+    "esign_kontur": {"repo_status":"DURABLE_IDEMPOTENT_SUBMIT_AND_WEBHOOK","external_status":"AUTHORITATIVE_READ_STATUS_CONTRACT_UNVERIFIED","release_scope":true,"evidence":null,"issue":238},
+    "s3_media": {"repo_status":"FAIL_CLOSED_CONFIGURATION_AND_RUNTIME_CHECKS","external_status":"AMBIGUOUS_WRITE_ORPHAN_RECOVERY_NOT_CLOSED","release_scope":true,"evidence":null,"issue":238},
+    "twilio_sms": {"repo_status":"DURABLE_OUTBOX_AND_AMBIGUOUS_WRITE_FENCING_CI_VERIFIED","external_status":"LIVE_PROVIDER_ROUND_TRIP_UNVERIFIED","release_scope":true,"evidence":null,"note":"PR #277 proves durable invitation intent, provider ambiguity fencing, terminal/DLQ recovery and truthful UI on exact code. No real external Twilio round-trip is retained, so provider acceptance/delivery is not externally verified."},
+    "push": {"repo_status":"DELIVERY_AND_RECEIPT_RECONCILIATION_IMPLEMENTED","external_status":"LIVE_PROVIDER_LIVENESS_UNVERIFIED","release_scope":true,"evidence":null}
   },
   "slo": {
     "status": "REPOSITORY_GATE_IMPLEMENTED_EXTERNAL_CAPACITY_NOT_PROVEN",
-    "candidate_thresholds": {
-      "http_failure_rate_lt": 0.01,
-      "http_p95_ms_lt": 1000,
-      "http_p99_ms_lt": 2500,
-      "websocket_delivery_failure_rate_lt": 0.01,
-      "websocket_delivery_p95_ms_lt": 1000,
-      "websocket_delivery_p99_ms_lt": 2500
-    },
-    "latest_repo_capacity_gate": {
-      "pr": 255,
-      "reviewed_head_sha": "00146fe47f4041e9378962f5e332d5ee28edcace",
-      "merge_sha": "bd77d4703336d1feba26735398bb14cc21c82616",
-      "status": "SUCCESS"
-    },
-    "latest_external_load_test": {
-      "status": "NOT_EXECUTED_OR_NOT_RETAINED",
-      "git_sha": null,
-      "artifact_digest": null,
-      "evidence": null,
-      "issue": 236
-    }
+    "candidate_thresholds": {"http_failure_rate_lt":0.01,"http_p95_ms_lt":1000,"http_p99_ms_lt":2500,"websocket_delivery_failure_rate_lt":0.01,"websocket_delivery_p95_ms_lt":1000,"websocket_delivery_p99_ms_lt":2500},
+    "latest_repo_capacity_gate": {"pr":255,"reviewed_head_sha":"00146fe47f4041e9378962f5e332d5ee28edcace","merge_sha":"bd77d4703336d1feba26735398bb14cc21c82616","status":"SUCCESS"},
+    "latest_external_load_test": {"status":"NOT_EXECUTED_OR_NOT_RETAINED","git_sha":null,"artifact_digest":null,"evidence":null,"issue":236}
   },
   "restore": {
-    "latest_repo_restore_drill": {
-      "status": "SUCCESS",
-      "git_sha": "6b583f596b7dd004273ba08044bbb0dc82a85d6e",
-      "workflow_run_id": 32640629706,
-      "scope": "PostgreSQL logical backup, isolated restore, schema and deterministic data fingerprint verification",
-      "production_backup": false
-    },
-    "latest_production_restore_drill": {
-      "status": "NOT_EXTERNALLY_VERIFIED",
-      "evidence": null,
-      "rpo_minutes": null,
-      "rto_minutes": null,
-      "issue": 234
-    }
+    "latest_repo_restore_drill": {"status":"SUCCESS","git_sha":"6b583f596b7dd004273ba08044bbb0dc82a85d6e","workflow_run_id":32640629706,"scope":"PostgreSQL logical backup, isolated restore, schema and deterministic data fingerprint verification","production_backup":false},
+    "latest_production_restore_drill": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"rpo_minutes":null,"rto_minutes":null,"issue":234}
   },
-  "observability": {
-    "status": "REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED",
-    "evidence": null,
-    "alert_delivery_verified": false,
-    "mobile_crash_reporting_verified": false,
-    "issue": 235,
-    "note": "Backend observability controls exist in the repository, but production-grade end-to-end observability, mobile crash reporting and a retained staging alert-delivery probe are not yet proven complete."
-  },
-  "release": {
-    "mobile_source_version": "0.3.7",
-    "ios_build_number": "3",
-    "android_version_code": 3,
-    "latest_eas_release": {
-      "status": "NOT_EXTERNALLY_VERIFIED",
-      "git_sha": null,
-      "profile": null,
-      "builds": [],
-      "evidence": null
-    },
-    "repo_release_contract": ".github/workflows/eas-build.yml"
-  },
+  "observability": {"status":"REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED","evidence":null,"alert_delivery_verified":false,"mobile_crash_reporting_verified":false,"issue":235,"note":"Backend observability controls exist in the repository, but production-grade end-to-end observability, mobile crash reporting and a retained staging alert-delivery probe are not yet proven complete."},
+  "release": {"mobile_source_version":"0.3.7","ios_build_number":"3","android_version_code":3,"latest_eas_release":{"status":"NOT_EXTERNALLY_VERIFIED","git_sha":null,"profile":null,"builds":[],"evidence":null},"repo_release_contract":".github/workflows/eas-build.yml"},
   "security": {
-    "repo_controls": {
-      "status": "IMPLEMENTED",
-      "merge_sha": "0cc870fdea76aeca26aef1365daf88407f6e3f78",
-      "osv_exception_baseline": "EMPTY",
-      "codeql": "ENABLED",
-      "gitleaks_history_and_proposed_tree": "ENABLED",
-      "container_high_critical_fixed_vulnerability_gate": "ENABLED"
-    },
+    "repo_controls": {"status":"IMPLEMENTED","merge_sha":"0cc870fdea76aeca26aef1365daf88407f6e3f78","osv_exception_baseline":"EMPTY","codeql":"ENABLED","gitleaks_history_and_proposed_tree":"ENABLED","container_high_critical_fixed_vulnerability_gate":"ENABLED"},
     "accepted_risks": [],
-    "external_validation": {
-      "branch_protection": "OPEN_ISSUE_247",
-      "privileged_access_review": "OPEN_ISSUE_256",
-      "independent_pentest": "OPEN_ISSUE_257",
-      "provider_credential_rotation_drill": "NOT_EXTERNALLY_VERIFIED"
-    }
+    "external_validation": {"branch_protection":"OPEN_ISSUE_247","privileged_access_review":"OPEN_ISSUE_256","independent_pentest":"OPEN_ISSUE_257","provider_credential_rotation_drill":"NOT_EXTERNALLY_VERIFIED"}
   },
   "launch_acceptance": {
-    "controlled_pilot": {
-      "status": "NOT_EXTERNALLY_VERIFIED",
-      "evidence": null,
-      "issue": 241
-    },
-    "product_telemetry": {
-      "status": "NOT_EXTERNALLY_VERIFIED",
-      "evidence": null,
-      "issue": 241
-    },
-    "legal_privacy": {
-      "status": "NOT_EXTERNALLY_VERIFIED",
-      "evidence": null,
-      "issue": 241,
-      "note": "Terms/Privacy, retention, export/delete, subprocessors, payment/legal and jurisdiction validation require external approval evidence."
-    },
-    "support_incident_ops": {
-      "status": "NOT_EXTERNALLY_VERIFIED",
-      "evidence": null,
-      "issue": 241
-    }
+    "controlled_pilot": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},
+    "product_telemetry": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},
+    "legal_privacy": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241,"note":"Terms/Privacy, retention, export/delete, subprocessors, payment/legal and jurisdiction validation require external approval evidence."},
+    "support_incident_ops": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241}
   },
   "product_integrity": {
-    "manual_payment_evidence": {
-      "status": "INCOMPLETE",
-      "issue": 265,
-      "note": "Current main has paid_unverified transfer acknowledgement, but not the complete evidence upload, authorized reviewer approve/reject, safe resubmission and single-recognition financial lifecycle."
-    },
-    "warranty_claim_idempotency": {
-      "status": "INCOMPLETE",
-      "issue": 266,
-      "note": "Warranty create remains retryable/offline-capable without a durable create idempotency identity, leaving duplicate issue/document/event risk."
-    },
-    "chat_read_truth": {
-      "status": "CI_VERIFIED",
-      "issue": 269,
-      "pr": 270,
-      "head_sha": "deef0d2eed413679d095f4e06d48d8bde963f759",
-      "merge_sha": "9a7b0babc530c4ed187f54ea9c67763393656763",
-      "workflow_run_id": 32734835634,
-      "note": "Explicit server message cursor, side-effect-free reads, monotonic DB fencing, visibility-gated mobile read receipts and authoritative reconciliation are merged. Equal-timestamp precision is tracked separately as non-launch-blocking P2 #271."
-    },
-    "phone_chat_invitation_delivery": {
-      "status": "CI_VERIFIED",
-      "issue": 272,
-      "pr": 277,
-      "head_sha": "1b60199972b363ede0fa1909e40c14b932c789d0",
-      "merge_sha": "43df8ef555efb75ad4d6263297560529eecc660b",
-      "workflow_run_id": 32833474753,
-      "note": "Durable deterministic invitation identity, DomainOutbox delivery intent, SMS ambiguous-write fencing/operator recovery, OTP activation, exact thread-scoped ACL/inbox/WS, recipient notifications and truthful mobile delivery states are merged. Full backend regression passed 975 tests with 6 skipped; PostgreSQL Alembic and Playwright passed. Real Twilio provider round-trip remains externally unverified."
-    },
-    "archived_chat_unread_truth": {
-      "status": "INCOMPLETE",
-      "issue": 273,
-      "note": "Archived threads can still remain hidden after later incoming communication; message creation still lacks a durable client request identity and the message/archive/notification-outbox mutation is not yet one atomic business transaction. Thread-only mobile project-action capability UX also remains to be closed."
-    },
-    "development_runtime": {
-      "status": "INCOMPLETE",
-      "issue": 279,
-      "note": "Current local launcher does not reproduce the production topology: root compose lacks Redis/API/dedicated Worker, startup may install Python packages ad-hoc and swallows Alembic failure, and canonical dev check/reset/logs/seed/stop lifecycle commands are absent."
-    }
+    "manual_payment_evidence": {"status":"INCOMPLETE","issue":265,"note":"Current main has paid_unverified transfer acknowledgement, but not the complete evidence upload, authorized reviewer approve/reject, safe resubmission and single-recognition financial lifecycle."},
+    "warranty_claim_idempotency": {"status":"INCOMPLETE","issue":266,"note":"Warranty create remains retryable/offline-capable without a durable create idempotency identity, leaving duplicate issue/document/event risk."},
+    "chat_read_truth": {"status":"CI_VERIFIED","issue":269,"pr":270,"head_sha":"deef0d2eed413679d095f4e06d48d8bde963f759","merge_sha":"9a7b0babc530c4ed187f54ea9c67763393656763","workflow_run_id":32734835634,"note":"Explicit server message cursor, side-effect-free reads, monotonic DB fencing, visibility-gated mobile read receipts and authoritative reconciliation are merged. Equal-timestamp precision is tracked separately as non-launch-blocking P2 #271."},
+    "phone_chat_invitation_delivery": {"status":"CI_VERIFIED","issue":272,"pr":277,"head_sha":"1b60199972b363ede0fa1909e40c14b932c789d0","merge_sha":"43df8ef555efb75ad4d6263297560529eecc660b","workflow_run_id":32833474753,"note":"Durable deterministic invitation identity, DomainOutbox delivery intent, SMS ambiguous-write fencing/operator recovery, OTP activation, exact thread-scoped ACL/inbox/WS, recipient notifications and truthful mobile delivery states are merged. Full backend regression passed 975 tests with 6 skipped; PostgreSQL Alembic and Playwright passed. Real Twilio provider round-trip remains externally unverified."},
+    "archived_chat_unread_truth": {"status":"INCOMPLETE","issue":273,"note":"Archived threads can still remain hidden after later incoming communication; message creation still lacks a durable client request identity and the message/archive/notification-outbox mutation is not yet one atomic business transaction. Thread-only mobile project-action capability UX also remains to be closed."},
+    "development_runtime": {"status":"INCOMPLETE","issue":279,"note":"PR #286 is hardening the canonical local topology and agent onboarding. Keep this evidence INCOMPLETE until the exact PR head passes the required CI matrix and is merged."}
   },
   "open_launch_blockers": [
-    {
-      "issue": 233,
-      "priority": "P0",
-      "reason": "persistent external production-like staging and exact-artifact promotion lifecycle are not externally proven"
-    },
-    {
-      "issue": 234,
-      "priority": "P0",
-      "reason": "managed production backup/PITR and a real external restore disaster-recovery drill are not proven"
-    },
-    {
-      "issue": 235,
-      "priority": "P0",
-      "reason": "production observability and retained end-to-end alert-delivery evidence are incomplete"
-    },
-    {
-      "issue": 247,
-      "priority": "P0",
-      "reason": "main branch protection and required production checks are still externally observed disabled"
-    },
-    {
-      "issue": 236,
-      "priority": "P1",
-      "reason": "real external production-like staging capacity/provider-degradation evidence is not proven"
-    },
-    {
-      "issue": 237,
-      "priority": "P1",
-      "reason": "external security acceptance remains incomplete"
-    },
-    {
-      "issue": 238,
-      "priority": "P1",
-      "reason": "e-sign authoritative read status and S3 ambiguous-write recovery remain incomplete"
-    },
-    {
-      "issue": 241,
-      "priority": "P1",
-      "reason": "controlled real-user pilot, product telemetry, legal/privacy acceptance and launch operations are not complete"
-    },
-    {
-      "issue": 256,
-      "priority": "P1",
-      "reason": "real GitHub/org privileged-access review is not executed"
-    },
-    {
-      "issue": 257,
-      "priority": "P1",
-      "reason": "independent pre-launch penetration and abuse test is not executed"
-    },
-    {
-      "issue": 265,
-      "priority": "P1",
-      "reason": "manual bank-transfer payment verification lacks a complete evidence/reviewer/resubmission lifecycle on the current finance source of truth"
-    },
-    {
-      "issue": 266,
-      "priority": "P1",
-      "reason": "warranty claim creation is not durably idempotent across double-submit, timeout, offline replay and concurrent retry"
-    },
-    {
-      "issue": 273,
-      "priority": "P1",
-      "reason": "incoming chat communication can remain hidden in archived chats; message writes are not yet durably idempotent/atomic and thread-only project-action UX remains incomplete"
-    },
-    {
-      "issue": 279,
-      "priority": "P1",
-      "reason": "local development runtime does not reproduce production topology and can swallow migration failure, leaving Redis/worker/storage readiness outside the canonical dev lifecycle"
-    }
+    {"issue":233,"priority":"P0","reason":"persistent external production-like staging and exact-artifact promotion lifecycle are not externally proven"},
+    {"issue":234,"priority":"P0","reason":"managed production backup/PITR and a real external restore disaster-recovery drill are not proven"},
+    {"issue":235,"priority":"P0","reason":"production observability and retained end-to-end alert-delivery evidence are incomplete"},
+    {"issue":247,"priority":"P0","reason":"main branch protection and required production checks are still externally observed disabled"},
+    {"issue":236,"priority":"P1","reason":"real external production-like staging capacity/provider-degradation evidence is not proven"},
+    {"issue":237,"priority":"P1","reason":"external security acceptance remains incomplete"},
+    {"issue":238,"priority":"P1","reason":"e-sign authoritative read status and S3 ambiguous-write recovery remain incomplete"},
+    {"issue":241,"priority":"P1","reason":"controlled real-user pilot, product telemetry, legal/privacy acceptance and launch operations are not complete"},
+    {"issue":256,"priority":"P1","reason":"real GitHub/org privileged-access review is not executed"},
+    {"issue":257,"priority":"P1","reason":"independent pre-launch penetration and abuse test is not executed"},
+    {"issue":265,"priority":"P1","reason":"manual bank-transfer payment verification lacks a complete evidence/reviewer/resubmission lifecycle on the current finance source of truth"},
+    {"issue":266,"priority":"P1","reason":"warranty claim creation is not durably idempotent across double-submit, timeout, offline replay and concurrent retry"},
+    {"issue":273,"priority":"P1","reason":"incoming chat communication can remain hidden in archived chats; message writes are not yet durably idempotent/atomic and thread-only project-action UX remains incomplete"},
+    {"issue":279,"priority":"P1","reason":"canonical local runtime and agent onboarding remain pending exact-head CI verification and merge of PR #286"}
   ],
-  "launch_decision": {
-    "status": "BLOCKED_FOR_BROAD_PRODUCTION",
-    "reason": "Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, product-integrity, reproducible runtime, pilot/legal/operations and security evidence gaps."
-  }
+  "launch_decision": {"status":"BLOCKED_FOR_BROAD_PRODUCTION","reason":"Broad production remains blocked by external staging/promotion, disaster recovery, observability/alerting, governance, capacity, provider, product-integrity, reproducible runtime, pilot/legal/operations and security evidence gaps."}
 }

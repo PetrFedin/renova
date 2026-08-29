@@ -75,14 +75,29 @@ wait_http() {
   return 1
 }
 
+run_backend_module() {
+  if command -v poetry >/dev/null 2>&1; then
+    poetry run python -m "$1"
+  elif [ -x "$ROOT/backend/.venv/bin/python" ]; then
+    "$ROOT/backend/.venv/bin/python" -m "$1"
+  else
+    echo "FAIL: need poetry or backend/.venv/bin/python"
+    exit 1
+  fi
+}
+
 start_api() {
   local db_file="${1:-./ci-playwright.db}"
   cd "$ROOT/backend"
   rm -f "$db_file" "${db_file}-wal" "${db_file}-shm"
-  export ENVIRONMENT=development
+  # E2E is an isolated test runtime, not the canonical developer runtime. Keep
+  # API startup side-effect free and seed explicitly after the service is ready.
+  export ENVIRONMENT=test
   export DATABASE_URL="sqlite+aiosqlite:///${db_file}"
   export PUBLIC_BASE_URL="$API_URL"
   export SECRET_KEY="${SECRET_KEY:-ci-secret-key-at-least-16}"
+  export ALLOW_CREATE_ALL=true
+  export ALLOW_DEMO_SEED=true
   if command -v poetry >/dev/null 2>&1; then
     poetry run uvicorn app.main:app --host 127.0.0.1 --port "$API_PORT" &
   elif [ -x "$ROOT/backend/.venv/bin/uvicorn" ]; then
@@ -92,8 +107,9 @@ start_api() {
     exit 1
   fi
   BACK_PID=$!
-  cd "$ROOT"
   wait_http "${API_URL}/health" "API" "$BACK_PID"
+  run_backend_module app.e2e_seed
+  cd "$ROOT"
 }
 
 start_expo_web() {
