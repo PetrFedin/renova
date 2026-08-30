@@ -69,6 +69,23 @@ Before a governed PR is merged, verify:
 
 Green code without synchronized specification is not Definition of Done.
 
+### 5.1 Draft-transition recovery
+
+A tooling failure must not be bypassed by pushing governed product changes directly to `main`.
+
+If a fully qualified PR cannot leave Draft because the repository integration/tooling cannot perform the Draft -> Ready transition, the permitted recovery is:
+
+1. record the tooling blocker on the original PR;
+2. keep the original PR open until the replacement exists;
+3. create a new branch from the exact qualified lineage, including any governance-only recovery update;
+4. open a non-draft superseding PR to the same base with the same bounded functional ownership;
+5. run and require fresh exact-head CI on the successor; prior green evidence is historical context only;
+6. merge only the successor exact head after all required gates are green;
+7. close the blocked Draft as `superseded`, preserving links/evidence;
+8. perform the normal post-merge issue/spec/dependent-PR reconciliation.
+
+The successor mechanism is process recovery, not permission to add unrelated scope, skip review gates, reuse stale CI, or change production-readiness claims.
+
 ## 6. Post-merge reconciliation
 
 After merge to `main`:
