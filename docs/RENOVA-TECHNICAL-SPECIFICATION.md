@@ -71,7 +71,7 @@ Blob SHA — traceability anchor. При изменении tracked source до�
 
 | Source | Blob SHA | Что подтверждает |
 |---|---|---|
-| `AGENTS.md` | `77cfc7850138c9a0f33739c9147ba6fc3e0eb183` | engineering/runtime/security/DoD canon |
+| `AGENTS.md` | `31820f115d6fade04d7ddb580201c9d8a29b3648` | engineering/runtime/security/DoD canon |
 | `backend/app/api/v1/router.py` | `fe0e66377eb57ba968e91370267a8f5cf812a3fa` | API composition/canonical route replacement |
 | `backend/app/models/entities.py` | `f2e63f316fa8c9b2012894ae4e496dc76a73a3a1` | ORM/domain entities/status/enum mappings |
 | `backend/app/main.py` | `223e83b13f96398eefe997275ac6f41fa44bfbcf` | API lifespan; startup без demo business-data mutation |
