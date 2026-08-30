@@ -40,34 +40,36 @@ APT_DEMO_CHATS = (
 )
 HOUSE_DEMO_CHATS = ("Дом: общие вопросы",)
 
-JUNK_TITLE_PREFIXES = (
-    "walkthrough",
-    "e2e",
-    "k6",
-    "uat",
-    "аудит чат",
-    "вопрос по смете",
-    "вопрос по ремонту",
-)
 
+async def _dedupe_project_demo_chats(
+    db: AsyncSession,
+    project_id: str,
+    allowed_titles: tuple[str, ...],
+) -> None:
+    """Deduplicate only canonical demo threads; never purge arbitrary project chats.
 
-def _is_junk_title(title: str) -> bool:
-    norm = chat_svc.normalize_chat_title(title)
-    if not norm or norm == "чат":
-        return True
-    return any(norm.startswith(p) for p in JUNK_TITLE_PREFIXES)
-
-
-async def _purge_project_chats(db: AsyncSession, project_id: str, allowed_titles: tuple[str, ...]) -> None:
-    allowed = {chat_svc.normalize_chat_title(t) for t in allowed_titles}
+    A work order owns a dedicated ``work:<id>`` thread through
+    ``work_orders.chat_thread_id``. Older demo seeding deleted every project thread
+    whose title was not in the demo allow-list, which made a second seed/restart try
+    to delete domain-owned threads and violate the foreign key. The explicit demo
+    seed is additive/idempotent: non-demo, E2E and domain-linked chats are data, not
+    seed garbage, and must be preserved.
+    """
+    allowed = {chat_svc.normalize_chat_title(title) for title in allowed_titles}
     threads = await chat_svc.list_threads(db, project_id)
     seen: set[str] = set()
-    for t in sorted(threads, key=lambda x: x.updated_at or datetime.min, reverse=True):
-        norm = chat_svc.normalize_chat_title(t.title)
-        if norm not in allowed or norm in seen or _is_junk_title(t.title):
-            await chat_svc.delete_thread(db, t.id)
+    for thread in sorted(
+        threads,
+        key=lambda item: item.updated_at or datetime.min,
+        reverse=True,
+    ):
+        normalized = chat_svc.normalize_chat_title(thread.title)
+        if normalized not in allowed:
             continue
-        seen.add(norm)
+        if normalized in seen:
+            await chat_svc.delete_thread(db, thread.id)
+            continue
+        seen.add(normalized)
     await db.commit()
 
 
@@ -83,7 +85,6 @@ async def _ensure_thread(db: AsyncSession, project_id: str, user_id: str, title:
     if existing:
         return existing
     return await chat_svc.create_thread(db, project_id, user_id, title, topic)
-
 
 
 async def _mark_project_chats_read(
@@ -110,7 +111,7 @@ async def _seed_apartment_chats(
     customer_id: str,
     contractor_id: str,
 ) -> None:
-    await _purge_project_chats(db, project_id, APT_DEMO_CHATS)
+    await _dedupe_project_demo_chats(db, project_id, APT_DEMO_CHATS)
 
     t_general = await _ensure_thread(db, project_id, customer_id, APT_DEMO_CHATS[0], "general")
     t_estimate = await _ensure_thread(db, project_id, customer_id, APT_DEMO_CHATS[1], "estimate")
@@ -237,7 +238,7 @@ async def _seed_house_chats(
     customer_id: str,
     contractor_id: str,
 ) -> None:
-    await _purge_project_chats(db, project_id, HOUSE_DEMO_CHATS)
+    await _dedupe_project_demo_chats(db, project_id, HOUSE_DEMO_CHATS)
     t = await _ensure_thread(db, project_id, customer_id, HOUSE_DEMO_CHATS[0], "general")
     if await _non_system_count(db, t.id) > 0:
         await _mark_project_chats_read(db, project_id, customer_id, contractor_id)
@@ -257,9 +258,6 @@ async def _seed_house_chats(
         "В субботу до обеда — напишите, если подходит.",
     )
     await _mark_project_chats_read(db, project_id, customer_id, contractor_id)
-
-
-
 
 
 async def _ensure_demo_acceptance_queue(db: AsyncSession, project_id: str, contractor_id: str) -> None:
@@ -365,6 +363,7 @@ async def _ensure_apartment_in_progress(db: AsyncSession, project_id: str, contr
     await _ensure_demo_acceptance_queue(db, project_id, contractor_id)
     await _ensure_demo_procurement(db, project_id)
 
+
 async def _ensure_house_demo(db: AsyncSession, customer_id: str) -> None:
     r = await db.execute(
         select(Project.id).where(Project.customer_id == customer_id, Project.property_type == "house").limit(1)
@@ -412,7 +411,6 @@ async def _seed_chats_for_customer_projects(
             await _seed_house_chats(db, proj.id, customer.id, contractor.id)
         else:
             await _seed_apartment_chats(db, proj.id, customer.id, contractor.id)
-
 
 
 async def _ensure_demo_procurement(db: AsyncSession, project_id: str) -> None:
@@ -463,8 +461,6 @@ async def _ensure_demo_contractor_profile(db: AsyncSession, contractor_id: str) 
             bio="Демо-профиль для investor/pilot walkthrough",
         )
     )
-
-
 
 
 async def _mark_demo_notifications_read(db: AsyncSession, *user_ids: str) -> None:

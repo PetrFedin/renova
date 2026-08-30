@@ -21,6 +21,7 @@ on:
       - "backend/alembic/**"
       - "backend/alembic.ini"
       - "backend/scripts/restore_drill_fixture.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/app/main.py"
       - "backend/app/api/deps.py"
       - "backend/app/api/v1/admin.py"
@@ -63,6 +64,7 @@ on:
       - "backend/alembic/**"
       - "backend/alembic.ini"
       - "backend/scripts/restore_drill_fixture.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/app/main.py"
       - "backend/app/api/deps.py"
       - "backend/app/api/v1/admin.py"
@@ -219,7 +221,7 @@ jobs:
         run: |
           set -euo pipefail
           poetry run alembic upgrade head
-          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_current_migration_schema.py
       - name: Seed deterministic synthetic source data
         working-directory: backend
         run: poetry run python scripts/restore_drill_fixture.py seed --manifest "$DR_DIR/source-manifest.json"
@@ -231,7 +233,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_restore
         run: |
           set -euo pipefail
-          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_current_migration_schema.py
           poetry run python scripts/restore_drill_fixture.py verify --expected "$DR_DIR/source-manifest.json"
       - name: Delete synthetic database dump
         if: always()

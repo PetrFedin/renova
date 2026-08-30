@@ -1,0 +1,186 @@
+name: Canonical local runtime integrity
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - ".cursor/rules/renova-agent-runtime.mdc"
+      - ".cursor/rules/renova-git-sync.mdc"
+      - "README.md"
+      - "backend/README.md"
+      - "docs/DEVELOPMENT-CANON.md"
+      - "env.local.example"
+      - ".env.example"
+      - "backend/.env.example"
+      - ".nvmrc"
+      - "package.json"
+      - "package-lock.json"
+      - "apps/mobile/package.json"
+      - ".dockerignore"
+      - "docker-compose.yml"
+      - "backend/Dockerfile"
+      - "backend/docker/**"
+      - "backend/.python-version"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/alembic.ini"
+      - "backend/alembic/**"
+      - "backend/app/main.py"
+      - "backend/app/dev_seed.py"
+      - "backend/app/services/seed_demo.py"
+      - "backend/app/core/config.py"
+      - "backend/app/core/runtime_policy.py"
+      - "backend/app/core/runtime_preflight.py"
+      - "backend/app/db/migration_guard.py"
+      - "backend/app/runtime_healthcheck.py"
+      - "backend/app/services/otp_runtime.py"
+      - "backend/app/services/runtime_topology.py"
+      - "backend/app/services/storage_runtime.py"
+      - "backend/app/services/storage_service.py"
+      - "backend/scripts/verify_current_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
+      - "scripts/dev-runtime.sh"
+      - "scripts/start-dev.sh"
+      - "scripts/ensure-mobile-deps.js"
+      - "scripts/devRuntimeContract.test.mjs"
+      - ".github/workflows/local-runtime-integrity.yml"
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - ".cursor/rules/renova-agent-runtime.mdc"
+      - ".cursor/rules/renova-git-sync.mdc"
+      - "README.md"
+      - "backend/README.md"
+      - "docs/DEVELOPMENT-CANON.md"
+      - "env.local.example"
+      - ".env.example"
+      - "backend/.env.example"
+      - ".nvmrc"
+      - "package.json"
+      - "package-lock.json"
+      - "apps/mobile/package.json"
+      - ".dockerignore"
+      - "docker-compose.yml"
+      - "backend/Dockerfile"
+      - "backend/docker/**"
+      - "backend/.python-version"
+      - "backend/pyproject.toml"
+      - "backend/poetry.lock"
+      - "backend/alembic.ini"
+      - "backend/alembic/**"
+      - "backend/app/main.py"
+      - "backend/app/dev_seed.py"
+      - "backend/app/services/seed_demo.py"
+      - "backend/app/core/config.py"
+      - "backend/app/core/runtime_policy.py"
+      - "backend/app/core/runtime_preflight.py"
+      - "backend/app/db/migration_guard.py"
+      - "backend/app/runtime_healthcheck.py"
+      - "backend/app/services/otp_runtime.py"
+      - "backend/app/services/runtime_topology.py"
+      - "backend/app/services/storage_runtime.py"
+      - "backend/app/services/storage_service.py"
+      - "backend/scripts/verify_current_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
+      - "scripts/dev-runtime.sh"
+      - "scripts/start-dev.sh"
+      - "scripts/ensure-mobile-deps.js"
+      - "scripts/devRuntimeContract.test.mjs"
+      - ".github/workflows/local-runtime-integrity.yml"
+
+concurrency:
+  group: local-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+
+      - name: Install exact Poetry tool prerequisite
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+
+      - name: Materialize canonical local profile
+        run: cp env.local.example .env.local
+
+      - name: Prove local safety guards fail closed
+        run: |
+          set -euo pipefail
+
+          if DOCKER_HOST=tcp://127.0.0.1:65535 bash scripts/dev-runtime.sh stop >/tmp/renova-remote-docker.out 2>&1; then
+            echo "remote Docker daemon was incorrectly accepted" >&2
+            exit 1
+          fi
+          grep -F "refuses remote DOCKER_HOST=tcp://127.0.0.1:65535" /tmp/renova-remote-docker.out
+
+          cp .env.local /tmp/renova-staging.env
+          sed -i 's/^ENVIRONMENT=development$/ENVIRONMENT=staging/' /tmp/renova-staging.env
+          if RENOVA_LOCAL_ENV_FILE=/tmp/renova-staging.env bash scripts/dev-runtime.sh doctor >/tmp/renova-staging.out 2>&1; then
+            echo "staging environment was incorrectly accepted as local" >&2
+            exit 1
+          fi
+          grep -F "refuses ENVIRONMENT=staging" /tmp/renova-staging.out
+
+          cp .env.local /tmp/renova-provider.env
+          printf '\nTWILIO_TOKEN=must-not-be-accepted-locally\n' >>/tmp/renova-provider.env
+          if RENOVA_LOCAL_ENV_FILE=/tmp/renova-provider.env bash scripts/dev-runtime.sh doctor >/tmp/renova-provider.out 2>&1; then
+            echo "external provider credential was incorrectly accepted locally" >&2
+            exit 1
+          fi
+          grep -F "refuses non-empty external credential/sink: TWILIO_TOKEN" /tmp/renova-provider.out
+
+      - name: Prove explicit locked bootstrap
+        run: |
+          set -euo pipefail
+          bash scripts/dev-runtime.sh bootstrap
+          git diff --exit-code -- package-lock.json backend/pyproject.toml backend/poetry.lock
+
+      - name: Verify source contract and Compose graph
+        run: |
+          set -euo pipefail
+          node scripts/devRuntimeContract.test.mjs
+          docker compose --project-name renova-local --env-file .env.local -f docker-compose.yml config >/tmp/renova-compose.yml
+
+      - name: Start full backend topology without Expo
+        env:
+          RENOVA_DEV_NO_EXPO: "1"
+        run: bash scripts/dev-runtime.sh start
+
+      - name: Verify runtime truth
+        run: bash scripts/dev-runtime.sh check
+
+      - name: Prove explicit demo seed is repeatable
+        run: |
+          set -euo pipefail
+          bash scripts/dev-runtime.sh seed
+          bash scripts/dev-runtime.sh seed
+          bash scripts/dev-runtime.sh check
+
+      - name: Run focused local contracts
+        run: bash scripts/dev-runtime.sh test-focused
+
+      - name: Capture runtime diagnostics
+        if: failure()
+        run: |
+          docker compose --project-name renova-local --env-file .env.local -f docker-compose.yml ps || true
+          docker compose --project-name renova-local --env-file .env.local -f docker-compose.yml logs --no-color --tail=200 postgres redis minio migrate api worker || true
+
+      - name: Stop local runtime
+        if: always()
+        run: bash scripts/dev-runtime.sh stop || true

@@ -15,7 +15,11 @@ Canonical development flow:
 Rules:
 - never direct-push product changes to `main`;
 - keep PRs logically bounded;
-- fetch current `main`, open PRs/issues, CI, migrations, and readiness before starting a production-hardening slice;
+- fetch current `main`, open PRs/issues, CI, migrations, readiness and the living technical specification before starting a production-hardening slice;
+- every governed implementation change must update `docs/RENOVA-TECHNICAL-SPECIFICATION.md` or its relevant governed annex in the same logical change;
+- before editing a bounded area, scan its complete end-to-end path for dead ends, broken links, duplicate sources/routes/calculations/state machines, stale mutating legacy paths, missing states and missing transaction/idempotency/concurrency/recovery boundaries;
+- confirmed P0/P1 gaps found by that scan must be fixed or recorded in the living specification/roadmap with an explicit blocker/evidence boundary; they must not remain only in chat or an untracked TODO;
+- follow `docs/technical-spec/END-TO-END-GOVERNANCE.md` as the mandatory specification-governance annex;
 - do not call work complete merely because code exists;
 - distinguish `IMPLEMENTED`, `TESTED`, `CI VERIFIED`, `STAGING VERIFIED`, `EXTERNALLY VERIFIED`, and `PRODUCTION VERIFIED`;
 - external provider/infrastructure/GitHub settings without authoritative evidence remain `NOT VERIFIED` or `EXTERNAL ACTION REQUIRED`.
@@ -197,6 +201,7 @@ The authoritative full backend regression runs in GitHub CI with locked Python/P
 
 A production-facing block is not done until the applicable items are true:
 - implementation is canonical, with no duplicate legacy path;
+- the affected end-to-end chain is traced from entry/auth/input through transaction/state/side effects/reconciliation/read model/UI/recovery/audit where applicable;
 - authorization and object scope are explicit;
 - error and retry semantics are explicit;
 - idempotency is defined;
@@ -206,8 +211,12 @@ A production-facing block is not done until the applicable items are true:
 - mobile UX has complete loading/error/success behavior;
 - tests exist and relevant CI is green;
 - migration impact is verified when applicable;
+- the living technical specification and relevant annexes are synchronized in the same logical change;
+- discovered dead ends, broken links, duplicates and missing boundaries are fixed or explicitly retained as governed blockers;
 - documentation/readiness truth is updated;
 - external integration evidence is retained or the status remains `NOT VERIFIED`.
+
+Green implementation with stale or incomplete living specification is **not** Definition of Done.
 
 ## 13. Forbidden legacy resurrection
 
@@ -224,3 +233,51 @@ Do not reintroduce as canonical behavior:
 - external `VERIFIED` claims without retained evidence.
 
 When old code or documents conflict with current runtime, route registry, CI, or readiness evidence, prefer the newest authoritative source and either migrate or explicitly mark the older material historical.
+
+## 14. Canonical local development for agents
+
+`AGENTS.md` is the single authoritative engineering instruction set for Cursor, Claude Code and other coding agents. `CLAUDE.md` and `.cursor/rules/renova-agent-runtime.mdc` are bootstrap pointers only; do not duplicate architecture or policy into them.
+
+The canonical local environment is **development only** and uses `env.local.example` → ignored `.env.local`. Never load `env.staging.example`, `backend/.env.staging.example`, `.env.production*`, or real provider credentials into the local runtime.
+
+Local topology:
+
+`PostgreSQL + Redis + MinIO + renova-api + renova-worker + optional Expo`.
+
+The canonical Docker Compose project is **`renova-local`**. Local commands must operate only through a local Unix/npipe Docker daemon; `doctor` must refuse remote `DOCKER_HOST` or remote Docker contexts rather than treating a shared/staging daemon as local.
+
+Use the existing root entrypoint and its explicit subcommands:
+
+```bash
+npm run dev -- doctor
+npm run dev -- bootstrap
+npm run dev
+npm run dev -- check
+npm run dev -- seed
+npm run dev -- test-focused
+npm run dev -- test-full
+npm run dev -- logs
+npm run dev -- stop
+```
+
+`npm run dev -- reset` is intentionally destructive but is constrained to the canonical **local `renova-local`** Compose project/volumes. Do not use it against shared environments.
+
+For non-interactive backend-only agent verification:
+
+```bash
+RENOVA_DEV_NO_EXPO=1 npm run dev
+npm run dev -- check
+npm run dev -- test-focused
+```
+
+Required behavior:
+- `doctor` verifies a local Docker context, Docker Compose, Node 20, Python 3.12.13, Poetry 2.4.1 and the repository lock files;
+- `bootstrap` is the only explicit dependency-install step: `npm ci`, `poetry check --lock`, `poetry sync --no-interaction`, `pip check`;
+- normal `dev` startup never installs packages opportunistically;
+- startup is fail-fast: local env guard → infrastructure health → Alembic `upgrade head` → canonical runtime preflight → API/worker → `/health` + `/ready` + worker heartbeat → Expo;
+- migration failure is fatal; never add `alembic ... || true` or equivalent swallowing;
+- `check` must return non-zero when PostgreSQL, Redis, MinIO, API health/readiness, Alembic head or worker heartbeat is unhealthy;
+- `seed` is development-only, idempotent and must refuse non-development environments;
+- `test-focused` is the fast local contract gate; `test-full` is the broader local backend/mobile regression and must execute the focused gate first. GitHub Actions and dedicated PostgreSQL/E2E workflows remain stronger evidence where applicable.
+
+A successful local run is **local TESTED evidence only**. A successful PR workflow is `CI VERIFIED` only for the exact candidate. Neither proves external staging, production provider delivery, managed backup restore, alert delivery, store release, or production readiness.

@@ -11,6 +11,7 @@ on:
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
@@ -24,6 +25,7 @@ on:
       - "backend/pyproject.toml"
       - "backend/poetry.lock"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/tests/test_database_revision_guard.py"
       - ".github/workflows/calendar-schema-migration-integrity.yml"
@@ -90,7 +92,7 @@ jobs:
         run: poetry run alembic upgrade head
       - name: Verify reflected application schema
         working-directory: backend
-        run: poetry run python scripts/verify_migration_schema.py --expect present
+        run: poetry run python scripts/verify_current_migration_schema.py
       - name: Verify complete ORM/Alembic column parity
         working-directory: backend
         run: poetry run python scripts/verify_orm_schema_parity.py
@@ -118,7 +120,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_current_migration_schema.py
           poetry run python scripts/verify_orm_schema_parity.py
       - name: Accept replayed PostgreSQL database
         working-directory: backend

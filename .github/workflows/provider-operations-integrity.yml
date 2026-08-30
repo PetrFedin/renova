@@ -13,9 +13,11 @@ on:
       - "backend/app/services/payment_reversal_service.py"
       - "backend/app/worker_main.py"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/tests/test_provider_reconciliation_*.py"
       - "backend/tests/test_yookassa_claim_integrity.py"
       - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
+      - "backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py"
       - ".github/workflows/provider-operations-integrity.yml"
   pull_request:
     paths:
@@ -28,9 +30,11 @@ on:
       - "backend/app/services/payment_reversal_service.py"
       - "backend/app/worker_main.py"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/tests/test_provider_reconciliation_*.py"
       - "backend/tests/test_yookassa_claim_integrity.py"
       - "backend/alembic/versions/w15providerops01_provider_reconciliation.py"
+      - "backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py"
       - ".github/workflows/provider-operations-integrity.yml"
 
 permissions:
@@ -111,15 +115,23 @@ jobs:
         run: |
           set -euo pipefail
           poetry run alembic upgrade head
-          test "$(poetry run alembic current | awk '{print $1}')" = "w15providerops01"
-          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_current_migration_schema.py
           poetry run python - <<'PY'
           import asyncio
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
           from sqlalchemy import func, select
           from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
           from app.models.provider_runtime import ProviderReconciliation
           from app.services.provider_reconciliation_service import ensure_reconciliation
           from app.core.config import settings
+
+          script = ScriptDirectory.from_config(Config("alembic.ini"))
+          heads = script.get_heads()
+          assert len(heads) == 1, heads
+          provider_revision = script.get_revision("w15providerops01")
+          assert provider_revision is not None
+          assert provider_revision.down_revision == "w14techsupervision01"
 
           async def main():
               engine = create_async_engine(settings.database_url)

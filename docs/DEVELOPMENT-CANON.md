@@ -1,6 +1,8 @@
-# Renova development canon
+# Renova development reference
 
-This document defines the current engineering workflow and truth boundaries for production-grade Renova development. It is intentionally separate from historical MVP/audit material.
+`AGENTS.md` is the single authoritative engineering policy for Renova. This document is a supporting development reference that explains the same current workflow and truth boundaries in more detail; it must not override or independently redefine `AGENTS.md`. If the two drift, update this reference to match `AGENTS.md` and current code/CI rather than creating another policy fork.
+
+It is intentionally separate from historical MVP/audit material.
 
 ## 1. Priority order
 
@@ -71,21 +73,48 @@ API and worker are separate processes from the same immutable backend image. Dur
 
 ### Local development
 
-Current repository local development is **not yet topology-complete**. `scripts/start-dev.sh` is a legacy launcher that starts API + Expo and currently contains best-effort migration/package behavior. Until the local-runtime hardening PR lands, do not treat `npm run dev` as equivalent to staging.
+The canonical local topology is:
 
-Target local topology:
+`PostgreSQL + Redis + MinIO + API + Worker + Expo`, with optional OTel/Jaeger/Grafana profile.
 
-`PostgreSQL + Redis + MinIO + API + Worker + Expo`, optional OTel/Jaeger/Grafana profile.
+`AGENTS.md` owns the authoritative agent instructions. `CLAUDE.md`, `.cursor/rules/renova-agent-runtime.mdc`, and `.cursor/rules/renova-git-sync.mdc` are pointer/bootstrap files only and must not become independent policy copies. `.cursor/rules/renova-design-system.mdc` is intentionally separate only as a scoped mobile UI implementation rule.
 
-Required future startup behavior:
+Canonical local profile is `env.local.example` → ignored `.env.local`. Local runtime scripts must refuse staging/production environment profiles and must never read real staging/production credentials as a convenience fallback.
 
-`prerequisites → locked dependency validation → infra health → Alembic migration → runtime preflight → API → worker → /health → /ready → worker heartbeat → Expo`.
+Canonical sequence:
 
-Migration failure must abort startup.
+`prerequisites → explicit locked dependency bootstrap → local env guard → infra health → fail-fast Alembic migration → runtime preflight → API + worker → /health → /ready → worker local/shared heartbeat → Expo`.
+
+Root entrypoint and exact equivalents:
+
+```bash
+npm run dev -- doctor
+npm run dev -- bootstrap
+npm run dev
+npm run dev -- check
+npm run dev -- seed
+npm run dev -- test-focused
+npm run dev -- test-full
+npm run dev -- logs
+npm run dev -- stop
+```
+
+For a non-interactive agent run, set `RENOVA_DEV_NO_EXPO=1` before `npm run dev`.
+
+Rules:
+- dependency installation belongs to explicit `bootstrap`, never normal startup;
+- `bootstrap` uses `npm ci` and the same Python 3.12.13 / Poetry 2.4.1 lock contract as CI;
+- migration failure aborts startup; no `alembic ... || true` or hidden stderr;
+- `dev -- check` returns non-zero if required infra/runtime truth fails;
+- `dev -- reset` may delete only canonical local development volumes;
+- local seed is idempotent, development-only and Alembic-head gated;
+- local success is `TESTED`, not staging/production evidence.
 
 ### CI
 
 Canonical CI uses locked dependencies and PostgreSQL for backend verification. Full backend regression and migration checks in GitHub Actions are stronger evidence than a local SQLite/small-subset pass.
+
+The dedicated local-runtime integrity workflow is responsible for proving the canonical Compose graph itself can build/start and that `doctor/config → migrations → preflight → API/worker → health/readiness/heartbeat → focused contracts` works on the exact PR candidate.
 
 ### External staging
 
@@ -99,13 +128,17 @@ Production promotion must reference the exact immutable artifact already validat
 
 Backend dependency contract is pinned by repository configuration and lock file. Follow the exact Python/Poetry versions used by CI; run lock validation and `pip check` rather than installing packages opportunistically from startup scripts.
 
+Current local/CI tool contract is Python `3.12.13`, Poetry `2.4.1`, Node `20`, plus repository npm/Poetry lock files. A version change is an explicit reviewed toolchain change, not an automatic local convenience upgrade.
+
 Do not mix broad dependency upgrades with unrelated functional changes.
 
 ## 7. Database and migration contract
 
-- PostgreSQL is authoritative for shared environments;
+- PostgreSQL is authoritative for shared environments and for the canonical local runtime;
+- SQLite is permitted only inside explicitly bounded tests that declare it;
 - Alembic has exactly one head;
 - no staging/production `create_all` schema management;
+- canonical local runtime also sets `ALLOW_CREATE_ALL=false` so startup proves the Alembic path rather than metadata creation;
 - no swallowed migration errors;
 - schema-changing PRs prove clean PostgreSQL upgrade and required prior-schema path;
 - do not rewrite applied migration history;

@@ -1,0 +1,122 @@
+name: Renova technical specification integrity
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/RENOVA-TECHNICAL-SPECIFICATION.md"
+      - "docs/technical-spec/**"
+      - "scripts/technicalSpecContract.test.mjs"
+      - "scripts/technicalSpecAlembicContract.test.mjs"
+      - "scripts/technicalSpecAnnexContract.test.mjs"
+      - "AGENTS.md"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/entities.py"
+      - "backend/app/main.py"
+      - "backend/app/services/seed_demo.py"
+      - "backend/app/services/budget_service.py"
+      - "backend/scripts/verify_current_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
+      - "backend/alembic/**"
+      - "apps/mobile/lib/routeRegistry.ts"
+      - "apps/mobile/lib/domain/budgetFactReconcile.ts"
+      - "apps/mobile/lib/domain/budgetFactReconcile.test.ts"
+      - "apps/mobile/lib/domain/buildBudgetSummaryView.ts"
+      - "apps/mobile/lib/domain/resolveProjectProgress.ts"
+      - "apps/mobile/lib/domain/resolveProjectProgress.test.ts"
+      - "apps/mobile/lib/domain/scheduleExecutionStats.ts"
+      - "apps/mobile/lib/domain/scheduleExecutionStats.test.ts"
+      - "apps/mobile/lib/domain/aggregateBudgetByPeriod.ts"
+      - "apps/mobile/lib/domain/aggregatePortfolioBudget.ts"
+      - "apps/mobile/constants/Theme.ts"
+      - "apps/mobile/constants/typography.ts"
+      - "apps/mobile/constants/screenTypography.ts"
+      - "apps/mobile/constants/uiTokens.ts"
+      - "apps/mobile/constants/screenLayout.ts"
+      - "apps/mobile/constants/budgetTabs.ts"
+      - "apps/mobile/components/renova/PrimaryButton.tsx"
+      - "apps/mobile/components/renova/os/OsHubTabs.tsx"
+      - "apps/mobile/components/screens/OsObjectHubScreen.tsx"
+      - "apps/mobile/components/screens/OsRepairHubScreen.tsx"
+      - "apps/mobile/components/screens/OsBudgetHubScreen.tsx"
+      - "apps/mobile/components/screens/OsMaterialsScreen.tsx"
+      - "apps/mobile/components/screens/OsSelectionsScreen.tsx"
+      - "apps/mobile/components/screens/OsControlScreen.tsx"
+      - "apps/mobile/components/screens/control/CustomerControlView.tsx"
+      - "apps/mobile/components/screens/control/ContractorControlView.tsx"
+      - "apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx"
+      - ".cursor/rules/renova-design-system.mdc"
+      - "package.json"
+      - ".github/workflows/local-runtime-integrity.yml"
+      - ".github/workflows/technical-spec-integrity.yml"
+  pull_request:
+    paths:
+      - "docs/RENOVA-TECHNICAL-SPECIFICATION.md"
+      - "docs/technical-spec/**"
+      - "scripts/technicalSpecContract.test.mjs"
+      - "scripts/technicalSpecAlembicContract.test.mjs"
+      - "scripts/technicalSpecAnnexContract.test.mjs"
+      - "AGENTS.md"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/entities.py"
+      - "backend/app/main.py"
+      - "backend/app/services/seed_demo.py"
+      - "backend/app/services/budget_service.py"
+      - "backend/scripts/verify_current_migration_schema.py"
+      - "backend/scripts/verify_orm_schema_parity.py"
+      - "backend/alembic/**"
+      - "apps/mobile/lib/routeRegistry.ts"
+      - "apps/mobile/lib/domain/budgetFactReconcile.ts"
+      - "apps/mobile/lib/domain/budgetFactReconcile.test.ts"
+      - "apps/mobile/lib/domain/buildBudgetSummaryView.ts"
+      - "apps/mobile/lib/domain/resolveProjectProgress.ts"
+      - "apps/mobile/lib/domain/resolveProjectProgress.test.ts"
+      - "apps/mobile/lib/domain/scheduleExecutionStats.ts"
+      - "apps/mobile/lib/domain/scheduleExecutionStats.test.ts"
+      - "apps/mobile/lib/domain/aggregateBudgetByPeriod.ts"
+      - "apps/mobile/lib/domain/aggregatePortfolioBudget.ts"
+      - "apps/mobile/constants/Theme.ts"
+      - "apps/mobile/constants/typography.ts"
+      - "apps/mobile/constants/screenTypography.ts"
+      - "apps/mobile/constants/uiTokens.ts"
+      - "apps/mobile/constants/screenLayout.ts"
+      - "apps/mobile/constants/budgetTabs.ts"
+      - "apps/mobile/components/renova/PrimaryButton.tsx"
+      - "apps/mobile/components/renova/os/OsHubTabs.tsx"
+      - "apps/mobile/components/screens/OsObjectHubScreen.tsx"
+      - "apps/mobile/components/screens/OsRepairHubScreen.tsx"
+      - "apps/mobile/components/screens/OsBudgetHubScreen.tsx"
+      - "apps/mobile/components/screens/OsMaterialsScreen.tsx"
+      - "apps/mobile/components/screens/OsSelectionsScreen.tsx"
+      - "apps/mobile/components/screens/OsControlScreen.tsx"
+      - "apps/mobile/components/screens/control/CustomerControlView.tsx"
+      - "apps/mobile/components/screens/control/ContractorControlView.tsx"
+      - "apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx"
+      - ".cursor/rules/renova-design-system.mdc"
+      - "package.json"
+      - ".github/workflows/local-runtime-integrity.yml"
+      - ".github/workflows/technical-spec-integrity.yml"
+
+concurrency:
+  group: technical-spec-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify living technical specification source contract
+        run: node scripts/technicalSpecContract.test.mjs
+      - name: Verify documented Alembic head
+        run: node scripts/technicalSpecAlembicContract.test.mjs
+      - name: Verify calculation and screen annex source contracts
+        run: node scripts/technicalSpecAnnexContract.test.mjs

@@ -20,10 +20,12 @@
 
 Перед разработкой читать:
 
-- `AGENTS.md` — канонический engineering context: branching, runtime, transactions, outbox, finance, security, navigation и Definition of Done;
-- `.cursor/rules/renova-git-sync.mdc` — актуальный Git/GitHub workflow;
-- `.cursor/rules/renova-design-system.mdc` — mobile UI canon;
-- `docs/DEVELOPMENT-CANON.md` — environment/evidence/development rules;
+- `AGENTS.md` — **единый authoritative engineering context** для человека, Cursor и Claude Code: branching, local runtime, transactions, outbox, finance, security, navigation и Definition of Done;
+- `CLAUDE.md` — короткий bootstrap-pointer на `AGENTS.md`, не отдельный набор правил;
+- `.cursor/rules/renova-agent-runtime.mdc` — bootstrap-pointer Cursor на тот же `AGENTS.md`;
+- `.cursor/rules/renova-git-sync.mdc` — Git/GitHub bootstrap-pointer на соответствующие разделы `AGENTS.md`, не отдельный policy source;
+- `.cursor/rules/renova-design-system.mdc` — scoped mobile UI canon для файлов интерфейса;
+- `docs/DEVELOPMENT-CANON.md` — environment/evidence/development reference; при policy-конфликте приоритет у `AGENTS.md` и текущего кода/CI;
 - `PRODUCTION-READINESS.md` — текущий launch verdict и границы доказанного;
 - `docs/production-readiness-evidence.json` — machine-readable readiness evidence.
 
@@ -39,50 +41,73 @@
 
 > Внешний P0 governance остаётся открытым, пока GitHub реально не применит branch protection/ruleset для `main` и negative test не докажет enforcement. Green CI сам по себе не означает, что direct push уже запрещён.
 
-## Локальная разработка — текущая правда
+## Канонический локальный запуск
 
-Backend dependency contract должен совпадать с CI:
+Локальная среда намеренно повторяет backend topology продукта, но остаётся **development-only**:
 
-```bash
-python -m pip install "poetry==2.4.1"
-cd backend
-poetry check --lock
-poetry sync --no-interaction
-poetry run pip check
-```
+`PostgreSQL + Redis + MinIO + API + dedicated Worker + Expo`.
 
-Текущий ручной запуск API:
+Первый запуск после clone или изменения lock-файлов:
 
 ```bash
-cd backend
-cp .env.example .env
-poetry run uvicorn app.main:app --reload --port 8100
+npm run dev -- doctor
+npm run dev -- bootstrap
+npm run dev
 ```
 
-Mobile:
+`bootstrap` — отдельный явный этап установки locked dependencies. Обычный `npm run dev` **не устанавливает пакеты**, не вызывает ad-hoc `pip install` и не проглатывает ошибки миграций.
+
+Проверка уже поднятой среды:
 
 ```bash
-cd apps/mobile
-npm ci
-npm run ios
+npm run dev -- check
 ```
 
-### Known P1 local-runtime gap
+`check` fail-fast проверяет PostgreSQL, Redis, MinIO, `/health`, `/ready`, Alembic head, локальный worker heartbeat, shared Redis worker heartbeat и показывает mobile API URL.
 
-Текущий `npm run dev` / `scripts/start-dev.sh` **ещё не является production-topology-complete local runtime**: он не поднимает полный PostgreSQL + Redis + MinIO + API + Worker stack и содержит legacy best-effort migration/package-install behavior. Не использовать его успешный старт как evidence эквивалентности staging/production.
-
-Canonical local runtime должен быть исправлен отдельным production-hardening change: migration fail-fast, locked dependencies, PostgreSQL + Redis + MinIO + API + worker health/heartbeat, затем Expo. До этого ограничения считаются известным P1 development gap, а не «готовой» средой.
-
-## CI и локальные gates
+Полезные команды:
 
 ```bash
-npm run test:priority              # priority regression subset
-bash scripts/ci-playwright.sh api  # Playwright API E2E
-npm run ci:playwright              # API + UI Playwright surface
-npm run typecheck:mobile           # mobile type contract
+npm run dev -- seed          # idempotent development-only demo seed
+npm run dev -- test-focused  # быстрый contract/runtime gate
+npm run dev -- test-full     # полный локальный backend/mobile regression
+npm run dev -- logs
+npm run dev -- stop
+npm run dev -- reset         # УДАЛЯЕТ только local development volumes
 ```
 
-Полный backend regression, PostgreSQL Alembic upgrade и canonical PR gates выполняются в GitHub Actions. Малый локальный subset не является эквивалентом полного CI evidence.
+Для Cursor/Claude Code и non-interactive backend verification без Expo:
+
+```bash
+RENOVA_DEV_NO_EXPO=1 npm run dev
+npm run dev -- check
+npm run dev -- test-focused
+```
+
+### Env boundary
+
+Canonical local profile: `env.local.example` → ignored `.env.local`. При первом вызове dev-команды файл создаётся автоматически, если отсутствует.
+
+Не использовать для локального запуска:
+- `env.staging.example`;
+- `backend/.env.staging.example`;
+- `.env.production*`;
+- реальные provider/staging/production credentials.
+
+Успешный local runtime — это только local `TESTED` evidence. Даже green local-runtime Actions — только `CI VERIFIED` для exact candidate, а не доказательство external staging/production.
+
+## CI и verification gates
+
+```bash
+npm run dev -- test-focused      # canonical fast local gate
+npm run dev -- test-full         # broader local backend/mobile regression
+npm run test:priority            # historical/priority regression subset
+bash scripts/ci-playwright.sh api
+npm run ci:playwright
+npm run typecheck:mobile
+```
+
+Полный GitHub CI, PostgreSQL Alembic lifecycle, dedicated concurrency/E2E/security/release workflows остаются authoritative CI evidence для соответствующих изменений. Локальный SQLite test-subset внутри `test-focused`/`test-full` не заменяет dedicated PostgreSQL race/migration evidence.
 
 ## Runtime architecture
 

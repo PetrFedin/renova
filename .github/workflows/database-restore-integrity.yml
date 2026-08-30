@@ -7,6 +7,7 @@ on:
       - "backend/alembic.ini"
       - "backend/app/models/**"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/scripts/restore_drill_fixture.py"
       - "scripts/database-restore-drill.sh"
@@ -19,6 +20,7 @@ on:
       - "backend/alembic.ini"
       - "backend/app/models/**"
       - "backend/scripts/verify_migration_schema.py"
+      - "backend/scripts/verify_current_migration_schema.py"
       - "backend/scripts/verify_orm_schema_parity.py"
       - "backend/scripts/restore_drill_fixture.py"
       - "scripts/database-restore-drill.sh"
@@ -77,6 +79,7 @@ jobs:
           bash -n scripts/database-restore-drill.sh
           python -m py_compile \
             backend/scripts/restore_drill_fixture.py \
+            backend/scripts/verify_current_migration_schema.py \
             backend/scripts/verify_orm_schema_parity.py
 
       - name: Install exact locked backend environment
@@ -94,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           poetry run alembic upgrade head
-          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_current_migration_schema.py
           poetry run python scripts/verify_orm_schema_parity.py
 
       - name: Seed deterministic synthetic source data
@@ -110,7 +113,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_restore
         run: |
           set -euo pipefail
-          poetry run python scripts/verify_migration_schema.py --expect present
+          poetry run python scripts/verify_current_migration_schema.py
           poetry run python scripts/verify_orm_schema_parity.py
           poetry run python scripts/restore_drill_fixture.py verify \
             --expected "$DR_DIR/source-manifest.json" \
