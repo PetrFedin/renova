@@ -70,49 +70,54 @@ async def _enqueue_recipient_notifications(db: AsyncSession, *, message: ChatMes
         await outbox.enqueue_once(db, parent_outbox_id=parent, effect_key=f"notify:{recipient_id}", aggregate_type="chat_message", aggregate_id=message.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": recipient_id, "project_id": thread.project_id, "notification_type": "chat_message", "title": f"Новое сообщение: {thread.title}", "body": body, "link_path": f"/chat/{thread.id}", "return_to": f"/({recipient.role.value})/(tabs)/chat"})
 
 
-async def _broadcast_after_commit(*, thread: ChatThread, message: ChatMessage, recipient_ids: set[str]) -> None:
+async def _broadcast_after_commit(*, thread_id: str, project_id: str, message: ChatMessage, recipient_ids: set[str]) -> None:
     from app.api.v1.ws import broadcast, broadcast_inbox
     from app.services import chat_service
     try:
-        await broadcast(thread.id, {"type": "message", "message": chat_service.msg_dict(message)})
+        await broadcast(thread_id, {"type": "message", "message": chat_service.msg_dict(message)})
     except Exception:
-        logger.exception("chat thread websocket fanout failed after commit", extra={"thread_id": thread.id, "message_id": message.id})
-    payload = {"type": "inbox", "event": "message", "thread_id": thread.id, "project_id": thread.project_id}
+        logger.exception("chat thread websocket fanout failed after commit", extra={"thread_id": thread_id, "message_id": message.id})
+    payload = {"type": "inbox", "event": "message", "thread_id": thread_id, "project_id": project_id}
     for recipient_id in recipient_ids:
         try:
             await broadcast_inbox(recipient_id, payload)
         except Exception:
-            logger.exception("chat inbox websocket fanout failed after commit", extra={"thread_id": thread.id, "message_id": message.id, "recipient_id": recipient_id})
+            logger.exception("chat inbox websocket fanout failed after commit", extra={"thread_id": thread_id, "message_id": message.id, "recipient_id": recipient_id})
 
 
 async def send_client_message(db: AsyncSession, *, thread: ChatThread, user_id: str, role: str, client_request_id: str, text: str | None, message_type: str = "text", image_data: str | None = None, reply_to_id: str | None = None, meta: dict[str, Any] | None = None, additional_recipient_ids: set[str] | None = None) -> ChatMessage:
+    # Capture immutable identifiers before any operation that may roll back and
+    # expire ORM state. A concurrent idempotency loser must never trigger
+    # implicit async ORM I/O while resolving the canonical winner.
+    thread_id = str(thread.id)
+    project_id = str(thread.project_id)
     try:
         message_enum = ChatMessageType(message_type)
     except ValueError as exc:
         raise ValueError("invalid_message_type") from exc
-    payload = _payload_identity(thread_id=thread.id, text=text, message_type=message_enum.value, image_data=image_data, reply_to_id=reply_to_id, meta=meta)
-    replay_id = await replay_entity_id(db, scope=MESSAGE_CREATE_SCOPE, project_id=thread.project_id, user_id=user_id, request_id=client_request_id, payload=payload)
+    payload = _payload_identity(thread_id=thread_id, text=text, message_type=message_enum.value, image_data=image_data, reply_to_id=reply_to_id, meta=meta)
+    replay_id = await replay_entity_id(db, scope=MESSAGE_CREATE_SCOPE, project_id=project_id, user_id=user_id, request_id=client_request_id, payload=payload)
     if replay_id:
-        return await _load_replay_message(db, thread_id=thread.id, entity_id=replay_id)
-    await _validate_reply_target(db, thread_id=thread.id, reply_to_id=reply_to_id)
+        return await _load_replay_message(db, thread_id=thread_id, entity_id=replay_id)
+    await _validate_reply_target(db, thread_id=thread_id, reply_to_id=reply_to_id)
     storage_key = image_url = None
     if message_enum in {ChatMessageType.photo, ChatMessageType.file} and image_data:
         storage_key, image_url = await storage_svc.save_image(image_data, folder="chat")
     from app.services.chat_service import _dump_meta
-    message = ChatMessage(thread_id=thread.id, user_id=user_id, author_role=role, message_type=message_enum, text=text, storage_key=storage_key, image_url=image_url, reply_to_id=reply_to_id, meta_json=_dump_meta(meta or {}))
+    message = ChatMessage(thread_id=thread_id, user_id=user_id, author_role=role, message_type=message_enum, text=text, storage_key=storage_key, image_url=image_url, reply_to_id=reply_to_id, meta_json=_dump_meta(meta or {}))
     db.add(message)
     thread.updated_at = utc_now()
     await db.flush()
     recipients = await _active_recipients(db, thread=thread, sender_id=user_id, additional_recipient_ids=additional_recipient_ids)
     recipient_ids = set(recipients)
-    await _restore_recipient_visibility(db, thread_id=thread.id, recipient_ids=recipient_ids)
+    await _restore_recipient_visibility(db, thread_id=thread_id, recipient_ids=recipient_ids)
     await _enqueue_recipient_notifications(db, message=message, thread=thread, recipients=recipients, body=text or "Вложение")
-    committed, canonical_id = await commit_client_write(db, scope=MESSAGE_CREATE_SCOPE, project_id=thread.project_id, user_id=user_id, request_id=client_request_id, payload=payload, entity_id=message.id)
+    committed, canonical_id = await commit_client_write(db, scope=MESSAGE_CREATE_SCOPE, project_id=project_id, user_id=user_id, request_id=client_request_id, payload=payload, entity_id=message.id)
     if not committed:
         if storage_key:
             logger.warning("concurrent chat attachment candidate lost idempotency race; orphan recovery remains #238", extra={"storage_key": storage_key, "canonical_message_id": canonical_id})
-        return await _load_replay_message(db, thread_id=thread.id, entity_id=canonical_id)
+        return await _load_replay_message(db, thread_id=thread_id, entity_id=canonical_id)
     await db.refresh(message)
     await outbox_inline_dispatch.dispatch_best_effort(db, source="chat.message", limit=max(10, len(recipient_ids) * 2))
-    await _broadcast_after_commit(thread=thread, message=message, recipient_ids=recipient_ids)
+    await _broadcast_after_commit(thread_id=thread_id, project_id=project_id, message=message, recipient_ids=recipient_ids)
     return message

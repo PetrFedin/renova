@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import require_project
 from app.models.entities import ChatMessage, ChatThread, Project, User
@@ -23,8 +24,13 @@ async def require_chat_access(
     ``allow_participant`` grants access only to this exact thread. Callers opt in
     for thread-local operations (read/send/read-receipt/personal state). Project,
     task and finance mutations keep the default and remain fail-closed.
+
+    Messages are eagerly loaded at the ACL boundary because downstream async API
+    read paths serialize ``thread.messages``. This prevents implicit relationship
+    I/O from escaping SQLAlchemy's greenlet context and keeps authorization plus
+    serialization deterministic for both SQLite E2E and PostgreSQL runtime.
     """
-    thread = await db.get(ChatThread, thread_id)
+    thread = await db.get(ChatThread, thread_id, options=(selectinload(ChatThread.messages),))
     if not thread or thread.project_id != project_id:
         raise HTTPException(404, "chat_not_found")
 

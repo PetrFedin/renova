@@ -240,14 +240,14 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
 
     sent_notifications: list[str] = []
 
-    async def capture_notify(_db, *, user_id: str, **_kwargs):
+    async def capture_notify_from_outbox(_db, *, user_id: str, **_kwargs):
         sent_notifications.append(user_id)
         return None
 
     async def no_broadcast(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(notification_service, "notify", capture_notify)
+    monkeypatch.setattr(notification_service, "notify_from_outbox", capture_notify_from_outbox)
     from app.api.v1 import ws
     monkeypatch.setattr(ws, "broadcast", no_broadcast)
     monkeypatch.setattr(ws, "broadcast_inbox", no_broadcast)
@@ -255,7 +255,11 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
     supervisor_message = await supervision_chat_api.post_operational_message(
         project_id=project.id,
         thread_id=thread.id,
-        body=chats_api.MessageCreate(text="Проверьте узел до закрытия", message_type="text"),
+        body=chats_api.MessageCreate(
+            text="Проверьте узел до закрытия",
+            message_type="text",
+            client_request_id="supervision-chat-0001",
+        ),
         user=inspector,
         db=db,
     )
@@ -268,7 +272,11 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
         await supervision_chat_api.post_operational_message(
             project_id=project.id,
             thread_id=thread.id,
-            body=chats_api.MessageCreate(text="pay", message_type="payment"),
+            body=chats_api.MessageCreate(
+                text="pay",
+                message_type="payment",
+                client_request_id="supervision-chat-0002",
+            ),
             user=inspector,
             db=db,
         )
@@ -288,7 +296,11 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
     customer_message = await supervision_chat_api.post_operational_message(
         project_id=project.id,
         thread_id=thread.id,
-        body=chats_api.MessageCreate(text="Заказчик добавил уточнение", message_type="text"),
+        body=chats_api.MessageCreate(
+            text="Заказчик добавил уточнение",
+            message_type="text",
+            client_request_id="supervision-chat-0003",
+        ),
         user=customer,
         db=db,
     )

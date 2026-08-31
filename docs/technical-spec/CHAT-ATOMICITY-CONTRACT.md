@@ -31,6 +31,18 @@ This annex governs client-originated chat-message creation and user-visible reco
 8. Thread-only users keep valid chat actions while project-authority controls fail closed from server capabilities.
 9. Inbox/unread replaces state from authoritative snapshots; WS, polling and repeated read edges do not accumulate counters locally.
 10. Reply targets must belong to the same thread; invalid message types fail before durable mutation.
+11. A concurrent idempotency loser resolves the winner only from scalar IDs captured before rollback; expired ORM objects must not trigger implicit async database I/O.
+12. Async chat read paths must not rely on relationship lazy-loading. The chat ACL boundary eagerly materializes thread messages before API/PDF serialization.
+
+## Qualification findings fixed on the successor
+
+Fresh exact-head qualification exposed two real `MissingGreenlet` defects and one stale supervision contract. These are governed defects, not CI noise:
+
+- PostgreSQL same-key race: the losing transaction rolled back and expired `ChatThread`, then replay resolution accessed `thread.id`; the mutation service now captures immutable `thread_id`/`project_id` before the race boundary.
+- API transcript read: `GET /chats/{thread_id}` and PDF serialization could touch lazy `thread.messages`; `require_chat_access` now eager-loads messages at the authorized object boundary.
+- technical-supervision regression still constructed `MessageCreate` without `client_request_id` and asserted the pre-outbox notification path; the test is aligned to the mandatory request identity and durable outbox delivery contract without weakening production validation.
+
+These fixes must receive fresh exact-head PostgreSQL, technical-supervision, Playwright, backend and mobile evidence before merge.
 
 ## Retained external-storage blocker
 
