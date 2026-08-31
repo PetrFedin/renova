@@ -18,15 +18,11 @@ mkdir -p "$REPORT_DIR"
 stop_pid() {
   local pid="${1:-}"
   local label="${2:-process}"
-  if [ -z "$pid" ]; then
-    return 0
-  fi
+  if [ -z "$pid" ]; then return 0; fi
   if kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null || true
     for _ in $(seq 1 40); do
-      if ! kill -0 "$pid" 2>/dev/null; then
-        break
-      fi
+      if ! kill -0 "$pid" 2>/dev/null; then break; fi
       sleep 0.25
     done
     if kill -0 "$pid" 2>/dev/null; then
@@ -49,11 +45,7 @@ cleanup() {
 trap cleanup EXIT
 
 wait_http() {
-  local url="$1"
-  local label="$2"
-  local pid="$3"
-  local max="${4:-30}"
-  local sleep_s="${5:-1}"
+  local url="$1" label="$2" pid="$3" max="${4:-30}" sleep_s="${5:-1}"
   for _ in $(seq 1 "$max"); do
     if ! kill -0 "$pid" 2>/dev/null; then
       wait "$pid" 2>/dev/null || true
@@ -76,14 +68,9 @@ wait_http() {
 }
 
 run_backend_module() {
-  if command -v poetry >/dev/null 2>&1; then
-    poetry run python -m "$1"
-  elif [ -x "$ROOT/backend/.venv/bin/python" ]; then
-    "$ROOT/backend/.venv/bin/python" -m "$1"
-  else
-    echo "FAIL: need poetry or backend/.venv/bin/python"
-    exit 1
-  fi
+  if command -v poetry >/dev/null 2>&1; then poetry run python -m "$1"
+  elif [ -x "$ROOT/backend/.venv/bin/python" ]; then "$ROOT/backend/.venv/bin/python" -m "$1"
+  else echo "FAIL: need poetry or backend/.venv/bin/python"; exit 1; fi
 }
 
 start_api() {
@@ -103,8 +90,7 @@ start_api() {
   elif [ -x "$ROOT/backend/.venv/bin/uvicorn" ]; then
     "$ROOT/backend/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$API_PORT" &
   else
-    echo "FAIL: need poetry or backend/.venv/bin/uvicorn"
-    exit 1
+    echo "FAIL: need poetry or backend/.venv/bin/uvicorn"; exit 1
   fi
   BACK_PID=$!
   wait_http "${API_URL}/health" "API" "$BACK_PID"
@@ -122,28 +108,22 @@ start_expo_web() {
 }
 
 run_playwright_suite() {
-  local suite="$1"
-  local min_expected="$2"
+  local suite="$1" min_expected="$2"
   shift 2
   local report="$REPORT_DIR/${suite}.json"
   rm -f "$report"
-  RENOVA_API="$API_URL" \
-  RENOVA_WEB="$WEB_URL" \
-  RENOVA_E2E_REQUIRE_SERVICES=1 \
-  RENOVA_PLAYWRIGHT_JSON_REPORT="$report" \
+  RENOVA_API="$API_URL" RENOVA_WEB="$WEB_URL" RENOVA_E2E_REQUIRE_SERVICES=1 RENOVA_PLAYWRIGHT_JSON_REPORT="$report" \
     npx playwright test -c e2e/playwright.config.ts "$@"
-  node scripts/assert-playwright-report.mjs \
-    "$report" \
-    "--min-expected=${min_expected}" \
-    --max-skipped=0
+  node scripts/assert-playwright-report.mjs "$report" "--min-expected=${min_expected}" --max-skipped=0
 }
 
 run_api_e2e() {
   start_api "./ci-playwright-api.db"
-  run_playwright_suite api 2 \
+  run_playwright_suite api 3 \
     e2e/project-lifecycle.spec.ts \
     e2e/portal-documents.spec.ts \
-    e2e/contract-gate-path.spec.ts
+    e2e/contract-gate-path.spec.ts \
+    e2e/chat-message-idempotency.spec.ts
   npm run cleanup:e2e-gate || true
 }
 
