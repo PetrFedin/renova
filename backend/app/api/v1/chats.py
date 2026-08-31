@@ -9,6 +9,8 @@ from app.db.session import get_db
 from app.models.entities import User
 from app.services import chat_participant_service as chat_participant_svc
 from app.services import chat_service as chat_svc
+from app.services import chat_message_mutation as chat_message_svc
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["chats"])
 
@@ -53,6 +55,39 @@ async def _project_unread_for_actor(
     return await chat_svc.count_unread_project(db, project_id, user.id)
 
 
+async def _chat_capabilities(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user: User,
+) -> dict:
+    """Return server-authoritative UI capabilities without broadening thread ACL."""
+    project_read = False
+    project_write = False
+    try:
+        await require_project(db, project_id, user, write=False)
+        project_read = True
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+
+    if project_read:
+        try:
+            await require_project(db, project_id, user, write=True)
+            project_write = True
+        except HTTPException as exc:
+            if exc.status_code != 403:
+                raise
+
+    return {
+        "access_scope": "project" if project_read else "thread",
+        "can_view_project_actions": project_read,
+        "can_manage_participants": project_write,
+        "can_create_task": project_write,
+        "can_create_invoice": project_write and user.role.value == "contractor",
+    }
+
+
 class ThreadCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     topic: str | None = None
@@ -68,6 +103,7 @@ class ReadBody(BaseModel):
 
 
 class MessageCreate(BaseModel):
+    client_request_id: str = Field(min_length=8, max_length=80)
     text: str | None = None
     message_type: str = "text"
     image_data: str | None = None
@@ -197,6 +233,7 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
         ),
         "messages": await _msgs_with_read(db, thread_id, t.messages),
         "participants": await chat_svc.list_participants(db, thread_id),
+        "capabilities": await _chat_capabilities(db, project_id=project_id, user=user),
     }
 
 
@@ -238,9 +275,27 @@ async def _post_message(project_id: str, thread_id: str, body: MessageCreate, us
     _project, t = await require_chat_access(
         db, project_id, thread_id, user, write=True, allow_participant=True,
     )
-    msg = await chat_svc.send_message(
-        db, t, user.id, user.role.value, body.text, body.message_type, body.image_data, body.reply_to_id,
-    )
+    try:
+        msg = await chat_message_svc.send_client_message(
+            db,
+            thread=t,
+            user_id=user.id,
+            role=user.role.value,
+            client_request_id=body.client_request_id,
+            text=body.text,
+            message_type=body.message_type,
+            image_data=body.image_data,
+            reply_to_id=body.reply_to_id,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(409, "idempotency_conflict") from exc
+    except ValueError as exc:
+        code = str(exc)
+        if code == "reply_target_not_in_thread":
+            raise HTTPException(409, code) from exc
+        if code == "invalid_message_type":
+            raise HTTPException(422, code) from exc
+        raise
     return chat_svc.msg_dict(msg)
 
 
