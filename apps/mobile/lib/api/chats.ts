@@ -26,6 +26,13 @@ export type ChatInviteResult = {
   delivery_outbox_id: string | null;
 };
 
+function newChatClientRequestId(): string {
+  const now = Date.now().toString(36);
+  const randomA = Math.random().toString(36).slice(2, 12);
+  const randomB = Math.random().toString(36).slice(2, 12);
+  return `chat-${now}-${randomA}-${randomB}`;
+}
+
 export const chatsApi = {
   listChats: (userId: string, projectId: string, archived = false) =>
     req<ChatThread[]>(`/api/v1/projects/${projectId}/chats?archived=${archived ? 'true' : 'false'}`, {}, userId),
@@ -248,13 +255,38 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  sendChatMessage: async (userId: string, projectId: string, threadId: string, text: string, message_type = 'text', image_data?: string, reply_to_id?: string) => {
+  sendChatMessage: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    text: string,
+    message_type = 'text',
+    image_data?: string,
+    reply_to_id?: string,
+  ) => {
+    const client_request_id = newChatClientRequestId();
+    const body = JSON.stringify({
+      client_request_id,
+      text,
+      message_type,
+      image_data,
+      reply_to_id,
+    });
     try {
-      return await req(`/api/v1/projects/${projectId}/chats/${threadId}/messages`, { method: 'POST', body: JSON.stringify({ text, message_type, image_data, reply_to_id }) }, userId);
+      return await req<ChatMessage>(
+        `/api/v1/projects/${projectId}/chats/${threadId}/messages`,
+        { method: 'POST', body },
+        userId,
+      );
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/chats/${threadId}/messages`, method: 'POST', body: JSON.stringify({ text, message_type, image_data }), userId });
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages`,
+        method: 'POST',
+        body,
+        userId,
+      });
       throw new Error('offline_queued');
     }
   },

@@ -41,4 +41,21 @@ export type ChatParticipant = {
   status: string;
 };
 
-export type ChatDetail = ChatThread & { messages: ChatMessage[]; participants?: ChatParticipant[] };
+export type ChatCapabilities = {
+  access_scope: 'project' | 'thread';
+  can_view_project_actions: boolean;
+  can_manage_participants: boolean;
+  can_create_task: boolean;
+  can_create_invoice: boolean;
+};
+
+/**
+ * Capabilities are optional for rolling deploy compatibility. Consumers must
+ * fail closed for project-only actions when the field is absent; the core
+ * thread composer remains governed by the chat ACL itself.
+ */
+export type ChatDetail = ChatThread & {
+  messages: ChatMessage[];
+  participants?: ChatParticipant[];
+  capabilities?: ChatCapabilities;
+};
