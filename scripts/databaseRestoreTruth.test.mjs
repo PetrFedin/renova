@@ -18,6 +18,14 @@ for (const [token, message] of [
   ['scripts/verify_orm_schema_parity.py', 'restore drill must verify complete ORM/Alembic column parity'],
   ['scripts/restore_drill_fixture.py seed', 'restore drill must create deterministic source data'],
   ['scripts/restore_drill_fixture.py verify', 'restore drill must verify restored data fingerprint'],
+  ['scripts/restore_application_smoke.py', 'restore drill must boot the application against the restored database'],
+  ['ENVIRONMENT: test', 'restored application smoke must run under explicit test runtime policy'],
+  ['ALLOW_DEMO_SEED: "false"', 'restored application smoke must not add demo rows'],
+  ['ALLOW_CREATE_ALL: "false"', 'restored application smoke must not create schema from ORM metadata'],
+  ['application-health.json', 'restore drill must retain sanitized application health evidence'],
+  ['post-application-manifest.json', 'restore drill must recheck fixture truth after application startup'],
+  ['application_health_verified', 'restore verification record must prove application health'],
+  ['native_backup_restore_seconds', 'restore verification must retain a sanitized logical timing baseline'],
   ['rm -f "$DR_DIR/renova.dump"', 'restore drill must delete the synthetic dump after verification'],
   ['restore-verification.json', 'restore drill must retain a sanitized verification record'],
 ]) {
@@ -42,6 +50,8 @@ for (const [token, message] of [
   ['pg_restore', 'native restore must execute PostgreSQL pg_restore'],
   ['--exit-on-error', 'native restore must fail closed on pg_restore errors'],
   ['SELECT current_database()', 'native restore must prove it is checking the isolated target'],
+  ['native-restore-timing.json', 'native restore must emit a sanitized timing record'],
+  ['synthetic_ci_logical_restore', 'native timing must be scoped so it cannot be mistaken for provider RTO'],
 ]) {
   contains(native, token, message);
 }
@@ -55,12 +65,37 @@ contains(fixture, 'restore drill fixture is incomplete', 'restore verification m
 contains(fixture, 'restored fixture does not match source manifest', 'restore verification must fail on data mismatch');
 excludes(fixture, 'seed_demo', 'DR fixture must not depend on demo/customer seed data');
 
+const appSmoke = src('backend/scripts/restore_application_smoke.py');
+for (const [token, message] of [
+  ['settings.normalized_environment != "test"', 'application smoke must be test-only'],
+  ['postgresql+asyncpg://', 'application smoke must require PostgreSQL'],
+  ['database_name != expected', 'application smoke must require the isolated restore database'],
+  ['database_name == source', 'application smoke must reject the source database'],
+  ['settings.allow_demo_seed is not False', 'application smoke must fail when demo seed is not explicitly disabled'],
+  ['settings.allow_create_all is not False', 'application smoke must fail when create_all is not explicitly disabled'],
+  ['app.router.lifespan_context(app)', 'application smoke must execute the real ASGI lifespan'],
+  ['client.get("/health")', 'application smoke must execute application health'],
+  ['client.get("/ready")', 'application smoke must execute application readiness'],
+  ['application_health_verified', 'application smoke must emit a sanitized verified flag'],
+]) {
+  contains(appSmoke, token, message);
+}
+excludes(appSmoke, '/api/v1/auth/demo', 'restore application smoke must not depend on demo authentication/data');
+
 const doc = src('docs/DISASTER-RECOVERY.md');
-contains(doc, 'Automated provider backups: **NOT PROVEN**', 'DR docs must not overclaim automated backups');
-contains(doc, 'PITR: **NOT PROVEN**', 'DR docs must not overclaim PITR');
-contains(doc, 'RPO: **UNSET / launch blocker**', 'DR docs must keep RPO explicit until selected');
-contains(doc, 'RTO: **UNSET / launch blocker**', 'DR docs must keep RTO explicit until selected');
-contains(doc, 'logical dump/restore procedure', 'DR docs must distinguish the repository-proven restore drill');
-contains(doc, 'ORM/Alembic', 'DR docs must state that restored mapped schema parity is verified');
+for (const [token, message] of [
+  ['Automated provider backups: **NOT PROVEN**', 'DR docs must not overclaim automated backups'],
+  ['PITR: **NOT PROVEN**', 'DR docs must not overclaim PITR'],
+  ['RPO target: <= 15 minutes / NOT PROVEN', 'DR docs must define an explicit but unproven RPO target'],
+  ['RTO target: <= 60 minutes / NOT PROVEN', 'DR docs must define an explicit but unproven RTO target'],
+  ['PITR recovery window: >= 7 days target / NOT PROVEN', 'DR docs must define the PITR recovery-window target'],
+  ['Automated backup retention: >= 35 days target / NOT PROVEN', 'DR docs must define backup retention target'],
+  ['logical dump/restore procedure', 'DR docs must distinguish the repository-proven restore drill'],
+  ['ORM/Alembic', 'DR docs must state that restored mapped schema parity is verified'],
+  ['application health/readiness', 'DR docs must state restored application health verification'],
+  ['not provider RTO evidence', 'DR docs must not confuse CI timing with achieved provider RTO'],
+]) {
+  contains(doc, token, message);
+}
 
 console.log('databaseRestoreTruth.test OK');

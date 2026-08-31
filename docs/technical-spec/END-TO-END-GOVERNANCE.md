@@ -101,10 +101,10 @@ After merge to `main`:
 Post-merge state as of 2026-08-31:
 
 1. **DONE:** #288 merged the canonical local runtime / agent onboarding / living specification foundation to `main` as merge commit `7bd1dceb273a7e1f26ddf2333e9199d8d498ae54`; exact successor head `46fb8aaf52c33449b3a168ee226c605a94c0d3d4` received fresh exact-head qualification before merge.
-2. **DONE:** #279 and #285 are closed as completed because their acceptance criteria are present on `main`.
-3. **NEXT / P0:** refresh #284 DR against merge commit `7bd1dceb273a7e1f26ddf2333e9199d8d498ae54`, current migration head `w18nativeenumparity01`, and this living specification; then require fresh exact-head DR and repository qualification. CI logical restore remains regression evidence and does not prove managed-provider backup/PITR/RPO/RTO.
+2. **DONE:** #279 and #285 are closed as completed; #289 then reconciled this state into the living specification as merge commit `1203f79797d0965d302f58fdba61b53c45b85a8a`.
+3. **ACTIVE / P0:** DR is being refreshed from current `main` rather than rebasing stale implementation truth. The bounded DR slice must use current migration verifier `verify_current_migration_schema.py` at Alembic head `w18nativeenumparity01`, boot the real ASGI lifespan against isolated `renova_restore`, require `/health` and `/ready`, verify the protected fixture again after startup, and retain only sanitized logical timing/evidence. RPO <=15 minutes, RTO <=60 minutes, PITR >=7 days and backup retention >=35 days are targets only and remain **NOT PROVEN** until a managed-provider drill.
 4. **THEN:** qualify #282 chat atomicity/idempotency separately.
 5. **THEN:** qualify #287 warranty atomicity/idempotency separately.
 6. **THEN:** qualify #283 observability separately.
 
-#286 is historical/superseded process lineage for #288 and is not a second implementation owner. Functional ownership remains separate. Compatibility updates caused by the canonical schema/spec head do not transfer feature ownership between these PRs.
+#284 remains historical implementation lineage for the refreshed DR successor and must not be merged from its stale pre-#288 base. #286 is historical/superseded process lineage for #288. Functional ownership remains separate. Compatibility updates caused by the canonical schema/spec head do not transfer feature ownership between these PRs.

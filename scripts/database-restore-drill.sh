@@ -22,7 +22,9 @@ DR_DIR="${DR_DIR:?DR_DIR is required}"
 mkdir -p "$DR_DIR"
 dump_path="$DR_DIR/renova.dump"
 list_path="$DR_DIR/dump-list.txt"
-rm -f "$dump_path" "$list_path"
+timing_path="$DR_DIR/native-restore-timing.json"
+rm -f "$dump_path" "$list_path" "$timing_path"
+SECONDS=0
 
 run_pg() {
   docker run --rm --network host \
@@ -71,4 +73,9 @@ restored_db="$(run_pg psql -At -v ON_ERROR_STOP=1 \
   exit 1
 }
 
-echo "database restore drill native phase: PASS target=$RESTORE_DB"
+# This is a repository logical-restore benchmark only. It is not provider RTO.
+# Retain no credentials, hostnames or customer data in the timing record.
+printf '{"native_backup_restore_seconds":%s,"scope":"synthetic_ci_logical_restore"}\n' \
+  "$SECONDS" > "$timing_path"
+
+echo "database restore drill native phase: PASS target=$RESTORE_DB seconds=$SECONDS"
