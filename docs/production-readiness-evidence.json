@@ -21,19 +21,8 @@
     }
   },
   "environments": {
-    "staging": {
-      "status": "CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED",
-      "artifact_digest": null,
-      "evidence": null,
-      "issue": 233,
-      "note": "Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."
-    },
-    "production": {
-      "status": "NOT_EXTERNALLY_VERIFIED",
-      "git_sha": null,
-      "artifact_digest": null,
-      "evidence": null
-    }
+    "staging": {"status":"CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED","artifact_digest":null,"evidence":null,"issue":233,"note":"Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."},
+    "production": {"status":"NOT_EXTERNALLY_VERIFIED","git_sha":null,"artifact_digest":null,"evidence":null}
   },
   "providers": {
     "yookassa": {"repo_status":"DURABLE_RECONCILIATION_IMPLEMENTED","external_status":"LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED","release_scope":true,"evidence":null,"issue":238},
@@ -46,14 +35,7 @@
   },
   "slo": {
     "status": "REPOSITORY_GATE_IMPLEMENTED_EXTERNAL_CAPACITY_NOT_PROVEN",
-    "candidate_thresholds": {
-      "http_failure_rate_lt": 0.01,
-      "http_p95_ms_lt": 1000,
-      "http_p99_ms_lt": 2500,
-      "websocket_delivery_failure_rate_lt": 0.01,
-      "websocket_delivery_p95_ms_lt": 1000,
-      "websocket_delivery_p99_ms_lt": 2500
-    },
+    "candidate_thresholds": {"http_failure_rate_lt":0.01,"http_p95_ms_lt":1000,"http_p99_ms_lt":2500,"websocket_delivery_failure_rate_lt":0.01,"websocket_delivery_p95_ms_lt":1000,"websocket_delivery_p99_ms_lt":2500},
     "latest_external_load_test": {"status":"NOT_EXECUTED_OR_NOT_RETAINED","git_sha":null,"artifact_digest":null,"evidence":null,"issue":236}
   },
   "restore": {
@@ -72,7 +54,16 @@
   "observability": {"status":"REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED","evidence":null,"alert_delivery_verified":false,"mobile_crash_reporting_verified":false,"issue":235},
   "release": {"mobile_source_version":"0.3.7","ios_build_number":"3","android_version_code":3,"latest_eas_release":{"status":"NOT_EXTERNALLY_VERIFIED","git_sha":null,"profile":null,"builds":[],"evidence":null},"repo_release_contract":".github/workflows/eas-build.yml"},
   "security": {
-    "repo_controls": {"status":"IMPLEMENTED","osv_exception_baseline":"EMPTY","codeql":"ENABLED","gitleaks_history_and_proposed_tree":"ENABLED","container_high_critical_fixed_vulnerability_gate":"ENABLED"},
+    "repo_controls": {
+      "status":"IMPLEMENTED",
+      "pr":258,
+      "head_sha":"0ead84d5baa07f2428b7a6ad972a31719814da16",
+      "merge_sha":"0cc870fdea76aeca26aef1365daf88407f6e3f78",
+      "osv_exception_baseline":"EMPTY",
+      "codeql":"ENABLED",
+      "gitleaks_history_and_proposed_tree":"ENABLED",
+      "container_high_critical_fixed_vulnerability_gate":"ENABLED"
+    },
     "accepted_risks": [],
     "external_validation": {"branch_protection":"OPEN_ISSUE_247","privileged_access_review":"OPEN_ISSUE_256","independent_pentest":"OPEN_ISSUE_257","provider_credential_rotation_drill":"NOT_EXTERNALLY_VERIFIED"}
   },
