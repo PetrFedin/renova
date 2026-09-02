@@ -15,11 +15,25 @@
     "git_sha": null,
     "evidence": null,
     "repo_contract": ".github/workflows/backend-image.yml",
-    "latest_repo_validation": {"status":"CI_VERIFIED","note":"Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."}
+    "latest_repo_validation": {
+      "status": "CI_VERIFIED",
+      "note": "Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."
+    }
   },
   "environments": {
-    "staging": {"status":"CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED","artifact_digest":null,"evidence":null,"issue":233,"note":"Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."},
-    "production": {"status":"NOT_EXTERNALLY_VERIFIED","git_sha":null,"artifact_digest":null,"evidence":null}
+    "staging": {
+      "status": "CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED",
+      "artifact_digest": null,
+      "evidence": null,
+      "issue": 233,
+      "note": "Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."
+    },
+    "production": {
+      "status": "NOT_EXTERNALLY_VERIFIED",
+      "git_sha": null,
+      "artifact_digest": null,
+      "evidence": null
+    }
   },
   "providers": {
     "yookassa": {"repo_status":"DURABLE_RECONCILIATION_IMPLEMENTED","external_status":"LIVE_CREDENTIALS_AND_LIVENESS_UNVERIFIED","release_scope":true,"evidence":null,"issue":238},
@@ -32,11 +46,27 @@
   },
   "slo": {
     "status": "REPOSITORY_GATE_IMPLEMENTED_EXTERNAL_CAPACITY_NOT_PROVEN",
-    "candidate_thresholds": {"http_failure_rate_lt":0.01,"http_p95_ms_lt":1000,"http_p99_ms_lt":2500,"websocket_delivery_failure_rate_lt":0.01,"websocket_delivery_p95_ms_lt":1000,"websocket_delivery_p99_ms_lt":2500},
+    "candidate_thresholds": {
+      "http_failure_rate_lt": 0.01,
+      "http_p95_ms_lt": 1000,
+      "http_p99_ms_lt": 2500,
+      "websocket_delivery_failure_rate_lt": 0.01,
+      "websocket_delivery_p95_ms_lt": 1000,
+      "websocket_delivery_p99_ms_lt": 2500
+    },
     "latest_external_load_test": {"status":"NOT_EXECUTED_OR_NOT_RETAINED","git_sha":null,"artifact_digest":null,"evidence":null,"issue":236}
   },
   "restore": {
-    "latest_repo_restore_drill": {"status":"CI_VERIFIED","pr":290,"head_sha":"a85528303f6e6704ac8a0feaa6845e7ddfc9c93a","merge_sha":"748ed5f22db0bfe18001f276ec521d0198d4dc57","scope":"Current Alembic head -> deterministic data -> pg_dump -> isolated restore -> schema/fingerprint -> real ASGI lifespan with create_all/demo disabled -> /health + /ready -> post-start fingerprint","production_backup":false},
+    "latest_repo_restore_drill": {
+      "status": "CI_VERIFIED",
+      "pr": 290,
+      "head_sha": "a85528303f6e6704ac8a0feaa6845e7ddfc9c93a",
+      "merge_sha": "748ed5f22db0bfe18001f276ec521d0198d4dc57",
+      "workflow_run_id": 33344103969,
+      "git_sha": "a85528303f6e6704ac8a0feaa6845e7ddfc9c93a",
+      "scope": "Current Alembic head -> deterministic data -> pg_dump -> isolated restore -> schema/fingerprint -> real ASGI lifespan with create_all/demo disabled -> /health + /ready -> post-start fingerprint",
+      "production_backup": false
+    },
     "latest_production_restore_drill": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"rpo_minutes":null,"rto_minutes":null,"issue":234}
   },
   "observability": {"status":"REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED","evidence":null,"alert_delivery_verified":false,"mobile_crash_reporting_verified":false,"issue":235},
