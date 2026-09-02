@@ -1,206 +1,164 @@
 # Renova — Production Readiness
 
-**Статус широкого production launch:** **BLOCKED**  
-**Канонический machine-readable evidence:** `docs/production-readiness-evidence.json`  
-**SHA-bound snapshot:** GitHub Actions artifact `production-readiness-snapshot` из workflow `Production readiness integrity`.
+**Broad production launch:** **BLOCKED_FOR_BROAD_PRODUCTION**  
+**Machine-readable source of truth:** `docs/production-readiness-evidence.json`  
+**SHA-bound evidence:** GitHub Actions artifact `production-readiness-snapshot` from `Production readiness integrity`.
 
-Этот документ заменяет старые MVP/audit-документы как текущий источник истины по production readiness. Исторические аудиты остаются полезны как журнал решений, но не определяют текущую готовность релиза.
+This document is the human-readable companion to the machine manifest. It records only current repository truth and explicitly separates repository/CI evidence from external staging, provider, production and operator evidence.
 
-## 1. Как определяется текущий SHA
+## 1. Current repository facts
 
-Git-коммит не может надёжно содержать собственный SHA: изменение записанного SHA создаёт новый commit SHA. Поэтому Renova **не хардкодит `main` SHA в этом файле**.
+The evaluated Git SHA is supplied by CI and is not hard-coded into this file. `scripts/production_readiness.py` resolves the exact evaluated SHA, live `main`, current Alembic graph head, mobile source identity and live blocker issue state on every readiness run.
 
-На каждом readiness-run `scripts/production_readiness.py`:
-
-1. получает exact evaluated SHA из GitHub Actions;
-2. читает живой `main` SHA через GitHub API;
-3. вычисляет текущий Alembic head из migration graph;
-4. читает mobile version/build непосредственно из `apps/mobile/app.json`;
-5. проверяет живое состояние всех issues, перечисленных как launch blockers;
-6. объединяет эти repo-факты с reviewable external/operator evidence manifest;
-7. выпускает `production-readiness.json` и `production-readiness.md` как retained CI artifact.
-
-Для `push` на `main` поле `current_main_sha` в generated snapshot является каноническим текущим SHA. Для PR snapshot отдельно хранит evaluated candidate SHA и current base `main` SHA.
-
-## 2. Текущие repo-derived факты
-
-Эти значения проверяются CI против исходников; изменение кода без обновления readiness evidence ломает gate.
-
-| Факт | Текущее значение |
+| Fact | Current value |
 |---|---:|
-| Alembic head | `w15providerops01` |
+| Alembic head | `w18nativeenumparity01` |
 | Mobile version | `0.3.7` |
 | iOS buildNumber | `3` |
 | Android versionCode | `3` |
-| Backend image contract | `ghcr.io/petrfedin/renova-api:sha-${GIT_SHA}` |
-| Backend runtime roles | `renova-api`, `renova-worker` из одного immutable image |
+| Backend artifact contract | `ghcr.io/petrfedin/renova-api:sha-${GIT_SHA}` |
+| Runtime roles | `renova-api` + `renova-worker` from one immutable image |
 
-## 3. Что repository CI уже доказывает
+## 2. What repository CI currently proves
 
-Repository-side production controls реализованы и регулярно проверяются:
+Current repository gates prove, for the exact candidate they evaluate:
 
-- полный backend regression и PostgreSQL Alembic upgrade;
-- API/UI Playwright end-to-end surface;
-- dedicated API/worker runtime topology и shared Redis heartbeat truth;
-- provider reconciliation ledger для YooKassa/FNS, retry/fencing/terminal recovery;
-- outbox DLQ/requeue и operator health;
-- push delivery + Expo receipt reconciliation;
-- OTP/Redis recovery, shared rate limiting, admin RBAC/object authorization;
-- CodeQL Python + JavaScript/TypeScript;
-- OSV dependency audit, Gitleaks full-history/proposed-tree scan и scanner canary;
-- container build, non-root runtime, Trivy fixed High/Critical gate;
-- logical PostgreSQL backup → isolated restore → schema/data fingerprint verification;
-- exact locked Python `3.12.13` + Poetry `2.4.1` dependency graph across focused backend CI.
+- full backend regression plus PostgreSQL Alembic upgrade;
+- API/UI Playwright E2E;
+- canonical local PostgreSQL + Redis + MinIO + API + Worker topology;
+- fail-fast runtime validation, health/readiness and worker heartbeat;
+- current schema/ORM parity through `w18nativeenumparity01`;
+- DomainOutbox retry/lease/DLQ/operator recovery contracts;
+- provider reconciliation foundations for payments/receipts/push and related workers;
+- OTP/session, RBAC/object authorization and WebSocket security contracts;
+- CodeQL, dependency integrity, Gitleaks/container security and non-root image contracts;
+- logical PostgreSQL backup/isolated restore/application-start regression;
+- exact Python 3.12.13 + Poetry 2.4.1 locked backend toolchain;
+- living technical specification integrity.
 
-Green CI **не означает**, что внешний production environment, provider credentials, capacity, store release, disaster recovery, alert delivery или security review уже доказаны.
+A green repository gate is **CI VERIFIED** only. It does not by itself prove external staging, production deployment, real provider liveness, managed backup restore, alert delivery, mobile-store release or real capacity.
 
-## 4. Backend artifact identity
+## 3. Current product-integrity state
 
-`Backend image integrity` строит exact-commit image, проверяет OCI revision, API/worker health, сканирует Trivy, а на `main` публикует immutable SHA-tagged image с BuildKit SBOM/provenance и keyless Sigstore signature.
+### DONE / CI VERIFIED
 
-Production readiness требует **конкретный registry digest**, а не только tag. Пока exact digest не приложен к evidence snapshot, состояние остаётся `UNVERIFIED_CURRENT_DIGEST` и production artifact нельзя считать подтверждённым.
+**Canonical development runtime — PR #288.** The production-topology local developer environment is merged: PostgreSQL + Redis + MinIO + API + Worker, fail-fast Alembic, explicit seed and readiness/heartbeat checks. Exact successor head: `46fb8aaf52c33449b3a168ee226c605a94c0d3d4`; merge: `7bd1dceb273a7e1f26ddf2333e9199d8d498ae54`.
 
-После main-publish workflow pull'ит опубликованный **exact digest**, читает из него `org.opencontainers.image.revision` и fail-closed сравнивает revision с `GITHUB_SHA`. Только после этого сохраняется `backend-image-identity` с:
+**Repository DR regression — PR #290.** Exact head `a85528303f6e6704ac8a0feaa6845e7ddfc9c93a`, `Database restore integrity` run `33344103969`, merge `748ed5f22db0bfe18001f276ec521d0198d4dc57`. The repository proves current-head fixture creation → `pg_dump` → isolated restore → schema/fingerprint verification → real ASGI lifespan against the restored DB with demo/create-all disabled → `/health` + `/ready` → post-start fingerprint. This is not a managed-provider production restore.
 
-- `git_sha`;
-- фактически прочитанным `oci_revision`;
-- canonical image name;
-- immutable `sha-${GITHUB_SHA}` tag;
-- строгим `sha256:<64 hex>` digest;
-- runtime commands `renova-api` / `renova-worker`;
-- SBOM/provenance/signature contract;
-- retained workflow evidence URL.
+**Chat read truth — PR #270.** Explicit authoritative read cursor, side-effect-free reads, monotonic read-state reconciliation and mobile visibility-gated read behaviour are merged. Equal-timestamp cursor precision remains non-launch-blocking P2 #271.
 
-`scripts/production_readiness.py` принимает такую identity только если `git_sha`, `oci_revision`, image, tag и digest относятся к **exact evaluated SHA**. Artifact другого коммита не может подтвердить текущий release candidate.
+**Phone chat invitation delivery — PR #277.** Durable invitation intent, DomainOutbox delivery, provider ambiguity fencing, thread-scoped ACL/inbox/WS and truthful mobile delivery state are merged. Real Twilio staging/provider round-trip remains externally unverified.
 
-## 5. Environment truth
+**Incoming chat atomicity/idempotency — PR #292.** Exact head `ca0be7ba75949879b538ef654ac36869ce0a3f96`, merge `9d3f96bad6138aef7f7db32407162fe07897572d`. Stable `client_request_id`, `ClientWriteRequest` replay/conflict, PostgreSQL concurrent same-key collapse, atomic message + recipient visibility + DomainOutbox, server-authoritative capabilities and mobile reconciliation are merged. External S3 ambiguous-write/orphan recovery remains #238.
 
-| Environment | Статус | Что доказано |
+### ACTIVE / INCOMPLETE
+
+**Warranty create idempotency — #266.** Warranty exists as a product flow, but current `main` still needs the current-head atomic/idempotent create successor: stable request identity, one transaction for Issue + warranty Document + idempotency ledger + activity/notification outbox, PostgreSQL concurrency collapse, mobile retry identity and closeout regression. Stale PR #287 is reference lineage only.
+
+**Manual payment evidence — #265.** `paid_unverified` exists, but the full evidence upload/version → authorized approve/reject → safe resubmit → exactly-once financial recognition lifecycle is not yet complete. No direct `Project.budget_spent` mutation may be added outside canonical finance recognition.
+
+**Provider/S3 recovery — #238.** Several provider reconciliation foundations exist, but external authoritative read/recovery gaps and S3 ambiguous-write/orphan recovery are not closed.
+
+## 4. External environment truth
+
+| Environment | Status | Truth |
 |---|---|---|
-| Isolated CI staging | `PASSED` | PostgreSQL/Redis/Bearer-auth/runtime topology на exact candidate |
-| External production-like staging | `UNVERIFIED` | Нет retained authoritative evidence реального deployed topology и build-once/promote exact digest lifecycle; tracking #233 |
-| Production | `UNVERIFIED` | Нет retained authoritative deployment SHA + image digest + runtime evidence |
+| Isolated CI staging | `CI VERIFIED` | Repository topology/contracts execute successfully on exact candidates. |
+| Persistent external production-like staging | `NOT EXTERNALLY VERIFIED` | No retained authoritative evidence of current exact digest deployed with real TLS/DNS/managed dependencies/provider sandbox. Tracking #233. |
+| Production | `NOT EXTERNALLY VERIFIED` | No retained exact deployed Git SHA + image digest + runtime evidence. |
 
-Нельзя преобразовывать isolated staging CI в утверждение «staging/prod работает» без внешнего evidence. #233 остаётся P0 launch blocker, пока persistent production-like staging и promotion lifecycle не доказаны реально.
+Broad production remains blocked until build-once/promote-the-same-digest is demonstrated against a persistent external staging and then production.
 
-PR #280 восстановил исполняемость repository-side `External staging release`: exact head `bfa2b9818ecc89cef9dda6c3e7527884730e84e8`, workflow run `32884123376`, real `contract` job — `SUCCESS`, merge `250dc8b1e4cc843d8874ee46dcdd2a40b00bc6a7`. Это **CI VERIFIED contract execution**, а не `STAGING VERIFIED`: dispatch-job `verify-staging` на PR был корректно skipped и должен быть выполнен отдельно против реального staging exact SHA+digest.
+## 5. Provider truth
 
-## 6. Provider readiness
+- YooKassa: repository durable reconciliation exists; live credentials/liveness/rotation are not externally verified.
+- FNS receipts: repository retry/reconciliation exists; live provider liveness is not externally verified.
+- «Мой налог»: credential lifecycle hardening exists; live OAuth/provider refresh contract remains unverified.
+- e-sign/Контур: durable submit/webhook foundations exist; configured authoritative read-status contract remains unverified.
+- Twilio: durable outbox and ambiguous-write fencing are CI verified; real provider round-trip is not externally verified.
+- Expo push: delivery/receipt reconciliation exists; live provider availability is not a CI fact.
+- S3/media: configuration/runtime fail closed, but ambiguous-write/orphan recovery remains open under #238.
 
-| Provider | Repo-proven | Внешняя граница |
-|---|---|---|
-| YooKassa | durable authoritative read reconciliation, replay-safe transition, operator recovery | live credentials/liveness/rotation drill не подтверждены |
-| FNS receipts | durable verification retry/reconciliation | live credentials/liveness не подтверждены |
-| «Мой налог» | dedicated token keyring, legacy rewrap, expiry truth, safe health | live OAuth/provider refresh contract не подтверждён; automatic refresh не заявлен |
-| Контур/e-sign | durable idempotent submit через DomainOutbox + webhook | exact authoritative read-status API для configured Контур.Сайн contract не подтверждён |
-| S3/media | fail-closed configuration/runtime checks | ambiguous-write orphan/idempotency recovery остаётся открытым |
-| Twilio SMS | deterministic durable invite outbox, ambiguity fence, DLQ/operator replay, truthful provider-acceptance state | real staging credential round-trip/provider acceptance не подтверждены; handset delivery не заявляется |
-| Expo push | delivery identity + receipt reconciliation | live external provider availability не является CI-фактом |
+## 6. Capacity and SLO
 
-Канонический backlog provider operations — #238. Новая Twilio invitation path доказана repository CI в #277, но real provider round-trip остаётся `NOT EXTERNALLY_VERIFIED` и не повышается до external evidence из unit/integration tests.
+Repository load contracts exist and candidate thresholds remain:
 
-## 7. SLO и capacity
+- HTTP failure rate < 1%;
+- HTTP p95 < 1000 ms;
+- HTTP p99 < 2500 ms;
+- WebSocket delivery failure rate < 1%;
+- WebSocket p95 < 1000 ms;
+- WebSocket p99 < 2500 ms.
 
-Repository-side capacity gate из #255 реализует:
+Real capacity is **NOT PROVEN** until protected smoke/ramp/spike/soak scenarios run against external production-like staging on the exact Git SHA/image digest and retained evidence includes DB/Redis/worker/outbox pressure and recovery. Tracking #236.
 
-- production Bearer-auth HTTP smoke/ramp/spike/soak;
-- WebSocket ticket/fan-out path;
-- authenticated webhook burst path;
-- >=2 exact API replicas + exact worker artifact checks;
-- DB pool, Redis, worker/outbox backlog pressure signals;
-- retained sanitized capacity evidence;
-- launch-candidate thresholds: HTTP failures <1%, HTTP p95 <1s, p99 <2.5s; WebSocket delivery failures <1%, p95 <1s, p99 <2.5s.
+## 7. Disaster recovery truth
 
-PR #280 также восстановил исполняемость `Load SLO integrity`: exact head `bfa2b9818ecc89cef9dda6c3e7527884730e84e8`, workflow run `32884123091`, pinned k6 contract — `SUCCESS`; `external-staging-load` на PR корректно skipped. Это доказывает, что gate теперь реально создаёт jobs и валидирует модули, но **не является capacity evidence**.
+Repository restore is **CI VERIFIED** via #290/run `33344103969`.
 
-**Реальная capacity/SLO всё ещё NOT PROVEN.** Protected suite должен быть выполнен против внешнего production-like staging exact SHA/image digest; retained evidence пока не подтверждено. Tracking: #236.
+Managed production backup/PITR is still **NOT EXTERNALLY VERIFIED**. Launch targets remain:
 
-## 8. Restore и disaster recovery truth
+- RPO ≤ 15 minutes;
+- RTO ≤ 60 minutes;
+- PITR window ≥ 7 days;
+- backup retention ≥ 35 days.
 
-Последний repository restore drill, сохранённый в readiness evidence:
+#234 remains P0 until a real isolated restore from a managed production-like backup records requested/recovered point, measured data loss, DB-ready time, application health/readiness and final RPO/RTO.
 
-- workflow run `32640629706`;
-- exact head `6b583f596b7dd004273ba08044bbb0dc82a85d6e`;
-- `SUCCESS`;
-- PostgreSQL logical backup → isolated restore → schema verification → deterministic data fingerprint;
-- это synthetic/repository drill, **не доказательство восстановления production backup**.
+## 8. Observability truth
 
-Production-grade backup/PITR configuration, retention и настоящий isolated restore из managed production-like backup остаются `NOT_EXTERNALLY_VERIFIED`. #234 поэтому остаётся **P0 launch blocker** до retained operator evidence с RPO/RTO и application read smoke.
+Repository observability controls are present, but end-to-end external alert delivery is **NOT VERIFIED**. #235 remains P0 until retained staging evidence binds one probe ID to error/log/trace/metric ingestion, alert firing, notification delivery, human acknowledgement and recovery. Mobile crash-reporting evidence is also not yet retained.
 
-## 9. Release identity
+## 9. Security truth
 
-Source mobile identity сейчас: version `0.3.7`, iOS build `3`, Android versionCode `3`.
+Repository-side CodeQL, dependency, secret and container controls exist. Accepted security risks in the readiness manifest are currently empty.
 
-`EAS Build & Submit` сохраняет exact release identity с:
+External launch blockers remain:
 
-- `git_sha`;
-- app version;
-- iOS `buildNumber`;
-- Android `versionCode`;
-- EAS profile;
-- requested platform;
-- конкретными EAS build IDs;
-- retained workflow evidence URL.
+- #247 P0 — enforce and negatively verify `main` branch protection/required checks;
+- #256 P1 — real GitHub/org privileged-access review;
+- #257 P1 — independent pre-launch penetration/abuse test;
+- #237 P1 — remaining external security acceptance/credential rotation evidence.
 
-Readiness validator отклоняет EAS artifact от другого Git SHA, другой source version, другого native build number/versionCode или с неполным platform/build identity. Пока реальный retained EAS artifact/operator confirmation не существует, поле latest EAS release остаётся `NOT_EXTERNALLY_VERIFIED`.
+A green repository security scan does not close these external controls.
 
-Нельзя считать исходный `app.json` доказательством загрузки в TestFlight/App Store/Google Play.
+## 10. Mobile/release identity
 
-## 10. Observability, security risk and external acceptance
+Source identity is version `0.3.7`, iOS build `3`, Android versionCode `3`. A real EAS/TestFlight/Android internal release remains `NOT EXTERNALLY VERIFIED` until exact Git SHA, native build numbers, EAS build IDs and retained release evidence exist. Source `app.json` is not store-release evidence.
 
-Backend repository уже содержит observability controls, однако наличие кода не равно работающему production monitoring. Retained evidence реальной end-to-end alert delivery, mobile crash reporting и staging alert probe пока отсутствует. #235 остаётся **P0 launch blocker**.
+## 11. Current launch blockers
 
-Repo security controls реализованы через security-operations slice #258. OSV exception baseline пустой; CodeQL, Gitleaks и container/dependency gates обязательны в CI.
+P0:
 
-**Accepted security risks:** отсутствуют. Если residual risk будет принят, manifest требует минимум `id`, owner, expiry date и evidence. Запись без срока действия запрещена readiness validator.
+- #233 persistent external staging and exact-artifact promotion;
+- #234 managed backup/PITR and measured real DR;
+- #235 external observability/alert delivery;
+- #247 enforced `main` protection/required checks.
 
-Остаются внешние security blockers:
+Launch-blocking P1 currently retained:
 
-- #247 — **P0:** `main` branch protection / required production checks. Последняя GitHub metadata проверка всё ещё показывает `protected=false`;
-- #256 — реальный GitHub/org privileged-access review;
-- #257 — независимый pre-launch penetration/abuse test;
-- #237 — общий external security acceptance, включая provider credential rotation/revocation drill.
+- #236 real capacity/load qualification;
+- #237 external security acceptance;
+- #238 provider/S3 reconciliation and recovery gaps;
+- #241 controlled pilot, telemetry, legal/privacy and launch operations;
+- #256 privileged-access review;
+- #257 independent penetration/abuse test;
+- #265 manual payment evidence lifecycle;
+- #266 warranty create atomicity/idempotency.
 
-## 11. Product integrity truth
+Resolved #273 and #279 must not reappear in the blocker list unless a new regression is independently demonstrated.
 
-Legacy red-team и последующие исправления сейчас дают следующую доказанную картину:
+## 12. Broad-production decision
 
-- **#265 — manual payment evidence verification: OPEN / P1.** Current main уже различает `paid_unverified`, но customer `transfer_ack` не заменяет полный evidence lifecycle. Для broad production нужен canonical flow: evidence upload/version → authorized reviewer approve/reject → safe resubmit → ровно одно финансовое признание. Старый PR #27 нельзя переносить напрямую: его approve path одновременно увеличивал `Project.budget_spent` и вызывал `expense_from_payment`, что несовместимо с текущей финансовой семантикой и создаёт риск double counting.
-- **#266 — warranty create idempotency: OPEN / P1.** Warranty flow и fail-closed list существуют, но create остаётся без durable request identity, при этом mobile умеет повторять POST через offline queue. Double-tap, timeout-after-commit или reconnect retry могут создать duplicate issue + warranty document + события. Требуется atomic/idempotent create на текущем client-write/outbox contract.
-- **#269 — chat read truth: CI VERIFIED / resolved by PR #270.** Exact head `deef0d2eed413679d095f4e06d48d8bde963f759` прошёл все 14 workflow runs, включая full backend regression, PostgreSQL Alembic upgrade, Playwright API/UI, CodeQL и mobile contracts; merge commit `9a7b0babc530c4ed187f54ea9c67763393656763`. GET/list/count больше не создают read-state, public mark-read требует authoritative message cursor, DB update monotonic, mobile ставит read только после foreground/focus/render visibility, а ACK reconciliation не откатывает project context. Редкая equal-timestamp точность вынесена в non-launch-blocking P2 #271.
-- **#272 — phone chat invitation delivery truth: CI VERIFIED / resolved by PR #277.** Exact head `1b60199972b363ede0fa1909e40c14b932c789d0` прошёл все 18 PR workflows; `CI` run `32833474753` дал **975 passed / 6 skipped**, PostgreSQL 17 clean Alembic upgrade до `w15providerops01`, Playwright, mobile typecheck/contracts, CodeQL, security и backend image checks — success. Merge commit `43df8ef555efb75ad4d6263297560529eecc660b`. Invitation identity теперь детерминирована; participant + delivery/activity intent durable; SMS идёт через общий DomainOutbox/worker/DLQ; ambiguous remote write fenced через `SideEffectDelivery` и не auto-retry; operator replay явный; OTP-login активирует pending invite; invitee получает только exact thread ACL/inbox/WS без project privilege; mobile показывает только доказанный delivery state. Real Twilio round-trip при этом остаётся `NOT EXTERNALLY_VERIFIED`.
-- **#273 — incoming chat message integrity: OPEN / P1.** Новое входящее всё ещё может остаться скрытым в recipient archive; public send не несёт stable client request identity, mobile offline replay может повторить committed POST, а `send_message()` commit'ит сообщение до downstream notification path. Канон следующего исправления: archive ≠ read/mute; existing `ClientWriteRequest` ledger используется для same key+same payload → original / same key+different payload → 409; message + recipient visibility transition + DomainOutbox в одной transaction; concurrency/offline/timeout tests; thread detail должен вернуть capability/scope, чтобы thread-only participant не видел project-authority CTA, которые сервер корректно отклоняет 403. S3 ambiguous-write/orphan recovery при attachments остаётся отдельным #238 и не считается решённым этим chat PR.
-- **#279 — canonical local production-topology runtime: OPEN / P1.** Current `docker-compose.yml` содержит PostgreSQL+MinIO, но не Redis/API/dedicated Worker; `npm run dev` использует assumed `.venv`, может ставить Python packages ad-hoc и выполняет `alembic upgrade head ... || true`, то есть migration failure не блокирует startup. Отсутствуют единые `dev:check`, `dev:reset`, `dev:logs`, `dev:seed`, `dev:stop`. Для production-grade разработки нужен один fail-fast runtime PostgreSQL+Redis+MinIO+API+Worker+Expo с locked Python/Poetry и health/worker-heartbeat gates.
+Current decision: **BLOCKED_FOR_BROAD_PRODUCTION**.
 
-Таким образом, #269 и #272 больше не являются launch blockers после доказанного merge; #273 и #279 остаются P1 product/reliability blockers. #271 остаётся явно отслеживаемым P2 precision debt и не подменяется launch blocker’ом.
+The next product-integrity sequence is:
 
-## 12. Open launch blockers и переход состояния
+1. #266 warranty atomicity/idempotency current-head successor;
+2. #265 manual payment evidence lifecycle;
+3. #238 provider/S3 recovery;
+4. #235/#283 observability and real alert evidence;
+5. external staging → load → managed DR → security governance → exact mobile release → controlled pilot → final red-team/readiness freeze.
 
-Readiness manifest перечисляет launch-blocking issues и CI проверяет, что они действительно остаются `open`; если issue закрывается, manifest обязан быть пересмотрен.
-
-- **P0 #233** — real persistent production-like staging + exact-artifact promotion lifecycle.
-- **P0 #234** — managed backup/PITR + real external restore/DR evidence.
-- **P0 #235** — production observability + retained alert-delivery proof.
-- **P0 #247** — protect `main` and require production gates.
-- **P1 #236** — real external staging capacity/provider-degradation evidence.
-- **P1 #237** — external security acceptance.
-- **P1 #238** — remaining e-sign authoritative-read and S3 ambiguous-write recovery.
-- **P1 #241** — controlled production pilot, telemetry and launch operations.
-- **P1 #256** — privileged repository/org access review.
-- **P1 #257** — independent penetration/abuse test.
-- **P1 #265** — complete manual bank-transfer evidence/reviewer/resubmission lifecycle on current finance truth.
-- **P1 #266** — atomic, durable and idempotent warranty claim creation across retry/offline/concurrency.
-- **P1 #273** — incoming chat communication must not remain hidden in archive; message writes must become durably idempotent/atomic and thread-only project-action UX must be capability-aware.
-- **P1 #279** — local development runtime must reproduce PostgreSQL+Redis+S3/API/Worker topology, use locked dependencies and fail fast on migration/runtime health failures.
-
-Readiness state machine допускает только `BLOCKED_FOR_BROAD_PRODUCTION` и `READY_FOR_BROAD_PRODUCTION`. `READY` запрещён при любом launch blocker и требует живой GitHub-проверки защищённого `main`. `BLOCKED` может иметь ноль issue-blockers только при явной непустой причине — например, когда временная блокировка ещё не представлена issue.
-
-Тем самым readiness больше не зафиксирован навсегда в `BLOCKED`, но удалить blockers вручную недостаточно как доказательство: каждый внешний или product-integrity P0/P1 должен быть закрыт только после retained evidence и синхронного пересмотра manifest.
-
-## 13. Обновление source of truth
-
-При изменении migration head, mobile build/version, provider readiness, SLO/restore/release evidence или launch blockers нужно обновить `docs/production-readiness-evidence.json` в том же PR. `Production readiness integrity` проверяет consistency, live blocker states и сохраняет SHA-bound snapshot.
-
-Readiness unit contract отдельно проверяет переходы BLOCKED/READY, exact Git SHA binding backend/EAS identity, canonical image/tag/OCI revision/digest, native mobile build identity, закрытые GitHub blockers и запрет `VERIFIED` внешнего статуса без evidence.
-
-External/operator evidence считается подтверждённым только если в manifest есть конкретная retained evidence identity/URL/ID. Формулировки вида «настроено», «запущено», «проверено вручную» без доказательства не переводят статус в `VERIFIED`.
+The status may become `READY_FOR_BROAD_PRODUCTION` only when all P0 and launch-blocking P1 items are closed with evidence at the correct verification level.
