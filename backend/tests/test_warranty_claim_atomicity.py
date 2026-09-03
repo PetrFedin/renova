@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app.api.v1 import export as legacy_export
 from app.api.v1 import warranty as warranty_api
-from app.api.v1.router import api_router
 from app.api.v1.warranty import WarrantyClaimIn
 from app.models.client_write_request import ClientWriteRequest
 from app.models.entities import DomainOutbox, Project, ProjectIssue, User, UserRole
@@ -289,12 +290,11 @@ def _routes(router, *, suffix: str, method: str) -> list[object]:
 
 
 def test_router_has_one_canonical_create_and_keeps_reads_close():
-    canonical = [
-        route
-        for route in api_router.routes
-        if getattr(route, "endpoint", None) is warranty_api.create_warranty_claim
-        and "POST" in set(getattr(route, "methods", set()) or set())
-    ]
+    canonical = _routes(
+        warranty_api.router,
+        suffix="/{project_id}/warranty-claims",
+        method="POST",
+    )
     legacy_creates = _routes(
         legacy_export.router,
         suffix="/{project_id}/warranty-claims",
@@ -310,8 +310,13 @@ def test_router_has_one_canonical_create_and_keeps_reads_close():
         suffix="/{project_id}/warranty-claims/{issue_id}/close",
         method="POST",
     )
+    router_source = (
+        Path(__file__).resolve().parents[1] / "app" / "api" / "v1" / "router.py"
+    ).read_text(encoding="utf-8")
 
     assert len(canonical) == 1
+    assert getattr(canonical[0], "endpoint", None) is warranty_api.create_warranty_claim
     assert legacy_creates == []
     assert len(reads) == 1
     assert len(closes) == 1
+    assert "api_router.include_router(warranty.router)" in router_source
