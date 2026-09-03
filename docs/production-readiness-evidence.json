@@ -1,25 +1,8 @@
 {
   "schema_version": 1,
-  "observed_on": "2026-09-02",
-  "expected_repo_facts": {
-    "alembic_head": "w18nativeenumparity01",
-    "mobile_version": "0.3.7",
-    "ios_build_number": "3",
-    "android_version_code": 3
-  },
-  "backend_artifact": {
-    "status": "UNVERIFIED_CURRENT_DIGEST",
-    "image": "ghcr.io/petrfedin/renova-api",
-    "immutable_tag_contract": "sha-${GIT_SHA}",
-    "digest": null,
-    "git_sha": null,
-    "evidence": null,
-    "repo_contract": ".github/workflows/backend-image.yml",
-    "latest_repo_validation": {
-      "status": "CI_VERIFIED",
-      "note": "Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."
-    }
-  },
+  "observed_on": "2026-09-03",
+  "expected_repo_facts": {"alembic_head":"w18nativeenumparity01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
+  "backend_artifact": {"status":"UNVERIFIED_CURRENT_DIGEST","image":"ghcr.io/petrfedin/renova-api","immutable_tag_contract":"sha-${GIT_SHA}","digest":null,"git_sha":null,"evidence":null,"repo_contract":".github/workflows/backend-image.yml","latest_repo_validation":{"status":"CI_VERIFIED","note":"Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."}},
   "environments": {
     "staging": {"status":"CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED","artifact_digest":null,"evidence":null,"issue":233,"note":"Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."},
     "production": {"status":"NOT_EXTERNALLY_VERIFIED","git_sha":null,"artifact_digest":null,"evidence":null}
@@ -33,49 +16,18 @@
     "twilio_sms": {"repo_status":"DURABLE_OUTBOX_AND_AMBIGUOUS_WRITE_FENCING_CI_VERIFIED","external_status":"LIVE_PROVIDER_ROUND_TRIP_UNVERIFIED","release_scope":true,"evidence":null},
     "push": {"repo_status":"DELIVERY_AND_RECEIPT_RECONCILIATION_IMPLEMENTED","external_status":"LIVE_PROVIDER_LIVENESS_UNVERIFIED","release_scope":true,"evidence":null}
   },
-  "slo": {
-    "status": "REPOSITORY_GATE_IMPLEMENTED_EXTERNAL_CAPACITY_NOT_PROVEN",
-    "candidate_thresholds": {"http_failure_rate_lt":0.01,"http_p95_ms_lt":1000,"http_p99_ms_lt":2500,"websocket_delivery_failure_rate_lt":0.01,"websocket_delivery_p95_ms_lt":1000,"websocket_delivery_p99_ms_lt":2500},
-    "latest_external_load_test": {"status":"NOT_EXECUTED_OR_NOT_RETAINED","git_sha":null,"artifact_digest":null,"evidence":null,"issue":236}
-  },
+  "slo": {"status":"REPOSITORY_GATE_IMPLEMENTED_EXTERNAL_CAPACITY_NOT_PROVEN","candidate_thresholds":{"http_failure_rate_lt":0.01,"http_p95_ms_lt":1000,"http_p99_ms_lt":2500,"websocket_delivery_failure_rate_lt":0.01,"websocket_delivery_p95_ms_lt":1000,"websocket_delivery_p99_ms_lt":2500},"latest_external_load_test":{"status":"NOT_EXECUTED_OR_NOT_RETAINED","git_sha":null,"artifact_digest":null,"evidence":null,"issue":236}},
   "restore": {
-    "latest_repo_restore_drill": {
-      "status": "CI_VERIFIED",
-      "pr": 290,
-      "head_sha": "a85528303f6e6704ac8a0feaa6845e7ddfc9c93a",
-      "merge_sha": "748ed5f22db0bfe18001f276ec521d0198d4dc57",
-      "workflow_run_id": 33344103969,
-      "git_sha": "a85528303f6e6704ac8a0feaa6845e7ddfc9c93a",
-      "scope": "Current Alembic head -> deterministic data -> pg_dump -> isolated restore -> schema/fingerprint -> real ASGI lifespan with create_all/demo disabled -> /health + /ready -> post-start fingerprint",
-      "production_backup": false
-    },
+    "latest_repo_restore_drill": {"status":"CI_VERIFIED","pr":290,"head_sha":"a85528303f6e6704ac8a0feaa6845e7ddfc9c93a","merge_sha":"748ed5f22db0bfe18001f276ec521d0198d4dc57","workflow_run_id":33344103969,"git_sha":"a85528303f6e6704ac8a0feaa6845e7ddfc9c93a","scope":"Current Alembic head -> deterministic data -> pg_dump -> isolated restore -> schema/fingerprint -> real ASGI lifespan with create_all/demo disabled -> /health + /ready -> post-start fingerprint","production_backup":false},
     "latest_production_restore_drill": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"rpo_minutes":null,"rto_minutes":null,"issue":234}
   },
   "observability": {"status":"REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED","evidence":null,"alert_delivery_verified":false,"mobile_crash_reporting_verified":false,"issue":235},
   "release": {"mobile_source_version":"0.3.7","ios_build_number":"3","android_version_code":3,"latest_eas_release":{"status":"NOT_EXTERNALLY_VERIFIED","git_sha":null,"profile":null,"builds":[],"evidence":null},"repo_release_contract":".github/workflows/eas-build.yml"},
-  "security": {
-    "repo_controls": {
-      "status":"IMPLEMENTED",
-      "pr":258,
-      "head_sha":"0ead84d5baa07f2428b7a6ad972a31719814da16",
-      "merge_sha":"0cc870fdea76aeca26aef1365daf88407f6e3f78",
-      "osv_exception_baseline":"EMPTY",
-      "codeql":"ENABLED",
-      "gitleaks_history_and_proposed_tree":"ENABLED",
-      "container_high_critical_fixed_vulnerability_gate":"ENABLED"
-    },
-    "accepted_risks": [],
-    "external_validation": {"branch_protection":"OPEN_ISSUE_247","privileged_access_review":"OPEN_ISSUE_256","independent_pentest":"OPEN_ISSUE_257","provider_credential_rotation_drill":"NOT_EXTERNALLY_VERIFIED"}
-  },
-  "launch_acceptance": {
-    "controlled_pilot": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},
-    "product_telemetry": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},
-    "legal_privacy": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},
-    "support_incident_ops": {"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241}
-  },
+  "security": {"repo_controls":{"status":"IMPLEMENTED","pr":258,"head_sha":"0ead84d5baa07f2428b7a6ad972a31719814da16","merge_sha":"0cc870fdea76aeca26aef1365daf88407f6e3f78","osv_exception_baseline":"EMPTY","codeql":"ENABLED","gitleaks_history_and_proposed_tree":"ENABLED","container_high_critical_fixed_vulnerability_gate":"ENABLED"},"accepted_risks":[],"external_validation":{"branch_protection":"OPEN_ISSUE_247","privileged_access_review":"OPEN_ISSUE_256","independent_pentest":"OPEN_ISSUE_257","provider_credential_rotation_drill":"NOT_EXTERNALLY_VERIFIED"}},
+  "launch_acceptance": {"controlled_pilot":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"product_telemetry":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"legal_privacy":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"support_incident_ops":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241}},
   "product_integrity": {
     "manual_payment_evidence": {"status":"INCOMPLETE","issue":265,"note":"Complete evidence upload/version, reviewer approve/reject, safe resubmission and exactly-once financial recognition remain open."},
-    "warranty_claim_idempotency": {"status":"ACTIVE_P1","issue":266,"reference_pr":287,"note":"Current-head successor is required; stale PR #287 is reference lineage only. Stable request identity, atomic Issue+Document+outbox+ledger and PostgreSQL race collapse remain to be qualified."},
+    "warranty_claim_idempotency": {"status":"CI_VERIFIED","issue":266,"pr":295,"head_sha":"22dd1f2d379f3d2f26278b58b03a1ca4f022da3c","merge_sha":"9fed24c1b59d767daef4d6395fd01cb303c838e3","workflow_run_id":33795110887,"full_ci_run_id":33795110854,"note":"Stable request identity, generic ClientWriteRequest replay/conflict, atomic Issue+Document+DomainOutbox, exact-body mobile replay and real two-session PostgreSQL concurrent same-key collapse are merged. External S3/provider recovery remains #238."},
     "chat_read_truth": {"status":"CI_VERIFIED","issue":269,"pr":270,"merge_sha":"9a7b0babc530c4ed187f54ea9c67763393656763","note":"Explicit authoritative read cursor and monotonic reconciliation are merged; equal-timestamp precision remains P2 #271."},
     "phone_chat_invitation_delivery": {"status":"CI_VERIFIED","issue":272,"pr":277,"merge_sha":"43df8ef555efb75ad4d6263297560529eecc660b","external_provider_status":"NOT_EXTERNALLY_VERIFIED"},
     "incoming_chat_message_integrity": {"status":"CI_VERIFIED","issue":273,"pr":292,"head_sha":"ca0be7ba75949879b538ef654ac36869ce0a3f96","merge_sha":"9d3f96bad6138aef7f7db32407162fe07897572d","note":"Stable request identity, ClientWriteRequest replay/conflict, PostgreSQL concurrency collapse, atomic message+recipient visibility+DomainOutbox, server capabilities and authoritative mobile reconciliation are merged. S3 ambiguous-write/orphan recovery remains #238."},
@@ -92,8 +44,7 @@
     {"issue":241,"priority":"P1","reason":"controlled real-user pilot, telemetry, legal/privacy acceptance and launch operations are not complete"},
     {"issue":256,"priority":"P1","reason":"real GitHub/org privileged-access review is not executed"},
     {"issue":257,"priority":"P1","reason":"independent pre-launch penetration and abuse test is not executed"},
-    {"issue":265,"priority":"P1","reason":"manual bank-transfer payment verification lacks the complete current-finance evidence lifecycle"},
-    {"issue":266,"priority":"P1","reason":"warranty claim creation is not yet durably atomic/idempotent across replay and concurrency"}
+    {"issue":265,"priority":"P1","reason":"manual bank-transfer payment verification lacks the complete current-finance evidence lifecycle"}
   ],
-  "launch_decision": {"status":"BLOCKED_FOR_BROAD_PRODUCTION","reason":"Broad production remains blocked by external staging/promotion, managed DR, alert delivery, governance, capacity, provider recovery, remaining product-integrity, pilot/legal/operations and independent security evidence."}
+  "launch_decision": {"status":"BLOCKED_FOR_BROAD_PRODUCTION","reason":"Broad production remains blocked by external staging/promotion, managed DR, alert delivery, governance, capacity, provider recovery, manual-payment product integrity, pilot/legal/operations and independent security evidence."}
 }

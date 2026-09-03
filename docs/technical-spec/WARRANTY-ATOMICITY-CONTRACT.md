@@ -1,8 +1,11 @@
 # Renova — Warranty atomicity and idempotency contract
 
-**Status:** ACTIVE / PENDING EXACT-HEAD CI  
-**Issue:** #266  
-**Historical reference:** PR #287 only; current implementation is rebuilt from current `main`.
+**Status:** CI VERIFIED / MERGED  
+**Issue:** #266 — CLOSED  
+**Implementation:** PR #295  
+**Exact qualified head:** `22dd1f2d379f3d2f26278b58b03a1ca4f022da3c`  
+**Merge SHA:** `9fed24c1b59d767daef4d6395fd01cb303c838e3`  
+**Historical reference:** PR #287 only; current implementation was rebuilt from current `main`.
 
 ## Canonical E2E path
 
@@ -42,8 +45,16 @@ The master dossier's older router snapshot is historical until the next consolid
 
 Mobile creates `client_request_id` before first network attempt and serializes once. Deterministic 4xx is not queued. Network/status-0 and ambiguous 5xx enqueue the exact serialized body. Offline flush replays stored body without regenerating identity.
 
-## Required proof
+## Exact-head evidence
 
-First create; same-key replay; conflict; real two-session PostgreSQL race; document rollback; outbox rollback; project/user scope; mandatory identity; exact-body offline replay; single route; list/close; closeout block/unblock; post-closeout create; full backend; mobile/typecheck; Playwright; security and technical-spec gates.
+PR #295 was qualified on exact head `22dd1f2d379f3d2f26278b58b03a1ca4f022da3c` before merge.
 
-This contract does not claim external storage/provider readiness. #238 remains separate.
+- `Warranty claim PostgreSQL integrity` run `33795110887`: success.
+- Job `warranty-postgres-race` / `100780813427`: canonical Alembic upgrade, warranty atomicity/mobile identity contracts and **real concurrent PostgreSQL race** all executed and passed; the race step was not skipped.
+- Full `CI` run `33795110854` (`#4557`): success. `backend-complete` passed the full backend suite and PostgreSQL Alembic upgrade; Playwright API/UI, mobile, chat-message, stage-mutation, acceptance-decision, team-lifecycle and project-creation jobs passed.
+- Exact-head CodeQL, Security operations, Backend image, technical-spec, payment and other triggered integrity workflows reported success.
+- PR #295 squash-merged as `9fed24c1b59d767daef4d6395fd01cb303c838e3`; #266 closed automatically.
+
+## Residual boundary
+
+This contract proves repository/CI correctness for the warranty create contour only. It does **not** claim external storage/provider/staging/production readiness. S3 ambiguous-write/orphan recovery remains #238. The next product-integrity priority is #265 manual payment evidence lifecycle.
