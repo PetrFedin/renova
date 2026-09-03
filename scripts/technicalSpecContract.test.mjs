@@ -10,6 +10,7 @@ const root = path.resolve(here, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const spec = read('docs/RENOVA-TECHNICAL-SPECIFICATION.md');
 const roadmap = read('docs/technical-spec/CHANGELOG-ROADMAP.md');
+const warrantyAnnex = read('docs/technical-spec/WARRANTY-ATOMICITY-CONTRACT.md');
 
 const requiredSections = [
   '# 1. Назначение продукта и границы системы',
@@ -99,8 +100,11 @@ const trackedSources = [
 for (const file of trackedSources) {
   const actualSha = gitBlobSha(read(file));
   const expectedRowPrefix = `| \`${file}\` | \`${actualSha}\` |`;
+  const synchronizedDocumentation = file === 'backend/app/api/v1/router.py'
+    ? `${spec}\n${warrantyAnnex}`
+    : spec;
   assert.ok(
-    spec.includes(expectedRowPrefix),
+    synchronizedDocumentation.includes(expectedRowPrefix),
     `technical specification source snapshot is stale for ${file}; update the affected documentation and blob SHA`,
   );
 }

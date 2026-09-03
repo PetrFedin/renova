@@ -49,7 +49,11 @@ async def test_warranty_post_closeout_sets_sla():
         res = await client.post(
             f"/api/v1/projects/{pid}/warranty-claims",
             headers=h_c,
-            json={"title": "Течь смесителя", "description": "После сдачи"},
+            json={
+                "title": "Течь смесителя",
+                "description": "После сдачи",
+                "client_request_id": "w73-post-closeout-warranty-0001",
+            },
         )
         assert res.status_code == 200, res.text
         body = res.json()
@@ -113,11 +117,9 @@ async def test_escalate_acl_member_forbidden():
         project.contractor_id = cont.id
         await db.commit()
 
-        # owner can escalate
         role = await require_capability(db, cont, project, "escalate")
         assert role == "owner"
 
-        # member cannot
         team = await create_team(db, cont.id, "Brigade W73")
         member = User(phone="+79991112233", role=UserRole.contractor, full_name="Member")
         db.add(member)
@@ -131,8 +133,5 @@ async def test_escalate_acl_member_forbidden():
             await require_capability(db, member, project, "escalate")
         assert ei.value.status_code == 403
 
-        # member can field_write
         assert await require_capability(db, member, project, "field_write") == "member"
-
-        # customer can escalate
         assert await require_capability(db, cust, project, "escalate") == "customer"
