@@ -30,6 +30,14 @@ Identity is `scope + project_id + user_id + client_request_id + canonical payloa
 
 Exactly one POST create handler is composed. Legacy create is removed before the canonical router is included; existing GET list and POST close remain. Warranty remains allowed after closeout. Open warranty claims block closeout before archival; customer close removes that blocker and archives the linked warranty document.
 
+The route-composition source changed in this contour and is traceability-bound here, as permitted by the master dossier rule that an affected source may be synchronized in the corresponding annex in the same change:
+
+| Source | Blob SHA | Что подтверждает |
+|---|---|---|
+| `backend/app/api/v1/router.py` | `2e4d89f1af1f45a4444635594c2168c84d239b35` | canonical warranty POST replacement + preservation of legacy list/close composition |
+
+The master dossier's older router snapshot is historical until the next consolidated documentation snapshot refresh; this annex is authoritative for the warranty contour and must be read together with the master dossier.
+
 ## Mobile retry invariant
 
 Mobile creates `client_request_id` before first network attempt and serializes once. Deterministic 4xx is not queued. Network/status-0 and ambiguous 5xx enqueue the exact serialized body. Offline flush replays stored body without regenerating identity.
