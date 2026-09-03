@@ -6,6 +6,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, select
 
+from app.api.v1 import export as legacy_export
+from app.api.v1 import warranty as warranty_api
 from app.api.v1.router import api_router
 from app.api.v1.warranty import WarrantyClaimIn
 from app.models.client_write_request import ClientWriteRequest
@@ -277,31 +279,39 @@ def test_warranty_create_requires_client_request_id():
         WarrantyClaimIn(title="No identity")
 
 
+def _routes(router, *, suffix: str, method: str) -> list[object]:
+    return [
+        route
+        for route in router.routes
+        if getattr(route, "path", "").endswith(suffix)
+        and method in set(getattr(route, "methods", set()) or set())
+    ]
+
+
 def test_router_has_one_canonical_create_and_keeps_reads_close():
-    matching: list[tuple[str, set[str], object]] = []
-    for route in api_router.routes:
-        path = getattr(route, "path", "")
-        methods = set(getattr(route, "methods", set()) or set())
-        if "warranty-claims" in path:
-            matching.append((path, methods, getattr(route, "endpoint", None)))
+    canonical = [
+        route
+        for route in api_router.routes
+        if getattr(route, "endpoint", None) is warranty_api.create_warranty_claim
+        and "POST" in set(getattr(route, "methods", set()) or set())
+    ]
+    legacy_creates = _routes(
+        legacy_export.router,
+        suffix="/{project_id}/warranty-claims",
+        method="POST",
+    )
+    reads = _routes(
+        legacy_export.router,
+        suffix="/{project_id}/warranty-claims",
+        method="GET",
+    )
+    closes = _routes(
+        legacy_export.router,
+        suffix="/{project_id}/warranty-claims/{issue_id}/close",
+        method="POST",
+    )
 
-    creates = [
-        item
-        for item in matching
-        if item[0].endswith("/projects/{project_id}/warranty-claims") and "POST" in item[1]
-    ]
-    reads = [
-        item
-        for item in matching
-        if item[0].endswith("/projects/{project_id}/warranty-claims") and "GET" in item[1]
-    ]
-    closes = [
-        item
-        for item in matching
-        if item[0].endswith("/projects/{project_id}/warranty-claims/{issue_id}/close") and "POST" in item[1]
-    ]
-
-    assert len(creates) == 1
-    assert getattr(creates[0][2], "__module__", None) == "app.api.v1.warranty"
+    assert len(canonical) == 1
+    assert legacy_creates == []
     assert len(reads) == 1
     assert len(closes) == 1
