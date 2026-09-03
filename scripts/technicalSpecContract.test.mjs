@@ -132,7 +132,23 @@ for (const [sourceToken, documentedToken] of [
   ['body: 14', 'body    14'],
 ]) {
   assert.ok(theme.includes(sourceToken), `Theme contract changed: ${sourceToken}`);
-  assert.ok(spec.includes(documentedToken), `technical specification missing Theme token: ${documentedToken}`);
+  assert.ok(spec.includes(documentedToken), `technical specification missing current Theme value: ${documentedToken}`);
 }
 
-console.log('technical specification source contract: ok');
+const objectHub = read('apps/mobile/components/screens/OsObjectHubScreen.tsx');
+const repairHub = read('apps/mobile/components/screens/OsRepairHubScreen.tsx');
+const budgetTabs = read('apps/mobile/constants/budgetTabs.ts');
+for (const token of ['rooms', 'estimate', 'plan', 'profile']) {
+  assert.ok(objectHub.includes(`'${token}'`), `Object hub source missing expected tab ${token}`);
+  assert.ok(spec.includes(`\`${token}\``), `spec missing Object hub tab ${token}`);
+}
+for (const token of ['works', 'materials', 'selections', 'control']) {
+  assert.ok(repairHub.includes(`'${token}'`), `Repair hub source missing expected tab ${token}`);
+  assert.ok(spec.includes(`\`${token}\``), `spec missing Repair hub tab ${token}`);
+}
+for (const token of ['summary', 'expenses', 'payments', 'deviations']) {
+  assert.ok(budgetTabs.includes(`'${token}'`), `Budget tabs source missing expected tab ${token}`);
+  assert.ok(spec.includes(`\`${token}\``), `spec missing Budget hub tab ${token}`);
+}
+
+console.log(`Renova technical specification contract: OK (${routeIds.length} canonical routes, ${trackedSources.length} tracked sources)`);
