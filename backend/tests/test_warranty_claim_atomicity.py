@@ -8,8 +8,8 @@ from sqlalchemy import func, select
 
 from app.api.v1 import export as legacy_export
 from app.api.v1 import warranty as warranty_api
-from app.api.v1 import router as api_v1_router
 from app.api.v1.warranty import WarrantyClaimIn
+from app.main import app
 from app.models.client_write_request import ClientWriteRequest
 from app.models.entities import DomainOutbox, Project, ProjectIssue, User, UserRole
 from app.models.project_documents import DocumentType, ProjectDocument
@@ -309,17 +309,16 @@ def test_router_has_one_canonical_create_and_keeps_reads_close():
         suffix="/{project_id}/warranty-claims/{issue_id}/close",
         method="POST",
     )
-    compiled_creates = [
-        route
-        for route in api_v1_router.api_router.routes
-        if "POST" in set(getattr(route, "methods", set()) or set())
-        and getattr(route, "name", None) == "create_warranty_claim"
-    ]
+    schema = app.openapi()
+    production_path = schema.get("paths", {}).get(
+        "/api/v1/projects/{project_id}/warranty-claims",
+        {},
+    )
 
     assert len(canonical_source) == 1
     assert getattr(canonical_source[0], "endpoint", None) is warranty_api.create_warranty_claim
     assert legacy_creates == []
     assert len(reads) == 1
     assert len(closes) == 1
-    assert len(compiled_creates) == 1
-    assert getattr(compiled_creates[0], "path", "").endswith("/projects/{project_id}/warranty-claims")
+    assert "post" in production_path
+    assert production_path["post"]["operationId"].startswith("create_warranty_claim_")
