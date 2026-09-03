@@ -313,8 +313,7 @@ def test_router_has_one_canonical_create_and_keeps_reads_close():
         route
         for route in api_v1_router.api_router.routes
         if "POST" in set(getattr(route, "methods", set()) or set())
-        and getattr(getattr(route, "endpoint", None), "__module__", None) == "app.api.v1.warranty"
-        and getattr(getattr(route, "endpoint", None), "__name__", None) == "create_warranty_claim"
+        and getattr(route, "name", None) == "create_warranty_claim"
     ]
 
     assert len(canonical_source) == 1
