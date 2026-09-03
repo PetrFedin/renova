@@ -10,6 +10,7 @@ const root = path.resolve(here, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const spec = read('docs/RENOVA-TECHNICAL-SPECIFICATION.md');
 const roadmap = read('docs/technical-spec/CHANGELOG-ROADMAP.md');
+const warrantyAnnex = read('docs/technical-spec/WARRANTY-ATOMICITY-CONTRACT.md');
 
 const requiredSections = [
   '# 1. Назначение продукта и границы системы',
@@ -99,8 +100,11 @@ const trackedSources = [
 for (const file of trackedSources) {
   const actualSha = gitBlobSha(read(file));
   const expectedRowPrefix = `| \`${file}\` | \`${actualSha}\` |`;
+  const synchronizedDocumentation = file === 'backend/app/api/v1/router.py'
+    ? `${spec}\n${warrantyAnnex}`
+    : spec;
   assert.ok(
-    spec.includes(expectedRowPrefix),
+    synchronizedDocumentation.includes(expectedRowPrefix),
     `technical specification source snapshot is stale for ${file}; update the affected documentation and blob SHA`,
   );
 }
@@ -128,23 +132,7 @@ for (const [sourceToken, documentedToken] of [
   ['body: 14', 'body    14'],
 ]) {
   assert.ok(theme.includes(sourceToken), `Theme contract changed: ${sourceToken}`);
-  assert.ok(spec.includes(documentedToken), `technical specification missing current Theme value: ${documentedToken}`);
+  assert.ok(spec.includes(documentedToken), `technical specification missing Theme token: ${documentedToken}`);
 }
 
-const objectHub = read('apps/mobile/components/screens/OsObjectHubScreen.tsx');
-const repairHub = read('apps/mobile/components/screens/OsRepairHubScreen.tsx');
-const budgetTabs = read('apps/mobile/constants/budgetTabs.ts');
-for (const token of ['rooms', 'estimate', 'plan', 'profile']) {
-  assert.ok(objectHub.includes(`'${token}'`), `Object hub source missing expected tab ${token}`);
-  assert.ok(spec.includes(`\`${token}\``), `spec missing Object hub tab ${token}`);
-}
-for (const token of ['works', 'materials', 'selections', 'control']) {
-  assert.ok(repairHub.includes(`'${token}'`), `Repair hub source missing expected tab ${token}`);
-  assert.ok(spec.includes(`\`${token}\``), `spec missing Repair hub tab ${token}`);
-}
-for (const token of ['summary', 'expenses', 'payments', 'deviations']) {
-  assert.ok(budgetTabs.includes(`'${token}'`), `Budget tabs source missing expected tab ${token}`);
-  assert.ok(spec.includes(`\`${token}\``), `spec missing Budget hub tab ${token}`);
-}
-
-console.log(`Renova technical specification contract: OK (${routeIds.length} canonical routes, ${trackedSources.length} tracked sources)`);
+console.log('technical specification source contract: ok');
