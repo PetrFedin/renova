@@ -205,12 +205,7 @@ async def review_evidence(
     db: AsyncSession, *, project_id: str, payment_id: str, evidence_id: str,
     reviewer: User, decision: str, reason: str | None, client_request_id: str,
 ) -> tuple[PaymentEvidence, bool]:
-    """Approve or reject exactly one submitted version under DB concurrency.
-
-    Admin authentication is enforced by the API dependency. This service binds
-    the decision to exact project/payment/evidence truth and uses a conditional
-    UPDATE so approve/reject races have one winner in PostgreSQL.
-    """
+    """Approve or reject exactly one submitted version under DB concurrency."""
     if decision not in {"approve", "reject"}:
         raise PaymentEvidenceError("invalid_review_decision")
     clean_reason = (reason or "").strip()
@@ -219,12 +214,16 @@ async def review_evidence(
     if len(clean_reason) > 2000:
         raise PaymentEvidenceError("rejection_reason_too_long")
 
+    # Preserve scalar identity before any rollback boundary. SQLAlchemy expires
+    # ORM instances on rollback; touching reviewer.id afterwards can otherwise
+    # trigger implicit async IO outside greenlet_spawn during a real PG race.
+    reviewer_id = reviewer.id
     payment = await _exact_payment(db, project_id=project_id, payment_id=payment_id)
     evidence = await db.get(PaymentEvidence, evidence_id)
     if not evidence or evidence.project_id != project_id or evidence.payment_id != payment_id:
         raise PaymentEvidenceError("evidence_not_found")
     payload = {"payment_id": payment_id, "evidence_id": evidence_id, "decision": decision, "reason": clean_reason or None}
-    replay_id = await replay_entity_id(db, scope=REVIEW_SCOPE, project_id=project_id, user_id=reviewer.id, request_id=client_request_id, payload=payload)
+    replay_id = await replay_entity_id(db, scope=REVIEW_SCOPE, project_id=project_id, user_id=reviewer_id, request_id=client_request_id, payload=payload)
     if replay_id:
         canonical = await db.get(PaymentEvidence, replay_id)
         if not canonical:
@@ -245,22 +244,18 @@ async def review_evidence(
             PaymentEvidence.status == "submitted",
         ).values(
             status=target,
-            reviewed_by=reviewer.id,
+            reviewed_by=reviewer_id,
             reviewed_at=reviewed_at,
             rejection_reason=clean_reason if decision == "reject" else None,
         )
     )
     if result.rowcount != 1:
         await db.rollback()
-        # The conditional UPDATE waits on the winning row lock. Once it resumes,
-        # the winner transaction (including its ClientWriteRequest ledger row)
-        # is committed. Re-read the ledger so concurrent retries of the exact
-        # same review request collapse to replay instead of false conflict.
         replay_id = await replay_entity_id(
             db,
             scope=REVIEW_SCOPE,
             project_id=project_id,
-            user_id=reviewer.id,
+            user_id=reviewer_id,
             request_id=client_request_id,
             payload=payload,
         )
@@ -281,7 +276,7 @@ async def review_evidence(
             raise PaymentEvidenceError("payment_confirmation_failed")
 
     created, canonical_id = await commit_client_write(
-        db, scope=REVIEW_SCOPE, project_id=project_id, user_id=reviewer.id,
+        db, scope=REVIEW_SCOPE, project_id=project_id, user_id=reviewer_id,
         request_id=client_request_id, payload=payload, entity_id=evidence_id,
     )
     if not created:
