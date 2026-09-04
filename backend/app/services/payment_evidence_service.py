@@ -252,9 +252,23 @@ async def review_evidence(
     )
     if result.rowcount != 1:
         await db.rollback()
-        current = await db.get(PaymentEvidence, evidence_id)
-        if current and current.status == target and current.reviewed_by == reviewer.id:
-            raise PaymentEvidenceError("review_request_missing_replay_ledger")
+        # The conditional UPDATE waits on the winning row lock. Once it resumes,
+        # the winner transaction (including its ClientWriteRequest ledger row)
+        # is committed. Re-read the ledger so concurrent retries of the exact
+        # same review request collapse to replay instead of false conflict.
+        replay_id = await replay_entity_id(
+            db,
+            scope=REVIEW_SCOPE,
+            project_id=project_id,
+            user_id=reviewer.id,
+            request_id=client_request_id,
+            payload=payload,
+        )
+        if replay_id:
+            canonical = await db.get(PaymentEvidence, replay_id)
+            if not canonical:
+                raise PaymentEvidenceError("idempotency_target_missing")
+            return canonical, True
         raise PaymentEvidenceError("evidence_already_reviewed")
 
     if decision == "approve":
