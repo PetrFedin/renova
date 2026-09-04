@@ -1,5 +1,5 @@
 /** API: payments */
-import { req, API_BASE, ApiError, authHeaders } from './client';
+import { req, ApiError, authHeaders } from './client';
 import { OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
 import type { Payment } from './types';
 
@@ -28,11 +28,7 @@ export type PaymentEvidenceUploadIntent = PaymentEvidence & {
   external_presigned: boolean;
 };
 
-async function uploadPaymentEvidenceBytes(
-  userId: string,
-  intent: PaymentEvidenceUploadIntent,
-  uri: string,
-): Promise<void> {
+async function uploadPaymentEvidenceBytes(userId: string, intent: PaymentEvidenceUploadIntent, uri: string): Promise<void> {
   const source = await fetch(uri);
   if (!source.ok) throw new ApiError(source.status, 'Не удалось прочитать выбранный файл.', 'evidence_source_unreadable');
   const blob = await source.blob();
@@ -54,9 +50,7 @@ async function uploadPaymentEvidenceBytes(
 export const paymentsApi = {
   listPayments: (userId: string, projectId: string) => req<Payment[]>(`/api/v1/projects/${projectId}/payments`, {}, userId),
   getPaymentRequisites: (userId: string, projectId: string) =>
-    req<{ recipient_name?: string | null; payment_requisites?: string | null; phone?: string | null; has_bank_details: boolean }>(
-      `/api/v1/projects/${projectId}/payment-requisites`, {}, userId,
-    ),
+    req<{ recipient_name?: string | null; payment_requisites?: string | null; phone?: string | null; has_bank_details: boolean }>(`/api/v1/projects/${projectId}/payment-requisites`, {}, userId),
   createPayment: async (userId: string, projectId: string, body: object) => {
     try {
       return await req<Payment>(`/api/v1/projects/${projectId}/payments`, { method: 'POST', body: JSON.stringify(body) }, userId);
@@ -104,11 +98,7 @@ export const paymentsApi = {
     { method: 'POST', body: JSON.stringify(body) }, userId,
   ),
   disputePayment: (userId: string, projectId: string, paymentId: string, body: { reason: string }) =>
-    req<{ payment: Payment; changed: boolean; replayed: boolean }>(
-      `/api/v1/projects/${projectId}/payments/${paymentId}/dispute`, { method: 'POST', body: JSON.stringify(body) }, userId,
-    ),
+    req<{ payment: Payment; changed: boolean; replayed: boolean }>(`/api/v1/projects/${projectId}/payments/${paymentId}/dispute`, { method: 'POST', body: JSON.stringify(body) }, userId),
   resolvePaymentDispute: (userId: string, projectId: string, paymentId: string, body: { note: string }) =>
-    req<{ payment: Payment; changed: boolean; replayed: boolean }>(
-      `/api/v1/projects/${projectId}/payments/${paymentId}/dispute/resolve`, { method: 'POST', body: JSON.stringify(body) }, userId,
-    ),
+    req<{ payment: Payment; changed: boolean; replayed: boolean }>(`/api/v1/projects/${projectId}/payments/${paymentId}/dispute/resolve`, { method: 'POST', body: JSON.stringify(body) }, userId),
 };
