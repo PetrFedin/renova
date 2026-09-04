@@ -71,12 +71,7 @@ def _local_path(key: str) -> Path:
 
 
 def _s3_config_state() -> str:
-    """Bucket default alone does not enable S3; connection credentials do."""
-    connection = (
-        settings.s3_endpoint,
-        settings.s3_access_key,
-        settings.s3_secret_key,
-    )
+    connection = (settings.s3_endpoint, settings.s3_access_key, settings.s3_secret_key)
     configured = [bool((value or "").strip()) for value in connection]
     if not any(configured):
         return "disabled"
@@ -94,7 +89,6 @@ def _s3_client():
     try:
         import boto3
         from botocore.client import Config
-
         return boto3.client(
             "s3",
             endpoint_url=settings.s3_endpoint,
@@ -162,13 +156,7 @@ def _write_local_sync(path: Path, data: bytes) -> None:
 
 async def _put_s3(client, *, key: str, data: bytes, content_type: str) -> None:
     try:
-        await asyncio.to_thread(
-            client.put_object,
-            Bucket=settings.s3_bucket,
-            Key=key,
-            Body=data,
-            ContentType=content_type,
-        )
+        await asyncio.to_thread(client.put_object, Bucket=settings.s3_bucket, Key=key, Body=data, ContentType=content_type)
     except Exception as exc:
         logger.exception("S3 put_object failed", extra={"storage_key": key})
         raise StorageUnavailable("s3_write_failed") from exc
@@ -190,14 +178,7 @@ async def save_image(base64_or_data_url: str, *, folder: str = "photos") -> tupl
     return key, _local_url(key)
 
 
-async def save_bytes(
-    data: bytes,
-    *,
-    folder: str = "documents",
-    filename: str | None = None,
-    content_type: str = "application/octet-stream",
-) -> tuple[str, str]:
-    """Save arbitrary bytes to configured S3 or intentional local storage."""
+async def save_bytes(data: bytes, *, folder: str = "documents", filename: str | None = None, content_type: str = "application/octet-stream") -> tuple[str, str]:
     if not isinstance(data, bytes) or not data:
         raise ValueError("empty_file_payload")
     safe_folder = normalize_storage_key(folder)
@@ -234,11 +215,7 @@ async def read_image(key: str) -> bytes | None:
     client = _s3_client()
     if client is not None:
         try:
-            response = await asyncio.to_thread(
-                client.get_object,
-                Bucket=settings.s3_bucket,
-                Key=normalized,
-            )
+            response = await asyncio.to_thread(client.get_object, Bucket=settings.s3_bucket, Key=normalized)
             return await asyncio.to_thread(response["Body"].read)
         except Exception as exc:
             if _is_missing_s3_object(exc):
@@ -276,17 +253,18 @@ def presigned_url(key: str, expires: int = 3600) -> str | None:
     if cf:
         return cf
     try:
-        return client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": settings.s3_bucket, "Key": normalized},
-            ExpiresIn=expires,
-        )
+        return client.generate_presigned_url("get_object", Params={"Bucket": settings.s3_bucket, "Key": normalized}, ExpiresIn=expires)
     except Exception as exc:
         logger.exception("S3 presigned GET failed", extra={"storage_key": normalized})
         raise StorageUnavailable("s3_presign_failed") from exc
 
 
-def presigned_put(key: str, expires: int = 900) -> str | None:
+def presigned_put(key: str, expires: int = 900, *, content_type: str = "image/jpeg") -> str | None:
+    """Create a PUT URL bound to exact key and declared content type.
+
+    Callers remain responsible for server-side read-back validation. This helper
+    deliberately does not imply that a successful presign proves an object write.
+    """
     normalized = normalize_storage_key(key)
     client = _s3_client()
     if client is None:
@@ -294,11 +272,7 @@ def presigned_put(key: str, expires: int = 900) -> str | None:
     try:
         return client.generate_presigned_url(
             "put_object",
-            Params={
-                "Bucket": settings.s3_bucket,
-                "Key": normalized,
-                "ContentType": "image/jpeg",
-            },
+            Params={"Bucket": settings.s3_bucket, "Key": normalized, "ContentType": content_type},
             ExpiresIn=expires,
         )
     except Exception as exc:
@@ -307,7 +281,6 @@ def presigned_put(key: str, expires: int = 900) -> str | None:
 
 
 def cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
-    """Deprecated alias — use generate_cloudfront_signed_url."""
     return generate_cloudfront_signed_url(key, expires)
 
 
@@ -321,14 +294,7 @@ def _cloudfront_domain() -> str:
 
 
 def _cloudfront_signature(value: bytes) -> str:
-    """Encode a CloudFront RSA signature using AWS URL-safe substitutions."""
-    return (
-        base64.b64encode(value)
-        .decode("ascii")
-        .replace("+", "-")
-        .replace("=", "_")
-        .replace("/", "~")
-    )
+    return base64.b64encode(value).decode("ascii").replace("+", "-").replace("=", "_").replace("/", "~")
 
 
 def generate_cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
@@ -340,37 +306,17 @@ def generate_cloudfront_signed_url(key: str, expires: int = 3600) -> str | None:
     key_pair_id = (settings.cloudfront_key_id or "").strip()
     if not key_pair_id:
         return unsigned_url
-
     private_key_path = Path(settings.uploads_dir).expanduser().resolve().parent / "cloudfront-private-key.pem"
     if not private_key_path.is_file():
         raise StorageConfigurationError("cloudfront_private_key_missing")
-
     try:
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import padding
-
-        private_key = serialization.load_pem_private_key(
-            private_key_path.read_bytes(),
-            password=None,
-        )
+        private_key = serialization.load_pem_private_key(private_key_path.read_bytes(), password=None)
         expires_at = int((datetime.now(timezone.utc) + timedelta(seconds=max(1, expires))).timestamp())
-        policy = json.dumps(
-            {
-                "Statement": [
-                    {
-                        "Resource": unsigned_url,
-                        "Condition": {"DateLessThan": {"AWS:EpochTime": expires_at}},
-                    }
-                ]
-            },
-            separators=(",", ":"),
-        ).encode("utf-8")
+        policy = json.dumps({"Statement": [{"Resource": unsigned_url, "Condition": {"DateLessThan": {"AWS:EpochTime": expires_at}}}]}, separators=(",", ":")).encode("utf-8")
         signature = private_key.sign(policy, padding.PKCS1v15(), hashes.SHA1())
-        return (
-            f"{unsigned_url}?Expires={expires_at}"
-            f"&Signature={_cloudfront_signature(signature)}"
-            f"&Key-Pair-Id={quote(key_pair_id, safe='')}"
-        )
+        return f"{unsigned_url}?Expires={expires_at}&Signature={_cloudfront_signature(signature)}&Key-Pair-Id={quote(key_pair_id, safe='')}"
     except StorageConfigurationError:
         raise
     except Exception as exc:
