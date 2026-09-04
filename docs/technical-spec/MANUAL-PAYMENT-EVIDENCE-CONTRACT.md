@@ -1,6 +1,6 @@
 # Manual Payment Evidence Contract (#265)
 
-Status: IMPLEMENTATION IN PROGRESS — schema/upload truth implemented; review/API/mobile qualification pending  
+Status: IMPLEMENTATION IN PROGRESS — backend lifecycle/API implemented; focused race/mobile/exact-head qualification pending  
 Base main at start: `4b1a0db5c600f3d728cf9836f77d86719c41b8b1`  
 Current branch migration head: `w19paymentevidence01`  
 External S3/provider/staging verification: NOT VERIFIED
@@ -11,75 +11,79 @@ Customer manual transfer evidence follows one authoritative chain:
 
 `Payment` → private versioned `PaymentEvidence` → `paid_unverified` → authorized review → `confirmed` → canonical payment-linked expense recognition.
 
-`paid_unverified` is non-financial truth. Review approval MUST terminate through the existing canonical payment confirmation boundary and MUST NOT directly mutate `Project.budget_spent` or create a competing finance writer.
+`paid_unverified` is non-financial truth. Approval reuses `payment_service.confirm_payment(... reviewed_evidence_id=..., commit=False)` and therefore the existing `Payment → Expense → refresh_budget_facts` boundary. No direct `Project.budget_spent` writer or competing financial path is introduced.
 
 ## Evidence truth
 
-`backend/app/models/payment_evidence.py` and Alembic revision `w19paymentevidence01` introduce the authoritative versioned evidence table. Each evidence version is immutable historical metadata bound to exactly one `Payment` and its `Project`. A rejected version remains auditable. Resubmission creates a new version; it does not overwrite or delete the rejected version.
+`backend/app/models/payment_evidence.py` and Alembic revision `w19paymentevidence01` own the authoritative versioned evidence table. Persisted metadata includes stable evidence id, project/payment binding, positive version, private storage key, original filename, declared/verified MIME, byte size, SHA-256, submitter, lifecycle status, rejection reason, reviewer and timestamps. `(payment_id, version)` and `storage_key` are unique at database truth.
 
-Persisted metadata: stable evidence id, project id, payment id, positive version, private storage key, original filename, declared/verified content type, byte size, SHA-256 digest, submitter, lifecycle status, rejection reason, reviewer identity and timestamps. `(payment_id, version)` and `storage_key` are unique at PostgreSQL truth.
+A rejected version remains immutable history. A subsequent upload intent is allowed only after the latest version is rejected and creates version N+1; it never overwrites the rejected row.
 
-Private object keys are payment-bound: `payment-evidence/{project_id}/{payment_id}/{evidence_id}/v{version}.{ext}`. They are never served through the generic unaffiliated `photos/*` contract.
+## Two-phase private storage
 
-## Two-phase storage contract
+1. `payment_evidence.upload_intent` durably creates a stable evidence id/key through `ClientWriteRequest`.
+2. The upload is bound to `payment-evidence/{project}/{payment}/{evidence}/vN.ext`.
+3. S3 mode returns an exact-key/content-type presigned PUT; local canonical runtime uses the authenticated exact-evidence PUT endpoint.
+4. The server upload endpoint streams with a 10 MiB cap and validates magic/MIME before writing.
+5. `payment_evidence.submit` independently reads the stored object back, validates JPEG/PNG/PDF magic, declared-vs-actual MIME, size and SHA-256, then changes truth to `submitted`.
+6. Only after validation can an eligible payment move to `paid_unverified`.
 
-Implementation deliberately does not pretend PostgreSQL and S3 share one transaction.
+No generic public `photos/*` URL is used for evidence. Read is through an authenticated project/payment/evidence route; S3/CloudFront may redirect only after ACL and exact binding are checked, while local bytes use `private, no-store`.
 
-1. `payment_evidence.upload_intent` persists a stable `PaymentEvidence` row and deterministic private object identity through canonical `ClientWriteRequest` before object-store write.
-2. Client uploads to exactly that key (API surface still pending in this branch).
-3. `payment_evidence.submit` reads the object back from authoritative storage.
-4. Server validates actual magic bytes, maximum 10 MiB, declared-vs-actual MIME and computes SHA-256/size.
-5. Only a successfully validated object changes evidence from `upload_pending` to `submitted` and moves an eligible payment to non-financial `paid_unverified`.
-
-Current accepted evidence payload types are JPEG, PNG and PDF. Extension or client Content-Type alone is never sufficient.
-
-This design means an ambiguous object write remains attached to a durable upload intent instead of becoming an unidentifiable public `photos/*` orphan. Provider-independent ambiguous-write/orphan reconciliation remains #238 and is NOT claimed complete here.
+An ambiguous provider write can still exist outside the database transaction. The durable intent makes it identifiable, but provider-independent orphan/ambiguity reconciliation remains #238 and is NOT VERIFIED by #265.
 
 ## Authorization
 
-Submission: exact project customer only for the exact payment/project. `payment_evidence_service` checks both role and `Project.customer_id`; cross-project/payment/evidence identities fail closed.
+Upload/submit: exact project customer (`UserRole.customer` and `Project.customer_id == user.id`) plus exact Payment/PaymentEvidence binding.
 
-Review target: explicit administrative identity via the existing configured `ADMIN_USER_IDS` production/staging contract plus exact project/payment binding. Ordinary contractor role alone is not sufficient to gain production administrative review authority. Review API is still pending implementation in this branch.
+Review: `require_admin_user`; staging/production therefore require an immutable identity configured in `ADMIN_USER_IDS`. Ordinary contractor membership does not grant production review authority.
 
-Read/download target: authenticated exact-project membership or authorized reviewer, with payment/project binding checked before signed access or local bytes are returned. Dedicated read API is still pending.
+Read/list: authenticated project access or a valid administrative reviewer. Object key is never accepted from the caller; it is loaded from the evidence row after project/payment/evidence binding.
 
 ## Idempotency and concurrency
 
-Upload-intent and submit mutations use the canonical `ClientWriteRequest` ledger. Same request id + same canonical payload replays the original result. Same request id + different payload conflicts.
+Upload intent, submit and review use canonical `ClientWriteRequest` scopes. Same request id + same canonical payload replays; changed payload conflicts.
 
-Approve/reject races must collapse at PostgreSQL truth. Exactly one terminal decision may win for an evidence version. Duplicate approval must not duplicate `PaymentEvent`, expense recognition, budget facts, activity or notification effects. Review implementation and the mandatory real PostgreSQL race are still pending.
+Review uses conditional SQL `UPDATE payment_evidence ... WHERE status='submitted'`. Approve/reject therefore share one PostgreSQL winner boundary. Approval then enters canonical payment confirmation inside the same uncommitted business transaction; failure rolls the evidence decision back. The final `ClientWriteRequest` commit contains the review row, payment transition, `PaymentEvent`, canonical finance mutation and durable outbox rows.
+
+Mandatory real two-session PostgreSQL approve/reject and duplicate-approve qualification is still pending; implementation alone is not evidence of concurrency correctness.
 
 ## Review semantics
 
-- submitted evidence moves an eligible manual payment only to `paid_unverified`;
-- approval is permitted only for the current submitted evidence version and an eligible `paid_unverified` payment;
-- rejection requires a non-empty reason and makes that evidence version terminal rejected while keeping the payment non-financial;
-- resubmission after rejection creates the next version and returns it to submitted review state;
-- cancelled/disputed/refunded payments cannot be approved through evidence review;
-- stage-payment acceptance rules remain authoritative.
+- `submitted` + approve → evidence `approved` and payment `paid_unverified → confirmed`;
+- confirmed PaymentEvent provenance is `evidence_type=payment_evidence`, `evidence_ref=<evidence_id>`, `source=manual_review`;
+- reject requires a non-empty reason and leaves the payment non-financial in `paid_unverified`;
+- rejected version is terminal; new upload intent creates the next version;
+- confirmed/cancelled/disputed/refunded states cannot be bypassed through evidence review;
+- stage acceptance remains enforced by canonical payment confirmation.
 
-## Side effects and audit
+`payment_evidence.review` also prepares durable activity plus customer notification in `DomainOutbox`. Approval additionally retains the canonical payment transition outbox. Provider delivery remains post-commit retryable truth.
 
-The implemented submit path reuses `payment_service.confirm_payment(... transfer_ack=True, commit=False)` for the `paid_unverified` transition, so its `PaymentEvent` and durable outbox rows participate in the same final `ClientWriteRequest` commit as evidence submission. No direct `Project.budget_spent` writer was introduced.
+## API surface implemented
 
-Review approval remains pending and must reuse/refactor the canonical confirmed-payment boundary rather than copy its finance logic.
+- `POST /api/v1/projects/{project_id}/payments/{payment_id}/evidence/upload-intent`
+- `PUT /api/v1/projects/{project_id}/payments/{payment_id}/evidence/{evidence_id}/content`
+- `POST /api/v1/projects/{project_id}/payments/{payment_id}/evidence/{evidence_id}/submit`
+- `GET /api/v1/projects/{project_id}/payments/{payment_id}/evidence`
+- `GET /api/v1/projects/{project_id}/payments/{payment_id}/evidence/{evidence_id}/content`
+- `POST /api/v1/projects/{project_id}/payments/{payment_id}/evidence/{evidence_id}/review`
 
-## UI truth
+The routes are registered directly in canonical API composition; no generic media mutation is used.
 
-Mobile/portal must distinguish at least: upload required, upload pending/retryable, submitted/pending review, rejected with reason/resubmit, confirmed, and terminal payment states. Ambiguous network/server failures must never render false success. UI/API wiring is pending.
+## UI truth still pending
 
-## Qualification gate
+Mobile/portal must distinguish upload required, upload pending/retryable, submitted/pending review, rejected with reason/resubmit, confirmed and terminal payment states. `paid_unverified` must not disappear from progress/read models and ambiguous network/server failures must never render false success.
 
-Before merge:
+## Qualification gate before merge
 
-- focused submit/replay/conflict/ACL/file-validation/reject/resubmit/terminal-state tests;
+- focused upload/submit/replay/conflict/ACL/MIME-spoof/oversize/reject/resubmit/terminal tests;
 - real PostgreSQL concurrent approve/reject and duplicate-approve race;
 - exact single finance-recognition assertion;
 - storage failure/ambiguous retry contracts without promoting #238;
-- mobile source/typecheck/state contracts;
-- full backend regression + PostgreSQL Alembic upgrade;
+- mobile state/offline/typecheck contracts;
+- full backend regression and PostgreSQL Alembic upgrade from current main;
 - Playwright/API E2E where applicable;
 - exact-head CI green;
-- living technical specification and production-readiness reconciliation after merge.
+- post-merge living ТЗ/readiness evidence reconciliation.
 
-No implementation-in-progress commit in this PR is production/readiness evidence until these gates pass on the exact final head.
+No implementation-in-progress commit in draft PR #297 is production/readiness evidence until these gates pass on its exact final head.
