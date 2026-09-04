@@ -1,0 +1,55 @@
+name: Payment evidence PostgreSQL integrity
+on:
+  push:
+    paths: ["backend/app/api/v1/payment_evidence.py", "backend/app/api/v1/router.py", "backend/app/models/payment_evidence.py", "backend/app/services/payment_evidence_service.py", "backend/app/services/payment_service.py", "backend/app/services/budget_service.py", "backend/app/services/client_write_idempotency.py", "backend/alembic/versions/w19paymentevidence01_payment_evidence.py", "backend/tests/test_payment_evidence_contract.py", "backend/tests/test_payment_evidence_postgres_concurrency.py", "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md", ".github/workflows/payment-evidence-postgres-integrity.yml"]
+  pull_request:
+    paths: ["backend/app/api/v1/payment_evidence.py", "backend/app/api/v1/router.py", "backend/app/models/payment_evidence.py", "backend/app/services/payment_evidence_service.py", "backend/app/services/payment_service.py", "backend/app/services/budget_service.py", "backend/app/services/client_write_idempotency.py", "backend/alembic/versions/w19paymentevidence01_payment_evidence.py", "backend/tests/test_payment_evidence_contract.py", "backend/tests/test_payment_evidence_postgres_concurrency.py", "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md", ".github/workflows/payment-evidence-postgres-integrity.yml"]
+concurrency:
+  group: payment-evidence-postgres-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  payment-evidence-postgres-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env: { POSTGRES_USER: renova, POSTGRES_PASSWORD: renova, POSTGRES_DB: renova }
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PAYMENT_EVIDENCE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PUBLIC_BASE_URL: https://ci-staging.example.com
+      SECRET_KEY: ci-staging-secret-key-32chars!!
+      ALLOW_CREATE_ALL: "false"
+      ALLOW_DEMO_SEED: "false"
+      ADMIN_USER_IDS: payment-evidence-reviewer-1001,payment-evidence-reviewer-1002
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12.13" }
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Upgrade PostgreSQL to canonical schema
+        working-directory: backend
+        run: poetry run alembic upgrade head
+      - name: Run payment evidence focused contracts
+        working-directory: backend
+        run: poetry run pytest -q tests/test_payment_evidence_contract.py
+      - name: Run real payment evidence PostgreSQL races
+        working-directory: backend
+        run: poetry run pytest -q tests/test_payment_evidence_postgres_concurrency.py
