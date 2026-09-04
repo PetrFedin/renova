@@ -41,6 +41,8 @@ def test_payment_evidence_api_is_private_and_admin_reviewed():
 
     assert "require_admin_user" in api_source
     assert "payment-evidence" in api_source
-    assert "storage_svc.presigned_url" in api_source
+    assert "storage_service.presigned_put" in api_source
+    assert "storage_service.presigned_url" in api_source
+    assert "storage_service.read_bytes" in api_source
     assert "payment_evidence.router" in router_source
     assert "photos/" not in api_source
