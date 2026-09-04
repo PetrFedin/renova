@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "observed_on": "2026-09-03",
-  "expected_repo_facts": {"alembic_head":"w18nativeenumparity01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
+  "observed_on": "2026-09-04",
+  "expected_repo_facts": {"alembic_head":"w19paymentevidence01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
   "backend_artifact": {"status":"UNVERIFIED_CURRENT_DIGEST","image":"ghcr.io/petrfedin/renova-api","immutable_tag_contract":"sha-${GIT_SHA}","digest":null,"git_sha":null,"evidence":null,"repo_contract":".github/workflows/backend-image.yml","latest_repo_validation":{"status":"CI_VERIFIED","note":"Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."}},
   "environments": {
     "staging": {"status":"CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED","artifact_digest":null,"evidence":null,"issue":233,"note":"Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."},
@@ -26,7 +26,7 @@
   "security": {"repo_controls":{"status":"IMPLEMENTED","pr":258,"head_sha":"0ead84d5baa07f2428b7a6ad972a31719814da16","merge_sha":"0cc870fdea76aeca26aef1365daf88407f6e3f78","osv_exception_baseline":"EMPTY","codeql":"ENABLED","gitleaks_history_and_proposed_tree":"ENABLED","container_high_critical_fixed_vulnerability_gate":"ENABLED"},"accepted_risks":[],"external_validation":{"branch_protection":"OPEN_ISSUE_247","privileged_access_review":"OPEN_ISSUE_256","independent_pentest":"OPEN_ISSUE_257","provider_credential_rotation_drill":"NOT_EXTERNALLY_VERIFIED"}},
   "launch_acceptance": {"controlled_pilot":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"product_telemetry":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"legal_privacy":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"support_incident_ops":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241}},
   "product_integrity": {
-    "manual_payment_evidence": {"status":"INCOMPLETE","issue":265,"note":"Complete evidence upload/version, reviewer approve/reject, safe resubmission and exactly-once financial recognition remain open."},
+    "manual_payment_evidence": {"status":"IMPLEMENTED_PENDING_QUALIFICATION","issue":265,"pr":297,"note":"Current branch implements versioned private evidence, server read-back validation, paid_unverified review truth, admin approve/reject/resubmit and canonical Payment->Expense recognition. PostgreSQL review-race, mobile truth and exact-head full CI remain required before CI VERIFIED."},
     "warranty_claim_idempotency": {"status":"CI_VERIFIED","issue":266,"pr":295,"head_sha":"22dd1f2d379f3d2f26278b58b03a1ca4f022da3c","merge_sha":"9fed24c1b59d767daef4d6395fd01cb303c838e3","workflow_run_id":33795110887,"full_ci_run_id":33795110854,"note":"Stable request identity, generic ClientWriteRequest replay/conflict, atomic Issue+Document+DomainOutbox, exact-body mobile replay and real two-session PostgreSQL concurrent same-key collapse are merged. External S3/provider recovery remains #238."},
     "chat_read_truth": {"status":"CI_VERIFIED","issue":269,"pr":270,"merge_sha":"9a7b0babc530c4ed187f54ea9c67763393656763","note":"Explicit authoritative read cursor and monotonic reconciliation are merged; equal-timestamp precision remains P2 #271."},
     "phone_chat_invitation_delivery": {"status":"CI_VERIFIED","issue":272,"pr":277,"merge_sha":"43df8ef555efb75ad4d6263297560529eecc660b","external_provider_status":"NOT_EXTERNALLY_VERIFIED"},
@@ -44,7 +44,7 @@
     {"issue":241,"priority":"P1","reason":"controlled real-user pilot, telemetry, legal/privacy acceptance and launch operations are not complete"},
     {"issue":256,"priority":"P1","reason":"real GitHub/org privileged-access review is not executed"},
     {"issue":257,"priority":"P1","reason":"independent pre-launch penetration and abuse test is not executed"},
-    {"issue":265,"priority":"P1","reason":"manual bank-transfer payment verification lacks the complete current-finance evidence lifecycle"}
+    {"issue":265,"priority":"P1","reason":"manual bank-transfer evidence lifecycle is implemented on PR #297 but remains pending PostgreSQL race, mobile and exact-head qualification"}
   ],
-  "launch_decision": {"status":"BLOCKED_FOR_BROAD_PRODUCTION","reason":"Broad production remains blocked by external staging/promotion, managed DR, alert delivery, governance, capacity, provider recovery, manual-payment product integrity, pilot/legal/operations and independent security evidence."}
+  "launch_decision": {"status":"BLOCKED_FOR_BROAD_PRODUCTION","reason":"Broad production remains blocked by external staging/promotion, managed DR, alert delivery, governance, capacity, provider recovery, manual-payment qualification, pilot/legal/operations and independent security evidence."}
 }
