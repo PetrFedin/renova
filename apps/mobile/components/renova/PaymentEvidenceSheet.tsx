@@ -16,57 +16,23 @@ function requestId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-function evidenceStatus(row: PaymentEvidence): { title: string; message: string; tone: 'info' | 'warning' | 'success' } {
+function evidenceStatus(row: PaymentEvidence): { title: string; message: string; tone: 'info' | 'warning' } {
   if (row.status === 'rejected') {
-    return {
-      title: `Подтверждение отклонено · версия ${row.version}`,
-      message: row.rejection_reason || 'Причина не указана. Загрузите новую версию подтверждения.',
-      tone: 'warning',
-    };
+    return { title: `Подтверждение отклонено · версия ${row.version}`, message: row.rejection_reason || 'Причина не указана. Загрузите новую версию подтверждения.', tone: 'warning' };
   }
   if (row.status === 'approved') {
-    return {
-      title: `Подтверждение принято · версия ${row.version}`,
-      message: 'Проверка завершена. Статус оплаты обновляется по серверной финансовой истине.',
-      tone: 'success',
-    };
+    return { title: `Подтверждение принято · версия ${row.version}`, message: 'Проверка завершена. Статус оплаты обновляется по серверной финансовой истине.', tone: 'info' };
   }
   if (row.status === 'submitted') {
-    return {
-      title: `На проверке · версия ${row.version}`,
-      message: 'Файл принят сервером и ожидает проверки. Сумма ещё не считается подтверждённым расходом.',
-      tone: 'info',
-    };
+    return { title: `На проверке · версия ${row.version}`, message: 'Файл принят сервером и ожидает проверки. Сумма ещё не считается подтверждённым расходом.', tone: 'info' };
   }
-  return {
-    title: `Загрузка не завершена · версия ${row.version}`,
-    message: 'Файл ещё не подтверждён сервером. Повторите отправку; оплаченный факт не будет показан раньше времени.',
-    tone: 'warning',
-  };
+  return { title: `Загрузка не завершена · версия ${row.version}`, message: 'Файл ещё не подтверждён сервером. Повторите отправку; оплаченный факт не будет показан раньше времени.', tone: 'warning' };
 }
 
-type PendingUpload = {
-  uri: string;
-  name: string;
-  contentType: string;
-  intentRequestId: string;
-  submitRequestId: string;
-};
+type PendingUpload = { uri: string; name: string; contentType: string; intentRequestId: string; submitRequestId: string };
 
-export function PaymentEvidenceSheet({
-  visible,
-  userId,
-  projectId,
-  payment,
-  onClose,
-  onChanged,
-}: {
-  visible: boolean;
-  userId: string;
-  projectId: string;
-  payment: Payment | null;
-  onClose: () => void;
-  onChanged?: () => void;
+export function PaymentEvidenceSheet({ visible, userId, projectId, payment, onClose, onChanged }: {
+  visible: boolean; userId: string; projectId: string; payment: Payment | null; onClose: () => void; onChanged?: () => void;
 }) {
   const [rows, setRows] = useState<PaymentEvidence[]>([]);
   const [loading, setLoading] = useState(false);
@@ -80,8 +46,7 @@ export function PaymentEvidenceSheet({
     setLoading(true);
     setError(null);
     try {
-      const next = await api.listPaymentEvidence(userId, projectId, payment.id);
-      setRows(next);
+      setRows(await api.listPaymentEvidence(userId, projectId, payment.id));
     } catch (cause) {
       reportError('payment.evidence.list', cause, { projectId, paymentId: payment.id });
       setError(apiErrorMessage(cause, 'Не удалось проверить состояние подтверждения.'));
@@ -98,7 +63,6 @@ export function PaymentEvidenceSheet({
   }, [visible, payment?.id, load]);
 
   if (!visible || !payment) return null;
-
   const latest = rows[0] ?? null;
   const canUpload = payment.status === 'paid_unverified' && (!latest || latest.status === 'rejected' || latest.status === 'upload_pending');
   const status = latest ? evidenceStatus(latest) : null;
@@ -107,11 +71,7 @@ export function PaymentEvidenceSheet({
     if (mutationRef.current) return;
     setError(null);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/jpeg', 'image/png', 'application/pdf'],
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
+      const result = await DocumentPicker.getDocumentAsync({ type: ['image/jpeg', 'image/png', 'application/pdf'], copyToCacheDirectory: true, multiple: false });
       if (result.canceled) return;
       const asset = result.assets[0];
       const contentType = asset.mimeType || '';
@@ -119,13 +79,7 @@ export function PaymentEvidenceSheet({
         setError('Разрешены только JPEG, PNG или PDF.');
         return;
       }
-      setPendingUpload({
-        uri: asset.uri,
-        name: asset.name || `payment-proof-${Date.now()}`,
-        contentType,
-        intentRequestId: requestId('payment-evidence-intent'),
-        submitRequestId: requestId('payment-evidence-submit'),
-      });
+      setPendingUpload({ uri: asset.uri, name: asset.name || `payment-proof-${Date.now()}`, contentType, intentRequestId: requestId('payment-evidence-intent'), submitRequestId: requestId('payment-evidence-submit') });
     } catch (cause) {
       reportError('payment.evidence.pick', cause, { projectId, paymentId: payment.id });
       setError('Не удалось открыть выбранный файл.');
@@ -144,9 +98,7 @@ export function PaymentEvidenceSheet({
         content_type: pendingUpload.contentType,
       });
       await api.uploadPaymentEvidenceBytes(userId, intent, pendingUpload.uri);
-      const submitted = await api.submitPaymentEvidence(userId, projectId, payment.id, intent.id, {
-        client_request_id: pendingUpload.submitRequestId,
-      });
+      const submitted = await api.submitPaymentEvidence(userId, projectId, payment.id, intent.id, { client_request_id: pendingUpload.submitRequestId });
       setRows((current) => [submitted, ...current.filter((row) => row.id !== submitted.id)]);
       setPendingUpload(null);
       onChanged?.();
@@ -163,50 +115,23 @@ export function PaymentEvidenceSheet({
   };
 
   return (
-    <SheetSurface
-      visible
-      title="Подтверждение перевода"
-      subtitle={`${payment.title} · ${formatRub(payment.amount)}`}
-      busy={mutating}
-      onClose={() => { if (!mutationRef.current) onClose(); }}
-      accessibilityLabel="Подтверждение ручного перевода"
-      footer={(
-        <>
-          {canUpload && !pendingUpload ? <PrimaryButton title={latest?.status === 'rejected' ? 'Загрузить новую версию' : 'Выбрать файл'} onPress={() => { void chooseFile(); }} disabled={mutating} fullWidth /> : null}
-          {pendingUpload ? <PrimaryButton title="Отправить на проверку" onPress={() => { void upload(); }} loading={mutating} fullWidth /> : null}
-          {pendingUpload ? <PrimaryButton title="Выбрать другой файл" variant="outline" onPress={() => { setPendingUpload(null); void chooseFile(); }} disabled={mutating} fullWidth /> : null}
-          <PrimaryButton title="Обновить статус" variant="outline" onPress={() => { void load(); }} disabled={loading || mutating} fullWidth />
-          <PrimaryButton title="Закрыть" variant="ghost" onPress={() => { if (!mutationRef.current) onClose(); }} disabled={mutating} fullWidth />
-        </>
-      )}
+    <SheetSurface visible title="Подтверждение перевода" subtitle={`${payment.title} · ${formatRub(payment.amount)}`} busy={mutating} onClose={() => { if (!mutationRef.current) onClose(); }} accessibilityLabel="Подтверждение ручного перевода"
+      footer={<>
+        {canUpload && !pendingUpload ? <PrimaryButton title={latest?.status === 'rejected' ? 'Загрузить новую версию' : 'Выбрать файл'} onPress={() => { void chooseFile(); }} disabled={mutating} fullWidth /> : null}
+        {pendingUpload ? <PrimaryButton title="Отправить на проверку" onPress={() => { void upload(); }} loading={mutating} fullWidth /> : null}
+        {pendingUpload ? <PrimaryButton title="Выбрать другой файл" variant="outline" onPress={() => { setPendingUpload(null); void chooseFile(); }} disabled={mutating} fullWidth /> : null}
+        <PrimaryButton title="Обновить статус" variant="outline" onPress={() => { void load(); }} disabled={loading || mutating} fullWidth />
+        <PrimaryButton title="Закрыть" variant="ghost" onPress={() => { if (!mutationRef.current) onClose(); }} disabled={mutating} fullWidth />
+      </>}
     >
       <View style={sheetContentStyles.section}>
-        <InfoBanner
-          tone="info"
-          title="Финансовая истина"
-          message="До одобрения подтверждения оплата остаётся «оплачено, не верифицировано» и не входит в подтверждённый расход."
-        />
+        <InfoBanner tone="info" title="Финансовая истина" message="До одобрения подтверждения оплата остаётся «оплачено, не верифицировано» и не входит в подтверждённый расход." />
         {loading ? <Text style={formMetaText.caption}>Проверяем актуальный статус…</Text> : null}
         {error ? <InfoBanner tone="warning" title="Нужна повторная попытка" message={error} /> : null}
         {status ? <InfoBanner tone={status.tone} title={status.title} message={status.message} /> : null}
         {!loading && !latest ? <Text style={formMetaText.caption}>Подтверждение ещё не загружено.</Text> : null}
-        {pendingUpload ? (
-          <View>
-            <Text style={formMetaText.label}>Выбран файл</Text>
-            <Text style={formMetaText.caption}>{pendingUpload.name}</Text>
-            <Text style={formMetaText.caption}>При сетевой ошибке повторная отправка использует тот же request identity.</Text>
-          </View>
-        ) : null}
-        {rows.length > 1 ? (
-          <View>
-            <Text style={formMetaText.label}>История версий</Text>
-            {rows.slice(1).map((row) => (
-              <Text key={row.id} style={formMetaText.caption}>
-                v{row.version}: {row.status === 'rejected' ? `отклонено — ${row.rejection_reason || 'причина не указана'}` : row.status}
-              </Text>
-            ))}
-          </View>
-        ) : null}
+        {pendingUpload ? <View><Text>Выбран файл</Text><Text style={formMetaText.caption}>{pendingUpload.name}</Text><Text style={formMetaText.caption}>При сетевой ошибке повторная отправка использует тот же request identity.</Text></View> : null}
+        {rows.length > 1 ? <View><Text>История версий</Text>{rows.slice(1).map((row) => <Text key={row.id} style={formMetaText.caption}>v{row.version}: {row.status === 'rejected' ? `отклонено — ${row.rejection_reason || 'причина не указана'}` : row.status}</Text>)}</View> : null}
       </View>
     </SheetSurface>
   );
