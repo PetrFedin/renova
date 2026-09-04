@@ -2,8 +2,9 @@
 Единый каскад приёмки этапа (W44).
 
 Все входы (mobile WA, portal, будущие) обязаны вызывать finalize_work_acceptance,
-чтобы side effects были одинаковыми: stage done → act → payment → next → events+notify.
+чтобы side effects были одинаковыми: stage done → act → payment → next-ready → events+notify.
 Schedule item status=accepted НЕ должен обходить этот путь (см. project_work_schedule_service).
+Следующий этап после приёмки остаётся planned: только canonical stage start может сделать его active.
 """
 from __future__ import annotations
 
@@ -84,7 +85,13 @@ async def ensure_stage_payment(
 
 
 async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
-    next_stage = (
+    """Return the next planned stage without starting it.
+
+    The historical function name is retained for internal compatibility. Acceptance
+    is not execution authority: dependencies, contractor agreement and assignee checks
+    belong exclusively to the canonical stage start transition.
+    """
+    return (
         await db.execute(
             select(Stage)
             .where(Stage.project_id == stage.project_id)
@@ -94,10 +101,6 @@ async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
             .limit(1)
         )
     ).scalar_one_or_none()
-    if next_stage:
-        next_stage.status = StageStatus.active
-        next_stage.actual_start = next_stage.actual_start or date.today()
-    return next_stage
 
 
 async def mark_acceptance_pin_on_plan(
@@ -218,6 +221,8 @@ async def finalize_work_acceptance(
         )
 
     payment = await ensure_stage_payment(db, project, stage, accepted_by)
+    # P0 #301: acceptance can expose the next stage, but cannot start it. The
+    # canonical start transition owns dependency/contract/assignee validation.
     next_stage = await activate_next_stage(db, stage)
 
     from app.services.project_document_service import ensure_acceptance_act_document
@@ -331,9 +336,9 @@ async def emit_acceptance_side_effects(
                 db,
                 user_id=member_id,
                 project_id=project.id,
-                notification_type="stage_started",
-                title=f"Следующий этап: {next_stage.name}",
-                body="Этап автоматически переведён в работу после приёмки предыдущего.",
+                notification_type="stage_start",
+                title=f"Следующий этап готов к запуску: {next_stage.name}",
+                body="Предыдущий этап принят. Запустите следующий этап после проверки зависимостей и доступности исполнителя.",
                 link_path=f"/stage/{next_stage.id}",
                 return_to="/(customer)/(tabs)/repair",
             )
