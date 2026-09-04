@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.models  # noqa: F401
 from app.models.client_write_request import ClientWriteRequest
-from app.models.entities import DomainOutbox, Expense, Payment, PaymentEvent, PaymentStatus, PaymentType, Project, User, UserRole
+from app.models.entities import Expense, Payment, PaymentEvent, PaymentStatus, PaymentType, Project, User, UserRole
 from app.models.payment_evidence import PaymentEvidence
 from app.services import payment_evidence_service as evidence_service
 
@@ -45,15 +45,15 @@ async def _seed(Session, suffix: str):
 async def test_concurrent_duplicate_approve_replays_and_recognizes_finance_once():
     engine = create_async_engine(_postgres_url())
     Session = async_sessionmaker(engine, expire_on_commit=False)
-    customer_id, reviewer_id, project_id, payment_id, evidence_id = await _seed(Session, "1001")
+    _, reviewer_id, project_id, payment_id, evidence_id = await _seed(Session, "1001")
     request_id = "payment-evidence-review-same-1001"
 
     async def approve_once():
         async with Session() as db:
             reviewer = await db.get(User, reviewer_id)
             assert reviewer is not None
-            result = await evidence_service.review_evidence(db, project_id=project_id, payment_id=payment_id, evidence_id=evidence_id, reviewer=reviewer, decision="approve", reason=None, client_request_id=request_id)
-            return result[0].id, result[1]
+            row, replayed = await evidence_service.review_evidence(db, project_id=project_id, payment_id=payment_id, evidence_id=evidence_id, reviewer=reviewer, decision="approve", reason=None, client_request_id=request_id)
+            return row.id, replayed
 
     try:
         first, second = await asyncio.gather(approve_once(), approve_once())
@@ -66,7 +66,7 @@ async def test_concurrent_duplicate_approve_replays_and_recognizes_finance_once(
             assert evidence is not None and evidence.status == "approved"
             assert int(await db.scalar(select(func.count()).select_from(ClientWriteRequest).where(ClientWriteRequest.scope == evidence_service.REVIEW_SCOPE, ClientWriteRequest.project_id == project_id, ClientWriteRequest.user_id == reviewer_id, ClientWriteRequest.request_id == request_id)) or 0) == 1
             assert int(await db.scalar(select(func.count()).select_from(PaymentEvent).where(PaymentEvent.payment_id == payment_id, PaymentEvent.evidence_type == "payment_evidence", PaymentEvent.evidence_ref == evidence_id, PaymentEvent.new_status == PaymentStatus.confirmed.value)) or 0) == 1
-            assert int(await db.scalar(select(func.count()).select_from(Expense).where(Expense.project_id == project_id, Expense.source_type == "payment", Expense.source_id == payment_id)) or 0) == 1
+            assert int(await db.scalar(select(func.count()).select_from(Expense).where(Expense.project_id == project_id, Expense.payment_id == payment_id)) or 0) == 1
     finally:
         await engine.dispose()
 
@@ -75,7 +75,7 @@ async def test_concurrent_duplicate_approve_replays_and_recognizes_finance_once(
 async def test_concurrent_approve_reject_has_exactly_one_terminal_review_winner():
     engine = create_async_engine(_postgres_url())
     Session = async_sessionmaker(engine, expire_on_commit=False)
-    customer_id, reviewer_id, project_id, payment_id, evidence_id = await _seed(Session, "1002")
+    _, reviewer_id, project_id, payment_id, evidence_id = await _seed(Session, "1002")
 
     async def decide(decision: str, request_id: str):
         async with Session() as db:
@@ -100,7 +100,7 @@ async def test_concurrent_approve_reject_has_exactly_one_terminal_review_winner(
             assert evidence is not None and evidence.status in {"approved", "rejected"}
             assert payment is not None
             finance_events = int(await db.scalar(select(func.count()).select_from(PaymentEvent).where(PaymentEvent.payment_id == payment_id, PaymentEvent.evidence_type == "payment_evidence", PaymentEvent.new_status == PaymentStatus.confirmed.value)) or 0)
-            expenses = int(await db.scalar(select(func.count()).select_from(Expense).where(Expense.project_id == project_id, Expense.source_type == "payment", Expense.source_id == payment_id)) or 0)
+            expenses = int(await db.scalar(select(func.count()).select_from(Expense).where(Expense.project_id == project_id, Expense.payment_id == payment_id)) or 0)
             if evidence.status == "approved":
                 assert payment.status == PaymentStatus.confirmed
                 assert finance_events == expenses == 1
