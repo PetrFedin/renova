@@ -1,17 +1,34 @@
-/** W143: transfer_ack alone → paid_unverified (не budget fact) + financial truth guards */
+/** W143: paid_unverified stays non-financial until reviewed PaymentEvidence + mobile recovery truth */
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-const repo = join(__dirname, '../../..'); // apps/mobile/lib → renova
+const repo = join(__dirname, '../../..');
 const svc = readFileSync(join(repo, 'backend/app/services/payment_service.py'), 'utf8');
+const evidenceSvc = readFileSync(join(repo, 'backend/app/services/payment_evidence_service.py'), 'utf8');
 const sheet = readFileSync(join(__dirname, '../components/renova/PaymentDetailSheet.tsx'), 'utf8');
+const evidenceSheet = readFileSync(join(__dirname, '../components/renova/PaymentEvidenceSheet.tsx'), 'utf8');
+const paymentsApi = readFileSync(join(__dirname, 'api/payments.ts'), 'utf8');
 
 function must(c: boolean, m: string) { if (!c) throw new Error(m); }
 must(svc.includes('PaymentStatus.paid_unverified'), 'SM has paid_unverified');
 must(svc.includes('ack_without_receipt'), 'ack path logged');
 must(svc.includes('unverified_only'), 'unverified branch');
+must(svc.includes('reviewed_evidence_id'), 'reviewed evidence enters canonical confirmation');
 must(sheet.includes('paid_unverified'), 'sheet handles unverified');
 must(sheet.includes('Принято без проверки'), 'honesty alert');
+must(evidenceSvc.includes('latest_row.status != "rejected"'), 'resubmit allowed only after rejection');
+must(evidenceSvc.includes('version = int(latest or 0) + 1'), 'resubmit creates a new immutable version');
+
+must(evidenceSheet.includes("type: ['image/jpeg', 'image/png', 'application/pdf']"), 'evidence picker is bounded to JPEG/PNG/PDF');
+must(evidenceSheet.includes("title={latest?.status === 'rejected' ? 'Загрузить новую версию'"), 'rejected evidence exposes resubmit action');
+must(evidenceSheet.includes('row.rejection_reason'), 'rejection reason is visible');
+must(evidenceSheet.includes("row.status === 'submitted'"), 'submitted/pending-review truth is visible');
+must(evidenceSheet.includes('До одобрения подтверждения') && evidenceSheet.includes('не входит в подтверждённый расход'), 'pending evidence cannot render financial success');
+must(evidenceSheet.includes('intentRequestId') && evidenceSheet.includes('submitRequestId'), 'stable identities are retained for retry');
+must(evidenceSheet.includes('Файл и идентификаторы сохранены') && evidenceSheet.includes('повторите отправку, чтобы не создать дубликат'), 'ambiguous upload tells user to retry same identity');
+must(evidenceSheet.includes("reportError('payment.evidence.upload'"), 'upload failure is observable');
+must(paymentsApi.includes("reportError('payment.evidence.uploadResponse.parse'"), 'upload response parse failures are observable');
+must(!evidenceSheet.includes('Оплата подтверждена'), 'evidence sheet must not claim confirmation before server payment truth refresh');
 
 must(
   sheet.includes("reportError('payment.requisites.load'")
@@ -44,10 +61,7 @@ must(
 const confirmMutation = sheet.indexOf('confirmed = await api.confirmPayment');
 const confirmReconcile = sheet.indexOf("await reconcileCommittedPayment('confirm')", confirmMutation);
 const confirmPartial = sheet.indexOf("title: 'Оплата сохранена'", confirmReconcile);
-must(
-  confirmMutation >= 0 && confirmReconcile > confirmMutation && confirmPartial > confirmReconcile,
-  'confirmed payment mutation must be separated from post-commit reconciliation and partial-success UX',
-);
+must(confirmMutation >= 0 && confirmReconcile > confirmMutation && confirmPartial > confirmReconcile, 'confirmed payment mutation must be separated from post-commit reconciliation and partial-success UX');
 const disputeMutation = sheet.indexOf('await api.disputePayment');
 const disputeReconcile = sheet.indexOf("await reconcileCommittedPayment('dispute')", disputeMutation);
 must(disputeMutation >= 0 && disputeReconcile > disputeMutation, 'dispute mutation truth must precede reconciliation');
