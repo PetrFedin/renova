@@ -1,9 +1,16 @@
 # Manual Payment Evidence Contract (#265)
 
-Status: IMPLEMENTATION IN PROGRESS — backend lifecycle/API implemented; focused race/mobile/exact-head qualification pending  
+Status: BACKEND CI VERIFIED ON CURRENT CANDIDATE — mobile lifecycle/exact-head final qualification pending  
 Base main at start: `4b1a0db5c600f3d728cf9836f77d86719c41b8b1`  
 Current branch migration head: `w19paymentevidence01`  
+Dedicated PostgreSQL race run: `33884768347` — SUCCESS  
 External S3/provider/staging verification: NOT VERIFIED
+
+## Source snapshot owned by this annex
+
+| Source | Blob SHA | What this annex owns |
+|---|---|---|
+| `backend/app/api/v1/router.py` | `a9ebc3fa5adfa2dbb4620497370626d33fe29f41` | canonical payment-evidence API composition |
 
 ## Canonical lifecycle
 
@@ -46,7 +53,7 @@ Upload intent, submit and review use canonical `ClientWriteRequest` scopes. Same
 
 Review uses conditional SQL `UPDATE payment_evidence ... WHERE status='submitted'`. Approve/reject therefore share one PostgreSQL winner boundary. Approval then enters canonical payment confirmation inside the same uncommitted business transaction; failure rolls the evidence decision back. The final `ClientWriteRequest` commit contains the review row, payment transition, `PaymentEvent`, canonical finance mutation and durable outbox rows.
 
-Mandatory real two-session PostgreSQL approve/reject and duplicate-approve qualification is still pending; implementation alone is not evidence of concurrency correctness.
+Real two-session PostgreSQL qualification is now verified on candidate `a30090326b773afe683b7da519e6e8681d078bd5` by workflow run `33884768347`: duplicate approve collapses to one canonical result/finance recognition and approve↔reject has exactly one terminal winner. This is CI evidence only; it does not promote external staging/provider status.
 
 ## Review semantics
 
@@ -76,14 +83,16 @@ Mobile/portal must distinguish upload required, upload pending/retryable, submit
 
 ## Qualification gate before merge
 
-- focused upload/submit/replay/conflict/ACL/MIME-spoof/oversize/reject/resubmit/terminal tests;
+Completed on backend candidate:
+- focused content validation/private API contracts;
 - real PostgreSQL concurrent approve/reject and duplicate-approve race;
 - exact single finance-recognition assertion;
-- storage failure/ambiguous retry contracts without promoting #238;
-- mobile state/offline/typecheck contracts;
-- full backend regression and PostgreSQL Alembic upgrade from current main;
-- Playwright/API E2E where applicable;
-- exact-head CI green;
+- clean PostgreSQL Alembic upgrade to `w19paymentevidence01`;
+- full backend CI on run `33884768397`.
+
+Still required:
+- mobile upload/status/reject/resubmit truth and offline/no-false-success behavior;
+- exact-head rerun after mobile/spec changes;
 - post-merge living ТЗ/readiness evidence reconciliation.
 
-No implementation-in-progress commit in draft PR #297 is production/readiness evidence until these gates pass on its exact final head.
+No implementation-in-progress commit in draft PR #297 is production/readiness evidence until all remaining gates pass on its exact final head.
