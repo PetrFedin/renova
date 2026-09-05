@@ -84,6 +84,14 @@ async def get_evidence(db: AsyncSession, evidence_id: str) -> PaymentEvidence | 
     return await db.get(PaymentEvidence, evidence_id)
 
 
+async def lock_evidence(db: AsyncSession, evidence_id: str) -> PaymentEvidence | None:
+    """Lock one evidence row across storage write/read state transitions."""
+    result = await db.execute(
+        select(PaymentEvidence).where(PaymentEvidence.id == evidence_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
 async def list_payment_evidence(db: AsyncSession, *, project_id: str, payment_id: str) -> list[PaymentEvidence]:
     await _exact_payment(db, project_id=project_id, payment_id=payment_id)
     result = await db.execute(
@@ -100,14 +108,55 @@ async def prepare_upload_intent(
     client_request_id: str, original_filename: str, content_type: str,
 ) -> tuple[PaymentEvidence, bool]:
     await _assert_customer(db, project_id=project_id, user=user)
-    payment = await _exact_payment(db, project_id=project_id, payment_id=payment_id)
-    if payment.status in {PaymentStatus.confirmed, PaymentStatus.cancelled, PaymentStatus.disputed, PaymentStatus.refunded}:
-        raise PaymentEvidenceError("payment_terminal")
+    await _exact_payment(db, project_id=project_id, payment_id=payment_id)
     if content_type not in ALLOWED_DECLARED_TYPES:
         raise PaymentEvidenceError("unsupported_evidence_type")
     safe_name = _safe_filename(original_filename)
     payload = {"payment_id": payment_id, "original_filename": safe_name, "content_type": content_type}
-    replay_id = await replay_entity_id(db, scope=UPLOAD_INTENT_SCOPE, project_id=project_id, user_id=user.id, request_id=client_request_id, payload=payload)
+    replay_id = await replay_entity_id(
+        db,
+        scope=UPLOAD_INTENT_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
+    if replay_id:
+        existing = await db.get(PaymentEvidence, replay_id)
+        if not existing or existing.payment_id != payment_id:
+            raise PaymentEvidenceError("idempotency_target_missing")
+        return existing, True
+
+    # Version allocation and the active-evidence check share one payment-row
+    # lock. This removes max(version)+1 races between independent clients.
+    payment = (
+        await db.execute(
+            select(Payment).where(
+                Payment.id == payment_id,
+                Payment.project_id == project_id,
+            ).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not payment:
+        raise PaymentEvidenceError("payment_not_found")
+    if payment.status in {
+        PaymentStatus.confirmed,
+        PaymentStatus.cancelled,
+        PaymentStatus.disputed,
+        PaymentStatus.refunded,
+    }:
+        raise PaymentEvidenceError("payment_terminal")
+
+    # A same-key request may have committed while this transaction waited for
+    # the payment lock. Recheck after lock acquisition so the loser replays.
+    replay_id = await replay_entity_id(
+        db,
+        scope=UPLOAD_INTENT_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
     if replay_id:
         existing = await db.get(PaymentEvidence, replay_id)
         if not existing or existing.payment_id != payment_id:
@@ -116,16 +165,26 @@ async def prepare_upload_intent(
 
     latest_row = (
         await db.execute(
-            select(PaymentEvidence).where(PaymentEvidence.payment_id == payment_id).order_by(PaymentEvidence.version.desc()).limit(1)
+            select(PaymentEvidence)
+            .where(PaymentEvidence.payment_id == payment_id)
+            .order_by(PaymentEvidence.version.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
     if latest_row and latest_row.status != "rejected":
         raise PaymentEvidenceError("active_evidence_exists")
-    latest = await db.scalar(select(func.max(PaymentEvidence.version)).where(PaymentEvidence.payment_id == payment_id))
+    latest = await db.scalar(
+        select(func.max(PaymentEvidence.version)).where(PaymentEvidence.payment_id == payment_id)
+    )
     version = int(latest or 0) + 1
     evidence = PaymentEvidence(
-        project_id=project_id, payment_id=payment_id, version=version, status="upload_pending",
-        storage_key="pending", original_filename=safe_name, declared_content_type=content_type,
+        project_id=project_id,
+        payment_id=payment_id,
+        version=version,
+        status="upload_pending",
+        storage_key="pending",
+        original_filename=safe_name,
+        declared_content_type=content_type,
         submitted_by=user.id,
     )
     db.add(evidence)
@@ -134,8 +193,13 @@ async def prepare_upload_intent(
         f"payment-evidence/{project_id}/{payment_id}/{evidence.id}/v{version}.{_extension_for(content_type)}"
     )
     created, canonical_id = await commit_client_write(
-        db, scope=UPLOAD_INTENT_SCOPE, project_id=project_id, user_id=user.id,
-        request_id=client_request_id, payload=payload, entity_id=evidence.id,
+        db,
+        scope=UPLOAD_INTENT_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=client_request_id,
+        payload=payload,
+        entity_id=evidence.id,
     )
     if not created:
         canonical = await db.get(PaymentEvidence, canonical_id)
@@ -152,13 +216,20 @@ async def submit_uploaded_evidence(
 ) -> tuple[PaymentEvidence, bool]:
     await _assert_customer(db, project_id=project_id, user=user)
     payment = await _exact_payment(db, project_id=project_id, payment_id=payment_id)
-    evidence = await db.get(PaymentEvidence, evidence_id)
+    evidence = await lock_evidence(db, evidence_id)
     if not evidence or evidence.project_id != project_id or evidence.payment_id != payment_id:
         raise PaymentEvidenceError("evidence_not_found")
     if evidence.submitted_by != user.id:
         raise PaymentEvidenceError("evidence_owner_mismatch")
     payload = {"payment_id": payment_id, "evidence_id": evidence_id}
-    replay_id = await replay_entity_id(db, scope=SUBMIT_SCOPE, project_id=project_id, user_id=user.id, request_id=client_request_id, payload=payload)
+    replay_id = await replay_entity_id(
+        db,
+        scope=SUBMIT_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
     if replay_id:
         canonical = await db.get(PaymentEvidence, replay_id)
         if not canonical:
@@ -166,7 +237,12 @@ async def submit_uploaded_evidence(
         return canonical, True
     if evidence.status != "upload_pending":
         raise PaymentEvidenceError("evidence_not_upload_pending")
-    if payment.status in {PaymentStatus.confirmed, PaymentStatus.cancelled, PaymentStatus.disputed, PaymentStatus.refunded}:
+    if payment.status in {
+        PaymentStatus.confirmed,
+        PaymentStatus.cancelled,
+        PaymentStatus.disputed,
+        PaymentStatus.refunded,
+    }:
         raise PaymentEvidenceError("payment_terminal")
 
     data = await storage_service.read_bytes(evidence.storage_key)
@@ -182,15 +258,25 @@ async def submit_uploaded_evidence(
 
     if payment.status in {PaymentStatus.pending, PaymentStatus.processing}:
         from app.services import payment_service
+
         transitioned = await payment_service.confirm_payment(
-            db, payment.id, project_id=project_id, transfer_ack=True, commit=False,
+            db,
+            payment.id,
+            project_id=project_id,
+            transfer_ack=True,
+            commit=False,
         )
         if not transitioned or transitioned.status != PaymentStatus.paid_unverified:
             raise PaymentEvidenceError("payment_unverified_transition_failed")
 
     created, canonical_id = await commit_client_write(
-        db, scope=SUBMIT_SCOPE, project_id=project_id, user_id=user.id,
-        request_id=client_request_id, payload=payload, entity_id=evidence.id,
+        db,
+        scope=SUBMIT_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=client_request_id,
+        payload=payload,
+        entity_id=evidence.id,
     )
     if not created:
         canonical = await db.get(PaymentEvidence, canonical_id)
@@ -222,8 +308,20 @@ async def review_evidence(
     evidence = await db.get(PaymentEvidence, evidence_id)
     if not evidence or evidence.project_id != project_id or evidence.payment_id != payment_id:
         raise PaymentEvidenceError("evidence_not_found")
-    payload = {"payment_id": payment_id, "evidence_id": evidence_id, "decision": decision, "reason": clean_reason or None}
-    replay_id = await replay_entity_id(db, scope=REVIEW_SCOPE, project_id=project_id, user_id=reviewer_id, request_id=client_request_id, payload=payload)
+    payload = {
+        "payment_id": payment_id,
+        "evidence_id": evidence_id,
+        "decision": decision,
+        "reason": clean_reason or None,
+    }
+    replay_id = await replay_entity_id(
+        db,
+        scope=REVIEW_SCOPE,
+        project_id=project_id,
+        user_id=reviewer_id,
+        request_id=client_request_id,
+        payload=payload,
+    )
     if replay_id:
         canonical = await db.get(PaymentEvidence, replay_id)
         if not canonical:
@@ -237,12 +335,14 @@ async def review_evidence(
     target = "approved" if decision == "approve" else "rejected"
     reviewed_at = utc_now()
     result = await db.execute(
-        update(PaymentEvidence).where(
+        update(PaymentEvidence)
+        .where(
             PaymentEvidence.id == evidence_id,
             PaymentEvidence.project_id == project_id,
             PaymentEvidence.payment_id == payment_id,
             PaymentEvidence.status == "submitted",
-        ).values(
+        )
+        .values(
             status=target,
             reviewed_by=reviewer_id,
             reviewed_at=reviewed_at,
@@ -268,16 +368,26 @@ async def review_evidence(
 
     if decision == "approve":
         from app.services import payment_service
+
         confirmed = await payment_service.confirm_payment(
-            db, payment_id, project_id=project_id, reviewed_evidence_id=evidence_id, commit=False,
+            db,
+            payment_id,
+            project_id=project_id,
+            reviewed_evidence_id=evidence_id,
+            commit=False,
         )
         if not confirmed or confirmed.status != PaymentStatus.confirmed:
             await db.rollback()
             raise PaymentEvidenceError("payment_confirmation_failed")
 
     created, canonical_id = await commit_client_write(
-        db, scope=REVIEW_SCOPE, project_id=project_id, user_id=reviewer_id,
-        request_id=client_request_id, payload=payload, entity_id=evidence_id,
+        db,
+        scope=REVIEW_SCOPE,
+        project_id=project_id,
+        user_id=reviewer_id,
+        request_id=client_request_id,
+        payload=payload,
+        entity_id=evidence_id,
     )
     if not created:
         canonical = await db.get(PaymentEvidence, canonical_id)
