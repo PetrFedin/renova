@@ -227,7 +227,12 @@ async def on_material_delivered(
     *,
     commit: bool = True,
 ) -> list[str]:
-    """Разблокировать работы после доставки материала."""
+    """Разблокировать этап после доставки, не создавая ложный факт начала работ.
+
+    Доставка обновляет dependency truth и может вернуть этап как готовый к явному
+    запуску. Переход ``planned -> active`` и ``actual_start`` принадлежат только
+    canonical ``stage_mutation_service.start_stage`` со всеми ACL/contract/dependency gates.
+    """
     result = await db.execute(
         select(WorkDependency).where(
             WorkDependency.depends_on_material_pick_id == material_pick_id,
@@ -246,7 +251,6 @@ async def on_material_delivered(
                 persist_status=True,
             )
             if not evaluation["blocked"]:
-                stage.status = StageStatus.active
                 unlocked.append(stage.id)
     if commit:
         await db.commit()
