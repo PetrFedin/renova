@@ -99,7 +99,8 @@ export function PaymentEvidenceSheet({ visible, userId, projectId, payment, onCl
 
   if (!visible || !payment) return null;
   const latest = rows[0] ?? null;
-  const canUpload = payment.status === 'paid_unverified'
+  const paymentAllowsEvidence = payment.status === 'pending' || payment.status === 'paid_unverified';
+  const canUpload = paymentAllowsEvidence
     && (!latest || latest.status === 'rejected' || latest.status === 'upload_pending');
   const status = latest ? evidenceStatus(latest) : null;
 
@@ -251,7 +252,7 @@ export function PaymentEvidenceSheet({ visible, userId, projectId, payment, onCl
         <InfoBanner
           tone="info"
           title="Когда оплата считается подтверждённой"
-          message="До одобрения файла перевод остаётся «оплачено, не верифицировано» и не входит в подтверждённый расход."
+          message="После отправки файла перевод получает статус «оплачено, не верифицировано». В подтверждённый расход сумма войдёт только после проверки."
         />
         {loading ? <Text style={formMetaText.caption}>Проверяем актуальный статус…</Text> : null}
         {error ? <InfoBanner tone="warning" title="Нужна повторная попытка" message={error} /> : null}
