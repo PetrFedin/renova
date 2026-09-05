@@ -8,11 +8,20 @@ from app.db.session import get_db
 from app.models.entities import MaterialPick, MaterialPickStatus, Project, User, UserRole
 from app.services import activity_service as act
 from app.services import material_pick_service as pick_svc
+from app.services import material_supply_service as supply_svc
 from app.services import notification_service as notif
 
 router = APIRouter(prefix="/projects", tags=["materials"])
 MATERIAL_PICK_CREATE_SCOPE = "material_pick.create"
 MATERIAL_PICK_ANALOG_SCOPE = "material_pick.analog"
+
+_SUPPLY_LABELS = {
+    "customer_on_hand": "У заказчика",
+    "customer_to_buy": "Покупает заказчик",
+    "contractor_to_buy": "Покупает исполнитель",
+    "contractor_included": "Включено в работы",
+    "third_party": "Поставляет третья сторона",
+}
 
 
 class PickIn(BaseModel):
@@ -26,7 +35,14 @@ class PickIn(BaseModel):
     work_type: str | None = Field(default=None, max_length=64)
     analog_of_id: str | None = None
     notes: str | None = None
+    supply_source: str | None = Field(default=None, max_length=32)
+    qty_available: float | None = Field(default=None, ge=0)
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
+
+
+class SupplyIn(BaseModel):
+    supply_source: str = Field(min_length=1, max_length=32)
+    qty_available: float = Field(ge=0)
 
 
 class RejectPickIn(BaseModel):
@@ -34,24 +50,43 @@ class RejectPickIn(BaseModel):
 
 
 def _out(pick: MaterialPick) -> dict:
+    supply = supply_svc.snapshot(pick)
     return {
         "id": pick.id,
         "name": pick.name,
         "room_id": pick.room_id,
+        "stage_id": pick.stage_id,
         "qty": pick.qty,
+        "qty_needed": pick.qty_needed,
+        "qty_delivered": pick.qty_delivered,
+        "qty_available": supply.qty_available,
+        "qty_to_buy": supply.qty_to_buy,
+        "material_available": supply.is_available,
         "unit": pick.unit,
         "price": pick.price,
         "shop_url": pick.shop_url,
         "shop_name": pick.shop_name,
         "work_type": pick.work_type,
+        "category": pick.category,
         "status": pick.status.value,
+        "supply_source": supply_svc.supply_source(pick),
         "analog_of_id": pick.analog_of_id,
         "notes": pick.notes,
         "total": round(pick.qty * pick.price, 2),
     }
 
 
-def _payload(body: PickIn, *, analog_of_id: str | None = None) -> dict:
+def _payload(
+    body: PickIn,
+    *,
+    project: Project,
+    user: User,
+    analog_of_id: str | None = None,
+) -> dict:
+    source = body.supply_source or supply_svc.default_source_for_project(project, user)
+    available = body.qty_available
+    if available is None:
+        available = float(body.qty) if source == "customer_on_hand" else 0.0
     return {
         "name": body.name.strip(),
         "room_id": body.room_id,
@@ -63,6 +98,8 @@ def _payload(body: PickIn, *, analog_of_id: str | None = None) -> dict:
         "work_type": (body.work_type or "").strip() or None,
         "analog_of_id": analog_of_id if analog_of_id is not None else body.analog_of_id,
         "notes": (body.notes or "").strip() or None,
+        "supply_source": source,
+        "qty_available": float(available),
     }
 
 
@@ -75,9 +112,21 @@ def _transition_error(error: ValueError) -> HTTPException:
         "material_pick_not_editable": "Изменять можно только черновик материала",
         "material_pick_room_not_found": "Комната не найдена в этом проекте",
         "material_pick_analog_not_found": "Исходный материал не найден в этом проекте",
+        "material_supply_source_invalid": "Выберите корректный источник материала",
+        "material_qty_available_invalid": "Доступное количество не может быть отрицательным",
+        "material_qty_available_exceeds_required": "Доступное количество не может превышать требуемое",
+        "customer_on_hand_quantity_incomplete": "Для материала у заказчика укажите всё требуемое количество как доступное",
+    }
+    validation_codes = {
+        "material_pick_room_not_found",
+        "material_pick_analog_not_found",
+        "material_supply_source_invalid",
+        "material_qty_available_invalid",
+        "material_qty_available_exceeds_required",
+        "customer_on_hand_quantity_incomplete",
     }
     return HTTPException(
-        409 if code not in {"material_pick_room_not_found", "material_pick_analog_not_found"} else 422,
+        422 if code in validation_codes else 409,
         detail={"code": code, "message": messages.get(code, "Операция с материалом недоступна")},
     )
 
@@ -122,7 +171,7 @@ async def _deliver_transition(
 async def _create_pick(
     db: AsyncSession,
     *,
-    project_id: str,
+    project: Project,
     user: User,
     body: PickIn,
     scope: str,
@@ -140,7 +189,8 @@ async def _create_pick(
         clear_request_side_effect_context,
     )
 
-    payload = _payload(body, analog_of_id=analog_of_id)
+    project_id = project.id
+    payload = _payload(body, project=project, user=user, analog_of_id=analog_of_id)
     try:
         replay_id = await replay_entity_id(
             db,
@@ -249,16 +299,71 @@ async def create_pick(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     pick, replayed = await _create_pick(
         db,
-        project_id=project_id,
+        project=project,
         user=user,
         body=body,
         scope=MATERIAL_PICK_CREATE_SCOPE,
     )
     response = _out(pick)
     response["replayed"] = replayed
+    return response
+
+
+@router.patch("/{project_id}/material-picks/{pick_id}/supply")
+async def update_supply(
+    project_id: str,
+    pick_id: str,
+    body: SupplyIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await require_project(db, project_id, user, write=True)
+    try:
+        pick, change = await pick_svc.update_supply_truth(
+            db,
+            project_id=project_id,
+            pick_id=pick_id,
+            supply_source=body.supply_source,
+            qty_available=float(body.qty_available),
+        )
+    except ValueError as error:
+        raise _transition_error(error) from error
+    if not pick:
+        raise HTTPException(404)
+    if change:
+        old_label = _SUPPLY_LABELS.get(change.old_source, change.old_source)
+        new_label = _SUPPLY_LABELS.get(change.new_source, change.new_source)
+        reapproval = " · требуется повторное согласование" if change.requires_reapproval else ""
+        await act.log_event(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            kind="MaterialSupplyUpdated",
+            title=f"Источник материала: {pick.name}",
+            body=(
+                f"{old_label} → {new_label}; доступно "
+                f"{change.old_qty_available:g} → {change.new_qty_available:g}{reapproval}"
+            ),
+            room_id=pick.room_id,
+            work_type=pick.work_type,
+            link_path="/(customer)/(tabs)/repair?tab=materials",
+        )
+        if change.requires_reapproval and project.customer_id != user.id:
+            await notif.notify(
+                db,
+                user_id=project.customer_id,
+                project_id=project_id,
+                notification_type="approval",
+                title="Изменён источник материала",
+                body=f"Повторно согласуйте: {pick.name}",
+                link_path="/approvals",
+                return_to="/(customer)/(tabs)/home",
+            )
+    response = _out(pick)
+    response["replayed"] = change is None
     return response
 
 
@@ -362,13 +467,13 @@ async def add_analog(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     original = await pick_svc.get_pick(db, project_id=project_id, pick_id=pick_id)
     if not original:
         raise HTTPException(404)
     pick, replayed = await _create_pick(
         db,
-        project_id=project_id,
+        project=project,
         user=user,
         body=body,
         scope=MATERIAL_PICK_ANALOG_SCOPE,
