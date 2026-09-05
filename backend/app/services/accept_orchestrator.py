@@ -2,8 +2,9 @@
 Единый каскад приёмки этапа (W44).
 
 Все входы (mobile WA, portal, будущие) обязаны вызывать finalize_work_acceptance,
-чтобы side effects были одинаковыми: stage done → act → payment → next → events+notify.
+чтобы side effects были одинаковыми: stage done → act → payment → next-ready → events+notify.
 Schedule item status=accepted НЕ должен обходить этот путь (см. project_work_schedule_service).
+Следующий этап после приёмки остаётся planned: только canonical stage start может сделать его active.
 """
 from __future__ import annotations
 
@@ -84,7 +85,13 @@ async def ensure_stage_payment(
 
 
 async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
-    next_stage = (
+    """Return the next planned stage without starting it.
+
+    Historical name is retained for internal compatibility. Acceptance is not
+    execution authority; canonical stage start owns dependency, contract and
+    assignee validation.
+    """
+    return (
         await db.execute(
             select(Stage)
             .where(Stage.project_id == stage.project_id)
@@ -94,10 +101,6 @@ async def activate_next_stage(db: AsyncSession, stage: Stage) -> Stage | None:
             .limit(1)
         )
     ).scalar_one_or_none()
-    if next_stage:
-        next_stage.status = StageStatus.active
-        next_stage.actual_start = next_stage.actual_start or date.today()
-    return next_stage
 
 
 async def mark_acceptance_pin_on_plan(
@@ -143,16 +146,7 @@ async def mark_acceptance_pin_on_plan(
             pin.label = label
             updated = True
     if not updated:
-        # нет пина — создаём на первой комнате этапа
-        db.add(
-            FloorPlanPin(
-                floor_plan_id=plan.id,
-                room_id=room_ids[0],
-                x_pct=50.0,
-                y_pct=50.0,
-                label=label,
-            )
-        )
+        db.add(FloorPlanPin(floor_plan_id=plan.id, room_id=room_ids[0], x_pct=50.0, y_pct=50.0, label=label))
     await db.flush()
 
 
@@ -169,171 +163,57 @@ async def finalize_work_acceptance(
     checklist: list[str] | None = None,
     with_remarks: bool = False,
 ) -> AcceptResult:
-    """Мутации БД до commit. Не пишет events/notify — см. emit_acceptance_side_effects."""
     now = utc_now()
-    status = (
-        AcceptanceStatus.accepted_with_remarks.value
-        if (create_issue or with_remarks)
-        else AcceptanceStatus.accepted.value
-    )
-    # W68 #44: без фото результата приёмка блокируется (явный select — без lazy load в async)
+    status = AcceptanceStatus.accepted_with_remarks.value if (create_issue or with_remarks) else AcceptanceStatus.accepted.value
     from sqlalchemy import select as _select
     from app.models.entities import StagePhoto
-    photos = list(
-        (await db.execute(_select(StagePhoto).where(StagePhoto.stage_id == stage.id))).scalars().all()
-    )
+    photos = list((await db.execute(_select(StagePhoto).where(StagePhoto.stage_id == stage.id))).scalars().all())
     if not photos:
         raise ValueError("photos_required")
-
     from app.services.acceptance_policy import assert_accept_policy
-
     assert_accept_policy(stage, checklist=checklist, source="api")
-
     row.status = status
     row.accepted_by = accepted_by
     row.accepted_at = now
-    # W139: None = явно «без оценки» (не оставляем stale/heuristic score)
     row.quality_score = quality_score
     row.comment = comment or row.comment
     if checklist is not None:
         row.checklist_json = json.dumps(checklist)
-
     stage.status = StageStatus.done
     stage.customer_accepted_at = stage.customer_accepted_at or now
     stage.actual_end = stage.actual_end or date.today()
     stage.percent_complete = 100
     stage.needs_rework = False
-
     if create_issue:
-        db.add(
-            ProjectIssue(
-                project_id=project.id,
-                stage_id=stage.id,
-                title=f"Замечание после приёмки: {stage.name}",
-                description=comment,
-                severity="low",
-                status="open",
-                created_at=now,
-            )
-        )
-
+        db.add(ProjectIssue(project_id=project.id, stage_id=stage.id, title=f"Замечание после приёмки: {stage.name}", description=comment, severity="low", status="open", created_at=now))
     payment = await ensure_stage_payment(db, project, stage, accepted_by)
     next_stage = await activate_next_stage(db, stage)
-
     from app.services.project_document_service import ensure_acceptance_act_document
-
-    await ensure_acceptance_act_document(
-        db,
-        project_id=project.id,
-        stage_id=stage.id,
-        stage_name=stage.name,
-        acceptance_id=row.id,
-        accepted_by=accepted_by,
-    )
+    await ensure_acceptance_act_document(db, project_id=project.id, stage_id=stage.id, stage_name=stage.name, acceptance_id=row.id, accepted_by=accepted_by)
     await db.flush()
-    # W72: pin на плане в том же commit, что и приёмка
-    await mark_acceptance_pin_on_plan(
-        db,
-        project_id=project.id,
-        stage=stage,
-        acceptance_room_id=getattr(row, "room_id", None),
-    )
-    # P0: график отражает приёмку только после единого WA-каскада
+    await mark_acceptance_pin_on_plan(db, project_id=project.id, stage=stage, acceptance_room_id=getattr(row, "room_id", None))
     from app.services.project_work_schedule_service import mark_schedule_items_accepted_for_stage
-
     await mark_schedule_items_accepted_for_stage(db, project_id=project.id, stage_id=stage.id)
     return AcceptResult(acceptance=row, stage=stage, payment=payment, next_stage=next_stage)
 
 
-async def emit_acceptance_side_effects(
-    db: AsyncSession,
-    *,
-    project: Project,
-    stage: Stage,
-    accepted_by: str,
-    comment: str | None,
-    payment: Payment | None,
-    next_stage: Stage | None,
-    source: str = "app",
-) -> None:
-    """Events + notifications после commit строки приёмки. stage_id обязателен для automation."""
+async def emit_acceptance_side_effects(db: AsyncSession, *, project: Project, stage: Stage, accepted_by: str, comment: str | None, payment: Payment | None, next_stage: Stage | None, source: str = "app") -> None:
     title_suffix = " (портал)" if source == "portal" else ""
-    await act.log_event(
-        db,
-        project_id=project.id,
-        user_id=accepted_by,
-        kind="AcceptancePassed",
-        title=f"Этап принят{title_suffix}: {stage.name}",
-        body=comment,
-        link_path=f"/stage/{stage.id}",
-        stage_id=stage.id,
-    )
-    await act.log_event(
-        db,
-        project_id=project.id,
-        user_id=accepted_by,
-        kind="StageClosed",
-        title=f"Этап закрыт{title_suffix}: {stage.name}",
-        body=comment,
-        link_path=f"/stage/{stage.id}",
-        stage_id=stage.id,
-    )
-
+    await act.log_event(db, project_id=project.id, user_id=accepted_by, kind="AcceptancePassed", title=f"Этап принят{title_suffix}: {stage.name}", body=comment, link_path=f"/stage/{stage.id}", stage_id=stage.id)
+    await act.log_event(db, project_id=project.id, user_id=accepted_by, kind="StageClosed", title=f"Этап закрыт{title_suffix}: {stage.name}", body=comment, link_path=f"/stage/{stage.id}", stage_id=stage.id)
     for member_id in project_member_ids(project):
         if member_id == accepted_by:
             continue
-        await notif.notify(
-            db,
-            user_id=member_id,
-            project_id=project.id,
-            notification_type="stage_review",
-            title=f"Этап принят: {stage.name}",
-            body=comment or "Работы по этапу приняты заказчиком.",
-            link_path=f"/stage/{stage.id}",
-            return_to="/(customer)/(tabs)/home",
-        )
-
+        await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="stage_review", title=f"Этап принят: {stage.name}", body=comment or "Работы по этапу приняты заказчиком.", link_path=f"/stage/{stage.id}", return_to="/(customer)/(tabs)/home")
     if payment and project.customer_id:
-        await notif.notify(
-            db,
-            user_id=project.customer_id,
-            project_id=project.id,
-            notification_type="payment_pending",
-            title="Подтвердите оплату этапа",
-            body=stage.name,
-            link_path="/(customer)/(tabs)/budget?tab=payments",
-            return_to="/(customer)/(tabs)/home",
-        )
-
-    # W68 #46: авто-акт уже создан ensure_acceptance_act_document — пушим в Документы.
-    # In a customer-only project, the accepting customer already performed this action;
-    # do not notify the same person about their own act creation.
+        await notif.notify(db, user_id=project.customer_id, project_id=project.id, notification_type="payment_pending", title="Подтвердите оплату этапа", body=stage.name, link_path="/(customer)/(tabs)/budget?tab=payments", return_to="/(customer)/(tabs)/home")
     self_managed = is_self_managed_project(project)
     for member_id in project_member_ids(project):
         if self_managed and member_id == accepted_by:
             continue
-        await notif.notify(
-            db,
-            user_id=member_id,
-            project_id=project.id,
-            notification_type="document",
-            title=f"Акт приёмки готов: {stage.name}",
-            body="PDF сформирован автоматически после приёмки",
-            link_path="/documents",
-            return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home",
-        )
-
+        await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="document", title=f"Акт приёмки готов: {stage.name}", body="PDF сформирован автоматически после приёмки", link_path="/documents", return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home")
     if next_stage:
         for member_id in project_member_ids(project):
             if self_managed and member_id == accepted_by:
                 continue
-            await notif.notify(
-                db,
-                user_id=member_id,
-                project_id=project.id,
-                notification_type="stage_started",
-                title=f"Следующий этап: {next_stage.name}",
-                body="Этап автоматически переведён в работу после приёмки предыдущего.",
-                link_path=f"/stage/{next_stage.id}",
-                return_to="/(customer)/(tabs)/repair",
-            )
+            await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="stage_start", title=f"Следующий этап готов к запуску: {next_stage.name}", body="Предыдущий этап принят. Запустите следующий этап после проверки зависимостей и доступности исполнителя.", link_path=f"/stage/{next_stage.id}", return_to="/(customer)/(tabs)/repair")

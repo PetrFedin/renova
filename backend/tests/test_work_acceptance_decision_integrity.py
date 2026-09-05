@@ -271,7 +271,10 @@ async def test_accept_is_replay_safe_across_payment_document_and_next_stage(db):
     assert counts == {"payments": 1, "documents": 1, "parent_events": 1}
     assert await db.scalar(
         select(Stage.status).where(Stage.id == next_stage_id)
-    ) == StageStatus.active
+    ) == StageStatus.planned
+    assert await db.scalar(
+        select(Stage.actual_start).where(Stage.id == next_stage_id)
+    ) is None
 
     replay = await decisions.accept_work(
         db,
