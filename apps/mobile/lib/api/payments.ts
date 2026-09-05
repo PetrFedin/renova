@@ -1,5 +1,5 @@
 /** API: payments */
-import { req, ApiError, authHeaders } from './client';
+import { req, ApiError, authHeaders, API_BASE } from './client';
 import { OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
 import { reportError } from '@/lib/reportError';
 import type { Payment } from './types';
@@ -21,9 +21,25 @@ export type PaymentEvidence = {
   rejection_reason?: string | null;
   replayed?: boolean;
 };
-export type PaymentEvidenceUploadIntent = PaymentEvidence & { upload_url: string; upload_method: 'PUT'; upload_headers: Record<string, string>; external_presigned: boolean };
+export type PaymentEvidenceUploadIntent = PaymentEvidence & {
+  upload_url: string;
+  upload_method: 'PUT';
+  upload_headers: Record<string, string>;
+  external_presigned: boolean;
+};
 
-async function uploadPaymentEvidenceBytes(userId: string, intent: PaymentEvidenceUploadIntent, uri: string): Promise<void> {
+type PaymentEvidenceUploadTarget = Pick<PaymentEvidenceUploadIntent, 'id' | 'upload_url' | 'upload_headers' | 'external_presigned'>;
+
+function existingEvidenceUploadTarget(projectId: string, paymentId: string, evidence: PaymentEvidence): PaymentEvidenceUploadTarget {
+  return {
+    id: evidence.id,
+    upload_url: `${API_BASE}/api/v1/projects/${projectId}/payments/${paymentId}/evidence/${evidence.id}/content`,
+    upload_headers: { 'Content-Type': evidence.declared_content_type },
+    external_presigned: false,
+  };
+}
+
+async function uploadPaymentEvidenceBytes(userId: string, intent: PaymentEvidenceUploadTarget, uri: string): Promise<void> {
   const source = await fetch(uri);
   if (!source.ok) throw new ApiError(source.status, 'Не удалось прочитать выбранный файл.', 'evidence_source_unreadable');
   const blob = await source.blob();
@@ -65,6 +81,7 @@ export const paymentsApi = {
   listPaymentEvidence: (userId: string, projectId: string, paymentId: string) => req<PaymentEvidence[]>(`/api/v1/projects/${projectId}/payments/${paymentId}/evidence`, { cacheFallback: false }, userId),
   createPaymentEvidenceUploadIntent: (userId: string, projectId: string, paymentId: string, body: { client_request_id: string; original_filename: string; content_type: string }) => req<PaymentEvidenceUploadIntent>(`/api/v1/projects/${projectId}/payments/${paymentId}/evidence/upload-intent`, { method: 'POST', body: JSON.stringify(body) }, userId),
   uploadPaymentEvidenceBytes,
+  resumePaymentEvidenceUpload: (userId: string, projectId: string, paymentId: string, evidence: PaymentEvidence, uri: string) => uploadPaymentEvidenceBytes(userId, existingEvidenceUploadTarget(projectId, paymentId, evidence), uri),
   submitPaymentEvidence: (userId: string, projectId: string, paymentId: string, evidenceId: string, body: { client_request_id: string }) => req<PaymentEvidence>(`/api/v1/projects/${projectId}/payments/${paymentId}/evidence/${evidenceId}/submit`, { method: 'POST', body: JSON.stringify(body) }, userId),
   disputePayment: (userId: string, projectId: string, paymentId: string, body: { reason: string }) => req<{ payment: Payment; changed: boolean; replayed: boolean }>(`/api/v1/projects/${projectId}/payments/${paymentId}/dispute`, { method: 'POST', body: JSON.stringify(body) }, userId),
   resolvePaymentDispute: (userId: string, projectId: string, paymentId: string, body: { note: string }) => req<{ payment: Payment; changed: boolean; replayed: boolean }>(`/api/v1/projects/${projectId}/payments/${paymentId}/dispute/resolve`, { method: 'POST', body: JSON.stringify(body) }, userId),
