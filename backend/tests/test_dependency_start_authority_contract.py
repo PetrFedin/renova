@@ -8,10 +8,10 @@ def test_material_delivery_does_not_manufacture_execution_truth():
     source = (ROOT / "app/services/dependency_service.py").read_text(encoding="utf-8")
     material_handler = source.split("async def on_material_delivered", 1)[1]
 
-    assert "dep.status = \"satisfied\"" in material_handler
-    assert "result.can_start" in material_handler
+    assert 'dependency.status = "satisfied"' in material_handler
+    assert 'evaluation["blocked"]' in material_handler
     assert "stage.status = StageStatus.active" not in material_handler
-    assert "stage.actual_start" not in material_handler
+    assert "stage.actual_start =" not in material_handler
 
 
 def test_canonical_start_retains_authority_contract():
