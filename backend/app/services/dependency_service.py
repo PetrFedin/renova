@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.workflow_templates import WORKFLOW_TEMPLATES, resolve_work_type
-from app.models.entities import MaterialPick, MaterialPickStatus, Stage, StageStatus, WorkDependency
+from app.models.entities import MaterialPick, Stage, StageStatus, WorkDependency
+from app.services import material_supply_service
 
 
 def _uuid():
@@ -138,7 +139,7 @@ async def _is_satisfied(db: AsyncSession, dependency: WorkDependency) -> bool:
         return bool(predecessor and predecessor.status == StageStatus.done)
     if dependency.dependency_type == "material" and dependency.depends_on_material_pick_id:
         pick = await db.get(MaterialPick, dependency.depends_on_material_pick_id)
-        return bool(pick and pick.status == MaterialPickStatus.purchased)
+        return bool(pick and material_supply_service.snapshot(pick).is_available)
     return True
 
 
@@ -227,11 +228,11 @@ async def on_material_delivered(
     *,
     commit: bool = True,
 ) -> list[str]:
-    """Разблокировать этап после доставки, не создавая ложный факт начала работ.
+    """Recompute dependency truth after material availability changes.
 
-    Доставка обновляет dependency truth и может вернуть этап как готовый к явному
-    запуску. Переход ``planned -> active`` и ``actual_start`` принадлежат только
-    canonical ``stage_mutation_service.start_stage`` со всеми ACL/contract/dependency gates.
+    Supply/delivery may make a stage ready for an explicit canonical start, but
+    never creates execution truth. Partial delivery remains blocking until the
+    combined available + delivered quantity covers the required quantity.
     """
     result = await db.execute(
         select(WorkDependency).where(
@@ -241,7 +242,8 @@ async def on_material_delivered(
     )
     unlocked: list[str] = []
     for dependency in result.scalars().all():
-        dependency.status = "satisfied"
+        satisfied = await _is_satisfied(db, dependency)
+        dependency.status = "satisfied" if satisfied else "pending"
         stage = await db.get(Stage, dependency.stage_id)
         if stage and stage.status == StageStatus.planned:
             evaluation = await evaluate_stage(
