@@ -4,7 +4,8 @@ import uuid
 import pytest
 from sqlalchemy import func, select
 
-from app.models.entities import Expense, Payment, PaymentStatus, PaymentType, Project, User, UserRole
+from app.core.timeutil import utc_now
+from app.models.entities import Expense, Payment, PaymentStatus, PaymentType, Project, Stage, User, UserRole
 from app.services import payment_evidence_service as evidence_service
 from app.services.client_write_idempotency import IdempotencyConflict
 from app.services.payment_evidence_service import PaymentEvidenceError, validate_evidence_bytes
@@ -233,6 +234,76 @@ async def test_submit_failure_retry_acl_and_paid_unverified_non_financial(db, mo
     assert replayed is True
     assert same.id == evidence.id
     assert same.status == "submitted"
+
+
+@pytest.mark.asyncio
+async def test_stage_payment_evidence_cannot_bypass_customer_acceptance(db, monkeypatch):
+    customer, _outsider, _reviewer, project, payment = await _seed_payment(db)
+    stage = Stage(
+        id=_id(),
+        project_id=project.id,
+        name="Этап без приёмки",
+        sort_order=1,
+    )
+    db.add(stage)
+    await db.flush()
+    payment.payment_type = PaymentType.stage
+    payment.stage_id = stage.id
+    await db.commit()
+
+    customer_id = customer.id
+    project_id = project.id
+    payment_id = payment.id
+    stage_id = stage.id
+    evidence, _ = await evidence_service.prepare_upload_intent(
+        db,
+        project_id=project_id,
+        payment_id=payment_id,
+        user=customer,
+        client_request_id="payment-evidence-stage-intent-0001",
+        original_filename="stage-proof.pdf",
+        content_type="application/pdf",
+    )
+    evidence_id = evidence.id
+
+    async def read_bytes(_key: str):
+        return b"%PDF-1.7\n" + b"x" * 64
+
+    monkeypatch.setattr(evidence_service.storage_service, "read_bytes", read_bytes)
+    with pytest.raises(PaymentEvidenceError, match="payment_unverified_transition_failed"):
+        await evidence_service.submit_uploaded_evidence(
+            db,
+            project_id=project_id,
+            payment_id=payment_id,
+            evidence_id=evidence_id,
+            user=customer,
+            client_request_id="payment-evidence-stage-submit-blocked-0001",
+        )
+    await db.rollback()
+
+    persisted_evidence = await evidence_service.get_evidence(db, evidence_id)
+    persisted_payment = await db.get(Payment, payment_id)
+    assert persisted_evidence is not None and persisted_evidence.status == "upload_pending"
+    assert persisted_payment is not None and persisted_payment.status == PaymentStatus.pending
+
+    accepted_stage = await db.get(Stage, stage_id)
+    accepted_customer = await db.get(User, customer_id)
+    assert accepted_stage is not None and accepted_customer is not None
+    accepted_stage.customer_accepted_at = utc_now()
+    await db.commit()
+
+    submitted, replayed = await evidence_service.submit_uploaded_evidence(
+        db,
+        project_id=project_id,
+        payment_id=payment_id,
+        evidence_id=evidence_id,
+        user=accepted_customer,
+        client_request_id="payment-evidence-stage-submit-accepted-0001",
+    )
+    assert replayed is False
+    assert submitted.status == "submitted"
+    persisted_payment = await db.get(Payment, payment_id)
+    assert persisted_payment is not None and persisted_payment.status == PaymentStatus.paid_unverified
 
 
 @pytest.mark.asyncio
