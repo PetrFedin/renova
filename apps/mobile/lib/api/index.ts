@@ -55,6 +55,7 @@ export const api = {
 
 export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, API_BASE } from './client';
 export * from './types';
+export type { PaymentEvidence, PaymentEvidenceStatus, PaymentEvidenceUploadIntent } from './payments';
 export type { SelectionItem } from './selections';
 export type {
   TechnicalQualityIssueInput,

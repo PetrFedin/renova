@@ -4,7 +4,7 @@
 **Язык:** русский  
 **Дата базовой ревизии:** 2026-08-28  
 **Ветка базовой проверки:** `fix/canonical-local-runtime-agents`  
-**Текущий schema head в этой редакции:** `w18nativeenumparity01`  
+**Текущий schema head в этой редакции:** `w19paymentevidence01`  
 **Текущий verification status:** `PENDING REVERIFY`  
 **Назначение:** единый технический паспорт продукта, архитектуры, данных, экранов, процессов, интерфейсов, расчётов, runtime, тестов, evidence, известных разрывов и плана развития Renova.
 
@@ -95,6 +95,7 @@ Blob SHA — traceability anchor. При изменении tracked source до�
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | legacy VARCHAR status → native enum repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | chat message PG enum → current ORM labels |
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | remaining Notification/JobLead/Payment native-enum parity |
+| `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | versioned private manual-payment evidence schema |
 | `docs/technical-spec/CHANGELOG-ROADMAP.md` | `82ba22fff35793551a6a838f139293ad3c5bbbba` | governed change history and prioritized roadmap |
 
 ---
@@ -151,7 +152,7 @@ Canonical route replacement удаляет старые shadow handlers чере
 
 **VERIFIED:** SQLAlchemy ORM + линейный Alembic graph. PostgreSQL — authoritative durable store для staging/production. SQLite не доказывает production native-enum, locking, constraints или concurrency semantics.
 
-Current revision: **`w18nativeenumparity01`**.
+Current revision: **`w19paymentevidence01`**.
 
 ## 2.5. Readiness truth
 
@@ -282,7 +283,7 @@ User
  │   ├─ EstimateLines / BudgetLines
  │   ├─ MaterialPicks → Purchases → PurchaseItems
  │   ├─ SelectionItems
- │   ├─ Expenses / Payments / Receipts / ChangeOrders
+ │   ├─ Expenses / Payments → PaymentEvidence / Receipts / ChangeOrders
  │   ├─ WorkAcceptances / Issues / Rework
  │   ├─ ChatThreads → ChatMessages / participants / reads
  │   ├─ Documents → OCR / e-sign / lifecycle
@@ -299,6 +300,7 @@ User
 - **Purchase** — procurement/acquisition event;
 - **Expense** — признанный расход;
 - **Payment** — движение денег/payment state;
+- **PaymentEvidence** — приватное версионированное доказательство ручного банковского перевода, не самостоятельный Expense;
 - **Receipt** — evidence/первичный документ, не автоматически второй Expense;
 - **Refund** — обратное движение денег/economic correction;
 - **Change Order** — согласованное изменение scope/budget.
@@ -449,6 +451,18 @@ job_leads.status          → jobleadstatus
 payments.status           → paymentstatus
 ```
 
+## 4.7. Manual payment evidence — `w19paymentevidence01`
+
+`payment_evidence` — единственная authoritative metadata-таблица подтверждений ручного банковского перевода. Версия привязана ровно к одному `Payment` и `Project`; `(payment_id, version)` и `storage_key` уникальны.
+
+Canonical lifecycle:
+
+```text
+upload_pending → submitted → approved | rejected
+```
+
+Сохраняются declared/verified MIME, размер, SHA-256, submitter/reviewer, timestamps и rejection reason. Rejected версия остаётся историей; новая версия создаётся как N+1. Финансовое признание не принадлежит этой таблице: только канонический `Payment → Expense` transition после одобрения имеет право создавать подтверждённый расход.
+
 ---
 
 # 5. Transaction, idempotency, outbox и provider boundary
@@ -559,6 +573,7 @@ Chat message storage enum parity принадлежит #286/schema truth. Chat 
 - payment disputes;
 - payment history;
 - payment checkout integrity;
+- private manual payment evidence upload/submit/list/read/admin review;
 - payments;
 - estimate;
 - change orders;
@@ -903,11 +918,14 @@ UI: `Ремонт → Подбор`; pending badge может поднимать
 ```text
 business obligation
 → Payment record/state
-→ checkout/provider or documented manual flow
+→ provider checkout OR manual bank transfer
+→ for manual transfer: private PaymentEvidence upload → submitted → admin review
 → pending/processing/paid_unverified/confirmed/...
 → provider/bank reconciliation
 → financial recognition rules
 ```
+
+`paid_unverified` и `PaymentEvidence.submitted` не являются подтверждённым расходом. Одобрение evidence использует канонический payment transition и только он может создать payment-linked `Expense`. Для stage payment сохраняется acceptance gate: evidence не имеет права обойти `customer_accepted_at`.
 
 State transition разрешения задаются explicit business rules, не ordinal order PostgreSQL enum.
 
@@ -1025,6 +1043,8 @@ Fail-closed boundaries:
 - provider callbacks;
 - account deletion/anonymization/purge.
 
+Manual bank-transfer evidence имеет более узкий read ACL, чем generic project read: exact project customer либо authorized admin reviewer. Team/viewer/guest/technical-supervision access сам по себе не раскрывает банковский файл.
+
 Secrets/tokens/payment credentials/sensitive document contents не логируются plaintext.
 
 Local runtime дополнительно запрещает remote Docker и staging/production credentials.
@@ -1114,9 +1134,9 @@ Generic parity verifier нельзя ослаблять ради green CI.
 
 Это evidence стало основанием `w18nativeenumparity01`.
 
-### Current candidate после w18
+### Current candidate после w19
 
-**PENDING REVERIFY.** Final verdict строится только по exact final SHA после синхронизации ТЗ/drift gates и полного CI.
+**PENDING REVERIFY.** Final verdict строится только по exact final SHA после синхронизации payment-evidence lifecycle, ТЗ/drift gates, PostgreSQL race proof, mobile contracts и полного CI.
 
 ---
 
@@ -1178,9 +1198,10 @@ Branch protection/ruleset, реальные provider credentials, production bac
 | engineering policy | `AGENTS.md` | source contract/PR review |
 | local runtime | `scripts/dev-runtime.sh`, Compose, env local | local-runtime CI |
 | startup/seed lifecycle | `main.py`, `app.dev_seed`, `seed_demo.py` | source contract + double-seed local CI |
-| DB schema/head | Alembic | clean PostgreSQL lifecycle |
-| ORM tables/columns/enums | `entities.py` | generic ORM/native-enum parity |
+| DB schema/head | Alembic through `w19paymentevidence01` | clean PostgreSQL lifecycle |
+| ORM tables/columns/enums | `entities.py` + split model modules | generic ORM/native-enum parity |
 | migration-owned enum contract | w16/w17/w18 + current verifier | reflected current-schema verifier |
+| manual payment evidence | `payment_evidence.py`, service/API, w19 | focused lifecycle + PostgreSQL race + mobile contracts |
 | API composition | `api/v1/router.py` | API tests/OpenAPI/E2E |
 | mobile IA | `routeRegistry.ts` | route/mobile contracts |
 | role shell | shared Os screens + wrappers | mobile contracts/E2E |
@@ -1247,3 +1268,11 @@ Branch protection/ruleset, реальные provider credentials, production bac
 - current verifier расширен до семи migration-owned enum invariants;
 - master schema head повышен до `w18nativeenumparity01`;
 - статус оставлен **PENDING REVERIFY** до exact-head lifecycle + local runtime + spec gates.
+
+## 2026-09-05 — v4
+
+- master schema head повышен до `w19paymentevidence01`;
+- зафиксирована отдельная `PaymentEvidence` truth для ручных банковских переводов без второго финансового источника истины;
+- записаны versioning, private upload, narrow read ACL, SHA-256/immutability, stage-acceptance и canonical Payment→Expense boundaries;
+- UX payment evidence закреплён за shared `SheetSurface`, `PrimaryButton`, `InfoBanner` и `RenovaTheme` в параллельном #305 governance;
+- статус оставлен **PENDING REVERIFY** до зелёного exact-head #297; external provider/storage reconciliation остаётся #238.

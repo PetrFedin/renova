@@ -6,6 +6,7 @@ import { filterChipStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { CreatePaymentForm } from '@/components/renova/CreatePaymentForm';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
+import { PaymentEvidenceSheet } from '@/components/renova/PaymentEvidenceSheet';
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 import type { Payment, ProjectDetail } from '@/lib/api';
 import type { PaymentFilter } from '@/lib/hooks/useOsBudgetScreen';
@@ -15,7 +16,7 @@ import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScree
 const PAYMENT_FILTERS: { id: PaymentFilter; label: string }[] = [
   { id: 'all', label: 'Все' },
   { id: 'pending', label: 'Ожидают' },
-  { id: 'paid_unverified', label: 'Без чека' },
+  { id: 'paid_unverified', label: 'На проверке' },
   { id: 'confirmed', label: 'Оплачено' },
 ];
 
@@ -34,7 +35,7 @@ type Props = {
 
 function emptyLabel(filter: PaymentFilter): string {
   if (filter === 'pending') return 'Нет счетов, ожидающих оплаты.';
-  if (filter === 'paid_unverified') return 'Нет оплат, для которых требуется чек.';
+  if (filter === 'paid_unverified') return 'Нет ручных переводов, ожидающих проверки.';
   if (filter === 'confirmed') return 'Подтверждённых оплат пока нет.';
   return 'Счетов пока нет.';
 }
@@ -46,10 +47,20 @@ function formatConfirmedDate(value: string | null): string | null {
 }
 
 export function BudgetPaymentsSection({
-  role, userId, project, readOnly, canWrite, payFilter, setPayFilter, filteredPayments, onPaymentPress, onSaved,
+  role,
+  userId,
+  project,
+  readOnly,
+  canWrite,
+  payFilter,
+  setPayFilter,
+  filteredPayments,
+  onPaymentPress,
+  onSaved,
 }: Props) {
   const [bankOpen, setBankOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [evidencePayment, setEvidencePayment] = useState<Payment | null>(null);
   const canOperate = canWrite && !readOnly;
   const canCreate = role === 'contractor' && canOperate;
 
@@ -61,7 +72,8 @@ export function BudgetPaymentsSection({
   return (
     <>
       <Text style={s.dataHint}>
-        Счета — оплата работ или материалов исполнителю. Чеки и прочие траты учитываются во вкладке «Расходы».
+        Счета — оплата работ или материалов исполнителю. После ручного перевода
+        приложите подтверждение: в подтверждённый расход сумма попадёт только после проверки.
       </Text>
 
       {canOperate ? (
@@ -100,20 +112,30 @@ export function BudgetPaymentsSection({
               accessibilityRole="button"
               accessibilityLabel={`Фильтр оплат: ${filter.label}`}
               accessibilityState={{ selected }}
-              style={[filterChipStyles.chip, { minHeight: RenovaTheme.minTouch, justifyContent: 'center' }, selected && filterChipStyles.chipOn]}
+              style={[
+                filterChipStyles.chip,
+                { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
+                selected && filterChipStyles.chipOn,
+              ]}
               onPress={() => setPayFilter(filter.id)}
             >
-              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>{filter.label}</Text>
+              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>
+                {filter.label}
+              </Text>
             </Pressable>
           );
         })}
       </View>
 
       {!filteredPayments.length ? (
-        <View style={{ paddingVertical: 16 }}>
+        <View style={{ paddingVertical: RenovaTheme.spacing.lg }}>
           <Text style={s.empty}>{emptyLabel(payFilter)}</Text>
           {payFilter !== 'all' ? (
-            <PrimaryButton title="Показать все счета" variant="ghost" onPress={() => setPayFilter('all')} />
+            <PrimaryButton
+              title="Показать все счета"
+              variant="ghost"
+              onPress={() => setPayFilter('all')}
+            />
           ) : null}
         </View>
       ) : null}
@@ -125,27 +147,58 @@ export function BudgetPaymentsSection({
           : payment.status === 'confirmed'
             ? RenovaTheme.colors.success
             : RenovaTheme.colors.textMuted;
+        const stage = payment.stage_id
+          ? (project.stages || []).find((candidate) => candidate.id === payment.stage_id)
+          : null;
+        const stageAllowsPaymentEvidence = payment.payment_type !== 'stage'
+          || Boolean(stage?.customer_accepted_at);
+        const canAttachEvidence = role === 'customer'
+          && canOperate
+          && stageAllowsPaymentEvidence
+          && (payment.status === 'pending' || payment.status === 'paid_unverified');
+        const evidenceTitle = payment.status === 'pending'
+          ? 'Я перевёл — приложить подтверждение'
+          : 'Подтверждение перевода';
+
         return (
-          <Pressable
-            key={payment.id}
-            style={s.row}
-            accessibilityRole="button"
-            accessibilityLabel={`Открыть счёт ${payment.title}, ${formatRub(payment.amount)}`}
-            onPress={() => onPaymentPress(payment)}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>{payment.title}</Text>
-              <Text style={s.rowMeta}>
-                {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
-                {confirmedDate ? ` · ${confirmedDate}` : ''}
+          <View key={payment.id}>
+            <Pressable
+              style={s.row}
+              accessibilityRole="button"
+              accessibilityLabel={`Открыть счёт ${payment.title}, ${formatRub(payment.amount)}`}
+              onPress={() => onPaymentPress(payment)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>{payment.title}</Text>
+                <Text style={s.rowMeta}>
+                  {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
+                  {confirmedDate ? ` · ${confirmedDate}` : ''}
+                </Text>
+              </View>
+              <Text style={[s.status, { color: statusColor }]}>
+                {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
               </Text>
-            </View>
-            <Text style={[s.status, { color: statusColor }]}>
-              {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
-            </Text>
-          </Pressable>
+            </Pressable>
+            {canAttachEvidence ? (
+              <PrimaryButton
+                title={evidenceTitle}
+                variant="outline"
+                onPress={() => setEvidencePayment(payment)}
+                fullWidth
+              />
+            ) : null}
+          </View>
         );
       })}
+
+      <PaymentEvidenceSheet
+        visible={Boolean(evidencePayment)}
+        userId={userId}
+        projectId={project.id}
+        payment={evidencePayment}
+        onClose={() => setEvidencePayment(null)}
+        onChanged={onSaved}
+      />
 
       <BankStatementImportSheet
         visible={bankOpen}

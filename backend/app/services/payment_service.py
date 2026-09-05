@@ -183,35 +183,36 @@ async def confirm_payment(
     transfer_ack: bool = False,
     allow_without_settlement: bool = False,
     machine_source: str = "webhook",
+    reviewed_evidence_id: str | None = None,
     commit: bool = True,
 ) -> Payment | None:
     """Move a payment once; retries of an achieved state return the same row.
 
-    `machine_source` is evidence provenance, not authorization. It is used only
-    for provider-settled transitions and is deliberately constrained so a GET
-    reconciliation can never be recorded as a webhook delivery.
+    ``reviewed_evidence_id`` is the only manual-evidence path that may promote
+    ``paid_unverified`` to ``confirmed`` without a Receipt. Authorization and
+    evidence review state are enforced by the payment-evidence service before
+    entering this canonical financial boundary.
     """
     if allow_without_settlement and machine_source not in {"webhook", "reconciliation"}:
         raise ValueError("unsupported_machine_payment_source")
+    if reviewed_evidence_id and allow_without_settlement:
+        raise ValueError("mixed_payment_evidence_sources")
 
     payment = await db.get(Payment, payment_id)
     if not payment or (project_id is not None and payment.project_id != project_id):
         return None
 
     receipt_id = None
-    if not allow_without_settlement:
+    if not allow_without_settlement and not reviewed_evidence_id:
         receipt_id = await receipt_id_for_payment(db, payment.id)
 
     unverified_only = (
         not allow_without_settlement
+        and not reviewed_evidence_id
         and not receipt_id
         and bool(transfer_ack)
     )
-    target_status = (
-        PaymentStatus.paid_unverified
-        if unverified_only
-        else PaymentStatus.confirmed
-    )
+    target_status = PaymentStatus.paid_unverified if unverified_only else PaymentStatus.confirmed
 
     if _transition_replay(payment, target_status):
         suppress_payment_transition_side_effects()
@@ -230,7 +231,9 @@ async def confirm_payment(
         if not stage or stage.project_id != payment.project_id or not stage.customer_accepted_at:
             return None
 
-    if not allow_without_settlement and not (receipt_id or transfer_ack):
+    if not allow_without_settlement and not (receipt_id or transfer_ack or reviewed_evidence_id):
+        return None
+    if reviewed_evidence_id and payment.status != PaymentStatus.paid_unverified:
         return None
 
     allowed_from = (
@@ -277,6 +280,7 @@ async def confirm_payment(
                 transfer_ack=transfer_ack,
                 allow_without_settlement=allow_without_settlement,
                 machine_source=machine_source,
+                reviewed_evidence_id=reviewed_evidence_id,
                 commit=commit,
             )
         return None
@@ -284,6 +288,13 @@ async def confirm_payment(
     await db.refresh(payment)
     if target_status == PaymentStatus.paid_unverified:
         evidence_type, evidence_ref, source, note = "transfer_ack", None, "manual", "ack_without_receipt"
+    elif reviewed_evidence_id:
+        evidence_type, evidence_ref, source, note = (
+            "payment_evidence",
+            reviewed_evidence_id,
+            "manual_review",
+            "approved_payment_evidence",
+        )
     elif allow_without_settlement:
         evidence_type, evidence_ref, source, note = (
             "yookassa",

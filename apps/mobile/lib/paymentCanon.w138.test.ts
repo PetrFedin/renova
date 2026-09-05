@@ -95,7 +95,10 @@ must(offenders.length === 0, 'confirmPayment only in sheet: ' + offenders.join('
 must(!/has_yk|yookassa_payment_id.*transfer_ack|receipt_id or has_yk/.test(
   svc.slice(svc.indexOf('allow_without_settlement'), svc.indexOf('allow_without_settlement') + 500),
 ), 'manual confirm must not treat yookassa_id as proof');
-must(svc.includes('if not allow_without_settlement') && svc.includes('not (receipt_id or transfer_ack)'), 'manual proof = receipt or ack');
+must(
+  svc.includes('not (receipt_id or transfer_ack or reviewed_evidence_id)') && svc.includes('reviewed_evidence_id'),
+  'manual proof = receipt, transfer ack, or reviewed evidence',
+);
 must(svc.includes('update(Payment)') && svc.includes('Payment.status.in_(allowed_from)'), 'payment transition has one conditional DB winner');
 must(svc.includes('suppress_payment_transition_side_effects'), 'replayed transition suppresses duplicate effects');
 must(svc.includes('refresh_budget_facts'), 'confirmed transition recalculates canonical budget fact');

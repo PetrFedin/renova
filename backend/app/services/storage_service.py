@@ -178,6 +178,24 @@ async def _write_local(key: str, data: bytes) -> None:
     await asyncio.to_thread(_write_local_sync, _local_path(key), data)
 
 
+async def write_bytes_at_key(
+    key: str,
+    data: bytes,
+    *,
+    content_type: str = "application/octet-stream",
+) -> str:
+    """Write private bytes to an already-authorized deterministic storage key."""
+    normalized = normalize_storage_key(key)
+    if not isinstance(data, bytes) or not data:
+        raise ValueError("empty_file_payload")
+    client = _s3_client()
+    if client is not None:
+        await _put_s3(client, key=normalized, data=data, content_type=content_type)
+    else:
+        await _write_local(normalized, data)
+    return normalized
+
+
 async def save_image(base64_or_data_url: str, *, folder: str = "photos") -> tuple[str, str]:
     data, extension, content_type = _decode_image(base64_or_data_url)
     safe_folder = normalize_storage_key(folder)
