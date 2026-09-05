@@ -1,8 +1,13 @@
 /**
  * P2.4 / W50: один «следующий шаг» снабжения — без гадания по вкладкам.
  */
-import type { MaterialSupplySource } from '@/lib/api';
-import { needsAvailabilityUpdate, quantityToBuy, roleOwnsPurchase, type ProcurementRole } from './materialSupply';
+import {
+  needsAvailabilityUpdate,
+  quantityToBuy,
+  roleOwnsPurchase,
+  type MaterialSupplyTruth,
+  type ProcurementRole,
+} from './materialSupply';
 
 export type ProcurementNextAction = {
   id: 'generate' | 'approve_picks' | 'create_purchase' | 'confirm_supply' | 'advance_purchase' | 'scan_receipt' | 'done';
@@ -11,16 +16,7 @@ export type ProcurementNextAction = {
   cta: string;
 };
 
-type PickLike = {
-  id: string;
-  status: string;
-  qty?: number;
-  qty_needed?: number | null;
-  qty_available?: number;
-  qty_delivered?: number;
-  qty_to_buy?: number;
-  supply_source?: MaterialSupplySource;
-};
+type PickLike = MaterialSupplyTruth & { id: string; status: string };
 type PurchaseLike = { id: string; status: string; items: { material_pick_id?: string | null }[] };
 type ReceiptLike = { verified?: boolean };
 
@@ -45,7 +41,7 @@ export function readyPickIds(
   return picks
     .filter((p) => p.status === 'approved')
     .filter((p) => roleOwnsPurchase(p.supply_source, role))
-    .filter((p) => quantityToBuy(p as Parameters<typeof quantityToBuy>[0]) > 0)
+    .filter((p) => quantityToBuy(p) > 0)
     .filter((p) => !inPurchase.has(p.id))
     .map((p) => p.id);
 }
@@ -82,7 +78,7 @@ export function procurementNextAction(
       cta: 'Создать закупку',
     };
   }
-  const missingExternal = picks.filter((p) => needsAvailabilityUpdate(p as never)).length;
+  const missingExternal = picks.filter((p) => needsAvailabilityUpdate(p)).length;
   if (missingExternal > 0) {
     return {
       id: 'confirm_supply',
