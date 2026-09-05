@@ -35,14 +35,31 @@ def test_payment_evidence_review_reuses_canonical_finance_boundary():
     assert 'evidence_type, evidence_ref, source, note = (\n            "payment_evidence"' in payment_source
 
 
-def test_payment_evidence_api_is_private_and_admin_reviewed():
+def test_payment_evidence_api_is_private_admin_reviewed_and_immutable_after_submit():
     api_source = (ROOT / "app/api/v1/payment_evidence.py").read_text()
+    service_source = (ROOT / "app/services/payment_evidence_service.py").read_text()
     router_source = (ROOT / "app/api/v1/router.py").read_text()
 
     assert "require_admin_user" in api_source
     assert "payment-evidence" in api_source
-    assert "storage_service.presigned_put" in api_source
+    assert "storage_service.presigned_put" not in api_source
+    assert '"external_presigned": False' in api_source
+    assert "evidence_svc.lock_evidence" in api_source
+    assert "await lock_evidence(db, evidence_id)" in service_source
+    assert ".with_for_update()" in service_source
     assert "storage_service.presigned_url" in api_source
     assert "storage_service.read_bytes" in api_source
     assert "payment_evidence.router" in router_source
     assert "photos/" not in api_source
+
+
+def test_payment_evidence_version_allocation_is_serialized_on_payment_truth():
+    service_source = (ROOT / "app/services/payment_evidence_service.py").read_text()
+
+    lock_marker = "select(Payment).where("
+    version_marker = "version = int(latest or 0) + 1"
+    replay_markers = service_source.count("scope=UPLOAD_INTENT_SCOPE")
+    assert lock_marker in service_source
+    assert version_marker in service_source
+    assert service_source.index(lock_marker) < service_source.index(version_marker)
+    assert replay_markers >= 2, "same-key requests must be rechecked after waiting on the parent-row lock"
