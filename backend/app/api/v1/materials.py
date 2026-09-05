@@ -24,6 +24,20 @@ _SUPPLY_LABELS = {
 }
 
 
+def _require_supply_principal(project: Project, user: User) -> None:
+    principal_ids = {project.customer_id}
+    if project.contractor_id:
+        principal_ids.add(project.contractor_id)
+    if user.id not in principal_ids:
+        raise HTTPException(
+            403,
+            detail={
+                "code": "material_supply_actor_forbidden",
+                "message": "Источник и ответственность материала может менять только заказчик или исполнитель проекта",
+            },
+        )
+
+
 class PickIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     room_id: str | None = None
@@ -321,6 +335,7 @@ async def update_supply(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=True)
+    _require_supply_principal(project, user)
     try:
         pick, change = await pick_svc.update_supply_truth(
             db,
