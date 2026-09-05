@@ -17,6 +17,7 @@ from app.models.entities import (
     PurchaseStatus,
     Room,
 )
+from app.services import material_supply_service
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
 
 MaterialPickAction = Literal["submit", "approve", "reject"]
@@ -40,6 +41,15 @@ class MaterialPickEvent:
     notification_title: str | None
     notification_body: str | None
     notification_link: str | None
+
+
+@dataclass(frozen=True)
+class MaterialSupplyChange:
+    old_source: str
+    new_source: str
+    old_qty_available: float
+    new_qty_available: float
+    requires_reapproval: bool
 
 
 async def get_pick(
@@ -87,12 +97,22 @@ async def prepare_pick(
     work_type: str | None,
     analog_of_id: str | None,
     notes: str | None,
+    supply_source: str,
+    qty_available: float,
 ) -> MaterialPick:
     await _validate_room(db, project_id=project_id, room_id=room_id)
     if analog_of_id:
         parent = await get_pick(db, project_id=project_id, pick_id=analog_of_id)
         if not parent:
             raise ValueError("material_pick_analog_not_found")
+    try:
+        available = material_supply_service.validate_supply_truth(
+            source=supply_source,
+            required_qty=float(qty),
+            qty_available=qty_available,
+        )
+    except material_supply_service.MaterialSupplyError as error:
+        raise ValueError(error.code) from error
     pick = MaterialPick(
         project_id=project_id,
         name=name.strip(),
@@ -106,6 +126,8 @@ async def prepare_pick(
         analog_of_id=analog_of_id,
         notes=(notes or "").strip() or None,
         status=MaterialPickStatus.draft,
+        supply_source=supply_source,
+        qty_available=available,
     )
     db.add(pick)
     await db.flush()
@@ -147,6 +169,63 @@ async def require_editable_pick(
     if await material_pick_has_active_purchase(db, project_id=project_id, pick_id=pick_id):
         raise ValueError("material_pick_locked_by_purchase")
     return pick
+
+
+async def update_supply_truth(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    pick_id: str,
+    supply_source: str,
+    qty_available: float,
+) -> tuple[MaterialPick | None, MaterialSupplyChange | None]:
+    """Update source/availability under a row lock and re-evaluate dependencies.
+
+    A financial-responsibility or availability change after customer approval
+    invalidates that approval. The material returns to ``pending`` and must be
+    explicitly approved again before any new Purchase can be created.
+    """
+    pick = await get_pick(db, project_id=project_id, pick_id=pick_id, for_update=True)
+    if not pick:
+        return None, None
+    if pick.status == MaterialPickStatus.purchased:
+        raise ValueError("material_pick_transition_terminal")
+    if await material_pick_has_active_purchase(db, project_id=project_id, pick_id=pick.id):
+        raise ValueError("material_pick_locked_by_purchase")
+
+    try:
+        available = material_supply_service.validate_supply_truth(
+            source=supply_source,
+            required_qty=material_supply_service.required_quantity(pick),
+            qty_available=qty_available,
+        )
+    except material_supply_service.MaterialSupplyError as error:
+        raise ValueError(error.code) from error
+
+    old_source = material_supply_service.supply_source(pick)
+    old_available = material_supply_service.available_quantity(pick)
+    if old_source == supply_source and abs(old_available - available) <= material_supply_service.EPSILON:
+        await db.commit()
+        return pick, None
+
+    requires_reapproval = pick.status == MaterialPickStatus.approved
+    pick.supply_source = supply_source
+    pick.qty_available = available
+    if requires_reapproval:
+        pick.status = MaterialPickStatus.pending
+
+    from app.services import dependency_service
+
+    await dependency_service.on_material_delivered(db, pick.id, commit=False)
+    await db.commit()
+    await db.refresh(pick)
+    return pick, MaterialSupplyChange(
+        old_source=old_source,
+        new_source=supply_source,
+        old_qty_available=old_available,
+        new_qty_available=available,
+        requires_reapproval=requires_reapproval,
+    )
 
 
 def _target_for(action: MaterialPickAction) -> MaterialPickStatus:
