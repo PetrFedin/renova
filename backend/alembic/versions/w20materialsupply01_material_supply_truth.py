@@ -39,8 +39,8 @@ def upgrade() -> None:
         sa.Column("qty_available", sa.Float(), nullable=False, server_default="0"),
     )
     op.execute(
-        "UPDATE material_picks AS mp SET supply_source = 'customer_to_buy' "
-        "FROM projects AS p WHERE p.id = mp.project_id AND p.contractor_id IS NULL"
+        "UPDATE material_picks SET supply_source = 'customer_to_buy' "
+        "WHERE project_id IN (SELECT id FROM projects WHERE contractor_id IS NULL)"
     )
     op.create_check_constraint(
         "ck_material_picks_supply_source",
