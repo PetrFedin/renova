@@ -42,7 +42,7 @@ material_available = physical_available >= required_qty
 
 Legacy `purchased` rows без исторического `qty_delivered` остаются совместимыми: supply calculation не превращает ранее завершённые позиции в ложный дефицит.
 
-## 3. Согласование и readiness
+## 3. Согласование, readiness и audit
 
 Физическое наличие не отменяет customer approval.
 
@@ -58,8 +58,10 @@ Material dependency считается удовлетворённой тольк
 - возвращает материал в `pending`;
 - повторно блокирует зависимость при необходимости;
 - требует нового customer approval;
-- пишет activity `MaterialSupplyUpdated`;
-- уведомляет заказчика, если изменение сделал исполнитель.
+- создаёт durable activity `MaterialSupplyUpdated`;
+- создаёт durable notification заказчику, если повторное согласование требуется после изменения исполнителем.
+
+Изменение MaterialPick, пересчитанный dependency status и outbox intents `ACTIVITY_EVENT` / при необходимости `NOTIFICATION_EVENT` входят в **одну business transaction**. После commit API может доставить activity/notification inline через существующий `SideEffectDelivery`, но inline delivery не является единственной копией истории: тот же outbox остаётся retryable/fenced для worker. Сбой UI-аудита после commit не должен приводить к потере записи об изменении ответственности.
 
 `purchased` и позиции в активной закупке для такой правки закрыты.
 
@@ -135,7 +137,7 @@ Temporary server defaults используются только для безо�
 
 До merge #298 требуются exact-head green:
 
-1. backend behavior — own / partial / mixed / reapproval / dependency readiness / responsibility;
+1. backend behavior — own / partial / mixed / reapproval / dependency readiness / responsibility + durable audit;
 2. PostgreSQL — migration head + CHECK constraints + mixed own/purchased flow + отсутствие fake finance rows;
 3. mobile TypeScript/typecheck и supply-domain contracts;
 4. Playwright API E2E — own material rejected from Purchase, wrong buyer rejected, correct buyer purchases only remainder;
