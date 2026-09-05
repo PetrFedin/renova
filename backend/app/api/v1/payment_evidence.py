@@ -10,7 +10,7 @@ from app.api.admin_access import admin_access_state, require_admin_user
 from app.api.deps import get_current_user, require_project
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.entities import User, UserRole
+from app.models.entities import Project, User, UserRole
 from app.services import payment_evidence_service as evidence_svc
 from app.services import storage_service
 from app.services.client_write_idempotency import IdempotencyConflict
@@ -76,10 +76,15 @@ def _map_error(exc: Exception) -> HTTPException:
 
 
 async def _assert_read_access(db: AsyncSession, project_id: str, user: User) -> None:
+    """Bank-transfer evidence is visible only to its customer or an admin reviewer."""
     is_admin, _ = admin_access_state(user)
     if is_admin:
         return
-    await require_project(db, project_id, user, write=False)
+    project = await db.get(Project, project_id)
+    if not project or getattr(project, "trashed_at", None):
+        raise HTTPException(404, detail={"code": "project_not_found"})
+    if user.role != UserRole.customer or project.customer_id != user.id:
+        raise HTTPException(403, detail={"code": "payment_evidence_read_forbidden"})
 
 
 @router.post("/{project_id}/payments/{payment_id}/evidence/upload-intent")
