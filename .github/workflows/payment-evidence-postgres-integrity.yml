@@ -12,6 +12,10 @@ on:
       - "backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py"
       - "backend/tests/test_payment_evidence_contract.py"
       - "backend/tests/test_payment_evidence_postgres_concurrency.py"
+      - "apps/mobile/components/renova/PaymentEvidenceSheet.tsx"
+      - "apps/mobile/components/screens/budget/BudgetPaymentsSection.tsx"
+      - "apps/mobile/lib/api/payments.ts"
+      - "apps/mobile/lib/paymentUnverified.w143.test.ts"
       - "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md"
       - ".github/workflows/payment-evidence-postgres-integrity.yml"
   pull_request:
@@ -26,6 +30,10 @@ on:
       - "backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py"
       - "backend/tests/test_payment_evidence_contract.py"
       - "backend/tests/test_payment_evidence_postgres_concurrency.py"
+      - "apps/mobile/components/renova/PaymentEvidenceSheet.tsx"
+      - "apps/mobile/components/screens/budget/BudgetPaymentsSection.tsx"
+      - "apps/mobile/lib/api/payments.ts"
+      - "apps/mobile/lib/paymentUnverified.w143.test.ts"
       - "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md"
       - ".github/workflows/payment-evidence-postgres-integrity.yml"
 concurrency:
