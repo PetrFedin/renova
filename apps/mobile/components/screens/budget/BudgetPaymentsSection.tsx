@@ -72,8 +72,8 @@ export function BudgetPaymentsSection({
   return (
     <>
       <Text style={s.dataHint}>
-        Счета — оплата работ или материалов исполнителю. Ручной перевод учитывается
-        в подтверждённом факте только после проверки подтверждающего файла.
+        Счета — оплата работ или материалов исполнителю. После ручного перевода
+        приложите подтверждение: в подтверждённый расход сумма попадёт только после проверки.
       </Text>
 
       {canOperate ? (
@@ -147,6 +147,19 @@ export function BudgetPaymentsSection({
           : payment.status === 'confirmed'
             ? RenovaTheme.colors.success
             : RenovaTheme.colors.textMuted;
+        const stage = payment.stage_id
+          ? (project.stages || []).find((candidate) => candidate.id === payment.stage_id)
+          : null;
+        const stageAllowsPaymentEvidence = payment.payment_type !== 'stage'
+          || Boolean(stage?.customer_accepted_at);
+        const canAttachEvidence = role === 'customer'
+          && canOperate
+          && stageAllowsPaymentEvidence
+          && (payment.status === 'pending' || payment.status === 'paid_unverified');
+        const evidenceTitle = payment.status === 'pending'
+          ? 'Я перевёл — приложить подтверждение'
+          : 'Подтверждение перевода';
+
         return (
           <View key={payment.id}>
             <Pressable
@@ -166,9 +179,9 @@ export function BudgetPaymentsSection({
                 {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
               </Text>
             </Pressable>
-            {role === 'customer' && payment.status === 'paid_unverified' && canOperate ? (
+            {canAttachEvidence ? (
               <PrimaryButton
-                title="Подтверждение перевода"
+                title={evidenceTitle}
                 variant="outline"
                 onPress={() => setEvidencePayment(payment)}
                 fullWidth
