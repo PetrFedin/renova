@@ -173,6 +173,7 @@ async def test_purchase_create_replays_one_order_and_activity(purchase_create_db
 async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(purchase_create_db):
     _, contractor, project, picks = await seed_project_and_picks(purchase_create_db)
     project_id = project.id
+    contractor_id = contractor.id
     pick_ids = [pick.id for pick in picks]
     first = await prepare_purchase_from_picks(
         purchase_create_db,
@@ -198,6 +199,8 @@ async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(p
     stored = await purchase_create_db.get(Purchase, first_id)
     stored.status = PurchaseStatus.cancelled
     await purchase_create_db.commit()
+    contractor = await purchase_create_db.get(User, contractor_id)
+    assert contractor is not None
     replacement = await prepare_purchase_from_picks(
         purchase_create_db,
         project_id=project_id,
