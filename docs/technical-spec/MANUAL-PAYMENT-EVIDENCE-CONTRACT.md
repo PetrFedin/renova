@@ -19,6 +19,7 @@ The canonical implementation is the current PR #297 head. This annex owns the be
 - `backend/app/services/payment_evidence_service.py`;
 - `backend/app/services/payment_service.py` only at the reviewed-evidence confirmation boundary;
 - `apps/mobile/components/renova/PaymentEvidenceSheet.tsx`;
+- `apps/mobile/components/screens/budget/BudgetPaymentsSection.tsx`;
 - `apps/mobile/lib/api/payments.ts`;
 - the dedicated focused/PostgreSQL/mobile contracts listed below.
 
@@ -26,7 +27,9 @@ The canonical implementation is the current PR #297 head. This annex owns the be
 
 Customer manual transfer evidence follows one authoritative chain:
 
-`Payment` → private versioned `PaymentEvidence` → `paid_unverified` → authorized review → `confirmed` → canonical payment-linked expense recognition.
+`Payment pending` → private versioned `PaymentEvidence` → validated `submitted` → `paid_unverified` → authorized review → `confirmed` → canonical payment-linked expense recognition.
+
+A legacy `transfer_ack` can remain server-compatible, but the canonical customer UI does not require manufacturing `paid_unverified` before the user can attach evidence. After the real bank transfer, an eligible pending payment can enter the evidence flow directly.
 
 `paid_unverified` is non-financial truth. Approval reuses `payment_service.confirm_payment(... reviewed_evidence_id=..., commit=False)` and therefore the existing `Payment → Expense → refresh_budget_facts` boundary. No direct `Project.budget_spent` writer or competing financial path is introduced.
 
@@ -64,18 +67,20 @@ Upload intent, submit and review use canonical `ClientWriteRequest` scopes. Same
 
 Upload-intent version allocation is serialized on the parent `Payment` row before `max(version)+1` and the active-evidence check. A request that waited on the lock rechecks its idempotency mapping after acquiring the lock. This prevents both duplicate version allocation and a false conflict for a concurrent retry of the same logical request.
 
-The dedicated PostgreSQL suite must prove two upload-intent cases:
+The dedicated PostgreSQL suite proves two upload-intent cases:
 
 - concurrent same key/payload → one evidence version, one ledger mapping, one replay;
 - concurrent independent intents → exactly one `upload_pending` winner; the other receives `active_evidence_exists`, never a database integrity 500.
 
 Review uses conditional SQL `UPDATE payment_evidence ... WHERE status='submitted'`. Approve/reject therefore share one PostgreSQL winner boundary. Approval then enters canonical payment confirmation inside the same uncommitted business transaction; failure rolls the evidence decision back. The final `ClientWriteRequest` commit contains the review row, payment transition, `PaymentEvent`, canonical finance mutation and durable outbox rows.
 
-The dedicated PostgreSQL suite must also prove:
+The dedicated PostgreSQL suite also proves:
 
 - duplicate approve collapses to one canonical result and one finance recognition;
 - concurrent approve↔reject has exactly one terminal winner;
 - the losing request cannot create a second `PaymentEvent` or `Expense`.
+
+The race workflow splits these four scenarios into named steps and retains their pytest output as a 14-day GitHub Actions artifact. Payment-evidence mobile files are included in the workflow path contract so a final mobile-only evidence change cannot inherit PostgreSQL proof from an older SHA.
 
 These are repository/CI proofs only; they do not promote external staging/provider status.
 
@@ -93,7 +98,8 @@ The focused backend suite must execute, not merely document:
 - reject requires a reason and preserves non-financial payment truth;
 - rejected v1 permits a new immutable v2;
 - cancelled/disputed/refunded payments cannot start a new evidence lifecycle;
-- generic project readers are not evidence readers.
+- generic project readers are not evidence readers;
+- stage payment cannot transition through evidence before `customer_accepted_at` and the failed submit is explicitly rolled back.
 
 ## Review semantics
 
@@ -118,6 +124,8 @@ Required behavior:
 - retry within the open sheet retains the same logical request identifiers;
 - after reopening, an existing `upload_pending` version can resume through the authenticated evidence endpoint rather than attempting to create a second intent;
 - resume requires the original filename and declared MIME, preserving evidence metadata truth;
+- after a real manual transfer, an eligible ordinary `pending` payment exposes the direct CTA `Я перевёл — приложить подтверждение`; the user is not forced through an extra legacy `paid_unverified` action first;
+- for stage payments that direct evidence CTA is unavailable until authoritative `customer_accepted_at` exists, matching the backend acceptance gate;
 - evidence CTA is rendered only when the current role actually has write capability, preventing visible actions that can only fail with 403;
 - all footer actions use shared button semantics, busy/disabled states and minimum touch targets;
 - history is rendered with Russian status labels and canonical design tokens rather than raw backend enum values.
