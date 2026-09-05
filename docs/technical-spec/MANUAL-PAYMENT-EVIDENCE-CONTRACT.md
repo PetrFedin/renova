@@ -8,6 +8,10 @@ External S3/provider/staging verification: NOT VERIFIED
 
 ## Source snapshot owned by this annex
 
+| Source | Blob SHA | What this annex owns |
+|---|---|---|
+| `backend/app/api/v1/router.py` | `2f13883394a1ec8206d11f2b9cb758d9473abb4a` | canonical payment-evidence API composition |
+
 The canonical implementation is the current PR #297 head. This annex owns the behavior of:
 
 - `backend/app/api/v1/payment_evidence.py`;
