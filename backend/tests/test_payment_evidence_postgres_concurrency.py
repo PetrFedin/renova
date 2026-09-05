@@ -22,12 +22,17 @@ def _postgres_url() -> str:
     return value
 
 
+def _assert_schema_ids(*values: str) -> None:
+    assert all(len(value) <= 36 for value in values), "race fixture ids must fit canonical String(36) identities"
+
+
 async def _seed(Session, suffix: str):
     customer_id = f"payment-evidence-customer-{suffix}"
     reviewer_id = f"payment-evidence-reviewer-{suffix}"
     project_id = f"payment-evidence-project-{suffix}"
     payment_id = f"payment-evidence-payment-{suffix}"
     evidence_id = f"payment-evidence-row-{suffix}"
+    _assert_schema_ids(customer_id, reviewer_id, project_id, payment_id, evidence_id)
     async with Session() as db:
         customer = User(
             id=customer_id,
@@ -86,9 +91,10 @@ async def _seed(Session, suffix: str):
 
 
 async def _seed_upload_intent(Session, suffix: str):
-    customer_id = f"payment-evidence-upload-customer-{suffix}"
-    project_id = f"payment-evidence-upload-project-{suffix}"
-    payment_id = f"payment-evidence-upload-payment-{suffix}"
+    customer_id = f"payev-upload-customer-{suffix}"
+    project_id = f"payev-upload-project-{suffix}"
+    payment_id = f"payev-upload-payment-{suffix}"
+    _assert_schema_ids(customer_id, project_id, payment_id)
     async with Session() as db:
         customer = User(
             id=customer_id,
