@@ -15,14 +15,6 @@ router = APIRouter(prefix="/projects", tags=["materials"])
 MATERIAL_PICK_CREATE_SCOPE = "material_pick.create"
 MATERIAL_PICK_ANALOG_SCOPE = "material_pick.analog"
 
-_SUPPLY_LABELS = {
-    "customer_on_hand": "У заказчика",
-    "customer_to_buy": "Покупает заказчик",
-    "contractor_to_buy": "Покупает исполнитель",
-    "contractor_included": "Включено в работы",
-    "third_party": "Поставляет третья сторона",
-}
-
 
 def _require_supply_principal(project: Project, user: User) -> None:
     principal_ids = {project.customer_id}
@@ -334,6 +326,8 @@ async def update_supply(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.client_write_side_effects import clear_request_side_effect_context
+
     project = await require_project(db, project_id, user, write=True)
     _require_supply_principal(project, user)
     try:
@@ -343,40 +337,44 @@ async def update_supply(
             pick_id=pick_id,
             supply_source=body.supply_source,
             qty_available=float(body.qty_available),
+            actor_id=user.id,
         )
     except ValueError as error:
         raise _transition_error(error) from error
     if not pick:
         raise HTTPException(404)
     if change:
-        old_label = _SUPPLY_LABELS.get(change.old_source, change.old_source)
-        new_label = _SUPPLY_LABELS.get(change.new_source, change.new_source)
+        old_label = supply_svc.source_label(change.old_source)
+        new_label = supply_svc.source_label(change.new_source)
         reapproval = " · требуется повторное согласование" if change.requires_reapproval else ""
-        await act.log_event(
-            db,
-            project_id=project_id,
-            user_id=user.id,
-            kind="MaterialSupplyUpdated",
-            title=f"Источник материала: {pick.name}",
-            body=(
-                f"{old_label} → {new_label}; доступно "
-                f"{change.old_qty_available:g} → {change.new_qty_available:g}{reapproval}"
-            ),
-            room_id=pick.room_id,
-            work_type=pick.work_type,
-            link_path="/(customer)/(tabs)/repair?tab=materials",
-        )
-        if change.requires_reapproval and project.customer_id != user.id:
-            await notif.notify(
+        try:
+            await act.log_event(
                 db,
-                user_id=project.customer_id,
                 project_id=project_id,
-                notification_type="approval",
-                title="Изменён источник материала",
-                body=f"Повторно согласуйте: {pick.name}",
-                link_path="/approvals",
-                return_to="/(customer)/(tabs)/home",
+                user_id=user.id,
+                kind="MaterialSupplyUpdated",
+                title=f"Источник материала: {pick.name}",
+                body=(
+                    f"{old_label} → {new_label}; доступно "
+                    f"{change.old_qty_available:g} → {change.new_qty_available:g}{reapproval}"
+                ),
+                room_id=pick.room_id,
+                work_type=pick.work_type,
+                link_path="/(customer)/(tabs)/repair?tab=materials",
             )
+            if change.requires_reapproval and project.customer_id != user.id:
+                await notif.notify(
+                    db,
+                    user_id=project.customer_id,
+                    project_id=project_id,
+                    notification_type="approval",
+                    title="Изменён источник материала",
+                    body=f"Повторно согласуйте: {pick.name}",
+                    link_path="/approvals",
+                    return_to="/(customer)/(tabs)/home",
+                )
+        finally:
+            clear_request_side_effect_context()
     response = _out(pick)
     response["replayed"] = change is None
     return response
