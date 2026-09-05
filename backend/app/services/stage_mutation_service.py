@@ -203,8 +203,6 @@ async def _enqueue_customer_notification(
             "notification_type": notification_type,
             "title": title,
             "body": body,
-            "stage_id": stage.id,
-            "work_type": stage.work_type,
             "link_path": f"/stage/{stage.id}",
             "return_to": "/(customer)/(tabs)/repair?tab=control",
         },
