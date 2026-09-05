@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.workflow_templates import WORKFLOW_TEMPLATES, resolve_work_type
-from app.models.entities import MaterialPick, Stage, StageStatus, WorkDependency
+from app.models.entities import MaterialPick, MaterialPickStatus, Stage, StageStatus, WorkDependency
 from app.services import material_supply_service
 
 
@@ -139,7 +139,11 @@ async def _is_satisfied(db: AsyncSession, dependency: WorkDependency) -> bool:
         return bool(predecessor and predecessor.status == StageStatus.done)
     if dependency.dependency_type == "material" and dependency.depends_on_material_pick_id:
         pick = await db.get(MaterialPick, dependency.depends_on_material_pick_id)
-        return bool(pick and material_supply_service.snapshot(pick).is_available)
+        return bool(
+            pick
+            and pick.status in {MaterialPickStatus.approved, MaterialPickStatus.purchased}
+            and material_supply_service.snapshot(pick).is_available
+        )
     return True
 
 
