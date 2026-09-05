@@ -267,6 +267,7 @@ async def submit_uploaded_evidence(
             commit=False,
         )
         if not transitioned or transitioned.status != PaymentStatus.paid_unverified:
+            await db.rollback()
             raise PaymentEvidenceError("payment_unverified_transition_failed")
 
     created, canonical_id = await commit_client_write(
