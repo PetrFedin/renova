@@ -5,6 +5,7 @@ import { join } from 'path';
 const repo = join(__dirname, '../../..');
 const svc = readFileSync(join(repo, 'backend/app/services/payment_service.py'), 'utf8');
 const evidenceSvc = readFileSync(join(repo, 'backend/app/services/payment_evidence_service.py'), 'utf8');
+const evidenceApi = readFileSync(join(repo, 'backend/app/api/v1/payment_evidence.py'), 'utf8');
 const sheet = readFileSync(join(__dirname, '../components/renova/PaymentDetailSheet.tsx'), 'utf8');
 const evidenceSheet = readFileSync(join(__dirname, '../components/renova/PaymentEvidenceSheet.tsx'), 'utf8');
 const paymentsApi = readFileSync(join(__dirname, 'api/payments.ts'), 'utf8');
@@ -20,14 +21,19 @@ must(evidenceSvc.includes('latest_row.status != "rejected"'), 'resubmit allowed 
 must(evidenceSvc.includes('version = int(latest or 0) + 1'), 'resubmit creates a new immutable version');
 
 must(evidenceSheet.includes("type: ['image/jpeg', 'image/png', 'application/pdf']"), 'evidence picker is bounded to JPEG/PNG/PDF');
-must(evidenceSheet.includes("title={latest?.status === 'rejected' ? 'Загрузить новую версию'"), 'rejected evidence exposes resubmit action');
+must(evidenceSheet.includes("latest?.status === 'rejected'") && evidenceSheet.includes("'Загрузить новую версию'"), 'rejected evidence exposes resubmit action');
 must(evidenceSheet.includes('row.rejection_reason'), 'rejection reason is visible');
 must(evidenceSheet.includes("row.status === 'submitted'"), 'submitted/pending-review truth is visible');
-must(evidenceSheet.includes('До одобрения подтверждения') && evidenceSheet.includes('не входит в подтверждённый расход'), 'pending evidence cannot render financial success');
+must(evidenceSheet.includes('До одобрения файла перевод остаётся') && evidenceSheet.includes('не входит в подтверждённый расход'), 'pending evidence cannot render financial success');
 must(evidenceSheet.includes('intentRequestId') && evidenceSheet.includes('submitRequestId'), 'stable identities are retained for retry');
-must(evidenceSheet.includes('Файл и идентификаторы сохранены') && evidenceSheet.includes('повторите отправку, чтобы не создать дубликат'), 'ambiguous upload tells user to retry same identity');
+must(evidenceSheet.includes('resumePaymentEvidenceUpload') && evidenceSheet.includes("latest?.status === 'upload_pending'"), 'upload_pending can recover after reopening instead of creating a second intent');
+must(evidenceSheet.includes('продолжит тот же запрос') && evidenceSheet.includes('не создаст дубликат'), 'ambiguous upload tells user to retry the same logical request');
 must(evidenceSheet.includes("reportError('payment.evidence.upload'"), 'upload failure is observable');
 must(paymentsApi.includes("reportError('payment.evidence.uploadResponse.parse'"), 'upload response parse failures are observable');
+must(paymentsApi.includes('existingEvidenceUploadTarget') && paymentsApi.includes('external_presigned: false'), 'mobile recovery stays on authenticated API upload target');
+must(evidenceApi.includes('"external_presigned": False') && !evidenceApi.includes('storage_service.presigned_put'), 'financial evidence has no reusable direct S3 PUT');
+must(evidenceSheet.includes('RenovaTheme.spacing.md') && evidenceSheet.includes('RenovaTheme.fontSize.body'), 'evidence UI uses canonical design tokens');
+must(!evidenceSheet.includes('request identity'), 'customer copy must not expose internal idempotency jargon');
 must(!evidenceSheet.includes('Оплата подтверждена'), 'evidence sheet must not claim confirmation before server payment truth refresh');
 
 must(
