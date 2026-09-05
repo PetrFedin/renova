@@ -1,9 +1,33 @@
 name: Payment evidence PostgreSQL integrity
 on:
   push:
-    paths: ["backend/app/api/v1/payment_evidence.py", "backend/app/api/v1/router.py", "backend/app/models/payment_evidence.py", "backend/app/services/payment_evidence_service.py", "backend/app/services/payment_service.py", "backend/app/services/budget_service.py", "backend/app/services/client_write_idempotency.py", "backend/alembic/versions/w19paymentevidence01_payment_evidence.py", "backend/tests/test_payment_evidence_contract.py", "backend/tests/test_payment_evidence_postgres_concurrency.py", "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md", ".github/workflows/payment-evidence-postgres-integrity.yml"]
+    paths:
+      - "backend/app/api/v1/payment_evidence.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/payment_evidence.py"
+      - "backend/app/services/payment_evidence_service.py"
+      - "backend/app/services/payment_service.py"
+      - "backend/app/services/budget_service.py"
+      - "backend/app/services/client_write_idempotency.py"
+      - "backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py"
+      - "backend/tests/test_payment_evidence_contract.py"
+      - "backend/tests/test_payment_evidence_postgres_concurrency.py"
+      - "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md"
+      - ".github/workflows/payment-evidence-postgres-integrity.yml"
   pull_request:
-    paths: ["backend/app/api/v1/payment_evidence.py", "backend/app/api/v1/router.py", "backend/app/models/payment_evidence.py", "backend/app/services/payment_evidence_service.py", "backend/app/services/payment_service.py", "backend/app/services/budget_service.py", "backend/app/services/client_write_idempotency.py", "backend/alembic/versions/w19paymentevidence01_payment_evidence.py", "backend/tests/test_payment_evidence_contract.py", "backend/tests/test_payment_evidence_postgres_concurrency.py", "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md", ".github/workflows/payment-evidence-postgres-integrity.yml"]
+    paths:
+      - "backend/app/api/v1/payment_evidence.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/models/payment_evidence.py"
+      - "backend/app/services/payment_evidence_service.py"
+      - "backend/app/services/payment_service.py"
+      - "backend/app/services/budget_service.py"
+      - "backend/app/services/client_write_idempotency.py"
+      - "backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py"
+      - "backend/tests/test_payment_evidence_contract.py"
+      - "backend/tests/test_payment_evidence_postgres_concurrency.py"
+      - "docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md"
+      - ".github/workflows/payment-evidence-postgres-integrity.yml"
 concurrency:
   group: payment-evidence-postgres-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -50,6 +74,54 @@ jobs:
       - name: Run payment evidence focused contracts
         working-directory: backend
         run: poetry run pytest -q tests/test_payment_evidence_contract.py
-      - name: Run real payment evidence PostgreSQL races
+      - name: Prepare race evidence directory
+        run: mkdir -p payment-evidence-race-logs
+      - name: Race — same-key upload intent replay
+        id: race_same_key_upload
+        continue-on-error: true
         working-directory: backend
-        run: poetry run pytest -q tests/test_payment_evidence_postgres_concurrency.py
+        run: |
+          set -o pipefail
+          poetry run pytest -vv --tb=short tests/test_payment_evidence_postgres_concurrency.py::test_concurrent_same_key_upload_intent_replays_one_version 2>&1 | tee ../payment-evidence-race-logs/01-same-key-upload.log
+      - name: Race — independent upload intents
+        id: race_independent_upload
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          set -o pipefail
+          poetry run pytest -vv --tb=short tests/test_payment_evidence_postgres_concurrency.py::test_concurrent_independent_upload_intents_have_one_authoritative_winner 2>&1 | tee ../payment-evidence-race-logs/02-independent-upload.log
+      - name: Race — duplicate approve
+        id: race_duplicate_approve
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          set -o pipefail
+          poetry run pytest -vv --tb=short tests/test_payment_evidence_postgres_concurrency.py::test_concurrent_duplicate_approve_replays_and_recognizes_finance_once 2>&1 | tee ../payment-evidence-race-logs/03-duplicate-approve.log
+      - name: Race — approve versus reject
+        id: race_approve_reject
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          set -o pipefail
+          poetry run pytest -vv --tb=short tests/test_payment_evidence_postgres_concurrency.py::test_concurrent_approve_reject_has_exactly_one_terminal_review_winner 2>&1 | tee ../payment-evidence-race-logs/04-approve-reject.log
+      - name: Retain PostgreSQL race evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payment-evidence-postgres-race-${{ github.sha }}
+          path: payment-evidence-race-logs/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enforce PostgreSQL race verdict
+        if: always()
+        run: |
+          set -euo pipefail
+          same_key='${{ steps.race_same_key_upload.outcome }}'
+          independent='${{ steps.race_independent_upload.outcome }}'
+          duplicate='${{ steps.race_duplicate_approve.outcome }}'
+          review='${{ steps.race_approve_reject.outcome }}'
+          printf 'same-key-upload=%s\nindependent-upload=%s\nduplicate-approve=%s\napprove-reject=%s\n' "$same_key" "$independent" "$duplicate" "$review"
+          test "$same_key" = success
+          test "$independent" = success
+          test "$duplicate" = success
+          test "$review" = success
