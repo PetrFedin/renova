@@ -1,6 +1,16 @@
-import type { MaterialPick, MaterialSupplySource } from '@/lib/api';
+import type { MaterialSupplySource } from '@/lib/api';
 
 export type ProcurementRole = 'customer' | 'contractor';
+
+export type MaterialSupplyTruth = {
+  status?: string;
+  qty: number;
+  qty_needed?: number | null;
+  qty_available?: number;
+  qty_delivered?: number;
+  qty_to_buy?: number;
+  supply_source?: MaterialSupplySource;
+};
 
 export const MATERIAL_SUPPLY_LABELS: Record<MaterialSupplySource, string> = {
   customer_on_hand: 'У заказчика',
@@ -22,19 +32,17 @@ export function supplyLabel(source?: MaterialSupplySource): string {
   return source ? MATERIAL_SUPPLY_LABELS[source] : 'Источник не указан';
 }
 
-export function requiredQty(pick: Pick<MaterialPick, 'qty' | 'qty_needed'>): number {
+export function requiredQty(pick: Pick<MaterialSupplyTruth, 'qty' | 'qty_needed'>): number {
   return Math.max(pick.qty_needed ?? pick.qty ?? 0, 0);
 }
 
 export function totalAvailableQty(
-  pick: Pick<MaterialPick, 'qty_available' | 'qty_delivered'>,
+  pick: Pick<MaterialSupplyTruth, 'qty_available' | 'qty_delivered'>,
 ): number {
   return Math.max(pick.qty_available ?? 0, 0) + Math.max(pick.qty_delivered ?? 0, 0);
 }
 
-export function quantityToBuy(
-  pick: Pick<MaterialPick, 'qty_to_buy' | 'qty' | 'qty_needed' | 'qty_available' | 'qty_delivered' | 'supply_source'>,
-): number {
+export function quantityToBuy(pick: MaterialSupplyTruth): number {
   if (typeof pick.qty_to_buy === 'number') return Math.max(pick.qty_to_buy, 0);
   if (pick.supply_source !== 'customer_to_buy' && pick.supply_source !== 'contractor_to_buy') return 0;
   return Math.max(requiredQty(pick) - totalAvailableQty(pick), 0);
@@ -45,7 +53,7 @@ export function roleOwnsPurchase(source: MaterialSupplySource | undefined, role:
     || (source === 'contractor_to_buy' && role === 'contractor');
 }
 
-export function needsAvailabilityUpdate(pick: MaterialPick): boolean {
+export function needsAvailabilityUpdate(pick: MaterialSupplyTruth): boolean {
   if (pick.status !== 'approved') return false;
   if (pick.supply_source === 'customer_to_buy' || pick.supply_source === 'contractor_to_buy') return false;
   return totalAvailableQty(pick) + Number.EPSILON < requiredQty(pick);
