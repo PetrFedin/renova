@@ -203,6 +203,8 @@ async def _enqueue_customer_notification(
             "notification_type": notification_type,
             "title": title,
             "body": body,
+            "stage_id": stage.id,
+            "work_type": stage.work_type,
             "link_path": f"/stage/{stage.id}",
             "return_to": "/(customer)/(tabs)/repair?tab=control",
         },
@@ -395,11 +397,11 @@ async def start_stage(
     # A customer doing their own renovation has no contractor agreement to sign.
     if not is_self_managed_customer(project, actor):
         gate = await project_document_service.project_contract_gate(db, project.id)
-        if not gate.get("ok"):
+        if not gate.get("ok") or gate.get("reason") == "no_contract_required":
             await db.rollback()
             return None, {
                 "code": gate.get("code", "contract_not_signed"),
-                "message": gate.get("message"),
+                "message": gate.get("message") or "Подпишите договор перед началом работ",
                 "pending_titles": gate.get("pending_titles", []),
             }
     blocked = await dependency_service.evaluate_stage(
