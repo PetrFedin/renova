@@ -16,7 +16,6 @@ from app.models.entities import (
     PurchaseItem,
     PurchaseStatus,
     Stage,
-    StageStatus,
 )
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
 
@@ -339,7 +338,7 @@ async def _on_reversed(
     *,
     was_delivered: bool,
 ) -> None:
-    """Cancel/return restores material availability and stage dependencies once."""
+    """Restore material/dependency truth without rewinding execution lifecycle."""
     from app.services import dependency_service as dependencies
 
     touched_stage_ids: set[str] = set()
@@ -358,37 +357,27 @@ async def _on_reversed(
 
     for stage_id in touched_stage_ids:
         stage = await db.get(Stage, stage_id)
-        if not stage or stage.status == StageStatus.done:
-            continue
-        evaluation = await dependencies.evaluate_stage(db, stage, commit=False)
-        if evaluation["blocked"]:
-            stage.status = StageStatus.planned
+        if stage:
+            await dependencies.evaluate_stage(db, stage, commit=False)
 
 
 async def _on_delivered(db: AsyncSession, purchase: Purchase) -> None:
-    """Delivery updates picks exactly once and opens eligible dependent work."""
+    """Update material/dependency truth without manufacturing a work-start fact."""
     from app.services import dependency_service as dependencies
 
     for item in purchase.items or []:
-        pick: MaterialPick | None = None
-        if item.material_pick_id:
-            pick = await db.get(MaterialPick, item.material_pick_id)
-            if pick:
-                pick.status = MaterialPickStatus.purchased
-                pick.qty_delivered = (pick.qty_delivered or 0) + item.qty
-                await dependencies.on_material_delivered(
-                    db,
-                    item.material_pick_id,
-                    commit=False,
-                )
-
-        stage_id = item.stage_id or (pick.stage_id if pick else None)
-        if stage_id:
-            stage = await db.get(Stage, stage_id)
-            if stage and stage.status == StageStatus.planned:
-                evaluation = await dependencies.evaluate_stage(db, stage, commit=False)
-                if not evaluation["blocked"]:
-                    stage.status = StageStatus.active
+        if not item.material_pick_id:
+            continue
+        pick = await db.get(MaterialPick, item.material_pick_id)
+        if not pick:
+            continue
+        pick.status = MaterialPickStatus.purchased
+        pick.qty_delivered = (pick.qty_delivered or 0) + (item.qty or 0)
+        await dependencies.on_material_delivered(
+            db,
+            item.material_pick_id,
+            commit=False,
+        )
 
 
 async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> list[MaterialPick]:
