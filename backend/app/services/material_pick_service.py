@@ -178,8 +178,9 @@ async def update_supply_truth(
     pick_id: str,
     supply_source: str,
     qty_available: float,
+    actor_id: str,
 ) -> tuple[MaterialPick | None, MaterialSupplyChange | None]:
-    """Update source/availability under a row lock and re-evaluate dependencies.
+    """Update source/availability atomically with durable audit side effects.
 
     A financial-responsibility or availability change after customer approval
     invalidates that approval. The material returns to ``pending`` and must be
@@ -217,15 +218,24 @@ async def update_supply_truth(
     from app.services import dependency_service
 
     await dependency_service.on_material_delivered(db, pick.id, commit=False)
-    await db.commit()
-    await db.refresh(pick)
-    return pick, MaterialSupplyChange(
+    change = MaterialSupplyChange(
         old_source=old_source,
         new_source=supply_source,
         old_qty_available=old_available,
         new_qty_available=available,
         requires_reapproval=requires_reapproval,
     )
+    effects = await _prepare_supply_effects(
+        db,
+        project_id=project_id,
+        actor_id=actor_id,
+        pick=pick,
+        change=change,
+    )
+    await db.commit()
+    await db.refresh(pick)
+    activate_client_write_side_effects(effects)
+    return pick, change
 
 
 def _target_for(action: MaterialPickAction) -> MaterialPickStatus:
@@ -293,6 +303,69 @@ def event_for(
         notification_body=f"{pick.name}: {reason_text}" if reason_text else pick.name,
         notification_link="/(contractor)/(tabs)/repair?tab=materials",
     )
+
+
+async def _prepare_supply_effects(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    actor_id: str,
+    pick: MaterialPick,
+    change: MaterialSupplyChange,
+) -> list[PreparedSideEffect]:
+    """Persist audit/notification intents in the same transaction as supply truth."""
+    from app.services import outbox_service as outbox
+
+    old_label = material_supply_service.source_label(change.old_source)
+    new_label = material_supply_service.source_label(change.new_source)
+    reapproval = " · требуется повторное согласование" if change.requires_reapproval else ""
+    activity_body = (
+        f"{old_label} → {new_label}; доступно "
+        f"{change.old_qty_available:g} → {change.new_qty_available:g}{reapproval}"
+    )
+    activity_row = await outbox.enqueue(
+        db,
+        aggregate_type="material_supply",
+        aggregate_id=pick.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": project_id,
+            "user_id": actor_id,
+            "kind": "MaterialSupplyUpdated",
+            "title": f"Источник материала: {pick.name}",
+            "body": activity_body,
+            "room_id": pick.room_id,
+            "work_type": pick.work_type,
+            "link_path": "/(customer)/(tabs)/repair?tab=materials",
+        },
+    )
+    effects = [PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id)]
+
+    project = await db.get(Project, project_id)
+    if change.requires_reapproval and project and project.customer_id != actor_id:
+        notification_row = await outbox.enqueue(
+            db,
+            aggregate_type="material_supply",
+            aggregate_id=pick.id,
+            event_type=outbox.NOTIFICATION_EVENT,
+            payload={
+                "user_id": project.customer_id,
+                "project_id": project_id,
+                "notification_type": "approval",
+                "title": "Изменён источник материала",
+                "body": f"Повторно согласуйте: {pick.name}",
+                "link_path": "/approvals",
+                "return_to": "/(customer)/(tabs)/home",
+            },
+        )
+        effects.append(
+            PreparedSideEffect(
+                effect_type="notification",
+                outbox_id=notification_row.id,
+                match_key=project.customer_id,
+            )
+        )
+    return effects
 
 
 async def _prepare_effects(
