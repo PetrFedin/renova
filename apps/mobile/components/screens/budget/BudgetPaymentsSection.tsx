@@ -47,7 +47,16 @@ function formatConfirmedDate(value: string | null): string | null {
 }
 
 export function BudgetPaymentsSection({
-  role, userId, project, readOnly, canWrite, payFilter, setPayFilter, filteredPayments, onPaymentPress, onSaved,
+  role,
+  userId,
+  project,
+  readOnly,
+  canWrite,
+  payFilter,
+  setPayFilter,
+  filteredPayments,
+  onPaymentPress,
+  onSaved,
 }: Props) {
   const [bankOpen, setBankOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -63,20 +72,34 @@ export function BudgetPaymentsSection({
   return (
     <>
       <Text style={s.dataHint}>
-        Счета — оплата работ или материалов исполнителю. Ручной перевод учитывается в подтверждённом факте только после проверки подтверждающего файла.
+        Счета — оплата работ или материалов исполнителю. Ручной перевод учитывается
+        в подтверждённом факте только после проверки подтверждающего файла.
       </Text>
 
       {canOperate ? (
         <View style={s.actions}>
           {canCreate ? (
-            <PrimaryButton title={createOpen ? 'Скрыть форму' : 'Выставить счёт'} variant={createOpen ? 'outline' : 'primary'} onPress={() => setCreateOpen((value) => !value)} />
+            <PrimaryButton
+              title={createOpen ? 'Скрыть форму' : 'Выставить счёт'}
+              variant={createOpen ? 'outline' : 'primary'}
+              onPress={() => setCreateOpen((value) => !value)}
+            />
           ) : null}
-          <PrimaryButton title="Импорт выписки" variant="outline" onPress={() => setBankOpen(true)} />
+          <PrimaryButton
+            title="Импорт выписки"
+            variant="outline"
+            onPress={() => setBankOpen(true)}
+          />
         </View>
       ) : null}
 
       {canCreate && createOpen ? (
-        <CreatePaymentForm userId={userId} project={project} onSaved={handleSaved} onCancel={() => setCreateOpen(false)} />
+        <CreatePaymentForm
+          userId={userId}
+          project={project}
+          onSaved={handleSaved}
+          onCancel={() => setCreateOpen(false)}
+        />
       ) : null}
 
       <Text style={s.section}>Счета и история</Text>
@@ -84,17 +107,36 @@ export function BudgetPaymentsSection({
         {PAYMENT_FILTERS.map((filter) => {
           const selected = payFilter === filter.id;
           return (
-            <Pressable key={filter.id} accessibilityRole="button" accessibilityLabel={`Фильтр оплат: ${filter.label}`} accessibilityState={{ selected }} style={[filterChipStyles.chip, { minHeight: RenovaTheme.minTouch, justifyContent: 'center' }, selected && filterChipStyles.chipOn]} onPress={() => setPayFilter(filter.id)}>
-              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>{filter.label}</Text>
+            <Pressable
+              key={filter.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Фильтр оплат: ${filter.label}`}
+              accessibilityState={{ selected }}
+              style={[
+                filterChipStyles.chip,
+                { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
+                selected && filterChipStyles.chipOn,
+              ]}
+              onPress={() => setPayFilter(filter.id)}
+            >
+              <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>
+                {filter.label}
+              </Text>
             </Pressable>
           );
         })}
       </View>
 
       {!filteredPayments.length ? (
-        <View style={{ paddingVertical: 16 }}>
+        <View style={{ paddingVertical: RenovaTheme.spacing.lg }}>
           <Text style={s.empty}>{emptyLabel(payFilter)}</Text>
-          {payFilter !== 'all' ? <PrimaryButton title="Показать все счета" variant="ghost" onPress={() => setPayFilter('all')} /> : null}
+          {payFilter !== 'all' ? (
+            <PrimaryButton
+              title="Показать все счета"
+              variant="ghost"
+              onPress={() => setPayFilter('all')}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -102,10 +144,17 @@ export function BudgetPaymentsSection({
         const confirmedDate = formatConfirmedDate(payment.confirmed_at);
         const statusColor = payment.status === 'pending' || payment.status === 'paid_unverified'
           ? RenovaTheme.colors.warning
-          : payment.status === 'confirmed' ? RenovaTheme.colors.success : RenovaTheme.colors.textMuted;
+          : payment.status === 'confirmed'
+            ? RenovaTheme.colors.success
+            : RenovaTheme.colors.textMuted;
         return (
           <View key={payment.id}>
-            <Pressable style={s.row} accessibilityRole="button" accessibilityLabel={`Открыть счёт ${payment.title}, ${formatRub(payment.amount)}`} onPress={() => onPaymentPress(payment)}>
+            <Pressable
+              style={s.row}
+              accessibilityRole="button"
+              accessibilityLabel={`Открыть счёт ${payment.title}, ${formatRub(payment.amount)}`}
+              onPress={() => onPaymentPress(payment)}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={s.rowTitle}>{payment.title}</Text>
                 <Text style={s.rowMeta}>
@@ -113,10 +162,17 @@ export function BudgetPaymentsSection({
                   {confirmedDate ? ` · ${confirmedDate}` : ''}
                 </Text>
               </View>
-              <Text style={[s.status, { color: statusColor }]}>{PAYMENT_STATUS_LABEL[payment.status] || payment.status}</Text>
+              <Text style={[s.status, { color: statusColor }]}>
+                {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
+              </Text>
             </Pressable>
-            {role === 'customer' && payment.status === 'paid_unverified' && !readOnly ? (
-              <PrimaryButton title="Подтверждение перевода" variant="outline" onPress={() => setEvidencePayment(payment)} />
+            {role === 'customer' && payment.status === 'paid_unverified' && canOperate ? (
+              <PrimaryButton
+                title="Подтверждение перевода"
+                variant="outline"
+                onPress={() => setEvidencePayment(payment)}
+                fullWidth
+              />
             ) : null}
           </View>
         );
@@ -131,7 +187,17 @@ export function BudgetPaymentsSection({
         onChanged={onSaved}
       />
 
-      <BankStatementImportSheet visible={bankOpen} onClose={() => setBankOpen(false)} userId={userId} projectId={project.id} role={role} onDone={() => { setBankOpen(false); onSaved(); }} />
+      <BankStatementImportSheet
+        visible={bankOpen}
+        onClose={() => setBankOpen(false)}
+        userId={userId}
+        projectId={project.id}
+        role={role}
+        onDone={() => {
+          setBankOpen(false);
+          onSaved();
+        }}
+      />
     </>
   );
 }
