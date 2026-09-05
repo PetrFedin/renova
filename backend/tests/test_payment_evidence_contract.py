@@ -53,6 +53,15 @@ def test_payment_evidence_api_is_private_admin_reviewed_and_immutable_after_subm
     assert "photos/" not in api_source
 
 
+def test_payment_evidence_read_acl_excludes_generic_project_viewers_and_team_members():
+    api_source = (ROOT / "app/api/v1/payment_evidence.py").read_text()
+
+    assert 'project.customer_id != user.id' in api_source
+    assert 'payment_evidence_read_forbidden' in api_source
+    assert 'admin_access_state(user)' in api_source
+    assert 'require_project(db, project_id, user, write=False)' not in api_source
+
+
 def test_payment_evidence_version_allocation_is_serialized_on_payment_truth():
     service_source = (ROOT / "app/services/payment_evidence_service.py").read_text()
 
