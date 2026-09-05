@@ -8,6 +8,7 @@ const evidenceSvc = readFileSync(join(repo, 'backend/app/services/payment_eviden
 const evidenceApi = readFileSync(join(repo, 'backend/app/api/v1/payment_evidence.py'), 'utf8');
 const sheet = readFileSync(join(__dirname, '../components/renova/PaymentDetailSheet.tsx'), 'utf8');
 const evidenceSheet = readFileSync(join(__dirname, '../components/renova/PaymentEvidenceSheet.tsx'), 'utf8');
+const paymentsSection = readFileSync(join(__dirname, '../components/screens/budget/BudgetPaymentsSection.tsx'), 'utf8');
 const paymentsApi = readFileSync(join(__dirname, 'api/payments.ts'), 'utf8');
 
 function must(c: boolean, m: string) { if (!c) throw new Error(m); }
@@ -24,7 +25,8 @@ must(evidenceSheet.includes("type: ['image/jpeg', 'image/png', 'application/pdf'
 must(evidenceSheet.includes("latest?.status === 'rejected'") && evidenceSheet.includes("'Загрузить новую версию'"), 'rejected evidence exposes resubmit action');
 must(evidenceSheet.includes('row.rejection_reason'), 'rejection reason is visible');
 must(evidenceSheet.includes("row.status === 'submitted'"), 'submitted/pending-review truth is visible');
-must(evidenceSheet.includes('До одобрения файла перевод остаётся') && evidenceSheet.includes('не входит в подтверждённый расход'), 'pending evidence cannot render financial success');
+must(evidenceSheet.includes("payment.status === 'pending' || payment.status === 'paid_unverified'"), 'manual proof may start directly from an eligible pending payment');
+must(evidenceSheet.includes('После отправки файла перевод получает статус') && evidenceSheet.includes('подтверждённый расход'), 'pending evidence explains the server truth transition without false success');
 must(evidenceSheet.includes('intentRequestId') && evidenceSheet.includes('submitRequestId'), 'stable identities are retained for retry');
 must(evidenceSheet.includes('resumePaymentEvidenceUpload') && evidenceSheet.includes("latest?.status === 'upload_pending'"), 'upload_pending can recover after reopening instead of creating a second intent');
 must(evidenceSheet.includes('продолжит тот же запрос') && evidenceSheet.includes('не создаст дубликат'), 'ambiguous upload tells user to retry the same logical request');
@@ -35,6 +37,12 @@ must(evidenceApi.includes('"external_presigned": False') && !evidenceApi.include
 must(evidenceSheet.includes('RenovaTheme.spacing.md') && evidenceSheet.includes('RenovaTheme.fontSize.body'), 'evidence UI uses canonical design tokens');
 must(!evidenceSheet.includes('request identity'), 'customer copy must not expose internal idempotency jargon');
 must(!evidenceSheet.includes('Оплата подтверждена'), 'evidence sheet must not claim confirmation before server payment truth refresh');
+
+must(paymentsSection.includes("'Я перевёл — приложить подтверждение'"), 'pending payment exposes one direct proof CTA after the real transfer');
+must(paymentsSection.includes("payment.status === 'pending' || payment.status === 'paid_unverified'"), 'proof CTA covers pending and already-unverified manual payments');
+must(paymentsSection.includes('stage?.customer_accepted_at') && paymentsSection.includes('stageAllowsPaymentEvidence'), 'stage payment proof CTA remains gated by authoritative customer acceptance');
+must(paymentsSection.includes('canOperate') && paymentsSection.includes("role === 'customer'"), 'proof CTA is capability and role gated');
+must(paymentsSection.includes('RenovaTheme.minTouch') && paymentsSection.includes('RenovaTheme.spacing.lg'), 'payments interaction geometry uses shared design tokens');
 
 must(
   sheet.includes("reportError('payment.requisites.load'")
