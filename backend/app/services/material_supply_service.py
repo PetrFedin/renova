@@ -8,6 +8,13 @@ from app.models.material_supply import DEFAULT_SUPPLY_SOURCE, SUPPLY_SOURCE_VALU
 
 BUY_REQUIRED_SOURCES = frozenset({"customer_to_buy", "contractor_to_buy"})
 NON_PURCHASE_SOURCES = frozenset({"customer_on_hand", "contractor_included", "third_party"})
+SUPPLY_SOURCE_LABELS = {
+    "customer_on_hand": "У заказчика",
+    "customer_to_buy": "Покупает заказчик",
+    "contractor_to_buy": "Покупает исполнитель",
+    "contractor_included": "Включено в работы",
+    "third_party": "Поставляет третья сторона",
+}
 EPSILON = 1e-9
 
 
@@ -27,6 +34,10 @@ class MaterialSupplySnapshot:
     qty_to_buy: float
     is_available: bool
     buy_required: bool
+
+
+def source_label(source: str) -> str:
+    return SUPPLY_SOURCE_LABELS.get(source, source)
 
 
 def supply_source(pick: MaterialPick) -> str:
