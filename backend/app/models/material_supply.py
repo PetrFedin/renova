@@ -7,7 +7,7 @@ metadata without introducing a second material entity.
 from __future__ import annotations
 
 from sqlalchemy import CheckConstraint, Float, String
-from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import add_mapped_attribute, mapped_column
 
 from app.models.entities import MaterialPick
 
@@ -22,18 +22,18 @@ SUPPLY_SOURCE_VALUES = (
 DEFAULT_SUPPLY_SOURCE = "contractor_to_buy"
 
 
-# SQLAlchemy Declarative explicitly supports appending mapped columns to an
-# already-declared class. Keep the legacy compatibility surface untouched while
-# the extension remains one physical `material_picks` table.
-MaterialPick.supply_source = mapped_column(  # type: ignore[attr-defined]
-    String(32),
-    nullable=False,
-    default=DEFAULT_SUPPLY_SOURCE,
+# SQLAlchemy 2 supports adding mapped attributes after a declarative class is
+# created. Use the explicit public helper rather than relying on DeclarativeMeta
+# assignment magic so mapper + Alembic metadata stay in lockstep.
+add_mapped_attribute(
+    MaterialPick,
+    "supply_source",
+    mapped_column(String(32), nullable=False, default=DEFAULT_SUPPLY_SOURCE),
 )
-MaterialPick.qty_available = mapped_column(  # type: ignore[attr-defined]
-    Float,
-    nullable=False,
-    default=0,
+add_mapped_attribute(
+    MaterialPick,
+    "qty_available",
+    mapped_column(Float, nullable=False, default=0),
 )
 MaterialPick.__table__.append_constraint(
     CheckConstraint(
