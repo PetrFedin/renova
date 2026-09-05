@@ -46,17 +46,17 @@ A rejected version remains immutable history. A subsequent upload intent is allo
 6. `payment_evidence.submit` independently validates JPEG/PNG/PDF magic, declared-vs-actual MIME, size and SHA-256, then changes truth to `submitted`.
 7. Only after validation can an eligible payment remain/move to `paid_unverified` pending review.
 
-Read access remains through the authenticated project/payment/evidence route. S3/CloudFront may provide a signed GET only after project ACL and exact evidence binding are checked. Local bytes use `private, no-store`.
+Read access remains through the exact project/payment/evidence route. S3/CloudFront may provide a signed GET only after the caller has passed the narrow evidence ACL and exact evidence binding. Local bytes use `private, no-store`.
 
 An ambiguous provider write can still exist outside the database transaction. The durable intent and deterministic key make it identifiable and retryable while the row is `upload_pending`, but provider-independent orphan/ambiguity reconciliation remains #238 and is NOT VERIFIED by #265.
 
-## Authorization
+## Authorization and privacy boundary
 
 Upload/submit: exact project customer (`UserRole.customer` and `Project.customer_id == user.id`) plus exact Payment/PaymentEvidence binding.
 
 Review: `require_admin_user`; staging/production therefore require an immutable identity configured in `ADMIN_USER_IDS`. Ordinary contractor membership does not grant production review authority.
 
-Read/list: authenticated project access or a valid administrative reviewer. Object key is never accepted from the caller; it is loaded from the evidence row after project/payment/evidence binding.
+Read/list: exact project customer or a valid administrative reviewer only. Generic project-read access is deliberately insufficient: contractor team members, project guests and technical-supervision read fallback do not gain access to bank-transfer evidence merely because they can view the project. Object key is never accepted from the caller; it is loaded from the evidence row after project/payment/evidence binding.
 
 ## Idempotency and concurrency
 
@@ -78,6 +78,22 @@ The dedicated PostgreSQL suite must also prove:
 - the losing request cannot create a second `PaymentEvent` or `Expense`.
 
 These are repository/CI proofs only; they do not promote external staging/provider status.
+
+## Focused lifecycle and negative contracts
+
+The focused backend suite must execute, not merely document:
+
+- JPEG/PNG/PDF magic and MIME matching plus the 10 MiB limit;
+- upload-intent replay and same-key/different-payload conflict;
+- outsider/wrong-project rejection;
+- only one active evidence version before rejection;
+- missing storage object leaves evidence retryable as `upload_pending`;
+- submit replay returns the same evidence;
+- first valid submit moves an eligible manual payment to `paid_unverified` without creating an `Expense`;
+- reject requires a reason and preserves non-financial payment truth;
+- rejected v1 permits a new immutable v2;
+- cancelled/disputed/refunded payments cannot start a new evidence lifecycle;
+- generic project readers are not evidence readers.
 
 ## Review semantics
 
@@ -102,6 +118,7 @@ Required behavior:
 - retry within the open sheet retains the same logical request identifiers;
 - after reopening, an existing `upload_pending` version can resume through the authenticated evidence endpoint rather than attempting to create a second intent;
 - resume requires the original filename and declared MIME, preserving evidence metadata truth;
+- evidence CTA is rendered only when the current role actually has write capability, preventing visible actions that can only fail with 403;
 - all footer actions use shared button semantics, busy/disabled states and minimum touch targets;
 - history is rendered with Russian status labels and canonical design tokens rather than raw backend enum values.
 
@@ -120,7 +137,7 @@ The routes are registered directly in canonical API composition; no generic publ
 
 Required on the exact final PR head:
 
-- focused content validation/private API contracts;
+- focused lifecycle/negative/private API contracts;
 - authenticated-upload immutability contract;
 - real PostgreSQL concurrent upload-intent races;
 - real PostgreSQL concurrent approve/reject and duplicate-approve races;
