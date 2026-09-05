@@ -155,8 +155,8 @@ async def test_upload_intent_replay_conflict_acl_and_active_version(db):
 
 
 @pytest.mark.asyncio
-async def test_submit_is_replay_safe_and_keeps_paid_unverified_non_financial(db, monkeypatch):
-    customer, _outsider, _reviewer, project, payment = await _seed_payment(db)
+async def test_submit_failure_retry_acl_and_paid_unverified_non_financial(db, monkeypatch):
+    customer, outsider, _reviewer, project, payment = await _seed_payment(db)
     evidence, _ = await evidence_service.prepare_upload_intent(
         db,
         project_id=project.id,
@@ -166,6 +166,32 @@ async def test_submit_is_replay_safe_and_keeps_paid_unverified_non_financial(db,
         original_filename="proof.pdf",
         content_type="application/pdf",
     )
+
+    with pytest.raises(PaymentEvidenceError, match="customer_required"):
+        await evidence_service.submit_uploaded_evidence(
+            db,
+            project_id=project.id,
+            payment_id=payment.id,
+            evidence_id=evidence.id,
+            user=outsider,
+            client_request_id="payment-evidence-submit-outsider-0001",
+        )
+
+    async def missing_bytes(_key: str):
+        return None
+
+    monkeypatch.setattr(evidence_service.storage_service, "read_bytes", missing_bytes)
+    with pytest.raises(PaymentEvidenceError, match="evidence_object_missing"):
+        await evidence_service.submit_uploaded_evidence(
+            db,
+            project_id=project.id,
+            payment_id=payment.id,
+            evidence_id=evidence.id,
+            user=customer,
+            client_request_id="payment-evidence-submit-missing-0001",
+        )
+    await db.refresh(evidence)
+    assert evidence.status == "upload_pending"
 
     async def read_bytes(_key: str):
         return b"%PDF-1.7\n" + b"x" * 64
