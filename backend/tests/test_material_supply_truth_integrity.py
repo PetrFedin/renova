@@ -1,8 +1,10 @@
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
 from app.models.entities import (
+    DomainOutbox,
     EstimateLine,
     LineType,
     MaterialPick,
@@ -14,7 +16,14 @@ from app.models.entities import (
     UserRole,
     WorkDependency,
 )
-from app.services import dependency_service, material_pick_service, material_supply_service, purchase_service
+from app.services import (
+    dependency_service,
+    material_pick_service,
+    material_supply_service,
+    outbox_service,
+    purchase_service,
+)
+from app.services.client_write_side_effects import clear_request_side_effect_context
 from app.services.purchase_create_service import prepare_purchase_from_picks
 
 
@@ -191,8 +200,9 @@ async def test_approved_on_hand_material_satisfies_dependency_but_pending_does_n
 
 
 @pytest.mark.asyncio
-async def test_supply_change_after_approval_requires_reapproval_and_reblocks(db):
-    project, _, _ = await _project(db)
+async def test_supply_change_after_approval_requires_reapproval_reblocks_and_is_durable(db):
+    project, customer, contractor = await _project(db)
+    assert contractor is not None
     stage = Stage(
         id=_id(),
         project_id=project.id,
@@ -224,6 +234,7 @@ async def test_supply_change_after_approval_requires_reapproval_and_reblocks(db)
         pick_id=pick.id,
         supply_source="customer_to_buy",
         qty_available=1,
+        actor_id=contractor.id,
     )
 
     assert updated is not None
@@ -233,6 +244,24 @@ async def test_supply_change_after_approval_requires_reapproval_and_reblocks(db)
     assert updated.qty_available == 1
     assert dependency.status == "pending"
     assert material_supply_service.snapshot(updated).qty_to_buy == 3
+
+    durable_rows = list(
+        (
+            await db.execute(
+                select(DomainOutbox).where(
+                    DomainOutbox.aggregate_type == "material_supply",
+                    DomainOutbox.aggregate_id == pick.id,
+                )
+            )
+        ).scalars().all()
+    )
+    assert {row.event_type for row in durable_rows} == {
+        outbox_service.ACTIVITY_EVENT,
+        outbox_service.NOTIFICATION_EVENT,
+    }
+    assert all(row.processed_at is None for row in durable_rows)
+    assert any(customer.id in row.payload_json for row in durable_rows)
+    clear_request_side_effect_context()
 
 
 @pytest.mark.asyncio
