@@ -17,6 +17,7 @@ from app.models.entities import (
     PurchaseStatus,
     Stage,
 )
+from app.services import material_supply_service
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
 
 
@@ -131,6 +132,11 @@ async def create_from_picks(
     pick_ids: list[str],
     supplier_name: str | None = None,
 ) -> Purchase | None:
+    """Legacy compatibility path with the same supply eligibility truth.
+
+    New API callers must use ``purchase_create_service`` because it additionally
+    enforces actor responsibility and idempotency.
+    """
     if not pick_ids:
         return None
     result = await db.execute(
@@ -154,7 +160,12 @@ async def create_from_picks(
     total = 0.0
     items: list[PurchaseItem] = []
     for pick in picks:
-        quantity = pick.qty_needed or pick.qty
+        supply = material_supply_service.snapshot(pick)
+        if not supply.buy_required:
+            raise ValueError("purchase_pick_not_buy_required")
+        quantity = supply.qty_to_buy
+        if quantity <= 0:
+            raise ValueError("purchase_pick_quantity_fulfilled")
         total += quantity * pick.price
         items.append(
             PurchaseItem(
@@ -382,6 +393,10 @@ async def _on_delivered(db: AsyncSession, purchase: Purchase) -> None:
 
 async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> list[MaterialPick]:
     """Сформировать потребности в материалах из строк сметы."""
+    project = await db.get(Project, project_id)
+    if not project:
+        return []
+    generated_source = material_supply_service.default_source_for_project(project)
     result = await db.execute(
         select(EstimateLine).where(
             EstimateLine.project_id == project_id,
@@ -411,6 +426,8 @@ async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> lis
             category=line.category or "materials",
             work_type=line.category,
             status=MaterialPickStatus.draft,
+            supply_source=generated_source,
+            qty_available=0,
             notes="Из сметы",
         )
         db.add(pick)

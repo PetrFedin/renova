@@ -295,6 +295,8 @@ async def test_create_request_replays_same_material_and_validates_links(material
         "work_type": "painting",
         "analog_of_id": None,
         "notes": None,
+        "supply_source": "contractor_to_buy",
+        "qty_available": 0.0,
     }
     pick = await material_pick_service.prepare_pick(material_db, project_id=project.id, **payload)
     created, entity_id = await commit_client_write(

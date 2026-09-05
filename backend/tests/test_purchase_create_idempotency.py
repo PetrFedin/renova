@@ -94,6 +94,7 @@ async def test_purchase_create_replays_one_order_and_activity(purchase_create_db
     purchase = await prepare_purchase_from_picks(
         purchase_create_db,
         project_id=project.id,
+        actor=contractor,
         pick_ids=payload["material_pick_ids"],
         supplier_name=payload["supplier_name"],
     )
@@ -170,12 +171,14 @@ async def test_purchase_create_replays_one_order_and_activity(purchase_create_db
 
 @pytest.mark.asyncio
 async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(purchase_create_db):
-    _, _, project, picks = await seed_project_and_picks(purchase_create_db)
+    _, contractor, project, picks = await seed_project_and_picks(purchase_create_db)
     project_id = project.id
+    contractor_id = contractor.id
     pick_ids = [pick.id for pick in picks]
     first = await prepare_purchase_from_picks(
         purchase_create_db,
         project_id=project_id,
+        actor=contractor,
         pick_ids=pick_ids,
         supplier_name="Первый",
     )
@@ -186,6 +189,7 @@ async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(p
         await prepare_purchase_from_picks(
             purchase_create_db,
             project_id=project_id,
+            actor=contractor,
             pick_ids=pick_ids,
             supplier_name="Второй",
         )
@@ -195,9 +199,12 @@ async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(p
     stored = await purchase_create_db.get(Purchase, first_id)
     stored.status = PurchaseStatus.cancelled
     await purchase_create_db.commit()
+    contractor = await purchase_create_db.get(User, contractor_id)
+    assert contractor is not None
     replacement = await prepare_purchase_from_picks(
         purchase_create_db,
         project_id=project_id,
+        actor=contractor,
         pick_ids=pick_ids,
         supplier_name="Повторный заказ",
     )
@@ -209,7 +216,7 @@ async def test_active_purchase_blocks_new_request_but_cancelled_releases_picks(p
 
 @pytest.mark.asyncio
 async def test_foreign_or_unapproved_pick_rejects_entire_purchase(purchase_create_db):
-    _, _, project, picks = await seed_project_and_picks(purchase_create_db)
+    _, contractor, project, picks = await seed_project_and_picks(purchase_create_db)
     project_id = project.id
     local_pick_id = picks[0].id
     foreign_customer = User(id="foreign-customer", phone="+79990000503", role=UserRole.customer)
@@ -237,6 +244,7 @@ async def test_foreign_or_unapproved_pick_rejects_entire_purchase(purchase_creat
         await prepare_purchase_from_picks(
             purchase_create_db,
             project_id=project_id,
+            actor=contractor,
             pick_ids=[local_pick_id, foreign_pick_id],
             supplier_name=None,
         )
@@ -250,6 +258,7 @@ async def test_foreign_or_unapproved_pick_rejects_entire_purchase(purchase_creat
         await prepare_purchase_from_picks(
             purchase_create_db,
             project_id=project_id,
+            actor=contractor,
             pick_ids=[local_pick_id],
             supplier_name=None,
         )

@@ -1,6 +1,6 @@
 /** API: materials */
-import { req, cachedGet, API_BASE, ApiError } from './client';
-import type { MaterialPick, Purchase } from './types';
+import { req, ApiError } from './client';
+import type { MaterialPick, MaterialSupplySource, Purchase } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 export const materialsApi = {
   listMaterialPicks: (userId: string, projectId: string, workType?: string) => req<MaterialPick[]>(`/api/v1/projects/${projectId}/material-picks${workType ? `?work_type=${workType}` : ''}`, {}, userId),
@@ -51,6 +51,16 @@ export const materialsApi = {
       throw new Error('offline_queued');
     }
   },
+  updateMaterialSupply: (
+    userId: string,
+    projectId: string,
+    pickId: string,
+    supply: { supply_source: MaterialSupplySource; qty_available: number },
+  ) => req<MaterialPick>(
+    `/api/v1/projects/${projectId}/material-picks/${pickId}/supply`,
+    { method: 'PATCH', body: JSON.stringify(supply) },
+    userId,
+  ),
   syncMaterialPrice: (userId: string, projectId: string, pickId: string) => req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks/${pickId}/sync-price`, { method: 'POST' }, userId),
   listPurchases: (userId: string, projectId: string) => req<Purchase[]>(`/api/v1/projects/${projectId}/purchases`, {}, userId),
   listPurchasesFresh: (

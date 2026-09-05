@@ -41,7 +41,7 @@ if (!mats.includes('const mutationRef = useRef(false)') || !mats.includes('if (m
 if (!mats.includes('primaryDestructive: true')) throw new Error('materials cancel destructive confirm');
 if ((mats.match(/Создать закупку \(/g) || []).length > 0) throw new Error('duplicate create purchase CTA');
 if (!mats.includes('Следующий шаг') || !mats.includes('next.cta')) throw new Error('canonical procurement next action');
-if (!mats.includes('Нужно купить') || !mats.includes('В факте')) throw new Error('materials focused summary');
+if (!mats.includes('Нужно купить') || !mats.includes('Доступно')) throw new Error('materials supply-aware summary');
 if (!purchaseList.includes('variant="dangerOutline"')) throw new Error('purchase cancel danger hierarchy');
 if (!purchaseList.includes('mutationKey === nextKey') || !purchaseList.includes('mutationKey === cancelKey')) {
   throw new Error('purchase exact loading states');
