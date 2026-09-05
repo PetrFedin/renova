@@ -1,5 +1,5 @@
 /** API: materials */
-import { req, cachedGet, API_BASE, ApiError } from './client';
+import { req, ApiError } from './client';
 import type { MaterialPick, MaterialSupplySource, Purchase } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 export const materialsApi = {
