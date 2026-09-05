@@ -1,6 +1,6 @@
 # Контракт источника и ответственности материалов
 
-**Статус:** PENDING EXACT-HEAD CI  
+**Статус:** ACTIVE CONTRACT / EXACT-HEAD CI REQUIRED BEFORE MERGE  
 **Связанный issue:** #298  
 **Schema head:** `w20materialsupply01`  
 **Назначение:** нормативный annex к `docs/RENOVA-TECHNICAL-SPECIFICATION.md` для канонической истины «кто обеспечивает материал, сколько уже доступно и сколько действительно требуется купить».
@@ -143,4 +143,4 @@ Temporary server defaults используются только для безо�
 4. Playwright API E2E — own material rejected from Purchase, wrong buyer rejected, correct buyer purchases only remainder;
 5. existing full backend, Playwright, security, technical-spec and mobile suites без регрессий.
 
-До получения этого набора annex остаётся `PENDING EXACT-HEAD CI`; более старый green SHA не повышает его статус.
+Изменение этого annex не может быть merged до полного exact-head green по матрице выше; более старый green SHA не является доказательством для новой версии контракта.
