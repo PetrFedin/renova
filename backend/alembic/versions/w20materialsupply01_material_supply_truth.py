@@ -23,7 +23,8 @@ _SUPPLY_CHECK = (
 
 def upgrade() -> None:
     # Existing rows model the historical flow: an approved pick was expected to
-    # enter Renova procurement. Preserve that behavior during the backfill.
+    # enter Renova procurement. Preserve that behavior, but do not assign a
+    # nonexistent contractor to self-managed projects.
     op.add_column(
         "material_picks",
         sa.Column(
@@ -36,6 +37,10 @@ def upgrade() -> None:
     op.add_column(
         "material_picks",
         sa.Column("qty_available", sa.Float(), nullable=False, server_default="0"),
+    )
+    op.execute(
+        "UPDATE material_picks AS mp SET supply_source = 'customer_to_buy' "
+        "FROM projects AS p WHERE p.id = mp.project_id AND p.contractor_id IS NULL"
     )
     op.create_check_constraint(
         "ck_material_picks_supply_source",
