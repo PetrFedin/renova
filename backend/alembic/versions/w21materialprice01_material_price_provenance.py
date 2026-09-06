@@ -16,17 +16,18 @@ depends_on: str | Sequence[str] | None = None
 
 
 _PRICE_SOURCE_CHECK = (
-    "price_source IN ('unset','legacy_unknown','manual','live_jsonld','live_meta','live_currency')"
+    "price_source IN ('unset','legacy_unknown','manual','estimate','selection_approved',"
+    "'live_jsonld','live_meta','live_currency')"
 )
 
 
 def upgrade() -> None:
-    # Start fail-closed. Existing rows have no durable evidence telling us how
-    # their numeric price was obtained. We can safely infer zero as unset and
-    # non-zero historical values as explicit/manual except the exact legacy
-    # production stub shape: 1000 with no supplier URL. That shape remains
-    # quarantined as legacy_unknown and cannot enter a new Purchase until it is
-    # replaced by explicit or live-verified truth.
+    # Start fail-closed. Existing rows have no persisted evidence telling us
+    # whether a positive numeric price came from user input, a supplier fetch,
+    # an estimate, a selection, or the historical synthetic fallback. Therefore
+    # every historical positive value is quarantined as legacy_unknown. Zero is
+    # the only safe inference and becomes unset. New runtime writers establish
+    # precise provenance after this migration.
     op.add_column(
         "material_picks",
         sa.Column(
@@ -45,11 +46,6 @@ def upgrade() -> None:
         sa.Column("price_source_url", sa.String(length=512), nullable=True),
     )
     op.execute("UPDATE material_picks SET price_source = 'unset' WHERE COALESCE(price, 0) <= 0")
-    op.execute(
-        "UPDATE material_picks SET price_source = 'manual' "
-        "WHERE COALESCE(price, 0) > 0 "
-        "AND NOT (price = 1000.0 AND NULLIF(TRIM(shop_url), '') IS NULL)"
-    )
     op.create_check_constraint(
         "ck_material_picks_price_source",
         "material_picks",
