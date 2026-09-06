@@ -1,4 +1,4 @@
-"""Canonical, truthful material price mutation endpoints."""
+"""Canonical, truthful material price read/mutation endpoints."""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import MaterialPick, User
 from app.models import material_price_truth
+from app.services import material_pick_service
 from app.services import material_price_service
 from app.services.price_parser import PriceFetchError
 
@@ -36,6 +37,7 @@ def _out(pick: MaterialPick) -> dict:
         "price_verified": material_price_truth.is_verified_price_source(pick.price_source),
         "price_verified_at": pick.price_verified_at.isoformat() if pick.price_verified_at else None,
         "price_source_url": pick.price_source_url,
+        "price_actionable": material_price_truth.is_actionable_purchase_price(pick),
     }
 
 
@@ -71,6 +73,25 @@ def _price_fetch_error(error: PriceFetchError) -> HTTPException:
             "message": messages.get(error.code, "Не удалось безопасно проверить ссылку поставщика"),
         },
     )
+
+
+@router.get("/{project_id}/material-picks/{pick_id}/price-truth")
+async def get_price_truth(
+    project_id: str,
+    pick_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return durable price provenance without implying a live provider check."""
+    await require_project(db, project_id, user, write=False)
+    pick = await material_pick_service.get_pick(
+        db,
+        project_id=project_id,
+        pick_id=pick_id,
+    )
+    if pick is None:
+        raise HTTPException(404, "Материал не найден")
+    return _out(pick)
 
 
 @router.patch("/{project_id}/material-picks/{pick_id}/price")
