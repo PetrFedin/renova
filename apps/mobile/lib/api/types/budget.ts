@@ -37,6 +37,8 @@ export type MaterialPriceSource =
   | 'unset'
   | 'legacy_unknown'
   | 'manual'
+  | 'estimate'
+  | 'selection_approved'
   | 'live_jsonld'
   | 'live_meta'
   | 'live_currency';
