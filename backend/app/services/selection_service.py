@@ -18,6 +18,7 @@ async def material_pick_from_selection(db: AsyncSession, row: SelectionItem) -> 
         qty=1,
         unit="шт",
         price=row.price,
+        price_source="selection_approved" if float(row.price or 0) > 0 else "unset",
         shop_url=row.shop_url,
         shop_name=row.shop_name,
         work_type=row.category,
