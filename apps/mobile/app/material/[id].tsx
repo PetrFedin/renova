@@ -10,6 +10,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportError } from '@/lib/reportError';
 import { api, MaterialPick, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { repairTabRoute } from '@/constants/osSections';
@@ -55,8 +56,14 @@ export default function MaterialDetailScreen() {
     setLoading(true);
     Promise.all([
       api.listMaterialPicks(user.id, activeProject.id),
-      api.listPurchases(user.id, activeProject.id).catch(() => [] as Purchase[]),
-      api.getMaterialPriceTruth(user.id, activeProject.id, id).catch(() => null),
+      api.listPurchases(user.id, activeProject.id).catch((error) => {
+        reportError('material.detail.purchases', error, { projectId: activeProject.id, materialId: id });
+        return [] as Purchase[];
+      }),
+      api.getMaterialPriceTruth(user.id, activeProject.id, id).catch((error) => {
+        reportError('material.detail.priceTruth', error, { projectId: activeProject.id, materialId: id });
+        return null;
+      }),
     ]).then(([items, pu, truth]) => {
       setPurchases(pu);
       const base = items.find((p) => p.id === id) || null;
@@ -64,7 +71,8 @@ export default function MaterialDetailScreen() {
       setPick(merged);
       setPriceTruthError(Boolean(base && !truth));
       if (merged) setManualPrice(String(merged.price || ''));
-    }).catch(() => {
+    }).catch((error) => {
+      reportError('material.detail.reload', error, { projectId: activeProject.id, materialId: id });
       setPick(null);
       setPurchases([]);
       setPriceTruthError(true);
@@ -114,6 +122,7 @@ export default function MaterialDetailScreen() {
       setPriceTruthError(false);
       await syncProjectSideEffects({ user, project: activeProject });
     } catch (e: unknown) {
+      reportError('material.detail.setPrice', e, { projectId: activeProject.id, materialId: pick.id });
       showActionConfirm({
         title: 'Цена не сохранена',
         message: e instanceof Error ? e.message : 'Проверьте данные и повторите.',
@@ -138,6 +147,7 @@ export default function MaterialDetailScreen() {
         });
       }
     } catch (e: unknown) {
+      reportError('material.detail.verifyPrice', e, { projectId: activeProject.id, materialId: pick.id });
       showActionConfirm({
         title: 'Цена не проверена',
         message: e instanceof Error ? e.message : 'Не удалось проверить цену поставщика.',
@@ -208,6 +218,7 @@ export default function MaterialDetailScreen() {
                     await syncProjectSideEffects({ user, project: activeProject });
                     reload();
                   } catch (e: unknown) {
+                    reportError('material.detail.updatePurchase', e, { projectId: activeProject.id, materialId: pick.id, purchaseId: deliveredPurchase.id });
                     showActionConfirm({
                       title: 'Ошибка',
                       message: e instanceof Error ? e.message : 'Не удалось обновить закупку',
@@ -234,6 +245,7 @@ export default function MaterialDetailScreen() {
                     reload();
                     alertMaterialPickApproved(role);
                   } catch (e: unknown) {
+                    reportError('material.detail.approve', e, { projectId: activeProject.id, materialId: pick.id });
                     showActionConfirm({
                       title: 'Ошибка',
                       message: e instanceof Error ? e.message : 'Не удалось согласовать',
@@ -247,7 +259,20 @@ export default function MaterialDetailScreen() {
           }} />
         )}
         {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
-          <PrimaryButton title="На согласование" onPress={async () => { await api.submitMaterialPick(user.id, activeProject.id, pick.id); await syncProjectSideEffects({ user, project: activeProject }); reload(); alertMaterialPickSubmitted(role); }} />
+          <PrimaryButton title="На согласование" onPress={async () => {
+            try {
+              await api.submitMaterialPick(user.id, activeProject.id, pick.id);
+              await syncProjectSideEffects({ user, project: activeProject });
+              reload();
+              alertMaterialPickSubmitted(role);
+            } catch (e: unknown) {
+              reportError('material.detail.submit', e, { projectId: activeProject.id, materialId: pick.id });
+              showActionConfirm({
+                title: 'Не отправлено',
+                message: e instanceof Error ? e.message : 'Не удалось отправить материал на согласование.',
+              });
+            }
+          }} />
         )}
         <PrimaryButton title="Все материалы" variant="outline" onPress={() => replaceOsNav(repairTabRoute(role, 'materials'), undefined, role)} />
       </ScrollView>
