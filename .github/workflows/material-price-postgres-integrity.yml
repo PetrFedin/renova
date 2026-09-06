@@ -13,6 +13,7 @@ on:
       - "backend/app/services/purchase_service.py"
       - "backend/app/services/selection_service.py"
       - "backend/alembic/versions/w21materialprice01_material_price_provenance.py"
+      - "backend/scripts/seed_material_price_migration_fixture.py"
       - "backend/tests/test_material_price_truth_integrity.py"
       - "backend/tests/test_material_price_provenance_integrity.py"
       - "backend/tests/test_material_price_writer_contract.py"
@@ -34,6 +35,7 @@ on:
       - "backend/app/services/purchase_service.py"
       - "backend/app/services/selection_service.py"
       - "backend/alembic/versions/w21materialprice01_material_price_provenance.py"
+      - "backend/scripts/seed_material_price_migration_fixture.py"
       - "backend/tests/test_material_price_truth_integrity.py"
       - "backend/tests/test_material_price_provenance_integrity.py"
       - "backend/tests/test_material_price_writer_contract.py"
@@ -87,49 +89,9 @@ jobs:
       - name: Upgrade only to pre-price provenance head
         working-directory: backend
         run: poetry run alembic upgrade w20materialsupply01
-      - name: Seed historical material prices without provenance columns
+      - name: Seed historical material prices from physical w20 schema
         working-directory: backend
-        run: |
-          poetry run python - <<'PY'
-          import asyncio
-          from sqlalchemy import text
-          from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-          from app.models.entities import Project, User, UserRole
-
-          URL = "postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova"
-
-          async def main():
-              engine = create_async_engine(URL)
-              Session = async_sessionmaker(engine, expire_on_commit=False)
-              async with Session() as db:
-                  customer = User(id="price-migration-customer", phone="+79990000101", role=UserRole.customer)
-                  project = Project(
-                      id="price-migration-project",
-                      name="Price migration fixture",
-                      renovation_type="cosmetic",
-                      customer_id=customer.id,
-                  )
-                  db.add_all([customer, project])
-                  await db.commit()
-              async with engine.begin() as conn:
-                  statement = text("""
-                      INSERT INTO material_picks
-                      (id, project_id, name, qty, unit, price, qty_delivered, status,
-                       supply_source, qty_available, created_at, updated_at)
-                      VALUES
-                      (:id, 'price-migration-project', :name, 1, 'шт', :price, 0, 'draft',
-                       'customer_to_buy', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                  """)
-                  for row in (
-                      {"id": "price-historical-zero", "name": "Zero", "price": 0.0},
-                      {"id": "price-historical-normal", "name": "Normal", "price": 2500.0},
-                      {"id": "price-historical-stub-shape", "name": "Old stub shape", "price": 1000.0},
-                  ):
-                      await conn.execute(statement, row)
-              await engine.dispose()
-
-          asyncio.run(main())
-          PY
+        run: poetry run python scripts/seed_material_price_migration_fixture.py
       - name: Upgrade historical fixture through price provenance migration
         working-directory: backend
         run: poetry run alembic upgrade head
@@ -138,14 +100,13 @@ jobs:
         run: |
           poetry run python - <<'PY'
           import asyncio
+          import os
           from sqlalchemy import text
           from sqlalchemy.exc import IntegrityError
           from sqlalchemy.ext.asyncio import create_async_engine
 
-          URL = "postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova"
-
           async def main():
-              engine = create_async_engine(URL)
+              engine = create_async_engine(os.environ["DATABASE_URL"])
               async with engine.connect() as conn:
                   rows = (await conn.execute(text("""
                       SELECT id, price_source
