@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models.entities import Project, Room, Stage, User, UserRole
-from app.models.project_participants import ProjectParticipantEvent
+from app.models.project_participants import ProjectParticipant, ProjectParticipantEvent
 from app.services import project_participant_service as participant_service
 from app.services import team_service
 
@@ -163,6 +163,27 @@ async def test_cross_project_scope_is_rejected_fail_closed(db):
 
 
 @pytest.mark.asyncio
+async def test_stage_assignee_rejects_stage_from_another_project_even_if_work_type_matches(db):
+    customer, _, electrician, _, project, _, _, _, _ = await _seed(db, "stage-bound-a")
+    _, _, _, _, other_project, _, _, other_stage, _ = await _seed(db, "stage-bound-b")
+    assert other_project.id != project.id
+
+    await participant_service.add_or_reactivate_contractor(
+        db,
+        project_id=project.id,
+        actor_id=customer.id,
+        contractor_id=electrician.id,
+        scopes=[("work_type", other_stage.work_type)],
+    )
+    assert await participant_service.stage_assignee_allowed(
+        db,
+        project=project,
+        stage=other_stage,
+        user_id=electrician.id,
+    ) is False
+
+
+@pytest.mark.asyncio
 async def test_remove_preserves_history_and_revokes_scope(db):
     customer, _, electrician, _, project, _, _, stage_a, _ = await _seed(db, "remove")
     participant, _ = await participant_service.add_or_reactivate_contractor(
@@ -194,6 +215,100 @@ async def test_remove_preserves_history_and_revokes_scope(db):
     )
     assert len(event_types) == 2
     assert set(event_types) == {"added", "removed"}
+
+
+@pytest.mark.asyncio
+async def test_reactivation_without_explicit_scope_does_not_revive_old_authorization(db):
+    customer, _, electrician, _, project, _, _, stage_a, _ = await _seed(db, "reactivate")
+    participant, _ = await participant_service.add_or_reactivate_contractor(
+        db,
+        project_id=project.id,
+        actor_id=customer.id,
+        contractor_id=electrician.id,
+        scopes=[("stage", stage_a.id)],
+    )
+    participant_id = participant.id
+    await participant_service.remove_contractor(
+        db,
+        project_id=project.id,
+        participant_id=participant_id,
+        actor_id=customer.id,
+    )
+
+    reactivated, created = await participant_service.add_or_reactivate_contractor(
+        db,
+        project_id=project.id,
+        actor_id=customer.id,
+        contractor_id=electrician.id,
+        scopes=None,
+    )
+
+    assert created is False
+    assert reactivated.id == participant_id
+    assert reactivated.status == "active"
+    assert reactivated.all_scope is False
+    assert reactivated.can_manage_schedule is False
+    assert reactivated.can_manage_commercial is False
+    assert reactivated.can_manage_documents is False
+    assert await participant_service.participant_scopes(db, participant_id) == []
+    assert await participant_service.scope_allows(
+        db,
+        project=project,
+        user_id=electrician.id,
+        stage_id=stage_a.id,
+    ) is False
+    event = await db.scalar(
+        select(ProjectParticipantEvent).where(
+            ProjectParticipantEvent.participant_id == participant_id,
+            ProjectParticipantEvent.event_type == "reactivated",
+        )
+    )
+    assert event is not None
+    assert event.snapshot_json == "[]"
+
+
+@pytest.mark.asyncio
+async def test_stale_backfilled_lead_is_denied_after_project_lead_changes(db):
+    customer, lead, _, plumber, project, _, _, stage_a, _ = await _seed(db, "lead-drift")
+    stale = ProjectParticipant(
+        project_id=project.id,
+        user_id=lead.id,
+        participant_role="lead_contractor",
+        status="active",
+        all_scope=True,
+        can_manage_schedule=True,
+        can_manage_commercial=True,
+        can_manage_documents=True,
+        added_by=customer.id,
+    )
+    db.add(stale)
+    project.contractor_id = plumber.id
+    await db.commit()
+
+    assert await participant_service.scope_allows(
+        db,
+        project=project,
+        user_id=lead.id,
+        stage_id=stage_a.id,
+    ) is False
+    assert await participant_service.stage_assignee_allowed(
+        db,
+        project=project,
+        stage=stage_a,
+        user_id=lead.id,
+    ) is False
+    assert await participant_service.scope_allows(
+        db,
+        project=project,
+        user_id=plumber.id,
+        stage_id=stage_a.id,
+    ) is True
+    assert await participant_service.stage_assignee_allowed(
+        db,
+        project=project,
+        stage=stage_a,
+        user_id=plumber.id,
+    ) is True
 
 
 @pytest.mark.asyncio

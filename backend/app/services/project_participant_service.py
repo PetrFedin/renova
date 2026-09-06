@@ -186,6 +186,7 @@ async def add_or_reactivate_contractor(
     participant = (await db.execute(query)).scalar_one_or_none()
     created = participant is None
     event_type = "added"
+    reactivated = False
     if participant is None:
         participant = ProjectParticipant(
             project_id=project_id,
@@ -206,7 +207,14 @@ async def add_or_reactivate_contractor(
         participant.removed_at = None
         participant.added_by = actor_id
         participant.added_at = utc_now()
+        # Reactivation is a fresh authorization decision. Historical scope and
+        # capability rows/flags must not silently come back to life.
+        participant.all_scope = False
+        participant.can_manage_schedule = False
+        participant.can_manage_commercial = False
+        participant.can_manage_documents = False
         event_type = "reactivated"
+        reactivated = True
     else:
         if scopes is None:
             await db.commit()
@@ -221,7 +229,11 @@ async def add_or_reactivate_contractor(
             return participant, False
         event_type = "scope_replaced"
 
-    if scopes is not None:
+    # An explicit scope update replaces the authorization set. Reactivation
+    # without a supplied scope is also a replacement with the empty set; this is
+    # the fail-closed alternative to reviving stale pre-removal grants.
+    replace_scope_rows = scopes is not None or reactivated
+    if replace_scope_rows:
         await db.execute(
             delete(ProjectParticipantScope).where(
                 ProjectParticipantScope.participant_id == participant.id
@@ -241,7 +253,7 @@ async def add_or_reactivate_contractor(
         participant=participant,
         event_type=event_type,
         actor_id=actor_id,
-        snapshot_json=_scope_snapshot(normalized) if scopes is not None else None,
+        snapshot_json=_scope_snapshot(normalized) if replace_scope_rows else None,
     )
     await db.commit()
     await db.refresh(participant)
@@ -359,6 +371,11 @@ async def scope_allows(
     participant = await active_participant(db, project_id=project.id, user_id=user_id)
     if participant is None:
         return False
+    # A backfilled lead row is compatibility evidence, not independent scope.
+    # Once Project.contractor_id changes, the historical lead must stop granting
+    # access immediately even before lead-writer synchronization is adopted.
+    if participant.participant_role == "lead_contractor":
+        return False
     if participant.all_scope:
         return True
     requested = {
@@ -377,6 +394,8 @@ async def scope_allows(
 async def stage_assignee_allowed(
     db: AsyncSession, *, project: Project, stage: Stage, user_id: str
 ) -> bool:
+    if stage.project_id != project.id:
+        return False
     if project.contractor_id == user_id:
         return True
     room_ids: list[str] = []

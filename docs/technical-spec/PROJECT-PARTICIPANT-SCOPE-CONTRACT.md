@@ -42,7 +42,8 @@ Independent contractors are deny-by-default:
 - `room:<id>` → exact room scope;
 - `work_type:<value>` → exact work-type scope;
 - a scope row referencing a stage/room from another project is rejected;
-- removal immediately disables scope decisions while preserving participant/event history.
+- removal immediately disables scope decisions while preserving participant/event history;
+- reactivation without an explicit scope set clears historical scope rows and resets compatibility capability flags instead of reviving old authorization.
 
 The foundation helper treats applicable scopes as an explicit union for the resource being checked. A caller must supply a concrete stage/room/work-type context. A participant record by itself never answers a generic "can read project?" with yes.
 
@@ -50,11 +51,13 @@ The foundation helper treats applicable scopes as an explicit union for the reso
 
 During foundation rollout, `team_service.can_access_project()` intentionally remains unchanged for independent participants. Therefore:
 
-- current customer/lead contractor/team-member behavior does not widen accidentally;
+- current customer/current lead contractor/team-member behavior does not widen accidentally;
 - an independent participant cannot obtain generic project budget, documents, chats or admin writes merely because a participant row exists;
 - each subsequent domain PR must add scope-aware filtering and negative sibling-contractor tests before enabling that domain for independent contractors.
 
 This temporary split is deliberate. Replacing global ACL with participant membership in one step would create an IDOR risk across sibling stages, finance and documents.
+
+A backfilled `lead_contractor` row is compatibility evidence only. If `Project.contractor_id` later changes, the historical lead row must not continue to grant scope merely because it remains active and `all_scope=true`; only the current `Project.contractor_id` receives legacy lead compatibility access.
 
 ## 5. Mutation and concurrency contract
 
@@ -65,7 +68,8 @@ Required behavior:
 - same contractor may exist at most once per project;
 - repeated same add + same scope is a replay, not a second participant or second `added` event;
 - removal is soft (`status=removed`) and history is retained;
-- reactivation reuses the same participant identity;
+- reactivation reuses the same participant identity but is a fresh authorization decision;
+- reactivation with `scopes=None` returns the participant to zero-scope and resets deny-default capability flags;
 - legacy lead contractor cannot be duplicated as an independent participant;
 - lead removal/scope mutation remains on the compatibility path until lead-contract semantics are migrated.
 
@@ -75,9 +79,11 @@ Dedicated PostgreSQL CI proves a two-session same-participant race collapses to 
 
 The foundation exposes an eligibility decision for stage assignment:
 
-- legacy lead contractor remains eligible for compatibility;
+- the current legacy lead contractor remains eligible for compatibility;
+- a stale backfilled lead whose user is no longer `Project.contractor_id` is denied;
 - independent participant is eligible only when the stage itself, one of its rooms, or its work type matches an active participant scope;
-- unrelated sibling stage remains denied.
+- unrelated sibling stage remains denied;
+- a `Stage` whose `project_id` differs from the supplied `Project.id` is denied before any work-type/room matching occurs.
 
 This helper does not by itself activate every legacy stage mutation route. Each writer that can change `assignee_id` must be migrated to this decision before #300 is closed.
 
