@@ -3,11 +3,16 @@ from __future__ import annotations
 import inspect
 
 from app.models import material_price_truth
-from app.models.entities import MaterialPick
+from app.models.entities import MaterialPick, MaterialPickStatus
 from app.services import purchase_service, selection_service
 
 
-def _pick(*, price: float, source: str) -> MaterialPick:
+def _pick(
+    *,
+    price: float,
+    source: str,
+    status: MaterialPickStatus = MaterialPickStatus.draft,
+) -> MaterialPick:
     return MaterialPick(
         project_id="price-writer-project",
         name="Материал",
@@ -15,11 +20,27 @@ def _pick(*, price: float, source: str) -> MaterialPick:
         unit="шт",
         price=price,
         price_source=source,
+        status=status,
     )
 
 
-def test_estimate_price_is_not_actionable_until_explicit_confirmation():
-    pick = _pick(price=1500, source="estimate")
+def test_estimate_price_becomes_actionable_only_after_customer_approval():
+    draft = _pick(price=1500, source="estimate")
+    approved = _pick(
+        price=1500,
+        source="estimate",
+        status=MaterialPickStatus.approved,
+    )
+    assert material_price_truth.is_actionable_purchase_price(draft) is False
+    assert material_price_truth.is_actionable_purchase_price(approved) is True
+
+
+def test_approved_legacy_unknown_never_becomes_actionable_by_status_alone():
+    pick = _pick(
+        price=1500,
+        source="legacy_unknown",
+        status=MaterialPickStatus.approved,
+    )
     assert material_price_truth.is_actionable_purchase_price(pick) is False
 
 
