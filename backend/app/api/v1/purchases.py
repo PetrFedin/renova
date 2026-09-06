@@ -171,12 +171,14 @@ async def create_purchase(
             "picks_already_in_active_purchase": "Один из материалов уже включён в активную закупку",
             "purchase_pick_not_buy_required": "Выбрана позиция, которую не нужно покупать через Renova",
             "purchase_pick_responsibility_forbidden": "Эту позицию должна покупать другая сторона проекта",
+            "purchase_pick_price_unverified": "Подтвердите цену материала вручную или по ссылке поставщика перед закупкой",
             "purchase_pick_quantity_fulfilled": "По выбранной позиции уже нет остатка к закупке",
         }
         conflict_codes = {
             "picks_not_approved",
             "picks_already_in_active_purchase",
             "purchase_pick_responsibility_forbidden",
+            "purchase_pick_price_unverified",
             "purchase_pick_quantity_fulfilled",
         }
         raise HTTPException(

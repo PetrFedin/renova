@@ -1,6 +1,6 @@
 /** Подбор материалов с привязкой к комнате */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, Linking, StyleSheet, TextInput, Alert } from 'react-native';
+import { View, Text, Pressable, Linking, StyleSheet, TextInput } from 'react-native';
 import { api, type MaterialPick, type MaterialSupplySource, type Room, type Stage } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -219,14 +219,17 @@ export function MaterialPickList({
                   try {
                     const updated = await api.syncMaterialPrice(userId, projectId, p.id);
                     await refresh();
-                    if (updated?.price_source === 'stub') {
-                      Alert.alert(
-                        'Цена (оценка)',
-                        'Магазин не отдал живую цену — показана оценка (stub), не рыночный синк.',
-                      );
+                    if (!updated?.price_verified) {
+                      showActionConfirm({
+                        title: 'Цена не подтверждена',
+                        message: 'Поставщик не отдал доказуемую цену. Сохранённое значение не изменено.',
+                      });
                     }
                   } catch (e) {
-                    Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось обновить цену');
+                    showActionConfirm({
+                      title: 'Цена не проверена',
+                      message: e instanceof Error ? e.message : 'Не удалось обновить цену',
+                    });
                   }
                 }}
               />

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models import material_price_truth
 from app.models.entities import (
     EstimateLine,
     LineType,
@@ -132,10 +133,11 @@ async def create_from_picks(
     pick_ids: list[str],
     supplier_name: str | None = None,
 ) -> Purchase | None:
-    """Legacy compatibility path with the same supply eligibility truth.
+    """Legacy compatibility path with the same supply/price eligibility truth.
 
     New API callers must use ``purchase_create_service`` because it additionally
-    enforces actor responsibility and idempotency.
+    enforces actor responsibility and idempotency. This compatibility path must
+    still fail closed on unknown material-price provenance.
     """
     if not pick_ids:
         return None
@@ -163,6 +165,8 @@ async def create_from_picks(
         supply = material_supply_service.snapshot(pick)
         if not supply.buy_required:
             raise ValueError("purchase_pick_not_buy_required")
+        if not material_price_truth.is_actionable_purchase_price(pick):
+            raise ValueError("purchase_pick_price_unverified")
         quantity = supply.qty_to_buy
         if quantity <= 0:
             raise ValueError("purchase_pick_quantity_fulfilled")
@@ -423,6 +427,7 @@ async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> lis
             qty_needed=line.quantity_planned,
             unit=line.unit,
             price=line.unit_price,
+            price_source="estimate" if float(line.unit_price or 0) > 0 else "unset",
             category=line.category or "materials",
             work_type=line.category,
             status=MaterialPickStatus.draft,
