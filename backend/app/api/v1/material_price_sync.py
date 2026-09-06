@@ -44,7 +44,8 @@ def _out(pick: MaterialPick) -> dict:
 def _material_error(error: ValueError) -> HTTPException:
     code = str(error)
     messages = {
-        "material_pick_not_editable": "Обновлять цену можно только у черновика материала",
+        "material_pick_not_editable": "Обновлять материал можно только в черновике",
+        "material_pick_price_not_editable": "Цена доступна для изменения в черновике или для восстановления согласованной исторической позиции",
         "material_pick_locked_by_purchase": "Материал уже включён в активную закупку",
         "material_pick_price_sync_stale": "Материал изменился во время проверки цены. Запустите обновление повторно",
         "material_pick_price_invalid": "Укажите корректную цену материала",
@@ -102,7 +103,7 @@ async def set_manual_price(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Explicitly set a draft price and make its manual provenance durable."""
+    """Explicitly set/confirm a price and make its manual provenance durable."""
     await require_project(db, project_id, user, write=True)
     try:
         pick = await material_price_service.set_manual_material_price(
@@ -126,7 +127,7 @@ async def sync_price(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresh one editable draft without fabricated fallbacks or long-held DB locks."""
+    """Refresh one price-mutable material without fabricated fallbacks or long-held DB locks."""
     await require_project(db, project_id, user, write=True)
     try:
         result = await material_price_service.sync_material_price(
@@ -148,6 +149,7 @@ async def sync_price(
             "price_sync_result": result.source,
             "price_updated": result.price_changed,
             "shop_updated": result.shop_changed,
+            "requires_reapproval": result.requires_reapproval,
         }
     )
     return response
