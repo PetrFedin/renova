@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from fastapi.routing import iter_route_contexts
 from sqlalchemy import func, select
 
 from app.api.v1.router import api_router
@@ -77,7 +78,7 @@ async def _seed(
 def test_runtime_has_one_canonical_material_price_sync_route():
     matches = [
         route
-        for route in api_router.routes
+        for route in iter_route_contexts(api_router.routes)
         if getattr(route, "path", None)
         == "/api/v1/projects/{project_id}/material-picks/{pick_id}/sync-price"
         and "POST" in (getattr(route, "methods", set()) or set())
