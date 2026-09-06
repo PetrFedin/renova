@@ -14,6 +14,7 @@
 - придумывать цену при отсутствии URL или ответа поставщика;
 - заменять last-known-good price при provider/parser failure;
 - создавать Purchase по цене с неизвестным происхождением;
+- выдавать цену из сметы за ручную или live-проверенную закупочную цену;
 - считать response-only `price_source` достаточной доказательной историей;
 - менять уже согласованную сумму без повторного customer approval.
 
@@ -32,6 +33,8 @@
 | `unset` | цена не указана | нет |
 | `legacy_unknown` | историческое значение без доказуемого происхождения | нет |
 | `manual` | пользователь явно указал/подтвердил цену | да, если `price > 0` |
+| `estimate` | плановая цена перенесена из строки сметы | нет до явного подтверждения/live verification |
+| `selection_approved` | цена конкретного согласованного подбора | да, если `price > 0` |
 | `live_jsonld` | цена подтверждена structured JSON-LD supplier page | да |
 | `live_meta` | цена подтверждена structured meta supplier page | да |
 | `live_currency` | цена подтверждена currency-marked supplier page | да |
@@ -40,17 +43,23 @@
 
 ## 3. Migration/backfill и карантин
 
-Исторические строки не получают ложный статус `verified`.
+Исторические строки не получают выдуманный provenance.
 
 Backfill:
 
 - `price <= 0` → `unset`;
-- положительные исторические цены → `manual`, поскольку сам факт существования значения не доказывает внешний источник;
-- известная форма старого production stub (`price = 1000` при пустом `shop_url`) → `legacy_unknown`.
+- **любая** историческая положительная цена → `legacy_unknown`.
 
-`legacy_unknown` не удаляется автоматически и не переписывается догадкой. Пользователь обязан явно подтвердить/исправить цену либо получить live verification.
+До `w21` в самой строке `MaterialPick` отсутствовали данные, позволяющие достоверно отличить ручной ввод от старого supplier fetch, estimate/selection derivation или synthetic fallback. Поэтому migration не делает предположение `positive = manual` и не пытается угадать источник по числу/URL.
 
-Это сознательно fail-closed: редкая настоящая ручная цена ровно 1000 ₽ без URL может потребовать одно повторное подтверждение, зато исторический синтетический fallback не сможет попасть в новую закупку как будто он настоящий.
+`legacy_unknown` не удаляется автоматически и не переписывается догадкой. Пользователь обязан явно подтвердить/исправить цену либо получить live verification. Это сознательно fail-closed: часть настоящих исторических цен потребует повторного подтверждения, зато ни одно старое число не станет новой финансовой истиной без доказуемого основания.
+
+После migration новые production writers обязаны устанавливать источник точно:
+
+- прямой material create с положительной ценой → `manual`;
+- material need из EstimateLine → `estimate`;
+- MaterialPick из согласованного SelectionItem → `selection_approved`;
+- live sync → соответствующий `live_*`.
 
 ## 4. Manual mutation
 
@@ -96,7 +105,7 @@ Provider/parser unavailable, HTTP failure, unsupported content или отсут
 - `price_source_url`;
 - `price_actionable`.
 
-`price_verified=true` означает только сохранённую live verification record. `manual` является допустимой пользовательской ценой, но не называется внешне проверенной.
+`price_verified=true` означает только сохранённую live verification record. `manual` и `selection_approved` могут быть допустимыми business prices, но не называются внешне проверенными.
 
 ## 7. Purchase financial gate
 
@@ -104,22 +113,22 @@ Provider/parser unavailable, HTTP failure, unsupported content или отсут
 
 1. material approval/supply/responsibility gates выполнены;
 2. `price > 0`;
-3. `price_source ∈ {manual, live_jsonld, live_meta, live_currency}`.
+3. `price_source ∈ {manual, selection_approved, live_jsonld, live_meta, live_currency}`.
 
-`unset` и `legacy_unknown` возвращают `purchase_pick_price_unverified` и не создают Purchase/Payment/Expense truth.
-
-Это предотвращает попадание старого synthetic value в новую финансовую цепочку даже если numeric field физически существует в БД.
+`unset`, `legacy_unknown` и `estimate` возвращают `purchase_pick_price_unverified` и не создают Purchase/Payment/Expense truth. Тот же gate действует и в legacy compatibility `purchase_service.create_from_picks`; отсутствие публичного API-вызова не является основанием для слабее защищённого финансового writer-а.
 
 ## 8. Mobile UX
 
-Карточка материала показывает отдельную семантику:
+Карточка материала различает как минимум:
 
-- «Цена указана вручную»;
-- «Цена проверена по поставщику» + время проверки;
-- «Историческая цена: происхождение не подтверждено»;
-- «Цена не указана».
+- ручную цену;
+- цену из сметы, требующую подтверждения до закупки;
+- цену согласованного подбора;
+- live-проверенную supplier price + время проверки;
+- историческую цену с неизвестным происхождением;
+- отсутствующую цену.
 
-Для `legacy_unknown/unset` пользователь получает прямой recovery path: сохранить цену вручную или, при наличии URL, проверить по supplier page. Provider failure не показывается как успешное обновление.
+Для non-actionable price пользователь получает прямой recovery path: сохранить цену вручную или, при наличии URL, проверить supplier page. Provider failure не показывается как успешное обновление.
 
 Для approved legacy-позиции доступно подтверждение существующей суммы. Если пользователь меняет сумму, UI получает новый `pending` status и дальнейшая закупка требует повторного согласования.
 
@@ -134,7 +143,8 @@ Price mutation и durable activity intent входят в одну DB transactio
 - same-value manual confirmation replay-safe по конечному состоянию;
 - provider unavailable не уничтожает verified/manual provenance;
 - changed approved amount не может остаться approved;
-- Purchase с unknown provenance fail-closed.
+- Purchase с unknown/estimate provenance fail-closed;
+- internal/compatibility writers используют тот же eligibility rule.
 
 ## 10. Доказательная матрица до merge
 
@@ -144,9 +154,10 @@ Price mutation и durable activity intent входят в одну DB transactio
 2. full backend regression;
 3. PostgreSQL Alembic upgrade/schema parity through `w21materialprice01`;
 4. API/router contract: ровно один canonical runtime sync-price route;
-5. mobile typecheck / relevant screen contracts;
-6. Playwright/API regression;
-7. CodeQL/security/technical-spec/readiness gates.
+5. estimate/selection/legacy compatibility provenance tests;
+6. mobile typecheck / relevant screen contracts;
+7. Playwright/API regression;
+8. CodeQL/security/technical-spec/readiness gates.
 
 Repository CI доказывает только `CI VERIFIED`. Реальная актуальность supplier price в конкретный момент зависит от external page и не превращается в `PRODUCTION VERIFIED` без соответствующего runtime evidence.
 
