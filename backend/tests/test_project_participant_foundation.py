@@ -199,23 +199,29 @@ async def test_remove_preserves_history_and_revokes_scope(db):
 @pytest.mark.asyncio
 async def test_customer_only_mutation_and_legacy_lead_cannot_be_duplicated(db):
     customer, lead, electrician, _, project, _, _, stage_a, _ = await _seed(db, "owner")
+    project_id = project.id
+    customer_id = customer.id
+    lead_id = lead.id
+    electrician_id = electrician.id
+    stage_id = stage_a.id
+
     with pytest.raises(ValueError, match="participant_customer_owner_only"):
         await participant_service.add_or_reactivate_contractor(
             db,
-            project_id=project.id,
-            actor_id=electrician.id,
-            contractor_id=electrician.id,
-            scopes=[("stage", stage_a.id)],
+            project_id=project_id,
+            actor_id=electrician_id,
+            contractor_id=electrician_id,
+            scopes=[("stage", stage_id)],
         )
     await db.rollback()
 
     with pytest.raises(ValueError, match="participant_is_legacy_lead"):
         await participant_service.add_or_reactivate_contractor(
             db,
-            project_id=project.id,
-            actor_id=customer.id,
-            contractor_id=lead.id,
-            scopes=[("stage", stage_a.id)],
+            project_id=project_id,
+            actor_id=customer_id,
+            contractor_id=lead_id,
+            scopes=[("stage", stage_id)],
         )
     await db.rollback()
 
