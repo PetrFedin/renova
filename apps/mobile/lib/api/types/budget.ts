@@ -33,6 +33,14 @@ export type MaterialSupplySource =
   | 'contractor_included'
   | 'third_party';
 
+export type MaterialPriceSource =
+  | 'unset'
+  | 'legacy_unknown'
+  | 'manual'
+  | 'live_jsonld'
+  | 'live_meta'
+  | 'live_currency';
+
 export type MaterialPick = {
   id: string;
   name: string;
@@ -49,8 +57,13 @@ export type MaterialPick = {
   category?: string | null;
   shop_url?: string | null;
   shop_name?: string | null;
-  /** От sync-price: live | stub | manual — stub ≠ рыночная правда */
-  price_source?: string | null;
+  /** Durable provenance when returned by the price-truth contract. */
+  price_source?: MaterialPriceSource | null;
+  price_verified?: boolean;
+  price_verified_at?: string | null;
+  price_source_url?: string | null;
+  price_actionable?: boolean;
+  price_sync_result?: string | null;
   work_type?: string | null;
   status: string;
   supply_source?: MaterialSupplySource;
