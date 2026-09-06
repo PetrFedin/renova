@@ -217,13 +217,16 @@ async def test_legacy_unknown_price_is_blocked_then_manual_confirmation_unblocks
         price=1000,
         source="legacy_unknown",
     )
+    contractor_id = contractor.id
+    project_id = project.id
+    pick_id = pick.id
 
     with pytest.raises(ValueError, match="purchase_pick_price_unverified"):
         await prepare_purchase_from_picks(
             db,
-            project_id=project.id,
+            project_id=project_id,
             actor=contractor,
-            pick_ids=[pick.id],
+            pick_ids=[pick_id],
             supplier_name="Поставщик",
         )
     await db.rollback()
@@ -231,20 +234,22 @@ async def test_legacy_unknown_price_is_blocked_then_manual_confirmation_unblocks
 
     confirmed = await material_price_service.set_manual_material_price(
         db,
-        project_id=project.id,
-        pick_id=pick.id,
-        actor_id=contractor.id,
+        project_id=project_id,
+        pick_id=pick_id,
+        actor_id=contractor_id,
         price=1000,
     )
     assert confirmed is not None
     assert confirmed.status == MaterialPickStatus.approved
     assert material_price_truth.is_actionable_purchase_price(confirmed) is True
 
+    contractor = await db.get(User, contractor_id)
+    assert contractor is not None
     purchase = await prepare_purchase_from_picks(
         db,
-        project_id=project.id,
+        project_id=project_id,
         actor=contractor,
-        pick_ids=[pick.id],
+        pick_ids=[pick_id],
         supplier_name="Поставщик",
     )
     assert purchase.total_amount == 2000
