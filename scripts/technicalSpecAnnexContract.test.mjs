@@ -64,6 +64,7 @@ for (const file of [
   'apps/mobile/components/screens/OsRepairHubScreen.tsx',
   'apps/mobile/components/screens/OsBudgetHubScreen.tsx',
   'apps/mobile/components/screens/OsMaterialsScreen.tsx',
+  'apps/mobile/components/renova/MaterialPickList.tsx',
   'apps/mobile/components/screens/OsSelectionsScreen.tsx',
   'apps/mobile/components/screens/OsControlScreen.tsx',
   'apps/mobile/components/screens/control/CustomerControlView.tsx',

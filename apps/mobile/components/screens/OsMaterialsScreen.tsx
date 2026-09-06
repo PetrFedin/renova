@@ -17,6 +17,7 @@ import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenLayout } from '@/constants/screenLayout';
 import { procurementNextAction, readyPickIds } from '@/lib/domain/procurementNextAction';
+import { quantityToBuy, requiredQty, totalAvailableQty } from '@/lib/domain/materialSupply';
 import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
@@ -26,7 +27,7 @@ const PICK_FILTERS = [
   { key: 'all', label: 'Все' },
   { key: 'buy', label: 'Купить' },
   { key: 'ordered', label: 'Согласовано' },
-  { key: 'delivered', label: 'В факте' },
+  { key: 'available', label: 'Доступно' },
   { key: 'shortage', label: 'Не хватает' },
 ] as const;
 
@@ -36,6 +37,11 @@ type MaterialSubtab = (typeof SUBTAB_IDS)[number];
 
 function isMaterialSubtab(value: string | undefined): value is MaterialSubtab {
   return Boolean(value && (SUBTAB_IDS as readonly string[]).includes(value));
+}
+
+function isMaterialAvailable(pick: MaterialPick): boolean {
+  if (typeof pick.material_available === 'boolean') return pick.material_available;
+  return totalAvailableQty(pick) + Number.EPSILON >= requiredQty(pick);
 }
 
 export function OsMaterialsScreen({ role }: { role: import('@/constants/osSections').OsRole }) {
@@ -96,10 +102,10 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   }, []);
 
   const filteredPicks = useMemo(() => picks.filter((pick) => {
-    if (filter === 'buy') return pick.status === 'draft' || pick.status === 'pending';
+    if (filter === 'buy') return quantityToBuy(pick) > 0;
     if (filter === 'ordered') return pick.status === 'approved';
-    if (filter === 'delivered') return pick.status === 'purchased';
-    if (filter === 'shortage') return (pick.qty_needed || pick.qty) > (pick.qty_delivered || 0);
+    if (filter === 'available') return isMaterialAvailable(pick);
+    if (filter === 'shortage') return !isMaterialAvailable(pick);
     return true;
   }), [picks, filter]);
 
@@ -118,18 +124,20 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     );
   }
 
-  const needBuy = picks.filter((pick) => pick.status === 'draft' || pick.status === 'pending').length;
-  const ordered = picks.filter((pick) => pick.status === 'approved').length;
-  const delivered = picks.filter((pick) => pick.status === 'purchased').length;
-  const shortage = picks.filter((pick) => (pick.qty_needed || pick.qty) > (pick.qty_delivered || 0) && pick.status !== 'purchased').length;
-  const openPurchases = purchases.filter((purchase) => purchase.status !== 'delivered' && purchase.status !== 'cancelled').length;
+  const needBuy = picks.filter((pick) => quantityToBuy(pick) > 0).length;
+  const approved = picks.filter((pick) => pick.status === 'approved').length;
+  const available = picks.filter(isMaterialAvailable).length;
+  const shortage = picks.filter((pick) => !isMaterialAvailable(pick)).length;
+  const openPurchases = purchases.filter(
+    (purchase) => purchase.status !== 'delivered' && purchase.status !== 'cancelled' && purchase.status !== 'returned',
+  ).length;
   const unverifiedReceipts = receipts.filter((receipt) => !receipt.verified).length;
-  const readyCount = readyPickIds(picks, purchases).length;
-  const next = procurementNextAction(picks, purchases, receipts);
+  const readyCount = readyPickIds(picks, purchases, role).length;
+  const next = procurementNextAction(picks, purchases, receipts, role);
   const nextNeedsWrite = next.id === 'generate' || next.id === 'create_purchase';
 
   const hubTabs: HubTab[] = [
-    { id: 'picks', label: 'Потребности', badge: needBuy || undefined },
+    { id: 'picks', label: 'Потребности', badge: shortage || undefined },
     { id: 'purchases', label: 'Закупки', badge: openPurchases || undefined },
     { id: 'receipts', label: 'Чеки', badge: unverifiedReceipts || undefined },
   ];
@@ -144,7 +152,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
   const createPurchaseFromReady = async () => {
     if (readOnly) return;
-    const ids = readyPickIds(picks, purchases);
+    const ids = readyPickIds(picks, purchases, role);
     if (!ids.length) return;
     await runMutation('create_purchase', async () => {
       await api.createPurchase(user.id, activeProject.id, ids);
@@ -210,12 +218,12 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
             <Text style={s.l}>Нужно купить</Text>
           </View>
           <View style={s.cell}>
-            <Text style={s.n}>{delivered}</Text>
-            <Text style={s.l}>В факте</Text>
+            <Text style={s.n}>{available}</Text>
+            <Text style={s.l}>Доступно</Text>
           </View>
         </View>
         <Text style={[s.factHint, shortage > 0 && { color: RenovaTheme.colors.warningText }]}>
-          {shortage > 0 ? `Не хватает: ${shortage} · ` : ''}Согласовано: {ordered} · открытых закупок: {openPurchases}
+          {shortage > 0 ? `Не хватает: ${shortage} · ` : ''}Согласовано: {approved} · открытых закупок: {openPurchases}
         </Text>
 
         <View style={s.nextBox}>
@@ -281,6 +289,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
               stages={activeProject.stages || []}
               picksOverride={filteredPicks}
               readOnly={readOnly || busy}
+              onChanged={reload}
             />
           </>
         ) : null}
@@ -293,7 +302,9 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
                 <Text style={s.emptyM}>
                   {readyCount > 0
                     ? `Следующий шаг выше создаст закупку из ${readyCount} согласованных позиций.`
-                    : 'Согласуйте материалы на вкладке «Потребности».'}
+                    : needBuy > 0
+                      ? 'Для вашей роли пока нет согласованных позиций, готовых к закупке.'
+                      : 'По текущим источникам закупка через Renova не требуется.'}
                 </Text>
               </View>
             ) : null}

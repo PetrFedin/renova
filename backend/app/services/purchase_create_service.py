@@ -11,10 +11,13 @@ from sqlalchemy.orm import selectinload
 from app.models.entities import (
     MaterialPick,
     MaterialPickStatus,
+    Project,
     Purchase,
     PurchaseItem,
     PurchaseStatus,
+    User,
 )
+from app.services import material_supply_service
 
 
 def _uuid() -> str:
@@ -35,12 +38,17 @@ async def prepare_purchase_from_picks(
     db: AsyncSession,
     *,
     project_id: str,
+    actor: User,
     pick_ids: list[str],
     supplier_name: str | None,
 ) -> Purchase:
     canonical_ids = sorted(set(pick_ids))
     if not canonical_ids:
         raise ValueError("purchase_picks_required")
+
+    project = await db.get(Project, project_id)
+    if not project:
+        raise ValueError("purchase_project_not_found")
 
     query = select(MaterialPick).where(
         MaterialPick.id.in_(canonical_ids),
@@ -82,10 +90,15 @@ async def prepare_purchase_from_picks(
     total = 0.0
     items: list[PurchaseItem] = []
     for pick in ordered_picks:
-        quantity = float(pick.qty_needed or pick.qty or 0)
+        supply = material_supply_service.snapshot(pick)
+        if not supply.buy_required:
+            raise ValueError("purchase_pick_not_buy_required")
+        if not material_supply_service.actor_can_purchase(project=project, actor=actor, pick=pick):
+            raise ValueError("purchase_pick_responsibility_forbidden")
+        quantity = supply.qty_to_buy
         unit_price = float(pick.price or 0)
         if quantity <= 0:
-            raise ValueError("purchase_pick_quantity_invalid")
+            raise ValueError("purchase_pick_quantity_fulfilled")
         total += quantity * unit_price
         items.append(
             PurchaseItem(

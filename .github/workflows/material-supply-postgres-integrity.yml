@@ -1,0 +1,98 @@
+name: Material supply PostgreSQL integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/api/v1/materials.py"
+      - "backend/app/api/v1/purchases.py"
+      - "backend/app/models/material_supply.py"
+      - "backend/app/services/dependency_service.py"
+      - "backend/app/services/material_pick_service.py"
+      - "backend/app/services/material_supply_service.py"
+      - "backend/app/services/purchase_create_service.py"
+      - "backend/app/services/purchase_service.py"
+      - "backend/alembic/versions/w20materialsupply01_material_supply_truth.py"
+      - "backend/tests/test_material_supply_truth_integrity.py"
+      - "backend/tests/test_material_supply_postgres_integrity.py"
+      - "apps/mobile/components/renova/MaterialPickList.tsx"
+      - "apps/mobile/components/screens/OsMaterialsScreen.tsx"
+      - "apps/mobile/lib/api/materials.ts"
+      - "apps/mobile/lib/api/types/budget.ts"
+      - "apps/mobile/lib/domain/materialSupply.ts"
+      - "apps/mobile/lib/domain/materialSupply.test.ts"
+      - "apps/mobile/lib/domain/procurementNextAction.ts"
+      - "docs/technical-spec/MATERIAL-SUPPLY-CONTRACT.md"
+      - ".github/workflows/material-supply-postgres-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/api/v1/materials.py"
+      - "backend/app/api/v1/purchases.py"
+      - "backend/app/models/material_supply.py"
+      - "backend/app/services/dependency_service.py"
+      - "backend/app/services/material_pick_service.py"
+      - "backend/app/services/material_supply_service.py"
+      - "backend/app/services/purchase_create_service.py"
+      - "backend/app/services/purchase_service.py"
+      - "backend/alembic/versions/w20materialsupply01_material_supply_truth.py"
+      - "backend/tests/test_material_supply_truth_integrity.py"
+      - "backend/tests/test_material_supply_postgres_integrity.py"
+      - "apps/mobile/components/renova/MaterialPickList.tsx"
+      - "apps/mobile/components/screens/OsMaterialsScreen.tsx"
+      - "apps/mobile/lib/api/materials.ts"
+      - "apps/mobile/lib/api/types/budget.ts"
+      - "apps/mobile/lib/domain/materialSupply.ts"
+      - "apps/mobile/lib/domain/materialSupply.test.ts"
+      - "apps/mobile/lib/domain/procurementNextAction.ts"
+      - "docs/technical-spec/MATERIAL-SUPPLY-CONTRACT.md"
+      - ".github/workflows/material-supply-postgres-integrity.yml"
+
+concurrency:
+  group: material-supply-postgres-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  material-supply-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env: { POSTGRES_USER: renova, POSTGRES_PASSWORD: renova, POSTGRES_DB: renova }
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      MATERIAL_SUPPLY_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PUBLIC_BASE_URL: https://ci-staging.example.com
+      SECRET_KEY: ci-staging-secret-key-32chars!!
+      ALLOW_CREATE_ALL: "false"
+      ALLOW_DEMO_SEED: "false"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12.13" }
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Upgrade PostgreSQL to canonical material-supply schema
+        working-directory: backend
+        run: poetry run alembic upgrade head
+      - name: Run material supply behavioral contracts
+        working-directory: backend
+        run: poetry run pytest -q tests/test_material_supply_truth_integrity.py
+      - name: Run material supply PostgreSQL truth
+        working-directory: backend
+        run: poetry run pytest -vv --tb=short tests/test_material_supply_postgres_integrity.py

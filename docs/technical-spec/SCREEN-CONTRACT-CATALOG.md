@@ -148,7 +148,7 @@ Badge loading failure должен fail-to-zero и пройти через `repo
 
 # 5. Materials / procurement screen
 
-**Source:** `OsMaterialsScreen.tsx`.
+**Sources:** `OsMaterialsScreen.tsx` + `MaterialPickList.tsx`; implementation blobs machine-tracked in `SCREEN-SOURCE-SNAPSHOT.md`.
 
 ## 5.1. Data load
 
@@ -170,45 +170,101 @@ purchases  → Закупки
 receipts   → Чеки
 ```
 
-## 5.3. Material filters
+## 5.3. Material filters and supply truth
 
 ```text
 all        Все
 buy        Купить
 ordered    Согласовано
-delivered  В факте
+available  Доступно
 shortage   Не хватает
 ```
 
-Semantics:
+Canonical quantity semantics:
 
 ```text
-buy       = status ∈ {draft, pending}
+required      = max(qty_needed ?? qty, 0)
+available     = max(qty_available, 0) + max(qty_delivered, 0)
+qty_to_buy    = buy-required source ? max(required - available, 0) : 0
+material_available = available >= required
+
+buy       = qty_to_buy > 0
 ordered   = status == approved
-delivered = status == purchased
-shortage  = (qty_needed || qty) > (qty_delivered || 0)
+available = material_available
+shortage  = !material_available
 ```
+
+`buy` означает реальную незакрытую потребность в покупке, а не lifecycle-статус строки. `draft`/`pending` могут требовать согласования, но сами по себе не означают, что материал надо покупать.
 
 Attention metrics:
 
 ```text
-needBuy   = count(draft | pending)
-ordered   = count(approved)
-delivered = count(purchased)
-shortage  = count(shortage and status != purchased)
-openPurchases = count(status not in {delivered, cancelled})
+needBuy   = count(qty_to_buy > 0)
+approved  = count(status == approved)
+available = count(material_available)
+shortage  = count(!material_available)
+openPurchases = count(status not in {delivered, cancelled, returned})
 unverifiedReceipts = count(!receipt.verified)
 ```
 
-`readyCount` должен вычисляться через `readyPickIds(...)`; статус MaterialPick сам по себе не заменяет procurement readiness contract.
+`readyCount` вычисляется только через `readyPickIds(picks, purchases, role)` и дополнительно требует:
 
-## 5.4. Main actions
+```text
+status == approved
+current role owns purchase responsibility
+qty_to_buy > 0
+pick is not already in an active purchase
+```
+
+Следствие: сводка «Нужно купить» и CTA «Создать закупку» не могут расходиться из-за одного лишь статуса MaterialPick.
+
+## 5.4. Material source / responsibility card
+
+Каждая MaterialPick остаётся единственным material master и показывает в существующей карточке:
+
+```text
+source label
+Доступно X из Y <unit>
+к покупке Z              # только когда Z > 0
+```
+
+Canonical source labels:
+
+```text
+customer_on_hand      У заказчика
+customer_to_buy       Покупает заказчик
+contractor_to_buy     Покупает исполнитель
+contractor_included   Включено в работы
+third_party           Поставляет третья сторона
+```
+
+Customer и assigned contractor могут менять source/availability только при write access; backend повторно проверяет exact project principal. Viewer/crew/supervisor не получают это право только потому, что могут читать проект.
+
+Изменение source/availability после `approved`:
+
+```text
+approved
+→ supply truth changed
+→ pending
+→ material dependency re-evaluated
+→ explicit customer re-approval required
+```
+
+Физическое наличие материала не обходит approval и не создаёт `Stage.active`. Начало этапа по-прежнему принадлежит canonical stage-start transition.
+
+Для `customer_on_hand` всё требуемое количество должно быть доступно. `customer_to_buy` / `contractor_to_buy` могут иметь частично доступное количество; закупка создаётся только на остаток. `contractor_included` / `third_party` / `customer_on_hand` не создают фиктивные Purchase/Payment/Expense.
+
+Изменение ответственности/наличия должно иметь durable audit intent в той же business transaction; inline Activity/notification не является единственной копией истории.
+
+## 5.5. Main actions
 
 В зависимости от `procurementNextAction` screen ведёт к следующему допустимому шагу, включая:
 
 - сформировать потребности;
-- открыть/подготовить закупку;
-- перейти к purchases;
+- согласовать material picks;
+- подтвердить наличие внешне обеспеченного материала;
+- создать закупку только для approved позиций текущей ответственной роли;
+- перейти к существующей purchase lifecycle;
 - сканировать/проверить receipt;
 - завершённое состояние/reload.
 
@@ -217,12 +273,23 @@ unverifiedReceipts = count(!receipt.verified)
 Contractor имеет переход:
 
 ```text
-Согласованные/подбор → Repair / Selections
+Подбор чистовых → Repair / Selections
 ```
 
 Purchase cancellation — destructive financial action с explicit confirmation («Убрать из факта?»), после чего backend refresh обязан синхронизировать ledger.
 
 Receipt QR scan → receipt evidence/reconcile flow; факт нельзя считать подтверждённым только по локальному успешному скану.
+
+## 5.6. #305 mobile design-system contract
+
+- один вертикальный `ScrollView`;
+- summary/next-action не создают параллельный material screen;
+- основной CTA — shared `PrimaryButton`;
+- material source options и filters используют shared chip styles;
+- typography/list geometry — `screenTypography` / `listRowStyles`;
+- interactive inputs/toggles соблюдают `RenovaTheme.minTouch` / минимум 44;
+- disabled/loading/accessibility states должны блокировать competing mutations;
+- customer/contractor используют одну shared визуальную систему, различия выражаются ролью/capability, а не отдельной копией экрана.
 
 ---
 

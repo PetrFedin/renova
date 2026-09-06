@@ -138,6 +138,7 @@ async def create_purchase(
         purchase = await prepare_purchase_from_picks(
             db,
             project_id=project_id,
+            actor=user,
             pick_ids=canonical_pick_ids,
             supplier_name=payload["supplier_name"],
         )
@@ -165,12 +166,21 @@ async def create_purchase(
         messages = {
             "purchase_picks_required": "Выберите материалы для закупки",
             "purchase_picks_not_found": "Часть материалов не найдена в этом проекте",
+            "purchase_project_not_found": "Проект не найден",
             "picks_not_approved": "Сначала согласуйте материалы с заказчиком",
             "picks_already_in_active_purchase": "Один из материалов уже включён в активную закупку",
-            "purchase_pick_quantity_invalid": "У материала должно быть положительное количество",
+            "purchase_pick_not_buy_required": "Выбрана позиция, которую не нужно покупать через Renova",
+            "purchase_pick_responsibility_forbidden": "Эту позицию должна покупать другая сторона проекта",
+            "purchase_pick_quantity_fulfilled": "По выбранной позиции уже нет остатка к закупке",
+        }
+        conflict_codes = {
+            "picks_not_approved",
+            "picks_already_in_active_purchase",
+            "purchase_pick_responsibility_forbidden",
+            "purchase_pick_quantity_fulfilled",
         }
         raise HTTPException(
-            409 if code in {"picks_not_approved", "picks_already_in_active_purchase"} else 422,
+            409 if code in conflict_codes else 422,
             detail={"code": code, "message": messages.get(code, "Закупку нельзя создать")},
         ) from error
 

@@ -26,6 +26,13 @@ export type Payment = {
   events?: PaymentEvent[];
 };
 
+export type MaterialSupplySource =
+  | 'customer_on_hand'
+  | 'customer_to_buy'
+  | 'contractor_to_buy'
+  | 'contractor_included'
+  | 'third_party';
+
 export type MaterialPick = {
   id: string;
   name: string;
@@ -34,6 +41,9 @@ export type MaterialPick = {
   qty: number;
   qty_needed?: number | null;
   qty_delivered?: number;
+  qty_available?: number;
+  qty_to_buy?: number;
+  material_available?: boolean;
   unit: string;
   price: number;
   category?: string | null;
@@ -43,6 +53,7 @@ export type MaterialPick = {
   price_source?: string | null;
   work_type?: string | null;
   status: string;
+  supply_source?: MaterialSupplySource;
   analog_of_id?: string | null;
   total: number;
 };
