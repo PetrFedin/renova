@@ -48,6 +48,10 @@ def _scope_snapshot(scopes: list[ScopeRef]) -> str:
     )
 
 
+def _event_snapshot(**values: object) -> str:
+    return json.dumps(values, ensure_ascii=False, sort_keys=True)
+
+
 async def active_participant(
     db: AsyncSession, *, project_id: str, user_id: str
 ) -> ProjectParticipant | None:
@@ -57,6 +61,29 @@ async def active_participant(
             ProjectParticipant.user_id == user_id,
             ProjectParticipant.status == "active",
         )
+    )
+
+
+async def list_project_participants(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    include_removed: bool = False,
+) -> list[ProjectParticipant]:
+    query = select(ProjectParticipant).where(ProjectParticipant.project_id == project_id)
+    if not include_removed:
+        query = query.where(ProjectParticipant.status == "active")
+    return list(
+        (
+            await db.execute(
+                query.order_by(
+                    ProjectParticipant.status.asc(),
+                    ProjectParticipant.participant_role.asc(),
+                    ProjectParticipant.added_at.asc(),
+                    ProjectParticipant.id.asc(),
+                )
+            )
+        ).scalars().all()
     )
 
 
@@ -128,6 +155,133 @@ async def _record_event(
             snapshot_json=snapshot_json,
         )
     )
+
+
+async def sync_current_lead_in_transaction(
+    db: AsyncSession,
+    *,
+    project: Project,
+    contractor_id: str,
+    actor_id: str | None = None,
+) -> ProjectParticipant:
+    """Synchronize ``Project.contractor_id`` and the canonical lead participant.
+
+    This helper never commits. Callers own the transaction so the legacy lead
+    compatibility field and participant/audit truth cannot be persisted apart.
+    """
+    target = await db.get(User, contractor_id)
+    if target is None or target.role != UserRole.contractor or target.deleted_at is not None:
+        raise ValueError("participant_contractor_invalid")
+
+    now = utc_now()
+    stale_leads = list(
+        (
+            await db.execute(
+                select(ProjectParticipant).where(
+                    ProjectParticipant.project_id == project.id,
+                    ProjectParticipant.participant_role == "lead_contractor",
+                    ProjectParticipant.status == "active",
+                    ProjectParticipant.user_id != contractor_id,
+                )
+            )
+        ).scalars().all()
+    )
+    for stale in stale_leads:
+        stale.status = "removed"
+        stale.all_scope = False
+        stale.can_manage_schedule = False
+        stale.can_manage_commercial = False
+        stale.can_manage_documents = False
+        stale.removed_by = actor_id
+        stale.removed_at = now
+        await _record_event(
+            db,
+            participant=stale,
+            event_type="removed",
+            actor_id=actor_id,
+            snapshot_json=_event_snapshot(
+                reason="lead_replaced",
+                next_lead_user_id=contractor_id,
+            ),
+        )
+
+    query = select(ProjectParticipant).where(
+        ProjectParticipant.project_id == project.id,
+        ProjectParticipant.user_id == contractor_id,
+    )
+    try:
+        query = query.with_for_update()
+    except Exception:
+        pass
+    participant = (await db.execute(query)).scalar_one_or_none()
+    event_type: str | None = None
+    reason = "lead_assignment"
+    if participant is None:
+        participant = ProjectParticipant(
+            project_id=project.id,
+            user_id=contractor_id,
+            participant_role="lead_contractor",
+            status="active",
+            all_scope=True,
+            can_manage_schedule=True,
+            can_manage_commercial=True,
+            can_manage_documents=True,
+            added_by=actor_id,
+        )
+        db.add(participant)
+        await db.flush()
+        event_type = "added"
+    else:
+        existing_scopes = await participant_scopes(db, participant.id)
+        was_removed = participant.status == "removed"
+        canonical = (
+            participant.participant_role == "lead_contractor"
+            and participant.status == "active"
+            and participant.all_scope is True
+            and participant.can_manage_schedule is True
+            and participant.can_manage_commercial is True
+            and participant.can_manage_documents is True
+            and not existing_scopes
+        )
+        if not canonical:
+            if existing_scopes:
+                await db.execute(
+                    delete(ProjectParticipantScope).where(
+                        ProjectParticipantScope.participant_id == participant.id
+                    )
+                )
+            participant.participant_role = "lead_contractor"
+            participant.status = "active"
+            participant.all_scope = True
+            participant.can_manage_schedule = True
+            participant.can_manage_commercial = True
+            participant.can_manage_documents = True
+            participant.removed_by = None
+            participant.removed_at = None
+            if was_removed:
+                participant.added_by = actor_id
+                participant.added_at = now
+                event_type = "reactivated"
+                reason = "lead_reactivated"
+            else:
+                event_type = "scope_replaced"
+                reason = "promoted_or_repaired_lead"
+
+    project.contractor_id = contractor_id
+    if event_type is not None:
+        await _record_event(
+            db,
+            participant=participant,
+            event_type=event_type,
+            actor_id=actor_id,
+            snapshot_json=_event_snapshot(
+                reason=reason,
+                participant_role="lead_contractor",
+                all_scope=True,
+            ),
+        )
+    await db.flush()
+    return participant
 
 
 async def _locked_customer_project(
@@ -207,8 +361,6 @@ async def add_or_reactivate_contractor(
         participant.removed_at = None
         participant.added_by = actor_id
         participant.added_at = utc_now()
-        # Reactivation is a fresh authorization decision. Historical scope and
-        # capability rows/flags must not silently come back to life.
         participant.all_scope = False
         participant.can_manage_schedule = False
         participant.can_manage_commercial = False
@@ -229,9 +381,6 @@ async def add_or_reactivate_contractor(
             return participant, False
         event_type = "scope_replaced"
 
-    # An explicit scope update replaces the authorization set. Reactivation
-    # without a supplied scope is also a replacement with the empty set; this is
-    # the fail-closed alternative to reviving stale pre-removal grants.
     replace_scope_rows = scopes is not None or reactivated
     if replace_scope_rows:
         await db.execute(
@@ -371,9 +520,6 @@ async def scope_allows(
     participant = await active_participant(db, project_id=project.id, user_id=user_id)
     if participant is None:
         return False
-    # A backfilled lead row is compatibility evidence, not independent scope.
-    # Once Project.contractor_id changes, the historical lead must stop granting
-    # access immediately even before lead-writer synchronization is adopted.
     if participant.participant_role == "lead_contractor":
         return False
     if participant.all_scope:

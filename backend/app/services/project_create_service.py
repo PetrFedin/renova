@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, Stage, StageStatus
 from app.services import outbox_service as outbox
+from app.services import project_participant_service as participant_service
 from app.services import room_service
 from app.services.calc.estimate import stages_for_renovation
 
 PROJECT_CREATE_SCOPE = "project.create"
 PROJECT_TEMPLATE_CREATE_SCOPE = "project.create.template"
+PROJECT_MARKETPLACE_CREATE_SCOPE = "project.create.marketplace"
 _CENT = Decimal("0.01")
 
 _STAGE_ROOM_TYPES: dict[str, tuple[str, ...]] = {
@@ -299,6 +301,7 @@ async def create_project(
     client_request_id: str | None = None,
     scope: str = PROJECT_CREATE_SCOPE,
     template_id: str | None = None,
+    participant_actor_id: str | None = None,
 ) -> ProjectCreateResult:
     """Create one complete project or replay the already committed result."""
     from app.services.client_write_idempotency import commit_client_write, replay_entity_id
@@ -342,6 +345,13 @@ async def create_project(
     db.add(project)
     try:
         await db.flush()
+        if contractor_id:
+            await participant_service.sync_current_lead_in_transaction(
+                db,
+                project=project,
+                contractor_id=contractor_id,
+                actor_id=participant_actor_id,
+            )
         rooms = [
             await room_service.prepare_room(db, project=project, data=room_data)
             for room_data in payload["rooms"]
