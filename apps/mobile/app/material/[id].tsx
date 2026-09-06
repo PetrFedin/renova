@@ -97,6 +97,7 @@ export default function MaterialDetailScreen() {
   const deliveredPurchase = findDeliveredPurchaseForPick(purchases, pick.id);
   const cancelStatus = deliveredPurchase ? purchaseCancelStatus(deliveredPurchase.status) : null;
   const priceNeedsConfirmation = pick.price_actionable === false || pick.price_source === 'legacy_unknown' || pick.price_source === 'unset';
+  const priceCanEdit = pick.status === 'draft' || (pick.status === 'approved' && priceNeedsConfirmation);
 
   const saveManualPrice = async () => {
     if (!user || !activeProject || priceBusy) return;
@@ -167,7 +168,7 @@ export default function MaterialDetailScreen() {
             </Pressable>
           )}
         </View>
-        {pick.status === 'draft' && user && activeProject && (
+        {priceCanEdit && user && activeProject && (
           <View style={s.priceEditor}>
             <Text style={s.editorTitle}>{priceNeedsConfirmation ? 'Подтвердите цену перед закупкой' : 'Уточнить цену'}</Text>
             <TextInput
@@ -185,7 +186,7 @@ export default function MaterialDetailScreen() {
             )}
           </View>
         )}
-        {priceNeedsConfirmation && pick.status !== 'draft' && (
+        {priceNeedsConfirmation && !priceCanEdit && (
           <Text style={s.warning}>Цена не имеет подтверждённого происхождения. Новую закупку по такой позиции система не создаст.</Text>
         )}
         {pick.status === 'approved' && (
