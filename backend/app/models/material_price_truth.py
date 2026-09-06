@@ -11,7 +11,7 @@ from __future__ import annotations
 from sqlalchemy import CheckConstraint, DateTime, String
 from sqlalchemy.orm import add_mapped_attribute, mapped_column
 
-from app.models.entities import MaterialPick
+from app.models.entities import MaterialPick, MaterialPickStatus
 
 
 PRICE_SOURCE_VALUES = (
@@ -45,8 +45,19 @@ def is_verified_price_source(source: str | None) -> bool:
 
 
 def is_actionable_purchase_price(pick: MaterialPick) -> bool:
-    """A purchase may use only explicit/approved-selection/live positive truth."""
-    return float(pick.price or 0) > 0 and pick.price_source in ACTIONABLE_PRICE_SOURCE_VALUES
+    """Return whether current material price may become a Purchase unit price.
+
+    Explicit manual, approved-selection and live-verified sources are directly
+    actionable when positive. Estimate-derived prices are only actionable once
+    the customer has explicitly approved the MaterialPick that displays that
+    price. Historical unknown values never become actionable merely because the
+    row already happens to be approved.
+    """
+    if float(pick.price or 0) <= 0:
+        return False
+    if pick.price_source in ACTIONABLE_PRICE_SOURCE_VALUES:
+        return True
+    return pick.price_source == "estimate" and pick.status == MaterialPickStatus.approved
 
 
 add_mapped_attribute(
