@@ -47,8 +47,6 @@ def _remove_replaced_routes(router: APIRouter, signatures: set[RouteSignature]) 
 
 api_router.include_router(design_packages.router)
 api_router.include_router(marketplace.router)
-_MATERIAL_PRICE_ROUTES: set[RouteSignature] = {("/projects/{project_id}/material-picks/{pick_id}/sync-price", "POST")}
-_remove_replaced_routes(materials.router, _MATERIAL_PRICE_ROUTES)
 api_router.include_router(material_price_sync.router)
 api_router.include_router(materials.router)
 api_router.include_router(selections.router)
