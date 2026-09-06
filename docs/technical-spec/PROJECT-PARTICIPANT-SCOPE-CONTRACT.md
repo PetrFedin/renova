@@ -151,3 +151,11 @@ Until those are complete, #300 remains **OPEN** and broad production readiness r
 ## 11. Evidence boundary
 
 Repository CI may prove schema, migration backfill, ORM parity, management API behavior, route singularity, lead synchronization and PostgreSQL concurrency for the exact candidate SHA. It does **not** prove external staging or production behavior and does not change the independent broad-production blockers in `PRODUCTION-READINESS.md`.
+
+## 12. Source snapshot этого контура
+
+| Source | Blob SHA | Что подтверждает |
+|---|---|---|
+| `backend/app/api/v1/router.py` | `8663e5b54289b133c5a2ff30af0533cfee93dfb6` | canonical replacement of legacy assignment/marketplace-conversion writers plus participant management router composition; generic project ACL remains unchanged |
+
+Этот annex владеет текущим router snapshot для multi-contractor participant/lead-management контура. Более ранние router snapshots в warranty/payment/material-price annex остаются историческими exact-head evidence своих контуров и не должны переписываться новым SHA.
