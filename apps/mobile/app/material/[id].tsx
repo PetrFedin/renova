@@ -23,6 +23,8 @@ const ST: Record<string, string> = {
 
 function priceTruthLabel(pick: MaterialPick): string {
   if (pick.price_source === 'manual') return 'Цена указана вручную';
+  if (pick.price_source === 'estimate') return 'Цена из сметы — подтвердите перед закупкой';
+  if (pick.price_source === 'selection_approved') return 'Цена из согласованного подбора';
   if (pick.price_source?.startsWith('live_')) {
     if (pick.price_verified_at) {
       const parsed = new Date(pick.price_verified_at);
@@ -104,7 +106,7 @@ export default function MaterialDetailScreen() {
   const stage = activeProject?.stages?.find((st) => st.id === pick.stage_id);
   const deliveredPurchase = findDeliveredPurchaseForPick(purchases, pick.id);
   const cancelStatus = deliveredPurchase ? purchaseCancelStatus(deliveredPurchase.status) : null;
-  const priceNeedsConfirmation = pick.price_actionable === false || pick.price_source === 'legacy_unknown' || pick.price_source === 'unset';
+  const priceNeedsConfirmation = pick.price_actionable === false || pick.price_source === 'legacy_unknown' || pick.price_source === 'unset' || pick.price_source === 'estimate';
   const priceCanEdit = pick.status === 'draft' || (pick.status === 'approved' && priceNeedsConfirmation);
 
   const saveManualPrice = async () => {
