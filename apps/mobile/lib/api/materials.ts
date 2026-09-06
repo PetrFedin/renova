@@ -61,6 +61,16 @@ export const materialsApi = {
     { method: 'PATCH', body: JSON.stringify(supply) },
     userId,
   ),
+  getMaterialPriceTruth: (userId: string, projectId: string, pickId: string) => req<MaterialPick>(
+    `/api/v1/projects/${projectId}/material-picks/${pickId}/price-truth`,
+    {},
+    userId,
+  ),
+  setMaterialPrice: (userId: string, projectId: string, pickId: string, price: number) => req<MaterialPick>(
+    `/api/v1/projects/${projectId}/material-picks/${pickId}/price`,
+    { method: 'PATCH', body: JSON.stringify({ price }) },
+    userId,
+  ),
   syncMaterialPrice: (userId: string, projectId: string, pickId: string) => req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks/${pickId}/sync-price`, { method: 'POST' }, userId),
   listPurchases: (userId: string, projectId: string) => req<Purchase[]>(`/api/v1/projects/${projectId}/purchases`, {}, userId),
   listPurchasesFresh: (
