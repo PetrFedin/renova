@@ -1,0 +1,184 @@
+name: Material price PostgreSQL integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/api/v1/material_price_sync.py"
+      - "backend/app/api/v1/materials.py"
+      - "backend/app/api/v1/purchases.py"
+      - "backend/app/models/material_price_truth.py"
+      - "backend/app/services/material_price_service.py"
+      - "backend/app/services/material_pick_service.py"
+      - "backend/app/services/purchase_create_service.py"
+      - "backend/app/services/purchase_service.py"
+      - "backend/app/services/selection_service.py"
+      - "backend/alembic/versions/w21materialprice01_material_price_provenance.py"
+      - "backend/tests/test_material_price_truth_integrity.py"
+      - "backend/tests/test_material_price_provenance_integrity.py"
+      - "backend/tests/test_material_price_writer_contract.py"
+      - "apps/mobile/app/material/[id].tsx"
+      - "apps/mobile/components/renova/MaterialPickList.tsx"
+      - "apps/mobile/lib/api/materials.ts"
+      - "apps/mobile/lib/api/types/budget.ts"
+      - "docs/technical-spec/MATERIAL-PRICE-TRUTH-CONTRACT.md"
+      - ".github/workflows/material-price-postgres-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/api/v1/material_price_sync.py"
+      - "backend/app/api/v1/materials.py"
+      - "backend/app/api/v1/purchases.py"
+      - "backend/app/models/material_price_truth.py"
+      - "backend/app/services/material_price_service.py"
+      - "backend/app/services/material_pick_service.py"
+      - "backend/app/services/purchase_create_service.py"
+      - "backend/app/services/purchase_service.py"
+      - "backend/app/services/selection_service.py"
+      - "backend/alembic/versions/w21materialprice01_material_price_provenance.py"
+      - "backend/tests/test_material_price_truth_integrity.py"
+      - "backend/tests/test_material_price_provenance_integrity.py"
+      - "backend/tests/test_material_price_writer_contract.py"
+      - "apps/mobile/app/material/[id].tsx"
+      - "apps/mobile/components/renova/MaterialPickList.tsx"
+      - "apps/mobile/lib/api/materials.ts"
+      - "apps/mobile/lib/api/types/budget.ts"
+      - "docs/technical-spec/MATERIAL-PRICE-TRUTH-CONTRACT.md"
+      - ".github/workflows/material-price-postgres-integrity.yml"
+
+concurrency:
+  group: material-price-postgres-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  material-price-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env: { POSTGRES_USER: renova, POSTGRES_PASSWORD: renova, POSTGRES_DB: renova }
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PUBLIC_BASE_URL: https://ci-staging.example.com
+      SECRET_KEY: ci-staging-secret-key-32chars!!
+      ALLOW_CREATE_ALL: "false"
+      ALLOW_DEMO_SEED: "false"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12.13" }
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Upgrade only to pre-price provenance head
+        working-directory: backend
+        run: poetry run alembic upgrade w20materialsupply01
+      - name: Seed historical material prices without provenance columns
+        working-directory: backend
+        run: |
+          poetry run python - <<'PY'
+          import asyncio
+          from sqlalchemy import text
+          from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+          from app.models.entities import Project, User, UserRole
+
+          URL = "postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova"
+
+          async def main():
+              engine = create_async_engine(URL)
+              Session = async_sessionmaker(engine, expire_on_commit=False)
+              async with Session() as db:
+                  customer = User(id="price-migration-customer", phone="+79990000101", role=UserRole.customer)
+                  project = Project(
+                      id="price-migration-project",
+                      name="Price migration fixture",
+                      renovation_type="cosmetic",
+                      customer_id=customer.id,
+                  )
+                  db.add_all([customer, project])
+                  await db.commit()
+              async with engine.begin() as conn:
+                  statement = text("""
+                      INSERT INTO material_picks
+                      (id, project_id, name, qty, unit, price, qty_delivered, status,
+                       supply_source, qty_available, created_at, updated_at)
+                      VALUES
+                      (:id, 'price-migration-project', :name, 1, 'шт', :price, 0, 'draft',
+                       'customer_to_buy', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                  """)
+                  for row in (
+                      {"id": "price-historical-zero", "name": "Zero", "price": 0.0},
+                      {"id": "price-historical-normal", "name": "Normal", "price": 2500.0},
+                      {"id": "price-historical-stub-shape", "name": "Old stub shape", "price": 1000.0},
+                  ):
+                      await conn.execute(statement, row)
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY
+      - name: Upgrade historical fixture through price provenance migration
+        working-directory: backend
+        run: poetry run alembic upgrade head
+      - name: Prove fail-closed backfill and PostgreSQL constraint
+        working-directory: backend
+        run: |
+          poetry run python - <<'PY'
+          import asyncio
+          from sqlalchemy import text
+          from sqlalchemy.exc import IntegrityError
+          from sqlalchemy.ext.asyncio import create_async_engine
+
+          URL = "postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova"
+
+          async def main():
+              engine = create_async_engine(URL)
+              async with engine.connect() as conn:
+                  rows = (await conn.execute(text("""
+                      SELECT id, price_source
+                      FROM material_picks
+                      WHERE id LIKE 'price-historical-%'
+                      ORDER BY id
+                  """))).all()
+                  truth = {row.id: row.price_source for row in rows}
+                  assert truth == {
+                      "price-historical-normal": "legacy_unknown",
+                      "price-historical-stub-shape": "legacy_unknown",
+                      "price-historical-zero": "unset",
+                  }, truth
+
+              try:
+                  async with engine.begin() as conn:
+                      await conn.execute(text("""
+                          UPDATE material_picks
+                          SET price_source = 'invented_source'
+                          WHERE id = 'price-historical-normal'
+                      """))
+              except IntegrityError:
+                  pass
+              else:
+                  raise AssertionError("price_source CHECK accepted an unknown provenance")
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY
+      - name: Run material price behavioral contracts
+        working-directory: backend
+        run: |
+          poetry run pytest -q \
+            tests/test_material_price_truth_integrity.py \
+            tests/test_material_price_provenance_integrity.py \
+            tests/test_material_price_writer_contract.py
