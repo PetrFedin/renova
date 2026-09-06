@@ -1,6 +1,7 @@
 # PROJECT PARTICIPANT / MULTI-CONTRACTOR SCOPE CONTRACT
 
-Status: **FOUNDATION IMPLEMENTED — ISSUE #300 REMAINS OPEN UNTIL DOMAIN + MOBILE E2E ADOPTION**
+Status: **FOUNDATION IMPLEMENTED — ISSUE #300 REMAINS OPEN UNTIL DOMAIN + MOBILE E2E ADOPTION**  
+**Schema head:** `w22projectparticipants01`
 
 This annex governs the migration from one global `Project.contractor_id` to multiple independent contractor principals in one renovation project. It is intentionally fail-closed: adding a participant record must not grant broad project access until each domain read/write path explicitly consumes participant scope.
 
