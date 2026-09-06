@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "observed_on": "2026-09-06",
-  "expected_repo_facts": {"alembic_head":"w21materialprice01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
+  "expected_repo_facts": {"alembic_head":"w22projectparticipants01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
   "backend_artifact": {"status":"UNVERIFIED_CURRENT_DIGEST","image":"ghcr.io/petrfedin/renova-api","immutable_tag_contract":"sha-${GIT_SHA}","digest":null,"git_sha":null,"evidence":null,"repo_contract":".github/workflows/backend-image.yml","latest_repo_validation":{"status":"CI_VERIFIED","note":"Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."}},
   "environments": {
     "staging": {"status":"CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED","artifact_digest":null,"evidence":null,"issue":233,"note":"Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."},
