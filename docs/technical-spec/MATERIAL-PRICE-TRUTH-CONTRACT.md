@@ -7,7 +7,7 @@
 
 ## 1. Проблема, которую контракт запрещает
 
-Числовое поле `MaterialPick.price` само по себе не является доказательством рыночной или пользовательской цены. Исторический endpoint содержал fallback `1000.0` без поставщика. Текущий router уже направляет production route на безопасный `material_price_sync`, однако до этого контракта persisted `MaterialPick` не хранил долговременное происхождение цены.
+Числовое поле `MaterialPick.price` само по себе не является доказательством рыночной или пользовательской цены. Исторический endpoint содержал fallback `1000.0` без поставщика. Текущий router регистрирует только canonical `material_price_sync`; dormant legacy handler удалён, поэтому route-surgery для material price больше не требуется. До этого контракта persisted `MaterialPick` также не хранил долговременное происхождение цены.
 
 Запрещено:
 
@@ -149,3 +149,11 @@ Price mutation и durable activity intent входят в одну DB transactio
 7. CodeQL/security/technical-spec/readiness gates.
 
 Repository CI доказывает только `CI VERIFIED`. Реальная актуальность supplier price в конкретный момент зависит от external page и не превращается в `PRODUCTION VERIFIED` без соответствующего runtime evidence.
+
+## 11. Source snapshot этого контура
+
+| Source | Blob SHA | Что подтверждает |
+|---|---|---|
+| `backend/app/api/v1/router.py` | `5b8cfa5ef1bdd6d85cdbfc7ef51795e40c9254a3` | direct canonical material-price router composition без legacy route surgery |
+
+Этот annex владеет material-price изменением router. Остальные router snapshots в старых annex остаются доказательством своих контуров на соответствующих exact-head и не означают, что material price снова должен использовать route replacement.
