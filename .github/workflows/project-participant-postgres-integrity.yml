@@ -1,0 +1,159 @@
+name: Project participant PostgreSQL integrity
+
+on:
+  push:
+    paths:
+      - "backend/app/models/project_participants.py"
+      - "backend/app/services/project_participant_service.py"
+      - "backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py"
+      - "backend/tests/test_project_participant_foundation.py"
+      - "backend/tests/test_project_participant_postgres_concurrency.py"
+      - "docs/technical-spec/PROJECT-PARTICIPANT-SCOPE-CONTRACT.md"
+      - ".github/workflows/project-participant-postgres-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/models/project_participants.py"
+      - "backend/app/services/project_participant_service.py"
+      - "backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py"
+      - "backend/tests/test_project_participant_foundation.py"
+      - "backend/tests/test_project_participant_postgres_concurrency.py"
+      - "docs/technical-spec/PROJECT-PARTICIPANT-SCOPE-CONTRACT.md"
+      - ".github/workflows/project-participant-postgres-integrity.yml"
+
+concurrency:
+  group: project-participant-postgres-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  project-participant-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env: { POSTGRES_USER: renova, POSTGRES_PASSWORD: renova, POSTGRES_DB: renova }
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PROJECT_PARTICIPANT_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+      PUBLIC_BASE_URL: https://ci-staging.example.com
+      SECRET_KEY: ci-staging-secret-key-32chars!!
+      ALLOW_CREATE_ALL: "false"
+      ALLOW_DEMO_SEED: "false"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12.13" }
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Upgrade to predecessor head
+        working-directory: backend
+        run: poetry run alembic upgrade w21materialprice01
+      - name: Seed legacy lead contractor on physical predecessor schema
+        working-directory: backend
+        run: |
+          poetry run python - <<'PY'
+          import asyncio
+          import os
+          from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+          from app.models.entities import Project, User, UserRole
+
+          async def main():
+              engine = create_async_engine(os.environ["DATABASE_URL"])
+              Session = async_sessionmaker(engine, expire_on_commit=False)
+              async with Session() as db:
+                  customer = User(id="pp-backfill-customer", phone="+79992220001", role=UserRole.customer)
+                  lead = User(id="pp-backfill-lead", phone="+79992220002", role=UserRole.contractor)
+                  db.add_all([customer, lead])
+                  await db.flush()
+                  db.add(Project(
+                      id="pp-backfill-project",
+                      name="Participant backfill",
+                      renovation_type="cosmetic",
+                      customer_id=customer.id,
+                      contractor_id=lead.id,
+                  ))
+                  await db.commit()
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY
+      - name: Upgrade predecessor fixture through participant migration
+        working-directory: backend
+        run: poetry run alembic upgrade head
+      - name: Prove lead backfill and constraints
+        working-directory: backend
+        run: |
+          poetry run python - <<'PY'
+          import asyncio
+          import os
+          from sqlalchemy import text
+          from sqlalchemy.exc import IntegrityError
+          from sqlalchemy.ext.asyncio import create_async_engine
+
+          async def main():
+              engine = create_async_engine(os.environ["DATABASE_URL"])
+              async with engine.connect() as conn:
+                  row = (await conn.execute(text("""
+                      SELECT participant_role, status, all_scope,
+                             can_manage_schedule, can_manage_commercial, can_manage_documents
+                      FROM project_participants
+                      WHERE project_id = 'pp-backfill-project' AND user_id = 'pp-backfill-lead'
+                  """))).one()
+                  assert tuple(row) == ("lead_contractor", "active", True, True, True, True), row
+                  event = (await conn.execute(text("""
+                      SELECT event_type, snapshot_json
+                      FROM project_participant_events
+                      WHERE project_id = 'pp-backfill-project' AND user_id = 'pp-backfill-lead'
+                  """))).one()
+                  assert event.event_type == "backfilled_lead"
+                  assert 'projects.contractor_id' in event.snapshot_json
+
+              try:
+                  async with engine.begin() as conn:
+                      await conn.execute(text("""
+                          UPDATE project_participants
+                          SET status = 'invented'
+                          WHERE project_id = 'pp-backfill-project'
+                      """))
+              except IntegrityError:
+                  pass
+              else:
+                  raise AssertionError("participant status CHECK accepted an unknown state")
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY
+      - name: Verify current ORM schema parity
+        working-directory: backend
+        run: poetry run python scripts/verify_orm_schema_parity.py
+      - name: Run participant behavioral and PostgreSQL race contracts
+        working-directory: backend
+        run: |
+          set -o pipefail
+          poetry run pytest -vv -s --tb=short \
+            tests/test_project_participant_foundation.py \
+            tests/test_project_participant_postgres_concurrency.py \
+            2>&1 | tee project-participant-postgres-integrity.log
+      - name: Upload participant diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-participant-postgres-integrity-diagnostics
+          path: backend/project-participant-postgres-integrity.log
+          if-no-files-found: ignore
