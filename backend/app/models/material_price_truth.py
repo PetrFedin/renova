@@ -2,8 +2,9 @@
 
 The numeric price alone is not sufficient financial evidence. These mapped
 attributes keep the latest known provenance on the existing material master so
-later reads can distinguish explicit user-entered values, legacy-unknown data
-and externally verified supplier prices without creating a parallel entity.
+later reads can distinguish explicit user-entered values, estimate/selection
+derivations, legacy-unknown data and externally verified supplier prices
+without creating a parallel entity.
 """
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ PRICE_SOURCE_VALUES = (
     "unset",
     "legacy_unknown",
     "manual",
+    "estimate",
+    "selection_approved",
     "live_jsonld",
     "live_meta",
     "live_currency",
@@ -24,9 +27,15 @@ PRICE_SOURCE_VALUES = (
 LIVE_PRICE_SOURCE_VALUES = frozenset(
     {"live_jsonld", "live_meta", "live_currency"}
 )
+ACTIONABLE_PRICE_SOURCE_VALUES = frozenset(
+    {"manual", "selection_approved", *LIVE_PRICE_SOURCE_VALUES}
+)
 
 
 def _default_price_source(context) -> str:
+    # Compatibility default for direct ORM construction. Production services
+    # that derive a price from another domain object must set their provenance
+    # explicitly (`estimate`, `selection_approved`, etc.).
     params = context.get_current_parameters() if context is not None else {}
     return "manual" if float(params.get("price") or 0) > 0 else "unset"
 
@@ -36,11 +45,8 @@ def is_verified_price_source(source: str | None) -> bool:
 
 
 def is_actionable_purchase_price(pick: MaterialPick) -> bool:
-    """A purchase may use only an explicit or externally verified positive price."""
-    return float(pick.price or 0) > 0 and pick.price_source in {
-        "manual",
-        *LIVE_PRICE_SOURCE_VALUES,
-    }
+    """A purchase may use only explicit/approved-selection/live positive truth."""
+    return float(pick.price or 0) > 0 and pick.price_source in ACTIONABLE_PRICE_SOURCE_VALUES
 
 
 add_mapped_attribute(
@@ -60,7 +66,7 @@ add_mapped_attribute(
 )
 MaterialPick.__table__.append_constraint(
     CheckConstraint(
-        "price_source IN ('unset','legacy_unknown','manual','live_jsonld','live_meta','live_currency')",
+        "price_source IN ('unset','legacy_unknown','manual','estimate','selection_approved','live_jsonld','live_meta','live_currency')",
         name="ck_material_picks_price_source",
     )
 )
