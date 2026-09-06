@@ -17,6 +17,7 @@ from app.models.entities import (
     PurchaseStatus,
     User,
 )
+from app.models import material_price_truth
 from app.services import material_supply_service
 
 
@@ -95,6 +96,8 @@ async def prepare_purchase_from_picks(
             raise ValueError("purchase_pick_not_buy_required")
         if not material_supply_service.actor_can_purchase(project=project, actor=actor, pick=pick):
             raise ValueError("purchase_pick_responsibility_forbidden")
+        if not material_price_truth.is_actionable_purchase_price(pick):
+            raise ValueError("purchase_pick_price_unverified")
         quantity = supply.qty_to_buy
         unit_price = float(pick.price or 0)
         if quantity <= 0:
