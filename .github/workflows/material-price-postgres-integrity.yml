@@ -139,7 +139,16 @@ jobs:
       - name: Run material price behavioral contracts
         working-directory: backend
         run: |
-          poetry run pytest -q \
+          set -o pipefail
+          poetry run pytest -vv -s --tb=short \
             tests/test_material_price_truth_integrity.py \
             tests/test_material_price_provenance_integrity.py \
-            tests/test_material_price_writer_contract.py
+            tests/test_material_price_writer_contract.py \
+            2>&1 | tee material-price-postgres-integrity.log
+      - name: Upload material price diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: material-price-postgres-integrity-diagnostics
+          path: backend/material-price-postgres-integrity.log
+          if-no-files-found: ignore
