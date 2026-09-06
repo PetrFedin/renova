@@ -33,7 +33,7 @@
 | `unset` | цена не указана | нет |
 | `legacy_unknown` | историческое значение без доказуемого происхождения | нет |
 | `manual` | пользователь явно указал/подтвердил цену | да, если `price > 0` |
-| `estimate` | плановая цена перенесена из строки сметы | нет до явного подтверждения/live verification |
+| `estimate` | плановая цена перенесена из строки сметы | только после customer approval этого MaterialPick |
 | `selection_approved` | цена конкретного согласованного подбора | да, если `price > 0` |
 | `live_jsonld` | цена подтверждена structured JSON-LD supplier page | да |
 | `live_meta` | цена подтверждена structured meta supplier page | да |
@@ -105,7 +105,7 @@ Provider/parser unavailable, HTTP failure, unsupported content или отсут
 - `price_source_url`;
 - `price_actionable`.
 
-`price_verified=true` означает только сохранённую live verification record. `manual` и `selection_approved` могут быть допустимыми business prices, но не называются внешне проверенными.
+`price_verified=true` означает только сохранённую live verification record. `manual`, `selection_approved` и customer-approved `estimate` могут быть допустимыми business prices, но не называются внешне проверенными.
 
 ## 7. Purchase financial gate
 
@@ -113,22 +113,26 @@ Provider/parser unavailable, HTTP failure, unsupported content или отсут
 
 1. material approval/supply/responsibility gates выполнены;
 2. `price > 0`;
-3. `price_source ∈ {manual, selection_approved, live_jsonld, live_meta, live_currency}`.
+3. выполняется одно из условий provenance:
+   - `price_source ∈ {manual, selection_approved, live_jsonld, live_meta, live_currency}`;
+   - либо `price_source=estimate` **и** текущий `MaterialPick.status=approved`.
 
-`unset`, `legacy_unknown` и `estimate` возвращают `purchase_pick_price_unverified` и не создают Purchase/Payment/Expense truth. Тот же gate действует и в legacy compatibility `purchase_service.create_from_picks`; отсутствие публичного API-вызова не является основанием для слабее защищённого финансового writer-а.
+`estimate` в `draft/pending` не является закупочной истиной. Customer approval самого MaterialPick является явным подтверждением отображённой estimate-price и делает её actionable без отдельного повторного price-confirmation. `legacy_unknown` остаётся заблокированным даже если историческая строка уже имеет `approved`: старый статус сам по себе не доказывает происхождение числа.
+
+`unset`, `legacy_unknown` и неподтверждённый `estimate` возвращают `purchase_pick_price_unverified` и не создают Purchase/Payment/Expense truth. Тот же gate действует и в legacy compatibility `purchase_service.create_from_picks`; отсутствие публичного API-вызова не является основанием для слабее защищённого финансового writer-а.
 
 ## 8. Mobile UX
 
 Карточка материала различает как минимум:
 
 - ручную цену;
-- цену из сметы, требующую подтверждения до закупки;
+- цену из сметы: до approval она требует согласования материала, после approval помечается как согласованная заказчиком;
 - цену согласованного подбора;
 - live-проверенную supplier price + время проверки;
 - историческую цену с неизвестным происхождением;
 - отсутствующую цену.
 
-Для non-actionable price пользователь получает прямой recovery path: сохранить цену вручную или, при наличии URL, проверить supplier page. Provider failure не показывается как успешное обновление.
+Для non-actionable price пользователь получает прямой recovery path: сохранить цену вручную или, при наличии URL, проверить supplier page. Для estimate отдельное ручное подтверждение не обязательно: customer approval MaterialPick является достаточным явным бизнес-подтверждением показанной суммы. Provider failure не показывается как успешное обновление.
 
 Для approved legacy-позиции доступно подтверждение существующей суммы. Если пользователь меняет сумму, UI получает новый `pending` status и дальнейшая закупка требует повторного согласования.
 
@@ -143,7 +147,8 @@ Price mutation и durable activity intent входят в одну DB transactio
 - same-value manual confirmation replay-safe по конечному состоянию;
 - provider unavailable не уничтожает verified/manual provenance;
 - changed approved amount не может остаться approved;
-- Purchase с unknown/estimate provenance fail-closed;
+- `legacy_unknown` никогда не становится actionable только из-за старого approval;
+- `estimate` становится actionable только через explicit current MaterialPick approval;
 - internal/compatibility writers используют тот же eligibility rule.
 
 ## 10. Доказательная матрица до merge
