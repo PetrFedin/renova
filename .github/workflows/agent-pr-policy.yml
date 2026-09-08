@@ -1,0 +1,98 @@
+name: agent-pr-policy
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Write PR body to file
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$BODY" > "$RUNNER_TEMP/pr_body.md"
+
+      - name: Validate PR template sections
+        run: |
+          set -e
+          B="$RUNNER_TEMP/pr_body.md"
+          for s in "## Task" "## What" "## Why" "## Chain verified" "## Removal proof" "## Evidence" "## Out of scope"; do
+            grep -qF "$s" "$B" || { echo "::error::PR body missing section '$s'"; exit 1; }
+          done
+          grep -qE "Mandate ID: *(A[1-7]|B[1-5]|C[1-8]|D[1-3]|E[1-4]|hotfix|governance)\b" "$B" \
+            || { echo "::error::Mandate ID missing or invalid (A1..E4 | hotfix | governance)"; exit 1; }
+
+      - name: Removal proof required when files/definitions are deleted
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+          B="$RUNNER_TEMP/pr_body.md"
+          deleted_files=$(git diff --name-only --diff-filter=D "$BASE" "$HEAD" | wc -l)
+          deleted_defs=$(git diff "$BASE" "$HEAD" -- '*.py' '*.ts' '*.tsx' \
+            | grep -E '^-\s*(async def|def|class|export (default )?(async )?(function|const|class))\b' | wc -l)
+          echo "deleted files=$deleted_files deleted definitions=$deleted_defs"
+          section=$(awk '/^## Removal proof/{f=1;next} /^## /{f=0} f' "$B")
+          if [ "$deleted_files" -gt 0 ] || [ "$deleted_defs" -gt 0 ]; then
+            if grep -qi "no removals" <<<"$section"; then
+              echo "::error::Deletions detected but Removal proof says 'no removals'"; exit 1
+            fi
+            grep -qE "(^|[^a-z])(grep|rg)( |$)" <<<"$section" \
+              || { echo "::error::Deletions detected but Removal proof contains no grep/rg evidence"; exit 1; }
+          fi
+
+      - name: Forbidden changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+          B="$RUNNER_TEMP/pr_body.md"
+          is_gov=0; grep -qE "Mandate ID: *(governance|E1)\b" "$B" && is_gov=1
+
+          new_wf=$(git diff --name-only --diff-filter=A "$BASE" "$HEAD" | grep -E '^\.github/workflows/' || true)
+          if [ -n "$new_wf" ] && [ "$is_gov" = "0" ]; then echo "::error::New workflow added outside governance/E1: $new_wf"; exit 1; fi
+
+          mig=$(git diff --name-only --diff-filter=DM "$BASE" "$HEAD" | grep -E '^backend/alembic/versions/' || true)
+          if [ -n "$mig" ]; then echo "::error::Existing migration modified or deleted: $mig"; exit 1; fi
+
+          bad_docs=$(git diff --name-only --diff-filter=A "$BASE" "$HEAD" | grep -E '^docs/[^/]+\.md$' || true)
+          if [ -n "$bad_docs" ] && [ "$is_gov" = "0" ]; then echo "::error::New top-level doc (use docs/technical-spec or docs/archive): $bad_docs"; exit 1; fi
+
+          if git cat-file -e "$HEAD:backend/app/services/providers/registry.py" 2>/dev/null; then
+            bypass=$(git diff "$BASE" "$HEAD" -- 'backend/app/*.py' 'backend/app/**/*.py' \
+              | grep -E '^\+.*(from app\.services import yookassa_service|from app\.services\.yookassa_service import|verify_receipt_stub\()' \
+              | grep -v 'providers/adapters' || true)
+            if [ -n "$bypass" ]; then echo "::error::Direct provider import bypassing app.services.providers.registry:"; echo "$bypass"; exit 1; fi
+          fi
+
+          weak=$(git diff "$BASE" "$HEAD" -- backend/app/core/environment.py backend/app/core/runtime_policy.py \
+            | grep -E '^\+.*(allow_demo_seed|allow_create_all|allow_header_user_id)\s*=\s*True' || true)
+          if [ -n "$weak" ]; then echo "::error::Runtime policy weakened:"; echo "$weak"; exit 1; fi
+
+          cred=$(git diff "$BASE" "$HEAD" | grep -E '^\+.*(YOOKASSA_SECRET|TWILIO_TOKEN|KONTUR_API_KEY|ANTHROPIC_API_KEY)\s*[:=]\s*["'"'"']?[A-Za-z0-9_\-]{16,}' || true)
+          if [ -n "$cred" ]; then echo "::error::Credential-like value added"; exit 1; fi
+
+      - name: Test baseline must not decrease
+        run: |
+          B="$RUNNER_TEMP/pr_body.md"
+          before=$(grep -iE "baseline:.*→ *[0-9]+ passed" "$B" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "^[0-9]+" || true)
+          after=$(grep -iE "after:.*→ *[0-9]+ passed" "$B" | grep -oE "[0-9]+ passed" | head -1 | grep -oE "^[0-9]+" || true)
+          if [ -z "$before" ] || [ -z "$after" ]; then
+            echo "::error::Evidence must contain 'baseline: … → N passed' and 'after: … → N passed'"; exit 1
+          fi
+          if [ "$after" -lt "$before" ]; then echo "::error::Passed tests decreased: $before → $after"; exit 1; fi
+          echo "baseline $before → $after OK"

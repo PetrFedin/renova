@@ -1,0 +1,36 @@
+name: governance-bootstrap
+# Owner-triggered one-shot: creates labels and the 27 mandate issues using GITHUB_TOKEN.
+# Idempotent. Rulesets/settings/secrets are NOT touched here (require admin; owner does them in UI).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          mk() { if gh label list -R "$REPO" --json name -q '.[].name' | grep -qx "$1"; then gh label edit "$1" -R "$REPO" --color "$2" --description "$3"; else gh label create "$1" -R "$REPO" --color "$2" --description "$3"; fi; }
+          mk agent-task   0E8A16 "Task from PRODUCT-COMPLETION-MANDATE for an autonomous agent"
+          mk ready        1D76DB "Dependencies closed; an agent may take it"
+          mk in-progress  FBCA04 "An agent is working on it"
+          mk needs-owner  B60205 "Blocked on an owner-only decision or action"
+          mk blocked      D93F0B "Blocked by another task/issue"
+          mk agent-review 5319E7 "Reviewed by the second agent"
+          mk governance   C5DEF5 "Repository governance / agent infrastructure"
+          mk dependencies 0366D6 "Dependabot"
+          for p in P0 P1 P2; do mk "$p" 000000 "Priority $p"; done
+          for ph in A B C D E; do mk "phase:$ph" BFD4F2 "Mandate phase $ph"; done
+      - name: Mandate issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/governance/create-mandate-issues.py --repo "${{ github.repository }"

@@ -1,0 +1,64 @@
+name: claude-agent
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Second-agent review of every agent/* PR per PRODUCT-COMPLETION-MANDATE §7.
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'agent/') && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.RENOVA_AGENT_TOKEN }}
+          prompt: |
+            You are the second-agent reviewer defined in docs/technical-spec/PRODUCT-COMPLETION-MANDATE.md §7.
+            Read AGENTS.md, the mandate, docs/technical-spec/GOLDEN-PATHS.md and the technical-spec contract for the touched area.
+            For this pull request:
+            1. Re-run every grep/rg command in the "Removal proof" section and compare with the claimed output.
+            2. Verify "Chain verified" names real files and the chain is closed (no unreachable screen, route or endpoint).
+            3. Look for any extension of legacy writers or any provider call that bypasses app.services.providers.registry.
+            4. State at least one concrete "what else could break" hypothesis and check it against the code.
+            5. Compare the "Evidence" numbers with this PR's CI logs.
+            Post a pull request review with verdict APPROVE or CHANGES_REQUESTED and the list of checked items.
+            Do not modify code. Do not merge.
+          claude_args: "--max-turns 40"
+
+  mention:
+    if: |
+      (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment')
+      && contains(github.event.comment.body, '@claude')
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-backend
+        with:
+          python-version: "3.12.13"
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.RENOVA_AGENT_TOKEN }}
+          allowed_tools: "Bash(cd backend && python -m pytest *),Bash(python -m pytest *),Bash(npm run typecheck:mobile),Bash(git *),Bash(grep *),Bash(rg *),Edit,Write,Read"
+          claude_args: "--max-turns 60"
