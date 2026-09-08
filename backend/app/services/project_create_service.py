@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, Stage, StageStatus
 from app.services import outbox_service as outbox
+from app.services import project_participant_service as participant_service
 from app.services import room_service
 from app.services.calc.estimate import stages_for_renovation
 
 PROJECT_CREATE_SCOPE = "project.create"
 PROJECT_TEMPLATE_CREATE_SCOPE = "project.create.template"
+PROJECT_MARKETPLACE_CREATE_SCOPE = "project.create.marketplace"
 _CENT = Decimal("0.01")
 
 _STAGE_ROOM_TYPES: dict[str, tuple[str, ...]] = {
@@ -283,6 +285,48 @@ async def _loaded_project(db: AsyncSession, project_id: str) -> Project:
     return project
 
 
+async def prepare_project_in_transaction(
+    db: AsyncSession,
+    *,
+    customer_id: str,
+    payload: dict,
+    participant_actor_id: str | None = None,
+) -> Project:
+    """Prepare canonical project, rooms, stages, lead and activity; never commit.
+
+    payload must come from _project_payload. Both ordinary creation and the
+    marketplace conversion transaction use this one preparation path.
+    """
+    contractor_id = payload["contractor_id"]
+    project = Project(
+        name=payload["name"],
+        address=payload["address"],
+        renovation_type=payload["renovation_type"],
+        property_type=payload["property_type"],
+        total_area_sqm=payload["total_area_sqm"],
+        customer_id=customer_id,
+        contractor_id=contractor_id,
+        planned_start_date=date.fromisoformat(payload["planned_start_date"]),
+        planned_end_date=date.fromisoformat(payload["planned_end_date"]),
+    )
+    db.add(project)
+    await db.flush()
+    if contractor_id:
+        await participant_service.sync_current_lead_in_transaction(
+            db, project=project, contractor_id=contractor_id, actor_id=participant_actor_id,
+        )
+    rooms = [
+        await room_service.prepare_room(db, project=project, data=room_data)
+        for room_data in payload["rooms"]
+    ]
+    stages = await _prepare_stages(db, project=project, rooms=rooms)
+    await _prepare_activity(
+        db, project=project, customer_id=customer_id,
+        rooms_count=len(rooms), stages_count=len(stages),
+    )
+    return project
+
+
 async def create_project(
     db: AsyncSession,
     *,
@@ -299,70 +343,33 @@ async def create_project(
     client_request_id: str | None = None,
     scope: str = PROJECT_CREATE_SCOPE,
     template_id: str | None = None,
+    participant_actor_id: str | None = None,
 ) -> ProjectCreateResult:
     """Create one complete project or replay the already committed result."""
     from app.services.client_write_idempotency import commit_client_write, replay_entity_id
 
     payload = _project_payload(
-        name=name,
-        address=address,
-        renovation_type=renovation_type,
-        property_type=property_type,
-        total_area_sqm=total_area_sqm,
-        planned_start_date=planned_start_date,
-        planned_end_date=planned_end_date,
-        rooms_data=rooms_data,
-        contractor_id=contractor_id,
-        template_id=template_id,
+        name=name, address=address, renovation_type=renovation_type,
+        property_type=property_type, total_area_sqm=total_area_sqm,
+        planned_start_date=planned_start_date, planned_end_date=planned_end_date,
+        rooms_data=rooms_data, contractor_id=contractor_id, template_id=template_id,
     )
     replay_id = await replay_entity_id(
-        db,
-        scope=scope,
-        project_id=customer_id,
-        user_id=customer_id,
-        request_id=client_request_id,
-        payload=payload,
+        db, scope=scope, project_id=customer_id, user_id=customer_id,
+        request_id=client_request_id, payload=payload,
     )
     if replay_id:
         return ProjectCreateResult(await _loaded_project(db, replay_id), True)
 
-    start = date.fromisoformat(payload["planned_start_date"])
-    end = date.fromisoformat(payload["planned_end_date"])
-    project = Project(
-        name=payload["name"],
-        address=payload["address"],
-        renovation_type=payload["renovation_type"],
-        property_type=payload["property_type"],
-        total_area_sqm=payload["total_area_sqm"],
-        customer_id=customer_id,
-        contractor_id=contractor_id,
-        planned_start_date=start,
-        planned_end_date=end,
-    )
-    db.add(project)
     try:
-        await db.flush()
-        rooms = [
-            await room_service.prepare_room(db, project=project, data=room_data)
-            for room_data in payload["rooms"]
-        ]
-        stages = await _prepare_stages(db, project=project, rooms=rooms)
-        await _prepare_activity(
-            db,
-            project=project,
-            customer_id=customer_id,
-            rooms_count=len(rooms),
-            stages_count=len(stages),
+        project = await prepare_project_in_transaction(
+            db, customer_id=customer_id, payload=payload,
+            participant_actor_id=participant_actor_id,
         )
         candidate_id = project.id
         created, entity_id = await commit_client_write(
-            db,
-            scope=scope,
-            project_id=customer_id,
-            user_id=customer_id,
-            request_id=client_request_id,
-            payload=payload,
-            entity_id=candidate_id,
+            db, scope=scope, project_id=customer_id, user_id=customer_id,
+            request_id=client_request_id, payload=payload, entity_id=candidate_id,
         )
     except BaseException:
         await db.rollback()

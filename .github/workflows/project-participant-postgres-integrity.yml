@@ -5,8 +5,17 @@ on:
     paths:
       - "backend/app/models/project_participants.py"
       - "backend/app/services/project_participant_service.py"
+      - "backend/app/services/project_assignment_service.py"
+      - "backend/app/services/project_create_service.py"
+      - "backend/app/services/marketplace_conversion_service.py"
+      - "backend/app/api/v1/project_assignment_integrity.py"
+      - "backend/app/api/v1/project_participants.py"
+      - "backend/app/api/v1/marketplace_conversion_integrity.py"
+      - "backend/app/api/v1/router.py"
       - "backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py"
       - "backend/tests/test_project_participant_foundation.py"
+      - "backend/tests/test_project_participant_management.py"
+      - "backend/tests/test_project_participant_hardening.py"
       - "backend/tests/test_project_participant_postgres_concurrency.py"
       - "docs/technical-spec/PROJECT-PARTICIPANT-SCOPE-CONTRACT.md"
       - ".github/workflows/project-participant-postgres-integrity.yml"
@@ -14,8 +23,17 @@ on:
     paths:
       - "backend/app/models/project_participants.py"
       - "backend/app/services/project_participant_service.py"
+      - "backend/app/services/project_assignment_service.py"
+      - "backend/app/services/project_create_service.py"
+      - "backend/app/services/marketplace_conversion_service.py"
+      - "backend/app/api/v1/project_assignment_integrity.py"
+      - "backend/app/api/v1/project_participants.py"
+      - "backend/app/api/v1/marketplace_conversion_integrity.py"
+      - "backend/app/api/v1/router.py"
       - "backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py"
       - "backend/tests/test_project_participant_foundation.py"
+      - "backend/tests/test_project_participant_management.py"
+      - "backend/tests/test_project_participant_hardening.py"
       - "backend/tests/test_project_participant_postgres_concurrency.py"
       - "docs/technical-spec/PROJECT-PARTICIPANT-SCOPE-CONTRACT.md"
       - ".github/workflows/project-participant-postgres-integrity.yml"
@@ -82,11 +100,8 @@ jobs:
                   db.add_all([customer, lead])
                   await db.flush()
                   db.add(Project(
-                      id="pp-backfill-project",
-                      name="Participant backfill",
-                      renovation_type="cosmetic",
-                      customer_id=customer.id,
-                      contractor_id=lead.id,
+                      id="pp-backfill-project", name="Participant backfill",
+                      renovation_type="cosmetic", customer_id=customer.id, contractor_id=lead.id,
                   ))
                   await db.commit()
               await engine.dispose()
@@ -123,12 +138,10 @@ jobs:
                   """))).one()
                   assert event.event_type == "backfilled_lead"
                   assert 'projects.contractor_id' in event.snapshot_json
-
               try:
                   async with engine.begin() as conn:
                       await conn.execute(text("""
-                          UPDATE project_participants
-                          SET status = 'invented'
+                          UPDATE project_participants SET status = 'invented'
                           WHERE project_id = 'pp-backfill-project'
                       """))
               except IntegrityError:
@@ -142,13 +155,15 @@ jobs:
       - name: Verify current ORM schema parity
         working-directory: backend
         run: poetry run python scripts/verify_orm_schema_parity.py
-      - name: Run participant behavioral and PostgreSQL race contracts
+      - name: Run participant management and PostgreSQL race contracts
         working-directory: backend
         run: |
           set -o pipefail
           poetry run pytest -vv -s --tb=short \
             tests/test_project_participant_foundation.py \
+            tests/test_project_participant_management.py \
             tests/test_project_participant_postgres_concurrency.py \
+            tests/test_project_participant_hardening.py \
             2>&1 | tee project-participant-postgres-integrity.log
       - name: Upload participant diagnostics
         if: always()

@@ -15,6 +15,9 @@ from app.api.v1 import payment_evidence
 from app.api.v1 import subscription_integrity
 from app.api.v1 import admin_subscription_refunds
 from app.api.v1 import project_creation
+from app.api.v1 import project_assignment_integrity
+from app.api.v1 import project_participants
+from app.api.v1 import marketplace_conversion_integrity
 from app.api.v1 import stage_mutations
 from app.api.v1 import stage_review_transitions
 from app.api.v1 import otp_auth
@@ -46,6 +49,9 @@ def _remove_replaced_routes(router: APIRouter, signatures: set[RouteSignature]) 
     router.routes[:] = [route for route in router.routes if not is_replaced(route)]
 
 api_router.include_router(design_packages.router)
+_MARKETPLACE_CONVERSION_ROUTES: set[RouteSignature] = {("/job-leads/{lead_id}/convert", "POST")}
+_remove_replaced_routes(marketplace.router, _MARKETPLACE_CONVERSION_ROUTES)
+api_router.include_router(marketplace_conversion_integrity.router)
 api_router.include_router(marketplace.router)
 api_router.include_router(material_price_sync.router)
 api_router.include_router(materials.router)
@@ -122,9 +128,12 @@ api_router.include_router(notifications.router)
 api_router.include_router(media.router)
 _PROJECT_CREATION_ROUTES: set[RouteSignature] = {("/projects", "POST"), ("/projects/from-template", "POST")}
 _STAGE_REVIEW_ROUTES: set[RouteSignature] = {("/projects/{project_id}/stages/{stage_id}/submit", "POST"), ("/projects/{project_id}/stages/{stage_id}/reject", "POST")}
-_remove_replaced_routes(projects.router, _PROJECT_CREATION_ROUTES | _STAGE_REVIEW_ROUTES)
+_PROJECT_ASSIGNMENT_ROUTES: set[RouteSignature] = {("/projects/{project_id}/assign", "POST"), ("/projects/{project_id}/contractor", "POST")}
+_remove_replaced_routes(projects.router, _PROJECT_CREATION_ROUTES | _STAGE_REVIEW_ROUTES | _PROJECT_ASSIGNMENT_ROUTES)
 api_router.include_router(project_creation.router)
 api_router.include_router(stage_review_transitions.router)
+api_router.include_router(project_assignment_integrity.router)
+api_router.include_router(project_participants.router)
 api_router.include_router(projects.router)
 api_router.include_router(technical_supervision.router)
 api_router.include_router(technical_supervision_actions.router)
