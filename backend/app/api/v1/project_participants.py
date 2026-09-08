@@ -59,14 +59,12 @@ class ParticipantMutationOut(BaseModel):
 
 def _participant_error(error: ValueError) -> HTTPException:
     code = str(error)
-    if code in {"project_not_found", "participant_not_found"}:
+    if code in {"project_not_found", "participant_not_found", "participant_contractor_invalid"}:
         status = 404
     elif code == "participant_customer_owner_only":
         status = 403
-    elif code == "participant_contractor_invalid":
-        status = 404
     elif code in {
-        "participant_is_legacy_lead",
+        "participant_is_legacy_lead", "project_trashed",
         "participant_legacy_lead_scope_managed_by_compatibility",
         "participant_legacy_lead_remove_forbidden",
     }:
@@ -76,110 +74,74 @@ def _participant_error(error: ValueError) -> HTTPException:
     return HTTPException(status, detail={"code": code})
 
 
-async def _owner_project(
-    db: AsyncSession,
-    *,
-    project_id: str,
-    user: User,
-) -> Project:
-    project = await db.get(Project, project_id)
+async def _owner_project(db: AsyncSession, *, project_id: str, user: User) -> Project:
+    project = await db.get(Project, project_id, populate_existing=True)
     if project is None:
         raise HTTPException(404, detail={"code": "project_not_found"})
-    if user.role != UserRole.customer or project.customer_id != user.id:
+    if user.role != UserRole.customer or user.deleted_at is not None or project.customer_id != user.id:
         raise HTTPException(403, detail={"code": "participant_customer_owner_only"})
     return project
 
 
 async def _participant_out(
-    db: AsyncSession,
-    *,
-    project: Project,
-    participant: ProjectParticipant,
+    db: AsyncSession, *, project: Project, participant: ProjectParticipant,
 ) -> ParticipantOut:
     user = await db.get(User, participant.user_id)
     scopes = await participants.participant_scopes(db, participant.id)
     return ParticipantOut(
-        id=participant.id,
-        user_id=participant.user_id,
+        id=participant.id, user_id=participant.user_id,
         full_name=user.full_name if user is not None else None,
-        participant_role=participant.participant_role,
-        status=participant.status,
+        participant_role=participant.participant_role, status=participant.status,
         is_current_lead=(
-            participant.status == "active"
-            and participant.participant_role == "lead_contractor"
+            participant.status == "active" and participant.participant_role == "lead_contractor"
             and project.contractor_id == participant.user_id
         ),
         all_scope=participant.all_scope,
         can_manage_schedule=participant.can_manage_schedule,
         can_manage_commercial=participant.can_manage_commercial,
         can_manage_documents=participant.can_manage_documents,
-        scopes=[
-            ParticipantScopeOut(scope_type=row.scope_type, scope_ref=row.scope_ref)
-            for row in scopes
-        ],
-        added_at=participant.added_at,
-        removed_at=participant.removed_at,
+        scopes=[ParticipantScopeOut(scope_type=r.scope_type, scope_ref=r.scope_ref) for r in scopes],
+        added_at=participant.added_at, removed_at=participant.removed_at,
     )
 
 
 @router.get("", response_model=list[ParticipantOut])
 async def list_participants(
-    project_id: str,
-    include_removed: bool = False,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    project_id: str, include_removed: bool = False,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     project = await _owner_project(db, project_id=project_id, user=user)
-    rows = await participants.list_project_participants(
-        db,
-        project_id=project_id,
-        include_removed=include_removed,
-    )
-    return [
-        await _participant_out(db, project=project, participant=row)
-        for row in rows
-    ]
+    rows = await participants.list_project_participants(db, project_id=project_id, include_removed=include_removed)
+    return [await _participant_out(db, project=project, participant=row) for row in rows]
 
 
 @router.post("", response_model=ParticipantMutationOut)
 async def add_participant(
-    project_id: str,
-    body: ParticipantCreateIn,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    project_id: str, body: ParticipantCreateIn,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     project = await _owner_project(db, project_id=project_id, user=user)
     try:
         participant, created = await participants.add_or_reactivate_contractor(
-            db,
-            project_id=project_id,
-            actor_id=user.id,
-            contractor_id=body.contractor_id,
+            db, project_id=project_id, actor_id=user.id, contractor_id=body.contractor_id,
             scopes=[scope.model_dump() for scope in body.scopes],
         )
     except ValueError as error:
         raise _participant_error(error) from error
     return ParticipantMutationOut(
-        participant=await _participant_out(db, project=project, participant=participant),
-        created=created,
+        participant=await _participant_out(db, project=project, participant=participant), created=created,
     )
 
 
 @router.patch("/{participant_id}/scopes", response_model=ParticipantOut)
 async def replace_participant_scopes(
-    project_id: str,
-    participant_id: str,
-    body: ParticipantScopesIn,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    project_id: str, participant_id: str, body: ParticipantScopesIn,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     project = await _owner_project(db, project_id=project_id, user=user)
     try:
         participant = await participants.replace_scopes(
-            db,
-            project_id=project_id,
-            participant_id=participant_id,
-            actor_id=user.id,
+            db, project_id=project_id, participant_id=participant_id, actor_id=user.id,
             scopes=[scope.model_dump() for scope in body.scopes],
         )
     except ValueError as error:
@@ -189,18 +151,13 @@ async def replace_participant_scopes(
 
 @router.delete("/{participant_id}", response_model=ParticipantOut)
 async def remove_participant(
-    project_id: str,
-    participant_id: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    project_id: str, participant_id: str,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     project = await _owner_project(db, project_id=project_id, user=user)
     try:
         participant = await participants.remove_contractor(
-            db,
-            project_id=project_id,
-            participant_id=participant_id,
-            actor_id=user.id,
+            db, project_id=project_id, participant_id=participant_id, actor_id=user.id,
         )
     except ValueError as error:
         raise _participant_error(error) from error

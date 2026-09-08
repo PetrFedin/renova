@@ -18,19 +18,18 @@ class LinkContractorIn(BaseModel):
 
 
 def _assignment_error(status: str) -> HTTPException:
-    if status == "not_found":
-        return HTTPException(404, detail={"code": "project_not_found"})
-    if status == "already_assigned":
-        return HTTPException(
-            409,
-            detail={"code": "already_assigned", "message": "На объекте уже другой исполнитель"},
-        )
-    if status == "subscription_required":
-        return HTTPException(
-            402,
-            detail={"code": "subscription_required", "message": "Нужен Pro для нового объекта"},
-        )
-    return HTTPException(409, detail={"code": "project_assignment_failed"})
+    errors = {
+        "not_found": (404, "project_not_found", "Объект не найден"),
+        "already_assigned": (409, "already_assigned", "На объекте уже другой исполнитель"),
+        "subscription_required": (402, "subscription_required", "Нужен Pro для нового объекта"),
+        "forbidden": (403, "customer_owner_only", "Недостаточно прав для назначения исполнителя"),
+        "project_trashed": (409, "project_trashed", "Сначала восстановите объект из корзины"),
+        "contractor_invalid": (404, "contractor_not_found", "Исполнитель не найден"),
+    }
+    code, detail, message = errors.get(
+        status, (409, "project_assignment_failed", "Не удалось назначить исполнителя"),
+    )
+    return HTTPException(code, detail={"code": detail, "message": message})
 
 
 async def _detail(db: AsyncSession, project: Project, user: User):
@@ -47,17 +46,9 @@ async def assign_contractor(
 ):
     if user.role != UserRole.contractor:
         raise HTTPException(403, detail={"code": "contractor_only"})
-    try:
-        result = await assignment.assign_contractor(
-            db,
-            project_id=project_id,
-            contractor_id=user.id,
-            actor_id=user.id,
-        )
-    except ValueError as error:
-        if str(error) == "participant_contractor_invalid":
-            raise HTTPException(403, detail={"code": "contractor_invalid"}) from error
-        raise
+    result = await assignment.assign_contractor(
+        db, project_id=project_id, contractor_id=user.id, actor_id=user.id,
+    )
     if result.status != "assigned" or result.project is None:
         raise _assignment_error(result.status)
     return await _detail(db, result.project, user)
@@ -70,23 +61,12 @@ async def link_contractor(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(404, detail={"code": "project_not_found"})
-    if user.role != UserRole.customer or project.customer_id != user.id:
+    if user.role != UserRole.customer:
         raise HTTPException(403, detail={"code": "customer_owner_only"})
-    contractor = await db.get(User, body.contractor_id)
-    if (
-        contractor is None
-        or contractor.role != UserRole.contractor
-        or contractor.deleted_at is not None
-    ):
-        raise HTTPException(404, detail={"code": "contractor_not_found"})
+    # The service validates current ownership, target and lifecycle under the
+    # same project lock used for assignment, rather than trusting a stale read.
     result = await assignment.assign_contractor(
-        db,
-        project_id=project_id,
-        contractor_id=contractor.id,
-        actor_id=user.id,
+        db, project_id=project_id, contractor_id=body.contractor_id, actor_id=user.id,
     )
     if result.status != "assigned" or result.project is None:
         raise _assignment_error(result.status)
