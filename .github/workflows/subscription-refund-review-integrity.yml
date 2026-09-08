@@ -87,7 +87,7 @@ jobs:
           printf '%s\n' "$heads"
       - name: Upload refund review diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: subscription-refund-review-diagnostics
           path: backend/subscription-refund-review-contracts.log

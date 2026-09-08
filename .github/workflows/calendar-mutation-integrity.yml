@@ -34,7 +34,7 @@ jobs:
             2>&1 | tee calendar-integrity-contracts.log
       - name: Upload calendar integrity diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: calendar-integrity-contract-diagnostics
           path: backend/calendar-integrity-contracts.log
