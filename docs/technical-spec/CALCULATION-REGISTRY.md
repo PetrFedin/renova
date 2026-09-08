@@ -1,383 +1,187 @@
 # Renova — реестр расчётов и производных метрик
 
-**Статус:** ACTIVE / LIVING ANNEX  
-**Главный документ:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`  
-**Назначение:** фиксировать только доказанные формулы Renova: входы, вычисление, status semantics, source implementation и тест. Наличие UI label само по себе не считается доказательством формулы.
+**Статус:** ACTIVE / LIVING ANNEX. **Сверка:** 2026-09-08, код `95dd4a8e117289df11e1300891490768c22f585f`.
+**Главный документ:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`.
+Предыдущая полная редакция сохранена в `history/CALCULATION-REGISTRY-before-2026-09-08.md`. Исправления ниже описывают текущую реализацию и её ограничения; они не исправляют код вычислений. Открытые #318 и backlog §18 нельзя считать завершёнными.
 
-## 1. Правило включения формулы
+## 1. Правила
 
-Формула получает статус `VERIFIED`, только если прочитан implementation source. `TESTED` добавляется только при наличии конкретного regression test/CI path. Если источник или status semantics не установлены, запись остаётся `TBD / UNVERIFIED`.
-
----
+SOURCE VERIFIED означает прочитанную формулу, не признание её экономически правильной. TESTED/CI VERIFIED требует конкретного теста/run. Для каждой новой метрики обязательны источник, статусы, дата/as-of, валюта, округление, пропуски, отмена/возврат, область роли и reconciliation. Нельзя считать null нулём, условный план фактом, отсутствие отклонения результатом измерения без двух независимых входов.
 
 ## 2. Денежная арифметика backend
 
-**VERIFIED. Source:** `backend/app/services/budget_service.py` blob `63c991179e4597b7bd324c04115fb9433f72080b`.
-
-Backend budget calculations используют `Decimal(str(value))` и денежное квантование до `0.01` с `ROUND_HALF_UP` перед записью float-compatible значения.
+Source `backend/app/services/budget_service.py`, blob `63c991179e4597b7bd324c04115fb9433f72080b`.
 
 ```text
 money(x) = Decimal(str(x or 0)).quantize(0.01, ROUND_HALF_UP)
 ```
 
-Это правило важнее визуального округления mobile UI.
-
----
+Это квантование при денежной записи, а не визуальное округление клиента. Наличие float-compatible хранения требует проверок на крайних суммах; не переносить UI tolerance в финансовый ledger.
 
 ## 3. Строка сметы
-
-**VERIFIED.**
 
 ```text
 estimate_line_amount = quantity_planned × unit_price
 ```
 
-Source: `_estimate_amount(EstimateLine)` в `budget_service.py`.
-
----
+Source `_estimate_amount(EstimateLine)` в budget_service. Строка плана не доказательство оплаченного/признанного расхода.
 
 ## 4. План бюджета проекта
 
-**VERIFIED.**
-
 ```text
-budget_planned =
-    Σ(quantity_planned × unit_price for all EstimateLine)
-  + Σ(ChangeOrder.amount where status = approved)
+budget_planned = Σ(quantity_planned × unit_price for all EstimateLine)
+               + Σ(ChangeOrder.amount where status = approved)
 ```
 
-Результат округляется денежным правилом backend и записывается в `Project.budget_planned`.
+Source `sync_project_budget_planned`, денежное округление перед Project.budget_planned. Pending/rejected ChangeOrder, Expense/Payment и Receipt сами по себе не добавляют план.
 
-Source: `sync_project_budget_planned()`.
+## 5. Закупка и признание расхода
 
-### Не входит автоматически
-
-- pending/rejected ChangeOrder;
-- фактические Expense;
-- Payment сам по себе;
-- Receipt сам по себе без ledger hydration.
-
----
-
-## 5. Purchase fact amount
-
-**VERIFIED.** Расход по закупке создаётся только при `PurchaseStatus ∈ {paid, delivered}`.
+Source `expense_from_purchase`: Expense создаётся при PurchaseStatus в {paid, delivered} и положительной сумме.
 
 ```text
 amount = money(purchase.total_amount)
-if amount <= 0:
-    amount = money(Σ(item.qty × item.unit_price))
-if amount <= 0:
-    Expense не создаётся
+if amount <= 0: amount = money(Σ(item.qty × item.unit_price))
+if amount <= 0: no Expense
 ```
 
-Source: `expense_from_purchase()`.
+При неактивном status обычный активный purchase expense не должен сохраняться; protected disputed/refund/deleted evidence нельзя разрушать обычным refresh. Текущий purchase_service.py имеет partial (частично оплачено) и returned (после delivered), а не отсутствие таких состояний. Точная сумма частичной оплаты, физический возврат и денежный refund — разные понятия; весь partial/reverse путь должен быть отдельно доказан G06.
 
-Active purchase expense не должен оставаться после перехода purchase в неактивный status; source-protected `disputed/refund/deleted` evidence обычным refresh не уничтожается.
-
----
-
-## 6. Receipt → Expense status
-
-**VERIFIED.**
+## 6. Receipt → Expense
 
 ```text
-if receipt.fns_verified:
-    expense.status = confirmed
-else:
-    expense.status = pending_receipt
+fns_verified → confirmed
+otherwise    → pending_receipt
 ```
 
-Source: `expense_from_receipt()`.
-
-`pending_receipt` является active line-projection fact, но не входит в подтверждённый `Project.budget_spent`.
-
----
+Source `expense_from_receipt`. pending_receipt входит в active line projection, но не в подтверждённый Project.budget_spent. Duplicate evidence не должно повторно признаваться через другой источник.
 
 ## 7. Payment → Expense
 
-**VERIFIED.**
+Source `expense_from_payment`:
 
 ```text
-if Payment.status != confirmed:
-    no Expense is created by expense_from_payment()
-else:
-    create/dedupe linked Expense(status=confirmed)
+Payment.status != confirmed → no new Expense
+Payment.status == confirmed → create/dedupe linked confirmed Expense
+payment_type in {stage, advance, final} → works
+otherwise                              → materials
 ```
 
-Category:
+Manual evidence→confirmed Payment→единственный Expense квалифицирован в #297. Это не даёт идемпотентность отдельному источнику создания invoice в чате (#316).
 
-```text
-payment_type ∈ {stage, advance, final} → works
-otherwise                           → materials
-```
-
----
-
-## 8. Канонический подтверждённый факт бюджета
-
-**VERIFIED.**
+## 8. Подтверждённый факт
 
 ```text
 budget_spent = Σ(Expense.amount where Expense.status = confirmed)
 ```
 
-Source: `_reconcile_budget_line_actuals()`.
-
-`pending_receipt` может быть видим в детализации BudgetLine actuals, но не повышает `budget_spent` до подтверждения.
-
----
+Source `_reconcile_budget_line_actuals`. Не заменять величину max(receipt,expense,estimate_fact), клиентской суммой или общей суммой банковских движений.
 
 ## 9. BudgetLine actual projection
 
-**VERIFIED.** Active projection statuses:
+Active: confirmed и pending_receipt. Для совпавшей category, room даёт+1 specificity, stage ещё+1. Единственный максимум получает сумму; неоднозначный максимум направляется в explicit-unallocated line `[actual-unallocated:category:room:stage]`.
 
 ```text
-{confirmed, pending_receipt}
+projected_total = Σ(regular line actuals) + Σ(unallocated line actuals)
+expected_total = Σ(active Expense.amount)
+money(projected_total) == money(expected_total)
 ```
 
-Для каждой active Expense:
+Нарушение: `budget_actual_projection_mismatch`. Этот invariant предотвращает исчезновение расходов при неоднозначной привязке; он не подтверждает исходный расход без его собственного жизненного цикла.
 
-1. category должна совпасть с BudgetLine;
-2. совпавшая `room_id` даёт +1 specificity;
-3. совпавшая `stage_id` даёт +1 specificity;
-4. если ровно одна line имеет максимальную specificity — весь amount идёт в неё;
-5. иначе amount идёт в системную explicit-unallocated line `[actual-unallocated:category:room:stage]`.
+## 10. Mobile reconciliation
 
-После распределения:
-
-```text
-projected_total = Σ(actual_amount assigned to regular lines)
-                + Σ(actual_amount assigned to unallocated lines)
-expected_total  = Σ(active Expense.amount)
-
-money(projected_total) must equal money(expected_total)
-```
-
-Нарушение → `RuntimeError("budget_actual_projection_mismatch")`.
-
-Это fail-closed invariant: система не имеет права «потерять» расход из-за неоднозначной привязки.
-
----
-
-## 10. Mobile budget reconciliation
-
-**VERIFIED + TESTED.**  
-Source: `apps/mobile/lib/domain/budgetFactReconcile.ts` blob `e543e42514bddbcf3fd0b0cf564a8297cfb4ff96`.  
-Test: `budgetFactReconcile.test.ts` blob `1cb8a602811d43842fbf269672e14142d609d5aa`.
+Source `apps/mobile/lib/domain/budgetFactReconcile.ts` blob `e543e42514bddbcf3fd0b0cf564a8297cfb4ff96`; test `budgetFactReconcile.test.ts` blob `1cb8a602811d43842fbf269672e14142d609d5aa`.
 
 ```text
 delta   = listTotal - serverFact
 aligned = abs(delta) <= tolerance
+tolerance = 1 ₽ by default
 ```
 
-Default:
-
-```text
-tolerance = 1 ₽
-```
-
-`serverFact` должен быть каноническим server `budget_spent`, а не локально пересчитанным substitute.
-
----
+ServerFact — канонический server budget_spent. Tolerance — UI reconciliation, не разрешение терять рубль в ledger.
 
 ## 11. Budget Summary decision model
 
-**VERIFIED. Source:** `apps/mobile/lib/domain/buildBudgetSummaryView.ts` blob `68e96b02dc3f5e2cdda20b6d94871ff9145b9541`.
-
-Input sanitation:
+Source `buildBudgetSummaryView.ts`, blob `68e96b02dc3f5e2cdda20b6d94871ff9145b9541`.
 
 ```text
 planned = max(0, finite(input.planned, 0))
 spent   = max(0, finite(input.spent, 0))
-```
-
-Derived values:
-
-```text
-deviation = explicit deviation if finite, else spent - planned
-
-deviationPct = explicit finite value, else:
-    planned > 0
-      ? round_to_0.1((deviation / planned) × 100)
-      : 0
-
+deviation = explicit finite deviation else spent - planned
+deviationPct = explicit finite value else:
+    planned > 0 ? round_to_0.1(deviation / planned × 100) : 0
 remaining = max(0, explicit finite remaining else planned - spent)
 margin    = planned - spent
-
-pendingAmounts = only finite amounts > 0
-pendingAmount  = round_to_0.01(Σ pendingAmounts)
-pendingCount   = count(pendingAmounts)
-
-customerBudget = finite positive input or null
-customerBudgetOver = customerBudget == null
-    ? 0
-    : max(0, spent - customerBudget)
+pendingAmounts = finite positive pending amounts
+pendingAmount = round_to_0.01(Σ pendingAmounts)
+pendingCount = count(pendingAmounts)
+customerBudget = finite positive input else null
+customerBudgetOver = customerBudget == null ? 0 : max(0, spent - customerBudget)
+forecast = null for null/undefined input, else max(0, finite(input.forecast, planned))
 ```
 
-Forecast:
-
-```text
-forecast = null if input.forecast is null/undefined
-otherwise max(0, finite(input.forecast, planned))
-```
-
-Decision state priority:
-
-```text
-empty         if planned == 0 and spent == 0
-over          else if deviation > 0
-forecast-risk else if forecast != null and forecast > planned
-on-track      otherwise
-```
-
-Positive deviation означает факт выше плана.
-
----
+Приоритет: empty при planned=spent=0; иначе over при deviation>0; иначе forecast-risk при forecast>planned; иначе on-track. `margin` здесь остаток плана, не доказанная прибыль подрядчика. Source sanitation не заменяет явного missing-data/error state вызывающего экрана.
 
 ## 12. Progress from stages
 
-**VERIFIED + TESTED.**  
-Source: `resolveProjectProgress.ts` blob `efa1e3da7bc4b383823ff899f03784f9eea9e3e7`.  
-Test: `resolveProjectProgress.test.ts` blob `b96d9f1305d75940b5862a9617988ef8e0363d09`.
+Source `resolveProjectProgress.ts`, blob `efa1e3da7bc4b383823ff899f03784f9eea9e3e7`; test blob `b96d9f1305d75940b5862a9617988ef8e0363d09`.
 
 ```text
-if stages is empty:
-    progressFromStages = null
-else:
-    progressFromStages = round(count(status=done) / count(all stages) × 100)
+empty stages → null
+otherwise progressFromStages = round(done stages / all stages × 100)
+if osScheduleProgress != null and osScheduleProgress > 0: use osScheduleProgress
+else if every stage done: 100
+else if stage-derived progress > dashProgress: use stage-derived progress
+else: dashProgress || 0
 ```
 
-Final resolution:
-
-```text
-if osScheduleProgress != null and osScheduleProgress > 0:
-    return osScheduleProgress
-
-fromStages = progressFromStages(stages)
-if fromStages != null:
-    if every stage is done:
-        return 100
-    if fromStages > dashProgress:
-        return fromStages
-
-return dashProgress || 0
-```
-
-Следствие: ненулевой authoritative schedule progress имеет приоритет над heuristic stage count; stage-derived progress может только повысить dashboard fallback, кроме explicit all-done=100.
-
----
+Это существующая resolution heuristic. Количество done stages не взвешенная трудоёмкость и не факт полной сдачи/оплаты/документов. Нулевой authoritative schedule progress и fallback требуют явного контракта, не автоматического улучшения цифры на Home.
 
 ## 13. Schedule execution stats
 
-**VERIFIED + TESTED.**  
-Source: `scheduleExecutionStats.ts` blob `723b91a7fb61b727fecd2c07ec0a5d032e60d382`.  
-Test: `scheduleExecutionStats.test.ts` blob `ad70768c1681a55565b13b6ad25030dd61509257`.
-
-Window:
+Source `scheduleExecutionStats.ts` blob `723b91a7fb61b727fecd2c07ec0a5d032e60d382`; test blob `ad70768c1681a55565b13b6ad25030dd61509257`.
 
 ```text
 weekStart = today - 6 calendar days
-```
-
-For each WorkOrder:
-
-```text
-extensions += 1
-    if notes matches /продлен|продление|запрос продления/i
-
-doneThisWeek += 1
-    if status == done
-    and updated_at.date >= weekStart
-    then skip remaining open/overdue logic for this work order
-
-if work status is archived:
-    skip open/overdue logic
-
-overdue += 1
-    if effectiveEnd < today
-    and status != done
-
-todayOpen += 1
-    if planned_start <= today <= effectiveEnd
-    or start == today
-    or end == today
-```
-
-где:
-
-```text
+extensions += 1 if notes match /продлен|продление|запрос продления/i
+doneThisWeek += 1 if status=done and updated_at.date >= weekStart
+then skip remaining open/overdue logic for that done row
+archived → skip open/overdue
+otherwise overdue += 1 if effectiveEnd < today and status != done
+todayOpen += 1 if start <= today <= effectiveEnd or start==today or end==today
 effectiveEnd = planned_end || planned_start
 ```
 
-`extensions` сейчас является text-derived indicator из notes, а не отдельным normalized extension entity. Это важно учитывать при аналитической интерпретации.
+Extensions — text-derived indicator, не normalized extension event. Updated_at может не быть самостоятельным immutable completion timestamp; пригодность управленческого показателя требует проверки producer semantics.
 
----
+## 14. Budget periods — текущая реализация с открытым дефектом #318
 
-## 14. Budget periods
-
-**VERIFIED. Source:** `aggregateBudgetByPeriod.ts` blob `f55d73d095477d24856170eab27aebdee48a1596`.
-
-Canonical periods:
+Source `aggregateBudgetByPeriod.ts`, blob `f55d73d095477d24856170eab27aebdee48a1596`.
 
 ```text
-week  = today and previous 6 days
-month = first day of current month through now
-year  = Jan 1 of current year through now
-all   = Unix epoch through now
-```
-
-`sumRows(rows) = Σ row.amount`.
-
-### Planned share for selected period
-
-For `all`:
-
-```text
-periodPlanned = plannedTotal
-```
-
-For other periods the current mobile heuristic uses proportional temporal overlap:
-
-```text
+week: today and previous 6 days
+month: first day of current month through now
+year: Jan 1 through now
+all: Unix epoch through now
+sumRows = Σ row.amount
+all periodPlanned = plannedTotal
 projectDuration = max(1 ms, projectEnd - projectStart)
 overlap = max(0, min(periodEnd, projectEnd) - max(periodStart, projectStart))
 periodPlanned = round(plannedTotal × overlap / projectDuration)
 ```
 
-If project dates are absent, selected period boundaries are used as fallbacks.
+Отсутствующие даты проекта заменяются period boundaries. Текущий код равномерно назначает round(periodPlanned/7) дням недели, /4 недельным интервалам месяца, /12 месяцам года.
 
-### Bucket allocation heuristic
+**SOURCE-CONFIRMED DEFECT:** 29–31-дневный месяц создаёт5 интервалов по1/4. При periodPlanned100000 получается125000. Month-to-date total смешан с full-month buckets. Независимое округление week/year теряет остаток. Это не financial ledger loss, а неправильная аналитическая проекция.
 
-Current UI distributes `periodPlanned` evenly for chart buckets:
+**TARGET / NOT YET IMPLEMENTED:** единый as-of/range; sum(bucket.planned)=periodPlanned до копейки; реальный phased plan или явно маркированная оценка; timezone и leap-year tests. Не описывать эту формулу как готовую authoritative cash-flow систему.
 
-```text
-week  → round(periodPlanned / 7) per day
-month → round(periodPlanned / 4) per 7-day bucket
-year  → round(periodPlanned / 12) per month
-```
+## 15. Portfolio budget — ограниченность входов #318
 
-**Caveat:** month uses `/4` even though a calendar month can produce five 7-day buckets. Поэтому эта величина является визуально-аналитической heuristic, а не бухгалтерским allocation rule. Не использовать её как authoritative commitment/cash-flow plan без отдельной нормализации.
+Source `aggregatePortfolioBudget.ts`, blob `74595a831d76df0ae8ddae50cc40ed56beec3922`.
 
----
-
-## 15. Portfolio budget aggregation
-
-**VERIFIED. Source:** `aggregatePortfolioBudget.ts` blob `74595a831d76df0ae8ddae50cc40ed56beec3922`.
-
-For each project breakdown:
-
-```text
-works         += works
-materialsPlan += materials_plan
-materialsFact += materials_fact
-waste         += waste
-reserve       += reserve
-totalPlan     += budget_planned
-totalSpent    += budget_spent
-```
-
-For any category row:
+Агрегируются works, materials_plan, materials_fact, waste, reserve, budget_planned, budget_spent.
 
 ```text
 variance    = spent - planned
@@ -385,85 +189,40 @@ variancePct = planned > 0 ? round(variance / planned × 100) : 0
 hasOverrun  = planned > 0 and variance > 0
 ```
 
-Current row semantics:
+Current row semantics: works→(works,works); materials→(materialsPlan,materialsFact); waste→(waste,waste); reserve→(reserve,reserve); total→(totalPlan,totalSpent). Возвращаются строки с planned>0 либо spent>0.
+
+Works/waste/reserve variance структурно0. Это НЕ измеренное отсутствие перерасхода. UI скрывает повторную подпись факта при равенстве, но полноценной фактической category детализации от этого не появляется. TARGET: ledger-backed actuals или null/unavailable; partial portfolio явно маркируется.
+
+## 16. Материалы — актуальная количественная семантика
+
+Source `apps/mobile/components/screens/OsMaterialsScreen.tsx`, blob `ee8ef690f9f52830feb0f07ebef77e70cfb42817`; helpers `lib/domain/materialSupply.ts` и `procurementNextAction.ts`.
 
 ```text
-works:    planned=works, spent=works
-materials planned=materialsPlan, spent=materialsFact
-waste:    planned=waste, spent=waste
-reserve:  planned=reserve, spent=reserve
-total:    planned=totalPlan, spent=totalSpent
+needBuy = count(quantityToBuy(pick) > 0)
+approved = count(status == approved)
+available = count(isMaterialAvailable(pick))
+shortage = count(!isMaterialAvailable(pick))
+openPurchases = count(status not in {delivered, cancelled, returned})
+unverifiedReceipts = count(!receipt.verified)
+readyCount = readyPickIds(picks, purchases, role).length
 ```
 
-Only rows where planned > 0 or spent > 0 are returned.
+`isMaterialAvailable` использует API material_available, если boolean передан; иначе сравнивает totalAvailableQty+Number.EPSILON с requiredQty. Это UI fallback, не отдельный authoritative stock ledger.
 
-**Caveat:** works/waste/reserve rows currently mirror the same aggregate value into plan and fact, so their variance is structurally zero. Это не следует интерпретировать как доказательство отсутствия отклонения этих категорий; это limitation текущего input breakdown contract.
-
----
-
-## 16. Material procurement derived counts
-
-**VERIFIED UI derivation. Source:** `OsMaterialsScreen.tsx`.
-
-```text
-needBuy   = count(MaterialPick.status in {draft, pending})
-ordered   = count(MaterialPick.status == approved)
-delivered = count(MaterialPick.status == purchased)
-
-shortage = count(
-    (qty_needed || qty) > (qty_delivered || 0)
-    and status != purchased
-)
-
-openPurchases = count(Purchase.status not in {delivered, cancelled})
-unverifiedReceipts = count(receipt.verified == false)
-```
-
-Filter semantics:
-
-```text
-Купить       → draft | pending
-Согласовано  → approved
-В факте      → purchased
-Не хватает   → (qty_needed || qty) > (qty_delivered || 0)
-```
-
-`readyCount` вычисляется отдельным `readyPickIds(picks, purchases)` и не должен заменяться одной проверкой status без чтения этого helper.
-
----
+Фильтры: Купить→quantityToBuy>0; Согласовано→approved; Доступно→isMaterialAvailable; Не хватает→!isMaterialAvailable. Старые draft/pending/purchased counts больше не текущий контракт. Supply source, qty_available, qty_delivered и qty_to_buy определяются MATERIAL-SUPPLY-CONTRACT; purchase eligibility дополнительно проверяет responsibility и price provenance. Ready count не равен одному статусу approved.
 
 ## 17. Selection pending count
 
-**VERIFIED UI derivation. Source:** `OsSelectionsScreen.tsx` blob `9ccb7fa6b1df87d21372369de73b748f8c7779e1`.
+Source `OsSelectionsScreen.tsx`, blob `9ccb7fa6b1df87d21372369de73b748f8c7779e1`.
 
 ```text
 pending = count(SelectionItem.status == proposed)
 ```
 
-Этот count используется как attention signal для customer и как badge Repair → Подбор.
+Используется attention/badge. `over_allowance` определяется producer API; одна подпись UI не доказательство его формулы. До полной сверки producer/test — TBD / UNVERIFIED.
 
-`over_allowance` приходит как domain/API-derived field; формулу превышения нельзя восстанавливать только из UI. До чтения source producer она остаётся `TBD / UNVERIFIED` в этом реестре.
+## 18. Непокрытые расчёты и их приёмка
 
----
+Сохраняется обязательный backlog: acceptance pending/age/SLA; home KPI; project phase/lifecycle; estimate layers/margin; category/floor/room analytics; procurement priority/readiness; notification/attention/unread counts; rework/quality SLA; contractor/manager portfolio metrics; schedule/version delay; warranty после уже merged #295; chat после уже merged #292; external observability/SLO #235/#283.
 
-## 18. Непокрытые расчёты — обязательный backlog
-
-Следующие группы должны быть перенесены сюда только после trace implementation → test:
-
-- acceptance pending/age/SLA;
-- home KPI detail;
-- project phase/lifecycle;
-- estimate layers and margin semantics;
-- category/floor/room expense analytics;
-- procurement next-action priority;
-- materials readiness;
-- notification/attention counts;
-- rework and quality-control SLA;
-- contractor portfolio KPI;
-- manager dashboard portfolio metrics;
-- schedule/version delay calculations;
-- warranty metrics после merge #287;
-- chat unread/atomic delivery metrics после merge #282;
-- observability/SLO formulas после merge #283.
-
-До заполнения этих разделов любые цифры из соответствующих UI нельзя автоматически считать documented authoritative formula.
+Для каждой группы: перечень UI consumers→source function→input/status/as-of→independent expected value→edge cases→test ID→CI artifact. Формулы, подтверждённые чтением, не становятся полными бизнес-результатами автоматически. Refunded/disputed/partial/pending, duplicate evidence и недоступный источник обязательны там, где применимы. Текущий аудит не заменяет выполнение этих тестов и не закрывает #318.

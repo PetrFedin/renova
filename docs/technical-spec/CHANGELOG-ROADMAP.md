@@ -1,547 +1,75 @@
-# Renova — журнал изменений ТЗ и управляемый roadmap
-
-**Статус:** ACTIVE / LIVING ANNEX  
-**Родительский документ:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`  
-**Назначение:** фиксировать каждое существенное изменение Renova как связку `наблюдение → решение → код/данные → тест → evidence → следующий шаг`, а также хранить приоритизированный план дальнейшего развития.
-
----
-
-## 1. Правило ведения
-
-Любое изменение, затрагивающее product behavior, schema/model, navigation, API, calculation, role/ACL, UI contract, runtime, provider boundary или E2E flow, должно в том же рабочем контуре иметь запись здесь либо в специализированном annex с обратной ссылкой.
-
-Для каждой записи обязательны:
-
-1. дата;
-2. приоритет `P0/P1/P2/P3`;
-3. исходный факт/дефект;
-4. доказательство источником или CI;
-5. принятое решение;
-6. изменённые authoritative sources;
-7. тест/verification gate;
-8. текущий статус;
-9. остаточный риск/следующий шаг.
-
-Статусы evidence совпадают с master dossier: `VERIFIED`, `CI VERIFIED`, `PENDING REVERIFY`, `TBD / UNVERIFIED`, `STAGING VERIFIED`, `PRODUCTION VERIFIED`.
-
-Нельзя закрывать пункт только потому, что код написан. Закрытие требует предусмотренного для него verification gate.
-
----
-
-# 2. Change log
-
-## 2026-08-28 — P0 — полный остаточный native PostgreSQL enum parity: `w18nativeenumparity01`
-
-### Исходный факт
-
-После добавления generic native-enum проверки exact candidate `df759e37f9afdf1f983c2c770acf5c66865bae9e` успешно прошёл:
-
-- revision guard;
-- reject empty PostgreSQL;
-- clean `alembic upgrade head` через `w17chatmessageenum01`;
-- `verify_current_migration_schema.py` для migration-owned w16/w17 invariants.
-
-Затем `verify_orm_schema_parity.py` честно остановил `Database schema integrity` и показал **ровно три** оставшихся historical mismatch. Это считается полезным red-team evidence, а не поводом ослаблять verifier.
-
-### Mismatch 1 — `app_notifications.notification_type`
-
-**Migration history:**
-
-- base `14ef20b1cf11_v14.py` создал `notificationtype`:
-
-```text
-stage_review
-payment_pending
-change_order
-room_change
-chat_message
-```
-
-- `w7x8y9z0a1b2_payment_confirmed_notification.py` добавил только `payment_confirmed` через `ALTER TYPE ... ADD VALUE`;
-- current ORM `NotificationType` содержит 18 labels:
-
-```text
-stage_review
-stage_started
-room_updated
-room_created
-payment_pending
-payment_confirmed
-change_order
-room_change
-chat_message
-budget_alert
-reaction
-materials
-approval
-issue
-deadline
-waste_reminder
-document
-other
-```
-
-**Вывод:** это доказанный model-only enum growth без соответствующих migrations.
-
-### Mismatch 2 — `job_leads.status`
-
-**Migration history:** `w1softdelete01_soft_delete_lead_quotes.py` прямо создавал `job_leads.status` как:
-
-```text
-VARCHAR(32) DEFAULT 'open'
-```
-
-поскольку таблица исторически жила только через `create_all`/SQLite.
-
-Current ORM связывает колонку с native `JobLeadStatus`:
-
-```text
-open | quoted | taken | closed
-```
-
-**Вывод:** тот же подтверждённый storage/model drift class, что и legacy status columns в `w16`.
-
-### Mismatch 3 — `payments.status`
-
-**Migration history:**
-
-- base v14 создал `paymentstatus` в порядке:
-
-```text
-pending | confirmed | cancelled
-```
-
-- `z0a1b2c3d4e5_payment_status_sm.py` затем последовательно append'ил:
-
-```text
-processing | paid_unverified | disputed | refunded
-```
-
-Физический PG order стал:
-
-```text
-pending
-confirmed
-cancelled
-processing
-paid_unverified
-disputed
-refunded
-```
-
-Current ORM order:
-
-```text
-pending
-processing
-paid_unverified
-confirmed
-cancelled
-disputed
-refunded
-```
-
-Проверка `payment_service.py` показывает, что state machine задаётся explicit equality/`IN`/allowed-from sets. Ordinal comparison PostgreSQL enum не является business rule. Поэтому historical append order — случайный storage artifact, а не каноническая последовательность состояния.
-
-### Принятое решение — `w18nativeenumparity01`
-
-Одна migration закрывает **полный список**, полученный generic verifier после w17:
-
-1. `notificationtype` пересоздаётся в exact ORM order и расширяется до 18 labels;
-2. `job_leads.status` валидируется и переводится `VARCHAR(32) → native jobleadstatus`;
-3. `paymentstatus` losslessly пересоздаётся с тем же набором labels, но exact ORM order.
-
-### Fail-closed правила
-
-- migration принимает только точное известное historical либо уже exact current состояние;
-- все persisted values проверяются до преобразования;
-- неизвестный row value или неожиданный PG enum state останавливает upgrade;
-- `JobLead` сохраняет server default `open` после conversion;
-- Payment rebuild не меняет набор values, только canonical order;
-- downgrade Notification разрешён только если строки ещё не используют labels, отсутствующие в historical enum;
-- downgrade Payment lossless — набор labels одинаков;
-- downgrade JobLead возвращает `VARCHAR(32) DEFAULT 'open'`.
-
-### Почему generic verifier остаётся строгим по order
-
-Ordered PG enum labels являются частью физической schema semantics: PostgreSQL поддерживает enum comparison/order. Даже если конкретный сервис сейчас не использует `<`/`>`, silent divergence создаёт скрытую будущую семантику. Поэтому verifier сравнивает exact ordered labels, а state-machine code обязан использовать explicit transition rules вместо ordinal enum ordering.
-
-### Verification chain
-
-После `w18` обязательны:
-
-```text
-clean PostgreSQL
-→ upgrade to w18
-→ reflected current-schema invariants
-→ generic ORM table/column/native-enum parity
-→ accept current head
-→ downgrade new migrations
-→ verify removal / reject stale schema
-→ replay to w18
-→ reflected + generic parity again
-→ accept current head
-```
-
-И отдельно canonical local:
-
-```text
-start
-→ check
-→ seed
-→ seed повторно
-→ check
-→ focused contracts
-```
-
-### Authoritative sources
-
-- `backend/alembic/versions/14ef20b1cf11_v14.py`
-- `backend/alembic/versions/w7x8y9z0a1b2_payment_confirmed_notification.py`
-- `backend/alembic/versions/z0a1b2c3d4e5_payment_status_sm.py`
-- `backend/alembic/versions/w1softdelete01_soft_delete_lead_quotes.py`
-- `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py`
-- `backend/app/models/entities.py`
-- `backend/app/services/payment_service.py`
-- `backend/scripts/verify_orm_schema_parity.py`
-- `backend/scripts/verify_current_migration_schema.py`
-
-### Статус
-
-**PENDING REVERIFY.** Реализация записана; закрытие требует exact-head CI после синхронизации master dossier и drift gates.
-
----
-
-## 2026-08-28 — P0 — canonical local runtime: второй schema/model enum drift
-
-### Исходный факт
-
-Exact candidate `d88af75bbdb1d594f10145be37d53347c02e60a1` имел 26/27 successful GitHub Actions workflows. Единственным failure был `Canonical local runtime integrity` на реальном full-backend startup.
-
-Runtime дошёл через Docker/locked bootstrap/Compose/PostgreSQL/Redis/MinIO/Alembic, после чего API вошёл в restart-loop внутри старого startup demo seed.
-
-### Доказанные причины
-
-1. PostgreSQL enum `chatmessagetype`, созданный базовой migration `14ef20b1cf11_v14.py`, содержал только:
-   - `text`;
-   - `photo`;
-   - `confirm`;
-   - `system`.
-2. Current ORM `ChatMessageType` и mobile chat contract уже используют:
-   - `text`;
-   - `photo`;
-   - `file`;
-   - `confirm`;
-   - `system`;
-   - `task`;
-   - `invoice`;
-   - `payment`.
-3. `verify_orm_schema_parity.py` до исправления проверял таблицы/имена колонок, но **не** native PostgreSQL enum name/labels, поэтому этот drift не был виден в schema CI.
-4. `create_work_order()` создаёт domain-owned thread `work:<id>` и сохраняет FK в `work_orders.chat_thread_id`.
-5. Legacy demo seed удалял любой project chat, не входящий в список demo-title. После частично выполненного seed это приводило к попытке удалить work-order thread и FK failure.
-6. API lifespan автоматически запускал demo seed при каждом startup/restart, хотя canonical developer interface уже разделяет `start` и explicit `seed`.
-
-### Принятое решение
-
-#### A. Schema parity
-
-Добавлена migration `w17chatmessageenum01` поверх `w16legacystatus01`.
-
-Desired PostgreSQL `chatmessagetype` contract:
-
-```text
-text
-photo
-file
-confirm
-system
-task
-invoice
-payment
-```
-
-Upgrade допускает только точное legacy-состояние либо уже точное current-состояние. Неизвестная промежуточная комбинация labels останавливает migration fail-closed.
-
-Downgrade запрещён, если `file/task/invoice/payment` уже используются строками `chat_messages`; silent data loss не допускается.
-
-#### B. Общая защита enum parity
-
-`backend/scripts/verify_orm_schema_parity.py` расширен: для каждой mapped SQLAlchemy `Enum(native_enum=True)` он обязан сравнивать с PostgreSQL:
-
-- факт native `ENUM` storage;
-- имя PG enum type;
-- ordered enum labels.
-
-Это превращает проверку из `table/column parity` в `table/column/native-enum parity`.
-
-`backend/scripts/verify_current_migration_schema.py` дополнительно фиксирует migration-owned invariant `chat_messages.message_type → chatmessagetype` с полным ordered value set.
-
-#### C. Startup lifecycle
-
-`backend/app/main.py` больше не запускает `ensure_demo_users()` и `seed_articles()` в lifespan.
-
-Canonical invariant:
-
-```text
-start = поднять runtime, не мутируя demo business data
-seed  = явная development-only operator action после migration/head/runtime checks
-```
-
-Explicit entry point остаётся:
-
-```bash
-npm run dev -- seed
-```
-
-который вызывает `python -m app.dev_seed` внутри canonical API container.
-
-#### D. Seed preservation rule
-
-`seed_demo.py` больше не классифицирует произвольные/e2e/domain chats как «мусор» и не очищает весь project chat namespace.
-
-Разрешено дедуплицировать только собственные canonical demo-title. Любой thread, название которого не входит в текущий demo allow-list, сохраняется без удаления.
-
-Это защищает как минимум work-order chat FK и исключает потерю пользовательских/local-development chat data от повторного seed.
-
-### Verification chain после изменения
-
-`Canonical local runtime integrity` теперь обязан выполнить:
-
-```text
-locked bootstrap
-→ source/Compose contract
-→ full backend topology start
-→ runtime check
-→ explicit seed
-→ explicit seed повторно
-→ runtime check
-→ focused local contracts
-→ cleanup
-```
-
-Повторный seed является обязательным proof идемпотентности и одновременно реальным PostgreSQL proof для `task/payment` chat message types.
-
-### Authoritative sources
-
-- `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py`
-- `backend/app/main.py`
-- `backend/app/dev_seed.py`
-- `backend/app/services/seed_demo.py`
-- `backend/scripts/verify_orm_schema_parity.py`
-- `backend/scripts/verify_current_migration_schema.py`
-- `.github/workflows/local-runtime-integrity.yml`
-- `scripts/devRuntimeContract.test.mjs`
-
-### Статус
-
-**PENDING REVERIFY** — final exact-head CI после полного пакета изменений ещё должен завершиться. Старые green checks не переносятся автоматически.
-
----
-
-## 2026-08-28 — P0 — legacy status storage parity
-
-### Факт
-
-Canonical PostgreSQL runtime ранее выявил ORM/native-enum mismatch для legacy VARCHAR status columns.
-
-### Реализация
-
-Migration `w16legacystatus01`:
-
-- `purchases.status` → `purchasestatus`;
-- `material_picks.status` → `materialpickstatus`;
-- `selection_items.status` → `selectionstatus`.
-
-Migration валидирует existing values до cast; downgrade возвращает исходные VARCHAR lengths.
-
-### Evidence до w17
-
-На exact SHA `d88af75bbdb1d594f10145be37d53347c02e60a1` уже были `success`:
-
-- `Database schema integrity` с upgrade/downgrade/replay;
-- `Staging runtime integrity`;
-- `Provider operations integrity`;
-- `Database restore integrity`;
-- `Runtime topology integrity`;
-- `Backend image integrity`;
-- `Push receipt reconciliation integrity`;
-- общий `CI`;
-- `CodeQL SAST`;
-- `Security operations integrity`;
-- living technical specification integrity;
-- остальные domain integrity workflows — всего 26/27 workflows.
-
-После появления `w17/w18` этот evidence остаётся исторически полезным, но current final candidate должен пройти повторную exact-head проверку.
-
----
-
-# 3. Приоритизированный roadmap
-
-Roadmap не является списком пожеланий. Работу ведём сверху вниз; следующий пункт берётся только после повторного чтения master dossier, этого annex и текущего CI/evidence.
-
-## P0 — release/runtime correctness
+# Renova — журнал изменений и план завершения продукта
+
+**Срез:** 2026-09-08, `main` `95dd4a8e117289df11e1300891490768c22f585f`.
+**Статус:** `BLOCKED_FOR_BROAD_PRODUCTION`.
+**Полный аудит:** `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
+**Историческая редакция:** `history/CHANGELOG-ROADMAP-before-2026-09-08.md`; её очередь работ не является текущей.
+
+Канон: **наблюдение → решение → код/данные → тест → evidence → следующий шаг**.
+Каждая строка исправления требует одного bounded PR и обновления соответствующего ТЗ; оформление UI не отделяется от прав, ошибок и восстановления.
+
+## 1. Уже интегрировано, но не равно полной готовности
+
+| Изменение | Репозиторное доказательство | Что этим не закрыто |
+|---|---|---|
+| #288 локальный runtime/агентский контекст | Merge7bd1dceb273a7e1f26ddf2333e9199d8d498ae54 | Внешний staging/production. |
+| #290 logical restore | Run33344103969, merge748ed5f22db0bfe18001f276ec521d0198d4dc57 | Managed backup/PITR, измеренный RPO/RTO. |
+| #292 обычные сообщения чата | Merge9d3f96bad6138aef7f7db32407162fe07897572d | Chat task/invoice/reaction, native export, external storage. |
+| #295 гарантийное создание | Merge9fed24c1b59d767daef4d6395fd01cb303c838e3 | Весь post-closeout/provider сценарий. |
+| #297 manual payment evidence | Merge389f35d819dbf0b81d2e821da851fa9a647705d2 | Любой источник платежей вообще; S3 ambiguity. |
+| #309/#310 supply readiness и явный start | w20materialsupply01 | Multi-contractor и granular partial delivery/payment acceptance. |
+| #311 price provenance | Merge85f8d279d393b42bae5d76fea333f9d13c8ae0b5, w21materialprice01 | Цена поставщика не становится вечной офертой. |
+| #312 participant foundation | Merge38657631348ea7bbe9a22cd5d631cb4ddba0250e, w22projectparticipants01 | Полный #300. |
+| #313 management + atomic lead conversion | Headae8a0750bb6cc788c9e93a1f85a7355f3b180380; CI34262996030; PostgreSQL34262996112; merge65ddb7e59e6bcb23473b1017686cd3adbd882187 | Scoped domain/mobile adoption, legacy writers/quota/source transitions. |
+| #314 quoted-lead wizard recovery | Head6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817; CI34264654118; merge95dd4a8e117289df11e1300891490768c22f585f | Общий #315, cold-start discovery, dedicated device E2E. |
+
+## 2. Текущие продуктовые приоритеты
+
+| Очередь | Задача / владелец функции | Закрываемый результат | Обязательное доказательство |
+|---|---|---|---|
+| P0 | #316 backend+mobile | Повтор первого POST не создаёт второй счёт/работу/набор связей | Response-loss и PostgreSQL same-key race, один atomic commit. |
+| P1 launch-blocking, параллельно P0 | #315 mobile/session security | Старый аккаунт не публикует state/token/cache и не исполняет очередь как новый | A→B→A, shared-project actors, delayed refresh/load/flush, token+storage fences. |
+| P1 после/вместе #316 | #317 mobile transport | Нормализованная сетевая ошибка достигает правильной очереди; кэш не выдаётся за свежий | Реальные req→producer→storage→flush; 4xx/timeout/cancel; per-resource freshness. |
+| P1 | #318 finance+mobile/backend | Части плана сходятся с целым; неизвестный факт не нулевое отклонение | Консервативное округление, 28–31 день, category ledger, timezone. |
+| P1 | #319 backend/data lifecycle | Удаление непустого проекта согласовано с participant/evidence/retention графом | PostgreSQL full graph, hold/refusal, rollback, restore и S3 recovery. |
+| P1 | #320 mobile files | Кнопка выдаёт native PDF/share результат | iOS/Android+web, auth/session, cancel/cleanup и содержимое файла. |
+| P1 | #305 mobile/product | Успешная операция не становится «не сохранено» из-за refresh; единый UI | Commit-success + sync-failure, role/error/empty/stale/accessibility матрица. |
+| P1 после session boundary | #300 backend+mobile/product | Заказчик и независимые подрядчики проходят один реальный ремонт с изоляцией | G03, scoped reads/writes/payees/documents/chat, no sibling IDOR. |
+| P1 отдельный поток | #238 integrations/operator | Неопределённый ответ провайдера восстанавливается без дублирования/выдуманного успеха | Authoritative provider read, retries/DLQ/replay, внешний evidence. |
+
+## 3. Внешние работы выполняются параллельно, а не после всех экранов
+
+#247: реальная защита main/required checks и отрицательная проверка обхода; владелец repository administration.
+#233: постоянный staging с TLS/DNS/managed dependencies и exact-artifact promotion; владелец DevOps/SRE.
+#235/#283: ingestion→alert→delivery→ACK→recovery; владелец observability/on-call. Старый draft #283 обновить на актуальной базе отдельным PR.
+#234: managed backups/PITR, сохранённый restore drill и измеренный RPO/RTO; владелец DB/SRE.
+#236: authenticated smoke/ramp/spike/soak и деградация; владелец performance/SRE.
+#256/#257/#237: доступы, независимый pentest и внешнее security acceptance; владелец security/repository owner.
+#241: controlled pilot, telemetry, support/incident runbook, legal/privacy approval; владелец product/operations с соответствующими специалистами.
+
+Роли владельцев указаны как требуемая ответственность, не как подтверждённое назначение конкретного человека. Ни один внешний блокер не закрывается только репозиторным CI.
+
+## 4. Приёмка полного продукта
+
+G01 самостоятельный ремонт; G02 один подрядчик; G03 независимые подрядчики; G04 нестабильная связь; G05 смена аккаунта; G06 финансовая сверка; G07 документы/подпись/native-файл; G08 сдача/гарантия/архив/purge; G09 эксплуатационный инцидент; G10 small-screen/accessibility/deeplink. Определения и ожидаемые результаты находятся в полном аудите.
+
+Для каждой функции зафиксировать requirement ID → entry route → role → API/service → authoritative entity → transaction/idempotency → side effect → read/UI → test ID → exact run/artifact. Пустой test/evidence — непроверенная функция, не DONE. Source contract не заменяет поведенческий тест.
+
+## 5. Исторические контрольные заголовки
+
+Следующие заголовки сохранены для совместимости source-contract и исторической прослеживаемости. Они не возвращают уже исправленные проблемы в активную очередь.
 
 ### P0.1. Закрыть canonical local runtime end-to-end
-
-**Gate:** `Canonical local runtime integrity = success` на exact final SHA после `w18` и seed-lifecycle changes.
-
-Definition of Done:
-
-- clean/retained local PostgreSQL проходит migration to current head;
-- API/worker healthy;
-- `/health` и `/ready` зелёные;
-- local + shared Redis worker heartbeat подтверждены;
-- explicit seed проходит дважды;
-- `task/payment` demo chat messages записываются в PostgreSQL;
-- никакой non-demo chat не удаляется seed;
-- focused contracts проходят после seed.
+DONE в пределах #288/CI; external runtime остаётся отдельным #233.
 
 ### P0.2. Полная native PostgreSQL enum parity
-
-**Gate:** enhanced `verify_orm_schema_parity.py` на clean PostgreSQL после `w18nativeenumparity01`.
-
-Current verified repair set:
-
-- w16: Purchase / MaterialPick / Selection legacy VARCHAR statuses;
-- w17: ChatMessageType missing labels;
-- w18: NotificationType missing labels/order, JobLead VARCHAR status, PaymentStatus order.
-
-Definition of Done:
-
-- generic verifier сообщает zero mismatch;
-- current verifier фиксирует migration-owned enum invariants;
-- clean upgrade + downgrade/replay проходят;
-- verifier не ослаблен до unordered/set-only comparison.
-
-Если после w18 verifier всё же выявит дополнительный mismatch, он снова классифицируется по migration history и добавляется сюда как новый доказанный факт; mass-cast без анализа запрещён.
-
-### P0.3. Rebase/merge ordering критических PR
-
-Текущие независимые contours:
-
-- #282 chat atomicity/idempotency/concurrency;
-- #283 production observability;
-- #284 DR;
-- #287 warranty;
-- #286 runtime/schema/documentation truth.
-
-После schema-owner merge PR #284 обязан rebase и повторно доказать DR against current head. Любой PR, затрагивающий `entities.py`, migration graph или current schema verifier, повторно запускает enum/schema parity.
-
----
-
-## P1 — product completeness and operational consistency
+w16legacystatus01 → w17chatmessageenum01 → w18nativeenumparity01 интегрированы. Любая новая migration требует новой PostgreSQL/schema qualification; это не вечно зелёный сертификат.
 
 ### P1.1. Полный screen contract inventory
+ACTIVE: текущий каталог и registry — исходный inventory, а не доказательство прохождения каждого действия. Добавить dynamic/deeplink/role-specific/hidden, native exports и error/recovery состояния. #305/#300/#315/#317/#320.
 
-Продолжить `SCREEN-CONTRACT-CATALOG.md` до 100% canonical route/screens:
+## 6. Журнал этого аудита
 
-- Home component inventory;
-- Chat inbox/thread/action states;
-- Calendar;
-- Documents;
-- Approvals;
-- Reports;
-- Inbox/notifications;
-- Manager dashboard;
-- remaining deeplink/beta routes.
+Выявлены и зарегистрированы #316–#320; расширены #315 и #305 конкретными исходными цепочками. Синхронизируются текущий паспорт, roadmap, реестр расчётов, readiness и строгая проверка заголовка схемы. Производственные дефекты этими документами не исправлены; их статус SOURCE CONFIRMED / OPEN. Старые source snapshots сохраняются в history без использования как текущего launch verdict.
 
-Для каждого: role, entrypoint, data sources, loading/empty/error/stale, filters, CTA, secondary actions, cross-links, permissions, exact shared geometry, tests.
-
-### P1.2. UI consistency debt
-
-Известный пункт: часть Technical Supervision control actions реализована local `Pressable` styling вместо shared `PrimaryButton`.
-
-Следующий UI pass должен:
-
-- найти все local operational button/chip/status implementations;
-- классифицировать допустимые исключения;
-- унифицировать остальное через shared primitives;
-- не менять semantic priority CTA без product review;
-- обновить screen source snapshot и visual/UI contracts.
-
-### P1.3. Calculation registry coverage
-
-Довести `CALCULATION-REGISTRY.md` до всех KPI, показываемых как управленческие цифры:
-
-- Home/manager dashboard metrics;
-- finance deviations;
-- project progress;
-- schedule lateness/variance;
-- acceptance/rework;
-- procurement attention;
-- portfolio aggregation;
-- reports.
-
-Каждая формула обязана иметь source function/entities, units, null/empty behavior, rounding, time boundary, test and reconciliation rule.
-
-### P1.4. Error/loading/offline consistency
-
-Для critical screens унифицировать:
-
-```text
-loading
-empty
-error
-retry
-stale/offline
-success/confirmed
-provider pending/rejected/terminal
-```
-
-Raw runtime/provider diagnostics не попадают в user UI.
-
----
-
-## P2 — maintainability and documentation automation
-
-### P2.1. Автоматическая coverage-матрица ТЗ
-
-Построить machine-readable registry:
-
-```text
-route/API/entity/calculation/screen
-→ implementation sources
-→ tests
-→ documentation section
-→ evidence workflow
-```
-
-Цель — видеть undocumented implementation и documented-but-untracked sections автоматически.
-
-### P2.2. Schema change checklist
-
-Любое изменение ORM Enum/Column/constraint требует:
-
-- Alembic migration либо explicit reason migration not required;
-- clean PostgreSQL proof;
-- ORM/schema parity;
-- current schema verifier update при новом invariant;
-- technical-spec update;
-- downstream restore/staging compatibility check.
-
-### P2.3. UI token drift automation
-
-Расширить текущие blob/token contracts до semantic shared components:
-
-- PrimaryButton;
-- StatusPill;
-- InputField;
-- hub tabs;
-- cards;
-- filter chips;
-- error/empty/loading states.
-
----
-
-# 4. Не считать завершённым без отдельного evidence
-
-Даже после полного green local/CI нельзя автоматически объявлять:
-
-- production infrastructure ready;
-- реальные provider credentials/services verified;
-- provider backups/PITR proven;
-- production alert delivery proven;
-- production RPO/RTO achieved;
-- production mobile store delivery verified.
-
-Эти статусы повышаются только retained staging/production evidence согласно `PRODUCTION-READINESS.md` и `docs/production-readiness-evidence.json`.
+Субъективный процент готовности и календарный ETA не рассчитываются без весов требований, принятого release scope, команды и внешних условий. Закрытие реальных приёмочных критериев важнее числа новых функций.
