@@ -34,6 +34,9 @@ jobs:
           assert {b for _, b in paths} == allowed
           subprocess.run(['git', 'apply', '--check', '--index', '-'], input=patch, check=True)
           subprocess.run(['git', 'apply', '--index', '-'], input=patch, check=True)
+          contract = pathlib.Path('docs/technical-spec/CHAT-BUSINESS-COMMAND-CONTRACT.md')
+          contract.write_text('\n'.join(line.rstrip() for line in contract.read_text().splitlines()) + '\n')
+          subprocess.run(['git', 'add', '--', str(contract)], check=True)
           changed = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
           assert changed == allowed
           subprocess.run(['git', 'rm', '--', *map(str, chunks)], check=True)
