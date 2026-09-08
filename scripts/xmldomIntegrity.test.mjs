@@ -31,7 +31,6 @@ for (const [location, metadata] of copies) {
   assert.equal(parsed.getElementsByTagName('text')[0].textContent, 'Renova & \u0440\u0435\u043c\u043e\u043d\u0442 <ok>');
   const serialized = new XMLSerializer().serializeToString(parsed);
   assert.equal(new DOMParser().parseFromString(serialized, 'application/xml').documentElement.textContent, parsed.documentElement.textContent);
-  // Bounded upstream regression: mixed-case HTML closing tags must not amplify.
   if (metadata.version.startsWith('0.9.')) {
     const html = '<html><body>' + '<script>x</ScRiPt>'.repeat(120) + '</body></html>';
     const result = new XMLSerializer().serializeToString(new DOMParser().parseFromString(html, 'text/html'));
@@ -44,7 +43,11 @@ for (const consumer of ['@expo/plist', 'plist']) {
   const consumerRequire = createRequire(require.resolve(consumer));
   const parserVersion = consumerRequire('@xmldom/xmldom/package.json').version;
   assert.ok(supported(parserVersion), `${consumer} resolves unsafe parser ${parserVersion}`);
-  const plist = require(consumer);
+  // Expo exports a default API; plist exports its CommonJS API directly.
+  const namespace = require(consumer);
+  const plist = namespace.default ?? namespace;
+  assert.equal(typeof plist.build, 'function', `${consumer}: no builder`);
+  assert.equal(typeof plist.parse, 'function', `${consumer}: no parser`);
   const value = {
     CFBundleDisplayName: '\u0420\u0435\u043c\u043e\u043d\u0442 Renova',
     NSCameraUsageDescription: '\u0424\u043e\u0442\u043e & \u0430\u043a\u0442 <\u043f\u0440\u0438\u0451\u043c\u043a\u0430>',
