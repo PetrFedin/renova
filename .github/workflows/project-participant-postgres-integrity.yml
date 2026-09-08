@@ -167,7 +167,7 @@ jobs:
             2>&1 | tee project-participant-postgres-integrity.log
       - name: Upload participant diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: project-participant-postgres-integrity-diagnostics
           path: backend/project-participant-postgres-integrity.log

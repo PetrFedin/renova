@@ -147,7 +147,7 @@ jobs:
             2>&1 | tee material-price-postgres-integrity.log
       - name: Upload material price diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: material-price-postgres-integrity-diagnostics
           path: backend/material-price-postgres-integrity.log
