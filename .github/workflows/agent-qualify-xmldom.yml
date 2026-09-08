@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "20.20.2" }
-      - name: Apply two-entry patch from retained npm metadata
+      - name: Patch only two reviewed transitive lock entries
         env:
           EXPECTED_SHA: ${{ github.sha }}
         run: |
@@ -22,20 +22,34 @@ jobs:
           test "$(git ls-remote origin refs/heads/fix/chat-business-command-idempotency | cut -f1)" = "$EXPECTED_SHA"
           test "$(git hash-object package-lock.json)" = 240a566a5ec63ae078a37ea364370c1990b48014
           mkdir -p .artifacts/xml-patch
+          npm view @xmldom/xmldom@0.8.15 --json > .artifacts/xml-patch/parser-0.8.15.json
+          npm view @xmldom/xmldom@0.9.12 --json > .artifacts/xml-patch/parser-0.9.12.json
           node - <<'NODE'
-          const fs = require('fs'), assert = require('assert/strict');
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          // Exact registry metadata retained in artifact 10080336014.
-          for (const [location, previous, version, integrity] of [
-            ['node_modules/@xmldom/xmldom','0.8.13','0.8.15','sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA=='],
-            ['node_modules/plist/node_modules/@xmldom/xmldom','0.9.10','0.9.12','sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A=='],
+          const fs = require('fs');
+          const assert = require('assert/strict');
+          const file = 'package-lock.json';
+          const lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+          for (const [location, previous, version] of [
+            ['node_modules/@xmldom/xmldom', '0.8.13', '0.8.15'],
+            ['node_modules/plist/node_modules/@xmldom/xmldom', '0.9.10', '0.9.12'],
           ]) {
-            assert.equal(lock.packages[location].version, previous);
-            Object.assign(lock.packages[location], { version, resolved: `https://registry.npmjs.org/@xmldom/xmldom/-/xmldom-${version}.tgz`, integrity });
+            const entry = lock.packages[location];
+            const meta = JSON.parse(fs.readFileSync(`.artifacts/xml-patch/parser-${version}.json`, 'utf8'));
+            assert.equal(entry.version, previous);
+            assert.equal(meta.name, '@xmldom/xmldom');
+            assert.equal(meta.version, version);
+            assert.equal(meta.license, entry.license);
+            assert.deepEqual(meta.engines, entry.engines);
+            for (const field of ['dependencies','optionalDependencies','peerDependencies']) {
+              assert.equal(Object.keys(meta[field] || {}).length, 0, `unexpected ${field}`);
+            }
+            assert.match(meta.dist.integrity, /^sha512-[A-Za-z0-9+/]+={0,2}$/);
+            assert.equal(meta.dist.tarball, `https://registry.npmjs.org/@xmldom/xmldom/-/xmldom-${version}.tgz`);
+            Object.assign(entry, { version, resolved: meta.dist.tarball, integrity: meta.dist.integrity });
           }
-          fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+          fs.writeFileSync(file, JSON.stringify(lock, null, 2) + '\n');
           NODE
-      - name: Locked real-consumer and transport regression
+      - name: Locked install and compatibility before publication
         run: |
           set -euo pipefail
           npm ci
@@ -43,41 +57,45 @@ jobs:
           node scripts/chatBusinessCommandTransport.test.mjs
           set +e
           npm audit --omit=dev --json > .artifacts/xml-patch/npm-audit-production.json
+          audit_status=$?
           set -e
           node scripts/check-npm-audit-baseline.mjs .artifacts/xml-patch/npm-audit-production.json
-      - name: Validate and publish only the two-entry lock patch
+          echo "raw npm audit exit=$audit_status; original baseline is unchanged"
+      - name: Same-branch publication with exact-diff guard
         env:
           EXPECTED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test "$(git ls-remote origin refs/heads/fix/chat-business-command-idempotency | cut -f1)" = "$EXPECTED_SHA"
           python - <<'PY'
-          import json,pathlib,subprocess
+          import json, pathlib, subprocess
           old=json.loads(subprocess.check_output(['git','show','HEAD:package-lock.json']))
           new=json.loads(pathlib.Path('package-lock.json').read_text())
           targets={'node_modules/@xmldom/xmldom','node_modules/plist/node_modules/@xmldom/xmldom'}
-          assert old.keys()==new.keys() and old['packages'].keys()==new['packages'].keys()
+          assert old.keys() == new.keys()
+          assert old['packages'].keys() == new['packages'].keys()
           for key in old:
-              if key!='packages': assert old[key]==new[key]
-          for key,value in old['packages'].items():
-              if key not in targets: assert new['packages'][key]==value,key
+              if key != 'packages': assert old[key] == new[key]
+          for key, value in old['packages'].items():
+              if key not in targets: assert new['packages'][key] == value, key
               else:
-                  assert value.keys()==new['packages'][key].keys()
+                  assert value.keys() == new['packages'][key].keys()
                   for field in value:
-                      if field not in {'version','resolved','integrity'}: assert value[field]==new['packages'][key][field]
-          assert subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()==['package-lock.json']
+                      if field not in {'version','resolved','integrity'}: assert value[field] == new['packages'][key][field]
+          changed=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+          assert changed == ['package-lock.json'], changed
+          doc=pathlib.Path('docs/technical-spec/CHAT-COMMAND-QUALIFICATION-CONTRACT.md')
+          doc.write_text(doc.read_text()+'\n## Patch dependency qualification\n\nThe two existing lockfile copies were updated to 0.8.15 and 0.9.12 using exact public npm metadata and tarball integrity, without changing declarations, topology or audit exceptions. The same-branch preparation ran npm ci, both actual plist consumer round-trips, bounded HTML amplification regression, locked TypeScript transport tests and the original production audit gate before committing. The next PR head still requires full independent CI; this is not native-device or provider evidence.\n', encoding='utf-8')
           PY
-          git add -- package-lock.json
+          git add -- package-lock.json docs/technical-spec/CHAT-COMMAND-QUALIFICATION-CONTRACT.md
           git diff --cached --check
           git config user.name 'Renova reviewed-dependency automation'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(deps): patch two XML parser copies without broad dependency churn'
+          git commit -m 'fix(deps): patch only the two vulnerable XML parser lock entries'
           git push origin HEAD:refs/heads/fix/chat-business-command-idempotency
-      - name: Retain diagnostic source and proposed lock
+      - name: Retain exact source for reproduction
         if: always()
-        run: |
-          git archive --format=tar --output=.artifacts/xml-patch/renova-source.tar HEAD
-          cp package-lock.json .artifacts/xml-patch/proposed-package-lock.json
+        run: git archive --format=tar --output=.artifacts/xml-patch/renova-source.tar HEAD
       - uses: actions/upload-artifact@v4
         if: always()
         with:

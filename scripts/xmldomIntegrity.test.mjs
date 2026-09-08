@@ -18,6 +18,16 @@ function supported(version) {
 for (const version of ['0.8.13', '0.8.14', '0.9.10', '0.9.11', '0.9.12-beta.1', '1.0.0']) {
   assert.equal(supported(version), false, `unreviewed parser accepted: ${version}`);
 }
+// Plist dictionaries may intentionally have a null prototype. Compare all data
+// values and types, not Object.prototype identity (which XML cannot represent).
+function dataValue(value) {
+  if (value === null || typeof value !== 'object') return value;
+  if (Buffer.isBuffer(value) || value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map(dataValue);
+  const proto = Object.getPrototypeOf(value);
+  assert.ok(proto === null || proto === Object.prototype, 'unexpected plist object');
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, dataValue(item)]));
+}
 let checked = 0;
 for (const [location, metadata] of copies) {
   assert.ok(supported(metadata.version), `${location}: upgrade/review vulnerable or unknown parser ${metadata.version}`);
@@ -38,25 +48,23 @@ for (const [location, metadata] of copies) {
   }
   checked += 1;
 }
-
 for (const consumer of ['@expo/plist', 'plist']) {
   const consumerRequire = createRequire(require.resolve(consumer));
   const parserVersion = consumerRequire('@xmldom/xmldom/package.json').version;
   assert.ok(supported(parserVersion), `${consumer} resolves unsafe parser ${parserVersion}`);
-  // Expo exports a default API; plist exports its CommonJS API directly.
   const namespace = require(consumer);
   const plist = namespace.default ?? namespace;
-  assert.equal(typeof plist.build, 'function', `${consumer}: no builder`);
-  assert.equal(typeof plist.parse, 'function', `${consumer}: no parser`);
+  assert.equal(typeof plist.build, 'function');
+  assert.equal(typeof plist.parse, 'function');
   const value = {
     CFBundleDisplayName: '\u0420\u0435\u043c\u043e\u043d\u0442 Renova',
     NSCameraUsageDescription: '\u0424\u043e\u0442\u043e & \u0430\u043a\u0442 <\u043f\u0440\u0438\u0451\u043c\u043a\u0430>',
     enabled: true, count: 3, amount: 1250.25,
     schemes: ['renova', 'https'], nested: { offline: false },
   };
-  assert.deepEqual(plist.parse(plist.build(value)), value, `${consumer}: native configuration round-trip failed`);
+  assert.deepEqual(dataValue(plist.parse(plist.build(value))), value, `${consumer}: native configuration round-trip failed`);
   const binary = { data: Buffer.from([0, 127, 128, 255]), at: new Date('2026-09-09T00:00:00.000Z') };
-  assert.deepEqual(plist.parse(plist.build(binary)), binary, `${consumer}: binary/date round-trip failed`);
+  assert.deepEqual(dataValue(plist.parse(plist.build(binary))), binary, `${consumer}: binary/date round-trip failed`);
   checked += 1;
 }
 console.log(`XML dependency integrity OK (${copies.length} locked copies, ${checked} parser/consumer checks; negative version controls passed)`);
