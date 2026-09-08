@@ -10,8 +10,20 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(root, 'apps/mobile/package.json'));
-const ts = require(process.env.RENOVA_TYPESCRIPT_PATH || 'typescript');
+const ts = require('typescript');
 const mobile = path.join(root, 'apps/mobile');
+const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
+const compilerPath = path.relative(root, path.dirname(require.resolve('typescript/package.json'))).split(path.sep).join('/');
+assert.equal(ts.version, lock.packages[compilerPath]?.version, 'test compiler must be the workspace lockfile version');
+const compilerOptions = { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true };
+function transpile(source, filename) {
+  const output = ts.transpileModule(source, { fileName: filename, compilerOptions, reportDiagnostics: true });
+  const diagnostics = (output.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error);
+  assert.equal(diagnostics.length, 0, `${filename}: TypeScript ${ts.version}\n${diagnostics.map(d => `TS${d.code}: ${ts.flattenDiagnosticMessageText(d.messageText, '\n')}`).join('\n')}`);
+  return output.outputText;
+}
+// Negative control: the harness must reject invalid code, never suppress diagnostics.
+assert.throws(() => transpile('export const broken = ;', 'invalid-canary.ts'), /TS\d+:/);
 let scenarios = 0;
 
 function harness({ storage = new Map(), network, failStorage = false } = {}) {
@@ -33,7 +45,7 @@ function harness({ storage = new Map(), network, failStorage = false } = {}) {
     },
   });
   function load(specifier, parent = path.join(mobile, 'entry.ts')) {
-    if (specifier === '@react-native-async-storage/async-storage') return { default: asyncStorage };
+    if (specifier === '@react-native-async-storage/async-storage') return { __esModule: true, default: asyncStorage };
     if (specifier === '@/lib/reportError') return { reportError: (...args) => errors.push(args) };
     if (specifier === '@/lib/offline/flushBus') return { notifyOfflineFlush() {} };
     let filename = specifier.startsWith('@/') ? path.join(mobile, specifier.slice(2)) : path.resolve(path.dirname(parent), specifier);
@@ -44,13 +56,8 @@ function harness({ storage = new Map(), network, failStorage = false } = {}) {
     if (cache.has(filename)) return cache.get(filename).exports;
     const module = { exports: {} };
     cache.set(filename, module);
-    const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
-      fileName: filename,
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: false },
-      reportDiagnostics: true,
-    });
-    assert.equal((output.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error).length, 0);
-    const execute = vm.runInContext(`(function(require,module,exports){${output.outputText}\n})`, context, { filename });
+    const output = transpile(fs.readFileSync(filename, 'utf8'), filename);
+    const execute = vm.runInContext(`(function(require,module,exports){${output}\n})`, context, { filename });
     execute((child) => load(child, filename), module, module.exports);
     return module.exports;
   }
@@ -121,4 +128,4 @@ for (const kind of ['invoice', 'task']) {
   assert.equal(success.policy.canQueueChatCommand(Object.assign(new Error('cancelled'), { name: 'AbortError' })), false);
   scenarios += 4;
 }
-console.log(`Chat command actual transport/queue contracts OK (${scenarios} scenarios; external providers disabled)`);
+console.log(`Chat command actual transport/queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);
