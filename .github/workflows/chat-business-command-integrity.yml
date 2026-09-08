@@ -1,0 +1,66 @@
+name: Chat business command integrity
+on:
+  push:
+    paths:
+      - "backend/app/api/v1/chats.py"
+      - "backend/app/services/chat*.py"
+      - "backend/app/services/*work_order*.py"
+      - "backend/app/services/client_write*.py"
+      - "backend/tests/test_chat_business_commands*.py"
+      - "apps/mobile/lib/api/chats.ts"
+      - "docs/technical-spec/CHAT-BUSINESS-COMMAND-CONTRACT.md"
+      - ".github/workflows/chat-business-command-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/api/v1/chats.py"
+      - "backend/app/services/chat*.py"
+      - "backend/app/services/*work_order*.py"
+      - "backend/app/services/client_write*.py"
+      - "backend/tests/test_chat_business_commands*.py"
+      - "apps/mobile/lib/api/chats.ts"
+      - "docs/technical-spec/CHAT-BUSINESS-COMMAND-CONTRACT.md"
+      - ".github/workflows/chat-business-command-integrity.yml"
+permissions:
+  contents: read
+concurrency:
+  group: chat-business-command-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  command-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ENVIRONMENT: test
+      SECRET_KEY: ci-chat-command-test-secret-32chars
+      ALLOW_DEMO_SEED: "false"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retain exact tracked source for isolated reproduction
+        run: git archive --format=tar --output=renova-source.tar HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chat-command-source-${{ github.sha }}
+          path: renova-source.tar
+          retention-days: 1
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12.13" }
+      - name: Install exact locked backend environment
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry config virtualenvs.in-project true
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Verify real command replay
+        working-directory: backend
+        run: poetry run pytest -q tests/test_chat_business_commands.py --junitxml=chat-command-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chat-command-test-results
+          path: backend/chat-command-results.xml
+          retention-days: 14
+          if-no-files-found: ignore
