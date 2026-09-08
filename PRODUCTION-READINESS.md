@@ -1,95 +1,79 @@
 # Renova — Production Readiness
 
-**Broad production launch:** **BLOCKED_FOR_BROAD_PRODUCTION**  
-**Machine-readable source of truth:** `docs/production-readiness-evidence.json`  
-**SHA-bound evidence:** GitHub Actions artifact `production-readiness-snapshot` from `Production readiness integrity`.
+**Broad production launch:** **BLOCKED_FOR_BROAD_PRODUCTION**
+**Observed on:** 2026-09-08. **Audited product SHA:** `95dd4a8e117289df11e1300891490768c22f585f`.
+**Machine-readable source:** `docs/production-readiness-evidence.json`.
+**Full product audit:** `docs/technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
 
-Repository qualification is **CI VERIFIED** only for the exact candidate tested. It does not prove external staging, production deployment, provider delivery or full product acceptance. This revision reconciles the merged participant foundation and the still-open management candidate; it grants no new external readiness credit.
+This is a product AND external-operations decision. Architecture and a green bounded PR do not make every user outcome production-ready. This audit records source-confirmed defects; it does not assert new full runtime/device/external qualification.
 
-## 1. Current repository facts
-
-`scripts/production_readiness.py` resolves the evaluated SHA, live main, migration graph, mobile source identity and live blocker issue states.
+## 1. Repository facts
 
 | Fact | Current value |
-|---|---:|
+|---|---|
 | Alembic head | `w22projectparticipants01` |
-| Mobile version | `0.3.7` |
-| iOS buildNumber | `3` |
-| Android versionCode | `3` |
-| Backend artifact contract | `ghcr.io/petrfedin/renova-api:sha-${GIT_SHA}` |
-| Runtime roles | `renova-api` + `renova-worker` from one immutable image |
+| Mobile source version | `0.3.7` |
+| iOS buildNumber / Android versionCode | `3` / `3` |
+| Backend image | `ghcr.io/petrfedin/renova-api:sha-${GIT_SHA}` |
+| Runtime | `renova-api` + `renova-worker`, one immutable image |
 
-## 2. What repository CI proves
+CI supplies the evaluated SHA. `scripts/production_readiness.py` derives migration/mobile facts and live main/blocker states. A source build number is not an EAS/TestFlight/store release.
 
-Exact-candidate gates cover full backend regression + PostgreSQL Alembic upgrade, API/UI Playwright E2E, canonical local PostgreSQL/Redis/MinIO/API/Worker topology, health/readiness/heartbeat, schema/ORM parity, DomainOutbox retry/lease/DLQ recovery, provider reconciliation foundations, auth/RBAC/object ACL/WebSocket security, CodeQL/dependency/Gitleaks/container security, repository backup/isolated restore, locked toolchain and living technical-spec integrity.
+## 2. Merged, bounded implementation evidence
 
-Material provenance and participant foundation have dedicated physical predecessor-schema upgrade/backfill/CHECK tests. Participant concurrency is tested against PostgreSQL, not inferred from SQLite. A changed candidate requires fresh qualification; earlier green runs are historical evidence.
+- #288 canonical local runtime/agent workflow, merge `7bd1dceb273a7e1f26ddf2333e9199d8d498ae54`.
+- #290 isolated logical restore, run `33344103969`, merge `748ed5f22db0bfe18001f276ec521d0198d4dc57`; not managed production backup/PITR.
+- #270 chat read cursor; #277 invitation outbox; #292 incoming message atomicity, merge `9d3f96bad6138aef7f7db32407162fe07897572d`. Equal timestamps #271 and other chat business actions are separate.
+- #295 warranty creation, qualified head `22dd1f2d379f3d2f26278b58b03a1ca4f022da3c`, merge `9fed24c1b59d767daef4d6395fd01cb303c838e3`; #266 closed.
+- #297 manual payment evidence, qualified head `7983b0dfecc3dd799ec8e498680bdfaa0141fc4b`, merge `389f35d819dbf0b81d2e821da851fa9a647705d2`; #265 closed. One confirmed Payment→Expense in that bounded flow is already implemented/qualified.
+- #309 explicit work start; #310 quantity-aware material supply, w20; #311 price provenance/quarantine, merge `85f8d279d393b42bae5d76fea333f9d13c8ae0b5`, w21.
+- #312 participant foundation, merge `38657631348ea7bbe9a22cd5d631cb4ddba0250e`, w22; not complete multi-contractor support.
+- #313 participant management/atomic lead conversion is MERGED, not still a candidate. Qualified head `ae8a0750bb6cc788c9e93a1f85a7355f3b180380`, full CI `34262996030`, participant PostgreSQL `34262996112`, merge `65ddb7e59e6bcb23473b1017686cd3adbd882187`. 35 focused tests included genuine two-session PostgreSQL races; not all fixtures were PostgreSQL-only.
+- #314 quoted-lead wizard recovery is MERGED. Qualified head `6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817`, CI `34264654118`, merge `95dd4a8e117289df11e1300891490768c22f585f`. General Playwright passed; a new dedicated native wizard scenario was not proved.
 
-## 3. Product-integrity state
+Previous implementation runs are retained historical evidence for their exact code. An updated candidate requires fresh applicable qualification. Neither a master-document rewrite nor a static inventory upgrades implementation evidence.
 
-### Merged / bounded repository evidence
+## 3. Source-confirmed product blockers
 
-- Canonical development runtime: #288, qualified successor `46fb8aaf52c33449b3a168ee226c605a94c0d3d4`, merge `7bd1dceb273a7e1f26ddf2333e9199d8d498ae54`.
-- Repository DR regression: #290, run `33344103969`, merge `748ed5f22db0bfe18001f276ec521d0198d4dc57`; not managed-provider production restore.
-- Chat read truth: #270. Equal-timestamp precision remains #271. Phone invitation delivery foundation: #277; real Twilio round-trip remains externally unverified.
-- Incoming chat atomicity: #292, merge `9d3f96bad6138aef7f7db32407162fe07897572d`; external S3 recovery remains #238.
-- Warranty atomicity: #295, qualified head `22dd1f2d379f3d2f26278b58b03a1ca4f022da3c`, merge `9fed24c1b59d767daef4d6395fd01cb303c838e3`; #266 closed.
-- Manual payment evidence: #297, qualified head `7983b0dfecc3dd799ec8e498680bdfaa0141fc4b`, merge `389f35d819dbf0b81d2e821da851fa9a647705d2`; #265 closed. Private versioned evidence/review and one Payment → Expense recognition are bounded repository facts.
-- Explicit stage start: #309. Material readiness does not manufacture a start fact.
-- Material supply truth: #310 / `w20materialsupply01`.
-- Material price provenance: #311, merge `85f8d279d393b42bae5d76fea333f9d13c8ae0b5`, `w21materialprice01`. Historical unknown prices remain quarantined rather than invented.
-- Participant foundation: #312, qualified head `7bb6fc9d2f0a86539355e17f0af8e7f43e896534`, merge `38657631348ea7bbe9a22cd5d631cb4ddba0250e`, `w22projectparticipants01`. This is not complete multi-contractor product support.
-
-### Active / incomplete
-
-**Participant management candidate #313 / tracking #300.** Adds canonical HTTP lead synchronization and owner-managed participant API. The 2026-09-08 hardening candidate refreshes locked ORM state, revalidates authorization, safely reactivates former leads and makes marketplace conversion one transaction with date-stable replay. Previous head `3c9d527578873111826e8e5e0253f46ddf7e4ec4` passed CI; the changed head must independently qualify before merge. See `docs/technical-spec/PROJECT-PARTICIPANT-SCOPE-CONTRACT.md` for implementation, test contracts and named blockers.
-
-**#300 remains OPEN.** It was reopened on 2026-09-08 because its full acceptance criteria are not satisfied. Independent participants still lack scoped project discovery/mobile UX, domain execution/commercial/document/chat adoption and a customer + 2–3 contractor golden path. Generic project ACL intentionally remains closed. Legacy writer retirement, contractor-wide quota serialization and marketplace source-transition fencing are explicitly retained engineering work.
-
-**#238:** provider/S3 authoritative recovery, ambiguous-write/orphan reconciliation remain open. **#305:** role/design-system completion is separate from participant authorization.
-
-## 4. External environment truth
-
-| Environment | Status | Evidence boundary |
+| Issue | Priority | Remaining user-result gap |
 |---|---|---|
-| Isolated CI staging | CI VERIFIED on qualified candidates | Repository topology/contracts only. |
-| Persistent external staging | NOT EXTERNALLY VERIFIED | No retained exact-digest TLS/DNS/managed-dependency/provider evidence; #233. |
-| Production | NOT EXTERNALLY VERIFIED | No retained exact deployed Git SHA + digest + runtime evidence. |
+| #316 | P0 | Queued chat invoice/task and direct WorkOrder create lack a complete first-attempt idempotency/atomicity chain; lost-response retry can duplicate operations. |
+| #315 | P1 launch-blocking | Global context/token/queue work is not fenced across session changes; queue owner may differ from current Bearer. Server ACL still applies; no universal bypass claimed. |
+| #317 | P1 | Normalized ApiError0 prevents intended enqueue in some producers; layered cache can mislabel stale results fresh. |
+| #318 | P1 | Monthly plan buckets can total125%; portfolio category actuals are not independent measured facts. This is not an asserted corruption of server spend. |
+| #319 | P1 | Project purge/empty-trash does not cover the new participant/evidence graph and explicit retention outcome. |
+| #320 | P1 | Reachable chat PDF action lacks native file/save/share completion. |
+| #300 | P1 | Scoped independent-contractor domain/mobile/payee/document/chat journey remains incomplete despite foundation+management. |
+| #305 | P1 correctness subset | Commit success can be shown as failure after refresh; complete role/error/recovery/accessibility interaction is unfinished. |
 
-## 5. Provider truth
+These findings require tests of real consumers and failure boundaries. Existing #265/#266/#299 must not be reopened merely because unrelated operations have defects. Full audit G01–G10 defines the remaining end-to-end acceptance target without reducing scope to an MVP.
 
-Live YooKassa/FNS credentials and liveness, Мой налог OAuth/refresh, Контур/e-sign authoritative reads, Twilio round-trip and Expo push availability are not proved by CI. S3 ambiguous-write/orphan recovery remains #238. Local/mock provider success must not be presented as external delivery.
+## 4. External environment and providers
 
-## 6. Capacity and SLO
+Persistent external staging and production: **NOT EXTERNALLY VERIFIED**. Absence of retained evidence is not proof the environment literally does not exist. #233 requires exact deployed SHA/digest, TLS/DNS, managed dependencies and promotion evidence.
 
-Candidate targets remain HTTP failure rate <1%, p95 <1000 ms, p99 <2500 ms; WebSocket delivery failure <1%, p95 <1000 ms, p99 <2500 ms. Real capacity is NOT PROVEN until authenticated smoke/ramp/spike/soak evidence is retained on external production-like staging (#236).
+Live YooKassa, FNS/НПД, Контур, SMS and push delivery/liveness/recovery are not proved by repository CI. S3 ambiguous-write/orphan recovery remains #238. Goskey is explicitly unavailable in the inspected code; document metadata classification is not content OCR. Planned optional-provider/release-scope decisions must be explicit; disabled capability is not completed functionality.
 
-## 7. Disaster recovery truth
+## 5. Capacity, DR and observability
 
-Repository restore is CI VERIFIED via #290/run `33344103969`. Managed production backup/PITR is NOT EXTERNALLY VERIFIED. Targets remain RPO ≤15 min, RTO ≤60 min, PITR window ≥7 days and retention ≥35 days. #234 remains P0.
+Candidate targets: HTTP failure rate<1%, p95<1000ms/p99<2500ms; WebSocket delivery failure<1%, p95<1000ms/p99<2500ms. Real authenticated smoke/ramp/spike/soak evidence remains #236; no measured production capacity asserted.
 
-## 8. Observability truth
+Repository logical restore is bounded CI evidence (#290). Managed production backup/PITR remains #234. Targets RPO≤15min, RTO≤60min, PITR window≥7days, retention≥35days are not measured achievements.
 
-External ingestion → alert firing → notification → acknowledgement → recovery is NOT VERIFIED. #235 remains P0. Mobile crash-report evidence is not retained. Draft #283 contains a probe/evidence mechanism, not proof of external alert delivery.
+External ingestion→alert→delivery→ACK→recovery remains #235. Old draft #283 is a probe implementation, not evidence of actual alert delivery. Mobile crash reporting and operator response also require retained evidence.
 
-## 9. Security truth
+## 6. Security and release
 
-Repository CodeQL, dependency, secret and container controls exist. External blockers remain #247 P0 main protection, #256 P1 privileged-access review, #257 P1 independent pentest and #237 P1 external security/credential evidence. Repository code does not enforce GitHub settings merely by describing them.
+Repository CodeQL/dependency/secret/container controls exist. #247 enforced main protection, #256 privileged-access review, #257 independent penetration/abuse test and #237 external security/credential acceptance remain open. Do not describe controls as nonexistent, or externally verified from CI.
 
-## 10. Mobile/release identity
+Canonical mobile typecheck currently accepts named JSX diagnostics; dependency policy has bounded advisories. Green means those configured gates passed, not clean raw tsc/zero vulnerabilities. `docs/js-dependency-security.md` and source baselines are the policy reference; no new risk acceptance is granted by this audit.
 
-Source identity is `0.3.7`, iOS `3`, Android `3`. EAS/TestFlight/Android internal release remains NOT EXTERNALLY VERIFIED without exact Git SHA, native build numbers, EAS build IDs and retained release evidence.
+Actual EAS/TestFlight/Android release remains NOT EXTERNALLY VERIFIED without exact build IDs and retained delivery evidence. Pilot/telemetry/legal/privacy/support operations remain #241.
 
-## 11. Current launch blockers
+## 7. Ordered continuation
 
-P0: #233 external staging/artifact promotion; #234 managed backup/PITR/DR; #235 external observability; #247 enforced main protection/required checks.
+Product: #316 + #315 → safe offline/error/cache #317 → analytics/lifecycle/native/interaction #318/#319/#320/#305 → full scoped #300. Provider recovery #238 is a separate functional stream.
 
-Launch-blocking P1 in machine-readable readiness: #236 capacity, #237 external security, #238 provider/S3 recovery, #241 pilot/telemetry/legal/privacy/operations, #256 privileged access and #257 independent pentest.
+In parallel: main protection #247 and external staging #233; then real alert/DR/capacity/security/pilot evidence with their own dependencies. Do not impose a fictitious single serial chain or a launch ETA without resource/external access evidence.
 
-#265/#266 are closed and must not be reintroduced without evidence of regression. The participant product-model issue #300 remains open independently of the existing external launch-blocker list. Its acceptance cannot be replaced by a green management API suite.
-
-## 12. Broad-production decision
-
-**BLOCKED_FOR_BROAD_PRODUCTION** remains unchanged.
-
-Next repository gate: exact-head qualification of #313, then bounded retirement of retained legacy writers/capacity/source-transition gaps and scoped participant/mobile/domain adoption under #300. Preserve #238 recovery and #283/#235 observability as separate ownership slices. External staging #233, capacity #236, DR #234, main protection #247, privileged access #256, pentest #257, security #237 and controlled pilot #241 still require their own retained evidence.
+The next admissible production decision requires the complete declared product result and external operational gates on one release candidate. Current decision remains **BLOCKED_FOR_BROAD_PRODUCTION**.

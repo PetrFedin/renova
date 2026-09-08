@@ -1,1278 +1,299 @@
 # Renova — живое техническое задание и системная спецификация
 
-**Статус документа:** ACTIVE / LIVING SPECIFICATION  
-**Язык:** русский  
-**Дата базовой ревизии:** 2026-08-28  
-**Ветка базовой проверки:** `fix/canonical-local-runtime-agents`  
-**Текущий schema head в этой редакции:** `w19paymentevidence01`  
-**Текущий verification status:** `PENDING REVERIFY`  
-**Назначение:** единый технический паспорт продукта, архитектуры, данных, экранов, процессов, интерфейсов, расчётов, runtime, тестов, evidence, известных разрывов и плана развития Renova.
+**Статус документа:** ACTIVE / LIVING SPECIFICATION
+**Язык:** русский
+**Дата текущей сверки:** 2026-09-08
+**Проверенный продуктовый срез:** `95dd4a8e117289df11e1300891490768c22f585f`
+**Текущий schema head в этой редакции:** `w22projectparticipants01`
+**Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
+**Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
-> `AGENTS.md` остаётся единственным authoritative engineering-policy для Cursor, Claude Code и других coding agents. Этот документ — authoritative product/system dossier: он фиксирует **что существует, как связано, как должно работать, какие состояния допустимы, какими источниками и тестами это подтверждается и что ещё не доказано**. При конфликте описания с текущим кодом/миграцией/route registry/CI конфликт считается дефектом документации или implementation и должен быть устранён до повышения статуса evidence.
+`AGENTS.md` — единственный engineering-policy. Этот master — текущий паспорт продукта, контрактов и доказанности. Он не подтверждает все функции по одному факту наличия кода. Предыдущая полная редакция сохранена без изменения содержимого в `technical-spec/history/RENOVA-TECHNICAL-SPECIFICATION-before-2026-09-08.md`: это справочный исторический срез, не текущий порядок работ и не launch verdict. Функциональность из целевого продукта этим переоформлением не удаляется.
 
-Детальный журнал изменений и приоритизированный roadmap: `docs/technical-spec/CHANGELOG-ROADMAP.md`.  
-Детальный реестр расчётов: `docs/technical-spec/CALCULATION-REGISTRY.md`.  
-Детальный каталог экранов: `docs/technical-spec/SCREEN-CONTRACT-CATALOG.md`.  
-Source snapshot экранов: `docs/technical-spec/SCREEN-SOURCE-SNAPSHOT.md`.
-
----
+Актуальные приложения: [полный аудит](technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md), [план и история](technical-spec/CHANGELOG-ROADMAP.md), [расчёты](technical-spec/CALCULATION-REGISTRY.md), [экраны](technical-spec/SCREEN-CONTRACT-CATALOG.md), [source snapshot экранов](technical-spec/SCREEN-SOURCE-SNAPSHOT.md), [правила сквозного сопровождения](technical-spec/END-TO-END-GOVERNANCE.md). Детальные domain-contract приложения остаются действующими в части реализации; статус их квалификации проверяется по текущим PR/CI и разделу15, а не по старому слову candidate в приложении.
 
 # 0. Правила доказанности и сопровождения
 
-## 0.1. Уровни доказанности
+**VERIFIED** — прочитан соответствующий source/config/migration, не автоматически испытан пользовательский результат. **CI VERIFIED** — прошёл конкретный набор тестов конкретного SHA. **LOCAL TESTED**, **STAGING VERIFIED**, **PRODUCTION VERIFIED** не взаимозаменяемы. **PENDING REVERIFY** означает изменение кандидата после доказательства. **TBD / UNVERIFIED** — нет достаточного подтверждения. **HISTORICAL** — старый срез.
 
-- **VERIFIED** — подтверждено текущим source/config/migration;
-- **CI VERIFIED** — подтверждено успешным CI для конкретного exact SHA;
-- **LOCAL TESTED** — подтверждено canonical local runtime;
-- **STAGING VERIFIED** — подтверждено retained evidence реального staging;
-- **PRODUCTION VERIFIED** — подтверждено retained evidence production;
-- **PENDING REVERIFY** — implementation изменён после последнего успешного доказательства;
-- **TBD / UNVERIFIED** — точное поведение/значение ещё не доказано;
-- **HISTORICAL** — исторический факт, не являющийся текущим каноном.
+Рабочий цикл: требование → источник и полный путь → обнаруженный разрыв → bounded implementation → синхронное ТЗ → тесты → точный SHA/run/artifact → сверка остаточных рисков. Нельзя объявлять READY по красивому экрану, enum, наличию API или одному зелёному CI.
 
-Green более старого SHA не переносится автоматически на новый candidate.
+## 0.1. Текущий source snapshot
 
-## 0.2. Обязательное правило обновления ТЗ
-
-Изменение любого из следующих классов требует проверки и обновления этого dossier или соответствующего annex в том же рабочем контуре:
-
-1. route registry, tab layout, deeplink, redirect;
-2. API method/path/schema/auth/error/idempotency;
-3. ORM entity, Alembic schema, enum, constraint, lifecycle/status;
-4. financial recognition/calculation;
-5. role/ACL/security boundary;
-6. shared UI token/component;
-7. screen/hub/filter/action/state;
-8. local/staging/production runtime topology;
-9. health/readiness/worker/outbox/provider flow;
-10. E2E/user journey/release gate;
-11. demo/local data lifecycle, seed/reset/bootstrap;
-12. technical-spec traceability/drift contract.
-
-## 0.3. Обязательный рабочий цикл развития
-
-```text
-прочитать master dossier + CHANGELOG-ROADMAP + relevant annex
-→ проверить current code / migrations / CI / external evidence
-→ выбрать верхний незакрытый P0/P1
-→ реализовать bounded change
-→ одновременно обновить ТЗ/annex
-→ добавить или усилить automated proof
-→ получить exact-head validation
-→ записать evidence/status/residual risk
-→ только затем переходить к следующему пункту
-```
-
-Нельзя наращивать cosmetic backlog при существующем доказанном P0 correctness/data-loss/runtime blocker.
-
-## 0.4. Проверенный source snapshot
-
-Blob SHA — traceability anchor. При изменении tracked source документация обязана обновляться.
-
-| Source | Blob SHA | Что подтверждает |
+| Source | Blob SHA | Назначение |
 |---|---|---|
-| `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | engineering/runtime/security/DoD canon |
-| `backend/app/api/v1/router.py` | `fe0e66377eb57ba968e91370267a8f5cf812a3fa` | API composition/canonical route replacement |
-| `backend/app/models/entities.py` | `f2e63f316fa8c9b2012894ae4e496dc76a73a3a1` | ORM/domain entities/status/enum mappings |
-| `backend/app/main.py` | `223e83b13f96398eefe997275ac6f41fa44bfbcf` | API lifespan; startup без demo business-data mutation |
-| `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | explicit additive demo seed; canonical-demo-only chat dedupe |
-| `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | ORM ↔ PostgreSQL table/column/native-enum parity |
-| `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | current migration-owned reflected enum invariants w16–w18 |
-| `apps/mobile/lib/routeRegistry.ts` | `0c9a386486f61cd1a284d8bd7fc99368b557232f` | mobile IA/routes/audience/visibility/redirects |
-| `apps/mobile/constants/Theme.ts` | `6e66c4bf0db8c9d1b8c4a2d0355311145ca43b20` | colors/spacing/radius/font sizes/touch target/card baseline |
-| `apps/mobile/constants/typography.ts` | `8a96b7f290944ac2c566c0f1791c1f60ab90c68a` | semantic typography |
-| `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | hub/list/filter typography and geometry |
-| `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | chips/surfaces/input field |
-| `apps/mobile/constants/screenLayout.ts` | `0165f3c86d829311e91ac17b875c23ccaefab12b` | screen padding |
-| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `f480067b06c750623e4091fe0db128c877e3fb37` | hub-tab progressive disclosure/geometry |
-| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub composition |
-| `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub composition/badges/deeplinks |
-| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub composition |
-| `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tabs/legacy normalization |
-| `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | mobile UI implementation rules |
-| `package.json` | `4c95fcf89d7e29f1c464a7db2c7aa4c85335fe11` | root scripts/test entry points |
-| `.github/workflows/local-runtime-integrity.yml` | `3ae00fa13be960bf7acba71c8cfa41134d35e16f` | canonical local start/check/double-seed/focused proof chain |
-| `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | legacy VARCHAR status → native enum repair |
-| `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | chat message PG enum → current ORM labels |
-| `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | remaining Notification/JobLead/Payment native-enum parity |
-| `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | versioned private manual-payment evidence schema |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `82ba22fff35793551a6a838f139293ad3c5bbbba` | governed change history and prioritized roadmap |
-
----
+| `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
+| `backend/app/api/v1/router.py` | `8663e5b54289b133c5a2ff30af0533cfee93dfb6` | Реальная composition маршрутов |
+| `backend/app/models/entities.py` | `f2e63f316fa8c9b2012894ae4e496dc76a73a3a1` | Базовые entities/enums |
+| `backend/app/main.py` | `223e83b13f96398eefe997275ac6f41fa44bfbcf` | API lifespan |
+| `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
+| `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
+| `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | Enum/migration invariants |
+| `apps/mobile/lib/routeRegistry.ts` | `0c9a386486f61cd1a284d8bd7fc99368b557232f` | Канонические navigation entries |
+| `apps/mobile/constants/Theme.ts` | `6e66c4bf0db8c9d1b8c4a2d0355311145ca43b20` | Theme/touch geometry |
+| `apps/mobile/constants/typography.ts` | `8a96b7f290944ac2c566c0f1791c1f60ab90c68a` | Typography |
+| `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | Screen typography |
+| `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | Surfaces/chips/inputs |
+| `apps/mobile/constants/screenLayout.ts` | `0165f3c86d829311e91ac17b875c23ccaefab12b` | Screen layout |
+| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `f480067b06c750623e4091fe0db128c877e3fb37` | Hub tabs |
+| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
+| `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
+| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
+| `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
+| `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
+| `package.json` | `4c95fcf89d7e29f1c464a7db2c7aa4c85335fe11` | Root commands/test entrypoints |
+| `.github/workflows/local-runtime-integrity.yml` | `3ae00fa13be960bf7acba71c8cfa41134d35e16f` | Local runtime proof |
+| `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
+| `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
+| `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
+| `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
+| `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
-**VERIFIED.** Renova — production-oriented платформа управления ремонтом для заказчика и исполнителя. Архитектура строится вокруг общего `Project` и сквозных доменных связей, а не набора независимых mini-app экранов.
+Renova — iPhone-first управление реальным ремонтом, а не демонстрация отдельных экранов. Целевой результат: согласованный объём/бюджет/график, исполненные и принятые работы, обеспеченные материалы, корректные деньги, документы, история и гарантии. Результат должен оставаться правильным при ошибках, повторах, смене устройства/аккаунта и отказе провайдера.
 
-Основные роли:
-
-- customer / заказчик;
-- contractor / исполнитель;
-- team/viewer участники;
-- technical supervisor / технический надзор;
-- admin/operator для ограниченных административных и recovery-операций.
-
-Наличие роли не означает автоматическую доступность любого route; фактические права определяются API guards, project membership/ownership, role-aware screen contracts и ACL tests.
-
-## 1.1. Главная информационная архитектура
-
-Canonical mobile IA:
-
-```text
-Главная
-→ Объект
-→ Ремонт
-→ Бюджет/Деньги
-→ Сообщения
-```
-
-`Сроки` — отдельный Calendar hub, доступный как optional/secondary entry. Документы, согласования, входящие, отчёты, закупки, подборы, приёмка и аналитика входят через канонические hubs/deeplinks/redirects и не должны дублировать top-level navigation.
-
----
+Роли: customer, contractor, team/viewer, technical supervisor, admin/operator. Наличие роли не разрешает действие вне project/resource scope. Независимые подрядчики — целевое обязательное свойство полного продукта; временная недоступность #300 не превращается в отказ от требования.
 
 # 2. Репозиторий и источники истины
 
-## 2.1. Engineering policy
+Канон `PetrFedin/renova`: main→короткая ветка→PR→применимые проверки→merge. Старые develop/task-ветки не интеграционная база. `CLAUDE.md` и bootstrap Cursor правила указывают на AGENTS.
 
-**VERIFIED:** `AGENTS.md`.
+Навигация: routeRegistry + реальные Expo routes. API: итоговый router + конкретные services. Данные: ORM + линейный Alembic graph, PostgreSQL authoritative. Текущий head `w22projectparticipants01`; w16legacystatus01→w17chatmessageenum01→w18nativeenumparity01→w19paymentevidence01→w20materialsupply01→w21materialprice01→w22projectparticipants01 — продолжение уже потреблённой истории, не инструкция переписывать старые миграции.
 
-`CLAUDE.md` и общие Cursor rules — pointer/bootstrap, а не второй независимый набор engineering-policy.
-
-## 2.2. Product/navigation truth
-
-**VERIFIED:** `apps/mobile/lib/routeRegistry.ts` + Expo Router implementation.
-
-## 2.3. API truth
-
-**VERIFIED:** `backend/app/api/v1/router.py` + concrete routers/services.
-
-Canonical route replacement удаляет старые shadow handlers через `_remove_replaced_routes(...)`, чтобы import order не менял фактический API.
-
-## 2.4. Database truth
-
-**VERIFIED:** SQLAlchemy ORM + линейный Alembic graph. PostgreSQL — authoritative durable store для staging/production. SQLite не доказывает production native-enum, locking, constraints или concurrency semantics.
-
-Current revision: **`w19paymentevidence01`**.
-
-## 2.5. Readiness truth
-
-`PRODUCTION-READINESS.md` и `docs/production-readiness-evidence.json` управляют broad production-readiness claims. Green local/CI не заменяет внешний staging/production/provider evidence.
-
----
+Readiness: корневой PRODUCTION-READINESS.md и docs/production-readiness-evidence.json. При конфликте подтверждённого кода с документом исправляется конфликт, а не повышается статус по документу.
 
 # 3. Runtime architecture
 
-## 3.1. Процессы и зависимости
+Один immutable backend image, два процесса: `renova-api` для HTTP/WebSocket/локального runtime coordination и `renova-worker` для durable outbox/provider/automation/push reconciliation. PostgreSQL хранит правду; Redis — явно определённое общее coordination/rate-limit состояние; S3-compatible storage — приватные файлы. API replica должна быть заменяемой без потери работы.
 
-```text
-Mobile / Web / external callbacks
-             |
-             v
-        renova-api
-             |
-     +-------+--------+
-     |       |        |
- PostgreSQL Redis   S3-compatible storage
-     ^       ^        ^
-     |       |        |
-        renova-worker
-             |
-       external providers
-  (только через явные boundaries)
-```
-
-- `renova-api`: FastAPI HTTP/WebSocket, auth/ACL, synchronous request handling, API-local Redis bridge/heartbeat;
-- `renova-worker`: durable background execution, Domain Outbox, provider reconciliation, reminders/push receipt where enabled, worker heartbeat;
-- PostgreSQL: authoritative business state;
-- Redis: shared coordination/rate limit/runtime topology/WebSocket bridge where configured;
-- S3-compatible storage: documents/media.
-
-**Invariant:** durable business jobs не должны возвращаться в API startup/background tasks. API replica обязана быть disposable без потери pending durable work.
-
-## 3.2. Canonical local topology
-
-```text
-PostgreSQL + Redis + MinIO + migrate + renova-api + renova-worker + optional Expo
-```
-
-Compose project: `renova-local`.
-
-Canonical commands:
+Local development: Compose `renova-local`, только локальный Docker context, `.env.local` из env.local.example, не staging/production credentials. Команды:
 
 ```bash
 npm run dev -- doctor
 npm run dev -- bootstrap
-npm run dev
+RENOVA_DEV_NO_EXPO=1 npm run dev
 npm run dev -- check
 npm run dev -- seed
 npm run dev -- test-focused
 npm run dev -- test-full
 npm run dev -- logs
 npm run dev -- stop
-npm run dev -- reset
 ```
 
-`reset` destructive только для isolated local project/volumes.
-
-## 3.3. Local safety boundary
-
-Canonical local tooling fail-closed при:
-
-- remote `DOCKER_HOST`;
-- remote Docker context;
-- `ENVIRONMENT=staging|production`;
-- непустых external provider credentials/sinks.
-
-Compose дополнительно neutralizes external credentials/sinks внутри local containers.
-
-## 3.4. Startup sequence
-
-```text
-local env guard
-→ local Docker context guard
-→ infra start/health
-→ Alembic upgrade head
-→ migration guard
-→ runtime preflight
-→ API + worker
-→ /health
-→ /ready
-→ worker local heartbeat
-→ worker shared Redis heartbeat
-→ optional Expo
-```
-
-Migration/preflight failure не скрывается `|| true` или best-effort логикой.
-
-## 3.5. Startup ≠ seed
-
-**VERIFIED source / PENDING REVERIFY runtime.** API lifespan не создаёт, не удаляет и не переписывает demo business data.
-
-```text
-npm run dev
-= start runtime only
-
-npm run dev -- seed
-= explicit development-only Alembic-head-gated demo materialization
-```
-
-Restart/redeploy не является demo-data reset operation.
-
-## 3.6. Explicit seed invariants
-
-`seed_demo.py` обязан быть additive/idempotent:
-
-- не удаляет произвольные project chats;
-- не удаляет `work:<id>` domain-owned threads;
-- не удаляет E2E/developer thread только из-за неизвестного title;
-- может дедуплицировать только собственные canonical demo-title;
-- повторный seed сохраняет runtime healthy;
-- canonical local CI запускает explicit seed **дважды**.
-
----
+Bootstrap устанавливает locked зависимости явно; startup не устанавливает их сам. Миграция→preflight→API/worker→health/ready/heartbeat→Expo; ошибка обязательного шага останавливает запуск. Seed явный development-only, повторяемый; двойной seed — испытание идемпотентности, не необходимость вручную дважды инициализировать приложение. Reset разрушителен и ограничен локальным проектом/volumes. Canonical toolchain задаётся AGENTS/lockfiles; его успешный CI не означает наличие такого runtime у конечного пользователя.
 
 # 4. Data/domain model — системная карта
 
-## 4.1. Core project graph
+| Контур | Сущности и связи | Неподменяемый смысл |
+|---|---|---|
+| Identity | User/AuthSession/team/viewer/supervision | Активная сессия, конкретная роль и область права |
+| Object | Project→Room/план/design/EstimateLine | Один объект и его исходные параметры |
+| Participation | ProjectParticipant→Scope/Event | Независимый principal, явный scope и история; lead compatibility отдельно |
+| Execution | Stage→WorkOrder/schedule/dependency/photo/comment | План не факт старта; выполнение не приёмка |
+| Procurement | MaterialPick→Purchase/PurchaseItem | Потребность, доступность, закупочная ответственность и историческая цена |
+| Finance | Estimate/ChangeOrder, Expense, Payment, Receipt/evidence | Обязательство, расход, движение денег и доказательство не одна сущность |
+| Documents | Document/version/signature/retention | Неизменность подписанной версии и политика хранения |
+| Communication | ChatThread/Message/Participant/Read, notification/inbox | Разрешённые получатели и authoritative read state |
+| Reliability | ClientWriteRequest/DomainOutbox/lease/delivery/provider operation | Повтор, fencing, durable intent, reconciliation |
+| Closure | Acceptance/rework/issue/warranty/archive/trash | Сдача результата не то же самое, что архив или физическое удаление |
 
-```text
-User
- ├─ owns/participates in → Project
- │   ├─ PropertyObject / Floors / Rooms
- │   ├─ Stages / WorkOrders / WorkSchedules
- │   ├─ EstimateLines / BudgetLines
- │   ├─ MaterialPicks → Purchases → PurchaseItems
- │   ├─ SelectionItems
- │   ├─ Expenses / Payments → PaymentEvidence / Receipts / ChangeOrders
- │   ├─ WorkAcceptances / Issues / Rework
- │   ├─ ChatThreads → ChatMessages / participants / reads
- │   ├─ Documents → OCR / e-sign / lifecycle
- │   ├─ FloorPlans / pins
- │   ├─ Notifications / Activity / Audit
- │   └─ Reports / analytics / KPI history
- └─ auth/session/team/subscription/account lifecycle
-```
-
-## 4.2. Financial semantic separation
-
-- **Estimate** — план стоимости/scope;
-- **Commitment** — подтверждённое обязательство;
-- **Purchase** — procurement/acquisition event;
-- **Expense** — признанный расход;
-- **Payment** — движение денег/payment state;
-- **PaymentEvidence** — приватное версионированное доказательство ручного банковского перевода, не самостоятельный Expense;
-- **Receipt** — evidence/первичный документ, не автоматически второй Expense;
-- **Refund** — обратное движение денег/economic correction;
-- **Change Order** — согласованное изменение scope/budget.
-
-Запрещено универсально дедуплицировать финансовую реальность эвристикой `max(receipt, expense, estimate_fact)`.
-
-## 4.3. Legacy status enum parity — `w16legacystatus01`
-
-| Table | Native enum | Current values | Historical storage |
-|---|---|---|---|
-| `purchases.status` | `purchasestatus` | draft, approved, ordered, paid, partial, delivered, cancelled, returned | `VARCHAR(32)` |
-| `material_picks.status` | `materialpickstatus` | draft, pending, approved, purchased | `VARCHAR(32)` |
-| `selection_items.status` | `selectionstatus` | draft, proposed, approved, rejected | `VARCHAR(16)` |
-
-Migration валидирует existing values до cast; unknown value останавливает upgrade. Downgrade возвращает исходные VARCHAR lengths.
-
-## 4.4. Chat message enum parity — `w17chatmessageenum01`
-
-Historical v14 PG `chatmessagetype`:
-
-```text
-text | photo | confirm | system
-```
-
-Current ORM/mobile:
-
-```text
-text | photo | file | confirm | system | task | invoice | payment
-```
-
-`w17` принимает только точное legacy либо exact current состояние и fail-closed на неизвестной промежуточной комбинации. Downgrade запрещён, если строки уже используют `file/task/invoice/payment`.
-
-## 4.5. Remaining native enum parity — `w18nativeenumparity01`
-
-Generic ORM/PostgreSQL verifier после clean upgrade до w17 выявил ровно три remaining mismatch.
-
-### 4.5.1. NotificationType
-
-Historical physical PG state:
-
-```text
-stage_review
-payment_pending
-change_order
-room_change
-chat_message
-payment_confirmed
-```
-
-Current canonical ORM/PG state:
-
-```text
-stage_review
-stage_started
-room_updated
-room_created
-payment_pending
-payment_confirmed
-change_order
-room_change
-chat_message
-budget_alert
-reaction
-materials
-approval
-issue
-deadline
-waste_reminder
-document
-other
-```
-
-Root cause: v14 создал 5 labels, отдельная migration добавила только `payment_confirmed`; последующие model labels не имели schema migrations.
-
-### 4.5.2. JobLeadStatus
-
-Historical `w1softdelete01` storage:
-
-```text
-job_leads.status VARCHAR(32) DEFAULT 'open'
-```
-
-Current canonical storage:
-
-```text
-job_leads.status → native jobleadstatus
-open | quoted | taken | closed
-```
-
-Upgrade валидирует реальные значения до cast и сохраняет server default `open`.
-
-### 4.5.3. PaymentStatus
-
-Historical PG order после v14 + `z0a1b2c3d4e5`:
-
-```text
-pending
-confirmed
-cancelled
-processing
-paid_unverified
-disputed
-refunded
-```
-
-Canonical ORM/PG order:
-
-```text
-pending
-processing
-paid_unverified
-confirmed
-cancelled
-disputed
-refunded
-```
-
-Проверенный `payment_service.py` определяет state machine explicit equality/allowed-from sets, а не ordinal comparison. Поэтому historical append order не является business rule. `w18` losslessly rebuilds enum с тем же набором labels в exact canonical order.
-
-### 4.5.4. Fail-closed и downgrade policy
-
-- неизвестный historical enum state — migration failure;
-- неизвестный persisted value — migration failure;
-- Notification downgrade запрещён, если используются labels, отсутствующие в historical enum;
-- JobLead downgrade возвращает `VARCHAR(32) DEFAULT 'open'`;
-- Payment downgrade lossless по values и возвращает historical order.
-
-## 4.6. General native-enum parity invariant
-
-`verify_orm_schema_parity.py` для каждой mapped `SQLAlchemy Enum(native_enum=True)` проверяет:
-
-1. column существует;
-2. storage действительно PostgreSQL `ENUM`;
-3. PG enum type name = ORM enum name;
-4. **ordered** PG labels = ORM labels.
-
-Порядок labels считается частью physical schema semantics. Нельзя ослаблять verifier до unordered set comparison ради зелёного CI. Business state machine должна задаваться явными transitions, а не скрытым `<`/`>` по PG enum.
-
-Current migration-owned explicit enum invariants:
-
-```text
-purchases.status          → purchasestatus
-material_picks.status     → materialpickstatus
-selection_items.status    → selectionstatus
-chat_messages.message_type→ chatmessagetype
-app_notifications.notification_type → notificationtype
-job_leads.status          → jobleadstatus
-payments.status           → paymentstatus
-```
-
-## 4.7. Manual payment evidence — `w19paymentevidence01`
-
-`payment_evidence` — единственная authoritative metadata-таблица подтверждений ручного банковского перевода. Версия привязана ровно к одному `Payment` и `Project`; `(payment_id, version)` и `storage_key` уникальны.
-
-Canonical lifecycle:
-
-```text
-upload_pending → submitted → approved | rejected
-```
-
-Сохраняются declared/verified MIME, размер, SHA-256, submitter/reviewer, timestamps и rejection reason. Rejected версия остаётся историей; новая версия создаётся как N+1. Финансовое признание не принадлежит этой таблице: только канонический `Payment → Expense` transition после одобрения имеет право создавать подтверждённый расход.
-
----
+Project.contractor_id — текущий optional lead, не полная карта подрядчиков. ProjectParticipant не расширяет generic ACL автоматически. Scope/revocation обязаны применяться к чтению, записи, push, file/export и background работе. Новый entity обязан включаться в purge/retention и restore tests; w22 выявил пробел #319.
 
 # 5. Transaction, idempotency, outbox и provider boundary
 
-## 5.1. Critical mutation rule
+Целевой invariant: authoritative mutation + audit + DomainOutbox + request ledger фиксируются одной транзакцией одной бизнес-операции. Caller знает границу commit; ошибка refresh/WS/navigation после него не отменяет сохранённый факт.
 
-Одна business operation должна по возможности иметь одну transaction boundary:
+ClientWriteRequest: scope/project/actor/request-id/canonical payload. Идентификатор появляется до первой попытки сети и сохраняется в offline intent. Same-key same-payload возвращает исходную сущность; другой payload возвращает конфликт; намеренные одинаковые операции могут иметь разные ключи. #316 фиксирует ещё не переведённые chat invoice/task и WorkOrder create. Заголовок X-Offline-Id сам по себе доказательством защиты не является.
 
-```text
-authoritative mutation
-+ audit/activity
-+ DomainOutbox enqueue
-= one committed operation
-```
+Outbox: deterministic intent→worker claim→lease/fencing→provider/local effect→retry/backoff→done либо terminal/DLQ→audited recovery. WS/push — ускорение, authoritative read reconciliation обязательно. Внешний timeout не превращается в безусловный успех или слепой повтор. S3 metadata/PUT/HEAD/orphan требуют отдельного recoverable protocol (#238).
 
-Concurrency-sensitive деньги, acceptance, permissions, scope и provider state требуют DB constraints + locking/fencing/version rule там, где это необходимо.
-
-## 5.2. Durable side effects
-
-```text
-business transaction
-→ DomainOutbox
-→ worker claim
-→ provider call
-→ retry/backoff
-→ success | terminal/DLQ
-→ operator recovery/replay with audit
-```
-
-Обязательные свойства: deterministic enqueue identity, duplicate prevention, lease ownership, stale lease rescue, fencing/generation где реализовано, bounded retries, terminal state, manual recovery, metrics/health.
-
-## 5.3. Provider reconciliation
-
-`w15providerops01` создаёт durable reconciliation ledger с provider/operation/resource identity, attempts, claim generation, lock, next attempt, terminal/completed/unavailable state и error fingerprint.
-
-Production observability развивается отдельно в PR #283.
-
----
+Конкурентное решение проверяет свежую заблокированную/версионную строку, а не уже загруженную identity map. Authorization и business constraints проверяются в границе записи. Старые compatibility writers должны делегировать канону либо безопасно отказывать; наличие нового router не удаляет автоматически внутренний старый вызов.
 
 # 6. API composition
 
-Все API ниже находятся под `/api/v1`.
+Канонический `/api/v1` объединяет auth/projects/rooms/estimate/budget, stages/work-orders/schedules, materials/purchases/selections, payments/receipts/bank, documents/e-sign/warranty, chat/notifications/automation, technical-supervision, marketplace и operator/admin.
 
-## 6.1. Content/design/procurement
+Точная inventory эффективных методов определяется итоговой composition, не просто количеством decorators: существующее `_remove_replaced_routes` убирает shadow legacy handlers. Новые постоянные обходные route-surgery паттерны не вводятся. Любой critical endpoint имеет схему входа/выхода, actor/resource ACL, missing/null semantics, conflict/provider-pending и повторяемый результат.
 
-- design packages;
-- marketplace;
-- material price sync;
-- materials/material picks;
-- selections;
-- approvals;
-- waste orders;
-- floor plans;
-- work types.
+#313 канонизировал HTTP lead assignment и conversion. API участника: owner-only list/add/reactivate/replace-scope/remove. Его наличие не означает, что независимый подрядчик уже проходит весь ремонт.
 
-## 6.2. Project execution
-
-- work orders;
-- work acceptances;
-- issue transitions;
-- budget planner;
-- activity;
-- rework SLA;
-- project work schedule / technical supervision schedule;
-- stage mutations/review/extensions;
-- project checklists/templates/reactions;
-- technical supervision/actions.
-
-## 6.3. Documents
-
-- document lifecycle: sign/archive/restore/delete/legal hold;
-- project documents;
-- e-sign;
-- OCR;
-- OCR/automation worker boundaries;
-- media.
-
-## 6.4. Identity/platform
-
-- account lifecycle;
-- OTP auth;
-- auth/session;
-- push;
-- subscription checkout/webhook/integrity/refunds;
-- teams;
-- analytics;
-- audit;
-- admin;
-- articles/admin articles;
-- FNS;
-- KPI history;
-- notifications.
-
-## 6.5. Project and collaboration
-
-- canonical project creation/from-template;
-- projects reader/legacy-compatible routes;
-- rooms/room requests;
-- calendar integrity/mutations/calendar;
-- chat inbox;
-- chats;
-- technical supervision chat.
-
-Chat message storage enum parity принадлежит #286/schema truth. Chat transaction/idempotency/concurrency hardening остаётся отдельным PR #282.
-
-## 6.6. Finance
-
-- payment disputes;
-- payment history;
-- payment checkout integrity;
-- private manual payment evidence upload/submit/list/read/admin review;
-- payments;
-- estimate;
-- change orders;
-- bank statement import/confirm;
-- export;
-- receipts;
-- purchases;
-- expense mutations/OS finance surfaces.
-
----
+GET не должен изменять business truth. Нельзя выполнять скрытое назначение подрядчика как следствие обычного выбора проекта; совместимость текущего loadProject требует отдельного устранения в #315.
 
 # 7. Mobile information architecture and navigation
 
-## 7.1. Role architecture
+Dock: Главная, Объект, Ремонт, Бюджет/Деньги, обязательные Сообщения. Сроки — optional/secondary. Меню строится registry с role/phase/readOnly и ограничением More, не ручными дублями. Registry ga/beta — metadata навигации, не сертификат полной приёмки.
 
-Customer и contractor route groups — тонкие role-aware wrappers над общими `Os*Screen`, а не два независимых продукта. Новая функциональность не должна создавать role-forked duplicate screen, если различия могут быть выражены permissions/capabilities внутри shared screen.
+| ID | Канонический путь / назначение |
+|---|---|
+| home | /index, главная |
+| object | /object, объект |
+| repair | /repair, ремонт |
+| budget | /budget, деньги |
+| calendar | /calendar, сроки |
+| chat | /chat, сообщения |
+| manager-dashboard | /manager-dashboard, сводка, phase-aware |
+| finance-center | redirect budget/payments + payment sheet |
+| control | redirect repair/control |
+| quality-control | /quality-control, contractor deeplink |
+| work-acceptance | redirect repair/control |
+| work-schedule | redirect calendar |
+| documents | /documents |
+| approvals | /approvals |
+| notifications | redirect inbox |
+| inbox | /inbox |
+| scan-receipt | /scan-receipt |
+| stage | /stage/[id] |
+| materials-procurement | repair/materials/purchases |
+| selections | repair/selections |
+| warranty-claim | documents, затем роль/claim |
+| design | redirect object/plan/sub=design |
+| conflicts | /conflicts, offline conflict |
+| portfolio | /portfolio |
+| scratchpad | /scratchpad |
+| budget-planner | /budget-planner |
+| checklist-templates | /checklist-templates |
+| guide | /guide |
+| activity | /activity |
+| portal | /portal?token=, вход по ссылке |
+| reports | /reports |
+| project-analytics | redirect budget/deviations |
 
-Пример:
-
-```text
-(customer)/(tabs)/index.tsx  → OsHomeScreen role="customer"
-(customer)/(tabs)/object.tsx → OsObjectHubScreen role="customer"
-(customer)/(tabs)/repair.tsx → OsRepairHubScreen role="customer"
-(customer)/(tabs)/budget.tsx → OsBudgetHubScreen role="customer"
-```
-
-Contractor использует тот же shared screen family с `role="contractor"`.
-
-## 7.2. Canonical route registry
-
-| Route ID | Path | Audience | Visibility | Status | Канонический смысл |
-|---|---|---|---|---|---|
-| home | `/index` | both | dock | GA | Главная |
-| object | `/object` | both | dock | GA | Объект |
-| repair | `/repair` | both | dock | GA | Ремонт |
-| budget | `/budget` | both | dock | GA | Бюджет/Деньги |
-| calendar | `/calendar` | both | deeplink/optional dock | GA | Сроки |
-| chat | `/chat` | both | dock | GA | Сообщения |
-| manager-dashboard | `/manager-dashboard` | both | more | beta | Управленческая сводка |
-| finance-center | `/finance-center` | both | hidden | beta | redirect → Budget/payments + payment sheet |
-| control | `/control` | both | hidden | beta | redirect → Repair/control |
-| quality-control | `/quality-control` | contractor | deeplink | beta | contractor QC entry |
-| work-acceptance | `/work-acceptance` | customer | deeplink | GA | redirect → Repair/control |
-| work-schedule | `/work-schedule` | both | hidden | beta | redirect → Calendar |
-| documents | `/documents` | both | more | GA | Document Center |
-| approvals | `/approvals` | both | more | GA | Согласования |
-| notifications | `/notifications` | both | hidden | beta | redirect → Inbox |
-| inbox | `/inbox` | both | more | GA | единый attention channel |
-| scan-receipt | `/scan-receipt` | both | deeplink | GA | скан чека |
-| stage | `/stage/[id]` | both | deeplink | GA | этап работ |
-| materials-procurement | `/repair?tab=materials&subtab=purchases` | both | deeplink | GA | procurement hub |
-| selections | `/repair?tab=selections` | both | deeplink | GA | подбор чистовых материалов |
-| warranty-claim | `/documents` | both | deeplink | beta | гарантия через Document Center |
-| design | `/design` | both | hidden | GA | legacy redirect → Object/plan/design |
-| conflicts | `/conflicts` | contractor | deeplink | GA | offline sync conflicts |
-| portfolio | `/portfolio` | contractor | deeplink | beta | портфель объектов |
-| scratchpad | `/scratchpad` | both | deeplink | beta | черновик |
-| budget-planner | `/budget-planner` | both | deeplink | beta | планировщик бюджета |
-| checklist-templates | `/checklist-templates` | contractor | deeplink | beta | шаблоны чек-листов |
-| guide | `/guide` | both | deeplink | GA | справка |
-| activity | `/activity` | both | more | GA | история проекта |
-| portal | `/portal?token=` | customer guest | deeplink | GA | magic-link portal |
-| reports | `/reports` | both | more | beta | daily/weekly/final reports |
-| project-analytics | `/project-analytics` | both | hidden | beta | redirect → Budget/deviations |
-
-`MAX_MORE_MENU_ITEMS = 5`. Redirect-only entries не должны раздувать меню «Ещё».
-
----
+Это registry inventory, не все физические screens/sheets/динамические состояния. Дополнительный полный экранный inventory и требования приёмки остаются обязательными. Deeplink повторно проверяет session/role/project/entity access, не доверяет сохранённому activeProject.
 
 # 8. Hub screens — состав, переходы, badges и progressive disclosure
 
-## 8.1. Object hub
+Object: `rooms`, `estimate`, `plan`, `profile`. Repair: `works`, `materials`, `selections`, `control`. Budget: `summary`, `expenses`, `payments`, `deviations`. Materials: picks→потребности, purchases→закупки, receipts→чеки. Основные role groups используют общие Os* компоненты и server capabilities, не две независимо расходящиеся системы.
 
-Tabs:
+Каждый hub показывает loading/empty/error/stale/success отдельно. Отсутствие ответа не означает ноль, прочитанный cache не означает свежие данные, raw error не пользовательское объяснение. Badge обязан иметь определение/источник/as-of и совпадать с детальной очередью.
 
-1. `rooms` — **Комнаты**, primary/default;
-2. `estimate` — **Смета**, primary;
-3. `plan` — **План**, secondary;
-4. `profile` — **Данные**, secondary.
-
-Subscreens: `OsRoomsScreen`, `OsEstimateScreen`, `OsPlanTabScreen`, `OsProjectProfileScreen`.
-
-`onNextTab/goTab` связывает последовательный flow между subsections без нового top-level route.
-
-## 8.2. Repair hub
-
-Tabs:
-
-1. `works` — **Этапы**, primary/default;
-2. `control` — **Приёмка**, primary; badge = pending acceptance count;
-3. `materials` — **Материалы**, secondary;
-4. `selections` — **Подбор**, secondary при badge=0; badge = pending selections.
-
-Subscreens: `OsWorksScreen`, `OsControlScreen`, `OsMaterialsScreen`, `OsSelectionsScreen`.
-
-Deep links:
-
-- legacy `tab=calendar` → Calendar;
-- `subtab=picks|purchases|receipts` → Materials;
-- `tab=selections` → Selections.
-
-Badge load failure fail-to-zero + `reportError`, а не ложный positive state.
-
-## 8.3. Budget hub
-
-Tabs:
-
-1. `summary` — **План–факт**, primary/default;
-2. `expenses` — **Расходы**, secondary;
-3. `payments` — **Оплаты**, primary;
-4. `deviations` — **Отклонения**, secondary.
-
-Legacy normalization:
-
-- `rooms` → `expenses` + view=`rooms`;
-- `stages` → `expenses` + view=`stages`;
-- `analytics` → `deviations`;
-- unknown → `summary`.
-
-Expense view type: `list | rooms | stages`.
-
-## 8.4. Home hub
-
-Shared `OsHomeScreen(role)` — orchestration/attention surface, а не копия secondary centers. Полный KPI/action inventory остаётся P1 в `SCREEN-CONTRACT-CATALOG.md`.
-
-## 8.5. Chat
-
-Dock area для обеих ролей.
-
-Persisted message types:
-
-```text
-text | photo | file | confirm | system | task | invoice | payment
-```
-
-PG parity обеспечивает w17 + generic verifier. Message atomicity/idempotency/ACL/delivery consistency — #282.
-
----
+Gates для UI: недоступность действия объяснима; один основной следующий шаг; после commit допускается частично успешное состояние с восстановлением. #305 включает подтверждённый ложный отказ в материалах. #315/#317 ограничивают доверие к общему context и freshness; эти gaps нельзя скрыть дизайном.
 
 # 9. UI design system — точные токены
 
-## 9.1. Цвета
+Источники: Theme/typography/screenTypography/uiTokens/screenLayout и `.cursor/rules/renova-design-system.mdc`.
 
-| Token | Value |
+| Token | Значение |
 |---|---|
 | primary | `#334155` |
-| primaryPressed | `#1E293B` |
-| primaryMuted | `#64748B` |
 | accent | `#2563EB` |
-| accentMuted | `#DBEAFE` |
-| background | `#F8FAFC` |
-| surface | `#FFFFFF` |
-| surfaceMuted | `#F1F5F9` |
-| text | `#0F172A` |
-| textMuted | `#64748B` |
-| textSubtle | `#94A3B8` |
-| border | `#E2E8F0` |
-| success | `#15803D` |
-| warning | `#B45309` |
-| danger | `#B91C1C` |
-| info | `#1D4ED8` |
-| tabActive | `#1E293B` |
-| tabInactive | `#94A3B8` |
 
-Operational screens используют shared tokens/UI primitives; локальные hex требуют явного design-system exception.
-
-## 9.2. Spacing
-
-```text
-xxs 2
-xs  4
-sm  8
-md 12
-lg 16
-xl 20
-xxl 24
-xxxl 32
-```
-
-Screen horizontal/base padding: `16`. Bottom content padding: `32`.
-
-## 9.3. Radius
-
-```text
-xs 6
-sm 8
-md 10
-lg 12
-xl 16
-pill 999
-```
-
-Base card: radius `12`, padding `12`, border `1`, marginBottom `8`.
-
-## 9.4. Typography
+Minimum touch target: **44 px** (документальный контракт; проверка реальной touch area отдельно).
 
 ```text
 display 32
 hero    24
 h1      22
-h2      18
-h3      16
 body    14
-bodySmall 13
-caption 12
-tiny    11
-tab     10
 ```
 
-Weights: `400 / 500 / 600 / 700 / 800`.
+Общие Card, PrimaryButton, StatusPill, SectionHeader вместо местных параллельных компонентов. Семантика primary/outline/ghost/danger стабильна. Spacing и radius берутся из токенов, операционные иконки — из единого семейства, не случайных emoji. Для action sheet: busy/disabled/keyboard/cancel/error, длинные русские подписи, scale текста и safe area. Скрытая beta-функция не считается выполненным release-требованием.
 
-Semantics:
-
-- screen hero = h1 22 / bold;
-- sheet title = h2 18 / bold;
-- sheet value = hero 24 / bold;
-- section = bodySmall 13 / semibold;
-- list title = 15 / semibold;
-- list meta = caption 12 / lineHeight 16;
-- metric = 20 / bold;
-- body lineHeight 20;
-- bodySmall lineHeight 18;
-- tiny lineHeight 14.
-
-## 9.5. Touch/input
-
-Minimum touch target: **44 px**.
-
-Input:
-
-- minHeight `44`;
-- radius `10`;
-- border `1`;
-- horizontal padding `12`;
-- font size `14`;
-- surface background.
-
-## 9.6. Filter chips
-
-- flex-wrap;
-- gap `6`;
-- horizontal padding `10`;
-- vertical padding `6`;
-- radius `14`;
-- border `1`;
-- inactive = surface + border;
-- active = semantic active surface + primary border;
-- label = caption 12 / semibold.
-
-## 9.7. Hub tabs
-
-`OsHubTabs` — underline tabs, не pill-card tabs:
-
-- bottom hairline border;
-- row horizontal padding `8`, top `4`, gap `4`;
-- tab horizontal padding `12`, vertical `10`;
-- active underline `2` primary;
-- label `14/500`, active `14/700`;
-- badge minWidth/height `16`, radius `8`, horizontal padding `4`;
-- badge text `9/800`;
-- >9 → `9+`;
-- secondary tabs скрываются за `Все`, пока не раскрыты или current value не secondary.
-
-## 9.8. CTA/component rules
-
-- максимум 1 primary CTA на экран;
-- максимум 4 hub tabs без progressive disclosure;
-- status только semantic `StatusPill`;
-- emoji не используются как operational icons; canonical icons — `Ionicons`;
-- runtime/dev diagnostics не показываются в user UI;
-- primary/outline/danger semantics не смешиваются.
-
-Known consistency debt: часть Technical Supervision control actions использует local `Pressable` styling вместо shared `PrimaryButton`. Это P1 UI-consistency work, а не причина менять runtime/schema PR.
-
----
+Pixel-perfect/контраст/physical-device состояние всего приложения в аудите не подтверждено. Требуется матрица screenshot/device сценариев, включая отказ, offline и частичный успех.
 
 # 10. Основные business flows и связи
 
-## 10.1. Создание проекта
+## 10.1. Проект
+Новый customer→реальные параметры/комнаты→проект/смета/этапы→открытие объекта. Atomic creation/ClientWriteRequest существуют; один успешный POST не доказывает корректную дальнейшую навигацию. Marketplace: lead→quote acceptance→atomic conversion→один project. #313/#314 исправлены; source transitions/cold-start recovery ещё проверяются.
 
-```text
-authenticated actor
-→ canonical project creation / from-template
-→ Project
-→ object setup (profile/rooms/plan/estimate)
-→ execution setup
-→ repair stages/work schedule
-```
+## 10.2. Участники и исполнение
+Заказчик задаёт principals/scopes; назначение work/stage не разрешается постороннему. Stage start явный, material readiness не создаёт start fact. Execution→review→customer accept либо reject→rework→повторная приёмка. Payee, recipient set, contracts и надзор следуют соответствующим полномочиям. #300 остаётся незавершённым сквозным контуром.
 
-## 10.2. Execution/acceptance
+## 10.3. Снабжение
+Сметная потребность→источник снабжения/кто закупает→одобренная цена/количество→Purchase→оплата/поставка→quantity availability→готовность этапа. Число одобренных строк не равно обеспеченному количеству. Историческая неизвестная цена quarantined, supplier live price не заменяет вручную подтверждённую коммерческую договорённость без правил обновления.
 
-```text
-Stage planned
-→ start / dates / rooms / work type / dependencies
-→ execution
-→ submit/review
-→ acceptance decision
-→ done | rework | reject по state rules
-```
+Purchase partial — частичная оплата в текущем lifecycle; returned — возврат после delivered. Наличие этих статусов не доказывает весь частичный денежно-количественный учёт. Обязательны сценарии split delivery, damaged/returned qty, independent refund и reconciliation; точные пробелы устанавливаются тестом и source trace.
 
-Control UI входит через `Ремонт → Приёмка`.
+## 10.4. Финансы
+Estimate — план; ChangeOrder — согласованное изменение; Purchase — закупка; Expense — признанный расход; Payment — движение/состояние оплаты; Receipt/evidence — доказательство; Refund — обратная операция. Одно событие не повышает spend дважды через чек+платёж+закупку.
 
-## 10.3. WorkOrder → Chat ownership
+#297: upload intent→versioned private evidence→submit→approve/reject/resubmit→confirmed Payment→единственный Expense. Это ограниченный CI-проверенный путь. Не распространять его идемпотентность на chat invoice (#316) или недоказанную внешнюю доставку (#238).
 
-`create_work_order()` создаёт thread `work:<work_order_id>` и сохраняет FK `work_orders.chat_thread_id`.
+## 10.5. Коммуникация
+Обычное сообщение имеет request-id, atomic message/visibility/outbox и reconciliation. Чатовые бизнес-действия требуют собственной атомарности; task/invoice пока #316. Read определяется серверным cursor после реальной видимости, equal-timestamp precision #271. Attachment/native transcript экспорт — отдельные #238/#320.
 
-Следствие:
+## 10.6. Документы
+Загрузка→проверяемый файл→версия→согласование/подпись→скачивание/история/retention. Metadata classification не OCR содержимого. Госключ недоступен; live Контур не доказан. Pending подписания не signed, локальная подпись в приложении не автоматически доказательство юридической эквивалентности любой внешней подписи.
 
-- это domain-owned resource;
-- demo seed не имеет права удалять его как «неизвестный чат»;
-- generic project-chat purge запрещён;
-- удаление/перенос такого thread требует явной domain operation.
+## 10.7. Завершение
+Closeout проверяется по работам/замечаниям/документам/деньгам; пользователь получает итоговый комплект. Warranty create #295 квалифицирован, но полный closeout→claim→fix→customer closure нуждается в сквозной приёмке. Archive/trash/restore/purge — отдельные состояния, #319 для непустого графа и retention.
 
-## 10.4. Materials/procurement
-
-```text
-MaterialPick need
-→ approval/readiness
-→ Purchase
-→ PurchaseItem
-→ ordered/paid/partial/delivered/returned/cancelled
-→ receipt/evidence
-→ expense/payment recognition по finance semantics
-```
-
-`MaterialPick`, `Purchase`, `Receipt`, `Expense`, `Payment` не взаимозаменяемы.
-
-## 10.5. Selections
-
-```text
-room × category × SKU × allowance
-→ draft
-→ proposed
-→ approved | rejected
-→ downstream procurement where applicable
-```
-
-UI: `Ремонт → Подбор`; pending badge может поднимать вкладку из secondary disclosure.
-
-## 10.6. Payments
-
-```text
-business obligation
-→ Payment record/state
-→ provider checkout OR manual bank transfer
-→ for manual transfer: private PaymentEvidence upload → submitted → admin review
-→ pending/processing/paid_unverified/confirmed/...
-→ provider/bank reconciliation
-→ financial recognition rules
-```
-
-`paid_unverified` и `PaymentEvidence.submitted` не являются подтверждённым расходом. Одобрение evidence использует канонический payment transition и только он может создать payment-linked `Expense`. Для stage payment сохраняется acceptance gate: evidence не имеет права обойти `customer_accepted_at`.
-
-State transition разрешения задаются explicit business rules, не ordinal order PostgreSQL enum.
-
-Provider timeout/local UI success не является окончательным подтверждением денег.
-
-## 10.7. Documents
-
-```text
-Document Center
-→ upload/store
-→ metadata/access control
-→ OCR where requested
-→ sign/e-sign where requested
-→ archive/restore/legal hold/delete lifecycle
-```
-
-Object storage и document ACL — security boundary.
-
-## 10.8. Chat
-
-```text
-Project/authorized thread
-→ participant ACL
-→ message mutation
-→ durable authoritative message
-→ delivery/notification side effects
-```
-
-## 10.9. Warranty
-
-Warranty — отдельный bounded contour PR #287. Current canonical IA entry: Document Center/deeplink `warranty-claim`.
-
----
+## 10.8. Ошибки и идентичность
+Весь путь сохраняет владельца намерения: аккаунт/сессия/проект/request-id. При commit+потере ответа нельзя создавать новую сущность; при commit+ошибке UI нельзя объявлять запись неуспешной. Нельзя отправлять очередь A с токеном B. Нормализованные transport errors обязаны быть совместимы с offline producers.
 
 # 11. Calculations and derived state
 
-Детальный реестр: `docs/technical-spec/CALCULATION-REGISTRY.md`.
+Детали — CALCULATION-REGISTRY. Подтверждённый spend формируется из confirmed Expense; UI tolerance не меняет ledger. Бюджет, cash, obligation, estimate и forecast различаются. Даты/валюта/округление/статусы/возвраты/пропуски обязательны в каждой формуле.
 
-## 11.1. Currency formatting
+Материалы используют quantityToBuy/material_available, не старые status-only счётчики. Периодные суммы должны быть консервативными; текущий /4 при пяти buckets — #318. Works/waste/reserve в portfolio не обладают отдельным фактом только потому, что вход подставлен в plan и spent. Нулевое отклонение при неизвестном факте запрещено как аналитический вывод.
 
-`formatRub(amount)` → `Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 })`.
+Неполный реестр вычислений остаётся реальным backlog. Настоящий progress/phase/attention нельзя доказать одним числом на Home; сверять producers, statuses и реальный user result.
 
-## 11.2. Budget/financial principles
+# 12. Security, privacy и boundaries
 
-- одна economic operation не признаётся дважды;
-- estimate/commitment/purchase/expense/payment/receipt/refund/change order разделены;
-- pending/cancel/refund/dispute обрабатываются явно;
-- partial/overpayment отражаются там, где применимо;
-- provider/bank evidence reconciles payment truth.
+Fail-closed auth/ACL, session revocation, horizontal/sibling IDOR, private uploads, operator RBAC, webhook validation, secrets redaction, locked dependencies и supply-chain checks остаются обязательными. #315 относится к actor/session integrity всей мобильной цепочки, а не только очистке экрана.
 
-Подтверждённые формулы/projection rules хранятся в calculation registry с source/test traceability.
+Data export/deletion должны соответствовать явно утверждённому scope/retention; экспорт профиля и списка проектов не называется полным архивом всех материалов ремонта. Наличие repository security scans не external security sign-off. #247/#256/#257/#237 открыты.
 
-## 11.3. KPI documentation contract
+# 13. Release и эксплуатационная готовность
 
-Каждая управленческая KPI должна иметь:
+Image identity: Git SHA→immutable sha-tag→OCI revision→registry digest→deployed digest. Mobile: Git SHA+app0.3.7+native build3+реальные EAS/build IDs. Source app.json не магазинная публикация.
 
-```text
-name
-→ business meaning
-→ units
-→ source entities
-→ formula/function
-→ status filters
-→ null/empty behavior
-→ rounding
-→ time boundary
-→ reconciliation
-→ test
-```
-
-UI label без чтения implementation не является доказательством формулы.
-
----
-
-# 12. Error, loading, empty and stale states
-
-Critical surfaces должны различать:
-
-- loading;
-- empty;
-- error;
-- retry where safe;
-- stale/offline where applicable;
-- success/confirmed;
-- provider pending/rejected/terminal.
-
-API/mobile error classes минимум:
-
-- validation;
-- authorization;
-- not found;
-- conflict;
-- dependency unavailable;
-- provider pending;
-- provider rejected;
-- retryable technical failure;
-- terminal business failure.
-
-Raw stack trace, secrets и provider diagnostics запрещены в user UI.
-
----
-
-# 13. Security and access-control boundaries
-
-Fail-closed boundaries:
-
-- OTP/session lifecycle;
-- project/object ACL;
-- customer/contractor/team/viewer/technical supervisor/admin/operator roles;
-- horizontal IDOR/cross-project access;
-- admin endpoints;
-- WebSocket subscriptions;
-- documents/media/S3;
-- finance/payments/refunds/webhooks;
-- provider callbacks;
-- account deletion/anonymization/purge.
-
-Manual bank-transfer evidence имеет более узкий read ACL, чем generic project read: exact project customer либо authorized admin reviewer. Team/viewer/guest/technical-supervision access сам по себе не раскрывает банковский файл.
-
-Secrets/tokens/payment credentials/sensitive document contents не логируются plaintext.
-
-Local runtime дополнительно запрещает remote Docker и staging/production credentials.
-
----
+Постоянный staging, live provider, managed PITR/restore, внешний alert/ACK, нагрузка и pilot не доказаны в этом аудите. Targets RPO≤15min/RTO≤60min и latency/error-rate SLO — цели, пока нет измерений. Не называть внешний сервис отсутствующим лишь потому, что evidence не предоставлен.
 
 # 14. Tests and verification matrix
 
-## 14.1. Local developer/agent gates
+| Проверка | Что доказывает | Чего не доказывает |
+|---|---|---|
+| Source/hash/route/header contracts | Соответствие заявленного snapshot/структуры | Корректность каждого business outcome |
+| Unit/service tests | Проверенные ветви и invariants | Все взаимодействия живых ролей/устройств |
+| PostgreSQL races/migrations | Проверенные locks/constraints/upgrade | Любые другие writers и всю production-нагрузку |
+| API E2E | Проверенную последовательность HTTP/БД | Наличие пригодного native UI |
+| Surface Playwright | Видимость/переход/ошибки конкретных поверхностей | Нажатие каждого CTA и полный ремонт |
+| Native/device acceptance | Пройденный build/платформу/сценарий | Все будущие build/провайдеры |
+| External drills | Указанный артефакт/среду/операцию | Вечную production-готовность |
 
-- `doctor` — prerequisites + local safety boundary;
-- `bootstrap` — exact locked dependencies;
-- `check` — PostgreSQL/Redis/MinIO/API health/readiness/Alembic/worker heartbeats;
-- `seed` — explicit development-only demo materialization;
-- `test-focused` — fast local contract gate;
-- `test-full` — focused-first + full backend pytest + mobile typecheck/contracts.
-
-## 14.2. Root test surfaces
-
-- `mobile:test`;
-- `e2e:playwright` / `e2e:web`;
-- `e2e:api`;
-- `e2e:portal-ui`;
-- `e2e:contract-gate-ui`;
-- `e2e:ci`;
-- `verify`;
-- `test:offline`;
-- `test:routes`;
-- `test:guards`;
-- `test:priority`;
-- `typecheck:mobile`;
-- staging/readiness workflows.
-
-## 14.3. Canonical local E2E proof
-
-Required sequence:
-
-1. exact Node/Python/Poetry;
-2. materialize `.env.local`;
-3. negative safety tests;
-4. locked bootstrap without lock mutation;
-5. source + Compose contract;
-6. full backend topology start without Expo;
-7. runtime truth check;
-8. explicit seed;
-9. explicit seed **повторно**;
-10. runtime truth re-check;
-11. focused local contracts;
-12. diagnostics on failure;
-13. cleanup.
-
-Double seed проверяет и idempotence, и реальную возможность записывать `task/payment` messages в PostgreSQL.
-
-## 14.4. PostgreSQL schema verification
-
-Required chain:
-
-```text
-single Alembic head
-→ reject empty/stale DB where required
-→ clean upgrade to current head
-→ reflected migration invariants
-→ complete ORM table/column/native-enum parity
-→ accept current head
-→ downgrade new migrations
-→ verify removal/reject stale DB
-→ replay current migrations
-→ reflected + generic parity
-→ accept current head
-```
-
-Generic parity verifier нельзя ослаблять ради green CI.
-
-## 14.5. Evidence history
-
-### `d88af75bbdb1d594f10145be37d53347c02e60a1`
-
-**HISTORICAL CI VERIFIED:** 26/27 workflows success. Единственный failure — Canonical local runtime; он выявил chat enum drift и destructive startup seed.
-
-### `df759e37f9afdf1f983c2c770acf5c66865bae9e`
-
-**HISTORICAL red-team evidence:**
-
-- clean upgrade through w17 — success;
-- reflected current migration verifier — success;
-- generic ORM/native-enum parity — failure с ровно тремя remaining mismatch: NotificationType, JobLead.status, PaymentStatus order.
-
-Это evidence стало основанием `w18nativeenumparity01`.
-
-### Current candidate после w19
-
-**PENDING REVERIFY.** Final verdict строится только по exact final SHA после синхронизации payment-evidence lifecycle, ТЗ/drift gates, PostgreSQL race proof, mobile contracts и полного CI.
-
----
+Full acceptance G01–G10 задана в аудите. В этом проходе она НЕ выполнена. Последние bounded qualification: #313 full CI34262996030 и PostgreSQL34262996112; #314 full CI34264654118. Новый audit PR требует своих применимых gates. JSX exemptions и dependency exceptions не скрываются и не расширяются ради green.
 
 # 15. Независимые критические PR-контуры
 
-- **#282** — chat atomicity/idempotency/concurrency;
-- **#283** — production observability;
-- **#284** — backup/restore/DR;
-- **#287** — warranty implementation;
-- **#286** — canonical local runtime + coding-agent onboarding + schema/documentation truth.
-
-Schema enum parity принадлежит #286. Transaction/delivery atomicity остаётся #282.
-
-#284 имеет controlled compatibility overlap с #286 только там, где restore workflow обязан проверять current schema head; функциональная DR ownership остаётся #284.
-
----
+| Контур | Текущая правда |
+|---|---|
+| #282 | Исторический chat lineage, интегрирован successor #292; не merge повторно |
+| #284 | Исторический DR lineage, successor #290; managed DR #234 открыт |
+| #287 | Исторический warranty lineage, successor #295; не текущая следующая работа |
+| #286 | Исторический local-runtime lineage, successor #288 |
+| #283 | Старый observability draft; обновить отдельно; внешний #235 не закрывается кодом |
+| #311/#312 | Merged price provenance/participant foundation |
+| #313 | Merged65ddb7e59e6bcb23473b1017686cd3adbd882187 после квалификации ae8a075 |
+| #314 | Merged95dd4a8e117289df11e1300891490768c22f585f после квалификации6e88a1d |
 
 # 16. Known gaps / improvement backlog
 
-Полный управляемый roadmap: `docs/technical-spec/CHANGELOG-ROADMAP.md`.
+Активные конкретные findings F01–F12 и источники — полный аудит. Первый продуктовый приоритет #316 и #315; затем #317, финансовая аналитика #318, lifecycle #319, native #320 и truthful interaction #305. #300 — полноценная многоподрядность, #238 — provider/storage recovery. Эксплуатационный поток #247/#233/#235/#234/#236/#256/#257/#237/#241 идёт отдельно/параллельно.
 
-## P0 — до признания #286 merge-ready
-
-1. **PENDING:** clean PostgreSQL upgrade/downgrade/replay через `w18nativeenumparity01`.
-2. **PENDING:** generic ORM/native-enum parity = zero mismatch.
-3. **PENDING:** canonical local `start → check → seed → seed → check → focused`.
-4. **PENDING:** общий CI/security exact final SHA.
-5. **PENDING:** technical-spec drift gates exact final SHA.
-6. **PENDING:** после schema-owner merge rebase #284 и повторный DR proof against current head.
-
-## External P0/P1 evidence
-
-Branch protection/ruleset, реальные provider credentials, production backup/PITR, alert delivery, store delivery и production RPO/RTO не считаются доказанными по repo code.
-
-## P1 — product/documentation completeness
-
-1. Довести `SCREEN-CONTRACT-CATALOG.md` до всех canonical secondary/deeplink screens: Home, Chat, Calendar, Documents, Inbox, Approvals, Reports, Manager Dashboard, Stage detail, remaining Budget/Object/Repair subscreens.
-2. Построить API endpoint catalog из clean FastAPI/OpenAPI: method/path/schema/auth/idempotency/error classes.
-3. Довести `CALCULATION-REGISTRY.md` до всех управленческих KPI.
-4. Добавить visual regression canonical hubs после стабилизации UI.
-5. UI consistency: local `StyleSheet/Pressable/chip/status` deviations → shared components/tokens либо explicit exception.
-6. Унифицировать loading/empty/error/retry/stale/offline patterns critical screens.
-
-## P2 — architecture/maintainability
-
-- machine-readable coverage matrix `route/API/entity/calculation/screen → source → test → doc → evidence`;
-- schema-change checklist для любого ORM Enum/Column/constraint;
-- automated UI semantic component/token drift;
-- продолжать удалять duplicate legacy routes после canonical replacements;
-- не создавать role-forked duplicate screens;
-- не объявлять staging/provider/backup/alert/store behavior VERIFIED без retained external evidence.
-
----
+Зафиксировать additional acceptance без ложного утверждения «этого нет»: детальный план/дизайн, partial payments/delivery/refunds, bank matching, content OCR/подпись, отчёт/closeout, все notification counters, справка, native permissions/accessibility. Нет полного теста — непроверенный результат, не автоматически отсутствующая реализация.
 
 # 17. Traceability matrix
 
-| Product concern | Source of truth | Verification |
+| Требование | Источник/контракт | Тест/evidence/остаток |
 |---|---|---|
-| engineering policy | `AGENTS.md` | source contract/PR review |
-| local runtime | `scripts/dev-runtime.sh`, Compose, env local | local-runtime CI |
-| startup/seed lifecycle | `main.py`, `app.dev_seed`, `seed_demo.py` | source contract + double-seed local CI |
-| DB schema/head | Alembic through `w19paymentevidence01` | clean PostgreSQL lifecycle |
-| ORM tables/columns/enums | `entities.py` + split model modules | generic ORM/native-enum parity |
-| migration-owned enum contract | w16/w17/w18 + current verifier | reflected current-schema verifier |
-| manual payment evidence | `payment_evidence.py`, service/API, w19 | focused lifecycle + PostgreSQL race + mobile contracts |
-| API composition | `api/v1/router.py` | API tests/OpenAPI/E2E |
-| mobile IA | `routeRegistry.ts` | route/mobile contracts |
-| role shell | shared Os screens + wrappers | mobile contracts/E2E |
-| design tokens | Theme/typography/uiTokens/screenLayout | static/UI contracts |
-| hub tabs | `OsHubTabs` + hub screens | mobile contracts/E2E |
-| finance | entities/services/domain functions | finance tests/PostgreSQL concurrency where required |
-| payment state machine | `PaymentStatus` + payment service | explicit transition tests + PG enum parity |
-| chat persisted types | `ChatMessageType` + w17 | generic parity + double seed |
-| chat transaction/delivery | chat service/API/mobile | #282 tests/E2E/load |
-| notifications | `NotificationType` + w18 | generic parity + notification tests |
-| job leads | `JobLeadStatus` + w18 | generic parity + lead tests |
-| observability | logging/probes/runbook | #283 + external evidence |
-| DR | restore scripts/runbook/workflow | #284 drill evidence |
-| warranty | warranty service/API/mobile | #287 workflow/tests |
-| change history/roadmap | `CHANGELOG-ROADMAP.md` | spec review + drift contract |
-| release/readiness | readiness docs/evidence | exact artifact workflows + external proof |
-
----
+| Сессия/очередь | client.ts, RenovaContext, offlineQueue | #315/#317; G04/G05 |
+| Create/convert | project_create_service, marketplace_conversion_service | #313; G01/G02 |
+| Participant/scope | PROJECT-PARTICIPANT-SCOPE-CONTRACT | w22projectparticipants01, #312/#313; #300/#319 |
+| Снабжение/цена | MATERIAL-SUPPLY-CONTRACT, MATERIAL-PRICE-TRUTH-CONTRACT | #310/#311; G03/G06 |
+| Evidence/Expense | MANUAL-PAYMENT-EVIDENCE-CONTRACT | #297; #238, G06/G07 |
+| Chat create | CHAT-ATOMICITY-CONTRACT | #292; бизнес-действия #316 |
+| Warranty | WARRANTY-ATOMICITY-CONTRACT | #295; G08 |
+| Wizard recovery | MARKETPLACE-WIZARD-RECOVERY-CONTRACT | #314; #315 и targeted E2E |
+| Формулы | CALCULATION-REGISTRY | #318 и непокрытые producers |
+| Экран/действие | SCREEN-CONTRACT-CATALOG, routeRegistry | #305/#320; G10 |
+| Current schema/status | master+readiness+Alembic graph | Strict explicit-header check; не substitutable annex mention |
+| Production | readiness evidence | Внешние gates остаются open |
 
 # 18. Documentation Definition of Done
 
-Изменение Renova документировано только если:
+Изменение считается сопровождаемым, когда requirement/result, реализация, роли, failure/retry/concurrency, schema, side effects, UI, тест и статус одного exact candidate связаны. Source SHA без семантической сверки недостаточен. Исторический полный текст сохранён; повторно использовать из него старый next-step/schema/head нельзя.
 
-- behavior имеет канонический owner/source;
-- route/API/entity/state/enum/financial meaning не дублируется противоречиво;
-- schema change имеет migration + current verifier/generic parity + ТЗ;
-- UI measurement взят из shared token/component либо exception объяснён;
-- critical flow имеет loading/error/success/fail-closed semantics;
-- evidence status назван честно;
-- known gap не замаскирован optimistic wording;
-- tracked source snapshot обновлён;
-- `CHANGELOG-ROADMAP.md` содержит причину, решение, verification, residual risk и следующий шаг;
-- final status опирается на exact final SHA.
-
----
-
-# 19. Change log master dossier
-
-## 2026-08-28 — v1
-
-- создан единый living technical/product dossier;
-- зафиксированы runtime, domain graph, API groups, IA, role-sharing principle;
-- зафиксированы Object/Repair/Budget hub contracts и exact UI tokens;
-- добавлен machine-enforced documentation drift gate.
-
-## 2026-08-28 — v2
-
-- canonical local runtime выявил legacy status storage drift;
-- добавлен `w16legacystatus01`;
-- следующий full startup выявил `chatmessagetype` drift и destructive demo seed;
-- добавлен `w17chatmessageenum01`;
-- startup отделён от explicit seed;
-- demo seed стал preserve-by-default;
-- generic ORM/native-enum verifier начал проверять type name + ordered labels;
-- local workflow получил double-seed proof;
-- создан governed `CHANGELOG-ROADMAP.md`.
-
-## 2026-08-28 — v3
-
-- generic verifier на clean PostgreSQL после w17 выявил полный остаточный список из трёх mismatch;
-- migration history Notification/JobLead/Payment проверена по реальным Alembic sources;
-- `PaymentStatus` state machine подтверждена как explicit transitions без ordinal comparison;
-- добавлен `w18nativeenumparity01` для NotificationType, JobLeadStatus и PaymentStatus order;
-- current verifier расширен до семи migration-owned enum invariants;
-- master schema head повышен до `w18nativeenumparity01`;
-- статус оставлен **PENDING REVERIFY** до exact-head lifecycle + local runtime + spec gates.
-
-## 2026-09-05 — v4
-
-- master schema head повышен до `w19paymentevidence01`;
-- зафиксирована отдельная `PaymentEvidence` truth для ручных банковских переводов без второго финансового источника истины;
-- записаны versioning, private upload, narrow read ACL, SHA-256/immutability, stage-acceptance и canonical Payment→Expense boundaries;
-- UX payment evidence закреплён за shared `SheetSurface`, `PrimaryButton`, `InfoBanner` и `RenovaTheme` в параллельном #305 governance;
-- статус оставлен **PENDING REVERIFY** до зелёного exact-head #297; external provider/storage reconciliation остаётся #238.
+Запрещено закрывать issue по ограниченному foundation, выдавать audit report за runtime test, сохранять неизвестные показатели как 0, обозначать promised-but-disabled capability как DONE либо выводить срок запуска без согласованного ресурса и внешних условий. Аудит синхронизирует план; F01–F10 всё ещё требуют продуктовых исправлений.

@@ -1,6 +1,13 @@
 {
   "schema_version": 1,
-  "observed_on": "2026-09-06",
+  "observed_on": "2026-09-08",
+  "audit": {
+    "source_sha": "95dd4a8e117289df11e1300891490768c22f585f",
+    "method": "source-and-retained-CI-review; not a fresh full runtime/device/external test",
+    "report": "docs/technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md",
+    "full_product_acceptance": "INCOMPLETE",
+    "findings_are_production_incidents": false
+  },
   "expected_repo_facts": {"alembic_head":"w22projectparticipants01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
   "backend_artifact": {"status":"UNVERIFIED_CURRENT_DIGEST","image":"ghcr.io/petrfedin/renova-api","immutable_tag_contract":"sha-${GIT_SHA}","digest":null,"git_sha":null,"evidence":null,"repo_contract":".github/workflows/backend-image.yml","latest_repo_validation":{"status":"CI_VERIFIED","note":"Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."}},
   "environments": {
@@ -16,6 +23,10 @@
     "twilio_sms": {"repo_status":"DURABLE_OUTBOX_AND_AMBIGUOUS_WRITE_FENCING_CI_VERIFIED","external_status":"LIVE_PROVIDER_ROUND_TRIP_UNVERIFIED","release_scope":true,"evidence":null},
     "push": {"repo_status":"DELIVERY_AND_RECEIPT_RECONCILIATION_IMPLEMENTED","external_status":"LIVE_PROVIDER_LIVENESS_UNVERIFIED","release_scope":true,"evidence":null}
   },
+  "planned_capability_boundaries": {
+    "goskey": {"status":"NOT_IMPLEMENTED_UNAVAILABLE","source":"backend/app/services/esign/goskey.py","release_scope_decision":"explicit product decision required; disabled is not completed"},
+    "document_content_ocr": {"status":"NOT_IMPLEMENTED_IN_CURRENT_METADATA_RUNTIME","source":"backend/app/services/document_ocr_runtime.py","note":"Metadata classification must not be represented as content OCR."}
+  },
   "slo": {"status":"REPOSITORY_GATE_IMPLEMENTED_EXTERNAL_CAPACITY_NOT_PROVEN","candidate_thresholds":{"http_failure_rate_lt":0.01,"http_p95_ms_lt":1000,"http_p99_ms_lt":2500,"websocket_delivery_failure_rate_lt":0.01,"websocket_delivery_p95_ms_lt":1000,"websocket_delivery_p99_ms_lt":2500},"latest_external_load_test":{"status":"NOT_EXECUTED_OR_NOT_RETAINED","git_sha":null,"artifact_digest":null,"evidence":null,"issue":236}},
   "restore": {
     "latest_repo_restore_drill": {"status":"CI_VERIFIED","pr":290,"head_sha":"a85528303f6e6704ac8a0feaa6845e7ddfc9c93a","merge_sha":"748ed5f22db0bfe18001f276ec521d0198d4dc57","workflow_run_id":33344103969,"git_sha":"a85528303f6e6704ac8a0feaa6845e7ddfc9c93a","scope":"Current Alembic head -> deterministic data -> pg_dump -> isolated restore -> schema/fingerprint -> real ASGI lifespan with create_all/demo disabled -> /health + /ready -> post-start fingerprint","production_backup":false},
@@ -23,28 +34,50 @@
   },
   "observability": {"status":"REPOSITORY_CONTROLS_PRESENT_EXTERNAL_ALERT_DELIVERY_UNVERIFIED","evidence":null,"alert_delivery_verified":false,"mobile_crash_reporting_verified":false,"issue":235},
   "release": {"mobile_source_version":"0.3.7","ios_build_number":"3","android_version_code":3,"latest_eas_release":{"status":"NOT_EXTERNALLY_VERIFIED","git_sha":null,"profile":null,"builds":[],"evidence":null},"repo_release_contract":".github/workflows/eas-build.yml"},
-  "security": {"repo_controls":{"status":"IMPLEMENTED","pr":258,"head_sha":"0ead84d5baa07f2428b7a6ad972a31719814da16","merge_sha":"0cc870fdea76aeca26aef1365daf88407f6e3f78","osv_exception_baseline":"EMPTY","codeql":"ENABLED","gitleaks_history_and_proposed_tree":"ENABLED","container_high_critical_fixed_vulnerability_gate":"ENABLED"},"accepted_risks":[],"external_validation":{"branch_protection":"OPEN_ISSUE_247","privileged_access_review":"OPEN_ISSUE_256","independent_pentest":"OPEN_ISSUE_257","provider_credential_rotation_drill":"NOT_EXTERNALLY_VERIFIED"}},
+  "security": {
+    "repo_controls":{"status":"IMPLEMENTED","pr":258,"head_sha":"0ead84d5baa07f2428b7a6ad972a31719814da16","merge_sha":"0cc870fdea76aeca26aef1365daf88407f6e3f78","osv_exception_baseline":"EMPTY","codeql":"ENABLED","gitleaks_history_and_proposed_tree":"ENABLED","container_high_critical_fixed_vulnerability_gate":"ENABLED"},
+    "accepted_risks":[],
+    "repository_advisory_policy":"docs/js-dependency-security.md; existing policy, no new risk approval by this audit",
+    "mobile_typecheck_policy":"scripts/typecheck-mobile.sh; named JSX diagnostics remain accepted, raw tsc is not clean",
+    "external_validation":{"branch_protection":"OPEN_ISSUE_247","privileged_access_review":"OPEN_ISSUE_256","independent_pentest":"OPEN_ISSUE_257","provider_credential_rotation_drill":"NOT_EXTERNALLY_VERIFIED"}
+  },
   "launch_acceptance": {"controlled_pilot":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"product_telemetry":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"legal_privacy":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241},"support_incident_ops":{"status":"NOT_EXTERNALLY_VERIFIED","evidence":null,"issue":241}},
   "product_integrity": {
-    "manual_payment_evidence": {"status":"CI_VERIFIED","issue":265,"pr":297,"head_sha":"7983b0dfecc3dd799ec8e498680bdfaa0141fc4b","merge_sha":"389f35d819dbf0b81d2e821da851fa9a647705d2","workflow_run_id":33975026085,"postgres_workflow_run_id":33975026155,"note":"Versioned private evidence, paid_unverified review truth, exact single Payment→Expense recognition, mobile truth and real PostgreSQL upload/review races were qualified on the exact PR head and merged. External S3/provider reconciliation remains #238."},
-    "material_price_truth": {"status":"CI_VERIFIED","issue":299,"pr":311,"head_sha":"3d9a087c27469e87ce04c800dc7336ae580d984d","alembic_head":"w21materialprice01","full_ci_run_id":34041624593,"postgres_workflow_run_id":34041621417,"schema_workflow_run_id":34041624526,"codeql_run_id":34041624579,"security_operations_run_id":34041624644,"technical_spec_run_id":34041624564,"production_readiness_run_id":34041624635,"local_runtime_run_id":34041624590,"note":"Exact implementation head qualified durable manual/estimate/approved-selection/live/legacy price provenance, fail-closed historical positive-price quarantine, real PostgreSQL w20→w21 backfill and CHECK behavior, single canonical price route, Purchase eligibility, mobile remediation, full backend/PostgreSQL Alembic, Playwright/mobile, CodeQL/security/spec/readiness and local runtime. Supplier-page freshness and external production behavior remain NOT EXTERNALLY VERIFIED."},
-    "warranty_claim_idempotency": {"status":"CI_VERIFIED","issue":266,"pr":295,"head_sha":"22dd1f2d379f3d2f26278b58b03a1ca4f022da3c","merge_sha":"9fed24c1b59d767daef4d6395fd01cb303c838e3","workflow_run_id":33795110887,"full_ci_run_id":33795110854,"note":"Stable request identity, generic ClientWriteRequest replay/conflict, atomic Issue+Document+DomainOutbox, exact-body mobile replay and real two-session PostgreSQL concurrent same-key collapse are merged. External S3/provider recovery remains #238."},
-    "chat_read_truth": {"status":"CI_VERIFIED","issue":269,"pr":270,"merge_sha":"9a7b0babc530c4ed187f54ea9c67763393656763","note":"Explicit authoritative read cursor and monotonic reconciliation are merged; equal-timestamp precision remains P2 #271."},
+    "manual_payment_evidence": {"status":"CI_VERIFIED","issue":265,"pr":297,"head_sha":"7983b0dfecc3dd799ec8e498680bdfaa0141fc4b","merge_sha":"389f35d819dbf0b81d2e821da851fa9a647705d2","workflow_run_id":33975026085,"postgres_workflow_run_id":33975026155,"note":"Versioned private evidence, paid_unverified review truth, exact single Payment->Expense recognition and dedicated upload/review races qualified. External S3/provider remains #238."},
+    "material_price_truth": {"status":"CI_VERIFIED","issue":299,"pr":311,"head_sha":"3d9a087c27469e87ce04c800dc7336ae580d984d","merge_sha":"85f8d279d393b42bae5d76fea333f9d13c8ae0b5","alembic_head":"w21materialprice01","full_ci_run_id":34041624593,"postgres_workflow_run_id":34041621417,"schema_workflow_run_id":34041624526,"codeql_run_id":34041624579,"security_operations_run_id":34041624644,"technical_spec_run_id":34041624564,"production_readiness_run_id":34041624635,"local_runtime_run_id":34041624590,"note":"Retained implementation-head qualification; price provenance/quarantine is merged. These run IDs are not asserted to be the final merge SHA's runs. External supplier freshness remains unverified."},
+    "warranty_claim_idempotency": {"status":"CI_VERIFIED","issue":266,"pr":295,"head_sha":"22dd1f2d379f3d2f26278b58b03a1ca4f022da3c","merge_sha":"9fed24c1b59d767daef4d6395fd01cb303c838e3","workflow_run_id":33795110887,"full_ci_run_id":33795110854,"note":"Atomic Issue+Document+DomainOutbox and stable replay qualified; full post-closeout and external storage remain separate."},
+    "chat_read_truth": {"status":"CI_VERIFIED","issue":269,"pr":270,"merge_sha":"9a7b0babc530c4ed187f54ea9c67763393656763","note":"Explicit authoritative read cursor; equal-timestamp precision remains #271."},
     "phone_chat_invitation_delivery": {"status":"CI_VERIFIED","issue":272,"pr":277,"merge_sha":"43df8ef555efb75ad4d6263297560529eecc660b","external_provider_status":"NOT_EXTERNALLY_VERIFIED"},
-    "incoming_chat_message_integrity": {"status":"CI_VERIFIED","issue":273,"pr":292,"head_sha":"ca0be7ba75949879b538ef654ac36869ce0a3f96","merge_sha":"9d3f96bad6138aef7f7db32407162fe07897572d","note":"Stable request identity, ClientWriteRequest replay/conflict, PostgreSQL concurrency collapse, atomic message+recipient visibility+DomainOutbox, server capabilities and authoritative mobile reconciliation are merged. S3 ambiguous-write/orphan recovery remains #238."},
-    "development_runtime": {"status":"CI_VERIFIED","pr":288,"head_sha":"46fb8aaf52c33449b3a168ee226c605a94c0d3d4","merge_sha":"7bd1dceb273a7e1f26ddf2333e9199d8d498ae54","note":"Canonical agent/local PostgreSQL+Redis+MinIO+API+worker topology, fail-fast migrations/readiness and bounded development seed are merged."}
+    "incoming_chat_message_integrity": {"status":"CI_VERIFIED","issue":273,"pr":292,"head_sha":"ca0be7ba75949879b538ef654ac36869ce0a3f96","merge_sha":"9d3f96bad6138aef7f7db32407162fe07897572d","note":"Ordinary message transaction/replay/capabilities qualified; this does not close task/invoice #316 or actual transport enqueue #317."},
+    "development_runtime": {"status":"CI_VERIFIED","pr":288,"head_sha":"46fb8aaf52c33449b3a168ee226c605a94c0d3d4","merge_sha":"7bd1dceb273a7e1f26ddf2333e9199d8d498ae54","note":"Canonical local topology and fail-fast checks; not external staging."},
+    "participant_management": {"status":"CI_VERIFIED","pr":313,"head_sha":"ae8a0750bb6cc788c9e93a1f85a7355f3b180380","merge_sha":"65ddb7e59e6bcb23473b1017686cd3adbd882187","full_ci_run_id":34262996030,"postgres_workflow_run_id":34262996112,"full_multi_contractor_support":false,"issue":300},
+    "marketplace_wizard_recovery": {"status":"CI_VERIFIED","pr":314,"head_sha":"6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817","merge_sha":"95dd4a8e117289df11e1300891490768c22f585f","full_ci_run_id":34264654118,"dedicated_device_e2e_verified":false,"note":"Screen recovery repaired; global session/queue boundary remains #315."},
+    "offline_business_actions": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":316},
+    "session_and_queue_actor_fencing": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":315},
+    "offline_error_and_cache_truth": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":317},
+    "period_and_portfolio_analytics": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":318},
+    "project_purge_graph": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":319},
+    "native_chat_export": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":320}
   },
   "open_launch_blockers": [
-    {"issue":233,"priority":"P0","reason":"persistent external production-like staging and exact-artifact promotion lifecycle are not externally proven"},
-    {"issue":234,"priority":"P0","reason":"managed production backup/PITR and a real external restore disaster-recovery drill are not proven"},
-    {"issue":235,"priority":"P0","reason":"production observability and retained end-to-end alert-delivery evidence are incomplete"},
-    {"issue":247,"priority":"P0","reason":"main branch protection and required production checks are not externally verified as enforced"},
-    {"issue":236,"priority":"P1","reason":"real external production-like staging capacity/provider-degradation evidence is not proven"},
+    {"issue":316,"priority":"P0","reason":"reachable offline retry/response-loss can duplicate financial/business operations without a complete atomic request ledger"},
+    {"issue":233,"priority":"P0","reason":"persistent external staging and exact-artifact promotion are not proven"},
+    {"issue":234,"priority":"P0","reason":"managed production backup/PITR and real restore DR are not proven"},
+    {"issue":235,"priority":"P0","reason":"retained end-to-end external alert delivery is incomplete"},
+    {"issue":247,"priority":"P0","reason":"main protection and required checks are not verified as enforced"},
+    {"issue":315,"priority":"P1","reason":"session/token/context/queue actor isolation across account changes is incomplete"},
+    {"issue":317,"priority":"P1","reason":"normalized transport errors and cache provenance break intended offline/freshness contracts"},
+    {"issue":318,"priority":"P1","reason":"budget period allocation and independent portfolio category facts are incomplete"},
+    {"issue":319,"priority":"P1","reason":"non-empty project purge and retention-aware related graph handling are incomplete"},
+    {"issue":320,"priority":"P1","reason":"reachable native chat document export has no complete native delivery outcome"},
+    {"issue":300,"priority":"P1","reason":"full declared independent-contractor product scope is incomplete"},
+    {"issue":305,"priority":"P1","reason":"correctness subset: truthful commit/refresh/recovery and role-specific interactions remain incomplete"},
+    {"issue":236,"priority":"P1","reason":"real authenticated external capacity/provider-degradation evidence is not proven"},
     {"issue":237,"priority":"P1","reason":"external security acceptance remains incomplete"},
-    {"issue":238,"priority":"P1","reason":"provider reconciliation gaps and S3 ambiguous-write/orphan recovery remain incomplete"},
-    {"issue":241,"priority":"P1","reason":"controlled real-user pilot, telemetry, legal/privacy acceptance and launch operations are not complete"},
-    {"issue":256,"priority":"P1","reason":"real GitHub/org privileged-access review is not executed"},
-    {"issue":257,"priority":"P1","reason":"independent pre-launch penetration and abuse test is not executed"}
+    {"issue":238,"priority":"P1","reason":"provider/S3 authoritative reconciliation and ambiguous-write/orphan recovery remain incomplete"},
+    {"issue":241,"priority":"P1","reason":"real pilot, telemetry, legal/privacy and launch operations are not complete"},
+    {"issue":256,"priority":"P1","reason":"real privileged-access review is not executed"},
+    {"issue":257,"priority":"P1","reason":"independent pre-launch penetration/abuse test is not executed"}
   ],
-  "launch_decision": {"status":"BLOCKED_FOR_BROAD_PRODUCTION","reason":"Broad production remains blocked by external staging/promotion, managed DR, alert delivery, governance, capacity, provider recovery, pilot/legal/operations and independent security evidence."}
+  "launch_decision": {"status":"BLOCKED_FOR_BROAD_PRODUCTION","reason":"Both source-confirmed product-integrity gaps and external operational evidence block broad launch. Bounded CI success is not complete product acceptance."}
 }
