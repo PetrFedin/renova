@@ -4,6 +4,8 @@ Renova is a production-oriented renovation-management platform for customers and
 
 ## 1. Repository and change workflow
 
+Active work plan: `docs/technical-spec/PRODUCT-COMPLETION-MANDATE.md`. Tasks are taken by ID from GitHub issues labeled `agent-task` + `ready`; the branch name is `agent/<ID>-<slug>`. Every PR must fill `.github/pull_request_template.md`; the `agent-pr-policy` check enforces it. Agents never merge: merge is performed by the owner after the second-agent review and green required checks. Completion scenarios: `docs/technical-spec/GOLDEN-PATHS.md`.
+
 Canonical repository: `PetrFedin/renova`.
 
 Canonical development flow:

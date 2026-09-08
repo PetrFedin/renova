@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     s3_bucket: str = "renova"
     uploads_dir: str = "./uploads"
     contractor_free_project_limit: int = 1
+    # --- provider modes (PRODUCT-COMPLETION-MANDATE A2/A7): off | simulated | real ---
+    payment_provider_mode: str = "off"
+    fiscal_receipt_provider_mode: str = "off"
+    npd_status_provider_mode: str = "off"
+    sms_provider_mode: str = "off"
+    push_provider_mode: str = "off"
     yookassa_shop_id: str | None = None
     yookassa_secret: str | None = None
     yookassa_webhook_secret: str | None = None
