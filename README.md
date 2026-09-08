@@ -159,3 +159,4 @@ Durable provider/background jobs не должны жить в API process ка�
 | `renova v1/` | архивный снимок | не использовать для новых функций |
 
 Любой старый локальный snapshot, stale branch или old PR сначала сравнивать с current `main`; не переносить legacy behavior обратно без red-team проверки.
+<!-- ruleset test -->
