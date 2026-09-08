@@ -1,0 +1,104 @@
+name: Apply reviewed XML parser patch
+on:
+  push:
+    branches: ["fix/chat-business-command-idempotency"]
+    paths: [".github/workflows/agent-qualify-xmldom.yml"]
+permissions:
+  contents: write
+jobs:
+  exact-patch:
+    if: github.repository == 'PetrFedin/renova' && github.actor == 'PetrFedin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20.20.2" }
+      - name: Patch only two reviewed transitive lock entries
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/fix/chat-business-command-idempotency | cut -f1)" = "$EXPECTED_SHA"
+          test "$(git hash-object package-lock.json)" = 240a566a5ec63ae078a37ea364370c1990b48014
+          mkdir -p .artifacts/xml-patch
+          npm view @xmldom/xmldom@0.8.15 --json > .artifacts/xml-patch/parser-0.8.15.json
+          npm view @xmldom/xmldom@0.9.12 --json > .artifacts/xml-patch/parser-0.9.12.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const assert = require('assert/strict');
+          const file = 'package-lock.json';
+          const lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+          for (const [location, previous, version] of [
+            ['node_modules/@xmldom/xmldom', '0.8.13', '0.8.15'],
+            ['node_modules/plist/node_modules/@xmldom/xmldom', '0.9.10', '0.9.12'],
+          ]) {
+            const entry = lock.packages[location];
+            const meta = JSON.parse(fs.readFileSync(`.artifacts/xml-patch/parser-${version}.json`, 'utf8'));
+            assert.equal(entry.version, previous);
+            assert.equal(meta.name, '@xmldom/xmldom');
+            assert.equal(meta.version, version);
+            assert.equal(meta.license, entry.license);
+            assert.deepEqual(meta.engines, entry.engines);
+            for (const field of ['dependencies','optionalDependencies','peerDependencies']) {
+              assert.equal(Object.keys(meta[field] || {}).length, 0, `unexpected ${field}`);
+            }
+            assert.match(meta.dist.integrity, /^sha512-[A-Za-z0-9+/]+={0,2}$/);
+            assert.equal(meta.dist.tarball, `https://registry.npmjs.org/@xmldom/xmldom/-/xmldom-${version}.tgz`);
+            Object.assign(entry, { version, resolved: meta.dist.tarball, integrity: meta.dist.integrity });
+          }
+          fs.writeFileSync(file, JSON.stringify(lock, null, 2) + '\n');
+          NODE
+      - name: Locked install and compatibility before publication
+        run: |
+          set -euo pipefail
+          npm ci
+          node scripts/xmldomIntegrity.test.mjs
+          node scripts/chatBusinessCommandTransport.test.mjs
+          set +e
+          npm audit --omit=dev --json > .artifacts/xml-patch/npm-audit-production.json
+          audit_status=$?
+          set -e
+          node scripts/check-npm-audit-baseline.mjs .artifacts/xml-patch/npm-audit-production.json
+          echo "raw npm audit exit=$audit_status; original baseline is unchanged"
+      - name: Same-branch publication with exact-diff guard
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/fix/chat-business-command-idempotency | cut -f1)" = "$EXPECTED_SHA"
+          python - <<'PY'
+          import json, pathlib, subprocess
+          old=json.loads(subprocess.check_output(['git','show','HEAD:package-lock.json']))
+          new=json.loads(pathlib.Path('package-lock.json').read_text())
+          targets={'node_modules/@xmldom/xmldom','node_modules/plist/node_modules/@xmldom/xmldom'}
+          assert old.keys() == new.keys()
+          assert old['packages'].keys() == new['packages'].keys()
+          for key in old:
+              if key != 'packages': assert old[key] == new[key]
+          for key, value in old['packages'].items():
+              if key not in targets: assert new['packages'][key] == value, key
+              else:
+                  assert value.keys() == new['packages'][key].keys()
+                  for field in value:
+                      if field not in {'version','resolved','integrity'}: assert value[field] == new['packages'][key][field]
+          changed=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+          assert changed == ['package-lock.json'], changed
+          doc=pathlib.Path('docs/technical-spec/CHAT-COMMAND-QUALIFICATION-CONTRACT.md')
+          doc.write_text(doc.read_text()+'\n## Patch dependency qualification\n\nThe two existing lockfile copies were updated to 0.8.15 and 0.9.12 using exact public npm metadata and tarball integrity, without changing declarations, topology or audit exceptions. The same-branch preparation ran npm ci, both actual plist consumer round-trips, bounded HTML amplification regression, locked TypeScript transport tests and the original production audit gate before committing. The next PR head still requires full independent CI; this is not native-device or provider evidence.\n', encoding='utf-8')
+          PY
+          git add -- package-lock.json docs/technical-spec/CHAT-COMMAND-QUALIFICATION-CONTRACT.md
+          git diff --cached --check
+          git config user.name 'Renova reviewed-dependency automation'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(deps): patch only the two vulnerable XML parser lock entries'
+          git push origin HEAD:refs/heads/fix/chat-business-command-idempotency
+      - name: Retain exact source for reproduction
+        if: always()
+        run: git archive --format=tar --output=.artifacts/xml-patch/renova-source.tar HEAD
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xml-patch-qualification
+          path: .artifacts/xml-patch/
+          retention-days: 3
