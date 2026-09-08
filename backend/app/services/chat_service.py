@@ -457,7 +457,11 @@ async def read_map(db: AsyncSession, thread_id: str) -> dict[str, datetime]:
 
 
 async def toggle_reaction(db: AsyncSession, message_id: str, user_id: str, emoji: str) -> dict:
-    msg = await db.get(ChatMessage, message_id)
+    # Task-link and reaction edits share one JSON column; re-read after locking.
+    msg = (await db.execute(
+        select(ChatMessage).where(ChatMessage.id == message_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
     if not msg:
         return {}
     meta = _parse_meta(msg.meta_json)
@@ -749,37 +753,18 @@ async def create_task_from_message(
     *,
     title: str,
     assignee_id: str | None,
-    due_at: str | None,
+    due_at,
     work_type: str = "general",
+    client_request_id: str,
 ) -> ChatMessage:
-    from datetime import date
-    from app.services import work_order_service as wo_svc
-
-    due = date.fromisoformat(due_at[:10]) if due_at else None
-    wo = await wo_svc.create_work_order(
-        db,
-        project_id=thread.project_id,
-        user_id=user_id,
-        title=title,
-        work_type=work_type,
-        planned_start=due,
-        planned_end=due,
-        publish=True,
+    """Canonical composed command; role is retained only for call compatibility."""
+    from app.services.chat_business_commands import create_task
+    return await create_task(
+        db, project_id=str(thread.project_id), thread_id=str(thread.id),
+        user_id=user_id, message_id=message_id, title=title,
+        assignee_id=assignee_id, due_at=due_at, work_type=work_type,
+        client_request_id=client_request_id,
     )
-    if assignee_id:
-        wo.assignee_id = assignee_id
-        await db.commit()
-
-    text = f"📋 Задача: {title}" + (f" · до {due_at[:10]}" if due_at else "")
-    meta = {"work_order_id": wo.id, "assignee_id": assignee_id, "due_at": due_at}
-    msg = await send_message(db, thread, user_id, role, text, "task", meta=meta)
-    orig = await db.get(ChatMessage, message_id)
-    if orig:
-        om = _parse_meta(orig.meta_json)
-        om["linked_task_id"] = wo.id
-        orig.meta_json = _dump_meta(om)
-        await db.commit()
-    return msg
 
 
 async def create_payment_message(
@@ -789,12 +774,14 @@ async def create_payment_message(
     role: str,
     *,
     title: str,
-    amount: float,
+    amount,
     payment_type: str,
+    client_request_id: str,
 ) -> ChatMessage:
-    from app.services import payment_service as pay_svc
-
-    pay = await pay_svc.create_payment(db, thread.project_id, user_id, title, amount, payment_type)
-    text = f"💳 Счёт: {title} · {amount:.0f} ₽"
-    meta = {"payment_id": pay.id, "amount": amount}
-    return await send_message(db, thread, user_id, role, text, "payment", meta=meta)
+    """Canonical invoice command; no provider call and no payment confirmation."""
+    from app.services.chat_business_commands import create_invoice
+    return await create_invoice(
+        db, project_id=str(thread.project_id), thread_id=str(thread.id),
+        user_id=user_id, title=title, amount=amount, payment_type=payment_type,
+        client_request_id=client_request_id,
+    )

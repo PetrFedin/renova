@@ -77,3 +77,7 @@ Product: #316 + #315 → safe offline/error/cache #317 → analytics/lifecycle/n
 In parallel: main protection #247 and external staging #233; then real alert/DR/capacity/security/pilot evidence with their own dependencies. Do not impose a fictitious single serial chain or a launch ETA without resource/external access evidence.
 
 The next admissible production decision requires the complete declared product result and external operational gates on one release candidate. Current decision remains **BLOCKED_FOR_BROAD_PRODUCTION**.
+
+## Current owner-directed stage
+
+Core completion without connecting YooKassa or other external providers. External activation/evidence is deferred, not completed. Preserve all eventual production acceptance requirements. The bounded chat invoice/task slice is IMPLEMENTED / EXACT-HEAD CI REQUIRED; see `docs/technical-spec/CHAT-BUSINESS-COMMAND-CONTRACT.md`. #316 and #315 remain open.

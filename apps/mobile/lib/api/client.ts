@@ -366,6 +366,9 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
           if (externallyAborted || fetchOpts.signal?.aborted) throw error;
           throw new ApiError(0, 'Сервер не ответил вовремя. Попробуйте ещё раз.', 'timeout');
         }
+        // A server refusal remains authoritative even when its text contains 'failed'.
+        // Do not launder 4xx into status=0 and enqueue a rejected business command.
+        if (error instanceof ApiError) throw error;
         if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
           throw new ApiError(0, 'Сервер временно недоступен. Проверьте соединение и повторите.', 'network');
         }

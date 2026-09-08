@@ -22,6 +22,12 @@ jobs:
         run: npm run typecheck:mobile
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
+      - name: Actual chat command transport and XML consumer contracts
+        run: |
+          set -euo pipefail
+          node scripts/chatBusinessCommandTransport.test.mjs
+          node scripts/xmldomIntegrity.test.mjs
+          git diff --exit-code -- package.json package-lock.json apps/mobile/package.json
       - name: Mobile runtime and persistence contracts
         run: |
           set -euo pipefail
@@ -51,6 +57,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./chat-message-integrity.db
       CHAT_MESSAGE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
+      CHAT_COMMAND_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       PUBLIC_BASE_URL: http://127.0.0.1:8100
       SECRET_KEY: ci-secret-key-at-least-16
       ALLOW_CREATE_ALL: "true"
@@ -86,7 +93,28 @@ jobs:
             tests/test_chat_reconciliation_contract.py \
             tests/test_chat_thread_only_acl_contract.py \
             tests/test_chat_thread_only_mobile_capabilities_contract.py \
-            tests/test_chat_thread_only_mobile_inbox_contract.py
+            tests/test_chat_thread_only_mobile_inbox_contract.py \
+            tests/test_chat_business_commands.py \
+            tests/test_chat_business_commands_postgres.py \
+            --junitxml=chat-command-results.xml
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('chat-command-results.xml').getroot()
+          cases = root.findall('.//testcase')
+          assert cases, 'chat qualification must execute tests'
+          assert not root.findall('.//skipped'), 'skipped tests are not qualification evidence'
+          assert not root.findall('.//failure') and not root.findall('.//error')
+          races = [c for c in cases if c.get('classname', '').endswith('test_chat_business_commands_postgres')]
+          assert len(races) >= 6, 'all six physical PostgreSQL scenarios must execute'
+          PY
+      - name: Retain chat command and PostgreSQL qualification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-command-test-results
+          path: backend/chat-command-results.xml
+          if-no-files-found: error
+          retention-days: 14
 
   project-creation-contracts:
     runs-on: ubuntu-latest

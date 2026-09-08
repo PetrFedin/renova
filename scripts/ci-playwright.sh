@@ -119,11 +119,12 @@ run_playwright_suite() {
 
 run_api_e2e() {
   start_api "./ci-playwright-api.db"
-  run_playwright_suite api 3 \
+  run_playwright_suite api 5 \
     e2e/project-lifecycle.spec.ts \
     e2e/portal-documents.spec.ts \
     e2e/contract-gate-path.spec.ts \
-    e2e/chat-message-idempotency.spec.ts
+    e2e/chat-message-idempotency.spec.ts \
+    e2e/chat-business-command.spec.ts
   npm run cleanup:e2e-gate || true
 }
 

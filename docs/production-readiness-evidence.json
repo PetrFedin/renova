@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "observed_on": "2026-09-08",
+  "development_stage": {"mode":"CORE_COMPLETION_WITHOUT_PROVIDER_ACTIVATION","owner_direction":"Defer connecting YooKassa and other external providers; harden implemented core and prepare adapter/outbox/reconciliation architecture","external_blockers_disposition":"DEFERRED_NOT_CLOSED","contract":"docs/technical-spec/CHAT-BUSINESS-COMMAND-CONTRACT.md"},
   "audit": {
     "source_sha": "95dd4a8e117289df11e1300891490768c22f585f",
     "method": "source-and-retained-CI-review; not a fresh full runtime/device/external test",
@@ -52,7 +53,7 @@
     "development_runtime": {"status":"CI_VERIFIED","pr":288,"head_sha":"46fb8aaf52c33449b3a168ee226c605a94c0d3d4","merge_sha":"7bd1dceb273a7e1f26ddf2333e9199d8d498ae54","note":"Canonical local topology and fail-fast checks; not external staging."},
     "participant_management": {"status":"CI_VERIFIED","pr":313,"head_sha":"ae8a0750bb6cc788c9e93a1f85a7355f3b180380","merge_sha":"65ddb7e59e6bcb23473b1017686cd3adbd882187","full_ci_run_id":34262996030,"postgres_workflow_run_id":34262996112,"full_multi_contractor_support":false,"issue":300},
     "marketplace_wizard_recovery": {"status":"CI_VERIFIED","pr":314,"head_sha":"6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817","merge_sha":"95dd4a8e117289df11e1300891490768c22f585f","full_ci_run_id":34264654118,"dedicated_device_e2e_verified":false,"note":"Screen recovery repaired; global session/queue boundary remains #315."},
-    "offline_business_actions": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":316},
+    "offline_business_actions": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":316,"current_slice":"chat task/invoice atomic idempotent commands implemented; exact-head CI required; remaining queued operations and global session fencing are not closed"},
     "session_and_queue_actor_fencing": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":315},
     "offline_error_and_cache_truth": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":317},
     "period_and_portfolio_analytics": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":318},

@@ -1,12 +1,14 @@
 """Чаты проекта."""
 from fastapi import APIRouter, Depends, HTTPException
+from datetime import date, datetime
+from decimal import Decimal
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project, require_project_dep
 from app.services.chat_acl import require_chat_access, require_chat_message
 from app.db.session import get_db
-from app.models.entities import User
+from app.models.entities import User, PaymentType
 from app.services import chat_participant_service as chat_participant_svc
 from app.services import chat_service as chat_svc
 from app.services import chat_message_mutation as chat_message_svc
@@ -120,16 +122,18 @@ class InviteBody(BaseModel):
 
 
 class TaskFromMessage(BaseModel):
-    title: str
-    assignee_id: str | None = None
-    due_at: str | None = None
-    work_type: str = "general"
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    title: str = Field(min_length=1, max_length=255)
+    assignee_id: str | None = Field(default=None, min_length=1, max_length=36)
+    due_at: date | datetime | None = None
+    work_type: str = Field(default="general", min_length=1, max_length=64)
 
 
 class PaymentFromChat(BaseModel):
-    title: str
-    amount: float = Field(gt=0)
-    payment_type: str = "stage"
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    title: str = Field(min_length=1, max_length=255)
+    amount: Decimal = Field(gt=0, max_digits=16, decimal_places=2)
+    payment_type: PaymentType = PaymentType.stage
 
 
 @router.get("/{project_id}/chats")
@@ -354,14 +358,37 @@ async def pin_msg(project_id: str, thread_id: str, message_id: str, pin: bool = 
     return chat_svc.msg_dict(msg)
 
 
+def _command_error(error: ValueError) -> HTTPException:
+    code = str(error)
+    if isinstance(error, IdempotencyConflict):
+        return HTTPException(409, "idempotency_conflict")
+    if code == "chat_source_already_has_task":
+        return HTTPException(409, code)
+    if code == "work_order_assignee_forbidden":
+        return HTTPException(403, code)
+    if code in {
+        "chat_command_fields_invalid", "chat_command_amount_invalid",
+        "chat_command_request_id_invalid", "chat_command_due_date_invalid",
+        "work_order_assignee_invalid",
+    }:
+        return HTTPException(422, code)
+    # Never hide an unexpected programming/data-integrity failure as validation.
+    raise error
+
+
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/task")
 async def task_from_message(project_id: str, thread_id: str, message_id: str, body: TaskFromMessage, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     await require_chat_message(db, t, message_id)
-    msg = await chat_svc.create_task_from_message(
-        db, t, user.id, user.role.value, message_id,
-        title=body.title, assignee_id=body.assignee_id, due_at=body.due_at, work_type=body.work_type,
-    )
+    try:
+        msg = await chat_svc.create_task_from_message(
+            db, t, user.id, user.role.value, message_id,
+            title=body.title, assignee_id=body.assignee_id,
+            due_at=body.due_at, work_type=body.work_type,
+            client_request_id=body.client_request_id,
+        )
+    except ValueError as exc:
+        raise _command_error(exc) from exc
     return chat_svc.msg_dict(msg)
 
 
@@ -370,7 +397,12 @@ async def invoice_from_chat(project_id: str, thread_id: str, body: PaymentFromCh
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     if user.role.value != "contractor":
         raise HTTPException(403, "only_contractor_can_invoice_from_chat")
-    msg = await chat_svc.create_payment_message(
-        db, t, user.id, user.role.value, title=body.title, amount=body.amount, payment_type=body.payment_type,
-    )
+    try:
+        msg = await chat_svc.create_payment_message(
+            db, t, user.id, user.role.value, title=body.title,
+            amount=body.amount, payment_type=body.payment_type.value,
+            client_request_id=body.client_request_id,
+        )
+    except ValueError as exc:
+        raise _command_error(exc) from exc
     return chat_svc.msg_dict(msg)
