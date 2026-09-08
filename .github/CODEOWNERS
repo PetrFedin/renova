@@ -1,0 +1,11 @@
+# Ruleset "main-protection" requires Code Owner review. The owner reviews everything;
+# the second-agent review is advisory and never satisfies this requirement.
+*                                          @PetrFedin
+/.github/                                  @PetrFedin
+/.claude/                                  @PetrFedin
+/backend/alembic/                          @PetrFedin
+/backend/app/core/                         @PetrFedin
+/backend/app/services/providers/           @PetrFedin
+/AGENTS.md                                 @PetrFedin
+/PRODUCTION-READINESS.md                   @PetrFedin
+/docs/production-readiness-evidence.json   @PetrFedin

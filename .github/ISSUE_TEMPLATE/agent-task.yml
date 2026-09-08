@@ -1,0 +1,22 @@
+name: Agent task
+description: Task from PRODUCT-COMPLETION-MANDATE for an autonomous agent
+labels: ["agent-task"]
+body:
+  - type: input
+    id: mandate_id
+    attributes: { label: Mandate ID, placeholder: "A3" }
+    validations: { required: true }
+  - type: textarea
+    id: scope
+    attributes: { label: Scope (verbatim from the mandate) }
+    validations: { required: true }
+  - type: textarea
+    id: evidence
+    attributes: { label: Required evidence (from the mandate) }
+    validations: { required: true }
+  - type: textarea
+    id: files
+    attributes: { label: Known files / chain (agent completes before starting) }
+  - type: input
+    id: parallel
+    attributes: { label: Can run in parallel with, placeholder: "A1, A2" }

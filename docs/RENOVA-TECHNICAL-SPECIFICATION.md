@@ -22,7 +22,7 @@
 
 | Source | Blob SHA | Назначение |
 |---|---|---|
-| `AGENTS.md` | `31820f115d6fade04d7ddb580201c9d8a29b3648` | Engineering policy |
+| `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
 | `backend/app/api/v1/router.py` | `8663e5b54289b133c5a2ff30af0533cfee93dfb6` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `f2e63f316fa8c9b2012894ae4e496dc76a73a3a1` | Базовые entities/enums |
 | `backend/app/main.py` | `223e83b13f96398eefe997275ac6f41fa44bfbcf` | API lifespan |

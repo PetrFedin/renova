@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev *)", "Bash(npm run dev)", "Bash(npm run typecheck:mobile)", "Bash(npm run ci:playwright)", "Bash(npm run test:priority)",
+      "Bash(python -m pytest *)", "Bash(cd backend && python -m pytest *)", "Bash(cd backend && alembic revision *)", "Bash(cd backend && alembic heads)",
+      "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)", "Bash(git fetch*)",
+      "Bash(git checkout -b agent/*)", "Bash(git checkout agent/*)", "Bash(git checkout main)", "Bash(git pull origin main)",
+      "Bash(git add *)", "Bash(git commit *)", "Bash(git push -u origin agent/*)", "Bash(git push origin agent/*)", "Bash(git rebase origin/main)",
+      "Bash(gh pr create *)", "Bash(gh pr view *)", "Bash(gh pr comment *)", "Bash(gh pr checks *)", "Bash(gh pr list *)",
+      "Bash(gh issue view *)", "Bash(gh issue list *)", "Bash(gh issue create *)", "Bash(gh issue comment *)", "Bash(gh issue edit *)",
+      "Bash(gh run view *)", "Bash(gh run list *)",
+      "Bash(grep *)", "Bash(rg *)", "Bash(find *)", "Bash(cat *)", "Bash(ls *)", "Bash(wc *)", "Bash(head *)", "Bash(tail *)", "Bash(curl http://127.0.0.1:*)",
+      "Edit", "Write", "Read", "Glob", "Grep"
+    ],
+    "deny": [
+      "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push origin main*)", "Bash(git push origin HEAD:main*)",
+      "Bash(git branch -D *)", "Bash(git reset --hard*)", "Bash(git clean*)",
+      "Bash(gh pr merge *)", "Bash(gh api *)", "Bash(gh repo *)", "Bash(gh secret *)", "Bash(gh auth *)",
+      "Bash(rm -rf *)", "Bash(docker *prune*)", "Bash(docker volume rm*)", "Bash(npm run dev -- reset)",
+      "Read(.env.*)", "Read(**/.env.*)", "Read(**/*.token)", "Read(**/*.pem)",
+      "Write(.github/workflows/**)", "Edit(.github/workflows/**)",
+      "Write(.claude/**)", "Edit(.claude/**)",
+      "Write(.env*)", "Edit(.env*)",
+      "Edit(backend/alembic/versions/*)"
+    ]
+  }
+}
