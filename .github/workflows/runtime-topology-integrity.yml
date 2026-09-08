@@ -48,7 +48,7 @@ jobs:
       RUNTIME_TOPOLOGY_IMAGE: renova-backend:topology-ci
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: docker/setup-buildx-action@v4.2.0
+      - uses: docker/setup-buildx-action@v4.3.0
       - name: Validate source and unit topology contracts
         shell: bash
         run: |
