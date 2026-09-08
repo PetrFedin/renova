@@ -53,7 +53,7 @@ def test_thread_only_chat_keeps_composer_but_hides_project_authority_dead_ends()
     # pin/confirm require the same authoritative project-write capability as
     # participant management, not merely project-read scope.
     assert "{canManageParticipants && (" in source
-    assert "onTask={canCreateTask ? () => setTaskMsg(m) : undefined}" in source
+    assert "onTask={canCreateTask && !m.work_order_id ? () => setTaskMsg(m) : undefined}" in source
     assert "{canCreateInvoice && (" in source
     assert "onPay={canViewProjectActions && m.message_type === 'payment'" in source
     assert "onPin={canManageParticipants ? async () =>" in source

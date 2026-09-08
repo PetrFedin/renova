@@ -29,6 +29,8 @@ import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { router } from 'expo-router';
+import { createClientRequestId } from '@/lib/clientRequestId';
+import { getFailureStatus } from '@/lib/api/failurePolicy';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -171,6 +173,17 @@ export function ChatThreadView({
   const [taskMsg, setTaskMsg] = useState<ChatMessage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const invoiceBusyRef = useRef(false);
+  const invoiceIntentRef = useRef<{ context: string; amount: number; requestId: string } | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const commandContext = `${user?.id || ''}:${projectId}:${threadId}`;
+  const commandContextRef = useRef(commandContext);
+  commandContextRef.current = commandContext;
+  const commandMountedRef = useRef(true);
+  useEffect(() => {
+    commandMountedRef.current = true;
+    return () => { commandMountedRef.current = false; };
+  }, []);
   const loadGenerationRef = useRef(0);
   const hasProjectScope = chat?.capabilities?.access_scope === 'project';
   const canViewProjectActions = hasProjectScope && chat?.capabilities?.can_view_project_actions === true;
@@ -454,7 +467,7 @@ export function ChatThreadView({
               await refreshChatAfterCommit('MessagePin');
             } : undefined}
             onReply={() => setReplyTo(m)}
-            onTask={canCreateTask ? () => setTaskMsg(m) : undefined}
+            onTask={canCreateTask && !m.work_order_id ? () => setTaskMsg(m) : undefined}
             onConfirm={canManageParticipants && m.message_type === 'confirm' ? async () => {
               try {
                 await api.confirmChatMessage(user.id, projectId, threadId, m.id);
@@ -541,25 +554,49 @@ export function ChatThreadView({
                 <Text style={s.toolBtn}>✓?</Text>
               </Pressable>
               {canCreateInvoice && (
-                <Pressable disabled={!canWrite} onPress={() => {
+                <Pressable disabled={!canWrite || invoiceBusy} onPress={() => {
                   const createInvoice = async (amount: number) => {
+                    if (invoiceBusyRef.current) return;
+                    const previous = invoiceIntentRef.current;
+                    const retained = previous?.context === commandContext ? previous : null;
+                    if (retained && retained.amount !== amount) {
+                      Alert.alert('Счёт ожидает подтверждения', `Повторите исходную сумму ${retained.amount} ₽: результат предыдущего запроса ещё не известен.`);
+                      return;
+                    }
+                    const intent = retained ?? { context: commandContext, amount, requestId: createClientRequestId('chat-invoice') };
+                    invoiceIntentRef.current = intent;
+                    invoiceBusyRef.current = true;
+                    setInvoiceBusy(true);
+                    const isCurrent = () => commandMountedRef.current && commandContextRef.current === commandContext;
+                    try {
                     try {
                       await api.invoiceFromChat(user.id, projectId, threadId, {
+                        client_request_id: intent.requestId,
                         title: 'Оплата работ',
                         amount,
                         payment_type: 'stage',
                       });
                     } catch (e: unknown) {
+                      if (!isCurrent()) return;
                       if (isOfflineQueued(e)) {
+                        if (invoiceIntentRef.current === intent) invoiceIntentRef.current = null;
                         notifyOfflineQueued('Счёт');
                       } else {
                         reportError('ChatThreadView.Invoice.Mutation', e, { threadId, projectId, amount });
-                        Alert.alert('Ошибка', 'Не удалось создать счёт');
+                        const status = getFailureStatus(e);
+                        if (status !== undefined && status >= 400 && status < 500 && ![408, 409, 429].includes(status)) invoiceIntentRef.current = null;
+                        Alert.alert('Результат не подтверждён', 'Повторите ту же сумму: приложение использует тот же запрос, не создавая дубль.');
                       }
                       return;
                     }
+                    if (!isCurrent()) return;
+                    if (invoiceIntentRef.current === intent) invoiceIntentRef.current = null;
                     await reconcileCommittedChatMutation('Invoice');
-                    alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
+                    if (isCurrent()) alertChatInvoiceCreated(role === 'contractor' ? 'contractor' : 'customer', amount);
+                    } finally {
+                      invoiceBusyRef.current = false;
+                      if (commandMountedRef.current) setInvoiceBusy(false);
+                    }
                   };
                   const openPaymentForm = () => {
                     const osRole = role === 'contractor' ? 'contractor' : 'customer';
@@ -648,13 +685,16 @@ export function ChatThreadView({
         visible={canCreateTask && !!taskMsg}
         defaultTitle={taskMsg?.text?.slice(0, 80) || 'Задача из чата'}
         userId={user.id}
+        commandContext={`${commandContext}:${taskMsg?.id || ''}`}
         onClose={() => setTaskMsg(null)}
         onSubmit={async (body) => {
-          if (!taskMsg || !canCreateTask) return;
+          if (!taskMsg || !canCreateTask) throw new Error('chat_task_unavailable');
+          const isCurrent = () => commandMountedRef.current && commandContextRef.current === commandContext;
           try {
             await api.taskFromChatMessage(user.id, projectId, threadId, taskMsg.id, body);
           } catch (e) {
             if (isOfflineQueued(e)) {
+              if (!isCurrent()) return;
               notifyOfflineQueued('Задача из чата');
               setTaskMsg(null);
               return;
@@ -662,9 +702,10 @@ export function ChatThreadView({
             reportError('ChatThreadView.Task.Mutation', e, { threadId, projectId, messageId: taskMsg.id });
             throw e;
           }
+          if (!isCurrent()) return;
           setTaskMsg(null);
           await reconcileCommittedChatMutation('Task');
-          alertChatTaskCreated(role === 'contractor' ? 'contractor' : 'customer');
+          if (isCurrent()) alertChatTaskCreated(role === 'contractor' ? 'contractor' : 'customer');
         }}
       />
     </View>

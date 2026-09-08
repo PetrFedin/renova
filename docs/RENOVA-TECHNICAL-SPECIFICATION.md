@@ -26,7 +26,7 @@
 | `backend/app/api/v1/router.py` | `8663e5b54289b133c5a2ff30af0533cfee93dfb6` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `f2e63f316fa8c9b2012894ae4e496dc76a73a3a1` | Базовые entities/enums |
 | `backend/app/main.py` | `223e83b13f96398eefe997275ac6f41fa44bfbcf` | API lifespan |
-| `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
+| `backend/app/services/seed_demo.py` | `f821335670765f28705cbd045063139138cec7c3` | Явный development seed |
 | `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
 | `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | Enum/migration invariants |
 | `apps/mobile/lib/routeRegistry.ts` | `0c9a386486f61cd1a284d8bd7fc99368b557232f` | Канонические navigation entries |
@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `f6aee4e8e48480311594c500b38c3b8a4c8b6b18` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -297,3 +297,7 @@ Full acceptance G01–G10 задана в аудите. В этом проход
 Изменение считается сопровождаемым, когда requirement/result, реализация, роли, failure/retry/concurrency, schema, side effects, UI, тест и статус одного exact candidate связаны. Source SHA без семантической сверки недостаточен. Исторический полный текст сохранён; повторно использовать из него старый next-step/schema/head нельзя.
 
 Запрещено закрывать issue по ограниченному foundation, выдавать audit report за runtime test, сохранять неизвестные показатели как 0, обозначать promised-but-disabled capability как DONE либо выводить срок запуска без согласованного ресурса и внешних условий. Аудит синхронизирует план; F01–F10 всё ещё требуют продуктовых исправлений.
+
+## 18.1. Core completion without external activation
+
+Owner direction: do not connect YooKassa or other external providers at this stage. Harden existing functionality while preserving integration architecture and honest unavailable/pending states. External verification remains deferred and open. `technical-spec/CHAT-BUSINESS-COMMAND-CONTRACT.md` governs the first #316 slice: atomic task/invoice creation, stable replay keys, authority checks and mobile transport recovery; not full offline or session completion.

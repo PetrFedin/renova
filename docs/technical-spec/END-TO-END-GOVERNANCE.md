@@ -62,3 +62,7 @@ External main protection/staging #247/#233, observability #235/#283, managed DR 
 ## 8. Product-wide acceptance evidence
 
 G01–G10 in the full audit cover standalone repair, single contractor, independent contractors, unstable network, account changes, financial reconciliation, documents, handover/lifecycle, incidents and device/accessibility. Register requirement→entry/role→service/entity→test→run/artifact. Clearly label source-only inspection, bounded CI, new execution and external verification. A static screen inventory must not be reported as execution of every action.
+
+## 9. Current execution boundary
+
+Owner direction: core completion first; do not connect YooKassa or other external providers yet. Preserve adapter/outbox/reconciliation architecture and fail-closed unavailable states. External execution is deferred, not verified or removed from eventual acceptance. The initial #316 slice is governed by `CHAT-BUSINESS-COMMAND-CONTRACT.md`; no full-issue closure from partial command hardening.
