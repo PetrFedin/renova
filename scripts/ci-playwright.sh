@@ -107,6 +107,17 @@ start_expo_web() {
   wait_http "${WEB_URL}/" "Expo web" "$EXPO_PID" 45 2
 }
 
+run_platform_presentation_contract() {
+  local tsx="$ROOT/node_modules/.bin/tsx"
+  if [ ! -x "$tsx" ]; then
+    echo "FAIL: locked tsx binary is required for the platform presentation contract"
+    return 1
+  fi
+  TSX_TSCONFIG_PATH="$ROOT/apps/mobile/tsconfig.json" \
+    "$tsx" "$ROOT/apps/mobile/lib/platformPresentation.test.ts"
+  echo "platform presentation URL contract: PASS"
+}
+
 run_playwright_suite() {
   local suite="$1" min_expected="$2"
   shift 2
@@ -128,6 +139,7 @@ run_api_e2e() {
 }
 
 run_ui_e2e() {
+  run_platform_presentation_contract
   start_api "./ci-playwright-ui.db"
   start_expo_web
   run_playwright_suite ui 6 \
