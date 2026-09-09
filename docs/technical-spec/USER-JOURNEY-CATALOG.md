@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE / governed product annex.
 **Parent:** `PRODUCT-COMPLETION-MANDATE.md`.
-**Purpose:** функциональный каталог действий заказчика/исполнителя. Он не заменяет domain contracts или Golden Paths; он связывает UI-намерение с бизнес-результатом и recovery.
+**Purpose:** функциональный каталог действий заказчика/исполнителя. Он не заменяет domain contracts или Golden Paths; он связывает UI-намерение с бизнес-результатом и recovery. Secondary-сценарии ниже обязательны к классификации так же, как core flows: существующий secondary screen не может оставаться «висящей функцией» без роли, terminal result и связи с canonical domain.
 
 ## 0. Universal scenario contract
 
@@ -257,3 +257,198 @@
 - `EXTERNAL ACTION REQUIRED` для real provider/legal/infrastructure.
 
 Нельзя оставлять business action в состоянии «endpoint существует, значит функция готова» или «кнопка есть, но terminal result не проверен».
+
+---
+
+# 15. Secondary customer/contractor flows — существующие продуктовые поверхности
+
+Secondary не означает необязательный dead end. Если поверхность остаётся в canonical navigation/product UI, она обязана либо иметь законченный lifecycle, либо быть честно переведена в planned/unavailable и связана с issue.
+
+## 15.1. Design packages / дизайн-пакеты
+
+Code/source подтверждает отдельные `DesignPackage`, API/service, mobile `DesignPackageList` и inclusion в approvals/documents. Целевая цепочка:
+
+`contractor/design author creates draft → uploads exact files/version → submit → customer sees package + scope/room context → approve OR reject with reason → approved package becomes referenced design decision → subsequent changed content creates new version/package transition, not silent overwrite`.
+
+Правила:
+- reject path обязателен рядом с approve;
+- approval не создаёт сам по себе Expense/Purchase;
+- package files obey private file ACL/native delivery;
+- multi-contractor sees only shared/relevant package scope;
+- signed/approved package history immutable enough for dispute/change lineage;
+- design package status can feed attention/calendar but is not second document SoT.
+
+## 15.2. Waste orders / вывоз мусора
+
+Source подтверждает `WasteOrder`, service/router, approvals, calendar/analytics inclusion и mobile `WasteOrderList`.
+
+Целевая цепочка:
+
+`need/room-stage context → request/order draft → price/volume/date/provider responsibility → customer approval or reject → scheduled → completed with fact/evidence → expense/receipt linkage if economic event exists`.
+
+Обязательные cases:
+- reject with reason;
+- cancelled/failed service;
+- changed volume/date/price after approval → explicit change/reapproval when material;
+- completed fact distinct from merely approved order;
+- no plan-as-fact in budget/portfolio;
+- calendar reminder references canonical order.
+
+## 15.3. Approvals hub
+
+Approvals — **projection of pending decisions**, not отдельный state machine. It may aggregate MaterialPick, ChangeOrder, DesignPackage, WasteOrder and other explicitly governed decision objects.
+
+For every card:
+- exact source entity + version;
+- who may decide;
+- approve and reject when business lifecycle permits;
+- reason/comment where required;
+- stale/version conflict revalidation;
+- after decision card disappears/changes because source entity changed, not because local UI hid it;
+- deeplink opens canonical entity.
+
+## 15.4. Calendar item CRUD and upcoming
+
+Calendar hub combines schedule-derived events and explicit calendar items. User scenarios:
+- list upcoming;
+- create/edit/delete explicit item if role permits;
+- navigate from event to source entity;
+- sync stage-derived projection without duplicating Stage schedule truth;
+- export project ICS;
+- handle timezone/date-only semantics explicitly.
+
+Deleting a calendar projection must not delete its source Stage/Payment/Delivery unless the domain command explicitly performs that transition.
+
+## 15.5. Technical supervision / quality control
+
+Technical supervisor may record observations/evidence/quality findings only within granted project/scope. Supervisor does not automatically accept work for customer, pay invoice, change contractor scope or sign as a party.
+
+Target result:
+`inspection/observation → linked room/stage/work/photo → severity/status → responsible participant visibility → issue/remediation where configured → closure evidence`.
+
+If quality-control screen duplicates acceptance issue state, canonical linkage must be proven instead of maintaining two defect truths.
+
+## 15.6. Viewer/share access
+
+Invited viewer receives minimum read-only scope. Invite/revoke lifecycle must define:
+- resource/project binding;
+- expiration/status where modeled;
+- no mutation through deeplink;
+- file/chat/finance restrictions;
+- revoked viewer loses future access immediately while audit remains.
+
+## 15.7. Notifications and preferences
+
+Inbox/notification list is read model. User can:
+- open relevant item;
+- mark/read according to canonical contract;
+- follow deeplink after fresh ACL check;
+- distinguish delivery failure from business event failure.
+
+If notification preferences exist, they control delivery channel where lawful, not suppression of required business/audit state.
+
+---
+
+# 16. Secondary contractor/business flows
+
+## 16.1. Subscription/capacity
+
+Subscription is not project authority. It may affect marketplace/capacity/feature entitlements according to one policy service, but:
+- expired plan does not silently erase historical projects;
+- capacity check happens atomically at assignment/conversion;
+- payment provider state for subscription stays separate from renovation project Payment/Expense;
+- downgrade/upgrade shows user impact before commitment;
+- real billing provider remains port-based later.
+
+## 16.2. Checklist templates
+
+Checklist template is reusable planning content, not fact of completed work. Applying template creates/links actual checklist/work items under the target Stage/WorkOrder. Template edit cannot rewrite historical completed checklist evidence.
+
+## 16.3. Activity/history
+
+Activity is a read/audit projection. It must link to canonical events and never become a second mutable business journal. Sensitive activity follows project/scope ACL.
+
+## 16.4. Guide/help
+
+Guide is contextual help only. It cannot be used to hide incomplete workflow. Help CTA must route to a real canonical action or explanation; outdated guide text is governed documentation defect.
+
+## 16.5. Scratchpad
+
+Scratchpad, if retained, is explicitly non-authoritative personal/project note space. It cannot silently create scope, cost, schedule, acceptance or payment truth. Promotion from note to task/change/order must be an explicit canonical mutation.
+
+---
+
+# 17. Reporting, analytics and portfolio scenarios
+
+Reports/analytics are read models over canonical facts. Required rules:
+
+1. every KPI has definition/source/status/as-of;
+2. missing source fact → unavailable, not zero;
+3. project total reconciles to drill-down;
+4. portfolio aggregation preserves project attribution and currency/date rules;
+5. contractor only sees projects/scopes permitted by authority;
+6. customer sees own project/portfolio if multi-project feature permits;
+7. CSV/PDF/export uses canonical authenticated file delivery;
+8. expense CSV and budget lines are not considered complete merely because backend route exists — entry point and successful native/web output must be classified;
+9. reports cannot mutate financial source data.
+
+Potential contractor profitability is T1 only after revenue/cost recognition sources are explicit; customer budget must not be re-labelled contractor profit.
+
+---
+
+# 18. Operator/support/reconciliation scenarios
+
+Although customer/contractor are primary personas, a working product requires a bounded operator plane.
+
+Operator/admin may, only through explicit RBAC:
+- review manual payment evidence where current decision-right contract requires admin reviewer;
+- inspect provider reconciliation state;
+- inspect/replay DomainOutbox/DLQ with audit;
+- investigate failed notifications/provider operations;
+- perform authorized support recovery without impersonating business acceptance/payment decisions;
+- inspect runtime/readiness diagnostics appropriate to role.
+
+Operator cannot:
+- manufacture successful external-provider verification;
+- edit signed historical evidence to make reconciliation green;
+- bypass participant ACL for ordinary customer workflow without logged administrative authority;
+- use demo endpoints in staging/production.
+
+Every manual recovery records actor, reason, before/after state and resulting business event where applicable.
+
+---
+
+# 19. Portal/deeplink/external-entry scenarios
+
+Any route entered from notification, link, portal token, email/SMS invite or future partner flow must:
+
+1. parse only expected identifiers/token;
+2. validate session or token authority;
+3. bind exact project/resource/action;
+4. reject cross-project substitution;
+5. load canonical current state;
+6. handle expired/used/revoked link distinctly;
+7. restore canonical navigation context after success;
+8. never trust stale `activeProject` as authorization;
+9. avoid exposing resource existence to unauthorized actor according to contract;
+10. make repeat/replay behavior explicit.
+
+This applies to acceptance portal, invitations, document/payment returns and future provider callback landing pages.
+
+---
+
+# 20. Coverage closure rule
+
+Product completion review must inventory **all canonical routeRegistry entries + all user-visible screens/sheets/actions + all external-entry flows** and map each to this catalog/Golden Path/domain contract.
+
+Allowed classifications:
+- `CORE ACTIVE` — required full lifecycle/evidence;
+- `SECONDARY ACTIVE` — still no dead ends; lifecycle/evidence required;
+- `READ MODEL` — no independent writer;
+- `COMPATIBILITY REDIRECT` — canonical target + deeplink test;
+- `PLANNED` — hidden/unavailable honestly + issue;
+- `OPERATOR ONLY` — explicit RBAC, absent from normal user menus;
+- `EXTERNAL FUTURE` — provider/partner port prepared, no live claim;
+- `RETIRED` — removal proof and compatibility decision complete.
+
+Ни один user-visible route/action не может оставаться `UNCLASSIFIED`. Это заменяет неточный критерий «каждый backend route должен иметь mobile consumer»: service/webhook/operator routes могут не иметь mobile UI, но каждый **product surface** обязан иметь владельца, entry, terminal result и evidence.
