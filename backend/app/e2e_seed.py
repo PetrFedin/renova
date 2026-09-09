@@ -25,6 +25,10 @@ async def run() -> int:
         return 2
 
     async with SessionLocal() as db:
+        # The canonical seed is idempotent, but its legacy first pass creates the
+        # apartment before the house. Run reconciliation once more so a pristine
+        # review/E2E database immediately contains the complete demo project set.
+        await ensure_demo_users(db)
         await ensure_demo_users(db)
         await seed_articles(db)
 
@@ -36,6 +40,7 @@ async def run() -> int:
                 "seed": "canonical_demo",
                 "scope": "playwright",
                 "idempotent": True,
+                "full_project_set": True,
             },
             sort_keys=True,
         )
