@@ -130,13 +130,14 @@ run_api_e2e() {
 run_ui_e2e() {
   start_api "./ci-playwright-ui.db"
   start_expo_web
-  run_playwright_suite ui 5 \
+  run_playwright_suite ui 6 \
     e2e/service-readiness.spec.ts \
     e2e/expo-web-native-capability.spec.ts \
     e2e/portal-documents-ui.spec.ts \
     e2e/contract-gate-ui.spec.ts \
     e2e/mobile-surface-integrity.spec.ts \
-    e2e/outbox-dead-letter-admin-ui.spec.ts
+    e2e/outbox-dead-letter-admin-ui.spec.ts \
+    e2e/platform-page.spec.ts
   npm run cleanup:e2e-gate || true
 }
 
