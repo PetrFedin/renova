@@ -6,7 +6,7 @@
 
 ## 1. Источник истины и порядок приоритета
 
-`AGENTS.md` остаётся единственным authoritative engineering-policy. Native client entrypoints и `.agent/platforms/**` — только bootstrap/adapters; `.agent/skills/**` — bounded task guidance.
+`AGENTS.md` остаётся неизменным единственным authoritative engineering-policy. Native client entrypoints и discovery wrappers — только bootstrap/adapters; `.agent/skills/**` — bounded task guidance.
 
 Порядок приоритета:
 
@@ -24,16 +24,16 @@
 
 Маршрутизация определяется по **host application**, а не по foundation model:
 
-| Host | Native entrypoint | Adapter |
+| Host | Native entrypoint / discovery | Adapter |
 |---|---|---|
 | Claude Code | `CLAUDE.md` | `.agent/platforms/claude.md` |
 | Cursor | `.cursor/rules/renova-agent-runtime.mdc` (`alwaysApply`) | `.agent/platforms/cursor.md` |
-| Codex | `AGENTS.md` | `.agent/platforms/codex.md` |
+| Codex | `.agents/skills/renova-product-engineering/SKILL.md` | `.agent/platforms/codex.md` |
 | ChatGPT/GPT | установленный ChatGPT Skill `renova-product-engineering` | `.agent/platforms/gpt.md` |
 
 Активируется ровно один adapter. Если Cursor использует Claude или GPT как foundation model, host остаётся Cursor. Нельзя переключать adapters по названию модели внутри одного клиента.
 
-Все adapters сходятся к `.agent/kickoff.md`, затем к `.agent/skills/renova-product-engineering/SKILL.md`, а router загружает только реально нужный capability.
+Codex-native файл под `.agents/skills/` — только discovery wrapper: он не копирует policy и направляет в неизменный `AGENTS.md`, общий `.agent/kickoff.md` и canonical router. Все остальные clients сходятся туда же через свои native bootstrap-механизмы.
 
 ## 3. Cross-client resume protocol
 
@@ -74,7 +74,7 @@ Root `CLAUDE.md` остаётся bootstrap pointer. `.claude/settings.json` и 
 
 ### Codex
 
-`AGENTS.md` — native repository entrypoint. В нём допускается только короткий routing pointer к Codex adapter; архитектурная, security, financial и release policy не копируется в adapter.
+`AGENTS.md` остаётся неизменным engineering-policy. Репозиторий добавляет только Codex-native discovery wrapper `.agents/skills/renova-product-engineering/SKILL.md`; он направляет в Codex adapter и shared router, не копируя архитектурную, security, financial или release policy.
 
 ### ChatGPT/GPT
 
@@ -86,7 +86,7 @@ PR #366 меняет master specification, но не client-routing файлы �
 
 ## 7. Детерминированная валидация и evidence boundary
 
-`python scripts/validate_agent_skills.py --root .` проверяет skill frontmatter/uniqueness/router references, immutable upstream lock, четыре platform adapters, native bootstrap links, host-application routing и GitHub-backed resume protocol. Validator подтверждает только структурную целостность agent layer, а не product runtime.
+`python scripts/validate_agent_skills.py --root .` проверяет skill frontmatter/uniqueness/router references, immutable upstream lock, четыре platform adapters, Claude/Cursor native bootstrap links, Codex-native `.agents/skills/` discovery wrapper, host-application routing и GitHub-backed resume protocol. Validator подтверждает только структурную целостность agent layer, а не product runtime.
 
 Change-set не меняет backend, mobile product behavior, DB schema, migrations, provider modes или runtime policy. Он не создаёт `STAGING VERIFIED`, `EXTERNALLY VERIFIED`, `PRODUCTION VERIFIED` или новый product-readiness claim. До merge требуется применимый GitHub CI exact candidate, независимый review и отсутствие конфликтов с актуальным `main`. Автор change-set не выполняет self-merge.
 

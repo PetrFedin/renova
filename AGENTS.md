@@ -238,7 +238,7 @@ When old code or documents conflict with current runtime, route registry, CI, or
 
 ## 14. Canonical local development for agents
 
-`AGENTS.md` is the single authoritative engineering instruction set across Claude Code, Cursor, Codex and ChatGPT/GPT. Native client entrypoints are bootstrap pointers only and select exactly one adapter by **host application**, never by foundation model: Claude Code → `CLAUDE.md` → `.agent/platforms/claude.md`; Cursor → `.cursor/rules/renova-agent-runtime.mdc` → `.agent/platforms/cursor.md`; Codex → this `AGENTS.md` → `.agent/platforms/codex.md`; ChatGPT/GPT → installed `renova-product-engineering` Skill → `.agent/platforms/gpt.md`. Every adapter then routes through `.agent/kickoff.md` and the shared router. Switching clients must resume from current GitHub branch/issue/PR/commits/checks/reviews rather than from chat memory or a duplicate branch.
+`AGENTS.md` is the single authoritative engineering instruction set for Cursor, Claude Code and other coding agents. `CLAUDE.md` and `.cursor/rules/renova-agent-runtime.mdc` are bootstrap pointers only; do not duplicate architecture or policy into them.
 
 The canonical local environment is **development only** and uses `env.local.example` → ignored `.env.local`. Never load `env.staging.example`, `backend/.env.staging.example`, `.env.production*`, or real provider credentials into the local runtime.
 

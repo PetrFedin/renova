@@ -27,6 +27,7 @@ EXPECTED_PLATFORMS = {
     "codex": {"path": ".agent/platforms/codex.md"},
     "gpt": {"path": ".agent/platforms/gpt.md"},
 }
+CODEX_DISCOVERY = ".agents/skills/renova-product-engineering/SKILL.md"
 FRONTMATTER_KEYS = {"name", "description"}
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -118,23 +119,27 @@ def validate(root: Path) -> Result:
             result.check(".agent/kickoff.md" in text, f"platform adapter must route through kickoff: {spec['path']}")
             result.check("renova-product-engineering" in text, f"platform adapter must reference shared router: {spec['path']}")
 
-    native = {
-        "CLAUDE.md": root / "CLAUDE.md",
-        "cursor": root / ".cursor" / "rules" / "renova-agent-runtime.mdc",
-        "AGENTS.md": root / "AGENTS.md",
-    }
-    for label, path in native.items():
+    claude_entry = root / "CLAUDE.md"
+    cursor_entry = root / ".cursor" / "rules" / "renova-agent-runtime.mdc"
+    agents_entry = root / "AGENTS.md"
+    codex_entry = root / CODEX_DISCOVERY
+    for label, path in (("CLAUDE.md", claude_entry), ("Cursor runtime rule", cursor_entry), ("AGENTS.md", agents_entry), ("Codex discovery skill", codex_entry)):
         result.check(path.is_file(), f"missing native client entrypoint: {label}")
-    if native["CLAUDE.md"].is_file():
-        result.check(EXPECTED_PLATFORMS["claude"]["path"] in native["CLAUDE.md"].read_text(encoding="utf-8"), "CLAUDE.md must route to Claude adapter")
-    if native["cursor"].is_file():
-        cursor_text = native["cursor"].read_text(encoding="utf-8")
+    if claude_entry.is_file():
+        result.check(EXPECTED_PLATFORMS["claude"]["path"] in claude_entry.read_text(encoding="utf-8"), "CLAUDE.md must route to Claude adapter")
+    if cursor_entry.is_file():
+        cursor_text = cursor_entry.read_text(encoding="utf-8")
         result.check(EXPECTED_PLATFORMS["cursor"]["path"] in cursor_text, "Cursor runtime rule must route to Cursor adapter")
         result.check("alwaysApply: true" in cursor_text, "Cursor runtime rule must remain alwaysApply")
-    if native["AGENTS.md"].is_file():
-        agents_text = native["AGENTS.md"].read_text(encoding="utf-8")
-        result.check(EXPECTED_PLATFORMS["codex"]["path"] in agents_text, "AGENTS.md must route Codex to its adapter")
-        result.check(EXPECTED_PLATFORMS["gpt"]["path"] in agents_text, "AGENTS.md must document the GPT adapter")
+    if codex_entry.is_file():
+        try:
+            codex_frontmatter, codex_body = parse_frontmatter(codex_entry)
+            result.check(codex_frontmatter.get("name") == "renova-product-engineering", "Codex discovery skill name mismatch")
+            result.check(len(codex_frontmatter.get("description", "")) >= 40, "Codex discovery skill description is too short")
+            result.check(EXPECTED_PLATFORMS["codex"]["path"] in codex_body, "Codex discovery skill must route to Codex adapter")
+            result.check(".agent/skills/renova-product-engineering/SKILL.md" in codex_body, "Codex discovery skill must route to shared router")
+        except (OSError, ValueError) as exc:
+            result.check(False, f"Codex discovery skill frontmatter error: {exc}")
 
     kickoff_path = root / ".agent" / "kickoff.md"
     result.check(kickoff_path.is_file(), ".agent/kickoff.md is missing")
@@ -189,7 +194,7 @@ def validate(root: Path) -> Result:
     result.check(governance_doc.is_file(), "governance document is missing")
     if governance_doc.is_file():
         governance = governance_doc.read_text(encoding="utf-8")
-        for required in ("AGENTS.md", "UPSTREAM.lock.json", "PR #364", "PR #366", "distilled-not-vendored", "Claude Code", "Cursor", "Codex", "ChatGPT/GPT", "host application"):
+        for required in ("AGENTS.md", "UPSTREAM.lock.json", "PR #364", "PR #366", "distilled-not-vendored", "Claude Code", "Cursor", "Codex", "ChatGPT/GPT", "host application", CODEX_DISCOVERY):
             result.check(required in governance, f"governance document must mention {required}")
     return result
 
