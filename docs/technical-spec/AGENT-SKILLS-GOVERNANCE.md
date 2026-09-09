@@ -73,7 +73,7 @@ Validator использует только Python stdlib и проверяет:
 - точный набор entrypoints первого пакета;
 - `SKILL.md` frontmatter только с `name` и `description`;
 - совпадение имени Skill с каталогом и уникальность имён;
-- наличие всеч router references;
+- наличие всех router references;
 - валидность `UPSTREAM.lock.json`;
 - 40-символьные immutable commit SHA, MIT license и отсутствие floating selectors;
 - связь upstream → локальный capability;
