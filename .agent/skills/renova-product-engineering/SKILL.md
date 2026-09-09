@@ -35,12 +35,23 @@ If two higher-authority sources conflict, record the conflict and stop the affec
 ## Start or resume every bounded task
 
 - Read `.agent/kickoff.md` after the native client entrypoint and active platform adapter.
+- Read `.agent/CONTINUATION-CURSOR.md` before deciding whether work is new or already in progress.
 - Confirm exact current `main`, target issue, active branch/PR, open overlapping PRs, and changed-file overlap.
 - When a task already has a branch or PR, resume from that GitHub state instead of creating a parallel task because the client changed.
-- Re-read the branch head before writes if another client may have advanced it.
+- Read the latest valid `AGENT-CONTINUATION-CURSOR:v1` comment from the PR, or from the linked issue before a PR exists. Treat it as a navigation cursor, never as higher authority than the actual branch head/diff/checks/reviews.
+- Re-read the branch head before writes if another client may have advanced it. If cursor `head_sha` does not match the remote branch head, reconstruct progress from commits/diff/checks/reviews and refresh the cursor before substantive writes.
+- Continue directly from the first unfinished bounded action: honor `last_completed`, `next_action`, `do_not_repeat`, and `must_not_skip`. Do not redo completed work merely because the host changed, and do not jump past an unfinished required step.
 - Read `AGENTS.md` before task-specific guidance and only the governed contract needed for the touched area.
 - Trace the complete affected chain before editing; do not infer product truth from old demos, archived audits, or a single UI surface.
 - Keep evidence levels explicit: source inspection is not runtime proof; local success is not CI/staging/production proof.
+
+## Durable cross-client checkpoint
+
+A client switch is considered seamless only for durable state. After every completed bounded action, and always before yielding to another client, finish the smallest coherent unit, run the applicable focused validation, commit/push it to the existing task branch when policy allows, and update the continuation cursor with the exact remote head plus one next bounded action.
+
+Uncommitted edits in an unshared local checkout cannot be guaranteed visible to ChatGPT or another remote client. If the next client shares the exact same checkout it may inspect the dirty working tree, but before a remote/cloud transition create a durable checkpoint rather than pretending those edits were transferred.
+
+Default to one active writer per task branch. Before any write/push, refresh the remote head; if another client advanced it, stop stale writes, reconcile the new diff/cursor, and only then continue. Never force-push away another client's progress.
 
 ## Load skills selectively
 
@@ -61,4 +72,4 @@ Do not load all skills by default. More context is not automatically better cont
 
 ## Completion check
 
-Before proposing a PR, verify that the change is bounded, source-traced, conflict-checked, documented at the correct governance level, tested at the applicable boundary, and free of accidental policy duplication. If work is paused for another client to continue, leave GitHub state sufficient to resume: exact branch/head, issue/PR, observed checks, unresolved blocker, and next bounded action.
+Before proposing a PR, verify that the change is bounded, source-traced, conflict-checked, documented at the correct governance level, tested at the applicable boundary, and free of accidental policy duplication. If work is paused for another client to continue, follow `.agent/CONTINUATION-CURSOR.md`: leave the exact branch/head, issue/PR, last durable completed action, first unfinished `next_action`, `do_not_repeat`, `must_not_skip`, observed checks, and blockers so the next host can continue without manual recap, repetition, or gaps.
