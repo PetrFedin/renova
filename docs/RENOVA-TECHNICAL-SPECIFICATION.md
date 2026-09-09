@@ -10,7 +10,7 @@
 
 `AGENTS.md` — единственный engineering-policy. Этот master — текущий паспорт продукта, контрактов и доказанности. Он не подтверждает все функции по одному факту наличия кода. Предыдущая полная редакция сохранена без изменения содержимого в `technical-spec/history/RENOVA-TECHNICAL-SPECIFICATION-before-2026-09-08.md`: это справочный исторический срез, не текущий порядок работ и не launch verdict. Функциональность из целевого продукта этим переоформлением не удаляется.
 
-Актуальные приложения: [Product Completion Mandate](technical-spec/PRODUCT-COMPLETION-MANDATE.md), [Golden Paths](technical-spec/GOLDEN-PATHS.md), [каталог пользовательских сценариев](technical-spec/USER-JOURNEY-CATALOG.md), [рыночный benchmark](technical-spec/MARKET-PRODUCT-BENCHMARK-2026-09-09.md), [профили аналогов](technical-spec/MARKET-COMPETITOR-PROFILES-2026-09-09.md), [полный аудит](technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md), [план и история](technical-spec/CHANGELOG-ROADMAP.md), [расчёты](technical-spec/CALCULATION-REGISTRY.md), [экраны](technical-spec/SCREEN-CONTRACT-CATALOG.md), [source snapshot экранов](technical-spec/SCREEN-SOURCE-SNAPSHOT.md), [правила сквозного сопровождения](technical-spec/END-TO-END-GOVERNANCE.md). Детальные domain-contract приложения остаются действующими в части реализации; статус их квалификации проверяется по текущим PR/CI и разделу15, а не по старому слову candidate в приложении.
+Актуальные приложения: [Product Completion Mandate](technical-spec/PRODUCT-COMPLETION-MANDATE.md), [Golden Paths](technical-spec/GOLDEN-PATHS.md), [каталог пользовательских сценариев](technical-spec/USER-JOURNEY-CATALOG.md), [рыночный benchmark](technical-spec/MARKET-PRODUCT-BENCHMARK-2026-09-09.md), [профили аналогов](technical-spec/MARKET-COMPETITOR-PROFILES-2026-09-09.md), [cross-category capability matrix](technical-spec/MARKET-CAPABILITY-MATRIX-2026-09-09.md), [российский ecosystem benchmark](technical-spec/RUSSIAN-MARKET-ECOSYSTEM-BENCHMARK-2026-09-09.md), [полный аудит](technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md), [план и история](technical-spec/CHANGELOG-ROADMAP.md), [расчёты](technical-spec/CALCULATION-REGISTRY.md), [экраны](technical-spec/SCREEN-CONTRACT-CATALOG.md), [source snapshot экранов](technical-spec/SCREEN-SOURCE-SNAPSHOT.md), [правила сквозного сопровождения](technical-spec/END-TO-END-GOVERNANCE.md). Детальные domain-contract приложения остаются действующими в части реализации; статус их квалификации проверяется по текущим PR/CI и разделу15, а не по старому слову candidate в приложении.
 
 # 0. Правила доказанности и сопровождения
 
@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `46eff3ef126047be8bb377471fa5de51aa87079b` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `ec398a143d4c25edef98591a77c8b4a3ad84b57f` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -298,7 +298,7 @@ Market-inspired T1/T2 (daily progress, contractor profitability, retailer ports,
 | Формулы | CALCULATION-REGISTRY | #318 и непокрытые producers |
 | Экран/действие | SCREEN-CONTRACT-CATALOG, routeRegistry, USER-JOURNEY-CATALOG | #305/#320; G10/GP1–GP8 |
 | Product completion order | PRODUCT-COMPLETION-MANDATE, GOLDEN-PATHS | #315–#320/#300 + A–E phases |
-| Market adoption | MARKET-PRODUCT-BENCHMARK, MARKET-COMPETITOR-PROFILES | research only until adoption gate |
+| Market adoption | MARKET-PRODUCT-BENCHMARK, MARKET-COMPETITOR-PROFILES, MARKET-CAPABILITY-MATRIX, RUSSIAN-MARKET-ECOSYSTEM-BENCHMARK | research only until adoption gate |
 | Current schema/status | master+readiness+Alembic graph | Strict explicit-header check; не substitutable annex mention |
 | Production | readiness evidence | Внешние gates остаются open |
 
