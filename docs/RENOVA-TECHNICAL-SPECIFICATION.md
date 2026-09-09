@@ -2,21 +2,21 @@
 
 **Статус документа:** ACTIVE / LIVING SPECIFICATION
 **Язык:** русский
-**Дата текущей сверки:** 2026-09-08
-**Проверенный продуктовый срез:** `95dd4a8e117289df11e1300891490768c22f585f`
+**Дата текущей сверки:** 2026-09-09
+**Проверенный продуктовый срез:** `e5c6ee44c0f684b14037e77948dbcb630fd41896`
 **Текущий schema head в этой редакции:** `w22projectparticipants01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
 `AGENTS.md` — единственный engineering-policy. Этот master — текущий паспорт продукта, контрактов и доказанности. Он не подтверждает все функции по одному факту наличия кода. Предыдущая полная редакция сохранена без изменения содержимого в `technical-spec/history/RENOVA-TECHNICAL-SPECIFICATION-before-2026-09-08.md`: это справочный исторический срез, не текущий порядок работ и не launch verdict. Функциональность из целевого продукта этим переоформлением не удаляется.
 
-Актуальные приложения: [полный аудит](technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md), [план и история](technical-spec/CHANGELOG-ROADMAP.md), [расчёты](technical-spec/CALCULATION-REGISTRY.md), [экраны](technical-spec/SCREEN-CONTRACT-CATALOG.md), [source snapshot экранов](technical-spec/SCREEN-SOURCE-SNAPSHOT.md), [правила сквозного сопровождения](technical-spec/END-TO-END-GOVERNANCE.md). Детальные domain-contract приложения остаются действующими в части реализации; статус их квалификации проверяется по текущим PR/CI и разделу15, а не по старому слову candidate в приложении.
+Актуальные приложения: [Product Completion Mandate](technical-spec/PRODUCT-COMPLETION-MANDATE.md), [Golden Paths](technical-spec/GOLDEN-PATHS.md), [каталог пользовательских сценариев](technical-spec/USER-JOURNEY-CATALOG.md), [рыночный benchmark](technical-spec/MARKET-PRODUCT-BENCHMARK-2026-09-09.md), [профили аналогов](technical-spec/MARKET-COMPETITOR-PROFILES-2026-09-09.md), [cross-category capability matrix](technical-spec/MARKET-CAPABILITY-MATRIX-2026-09-09.md), [российский ecosystem benchmark](technical-spec/RUSSIAN-MARKET-ECOSYSTEM-BENCHMARK-2026-09-09.md), [полный аудит](technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md), [план и история](technical-spec/CHANGELOG-ROADMAP.md), [расчёты](technical-spec/CALCULATION-REGISTRY.md), [экраны](technical-spec/SCREEN-CONTRACT-CATALOG.md), [source snapshot экранов](technical-spec/SCREEN-SOURCE-SNAPSHOT.md), [правила сквозного сопровождения](technical-spec/END-TO-END-GOVERNANCE.md). Детальные domain-contract приложения остаются действующими в части реализации; статус их квалификации проверяется по текущим PR/CI и разделу15, а не по старому слову candidate в приложении.
 
 # 0. Правила доказанности и сопровождения
 
 **VERIFIED** — прочитан соответствующий source/config/migration, не автоматически испытан пользовательский результат. **CI VERIFIED** — прошёл конкретный набор тестов конкретного SHA. **LOCAL TESTED**, **STAGING VERIFIED**, **PRODUCTION VERIFIED** не взаимозаменяемы. **PENDING REVERIFY** означает изменение кандидата после доказательства. **TBD / UNVERIFIED** — нет достаточного подтверждения. **HISTORICAL** — старый срез.
 
-Рабочий цикл: требование → источник и полный путь → обнаруженный разрыв → bounded implementation → синхронное ТЗ → тесты → точный SHA/run/artifact → сверка остаточных рисков. Нельзя объявлять READY по красивому экрану, enum, наличию API или одному зелёному CI.
+Рабочий цикл: требование → источник и полный путь → обнаруженный разрыв → bounded implementation → синхронное ТЗ → тесты → точный SHA/run/artifact → сверка остаточных рисков. Нельзя объявлять READY по красивому экрану, enum, наличию API или одному зелёному CI. Любое усовершенствование дополнительно проходит обязательный lifecycle из `PRODUCT-COMPLETION-MANDATE.md` и `END-TO-END-GOVERNANCE.md`: source truth → terminal user result → reuse map → lifecycle/decision rights → data/finance truth → reliability → UX → security/ecosystem → acceptance → bounded implementation → proof → post-merge reconciliation.
 
 ## 0.1. Текущий source snapshot
 
@@ -48,13 +48,15 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `ec398a143d4c25edef98591a77c8b4a3ad84b57f` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
 Renova — iPhone-first управление реальным ремонтом, а не демонстрация отдельных экранов. Целевой результат: согласованный объём/бюджет/график, исполненные и принятые работы, обеспеченные материалы, корректные деньги, документы, история и гарантии. Результат должен оставаться правильным при ошибках, повторах, смене устройства/аккаунта и отказе провайдера.
 
 Роли: customer, contractor, team/viewer, technical supervisor, admin/operator. Наличие роли не разрешает действие вне project/resource scope. Независимые подрядчики — целевое обязательное свойство полного продукта; временная недоступность #300 не превращается в отказ от требования.
+
+Текущий Product Completion Mandate закрепляет полный customer/contractor lifecycle и правило `no-demo-business`: контролируемые данные и simulated providers могут воспроизводить обычный продуктовый путь, но не создают отдельную упрощённую бизнес-логику. Живые YooKassa/FNS/Контур/Goskey/retail/bank adapters подключаются позже через provider/partner ports после внутренней продуктовой целостности и отдельной внешней квалификации.
 
 # 2. Репозиторий и источники истины
 
@@ -168,7 +170,7 @@ Object: `rooms`, `estimate`, `plan`, `profile`. Repair: `works`, `materials`, `s
 
 Каждый hub показывает loading/empty/error/stale/success отдельно. Отсутствие ответа не означает ноль, прочитанный cache не означает свежие данные, raw error не пользовательское объяснение. Badge обязан иметь определение/источник/as-of и совпадать с детальной очередью.
 
-Gates для UI: недоступность действия объяснима; один основной следующий шаг; после commit допускается частично успешное состояние с восстановлением. #305 включает подтверждённый ложный отказ в материалах. #315/#317 ограничивают доверие к общему context и freshness; эти gaps нельзя скрыть дизайном.
+Gates для UI: недоступность действия объяснима; один основной следующий шаг; после commit допускается частично успешное состояние с восстановлением. #305 включает подтверждённый ложный отказ в материалах. #315/#317 ограничивают доверие к общему context и freshness; эти gaps нельзя скрыть дизайном. Дополнительная общая матрица из Mandate включает `loading / empty / error / offline / stale / processing / queued / unknown-reconciling / conflict / access-revoked / committed-success` там, где состояние применимо.
 
 # 9. UI design system — точные токены
 
@@ -203,15 +205,15 @@ Pixel-perfect/контраст/physical-device состояние всего п�
 ## 10.3. Снабжение
 Сметная потребность→источник снабжения/кто закупает→одобренная цена/количество→Purchase→оплата/поставка→quantity availability→готовность этапа. Число одобренных строк не равно обеспеченному количеству. Историческая неизвестная цена quarantined, supplier live price не заменяет вручную подтверждённую коммерческую договорённость без правил обновления.
 
-Purchase partial — частичная оплата в текущем lifecycle; returned — возврат после delivered. Наличие этих статусов не доказывает весь частичный денежно-количественный учёт. Обязательны сценарии split delivery, damaged/returned qty, independent refund и reconciliation; точные пробелы устанавливаются тестом и source trace.
+Purchase partial — частичная оплата в текущем lifecycle; returned — возврат после delivered. Наличие этих статусов не доказывает весь частичный денежно-количественный учёт. Обязательны сценарии split delivery, damaged/returned qty, independent refund и reconciliation; точные пробелы устанавливаются тестом и source trace. Перед retailer integration payment progression и delivery quantities должны быть семантически независимыми.
 
 ## 10.4. Финансы
 Estimate — план; ChangeOrder — согласованное изменение; Purchase — закупка; Expense — признанный расход; Payment — движение/состояние оплаты; Receipt/evidence — доказательство; Refund — обратная операция. Одно событие не повышает spend дважды через чек+платёж+закупку.
 
-#297: upload intent→versioned private evidence→submit→approve/reject/resubmit→confirmed Payment→единственный Expense. Это ограниченный CI-проверенный путь. Не распространять его идемпотентность на chat invoice (#316) или недоказанную внешнюю доставку (#238).
+#297: upload intent→versioned private evidence→submit→approve/reject/resubmit→confirmed Payment→единственный Expense. Это ограниченный CI-проверенный путь. Не распространять его идемпотентность на chat invoice (#316) или недоказанную внешнюю доставку (#238). Пользовательская financial projection должна различать Original plan, Revised approved plan, Commitments, Actual recognized Expense, Paid cash и Refund; неизвестный fact остаётся unavailable.
 
 ## 10.5. Коммуникация
-Обычное сообщение имеет request-id, atomic message/visibility/outbox и reconciliation. Чатовые бизнес-действия требуют собственной атомарности; task/invoice пока #316. Read определяется серверным cursor после реальной видимости, equal-timestamp precision #271. Attachment/native transcript экспорт — отдельные #238/#320.
+Обычное сообщение имеет request-id, atomic message/visibility/outbox и reconciliation. Чатовые бизнес-действия требуют собственной атомарности; PR #322 — отдельный ещё не merged bounded candidate по task/invoice, весь #316 не закрывает. Read определяется серверным cursor после реальной видимости, equal-timestamp precision #271. Attachment/native transcript экспорт — отдельные #238/#320.
 
 ## 10.6. Документы
 Загрузка→проверяемый файл→версия→согласование/подпись→скачивание/история/retention. Metadata classification не OCR содержимого. Госключ недоступен; live Контур не доказан. Pending подписания не signed, локальная подпись в приложении не автоматически доказательство юридической эквивалентности любой внешней подписи.
@@ -220,7 +222,7 @@ Estimate — план; ChangeOrder — согласованное изменен
 Closeout проверяется по работам/замечаниям/документам/деньгам; пользователь получает итоговый комплект. Warranty create #295 квалифицирован, но полный closeout→claim→fix→customer closure нуждается в сквозной приёмке. Archive/trash/restore/purge — отдельные состояния, #319 для непустого графа и retention.
 
 ## 10.8. Ошибки и идентичность
-Весь путь сохраняет владельца намерения: аккаунт/сессия/проект/request-id. При commit+потере ответа нельзя создавать новую сущность; при commit+ошибке UI нельзя объявлять запись неуспешной. Нельзя отправлять очередь A с токеном B. Нормализованные transport errors обязаны быть совместимы с offline producers.
+Весь путь сохраняет владельца намерения: аккаунт/сессия/проект/request-id. При commit+потере ответа нельзя создавать новую сущность; при commit+ошибке UI нельзя объявлять запись неуспешной. Нельзя отправлять очередь A с токеном B. Нормализованные transport errors обязаны быть совместимы с offline producers. A→B→A считается новой session generation, поэтому старый completion не получает authority только из-за совпадения user id.
 
 # 11. Calculations and derived state
 
@@ -235,6 +237,8 @@ Closeout проверяется по работам/замечаниям/док�
 Fail-closed auth/ACL, session revocation, horizontal/sibling IDOR, private uploads, operator RBAC, webhook validation, secrets redaction, locked dependencies и supply-chain checks остаются обязательными. #315 относится к actor/session integrity всей мобильной цепочки, а не только очистке экрана.
 
 Data export/deletion должны соответствовать явно утверждённому scope/retention; экспорт профиля и списка проектов не называется полным архивом всех материалов ремонта. Наличие repository security scans не external security sign-off. #247/#256/#257/#237 открыты.
+
+Future retailer/bank/state integrations получают только explicit scoped data envelope с consent/data minimization/audit/retention; они не становятся generic project members и не получают arbitrary project access.
 
 # 13. Release и эксплуатационная готовность
 
@@ -254,7 +258,7 @@ Image identity: Git SHA→immutable sha-tag→OCI revision→registry digest→d
 | Native/device acceptance | Пройденный build/платформу/сценарий | Все будущие build/провайдеры |
 | External drills | Указанный артефакт/среду/операцию | Вечную production-готовность |
 
-Full acceptance G01–G10 задана в аудите. В этом проходе она НЕ выполнена. Последние bounded qualification: #313 full CI34262996030 и PostgreSQL34262996112; #314 full CI34264654118. Новый audit PR требует своих применимых gates. JSX exemptions и dependency exceptions не скрываются и не расширяются ради green.
+Full acceptance G01–G10 задана в аудите; GP1–GP8 + G04/G05 уточняют исполняемые продуктовые сценарии, а `USER-JOURNEY-CATALOG.md` — granular actions/recovery. В этом governance-проходе функциональная full acceptance НЕ выполнена. Последние bounded qualification: #313 full CI34262996030 и PostgreSQL34262996112; #314 full CI34264654118; PR #322 имеет собственное stale-until-merged exact candidate evidence. Новый governance PR требует своих применимых gates. JSX exemptions и dependency exceptions не скрываются и не расширяются ради green.
 
 # 15. Независимые критические PR-контуры
 
@@ -268,12 +272,16 @@ Full acceptance G01–G10 задана в аудите. В этом проход
 | #311/#312 | Merged price provenance/participant foundation |
 | #313 | Merged65ddb7e59e6bcb23473b1017686cd3adbd882187 после квалификации ae8a075 |
 | #314 | Merged95dd4a8e117289df11e1300891490768c22f585f после квалификации6e88a1d |
+| #322 | Open bounded #316 candidate; independent review/merge required; не весь mutation inventory |
+| #365/#366 | Candidate governance rewrite; docs only until exact-head CI + independent review + owner merge |
 
 # 16. Known gaps / improvement backlog
 
-Активные конкретные findings F01–F12 и источники — полный аудит. Первый продуктовый приоритет #316 и #315; затем #317, финансовая аналитика #318, lifecycle #319, native #320 и truthful interaction #305. #300 — полноценная многоподрядность, #238 — provider/storage recovery. Эксплуатационный поток #247/#233/#235/#234/#236/#256/#257/#237/#241 идёт отдельно/параллельно.
+Активный product-integrity order после текущей сверки: #315 → reviewed/merged #322 + remaining #316 → #317 → #305 truthful mutation UX → #318 finance truth → #319 purge/retention → #320 native file → полный #300. После integrity floor идут provider-independent A3–A7, multi-contractor B1–B5, complete experience C1–C8, proof D1–D3 и consolidation E1–E4 по `PRODUCT-COMPLETION-MANDATE.md`. #238 остаётся отдельным provider/storage recovery owner.
 
 Зафиксировать additional acceptance без ложного утверждения «этого нет»: детальный план/дизайн, partial payments/delivery/refunds, bank matching, content OCR/подпись, отчёт/closeout, все notification counters, справка, native permissions/accessibility. Нет полного теста — непроверенный результат, не автоматически отсутствующая реализация.
+
+Market-inspired T1/T2 (daily progress, contractor profitability, retailer ports, financing, plan annotation, AI assistant) не являются ready-задачами до прохождения benchmark/product-fit gate и не вытесняют core lifecycle.
 
 # 17. Traceability matrix
 
@@ -284,11 +292,13 @@ Full acceptance G01–G10 задана в аудите. В этом проход
 | Participant/scope | PROJECT-PARTICIPANT-SCOPE-CONTRACT | w22projectparticipants01, #312/#313; #300/#319 |
 | Снабжение/цена | MATERIAL-SUPPLY-CONTRACT, MATERIAL-PRICE-TRUTH-CONTRACT | #310/#311; G03/G06 |
 | Evidence/Expense | MANUAL-PAYMENT-EVIDENCE-CONTRACT | #297; #238, G06/G07 |
-| Chat create | CHAT-ATOMICITY-CONTRACT | #292; бизнес-действия #316 |
+| Chat create | CHAT-ATOMICITY-CONTRACT | #292; бизнес-действия #316/#322 |
 | Warranty | WARRANTY-ATOMICITY-CONTRACT | #295; G08 |
 | Wizard recovery | MARKETPLACE-WIZARD-RECOVERY-CONTRACT | #314; #315 и targeted E2E |
 | Формулы | CALCULATION-REGISTRY | #318 и непокрытые producers |
-| Экран/действие | SCREEN-CONTRACT-CATALOG, routeRegistry | #305/#320; G10 |
+| Экран/действие | SCREEN-CONTRACT-CATALOG, routeRegistry, USER-JOURNEY-CATALOG | #305/#320; G10/GP1–GP8 |
+| Product completion order | PRODUCT-COMPLETION-MANDATE, GOLDEN-PATHS | #315–#320/#300 + A–E phases |
+| Market adoption | MARKET-PRODUCT-BENCHMARK, MARKET-COMPETITOR-PROFILES, MARKET-CAPABILITY-MATRIX, RUSSIAN-MARKET-ECOSYSTEM-BENCHMARK | research only until adoption gate |
 | Current schema/status | master+readiness+Alembic graph | Strict explicit-header check; не substitutable annex mention |
 | Production | readiness evidence | Внешние gates остаются open |
 
@@ -296,4 +306,4 @@ Full acceptance G01–G10 задана в аудите. В этом проход
 
 Изменение считается сопровождаемым, когда requirement/result, реализация, роли, failure/retry/concurrency, schema, side effects, UI, тест и статус одного exact candidate связаны. Source SHA без семантической сверки недостаточен. Исторический полный текст сохранён; повторно использовать из него старый next-step/schema/head нельзя.
 
-Запрещено закрывать issue по ограниченному foundation, выдавать audit report за runtime test, сохранять неизвестные показатели как 0, обозначать promised-but-disabled capability как DONE либо выводить срок запуска без согласованного ресурса и внешних условий. Аудит синхронизирует план; F01–F10 всё ещё требуют продуктовых исправлений.
+Запрещено закрывать issue по ограниченному foundation, выдавать audit report за runtime test, сохранять неизвестные показатели как 0, обозначать promised-but-disabled capability как DONE либо выводить срок запуска без согласованного ресурса и внешних условий. Governance/benchmark синхронизируют план; они не исправляют runtime сами по себе. Реализация следует Product Completion Mandate и granular journey catalog только через bounded PR + exact evidence.
