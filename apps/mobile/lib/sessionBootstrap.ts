@@ -18,10 +18,11 @@ const KEYS = {
 export const DEMO_PHONES = ['+70000000001', '+70000000002'] as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const REVIEW_MODE_ENABLED = (process.env.EXPO_PUBLIC_REVIEW_MODE ?? '0') === '1';
 
-/** iframe iphone-preview — автодемо без ручного входа */
+/** iframe iphone-preview — автодемо без ручного входа, кроме явного review-стенда. */
 export function isPreviewFrame(): boolean {
-  return typeof window !== 'undefined' && window.parent !== window;
+  return !REVIEW_MODE_ENABLED && typeof window !== 'undefined' && window.parent !== window;
 }
 
 /** Проверка доступности API с повторами (backend может стартовать позже Expo). */
