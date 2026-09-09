@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Public Renova platform brief', () => {
-  test.skip(() => !process.env.RENOVA_WEB_E2E, 'Set RENOVA_WEB_E2E=1 and start Expo web on :8081');
+  test.skip(
+    () => !process.env.RENOVA_WEB_E2E && !process.env.RENOVA_E2E_REQUIRE_SERVICES,
+    'Start Expo web or use the canonical service-backed E2E runner',
+  );
 
   test('opens directly, explains the product and renders the canonical QR', async ({ page }) => {
     await page.goto('/platform');
