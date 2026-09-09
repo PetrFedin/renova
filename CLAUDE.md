@@ -2,6 +2,8 @@
 
 `AGENTS.md` is the single authoritative engineering instruction set for this repository. Read it before planning, editing, running migrations, changing runtime configuration, or reporting readiness.
 
+For Claude Code, activate exactly one client adapter: `.agent/platforms/claude.md`. It routes into `.agent/kickoff.md` and the shared `renova-product-engineering` skill layer. Do not switch adapters based on the selected foundation model or on a model name mentioned in the task.
+
 This file intentionally does **not** duplicate Renova architecture, transaction, security, Git, or release rules. If any historical document, old branch, local snapshot, or tool-generated suggestion conflicts with `AGENTS.md`, current code, current CI, or `PRODUCTION-READINESS.md`, use the newer authoritative source.
 
 For local development use the existing root dispatcher:
