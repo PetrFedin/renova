@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
+import { ActivityIndicator, View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { alertMessage } from '@/lib/confirmAlert';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -38,13 +38,16 @@ export default function RoleScreen() {
     if (!REVIEW_MODE_ENABLED || !DEMO_LOGIN_ENABLED) return;
     let cancelled = false;
     const messageTimer = setTimeout(() => {
-      if (!cancelled) setServerMessage('Готовим демо-сервер…');
-    }, 1200);
-    void pingApi(16, 1000).then((ok) => {
+      if (!cancelled && !busy) setServerMessage('Подготавливаем демо-сервер…');
+    }, 900);
+
+    // Best-effort warm-up only. Role selection never waits for this probe.
+    void pingApi(6, 500, 1800).then((ok) => {
       clearTimeout(messageTimer);
-      if (cancelled) return;
-      setServerMessage(ok ? null : 'Демо-сервер ещё запускается. При выборе роли подключение будет повторено.');
+      if (cancelled || busy) return;
+      setServerMessage(ok ? null : 'Демо-сервер запускается. Выберите роль — вход продолжится автоматически.');
     });
+
     return () => {
       cancelled = true;
       clearTimeout(messageTimer);
@@ -93,15 +96,11 @@ export default function RoleScreen() {
 
       if (mode === 'demo') {
         if (!DEMO_LOGIN_ENABLED) throw new Error('demo_login_disabled');
-        if (REVIEW_MODE_ENABLED) {
-          setServerMessage('Подключаем демо-данные…');
-          const ready = await pingApi(16, 1000);
-          if (!ready) {
-            throw new Error('Демо-сервер не успел запуститься. Нажмите роль ещё раз — данные не потеряны.');
-          }
-        }
+        setServerMessage(requestedRole === 'customer' ? 'Входим как заказчик…' : 'Входим как исполнитель…');
+        // Do not gate login on /health. The auth request itself is the authoritative
+        // operation and can wake a sleeping Render instance without a long preflight loop.
         await demoLogin(requestedRole);
-        setServerMessage(null);
+        setServerMessage('Открываем список объектов…');
       } else {
         if (!codeSent) {
           const r = await api.sendSmsCode(phone);
@@ -174,7 +173,12 @@ export default function RoleScreen() {
           </Pressable>
         ))}
       </View>
-      {serverMessage ? <Text style={styles.serverMessage}>{serverMessage}</Text> : null}
+      {busy && mode === 'demo' ? (
+        <View style={styles.busyRow}>
+          <ActivityIndicator color={RenovaTheme.colors.primary} />
+          <Text style={styles.serverMessage}>{serverMessage || 'Подключаем демо…'}</Text>
+        </View>
+      ) : serverMessage ? <Text style={styles.serverMessage}>{serverMessage}</Text> : null}
       {mode === 'sms' && (
         <>
           <TextInput style={styles.input} placeholder="Телефон +7…" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={!teamJoinPending} />
@@ -223,6 +227,7 @@ const styles = StyleSheet.create({
   roleText: { fontWeight: '700', fontSize: 14, textAlign: 'center' },
   roleTextActive: { color: RenovaTheme.colors.primary },
   controlDisabled: { opacity: 0.55 },
+  busyRow: { alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   serverMessage: { color: RenovaTheme.colors.textMuted, textAlign: 'center', fontSize: 13, marginBottom: 12, lineHeight: 18 },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: RenovaTheme.colors.surface },
   demoCode: { textAlign: 'center', color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 8 },
