@@ -19,25 +19,47 @@ export const DEMO_PHONES = ['+70000000001', '+70000000002'] as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const REVIEW_MODE_ENABLED = (process.env.EXPO_PUBLIC_REVIEW_MODE ?? '0') === '1';
+const DEFAULT_PING_REQUEST_TIMEOUT_MS = REVIEW_MODE_ENABLED ? 2500 : 2000;
 
 /** iframe iphone-preview — автодемо без ручного входа, кроме явного review-стенда. */
 export function isPreviewFrame(): boolean {
   return !REVIEW_MODE_ENABLED && typeof window !== 'undefined' && window.parent !== window;
 }
 
-/** Проверка доступности API с повторами (backend может стартовать позже Expo). */
-export async function pingApi(retries = 5, delayMs = 600): Promise<boolean> {
-  for (let i = 0; i < retries; i++) {
+async function fetchHealthWithTimeout(timeoutMs: number): Promise<Response> {
+  if (typeof AbortController === 'undefined') {
+    return fetch(`${API_BASE}/health`, { method: 'GET' });
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${API_BASE}/health`, { method: 'GET', signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Проверка доступности API с повторами. Каждый probe имеет собственный timeout,
+ * а пауза между попытками фиксированная: cold-start не может заморозить UI на минуты.
+ */
+export async function pingApi(
+  retries = 5,
+  delayMs = 600,
+  requestTimeoutMs = DEFAULT_PING_REQUEST_TIMEOUT_MS,
+): Promise<boolean> {
+  const attempts = Math.max(1, retries);
+  for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(`${API_BASE}/health`, { method: 'GET' });
+      const res = await fetchHealthWithTimeout(requestTimeoutMs);
       if (res.ok) return true;
-      if (i === retries - 1) {
-        reportError('sessionBootstrap.pingApi.http', new Error(`HTTP ${res.status}`), { retries });
+      if (i === attempts - 1) {
+        reportError('sessionBootstrap.pingApi.http', new Error(`HTTP ${res.status}`), { retries: attempts });
       }
     } catch (error) {
-      if (i === retries - 1) reportError('sessionBootstrap.pingApi', error, { retries });
+      if (i === attempts - 1) reportError('sessionBootstrap.pingApi', error, { retries: attempts });
     }
-    if (i < retries - 1) await sleep(delayMs * (i + 1));
+    if (i < attempts - 1) await sleep(Math.max(0, delayMs));
   }
   return false;
 }
