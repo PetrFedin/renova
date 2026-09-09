@@ -4,13 +4,23 @@
 **Статус:** `BLOCKED_FOR_BROAD_PRODUCTION`; internal product completion продолжается.
 **Канон порядка работ:** `PRODUCT-COMPLETION-MANDATE.md`.
 **Сквозная приёмка:** `GOLDEN-PATHS.md` + `USER-JOURNEY-CATALOG.md`.
-**Рынок/стратегические кандидаты:** `MARKET-PRODUCT-BENCHMARK-2026-09-09.md` + `MARKET-COMPETITOR-PROFILES-2026-09-09.md`.
+**Рынок/стратегические кандидаты:** `MARKET-PRODUCT-BENCHMARK-2026-09-09.md` + `MARKET-COMPETITOR-PROFILES-2026-09-09.md` + `RUSSIAN-MARKET-ECOSYSTEM-BENCHMARK-2026-09-09.md`.
 **Полный source audit:** `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
 
 Обязательный исторический governance-токен, проверяемый machine contract: **наблюдение → решение → код/данные → тест → evidence → следующий шаг**.
 Расширенный рабочий цикл: **наблюдение → issue/decision → bounded code → same-change specification → test/evidence → post-merge reconciliation → следующий зависимый шаг**.
 
 Никаких календарных ETA/процентов готовности без принятого release scope, команды и внешних условий. Приоритет определяется risk/dependency/terminal user result.
+
+---
+
+## 0.1. Historical machine-contract compatibility markers
+
+Следующие строки сохраняются дословно, потому что `scripts/technicalSpecContract.test.mjs` использует их как continuity markers старого roadmap. Они **не задают текущий порядок работ** и не должны интерпретироваться как повторное открытие уже пройденных волн; текущий порядок определяется разделом 2 и `PRODUCT-COMPLETION-MANDATE.md`.
+
+- `P0.1. Закрыть canonical local runtime end-to-end` — historical lineage локального runtime; foundation интегрирован через #288, внешняя среда остаётся отдельной readiness-границей.
+- `P0.2. Полная native PostgreSQL enum parity` — historical lineage enum/schema parity; migration chain w16–w22 сохраняется и проверяется текущими schema gates.
+- `P1.1. Полный screen contract inventory` — historical lineage screen inventory; текущая более строгая цель — классифицировать каждый user-visible route/action в `USER-JOURNEY-CATALOG.md` и доказать terminal result.
 
 ---
 
@@ -84,7 +94,7 @@ T1/T2 are not `ready` merely because analogues implement them. Use market adopti
 | GP8 | Chat/inbox/push/reminders with scope |
 | G04 | Unstable network/response loss/restart/queue replay |
 | G05 | Account/session switch A→B→A |
-| User Journey Catalog | Granular C/E actions + multi-contractor negatives + recovery catalog |
+| User Journey Catalog | Granular C/E actions + secondary surfaces + multi-contractor negatives + recovery catalog |
 
 Product feature is DONE only when requirement → entry/role → service/entity → state/transaction → UI result → test → exact evidence is traceable.
 
@@ -140,6 +150,8 @@ Market patterns already adopted into plan:
 - field-first offline correctness;
 - immutable document/audit lineage;
 - retailer/bank/state integrations through controlled future ports.
+
+Russian benchmark separately confirms the value of stage acceptance/payment control, technical supervision, retail fulfillment and later bank financing boundaries without moving those external services into current core.
 
 See benchmark annexes for evidence and `ADOPT NOW/LATER/REJECT` decisions.
 
