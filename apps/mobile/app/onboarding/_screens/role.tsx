@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { alertMessage } from '@/lib/confirmAlert';
 import { useLocalSearchParams } from 'expo-router';
@@ -32,7 +32,20 @@ export default function RoleScreen() {
   const [error, setError] = useState<string | null>(null);
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [pendingTeamJoinUserId, setPendingTeamJoinUserId] = useState<string | null>(null);
+  const warmupRef = useRef<Promise<boolean> | null>(null);
   const teamJoinPending = Boolean(teamToken && role === 'contractor' && pendingTeamJoinUserId);
+
+  function ensureDemoApiReady(): Promise<boolean> {
+    if (!warmupRef.current) {
+      // Render free instances can take ~45-60s to cold-start. Keep one shared
+      // warm-up promise so mount + click do not start competing probe loops.
+      warmupRef.current = pingApi(30, 1000, 2500).then((ok) => {
+        if (!ok) warmupRef.current = null;
+        return ok;
+      });
+    }
+    return warmupRef.current;
+  }
 
   useEffect(() => {
     if (!REVIEW_MODE_ENABLED || !DEMO_LOGIN_ENABLED) return;
@@ -41,11 +54,12 @@ export default function RoleScreen() {
       if (!cancelled && !busy) setServerMessage('Подготавливаем демо-сервер…');
     }, 900);
 
-    // Best-effort warm-up only. Role selection never waits for this probe.
-    void pingApi(6, 500, 1800).then((ok) => {
+    // Start waking the review API immediately when role selection is shown.
+    // The same promise is reused by the role click below.
+    void ensureDemoApiReady().then((ok) => {
       clearTimeout(messageTimer);
       if (cancelled || busy) return;
-      setServerMessage(ok ? null : 'Демо-сервер запускается. Выберите роль — вход продолжится автоматически.');
+      setServerMessage(ok ? null : 'Демо-сервер пока недоступен. Нажмите роль — подключение будет запущено повторно.');
     });
 
     return () => {
@@ -96,9 +110,16 @@ export default function RoleScreen() {
 
       if (mode === 'demo') {
         if (!DEMO_LOGIN_ENABLED) throw new Error('demo_login_disabled');
+        if (REVIEW_MODE_ENABLED) {
+          setServerMessage('Запускаем демо-сервер…');
+          const ready = await ensureDemoApiReady();
+          if (!ready) {
+            throw new Error('Демо-сервер не запустился. Повторите выбор роли.');
+          }
+        }
         setServerMessage(requestedRole === 'customer' ? 'Входим как заказчик…' : 'Входим как исполнитель…');
-        // Do not gate login on /health. The auth request itself is the authoritative
-        // operation and can wake a sleeping Render instance without a long preflight loop.
+        // Auth starts only after /health=200, so the context's normal 15s auth
+        // timeout is no longer consumed by Render cold-start time.
         await demoLogin(requestedRole);
         setServerMessage('Открываем список объектов…');
       } else {
@@ -154,7 +175,7 @@ export default function RoleScreen() {
       </View>
       {mode === 'demo' ? (
         <Text style={{ color: RenovaTheme.colors.textMuted, fontSize: 13, marginBottom: 8 }}>
-          {REVIEW_MODE_ENABLED ? 'Выберите роль — демо откроется сразу.' : 'Демо-вход создаёт учебные данные. Для пилота используйте SMS.'}
+          {REVIEW_MODE_ENABLED ? 'Выберите роль — демо откроется автоматически после запуска сервера.' : 'Демо-вход создаёт учебные данные. Для пилота используйте SMS.'}
         </Text>
       ) : null}
       <View style={styles.roles}>
