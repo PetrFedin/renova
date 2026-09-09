@@ -7,7 +7,8 @@
 **Рынок/стратегические кандидаты:** `MARKET-PRODUCT-BENCHMARK-2026-09-09.md` + `MARKET-COMPETITOR-PROFILES-2026-09-09.md`.
 **Полный source audit:** `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
 
-Правило roadmap: **наблюдение → issue/decision → bounded code → same-change specification → test/evidence → post-merge reconciliation → следующий зависимый шаг**.
+Обязательный исторический governance-токен, проверяемый machine contract: **наблюдение → решение → код/данные → тест → evidence → следующий шаг**.
+Расширенный рабочий цикл: **наблюдение → issue/decision → bounded code → same-change specification → test/evidence → post-merge reconciliation → следующий зависимый шаг**.
 
 Никаких календарных ETA/процентов готовности без принятого release scope, команды и внешних условий. Приоритет определяется risk/dependency/terminal user result.
 
