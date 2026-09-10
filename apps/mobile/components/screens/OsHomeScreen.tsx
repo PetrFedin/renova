@@ -339,8 +339,16 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     );
   }
 
-  if (loading && !dash) {
-    return <View style={s.center}><ActivityIndicator color={RenovaTheme.colors.primary} /></View>;
+  // The dashboard is intentionally fetched before the rest of the home snapshot.
+  // Once it arrives, `dash` is truthy while the other sources are still loading and
+  // `loadedProjectId` is still null. Treat that state as in-progress, not as failure.
+  if (loading && (!dash || loadedProjectId !== activeProject.id)) {
+    return (
+      <View testID="os-home-loading" style={s.center}>
+        <ActivityIndicator color={RenovaTheme.colors.primary} />
+        <Text style={s.loadingText}>Загружаем главную…</Text>
+      </View>
+    );
   }
 
   if (!dash || !snap) {
@@ -403,6 +411,7 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   content: { padding: homeLayout.screenPadding, paddingBottom: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: RenovaTheme.colors.background },
+  loadingText: { fontSize: 13, lineHeight: 18, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginTop: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 12 },
   hint: { fontSize: 13, color: RenovaTheme.colors.warning, marginBottom: 10 },
 });
