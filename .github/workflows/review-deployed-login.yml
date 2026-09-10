@@ -12,10 +12,16 @@ concurrency:
 
 jobs:
   deployed-role-login:
+    name: deployed-role-login-${{ matrix.browser }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
     env:
       RENOVA_REVIEW_BASE_URL: https://renova-review-full.onrender.com
+      RENOVA_REVIEW_BROWSER: ${{ matrix.browser }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,7 +30,7 @@ jobs:
           cache: npm
       - name: Install workspace dependencies
         run: npm ci
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Verify customer and contractor on deployed review stand
+      - name: Install ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Verify both roles and both projects on deployed review stand
         run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-login.spec.ts --reporter=line
