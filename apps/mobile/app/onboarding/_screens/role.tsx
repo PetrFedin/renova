@@ -33,13 +33,16 @@ export default function RoleScreen() {
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [pendingTeamJoinUserId, setPendingTeamJoinUserId] = useState<string | null>(null);
   const warmupRef = useRef<Promise<boolean> | null>(null);
+  const loginStartedRef = useRef(false);
   const teamJoinPending = Boolean(teamToken && role === 'contractor' && pendingTeamJoinUserId);
 
   function ensureDemoApiReady(): Promise<boolean> {
     if (!warmupRef.current) {
-      // Render free instances can take ~45-60s to cold-start. Keep one shared
-      // warm-up promise so mount + click do not start competing probe loops.
-      warmupRef.current = pingApi(30, 1000, 2500).then((ok) => {
+      // Render free instances commonly need ~45-60s from sleep to a listening port.
+      // Keep the probe connection alive through that cold start instead of aborting
+      // every 2.5s; aborted edge requests were reaching the API after the browser
+      // had already given up, so auth never started.
+      warmupRef.current = pingApi(2, 1000, 70_000).then((ok) => {
         if (!ok) warmupRef.current = null;
         return ok;
       });
@@ -51,14 +54,14 @@ export default function RoleScreen() {
     if (!REVIEW_MODE_ENABLED || !DEMO_LOGIN_ENABLED) return;
     let cancelled = false;
     const messageTimer = setTimeout(() => {
-      if (!cancelled && !busy) setServerMessage('Подготавливаем демо-сервер…');
+      if (!cancelled && !loginStartedRef.current) setServerMessage('Подготавливаем демо-сервер…');
     }, 900);
 
     // Start waking the review API immediately when role selection is shown.
-    // The same promise is reused by the role click below.
+    // The same long-lived promise is reused by the role click below.
     void ensureDemoApiReady().then((ok) => {
       clearTimeout(messageTimer);
-      if (cancelled || busy) return;
+      if (cancelled || loginStartedRef.current) return;
       setServerMessage(ok ? null : 'Демо-сервер пока недоступен. Нажмите роль — подключение будет запущено повторно.');
     });
 
@@ -100,6 +103,7 @@ export default function RoleScreen() {
 
   async function onContinue(requestedRole: UserRole = role) {
     if (busy) return;
+    loginStartedRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -118,8 +122,8 @@ export default function RoleScreen() {
           }
         }
         setServerMessage(requestedRole === 'customer' ? 'Входим как заказчик…' : 'Входим как исполнитель…');
-        // Auth starts only after /health=200, so the context's normal 15s auth
-        // timeout is no longer consumed by Render cold-start time.
+        // Auth starts only after /health=200; at this point the normal API request
+        // timeout is sufficient because Render already has a listening instance.
         await demoLogin(requestedRole);
         setServerMessage('Открываем список объектов…');
       } else {
@@ -139,6 +143,7 @@ export default function RoleScreen() {
       setServerMessage(null);
       alertMessage(teamJoinPending ? 'Не удалось вступить в бригаду' : 'Ошибка входа', msg);
     } finally {
+      loginStartedRef.current = false;
       setBusy(false);
     }
   }
@@ -158,7 +163,7 @@ export default function RoleScreen() {
   }
 
   return (
-    <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
+    <ScrollView testID="review-role-screen" style={styles.wrap} contentContainerStyle={styles.content}>
       <Text style={styles.logo}>Renova</Text>
       <Text style={styles.sub}>Кто вы в этом проекте?</Text>
       <View style={styles.modeRow}>
@@ -175,13 +180,14 @@ export default function RoleScreen() {
       </View>
       {mode === 'demo' ? (
         <Text style={{ color: RenovaTheme.colors.textMuted, fontSize: 13, marginBottom: 8 }}>
-          {REVIEW_MODE_ENABLED ? 'Выберите роль — демо откроется автоматически после запуска сервера.' : 'Демо-вход создаёт учебные данные. Для пилота используйте SMS.'}
+          {REVIEW_MODE_ENABLED ? 'Выберите роль — сервер при необходимости запустится, затем вход продолжится автоматически.' : 'Демо-вход создаёт учебные данные. Для пилота используйте SMS.'}
         </Text>
       ) : null}
       <View style={styles.roles}>
         {(['customer', 'contractor'] as UserRole[]).map((r) => (
           <Pressable
             key={r}
+            testID={`review-role-${r}`}
             disabled={teamJoinPending || busy}
             style={[styles.roleBtn, role === r && styles.roleActive, (teamJoinPending || busy) && styles.controlDisabled]}
             onPress={() => {
@@ -195,7 +201,7 @@ export default function RoleScreen() {
         ))}
       </View>
       {busy && mode === 'demo' ? (
-        <View style={styles.busyRow}>
+        <View style={styles.busyRow} testID="review-login-status">
           <ActivityIndicator color={RenovaTheme.colors.primary} />
           <Text style={styles.serverMessage}>{serverMessage || 'Подключаем демо…'}</Text>
         </View>
