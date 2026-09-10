@@ -1,0 +1,30 @@
+name: Review deployed login smoke
+
+on:
+  push:
+    branches:
+      - fix/render-review-demo-entry
+  workflow_dispatch:
+
+concurrency:
+  group: review-deployed-login
+  cancel-in-progress: true
+
+jobs:
+  deployed-role-login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      RENOVA_REVIEW_BASE_URL: https://renova-review-full.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify customer and contractor on deployed review stand
+        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-login.spec.ts --reporter=line
