@@ -13,7 +13,7 @@ import type { OsRole } from '@/constants/osSections';
 import { alertMessage } from '@/lib/confirmAlert';
 
 export default function ProjectPickScreen() {
-  const { user, projects, loadProject, recoverSession } = useRenova();
+  const { user, projects, loadProject, recoverSession, loading: contextLoading } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   const [entering, setEntering] = useState(false);
@@ -39,11 +39,18 @@ export default function ProjectPickScreen() {
       replaceOsNav('/onboarding/role');
       return;
     }
-    if (projects.length === 0 && !autoRecoveryStarted) {
+    // demoLogin commits identity and project state in separate React updates. The
+    // picker can therefore render once with a valid user and an empty project list.
+    // Starting recovery in that transient frame launches a second demo auth which
+    // can race the explicit project selection and reset the active project. Give the
+    // authoritative hand-off a short cancellable grace period first.
+    if (contextLoading || projects.length > 0 || autoRecoveryStarted) return;
+    const timer = setTimeout(() => {
       setAutoRecoveryStarted(true);
       void recoverProjects();
-    }
-  }, [user?.id, projects.length, autoRecoveryStarted, recoverProjects]);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [user?.id, contextLoading, projects.length, autoRecoveryStarted, recoverProjects]);
 
   useEffect(() => {
     if (projects.length > 0) setLoadError(null);
@@ -72,7 +79,7 @@ export default function ProjectPickScreen() {
       <Text style={s.title}>Выберите объект</Text>
       {noProjects ? (
         <View style={s.recovery}>
-          {recovering ? (
+          {recovering || contextLoading ? (
             <>
               <ActivityIndicator color={RenovaTheme.colors.primary} size="large" />
               <Text style={s.recoveryText}>Загружаем демо-объекты…</Text>
