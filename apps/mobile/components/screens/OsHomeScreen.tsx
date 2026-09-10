@@ -77,6 +77,10 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const loadedProjectIdRef = useRef<string | null>(null);
+  // Render-visible completion token. The ref above is used for synchronous race
+  // checks, while this state deliberately triggers snapshot recomputation when
+  // the current project's load completes.
+  const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
   const loadGenerationRef = useRef(0);
 
   const snapRole = readOnly ? 'customer' : role === 'contractor' ? 'contractor' : 'customer';
@@ -108,6 +112,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     setCloseoutArchived(false);
     setCloseoutNext(null);
     setCloseoutAllStagesDone(false);
+    setLoadedProjectId(null);
   };
 
   async function load() {
@@ -117,6 +122,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     if (!user || !activeProject) {
       if (isCurrentLoad()) {
         loadedProjectIdRef.current = null;
+        setLoadedProjectId(null);
         setLoading(false);
       }
       return;
@@ -227,7 +233,6 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         // snapshot was reset before requests started, so no cross-project leak occurs.
       });
 
-      loadedProjectIdRef.current = projectId;
       if (issues.length > 0) {
         setLoadWarning('Часть данных главной не обновилась. Показаны доступные или последние подтверждённые значения; нули и пустые блоки могут быть неполными.');
       }
@@ -239,6 +244,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     } finally {
       if (isCurrentLoad()) {
         loadedProjectIdRef.current = projectId;
+        setLoadedProjectId(projectId);
         setLoading(false);
       }
     }
@@ -262,7 +268,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   }), [user?.id, activeProject?.id]);
 
   const snap = useMemo(() => {
-    if (!activeProject || !dash || loadedProjectIdRef.current !== activeProject.id) return null;
+    if (!activeProject || !dash || loadedProjectId !== activeProject.id) return null;
     return buildProjectOsSnapshot(
       activeProject,
       dash,
@@ -280,7 +286,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone },
     );
   }, [
-    activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
+    activeProject, dash, loadedProjectId, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
     pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
     warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
     offlinePending, offlineBlocked,
@@ -339,7 +345,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
   if (!dash || !snap) {
     return (
-      <ScrollView style={s.container} contentContainerStyle={s.content}>
+      <ScrollView testID="os-home-error" style={s.container} contentContainerStyle={s.content}>
         <Text style={s.emptyTitle}>Не удалось загрузить главную</Text>
         {loadError ? <Text style={s.hint}>{loadError}</Text> : null}
         <PrimaryButton title="Повторить" onPress={() => load().catch(reportCatch('components.screens.OsHomeScreen.4'))} />
@@ -367,7 +373,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const moreHasContent = homeMoreHasVisibleContent(moreArgs);
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+    <ScrollView testID="os-home-ready" style={s.container} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       {loadWarning ? <InfoBanner tone="warning" title="Главная обновлена частично" message={loadWarning} /> : null}
       <IntegrationHonestyBadge />
       <HomeScreenBody
