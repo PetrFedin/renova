@@ -55,7 +55,7 @@ export async function authorizeStageMedia<T extends { photos?: Array<{ image_url
       image_url: await authorizeMediaUrl(userId, photo.image_url, 'absolute'),
     })),
   );
-  return { ...stage, photos };
+  return { ...stage, photos } as T;
 }
 
 export async function authorizeFloorPlanMedia<
@@ -73,7 +73,7 @@ export async function authorizeFloorPlanMedia<
             })),
           )
         : plan.punch,
-    })),
+    }) as Promise<T>),
   );
 }
 
@@ -84,6 +84,6 @@ export async function authorizeDesignMedia<
     packages.map(async (item) => ({
       ...item,
       file_url: await authorizeMediaUrl(userId, item.file_url, 'relative'),
-    })),
+    }) as Promise<T>),
   );
 }
