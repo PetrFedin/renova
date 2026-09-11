@@ -1,7 +1,7 @@
 /** Authorized project-media delivery without leaking long-lived auth in image URLs. */
 import { req } from './client';
 
-type Capability = { url: string; path: string };
+type Capability = { url: string };
 
 function mediaKey(rawUrl: string | null | undefined): string | null {
   if (!rawUrl) return null;
@@ -23,6 +23,12 @@ function encodedMediaKey(key: string): string {
   return key.split('/').map((part) => encodeURIComponent(part)).join('/');
 }
 
+function relativeMediaUrl(absoluteUrl: string): string {
+  const marker = '/api/v1/media/';
+  const markerIndex = absoluteUrl.indexOf(marker);
+  return markerIndex >= 0 ? absoluteUrl.slice(markerIndex) : absoluteUrl;
+}
+
 export async function authorizeMediaUrl(
   userId: string,
   rawUrl: string | null | undefined,
@@ -35,7 +41,7 @@ export async function authorizeMediaUrl(
     {},
     userId,
   );
-  return mode === 'relative' ? capability.path : capability.url;
+  return mode === 'relative' ? relativeMediaUrl(capability.url) : capability.url;
 }
 
 export async function authorizeStageMedia<T extends { photos?: Array<{ image_url?: string | null }> }>(
