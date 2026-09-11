@@ -13,7 +13,7 @@ export type PortfolioCategoryRow = {
 
 function categoryLine(key: string, label: string, planned: number, spent: number | null): PortfolioCategoryRow {
   const variance = spent == null ? null : spent - planned;
-  const variancePct = spent == null || planned <= 0 ? null : Math.round((variance! / planned) * 100);
+  const variancePct = spent == null || planned <= 0 ? null : Math.round(((spent - planned) / planned) * 100);
   return {
     key,
     label,
