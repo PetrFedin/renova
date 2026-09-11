@@ -7,6 +7,8 @@ from fastapi import HTTPException
 from app.api.v1.estimate import LinePatch, patch_line
 from app.api.v1.media import project_media_capability, upload_url
 from app.models.entities import (
+    ContractorPortfolioPhoto,
+    ContractorProfile,
     EstimateLine,
     LineType,
     Project,
@@ -183,6 +185,29 @@ async def test_media_capability_requires_current_project_access_and_is_short_liv
         signature=signature,
     ) is True
 
+    with pytest.raises(HTTPException) as exc:
+        await project_media_capability(photo_a.storage_key, user=customer_b, db=db)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_public_portfolio_reference_cannot_make_project_photo_public(db):
+    customer_a, customer_b, contractor, _, _, _, _, _, photo_a = await _fixture_graph(db)
+    profile = ContractorProfile(id="profile-a", user_id=contractor.id, visible=True)
+    portfolio_photo = ContractorPortfolioPhoto(
+        id="portfolio-photo-a",
+        profile_id=profile.id,
+        image_key=photo_a.storage_key,
+        caption="Collision must remain private",
+    )
+    db.add_all([profile, portfolio_photo])
+    await db.commit()
+
+    # The owner can still mint a delivery capability.
+    result = await project_media_capability(photo_a.storage_key, user=customer_a, db=db)
+    assert "sig=" in result["url"]
+
+    # Public classification must not override the authoritative project binding.
     with pytest.raises(HTTPException) as exc:
         await project_media_capability(photo_a.storage_key, user=customer_b, db=db)
     assert exc.value.status_code == 404
