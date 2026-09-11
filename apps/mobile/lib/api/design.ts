@@ -1,13 +1,23 @@
 /** API: design — W110 submit/create offline (approve уже в очереди) */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { authorizeDesignMedia } from './mediaDelivery';
+
+type DesignPackageSummary = { id: string; title: string; version: number; file_url?: string | null; status: string };
 
 export const designApi = {
-  listDesignPackages: (userId: string, projectId: string) =>
-    req<{ id: string; title: string; version: number; file_url?: string | null; status: string }[]>(
+  listDesignPackages: async (userId: string, projectId: string) => {
+    const packages = await req<DesignPackageSummary[]>(
       `/api/v1/projects/${projectId}/design-packages`,
       {},
       userId,
-    ),
+    );
+    try {
+      return await authorizeDesignMedia(userId, packages);
+    } catch {
+      // Keep the project data usable if a capability refresh is temporarily unavailable.
+      return packages;
+    }
+  },
   createDesignPackage: async (userId: string, projectId: string, body: object) => {
     try {
       return await req(`/api/v1/projects/${projectId}/design-packages`, {
