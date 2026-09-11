@@ -2,76 +2,30 @@
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 
-from app.api.v1.floor_plans import (
-    FurnitureIn,
-    PinPatch,
-    create_furniture,
-    move_pin,
-)
+from app.api.v1.floor_plans import FurnitureIn, PinPatch, create_furniture, move_pin
 from app.models.entities import FloorPlan, FloorPlanPin, FurnitureItem, Project, Room, User, UserRole
 
 
 async def _fixture_graph(db):
     customer_a = User(id="floor-customer-a", phone="+70000000101", role=UserRole.customer)
     customer_b = User(id="floor-customer-b", phone="+70000000102", role=UserRole.customer)
-    project_a = Project(
-        id="floor-project-a",
-        name="Floor A",
-        renovation_type="cosmetic",
-        customer_id=customer_a.id,
-    )
-    project_b = Project(
-        id="floor-project-b",
-        name="Floor B",
-        renovation_type="cosmetic",
-        customer_id=customer_b.id,
-    )
-    room_a = Room(
-        id="floor-room-a",
-        project_id=project_a.id,
-        name="Room A",
-        length_m=4,
-        width_m=3,
-        height_m=2.7,
-    )
-    room_b = Room(
-        id="floor-room-b",
-        project_id=project_b.id,
-        name="Room B",
-        length_m=5,
-        width_m=4,
-        height_m=2.7,
-    )
-    plan_a = FloorPlan(
-        id="floor-plan-a",
-        project_id=project_a.id,
-        name="Plan A",
-        image_key="plans/a.jpg",
-    )
-    plan_b = FloorPlan(
-        id="floor-plan-b",
-        project_id=project_b.id,
-        name="Plan B",
-        image_key="plans/b.jpg",
-    )
-    pin_a = FloorPlanPin(
-        id="floor-pin-a",
-        floor_plan_id=plan_a.id,
-        room_id=room_a.id,
-        x_pct=10,
-        y_pct=20,
-    )
-    pin_b = FloorPlanPin(
-        id="floor-pin-b",
-        floor_plan_id=plan_b.id,
-        room_id=room_b.id,
-        x_pct=30,
-        y_pct=40,
-    )
+    project_a = Project(id="floor-project-a", name="Floor A", renovation_type="cosmetic", customer_id=customer_a.id)
+    project_b = Project(id="floor-project-b", name="Floor B", renovation_type="cosmetic", customer_id=customer_b.id)
+    room_a = Room(id="floor-room-a", project_id=project_a.id, name="Room A", length_m=4, width_m=3, height_m=2.7)
+    room_b = Room(id="floor-room-b", project_id=project_b.id, name="Room B", length_m=5, width_m=4, height_m=2.7)
+    plan_a = FloorPlan(id="floor-plan-a", project_id=project_a.id, name="Plan A", image_key="plans/a.jpg")
+    plan_b = FloorPlan(id="floor-plan-b", project_id=project_b.id, name="Plan B", image_key="plans/b.jpg")
+    pin_a = FloorPlanPin(id="floor-pin-a", floor_plan_id=plan_a.id, room_id=room_a.id, x_pct=10, y_pct=20)
+    pin_b = FloorPlanPin(id="floor-pin-b", floor_plan_id=plan_b.id, room_id=room_b.id, x_pct=30, y_pct=40)
     db.add_all([customer_a, customer_b, project_a, project_b, room_a, room_b, plan_a, plan_b, pin_a, pin_b])
     await db.commit()
     return customer_a, customer_b, project_a, project_b, room_a, room_b, plan_a, plan_b, pin_a, pin_b
+
+
+async def _furniture_rows(db):
+    return list((await db.execute(select(FurnitureItem))).scalars().all())
 
 
 @pytest.mark.asyncio
@@ -131,7 +85,7 @@ async def test_move_pin_inside_same_project_still_works(db):
 
 
 @pytest.mark.asyncio
-async def test_create_furniture_rejects_room_from_another_project(db):
+async def test_create_furniture_rejects_room_from_another_project_without_insert(db):
     customer_a, _, project_a, _, _, room_b, plan_a, _, _, _ = await _fixture_graph(db)
 
     with pytest.raises(HTTPException) as exc:
@@ -143,11 +97,11 @@ async def test_create_furniture_rejects_room_from_another_project(db):
         )
 
     assert exc.value.status_code == 404
-    assert await db.get(FurnitureItem, "foreign-room-chair") is None
+    assert await _furniture_rows(db) == []
 
 
 @pytest.mark.asyncio
-async def test_create_furniture_rejects_floor_plan_from_another_project(db):
+async def test_create_furniture_rejects_floor_plan_from_another_project_without_insert(db):
     customer_a, _, project_a, _, room_a, _, _, plan_b, _, _ = await _fixture_graph(db)
 
     with pytest.raises(HTTPException) as exc:
@@ -159,6 +113,7 @@ async def test_create_furniture_rejects_floor_plan_from_another_project(db):
         )
 
     assert exc.value.status_code == 404
+    assert await _furniture_rows(db) == []
 
 
 @pytest.mark.asyncio
