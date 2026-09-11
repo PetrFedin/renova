@@ -29,6 +29,7 @@ async def _fixture_graph(db):
     customer_a = User(id="customer-a", phone="+70000000001", role=UserRole.customer)
     customer_b = User(id="customer-b", phone="+70000000002", role=UserRole.customer)
     contractor = User(id="contractor-a", phone="+70000000003", role=UserRole.contractor)
+    contractor_b = User(id="contractor-b", phone="+70000000004", role=UserRole.contractor)
     project_a = Project(
         id="project-a",
         name="A",
@@ -41,7 +42,7 @@ async def _fixture_graph(db):
         name="B",
         renovation_type="cosmetic",
         customer_id=customer_b.id,
-        contractor_id=contractor.id,
+        contractor_id=contractor_b.id,
     )
     line_a = EstimateLine(
         id="line-a",
@@ -85,6 +86,7 @@ async def _fixture_graph(db):
         customer_a,
         customer_b,
         contractor,
+        contractor_b,
         project_a,
         project_b,
         line_a,
@@ -97,7 +99,7 @@ async def _fixture_graph(db):
 
 
 @pytest.mark.asyncio
-async def test_estimate_patch_cannot_mutate_line_from_other_project(db):
+async def test_estimate_patch_cannot_mutate_line_from_unauthorized_project(db):
     _, _, contractor, project_a, _, _, line_b, _, _ = await _fixture_graph(db)
 
     with pytest.raises(HTTPException) as exc:
