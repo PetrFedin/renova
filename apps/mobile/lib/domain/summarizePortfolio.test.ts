@@ -26,5 +26,27 @@ const cats = aggregatePortfolioBudgetBreakdowns([
 ]);
 const materials = cats.find((c) => c.key === 'materials');
 if (!materials || materials.planned !== 300 || materials.spent !== 340) throw new Error('materials aggregate');
+if (materials.variance !== 40 || materials.variancePct !== 13 || !materials.hasOverrun) throw new Error('materials variance');
+
+const works = cats.find((c) => c.key === 'works');
+if (!works || works.planned !== 150) throw new Error('works plan');
+if (works.spent !== null || works.variance !== null || works.variancePct !== null || works.hasOverrun) {
+  throw new Error('works must not manufacture category fact from plan');
+}
+
+const waste = cats.find((c) => c.key === 'waste');
+if (!waste || waste.planned !== 10 || waste.spent !== null || waste.variance !== null) {
+  throw new Error('waste must expose unavailable fact');
+}
+
+const reserve = cats.find((c) => c.key === 'reserve');
+if (!reserve || reserve.planned !== 20 || reserve.spent !== null || reserve.variance !== null) {
+  throw new Error('reserve must expose unavailable fact');
+}
+
+const total = cats.find((c) => c.key === 'total');
+if (!total || total.planned !== 450 || total.spent !== 420 || total.variance !== -30) {
+  throw new Error('portfolio total must keep authoritative aggregate fact');
+}
 
 console.log('summarizePortfolio.test OK');
