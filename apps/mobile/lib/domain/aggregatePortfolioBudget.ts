@@ -5,15 +5,15 @@ export type PortfolioCategoryRow = {
   key: string;
   label: string;
   planned: number;
-  spent: number;
-  variance: number;
-  variancePct: number;
+  spent: number | null;
+  variance: number | null;
+  variancePct: number | null;
   hasOverrun: boolean;
 };
 
-function categoryLine(key: string, label: string, planned: number, spent: number): PortfolioCategoryRow {
-  const variance = spent - planned;
-  const variancePct = planned > 0 ? Math.round((variance / planned) * 100) : 0;
+function categoryLine(key: string, label: string, planned: number, spent: number | null): PortfolioCategoryRow {
+  const variance = spent == null ? null : spent - planned;
+  const variancePct = spent == null || planned <= 0 ? null : Math.round((variance! / planned) * 100);
   return {
     key,
     label,
@@ -21,7 +21,7 @@ function categoryLine(key: string, label: string, planned: number, spent: number
     spent,
     variance,
     variancePct,
-    hasOverrun: planned > 0 && variance > 0,
+    hasOverrun: planned > 0 && variance != null && variance > 0,
   };
 }
 
@@ -44,13 +44,16 @@ export function aggregatePortfolioBudgetBreakdowns(breakdowns: BudgetBreakdown[]
     totalSpent += b.budget_spent || 0;
   }
 
+  // The current breakdown contract exposes a real material calculation and the
+  // authoritative project total, but not independent actuals for works/waste/reserve.
+  // Never manufacture a zero variance by copying plan into fact.
   const lines = [
-    categoryLine('works', 'Работы (смета)', works, works),
+    categoryLine('works', 'Работы (смета)', works, null),
     categoryLine('materials', 'Материалы', materialsPlan, materialsFact),
-    categoryLine('waste', 'Вывоз мусора', waste, waste),
-    categoryLine('reserve', 'Резерв', reserve, reserve),
+    categoryLine('waste', 'Вывоз мусора', waste, null),
+    categoryLine('reserve', 'Резерв', reserve, null),
     categoryLine('total', 'Итого по бюджету', totalPlan, totalSpent),
   ];
 
-  return lines.filter((l) => l.planned > 0 || l.spent > 0);
+  return lines.filter((line) => line.planned > 0 || (line.spent ?? 0) > 0);
 }
