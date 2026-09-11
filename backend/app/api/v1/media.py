@@ -20,6 +20,7 @@ from app.services.project_media_acl import (
     assert_project_media_access,
     assert_project_media_target_access,
     is_public_portfolio_media,
+    signed_media_path,
     verify_media_capability,
 )
 
@@ -101,6 +102,22 @@ async def _authorize_non_document_media(
         raise HTTPException(401, "Требуется Authorization")
     await assert_project_media_access(db, user, key, write=False)
     return False
+
+
+@router.get("/capability/{file_path:path}")
+async def project_media_capability(
+    file_path: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mint a five-minute image/file URL only after current project ACL succeeds."""
+    key = _canonical_key(file_path)
+    if parse_document_media_key(key) is not None:
+        raise HTTPException(400, "document_media_uses_document_delivery_contract")
+    if not await is_public_portfolio_media(db, key):
+        await assert_project_media_access(db, user, key, write=False)
+    path = signed_media_path(key)
+    return {"url": f"{settings.public_base_url.rstrip('/')}{path}"}
 
 
 @router.get("/presign/{file_path:path}")
