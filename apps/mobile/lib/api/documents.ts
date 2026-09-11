@@ -2,6 +2,7 @@
 import { req, ApiError } from './client';
 import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
 import type { ProjectDocumentsResponse } from './types';
+import { authorizeMediaUrl } from './mediaDelivery';
 
 export type EsignProvider = {
   name: string;
@@ -10,8 +11,22 @@ export type EsignProvider = {
 };
 
 export const documentsApi = {
-  listProjectDocuments: (userId: string, projectId: string) =>
-    req<ProjectDocumentsResponse>(`/api/v1/projects/${projectId}/documents`, {}, userId),
+  listProjectDocuments: async (userId: string, projectId: string) => {
+    const result = await req<ProjectDocumentsResponse>(`/api/v1/projects/${projectId}/documents`, {}, userId);
+    try {
+      const items = await Promise.all(
+        result.items.map(async (item) => {
+          if (item.source !== 'design' && item.kind !== 'design_package') return item;
+          const href = await authorizeMediaUrl(userId, item.href, 'relative');
+          return { ...item, href: href ?? null };
+        }),
+      );
+      return { ...result, items };
+    } catch {
+      // Document index truth stays available if design-media capability refresh is degraded.
+      return result;
+    }
+  },
 
   listEsignProviders: (userId: string) =>
     req<{ providers: EsignProvider[] }>('/api/v1/esign/providers', {}, userId),

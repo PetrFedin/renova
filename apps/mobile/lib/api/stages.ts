@@ -2,6 +2,7 @@
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
+import { authorizeStageMedia } from './mediaDelivery';
 
 async function activeAcceptance(userId: string, projectId: string, stageId: string): Promise<WorkAcceptance | null> {
   const items = await req<WorkAcceptance[]>(
@@ -15,8 +16,16 @@ async function activeAcceptance(userId: string, projectId: string, stageId: stri
 export const stagesApi = {
   getPlan: (userId: string, projectId: string) => req<ProjectPlan>(`/api/v1/projects/${projectId}/plan`, {}, userId),
   /** cachedGet: при 429 отдаёт durable cache — экран этапа не падает Uncaught */
-  getStage: (userId: string, projectId: string, stageId: string) =>
-    cachedGet<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}`, userId),
+  getStage: async (userId: string, projectId: string, stageId: string) => {
+    const stage = await cachedGet<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}`, userId);
+    try {
+      return await authorizeStageMedia(userId, stage);
+    } catch {
+      // Media capability refresh is secondary. Never turn a valid/cached stage into
+      // a screen-level failure; the image can reconcile on the next online reload.
+      return stage;
+    }
+  },
   addStageComment: async (userId: string, projectId: string, stageId: string, text: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/comments`, { method: 'POST', body: JSON.stringify({ text }) }, userId);
@@ -28,7 +37,8 @@ export const stagesApi = {
     }
   },
   uploadStagePhoto: async (userId: string, projectId: string, stageId: string, blob: Blob, caption?: string) => {
-    const up = await req<{ key: string; upload_url: string | null; public_url: string }>('/api/v1/media/upload-url', { method: 'POST' }, userId);
+    const uploadPath = `/api/v1/media/upload-url?project_id=${encodeURIComponent(projectId)}&stage_id=${encodeURIComponent(stageId)}`;
+    const up = await req<{ key: string; upload_url: string | null; public_url: string }>(uploadPath, { method: 'POST' }, userId);
     if (up.upload_url) {
       await fetch(up.upload_url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
       return req(`/api/v1/projects/${projectId}/stages/${stageId}/photos`, { method: 'POST', body: JSON.stringify({ image_data: up.public_url, caption }) }, userId);
