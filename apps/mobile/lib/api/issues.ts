@@ -1,6 +1,7 @@
 /** API: issues */
 import { req, ApiError } from './client';
 import type { ProjectIssue } from './types';
+import { authorizeIssueMedia } from './mediaDelivery';
 
 async function enqueueOffline(path: string, method: string, body: string | undefined, userId: string) {
   const { enqueue } = await import('@/lib/offlineQueue');
@@ -9,7 +10,19 @@ async function enqueueOffline(path: string, method: string, body: string | undef
 }
 
 export const issuesApi = {
-  listIssues: (userId: string, projectId: string, status?: string) => req<ProjectIssue[]>(`/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`, {}, userId),
+  listIssues: async (userId: string, projectId: string, status?: string) => {
+    const issues = await req<ProjectIssue[]>(
+      `/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`,
+      {},
+      userId,
+    );
+    try {
+      return await authorizeIssueMedia(userId, issues);
+    } catch {
+      // QC business state remains readable if a media capability refresh is degraded.
+      return issues;
+    }
+  },
   createIssue: async (userId: string, projectId: string, body: object) => {
     try {
       return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues`, { method: 'POST', body: JSON.stringify(body) }, userId);
