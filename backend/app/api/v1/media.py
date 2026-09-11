@@ -20,6 +20,7 @@ from app.services.project_media_acl import (
     assert_project_media_access,
     assert_project_media_target_access,
     is_public_portfolio_media,
+    resolve_project_media_binding,
     signed_media_path,
     verify_media_capability,
 )
@@ -46,6 +47,10 @@ def _canonical_key(file_path: str) -> str:
         return storage_svc.normalize_storage_key(file_path.lstrip("/"))
     except storage_svc.InvalidStorageKey as exc:
         raise HTTPException(404, "media_not_found") from exc
+
+
+def _media_404() -> HTTPException:
+    return HTTPException(404, "media_or_project_not_found")
 
 
 @router.post("/upload-url")
@@ -93,15 +98,28 @@ async def _authorize_non_document_media(
     expires_at: int | None = None,
     signature: str | None = None,
 ) -> bool:
-    """Authorize project media; return True only for intentionally public portfolio media."""
+    """Authorize project media; return True only for intentionally public portfolio media.
+
+    Project ownership always wins over a public-media association. A project blob
+    cannot become public merely because the same key is later referenced by a
+    contractor portfolio row.
+    """
     if verify_media_capability(key, expires_at=expires_at, signature=signature):
         return False
+
+    project_binding = await resolve_project_media_binding(db, key)
+    if project_binding is not None:
+        if user is None:
+            raise HTTPException(401, "Требуется Authorization")
+        await assert_project_media_access(db, user, key, write=False)
+        return False
+
     if await is_public_portfolio_media(db, key):
         return True
+
     if user is None:
         raise HTTPException(401, "Требуется Authorization")
-    await assert_project_media_access(db, user, key, write=False)
-    return False
+    raise _media_404()
 
 
 @router.get("/capability/{file_path:path}")
@@ -114,8 +132,13 @@ async def project_media_capability(
     key = _canonical_key(file_path)
     if parse_document_media_key(key) is not None:
         raise HTTPException(400, "document_media_uses_document_delivery_contract")
-    if not await is_public_portfolio_media(db, key):
+
+    project_binding = await resolve_project_media_binding(db, key)
+    if project_binding is not None:
         await assert_project_media_access(db, user, key, write=False)
+    elif not await is_public_portfolio_media(db, key):
+        raise _media_404()
+
     path = signed_media_path(key)
     return {"url": f"{settings.public_base_url.rstrip('/')}{path}"}
 
@@ -158,7 +181,7 @@ async def get_media(
     Project media is never authorized by an opaque filename. It requires current
     project membership or a short-lived capability minted by an already-authorized
     project read. Foreign access is privacy-404. Visible contractor portfolio media
-    remains intentionally public.
+    remains intentionally public only when the key is not also project-bound.
     """
     key = _canonical_key(file_path)
     public_portfolio = False
