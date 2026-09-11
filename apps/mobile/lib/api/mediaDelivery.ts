@@ -62,18 +62,18 @@ export async function authorizeFloorPlanMedia<
   T extends { image_url?: string | null; punch?: Array<{ photo_url?: string | null }> },
 >(userId: string, plans: T[]): Promise<T[]> {
   return Promise.all(
-    plans.map(async (plan) => ({
-      ...plan,
-      image_url: await authorizeMediaUrl(userId, plan.image_url, 'relative'),
-      punch: plan.punch
+    plans.map(async (plan) => {
+      const image_url = await authorizeMediaUrl(userId, plan.image_url, 'relative');
+      const punch = plan.punch
         ? await Promise.all(
             plan.punch.map(async (item) => ({
               ...item,
               photo_url: await authorizeMediaUrl(userId, item.photo_url, 'relative'),
             })),
           )
-        : plan.punch,
-    }) as Promise<T>),
+        : plan.punch;
+      return { ...plan, image_url, punch } as T;
+    }),
   );
 }
 
@@ -81,9 +81,9 @@ export async function authorizeDesignMedia<
   T extends { file_url?: string | null },
 >(userId: string, packages: T[]): Promise<T[]> {
   return Promise.all(
-    packages.map(async (item) => ({
-      ...item,
-      file_url: await authorizeMediaUrl(userId, item.file_url, 'relative'),
-    }) as Promise<T>),
+    packages.map(async (item) => {
+      const file_url = await authorizeMediaUrl(userId, item.file_url, 'relative');
+      return { ...item, file_url } as T;
+    }),
   );
 }
