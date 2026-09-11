@@ -130,7 +130,7 @@ def material_stats(lines: list[EstimateLine]) -> dict:
 
 
 async def get_estimate_lock_diff(db: AsyncSession, project_id: str) -> dict | None:
-    """W68 #39: diff снимка propose vs текущими строками."""
+    """W68 #39: diff снимка propose vs текущие строки."""
     import json as _json
     proj = await db.get(Project, project_id)
     if not proj:
@@ -153,7 +153,7 @@ async def get_estimate_lock_diff(db: AsyncSession, project_id: str) -> dict | No
 
 
 async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_by: str) -> tuple[Project | None, dict]:
-    """W57: исполнитель предлагает смету на согласование (без estimate_locked_at)."""
+    """W57: исполнитель предлагает фиксацию — без estimate_locked_at."""
     from datetime import datetime, timedelta
     from app.services import notification_service as notif_svc
 
