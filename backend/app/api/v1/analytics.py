@@ -6,6 +6,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import LineType, Project, User, UserRole
 from app.services import project_service as proj_svc
+from app.services.estimate_service import material_actual_total
 
 router = APIRouter(tags=["analytics"])
 
@@ -27,7 +28,7 @@ async def analytics(project_id: str, user: User = Depends(get_current_user), db:
     p = await require_project(db, project_id, user, write=False)
     materials = [l for l in p.estimate_lines if l.line_type == LineType.material]
     mp = sum(l.quantity_planned * l.unit_price for l in materials)
-    mf = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
+    mf = material_actual_total(materials)
     prog = sum(s.percent_complete for s in p.stages) / (len(p.stages) or 1)
     dl = (p.planned_end_date - date.today()).days if p.planned_end_date else None
     return {"budget_planned": p.budget_planned, "budget_spent": p.budget_spent, "margin_estimated": round(p.budget_planned - mp, 2), "materials_plan": round(mp, 2), "materials_fact": round(mf, 2), "progress_percent": round(prog, 1), "days_left": dl, "forecast_delay_days": max(0, -dl) if dl is not None and prog < 100 else 0}
@@ -205,4 +206,3 @@ async def expenses_csv(project_id: str, user: User = Depends(get_current_user), 
     w.writerow(["Итого чеки", "", "", data["receipts_total"], ""])
     buf.seek(0)
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=renova-expenses.csv"})
-
