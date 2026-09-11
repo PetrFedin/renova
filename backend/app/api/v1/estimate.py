@@ -59,6 +59,14 @@ async def patch_line(
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
+
+    # Object authorization must bind both identifiers before any mutation. A
+    # contractor who can write project A must never be able to pass a line id
+    # from project B and make the service commit B under A's path authorization.
+    target = await db.get(EstimateLine, line_id)
+    if not target or target.project_id != project_id:
+        raise HTTPException(404, "Строка не найдена")
+
     line = await update_line(db, line_id, **body.model_dump(exclude_none=True))
     if not line:
         raise HTTPException(404, "Строка не найдена")
