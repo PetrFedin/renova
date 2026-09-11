@@ -58,6 +58,18 @@ export async function authorizeStageMedia<T extends { photos?: Array<{ image_url
   return { ...stage, photos } as T;
 }
 
+export async function authorizeIssueMedia<T extends { photo_url?: string | null }>(
+  userId: string,
+  issues: T[],
+): Promise<T[]> {
+  return Promise.all(
+    issues.map(async (issue) => {
+      const photo_url = await authorizeMediaUrl(userId, issue.photo_url, 'relative');
+      return { ...issue, photo_url } as T;
+    }),
+  );
+}
+
 export async function authorizeFloorPlanMedia<
   T extends { image_url?: string | null; punch?: Array<{ photo_url?: string | null }> },
 >(userId: string, plans: T[]): Promise<T[]> {
