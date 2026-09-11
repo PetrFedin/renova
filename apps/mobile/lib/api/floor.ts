@@ -1,8 +1,18 @@
 /** API: floor */
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { FloorPlan, FurnitureItem, WasteOrder } from './types';
+import { authorizeFloorPlanMedia } from './mediaDelivery';
+
 export const floorApi = {
-  listFloorPlans: (userId: string, projectId: string) => req<FloorPlan[]>(`/api/v1/projects/${projectId}/floor-plans`, {}, userId),
+  listFloorPlans: async (userId: string, projectId: string) => {
+    const plans = await req<FloorPlan[]>(`/api/v1/projects/${projectId}/floor-plans`, {}, userId);
+    try {
+      return await authorizeFloorPlanMedia(userId, plans);
+    } catch {
+      // Media refresh is secondary to the authoritative floor-plan payload.
+      return plans;
+    }
+  },
   createFloorPlan: (userId: string, projectId: string, body: object) => req<FloorPlan>(`/api/v1/projects/${projectId}/floor-plans`, { method: 'POST', body: JSON.stringify(body) }, userId),
   pinFloorPlanRoom: (userId: string, projectId: string, planId: string, body: object) => req(`/api/v1/projects/${projectId}/floor-plans/${planId}/pins`, { method: 'POST', body: JSON.stringify(body) }, userId),
   moveFloorPin: async (userId: string, projectId: string, planId: string, pinId: string, x_pct: number, y_pct: number) => {
