@@ -8,6 +8,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { osEntryRoute, projectPickRoute } from '@/lib/osEntry';
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 
+const REVIEW_MODE_ENABLED = (process.env.EXPO_PUBLIC_REVIEW_MODE ?? '0') === '1';
 
 export default function Index() {
   const { loading, user } = useRenova();
@@ -15,6 +16,10 @@ export default function Index() {
 
   useEffect(() => {
     if (loading) return;
+    if (REVIEW_MODE_ENABLED) {
+      setHref('/onboarding/role');
+      return;
+    }
     if (!user) {
       setHref('/onboarding/role');
       return;
@@ -36,6 +41,7 @@ export default function Index() {
     );
   }
 
+  if (REVIEW_MODE_ENABLED) return <Redirect href="/onboarding/role" />;
   if (!user) return <Redirect href="/onboarding/role" />;
 
   return <Redirect href={href as Href} />;

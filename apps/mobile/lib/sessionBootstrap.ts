@@ -18,25 +18,71 @@ const KEYS = {
 export const DEMO_PHONES = ['+70000000001', '+70000000002'] as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const REVIEW_MODE_ENABLED = (process.env.EXPO_PUBLIC_REVIEW_MODE ?? '0') === '1';
+const DEFAULT_PING_REQUEST_TIMEOUT_MS = REVIEW_MODE_ENABLED ? 2500 : 2000;
+const REVIEW_WAKE_PROBE_TIMEOUT_MS = 8000;
+const REVIEW_WAKE_WINDOW_MS = 95000;
 
-/** iframe iphone-preview — автодемо без ручного входа */
+/** iframe iphone-preview — автодемо без ручного входа, кроме явного review-стенда. */
 export function isPreviewFrame(): boolean {
-  return typeof window !== 'undefined' && window.parent !== window;
+  return !REVIEW_MODE_ENABLED && typeof window !== 'undefined' && window.parent !== window;
 }
 
-/** Проверка доступности API с повторами (backend может стартовать позже Expo). */
-export async function pingApi(retries = 5, delayMs = 600): Promise<boolean> {
-  for (let i = 0; i < retries; i++) {
+async function fetchHealthWithTimeout(timeoutMs: number): Promise<Response> {
+  if (typeof AbortController === 'undefined') {
+    return fetch(`${API_BASE}/health`, { method: 'GET' });
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${API_BASE}/health`, { method: 'GET', signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Проверка доступности API с повторами. Обычные probes ограничены собственным timeout.
+ * Для review cold-start длинный timeout трактуется как общее окно ожидания: iOS/Safari
+ * и Render edge могут оборвать один длинный fetch, поэтому внутри окна делаем короткие
+ * повторные probes до первого /health=200.
+ */
+export async function pingApi(
+  retries = 5,
+  delayMs = 600,
+  requestTimeoutMs = DEFAULT_PING_REQUEST_TIMEOUT_MS,
+): Promise<boolean> {
+  if (REVIEW_MODE_ENABLED && requestTimeoutMs > 15000) {
+    const wakeWindowMs = Math.max(requestTimeoutMs, REVIEW_WAKE_WINDOW_MS);
+    const deadline = Date.now() + wakeWindowMs;
+    let lastError: unknown = new Error('review_api_wake_timeout');
+    while (Date.now() < deadline) {
+      try {
+        const remaining = Math.max(1, deadline - Date.now());
+        const res = await fetchHealthWithTimeout(Math.min(REVIEW_WAKE_PROBE_TIMEOUT_MS, remaining));
+        if (res.ok) return true;
+        lastError = new Error(`HTTP ${res.status}`);
+      } catch (error) {
+        lastError = error;
+      }
+      if (Date.now() < deadline) await sleep(Math.max(400, Math.min(1500, delayMs || 1000)));
+    }
+    reportError('sessionBootstrap.pingApi.reviewWake', lastError, { wakeWindowMs });
+    return false;
+  }
+
+  const attempts = Math.max(1, retries);
+  for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(`${API_BASE}/health`, { method: 'GET' });
+      const res = await fetchHealthWithTimeout(requestTimeoutMs);
       if (res.ok) return true;
-      if (i === retries - 1) {
-        reportError('sessionBootstrap.pingApi.http', new Error(`HTTP ${res.status}`), { retries });
+      if (i === attempts - 1) {
+        reportError('sessionBootstrap.pingApi.http', new Error(`HTTP ${res.status}`), { retries: attempts });
       }
     } catch (error) {
-      if (i === retries - 1) reportError('sessionBootstrap.pingApi', error, { retries });
+      if (i === attempts - 1) reportError('sessionBootstrap.pingApi', error, { retries: attempts });
     }
-    if (i < retries - 1) await sleep(delayMs * (i + 1));
+    if (i < attempts - 1) await sleep(Math.max(0, delayMs));
   }
   return false;
 }

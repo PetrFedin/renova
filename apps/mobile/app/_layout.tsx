@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import 'react-native-reanimated';
 import NetInfo from '@react-native-community/netinfo';
@@ -10,7 +10,7 @@ import { RenovaProvider, useRenova } from '@/lib/context/RenovaContext';
 import { NavTracker } from '@/components/renova/NavTracker';
 import { flushOfflineOutbox } from '@/lib/offline';
 import { initLang } from '@/lib/i18n';
-import { pushOsNav } from '@/lib/pushOsNav';
+import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { initSentry } from '@/lib/sentryInit';
 import { reportCatch, reportError } from '@/lib/reportError';
 import {
@@ -21,12 +21,31 @@ import {
 SplashScreen.preventAutoHideAsync();
 initSentry();
 
+const REVIEW_MODE_ENABLED = (process.env.EXPO_PUBLIC_REVIEW_MODE ?? '0') === '1';
+
 function SplashGate({ children }: { children: ReactNode }) {
   const { loading } = useRenova();
   useEffect(() => {
     if (!loading) SplashScreen.hideAsync().catch(reportCatch('splash.hide'));
   }, [loading]);
   return children;
+}
+
+function ReviewLaunchGate() {
+  const routed = useRef(false);
+
+  useEffect(() => {
+    if (!REVIEW_MODE_ENABLED || routed.current) return;
+    routed.current = true;
+    // Review stand is an inspection entrypoint: every hard web launch starts
+    // from role selection, even when the browser restores a previous deep link.
+    // SPA navigation after this initial mount remains untouched.
+    if (typeof window !== 'undefined') {
+      replaceOsNav('/onboarding/role');
+    }
+  }, []);
+
+  return null;
 }
 
 export default function RootLayout() {
@@ -76,6 +95,7 @@ export default function RootLayout() {
       <RenovaProvider>
         <SplashGate>
           <StatusBar style="dark" />
+          <ReviewLaunchGate />
           <NavTracker />
           <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
             <Stack.Screen name="index" />

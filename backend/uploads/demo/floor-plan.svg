@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#f7f5f1"/>
+  <g fill="#ffffff" stroke="#1f2937" stroke-width="8">
+    <rect x="70" y="70" width="1060" height="660"/>
+    <rect x="90" y="90" width="500" height="300"/>
+    <rect x="610" y="90" width="500" height="300"/>
+    <rect x="90" y="410" width="500" height="300"/>
+    <rect x="610" y="410" width="500" height="300"/>
+  </g>
+  <g fill="#111827" font-family="Arial, sans-serif" font-size="34" text-anchor="middle">
+    <text x="340" y="250">Гостиная</text>
+    <text x="860" y="250">Спальня</text>
+    <text x="340" y="570">Кухня / холл</text>
+    <text x="860" y="570">Ванная</text>
+  </g>
+  <g fill="#9ca3af" font-family="Arial, sans-serif" font-size="22" text-anchor="middle">
+    <text x="600" y="770">RENOVA · демонстрационная планировка</text>
+  </g>
+</svg>

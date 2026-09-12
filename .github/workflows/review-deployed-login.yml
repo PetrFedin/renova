@@ -1,0 +1,36 @@
+name: Review deployed product smoke
+
+on:
+  push:
+    branches:
+      - fix/render-review-demo-entry
+  workflow_dispatch:
+
+concurrency:
+  group: review-deployed-login
+  cancel-in-progress: true
+
+jobs:
+  deployed-role-login:
+    name: deployed-product-${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    env:
+      RENOVA_REVIEW_BASE_URL: https://renova-review-full.onrender.com
+      RENOVA_REVIEW_BROWSER: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Install ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Verify role entry and primary product controls on deployed review stand
+        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-login.spec.ts e2e/review-deployed-product-smoke.spec.ts --reporter=line

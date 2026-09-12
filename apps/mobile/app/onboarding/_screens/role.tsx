@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { alertMessage } from '@/lib/confirmAlert';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -10,11 +10,13 @@ import { api } from '@/lib/api';
 import { navigateAfterLogin } from '@/lib/osEntry';
 import { reportError } from '@/lib/reportError';
 import { requireSuccessfulTeamJoin } from '@/lib/teamJoinFlow';
+import { pingApi } from '@/lib/sessionBootstrap';
 
 type Mode = 'demo' | 'sms';
 
 /** W67 #27: демо-вход только при явном EXPO_PUBLIC_DEMO=1 (fail-closed по умолчанию). */
 const DEMO_LOGIN_ENABLED = (process.env.EXPO_PUBLIC_DEMO ?? '0') === '1';
+const REVIEW_MODE_ENABLED = (process.env.EXPO_PUBLIC_REVIEW_MODE ?? '0') === '1';
 
 export default function RoleScreen() {
   const { teamToken } = useLocalSearchParams<{ teamToken?: string }>();
@@ -28,11 +30,49 @@ export default function RoleScreen() {
   const [demoCode, setDemoCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [pendingTeamJoinUserId, setPendingTeamJoinUserId] = useState<string | null>(null);
+  const warmupRef = useRef<Promise<boolean> | null>(null);
+  const loginStartedRef = useRef(false);
   const teamJoinPending = Boolean(teamToken && role === 'contractor' && pendingTeamJoinUserId);
 
-  async function afterLogin(existingUserId?: string) {
-    if (teamToken && role === 'contractor') {
+  function ensureDemoApiReady(): Promise<boolean> {
+    if (!warmupRef.current) {
+      // Render free instances commonly need ~45-60s from sleep to a listening port.
+      // Keep the probe connection alive through that cold start instead of aborting
+      // every 2.5s; aborted edge requests were reaching the API after the browser
+      // had already given up, so auth never started.
+      warmupRef.current = pingApi(2, 1000, 70_000).then((ok) => {
+        if (!ok) warmupRef.current = null;
+        return ok;
+      });
+    }
+    return warmupRef.current;
+  }
+
+  useEffect(() => {
+    if (!REVIEW_MODE_ENABLED || !DEMO_LOGIN_ENABLED) return;
+    let cancelled = false;
+    const messageTimer = setTimeout(() => {
+      if (!cancelled && !loginStartedRef.current) setServerMessage('Подготавливаем демо-сервер…');
+    }, 900);
+
+    // Start waking the review API immediately when role selection is shown.
+    // The same long-lived promise is reused by the role click below.
+    void ensureDemoApiReady().then((ok) => {
+      clearTimeout(messageTimer);
+      if (cancelled || loginStartedRef.current) return;
+      setServerMessage(ok ? null : 'Демо-сервер пока недоступен. Нажмите роль — подключение будет запущено повторно.');
+    });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(messageTimer);
+    };
+  }, []);
+
+  async function afterLogin(loginRole: UserRole = role, existingUserId?: string) {
+    if (teamToken && loginRole === 'contractor') {
       const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
       const id = existingUserId ?? await AsyncStorage.getItem('renova_user_id');
       if (!id) throw new Error('Не удалось подтвердить сессию для вступления в бригаду');
@@ -45,7 +85,7 @@ export default function RoleScreen() {
         const joined = await api.joinTeam(id, teamToken);
         teamId = requireSuccessfulTeamJoin(joined);
       } catch (joinError) {
-        reportError('onboarding.teamJoin', joinError, { userId: id, role });
+        reportError('onboarding.teamJoin', joinError, { userId: id, role: loginRole });
         throw joinError;
       }
 
@@ -58,21 +98,34 @@ export default function RoleScreen() {
         reportError('onboarding.teamJoin.refreshAccess', refreshError, { userId: id, teamId });
       }
     }
-    await navigateAfterLogin(role);
+    await navigateAfterLogin(loginRole);
   }
 
-  async function onContinue() {
+  async function onContinue(requestedRole: UserRole = role) {
+    if (busy) return;
+    loginStartedRef.current = true;
     setBusy(true);
     setError(null);
     try {
       if (teamJoinPending && pendingTeamJoinUserId) {
-        await afterLogin(pendingTeamJoinUserId);
+        await afterLogin(requestedRole, pendingTeamJoinUserId);
         return;
       }
 
       if (mode === 'demo') {
         if (!DEMO_LOGIN_ENABLED) throw new Error('demo_login_disabled');
-        await demoLogin(role);
+        if (REVIEW_MODE_ENABLED) {
+          setServerMessage('Запускаем демо-сервер…');
+          const ready = await ensureDemoApiReady();
+          if (!ready) {
+            throw new Error('Демо-сервер не запустился. Повторите выбор роли.');
+          }
+        }
+        setServerMessage(requestedRole === 'customer' ? 'Входим как заказчик…' : 'Входим как исполнитель…');
+        // Auth starts only after /health=200; at this point the normal API request
+        // timeout is sufficient because Render already has a listening instance.
+        await demoLogin(requestedRole);
+        setServerMessage('Открываем список объектов…');
       } else {
         if (!codeSent) {
           const r = await api.sendSmsCode(phone);
@@ -81,14 +134,16 @@ export default function RoleScreen() {
           alertMessage('Код отправлен', r.demo_code && DEMO_LOGIN_ENABLED ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
           return;
         }
-        await loginWithSms(phone, code, role, name ? { full_name: name } : undefined);
+        await loginWithSms(phone, code, requestedRole, name ? { full_name: name } : undefined);
       }
-      await afterLogin();
+      await afterLogin(requestedRole);
     } catch (e: any) {
       const msg = e?.message || 'Сервер недоступен';
       setError(msg);
+      setServerMessage(null);
       alertMessage(teamJoinPending ? 'Не удалось вступить в бригаду' : 'Ошибка входа', msg);
     } finally {
+      loginStartedRef.current = false;
       setBusy(false);
     }
   }
@@ -108,16 +163,16 @@ export default function RoleScreen() {
   }
 
   return (
-    <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
+    <ScrollView testID="review-role-screen" style={styles.wrap} contentContainerStyle={styles.content}>
       <Text style={styles.logo}>Renova</Text>
       <Text style={styles.sub}>Кто вы в этом проекте?</Text>
       <View style={styles.modeRow}>
         {(DEMO_LOGIN_ENABLED ? (['demo', 'sms'] as Mode[]) : (['sms'] as Mode[])).map((m) => (
           <Pressable
             key={m}
-            disabled={teamJoinPending}
-            style={[styles.modeBtn, mode === m && styles.modeOn, teamJoinPending && styles.controlDisabled]}
-            onPress={() => { setMode(m); setCodeSent(false); }}
+            disabled={teamJoinPending || busy}
+            style={[styles.modeBtn, mode === m && styles.modeOn, (teamJoinPending || busy) && styles.controlDisabled]}
+            onPress={() => { setMode(m); setCodeSent(false); setError(null); }}
           >
             <Text style={[styles.modeT, mode === m && styles.modeTOn]}>{m === 'demo' ? 'Демо-стенд' : 'SMS'}</Text>
           </Pressable>
@@ -125,21 +180,32 @@ export default function RoleScreen() {
       </View>
       {mode === 'demo' ? (
         <Text style={{ color: RenovaTheme.colors.textMuted, fontSize: 13, marginBottom: 8 }}>
-          Демо-вход создаёт учебные данные. Для пилота используйте SMS.
+          {REVIEW_MODE_ENABLED ? 'Выберите роль — сервер при необходимости запустится, затем вход продолжится автоматически.' : 'Демо-вход создаёт учебные данные. Для пилота используйте SMS.'}
         </Text>
       ) : null}
       <View style={styles.roles}>
         {(['customer', 'contractor'] as UserRole[]).map((r) => (
           <Pressable
             key={r}
-            disabled={teamJoinPending}
-            style={[styles.roleBtn, role === r && styles.roleActive, teamJoinPending && styles.controlDisabled]}
-            onPress={() => setRole(r)}
+            testID={`review-role-${r}`}
+            disabled={teamJoinPending || busy}
+            style={[styles.roleBtn, role === r && styles.roleActive, (teamJoinPending || busy) && styles.controlDisabled]}
+            onPress={() => {
+              setRole(r);
+              setError(null);
+              if (mode === 'demo' && REVIEW_MODE_ENABLED) void onContinue(r);
+            }}
           >
             <Text style={[styles.roleText, role === r && styles.roleTextActive]}>{r === 'customer' ? 'Заказчик' : 'Исполнитель'}</Text>
           </Pressable>
         ))}
       </View>
+      {busy && mode === 'demo' ? (
+        <View style={styles.busyRow} testID="review-login-status">
+          <ActivityIndicator color={RenovaTheme.colors.primary} />
+          <Text style={styles.serverMessage}>{serverMessage || 'Подключаем демо…'}</Text>
+        </View>
+      ) : serverMessage ? <Text style={styles.serverMessage}>{serverMessage}</Text> : null}
       {mode === 'sms' && (
         <>
           <TextInput style={styles.input} placeholder="Телефон +7…" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={!teamJoinPending} />
@@ -154,11 +220,13 @@ export default function RoleScreen() {
         </Text>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <PrimaryButton
-        title={teamJoinPending ? 'Повторить вступление' : mode === 'sms' && !codeSent ? 'Отправить код' : 'Продолжить'}
-        onPress={onContinue}
-        loading={busy}
-      />
+      {!(mode === 'demo' && REVIEW_MODE_ENABLED) ? (
+        <PrimaryButton
+          title={teamJoinPending ? 'Повторить вступление' : mode === 'sms' && !codeSent ? 'Отправить код' : 'Продолжить'}
+          onPress={() => { void onContinue(); }}
+          loading={busy}
+        />
+      ) : null}
       {teamJoinPending ? (
         <Pressable disabled={busy} style={styles.skipJoin} onPress={() => { void continueWithoutTeam(); }}>
           <Text style={styles.skipJoinText}>Продолжить без вступления</Text>
@@ -186,6 +254,8 @@ const styles = StyleSheet.create({
   roleText: { fontWeight: '700', fontSize: 14, textAlign: 'center' },
   roleTextActive: { color: RenovaTheme.colors.primary },
   controlDisabled: { opacity: 0.55 },
+  busyRow: { alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
+  serverMessage: { color: RenovaTheme.colors.textMuted, textAlign: 'center', fontSize: 13, marginBottom: 12, lineHeight: 18 },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: RenovaTheme.colors.surface },
   demoCode: { textAlign: 'center', color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 8 },
   joinNotice: { fontSize: 12, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginBottom: 10, lineHeight: 18 },
