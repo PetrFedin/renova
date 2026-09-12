@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Execute actual req -> stages API -> AsyncStorage queue -> flush for #398. */
+/** Execute actual req -> production stage API composition -> AsyncStorage queue -> flush for #398. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -60,7 +60,7 @@ function harness({ storage = new Map(), network, failStorage = false } = {}) {
   }
   const client = load('@/lib/api/client');
   client.setAccessToken('synthetic-test-bearer');
-  return { api: load('@/lib/api/stages').stagesApi, queue: load('@/lib/offlineQueue'), storage, requests };
+  return { api: load('@/lib/api').api, queue: load('@/lib/offlineQueue'), storage, requests };
 }
 
 const ok = (value = { id: 'canonical-comment', text: 'Комментарий' }) => new Response(JSON.stringify(value), { status: 200 });
@@ -127,4 +127,4 @@ for (const status of [429, 500, 502, 503]) {
   scenarios += 1;
 }
 
-console.log(`Stage-comment actual transport/queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version})`);
+console.log(`Stage-comment actual production-composition transport/queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version})`);
