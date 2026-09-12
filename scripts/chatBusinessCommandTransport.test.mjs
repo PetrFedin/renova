@@ -77,7 +77,6 @@ function invoke(h, kind, extra = {}) {
 }
 
 for (const kind of ['invoice', 'task']) {
-  // The fake server commits the original body, then the client loses the response.
   const server = new Map();
   const storage = new Map();
   let lose = true;
@@ -129,3 +128,4 @@ for (const kind of ['invoice', 'task']) {
   scenarios += 4;
 }
 console.log(`Chat command actual transport/queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);
+await import('./estimateLineTransport.test.mjs');
