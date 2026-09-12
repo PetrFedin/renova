@@ -122,7 +122,7 @@ async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(
             if updated_stage is None:
                 raise HTTPException(404)
             if uid:
-                stage.ical_uid = uid
+                updated_stage.ical_uid = uid
             updated += 1
     await db.commit()
     return {"ok": True, "parsed": len(events), "updated_stages": updated}
