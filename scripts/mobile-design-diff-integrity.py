@@ -32,11 +32,23 @@ def is_product_source(path: str) -> bool:
     return True
 
 
+def is_comment_only(text: str) -> bool:
+    stripped = text.strip()
+    return (
+        not stripped
+        or stripped.startswith("//")
+        or stripped.startswith("/*")
+        or stripped.startswith("*")
+        or stripped.startswith("*/")
+        or stripped.startswith("{/*")
+    )
+
+
 def line_violations(path: str, added_line: str) -> list[str]:
     if not is_product_source(path):
         return []
     text = added_line.strip()
-    if not text or text.startswith("//") or text.startswith("*"):
+    if is_comment_only(text):
         return []
     violations: list[str] = []
     if HEX_RE.search(text):
@@ -92,11 +104,14 @@ def self_test() -> None:
     assert line_violations("apps/mobile/components/Foo.tsx", "<Text>🔒</Text>")
     assert not line_violations("apps/mobile/constants/Theme.ts", "primary: '#123456'")
     assert not line_violations("apps/mobile/lib/foo.test.ts", "expect(x).toBe('#fff')")
+    assert not line_violations("apps/mobile/components/Foo.tsx", "// old example #fff")
+    assert not line_violations("apps/mobile/components/Foo.tsx", "/* example #fff */")
     assert not line_violations("apps/mobile/components/Foo.tsx", "color: RenovaTheme.colors.text")
     sample = """diff --git a/apps/mobile/components/Foo.tsx b/apps/mobile/components/Foo.tsx
 +++ b/apps/mobile/components/Foo.tsx
-@@ -1,0 +2,2 @@
+@@ -1,0 +2,3 @@
 +const bad = '#abc';
++// example '#fff'
 +const good = RenovaTheme.colors.text;
 """
     failures = scan_patch(sample)
