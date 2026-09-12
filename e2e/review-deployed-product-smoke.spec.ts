@@ -180,7 +180,7 @@ test.describe('deployed review product controls', () => {
 
       // Project picker opens and closes without changing the project.
       await clickButton(page, /^Проект:/);
-      await expect(page.getByText('Объекты', { exact: true })).toBeVisible();
+      await expect(page.getByText('Объекты', { exact: true }).first()).toBeVisible();
       await clickButton(page, 'Закрыть');
 
       // Profile is a real route, not a dead icon.
