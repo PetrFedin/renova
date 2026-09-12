@@ -184,7 +184,8 @@ for (const kind of ['invoice', 'task']) {
   await assert.rejects(invokeReaction(failedStorage), /storage_unavailable/);
   assert.equal(failedStorage.storage.size, 0);
   const success = harness({ network: async () => ok({ reactions: { '🔥': ['actor-A'] } }) });
-  assert.deepEqual((await invokeReaction(success)).reactions, { '🔥': ['actor-A'] });
+  const reactionResult = await invokeReaction(success);
+  assert.equal(JSON.stringify(reactionResult.reactions), JSON.stringify({ '🔥': ['actor-A'] }));
   assert.equal((await success.queue.getQueue()).length, 0);
   scenarios += 3;
 }
