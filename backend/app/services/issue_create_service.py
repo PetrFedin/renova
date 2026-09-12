@@ -1,12 +1,13 @@
 """Replay-safe ProjectIssue creation for #417 / parent #316."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import utc_now
 from app.models.entities import Project, ProjectIssue, User
 from app.services import outbox_service as outbox
 from app.services.client_write_idempotency import commit_client_write, replay_entity_id
@@ -107,7 +108,7 @@ async def create_issue(
             description=canonical["description"],
             severity=canonical["severity"],
             status="open",
-            due_at=datetime.now(timezone.utc) + timedelta(days=3),
+            due_at=utc_now() + timedelta(days=3),
             floor_plan_id=canonical["floor_plan_id"],
             x_pct=canonical["x_pct"],
             y_pct=canonical["y_pct"],
