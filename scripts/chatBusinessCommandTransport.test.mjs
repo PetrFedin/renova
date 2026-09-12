@@ -128,4 +128,49 @@ for (const kind of ['invoice', 'task']) {
   assert.equal(success.policy.canQueueChatCommand(Object.assign(new Error('cancelled'), { name: 'AbortError' })), false);
   scenarios += 4;
 }
+
+// Chat-thread creation uses the same real req/AsyncStorage queue/flush path but
+// owns a distinct business identity. Title equality never substitutes for it.
+{
+  const server = new Map();
+  const storage = new Map();
+  let lose = true;
+  const network = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    const key = body.client_request_id;
+    assert.ok(key.length >= 8 && key.length <= 80);
+    assert.equal(body.title, 'Общий чат');
+    if (server.has(key)) assert.equal(server.get(key), options.body);
+    else server.set(key, options.body);
+    if (lose) { lose = false; throw new TypeError('Failed to fetch'); }
+    return ok({ id: 'canonical-thread' });
+  };
+  const first = harness({ storage, network });
+  await assert.rejects(first.api.createChat('actor-A', 'project-A', 'Общий чат', 'general'), /offline_queued/);
+  const queued = await first.queue.getQueue();
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].body, first.requests[0].body, 'queue must retain exact first-attempt bytes');
+  const firstIntent = JSON.parse(queued[0].body).client_request_id;
+
+  const restart = harness({ storage, network });
+  const result = await restart.queue.flush('http://127.0.0.1:8100');
+  assert.equal(result.synced, 1);
+  assert.equal((await restart.queue.getQueue()).length, 0);
+  assert.equal(server.size, 1, 'response-loss replay must reuse one chat-thread intent');
+  assert.equal(restart.requests[0].body, first.requests[0].body);
+  scenarios += 1;
+
+  const successBodies = [];
+  const success = harness({ network: async (_url, options) => {
+    successBodies.push(JSON.parse(options.body));
+    return ok({ id: `thread-${successBodies.length}` });
+  } });
+  await success.api.createChat('actor-A', 'project-A', 'Same title', 'same-topic');
+  await success.api.createChat('actor-A', 'project-A', 'Same title', 'same-topic');
+  assert.notEqual(successBodies[0].client_request_id, successBodies[1].client_request_id,
+    'two intentional equal-title creates must receive distinct intent identities');
+  assert.notEqual(successBodies[0].client_request_id, firstIntent);
+  scenarios += 1;
+}
+
 console.log(`Chat command actual transport/queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);

@@ -65,7 +65,10 @@ test.describe('Renova critical path (API)', () => {
     expect(csv.status()).toBe(200);
     expect(await csv.text()).toContain('Итого');
 
-    const chat = await request.post(`${API}/api/v1/projects/${pid}/chats`, { headers: hCust, data: { title: 'E2E', topic: 'general' } });
+    const chat = await request.post(`${API}/api/v1/projects/${pid}/chats`, {
+      headers: hCust,
+      data: { client_request_id: `critical-thread-${Date.now()}`, title: 'E2E', topic: 'general' },
+    });
     expect(chat.ok()).toBeTruthy();
 
     const pdf = await request.get(`${API}/api/v1/projects/${pid}/estimate.pdf`, { headers: hCust });

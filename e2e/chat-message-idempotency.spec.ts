@@ -28,9 +28,10 @@ test.describe('P1 chat message idempotency', () => {
     const projectId = ((await created.json()) as { id: string }).id;
 
     try {
+      const threadRequestId = `thread-e2e-${Date.now()}-0001`;
       const createdThread = await request.post(`${API}/api/v1/projects/${projectId}/chats`, {
         headers,
-        data: { title: 'E2E retry thread', topic: 'idempotency' },
+        data: { client_request_id: threadRequestId, title: 'E2E retry thread', topic: 'idempotency' },
       });
       expect(createdThread.ok()).toBeTruthy();
       const threadId = ((await createdThread.json()) as { id: string }).id;

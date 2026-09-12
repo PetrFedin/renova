@@ -96,7 +96,7 @@ test.describe('P0.1 Customer path checklist (API)', () => {
     const { h, pid } = await demoCustomer(request);
     const chat = await request.post(`${API}/api/v1/projects/${pid}/chats`, {
       headers: h,
-      data: { title: 'UAT checklist', topic: 'general' },
+      data: { client_request_id: `uat-thread-${Date.now()}`, title: 'UAT checklist', topic: 'general' },
     });
     expect(chat.ok()).toBeTruthy();
   });

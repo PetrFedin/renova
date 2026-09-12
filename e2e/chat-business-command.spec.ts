@@ -24,7 +24,10 @@ test('chat business commands survive identical replay and preserve domain links'
   try {
     const assigned = await request.post(`${projectPath}/contractor`, { headers: ch, data: { contractor_id: contractor.id } });
     expect(assigned.status(), await assigned.text()).toBe(200);
-    const threadResponse = await request.post(`${projectPath}/chats`, { headers: ch, data: { title: 'Business commands', topic: 'commands' } });
+    const threadResponse = await request.post(`${projectPath}/chats`, {
+      headers: ch,
+      data: { client_request_id: `thread-${suffix}`, title: 'Business commands', topic: 'commands' },
+    });
     expect(threadResponse.status()).toBe(200);
     const threadId = (await threadResponse.json()).id;
     const threadPath = `${projectPath}/chats/${threadId}`;

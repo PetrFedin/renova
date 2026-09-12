@@ -9,9 +9,10 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.models.entities import ChatMessage, Payment, Project, WorkOrder
+from app.models.entities import ChatMessage, ChatThread, Payment, Project, WorkOrder
 from app.models.client_write_request import ClientWriteRequest
 from app.services import chat_business_commands as commands, chat_message_mutation as messages, chat_service
+from app.services import chat_thread_intent as thread_svc
 from app.services.client_write_idempotency import IdempotencyConflict
 from test_chat_business_commands import seed, invoice, task, count
 
@@ -193,3 +194,54 @@ async def test_reaction_waits_for_task_link_and_preserves_both_json_fields(postg
             if not job.done():
                 job.cancel()
         await asyncio.gather(*jobs, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_chat_thread_same_key_postgres_race_creates_one_business_graph(postgres, monkeypatch):
+    _engine, Session, s = postgres
+    original = thread_svc.commit_client_write
+    ready = 0
+    both_ready = asyncio.Event()
+    release = asyncio.Event()
+    guard = asyncio.Lock()
+
+    async def synchronized_commit(*args, **kwargs):
+        nonlocal ready
+        async with guard:
+            ready += 1
+            if ready == 2:
+                both_ready.set()
+        await asyncio.wait_for(release.wait(), 10)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(thread_svc, "commit_client_write", synchronized_commit)
+
+    async def create_one():
+        async with Session() as db:
+            thread = await thread_svc.create_thread(
+                db,
+                project_id=s.project,
+                user_id=s.customer,
+                client_request_id="thread-postgres-race-001",
+                title="Race thread",
+                topic="race",
+            )
+            return thread.id
+
+    first = asyncio.create_task(create_one())
+    second = asyncio.create_task(create_one())
+    try:
+        await asyncio.wait_for(both_ready.wait(), 10)
+        release.set()
+        first_id, second_id = await asyncio.wait_for(asyncio.gather(first, second), 15)
+        assert first_id == second_id
+        async with Session() as db:
+            assert await count(db, ChatThread, ChatThread.project_id == s.project, ChatThread.title == "Race thread") == 1
+            assert await count(db, ChatMessage, ChatMessage.thread_id == first_id) == 1
+            assert await count(db, ClientWriteRequest, ClientWriteRequest.scope == thread_svc.SCOPE) == 1
+    finally:
+        release.set()
+        for job in (first, second):
+            if not job.done():
+                job.cancel()
+        await asyncio.gather(first, second, return_exceptions=True)
