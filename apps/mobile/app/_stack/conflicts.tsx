@@ -8,7 +8,7 @@ import { FieldMergePicker } from '@/components/renova/FieldMergePicker';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import {
-  dedupeExactJobs,
+  dedupeIntentDuplicates,
   getQueue,
   removeJob,
   retryJob,
@@ -114,11 +114,11 @@ export default function ConflictsScreen() {
     setSyncing(true);
     setActionError(null);
     try {
-      await dedupeExactJobs();
+      await dedupeIntentDuplicates();
       await reload();
     } catch (error) {
       reportError('offline.conflicts.dedupe', error);
-      setActionError('Не удалось проверить дубли. Очередь не была перезаписана.');
+      setActionError('Не удалось проверить повторные намерения. Очередь не была перезаписана.');
     } finally {
       setSyncing(false);
     }
@@ -243,13 +243,16 @@ export default function ConflictsScreen() {
         {!loadError && jobs.length > 0 && (
           <>
             <PrimaryButton
-              title="Убрать точные дубли"
+              title="Убрать повтор одного намерения"
               variant="outline"
               disabled={Boolean(busyId || syncing)}
               onPress={() => { void dedupeNow(); }}
               loading={syncing}
               fullWidth
             />
+            <Text style={s.dedupeHint}>
+              Совпадающий текст сам по себе не считается дублем: отдельные одинаковые действия сохраняются.
+            </Text>
             <View style={{ height: 8 }} />
             <PrimaryButton
               title="Синхронизировать готовые"
@@ -284,4 +287,5 @@ const s = StyleSheet.create({
   preview: { fontSize: 12, color: RenovaTheme.colors.text, marginBottom: 4 },
   error: { fontSize: 11, lineHeight: 16, color: RenovaTheme.colors.danger, marginBottom: 8 },
   actions: { gap: 8, marginTop: 10 },
+  dedupeHint: { fontSize: 11, lineHeight: 16, color: RenovaTheme.colors.textMuted, marginTop: 6 },
 });

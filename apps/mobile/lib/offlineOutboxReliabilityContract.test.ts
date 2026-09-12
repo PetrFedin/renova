@@ -23,7 +23,10 @@ must(queue.includes('withQueueLock') && queue.includes('mergeQueueFlushMutations
 must(queue.includes('version: (job.version ?? 0) + 1'), 'manual retry invalidates stale network result');
 must(queue.includes('parseOfflineQueueStorage(raw, key)'), 'storage corruption cannot masquerade as an empty queue');
 must(queue.includes('normalizeStoredJobs(raw, KEY)'), 'malformed stored jobs fail closed');
-must(queue.includes('updateJobBody') && queue.includes('dedupeExactJobs'), 'recovery mutations run against latest locked queue');
+must(
+  queue.includes('updateJobBody') && queue.includes('dedupeIntentDuplicates') && queue.includes('dedupeJobsByIntent(queue)'),
+  'recovery mutations run against latest locked queue with tested intent identity',
+);
 must(!queue.includes('export async function writeQueue'), 'stale UI snapshots cannot replace the canonical queue');
 must(storage.includes("code = 'offline_queue_storage_corrupt'"), 'storage corruption has a stable observable code');
 must(policy.includes('RETRY_BASE_MS = 5_000') && policy.includes('RETRY_MAX_MS = 5 * 60_000'), 'retry backoff is bounded');
@@ -34,6 +37,7 @@ must(recovery.includes('Повторить сейчас') && recovery.includes('
 must(recovery.includes('primaryDestructive: true') && recovery.includes('dangerOutline'), 'manual deletion is explicitly destructive');
 must(recovery.includes('await updateJobBody(job.id, body);') && recovery.includes('await retryNow(job.id);'), 'manual merge updates one live job then retries');
 must(recovery.includes('loadError') && recovery.includes('Повторить чтение'), 'queue read failure has an explicit recovery path');
+must(recovery.includes('Совпадающий текст сам по себе не считается дублем'), 'cleanup UI explains that payload equality is not intent identity');
 must(status.includes('readError') && status.includes('Повторить проверку'), 'status surface never hides queue read failure');
 
 console.log('offlineOutboxReliabilityContract.test OK');
