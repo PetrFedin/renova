@@ -11,6 +11,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const calculation = read('docs/technical-spec/CALCULATION-REGISTRY.md');
 const screens = read('docs/technical-spec/SCREEN-CONTRACT-CATALOG.md');
 const screenSources = read('docs/technical-spec/SCREEN-SOURCE-SNAPSHOT.md');
+const offlineIntentDedupe = read('docs/technical-spec/OFFLINE-QUEUE-INTENT-DEDUP-CONTRACT.md');
 
 function gitBlobSha(content) {
   const bytes = Buffer.from(content, 'utf8');
@@ -86,6 +87,28 @@ for (const screenToken of [
   'local `Pressable` button styles instead of shared `PrimaryButton` variants',
 ]) {
   assert.ok(screens.includes(screenToken), `screen contract catalog missing verified token: ${screenToken}`);
+}
+
+for (const file of [
+  'apps/mobile/lib/offline/intentDedupe.ts',
+  'apps/mobile/lib/offlineQueue.ts',
+  'apps/mobile/app/_stack/conflicts.tsx',
+  'apps/mobile/lib/offline/intentDedupe.test.ts',
+  'apps/mobile/lib/consoleAssertFailClosed.test.ts',
+]) {
+  requireBlobReference(offlineIntentDedupe, file);
+}
+
+for (const token of [
+  'payload equality alone is never identity',
+  'same key + changed bytes',
+  'dedupeIntentDuplicates()',
+  'Совпадающий текст сам по себе не считается дублем',
+]) {
+  assert.ok(
+    offlineIntentDedupe.toLowerCase().includes(token.toLowerCase()),
+    `offline intent-dedup annex missing verified token: ${token}`,
+  );
 }
 
 console.log('Renova technical specification annex contract: OK');
