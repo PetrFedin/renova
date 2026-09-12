@@ -13,6 +13,7 @@ const planOv = readFileSync(join(mobile, 'components/screens/object/PlanTabOverv
 const primaryButton = readFileSync(join(mobile, 'components/renova/PrimaryButton.tsx'), 'utf8');
 const notFound = readFileSync(join(mobile, 'app/+not-found.tsx'), 'utf8');
 const catchAll = readFileSync(join(mobile, 'app/[slug].tsx'), 'utf8');
+const projectPicker = readFileSync(join(mobile, 'components/renova/os/OsProjectPicker.tsx'), 'utf8');
 
 console.assert(
   home.includes("showAttention && phase !== 'complete'") && home.includes('<HomeActionHero'),
@@ -39,6 +40,14 @@ console.assert(
     && !catchAll.includes("color: '#64748b'"),
   'pure not-found navigation uses no press haptic and canonical theme color',
 );
+// Compatibility with #411: if project-picker truth lands first, this clarity update
+// must not drop its no-fabricated-zero contract during haptic migration.
+if (projectPicker.includes("reportError('projectPicker.pendingPayments'")) {
+  console.assert(
+    !projectPicker.includes('return [p.id, 0] as const;'),
+    'project picker must keep failed pending-payment enrichment unknown',
+  );
+}
 
 const cust = budgetHubTabsForRole('customer');
 const contr = budgetHubTabsForRole('contractor');
