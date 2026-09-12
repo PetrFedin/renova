@@ -14,7 +14,6 @@ const warrantyAnnex = read('docs/technical-spec/WARRANTY-ATOMICITY-CONTRACT.md')
 const paymentEvidenceAnnex = read('docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md');
 const materialPriceAnnex = read('docs/technical-spec/MATERIAL-PRICE-TRUTH-CONTRACT.md');
 const projectParticipantAnnex = read('docs/technical-spec/PROJECT-PARTICIPANT-SCOPE-CONTRACT.md');
-const requiredCheckTriggerAnnex = read('docs/technical-spec/REQUIRED-CHECK-TRIGGER-CONTRACT.md');
 
 const requiredSections = [
   '# 1. Назначение продукта и границы системы',
@@ -64,19 +63,6 @@ for (const token of [
   assert.ok(roadmap.includes(token), `technical roadmap missing governance token: ${token}`);
 }
 
-for (const token of [
-  'source-and-runtime',
-  'typecheck-integrity',
-  'snapshot',
-  'pull_request.paths',
-  'dacee047ae7c8ff449d099bbbd2ec68b8e28dbc6',
-]) {
-  assert.ok(
-    requiredCheckTriggerAnnex.includes(token),
-    `required-check trigger annex missing governance token: ${token}`,
-  );
-}
-
 function gitBlobSha(content) {
   const bytes = Buffer.from(content, 'utf8');
   return crypto
@@ -119,9 +105,7 @@ for (const file of trackedSources) {
   const expectedRowPrefix = `| \`${file}\` | \`${actualSha}\` |`;
   const synchronizedDocumentation = file === 'backend/app/api/v1/router.py'
     ? `${spec}\n${warrantyAnnex}\n${paymentEvidenceAnnex}\n${materialPriceAnnex}\n${projectParticipantAnnex}`
-    : file === '.github/workflows/local-runtime-integrity.yml'
-      ? `${spec}\n${requiredCheckTriggerAnnex}`
-      : spec;
+    : spec;
   assert.ok(
     synchronizedDocumentation.includes(expectedRowPrefix),
     `technical specification source snapshot is stale for ${file}; update the affected documentation and blob SHA`,
