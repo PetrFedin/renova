@@ -1,15 +1,18 @@
 /** Единая точка «+» — расход (scan/manual) · работа · чат */
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, TextInput, Alert } from 'react-native';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
+import { inputField } from '@/constants/uiTokens';
 import { reportError } from '@/lib/reportError';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { api } from '@/lib/api';
 import { useNavFromHere } from '@/lib/navigation';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { SheetSurface } from '@/components/renova/SheetSurface';
 import { tabsPrefix, budgetTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useDetailLevel } from '@/lib/useDetailLevel';
@@ -22,6 +25,31 @@ type Action = {
   icon: keyof typeof Ionicons.glyphMap;
   run: () => void;
 };
+
+type QuickActionRowProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  sub: string;
+  onPress: () => void | Promise<void>;
+};
+
+function QuickActionRow({ icon, label, sub, onPress }: QuickActionRowProps) {
+  return (
+    <Pressable
+      style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+      onPress={() => { void onPress(); }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={sub}
+    >
+      <Ionicons name={icon} size={22} color={RenovaTheme.colors.primary} />
+      <View style={s.rowBody}>
+        <Text style={s.label}>{label}</Text>
+        <Text style={s.sub}>{sub}</Text>
+      </View>
+    </Pressable>
+  );
+}
 
 export function OsQuickFab({ role }: { role: OsRole }) {
   const { user, activeProject, readOnly, loadProject } = useRenova();
@@ -93,110 +121,108 @@ export function OsQuickFab({ role }: { role: OsRole }) {
 
   return (
     <>
-      <Pressable style={s.fab} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Быстрые действия">
+      <Pressable
+        style={({ pressed }) => [s.fab, pressed && s.fabPressed]}
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Быстрые действия"
+      >
         <Ionicons name="add" size={28} color={RenovaTheme.colors.inverseText} />
       </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
-          <View style={s.sheet}>
-            <Text style={s.head}>Создать</Text>
-            {visibleActions.map((a) => (
-              <Pressable key={a.id} style={s.row} onPress={a.run}>
-                <Ionicons name={a.icon} size={22} color={RenovaTheme.colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.label}>{a.label}</Text>
-                  <Text style={s.sub}>{a.sub}</Text>
-                </View>
-              </Pressable>
-            ))}
-            <Pressable style={s.cancel} onPress={() => setOpen(false)}>
-              <Text style={s.cancelT}>Отмена</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-      <Modal visible={expenseOpen} transparent animationType="fade" onRequestClose={() => setExpenseOpen(false)}>
-        <Pressable style={s.backdrop} onPress={() => setExpenseOpen(false)}>
-          <View style={s.sheet}>
-            <Text style={s.head}>Добавить расход</Text>
-            <Pressable style={s.row} onPress={() => { setExpenseOpen(false); nav.scanReceipt(expenseContext.roomId, expenseContext.stageId); }}>
-              <Ionicons name="camera-outline" size={22} color={RenovaTheme.colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Скан чека</Text>
-                <Text style={s.sub}>{expenseContext.roomId || expenseContext.stageId ? 'С привязкой к текущему контексту' : 'Камера или галерея'}</Text>
-              </View>
-            </Pressable>
-            <Pressable style={s.row} onPress={() => {
-              setExpenseOpen(false);
-              pushOsNav(budgetTabHref(role, 'expenses', {
-                roomId: expenseContext.roomId,
-                stageId: expenseContext.stageId,
-              }), pathname, role);
-            }}>
-              <Ionicons name="create-outline" size={22} color={RenovaTheme.colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Вручную</Text>
-                <Text style={s.sub}>Бюджет → Расходы</Text>
-              </View>
-            </Pressable>
-            <Pressable style={s.cancel} onPress={() => setExpenseOpen(false)}>
-              <Text style={s.cancelT}>Отмена</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-      <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>
-        <Pressable style={s.backdrop} onPress={() => setChatOpen(false)}>
-          <View style={s.sheet}>
-            <Text style={s.head}>Чат</Text>
-            <TextInput
-              style={s.chatInp}
-              value={chatTitle}
-              onChangeText={setChatTitle}
-              placeholder="Тема чата"
-            />
-            <Pressable style={s.row} onPress={async () => {
-              setChatOpen(false);
+
+      <SheetSurface
+        visible={open}
+        onClose={() => setOpen(false)}
+        title="Создать"
+        accessibilityLabel="Быстрые действия"
+        footer={<PrimaryButton title="Отмена" variant="ghost" onPress={() => setOpen(false)} />}
+      >
+        {visibleActions.map((a) => (
+          <QuickActionRow key={a.id} icon={a.icon} label={a.label} sub={a.sub} onPress={a.run} />
+        ))}
+      </SheetSurface>
+
+      <SheetSurface
+        visible={expenseOpen}
+        onClose={() => setExpenseOpen(false)}
+        title="Добавить расход"
+        footer={<PrimaryButton title="Отмена" variant="ghost" onPress={() => setExpenseOpen(false)} />}
+      >
+        <QuickActionRow
+          icon="camera-outline"
+          label="Скан чека"
+          sub={expenseContext.roomId || expenseContext.stageId ? 'С привязкой к текущему контексту' : 'Камера или галерея'}
+          onPress={() => {
+            setExpenseOpen(false);
+            nav.scanReceipt(expenseContext.roomId, expenseContext.stageId);
+          }}
+        />
+        <QuickActionRow
+          icon="create-outline"
+          label="Вручную"
+          sub="Бюджет → Расходы"
+          onPress={() => {
+            setExpenseOpen(false);
+            pushOsNav(budgetTabHref(role, 'expenses', {
+              roomId: expenseContext.roomId,
+              stageId: expenseContext.stageId,
+            }), pathname, role);
+          }}
+        />
+      </SheetSurface>
+
+      <SheetSurface
+        visible={chatOpen}
+        onClose={() => setChatOpen(false)}
+        title="Чат"
+        footer={<PrimaryButton title="Отмена" variant="ghost" onPress={() => setChatOpen(false)} />}
+      >
+        <TextInput
+          style={s.chatInp}
+          value={chatTitle}
+          onChangeText={setChatTitle}
+          placeholder="Тема чата"
+          accessibilityLabel="Тема чата"
+        />
+        <QuickActionRow
+          icon="add-circle-outline"
+          label="Создать чат"
+          sub="Открыть новый диалог по проекту"
+          onPress={async () => {
+            setChatOpen(false);
+            try {
+              let existing: Awaited<ReturnType<typeof api.chatInbox>>;
               try {
-                let existing: Awaited<ReturnType<typeof api.chatInbox>>;
-                try {
-                  existing = await api.chatInbox(user.id);
-                } catch (error) {
-                  reportError('quickFab.chatInbox', error, { projectId: activeProject.id });
-                  Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть.');
-                  return;
-                }
-                await createProjectChat({
-                  user,
-                  projectId: activeProject.id,
-                  title: chatTitle.trim() || 'Чат',
-                  existingThreads: existing,
-                  onOpen: (id) => pushOsNav({ pathname: '/chat/[threadId]', params: { threadId: id } }, pathname, role),
-                });
+                existing = await api.chatInbox(user.id);
               } catch (error) {
-                reportError('quickFab.createChat', error, { projectId: activeProject.id });
-                Alert.alert('Чат', 'Не удалось создать чат. Проверьте подключение и повторите.');
+                reportError('quickFab.chatInbox', error, { projectId: activeProject.id });
+                Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть.');
+                return;
               }
-            }}>
-              <Ionicons name="add-circle-outline" size={22} color={RenovaTheme.colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Создать чат</Text>
-                <Text style={s.sub}>Открыть новый диалог по проекту</Text>
-              </View>
-            </Pressable>
-            <Pressable style={s.row} onPress={() => { setChatOpen(false); pushOsNav(`${prefix}/chat`, pathname, role); }}>
-              <Ionicons name="chatbubbles-outline" size={22} color={RenovaTheme.colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.label}>Все чаты</Text>
-                <Text style={s.sub}>Список и архив</Text>
-              </View>
-            </Pressable>
-            <Pressable style={s.cancel} onPress={() => setChatOpen(false)}>
-              <Text style={s.cancelT}>Отмена</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+              await createProjectChat({
+                user,
+                projectId: activeProject.id,
+                title: chatTitle.trim() || 'Чат',
+                existingThreads: existing,
+                onOpen: (id) => pushOsNav({ pathname: '/chat/[threadId]', params: { threadId: id } }, pathname, role),
+              });
+            } catch (error) {
+              reportError('quickFab.createChat', error, { projectId: activeProject.id });
+              Alert.alert('Чат', 'Не удалось создать чат. Проверьте подключение и повторите.');
+            }
+          }}
+        />
+        <QuickActionRow
+          icon="chatbubbles-outline"
+          label="Все чаты"
+          sub="Список и архив"
+          onPress={() => {
+            setChatOpen(false);
+            pushOsNav(`${prefix}/chat`, pathname, role);
+          }}
+        />
+      </SheetSurface>
+
       {showWork ? (
         <CreateWorkSheet
           visible={showWork}
@@ -232,19 +258,25 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: RenovaTheme.shadow.card.shadowColor,
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     zIndex: 20,
   },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
-  head: { fontSize: 16, fontWeight: '800', marginBottom: 12, color: RenovaTheme.colors.text },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  fabPressed: { opacity: 0.82 },
+  row: {
+    minHeight: RenovaTheme.minTouch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: RenovaTheme.spacing.md,
+    paddingVertical: RenovaTheme.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: RenovaTheme.colors.borderLight,
+  },
+  rowPressed: { opacity: 0.72 },
+  rowBody: { flex: 1, minWidth: 0 },
   label: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
-  sub: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },
-  cancel: { marginTop: 12, alignItems: 'center', paddingVertical: 10 },
-  cancelT: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.textMuted },
-  chatInp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },
+  sub: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, marginTop: 2 },
+  chatInp: { ...inputField, marginBottom: RenovaTheme.spacing.sm },
 });
