@@ -5,6 +5,7 @@ import os
 import uuid
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -13,15 +14,15 @@ from app.models.entities import DomainOutbox, Project, ProjectIssue, User, UserR
 from app.services import issue_create_service as issue_create
 
 
-@pytest.mark.asyncio
-async def test_issue_same_key_postgres_race_creates_one_issue_and_effect_set(monkeypatch):
+def _postgres_url() -> str:
     url = os.environ.get("CHAT_COMMAND_POSTGRES_URL", "").strip()
     if not url:
         pytest.skip("CHAT_COMMAND_POSTGRES_URL is required by the dedicated migrated-PostgreSQL gate")
     assert url.startswith("postgresql+asyncpg://"), "race proof must use real PostgreSQL"
+    return url
 
-    engine = create_async_engine(url)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+async def _disable_inline_dispatch(monkeypatch) -> None:
     from app.services import outbox_inline_dispatch
 
     async def no_dispatch(*args, **kwargs):
@@ -29,6 +30,8 @@ async def test_issue_same_key_postgres_race_creates_one_issue_and_effect_set(mon
 
     monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", no_dispatch)
 
+
+async def _seed(Session, *, name: str) -> tuple[str, str, str]:
     customer_id = str(uuid.uuid4())
     contractor_id = str(uuid.uuid4())
     project_id = str(uuid.uuid4())
@@ -41,12 +44,21 @@ async def test_issue_same_key_postgres_race_creates_one_issue_and_effect_set(mon
         await db.flush()
         db.add(Project(
             id=project_id,
-            name="Issue PG race",
+            name=name,
             renovation_type="cosmetic",
             customer_id=customer_id,
             contractor_id=contractor_id,
         ))
         await db.commit()
+    return customer_id, contractor_id, project_id
+
+
+@pytest.mark.asyncio
+async def test_issue_same_key_postgres_race_creates_one_issue_and_effect_set(monkeypatch):
+    engine = create_async_engine(_postgres_url())
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    await _disable_inline_dispatch(monkeypatch)
+    _customer_id, contractor_id, project_id = await _seed(Session, name="Issue PG race")
 
     # Prove two physical sessions arrive at the serialization boundary before
     # either is allowed to acquire the PostgreSQL project row lock.
@@ -120,3 +132,80 @@ async def test_issue_same_key_postgres_race_creates_one_issue_and_effect_set(mon
                 job.cancel()
         await asyncio.gather(first, second, return_exceptions=True)
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_issue_create_rechecks_revoked_contractor_after_postgres_lock_wait(monkeypatch):
+    engine = create_async_engine(_postgres_url())
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    await _disable_inline_dispatch(monkeypatch)
+    _customer_id, contractor_id, project_id = await _seed(Session, name="Issue revoke race")
+
+    payload = {
+        "title": "Must not survive revoked access",
+        "description": "authority changes while creator waits",
+        "room_id": None,
+        "stage_id": None,
+        "severity": "medium",
+        "floor_plan_id": None,
+        "x_pct": None,
+        "y_pct": None,
+        "photo_key": None,
+    }
+
+    async with Session() as creator_db, Session() as revoker_db:
+        stale_project = await creator_db.get(Project, project_id)
+        assert stale_project is not None
+        assert stale_project.contractor_id == contractor_id
+
+        locked_project = (
+            await revoker_db.execute(
+                select(Project).where(Project.id == project_id).with_for_update()
+            )
+        ).scalar_one()
+        locked_project.contractor_id = None
+        await revoker_db.flush()
+
+        create_task = asyncio.create_task(
+            issue_create.create_issue(
+                creator_db,
+                project=stale_project,
+                user_id=contractor_id,
+                client_request_id="issue-revoked-during-lock-001",
+                payload=payload,
+            )
+        )
+        try:
+            # The creator must physically wait on the row lock held by the
+            # revoker, not race ahead using its stale pre-lock Project object.
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(asyncio.shield(create_task), timeout=0.25)
+
+            await revoker_db.commit()
+            with pytest.raises(HTTPException) as forbidden:
+                await asyncio.wait_for(create_task, timeout=10)
+            assert forbidden.value.status_code == 403
+        finally:
+            if not create_task.done():
+                create_task.cancel()
+            await asyncio.gather(create_task, return_exceptions=True)
+            if revoker_db.in_transaction():
+                await revoker_db.rollback()
+
+    async with Session() as db:
+        assert await db.scalar(
+            select(func.count()).select_from(ProjectIssue).where(ProjectIssue.project_id == project_id)
+        ) == 0
+        assert await db.scalar(
+            select(func.count()).select_from(ClientWriteRequest).where(
+                ClientWriteRequest.project_id == project_id,
+                ClientWriteRequest.scope == issue_create.SCOPE,
+            )
+        ) == 0
+        assert await db.scalar(
+            select(func.count()).select_from(DomainOutbox).where(
+                DomainOutbox.aggregate_type == "project_issue"
+            )
+        ) == 0
+
+    await engine.dispose()
