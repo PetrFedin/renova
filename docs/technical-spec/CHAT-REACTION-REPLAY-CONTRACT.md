@@ -64,7 +64,7 @@ The legacy reaction handler remains in `chats.py` only as historical implementat
 | `apps/mobile/lib/api/chatReactionIntents.ts` | `f6487dc30226b5233bef052024862a57c214ae15` | stable first intent + safe queue classification |
 | `backend/tests/test_chat_reaction_intent.py` | `0969f1b9227fde342e4fc810a4dc8f0893dc3ac2` | same/same replay, changed payload, second intent, metadata preservation |
 | `backend/tests/test_chat_business_commands_postgres.py` | `6be9debc599758403f80a5a5133fdc5941732b05` | physical task/reaction and same-key reaction row-lock contention |
-| `scripts/chatBusinessCommandTransport.test.mjs` | `279645db6a285af02c7ca0bf8016f0620ad58123` | actual req → queue → restart → flush response-loss proof |
+| `scripts/chatBusinessCommandTransport.test.mjs` | `446e9e96e4b55990498532d102aa0d1e63ad27aa` | actual req → queue → restart → flush response-loss proof |
 
 These hashes are candidate traceability only until the exact branch head passes required CI.
 
