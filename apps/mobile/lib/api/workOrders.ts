@@ -1,11 +1,26 @@
-/** API: workOrders — W111 offline queue for field transitions */
+/** API: workOrders — offline replay-safe field mutations. */
 import { req, ApiError } from './client';
+import { getFailureStatus } from './failurePolicy';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { WorkOrder } from './types';
 
 export type WorkOrderPatchBody = {
   expected_updated_at: string;
   [key: string]: unknown;
 };
+
+export type WorkOrderCreateBody = Record<string, unknown> & {
+  client_request_id?: string;
+};
+
+function canQueueReplaySafeCreate(error: unknown): boolean {
+  if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return false;
+  const status = getFailureStatus(error);
+  if (status !== undefined) return status === 0 || status === 429 || status >= 500;
+  // A malformed success response is an ambiguous committed write; replay is safe
+  // only because the exact client_request_id/body is retained below.
+  return error instanceof SyntaxError;
+}
 
 export const workOrdersApi = {
   listWorkOrders: (userId: string, projectId: string) =>
@@ -21,22 +36,20 @@ export const workOrdersApi = {
   ),
   getWorkOrder: (userId: string, projectId: string, workOrderId: string) =>
     req<WorkOrder>(`/api/v1/projects/${projectId}/work-orders/${workOrderId}`, {}, userId),
-  createWorkOrder: async (userId: string, projectId: string, body: object) => {
+  createWorkOrder: async (userId: string, projectId: string, body: WorkOrderCreateBody) => {
+    const client_request_id = typeof body.client_request_id === 'string' && body.client_request_id
+      ? body.client_request_id
+      : createClientRequestId('work-order');
+    const serialized = JSON.stringify({ ...body, client_request_id });
+    const path = `/api/v1/projects/${projectId}/work-orders`;
     try {
-      return await req<WorkOrder>(
-        `/api/v1/projects/${projectId}/work-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      return await req<WorkOrder>(path, { method: 'POST', body: serialized }, userId);
+    } catch (error) {
+      if (!canQueueReplaySafeCreate(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/work-orders`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
+      // The intent exists before the first send. Persist the exact first bytes so a
+      // lost response cannot mint another WorkOrder on flush or app restart.
+      await enqueue({ path, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
     }
   },
