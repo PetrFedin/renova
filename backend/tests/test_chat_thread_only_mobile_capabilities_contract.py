@@ -1,5 +1,10 @@
 from pathlib import Path
 
+from test_issue_create_replay_postgres import (
+    test_issue_create_rechecks_revoked_contractor_after_postgres_lock_wait,
+    test_issue_same_key_postgres_race_creates_one_issue_and_effect_set,
+)
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]

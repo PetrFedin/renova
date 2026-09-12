@@ -1,6 +1,6 @@
 """Renova OS API — риски, workflow, замечания."""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
@@ -8,16 +8,19 @@ from app.data.workflow_templates import WORKFLOW_TEMPLATES, get_template
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import activity_service as act
+from app.services import issue_create_service as issue_create
 from app.services import issue_service as iss
 from app.services import project_service as proj_svc
 from app.services import risk_engine as risk
 from app.services import stage_service as stage_svc
 from app.services import workflow_service as wf
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(tags=["renova-os"])
 
 
 class IssueIn(BaseModel):
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     title: str
     description: str | None = None
     room_id: str | None = None
@@ -95,43 +98,21 @@ async def create_issue(
     db: AsyncSession = Depends(get_db),
 ):
     from app.services import team_service as team_svc
+
     project = await require_project(db, project_id, user, write=True)
     await team_svc.require_capability(db, user, project, "field_write")
-    issue = await iss.create_issue(
-        db, project_id, body.title,
-        description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
-        floor_plan_id=body.floor_plan_id, x_pct=body.x_pct, y_pct=body.y_pct, photo_key=body.photo_key,
-    )
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="IssueCreated",
-        title=issue.title,
-        body=issue.severity,
-        link_path="/control",
-    )
-    from app.services import notification_service as notif_svc
-    from app.services import project_service as proj_svc
-
-    proj = await proj_svc.get_project(db, project_id)
-    if proj:
-        notify_targets = {
-            uid
-            for uid in (proj.customer_id, proj.contractor_id)
-            if uid and uid != user.id
-        }
-        for uid in notify_targets:
-            await notif_svc.notify(
-                db,
-                user_id=uid,
-                project_id=project_id,
-                notification_type="issue",
-                title=f"Новое замечание: {issue.title}",
-                body=issue.description or issue.severity,
-                link_path="/control",
-            )
-    return iss.issue_dict(issue)
+    payload = body.model_dump(exclude={"client_request_id"})
+    try:
+        issue, replayed = await issue_create.create_issue(
+            db,
+            project=project,
+            user_id=user.id,
+            client_request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(409, detail={"code": "idempotency_conflict"}) from error
+    return {**iss.issue_dict(issue), "replayed": replayed}
 
 
 @router.post("/projects/{project_id}/issues/{issue_id}/close")
@@ -457,7 +438,6 @@ async def os_insights(project_id: str, user: User = Depends(get_current_user), d
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
     items = await ai.compute_project_insights(db, p, role=role)
     return {"count": len(items), "items": items}
-
 
 @router.get("/projects/{project_id}/rooms/{room_id}/snapshot")
 async def room_snapshot(project_id: str, room_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
