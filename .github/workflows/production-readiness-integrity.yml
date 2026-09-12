@@ -1,18 +1,9 @@
 name: Production readiness integrity
 
 on:
+  # `snapshot` is a globally required main-protection context. It must exist on
+  # every PR, even when the PR does not modify readiness source files.
   pull_request:
-    paths:
-      - "PRODUCTION-READINESS.md"
-      - "docs/production-readiness-evidence.json"
-      - "scripts/production_readiness.py"
-      - "scripts/test_production_readiness.py"
-      - "apps/mobile/app.json"
-      - "backend/alembic/versions/**"
-      - ".github/workflows/backend-image.yml"
-      - ".github/workflows/eas-build.yml"
-      - ".github/workflows/production-readiness-integrity.yml"
-      - "README.md"
   push:
     branches: [main]
     paths:
