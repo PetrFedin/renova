@@ -14,6 +14,7 @@ const warrantyAnnex = read('docs/technical-spec/WARRANTY-ATOMICITY-CONTRACT.md')
 const paymentEvidenceAnnex = read('docs/technical-spec/MANUAL-PAYMENT-EVIDENCE-CONTRACT.md');
 const materialPriceAnnex = read('docs/technical-spec/MATERIAL-PRICE-TRUTH-CONTRACT.md');
 const projectParticipantAnnex = read('docs/technical-spec/PROJECT-PARTICIPANT-SCOPE-CONTRACT.md');
+const chatReactionAnnex = read('docs/technical-spec/CHAT-REACTION-REPLAY-CONTRACT.md');
 
 const requiredSections = [
   '# 1. Назначение продукта и границы системы',
@@ -104,7 +105,7 @@ for (const file of trackedSources) {
   const actualSha = gitBlobSha(read(file));
   const expectedRowPrefix = `| \`${file}\` | \`${actualSha}\` |`;
   const synchronizedDocumentation = file === 'backend/app/api/v1/router.py'
-    ? `${spec}\n${warrantyAnnex}\n${paymentEvidenceAnnex}\n${materialPriceAnnex}\n${projectParticipantAnnex}`
+    ? `${spec}\n${warrantyAnnex}\n${paymentEvidenceAnnex}\n${materialPriceAnnex}\n${projectParticipantAnnex}\n${chatReactionAnnex}`
     : spec;
   assert.ok(
     synchronizedDocumentation.includes(expectedRowPrefix),
