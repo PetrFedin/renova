@@ -2,6 +2,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { resolvePushLink } from './pushLinks';
+import { normalizeAppError } from './async/appError';
 
 const mobile = join(__dirname, '..');
 
@@ -41,6 +42,27 @@ const projectEmpty = readFileSync(join(mobile, 'components/renova/ProjectEmptySt
 const home = readFileSync(join(mobile, 'components/screens/OsHomeScreen.tsx'), 'utf8');
 const projectDataBus = readFileSync(join(mobile, 'lib/projectDataBus.ts'), 'utf8');
 const reports = readFileSync(join(mobile, 'app/_stack/reports.tsx'), 'utf8');
+const staleBanner = readFileSync(join(mobile, 'components/renova/StaleCacheBanner.tsx'), 'utf8');
+const readOnlyGuard = readFileSync(join(mobile, 'components/renova/ReadOnlyGuard.tsx'), 'utf8');
+
+const conflict = normalizeAppError({ status: 409 });
+console.assert(
+  conflict.kind === 'conflict' && conflict.retryable === false,
+  '409 must be an explicit non-blind-retry conflict',
+);
+console.assert(
+  staleBanner.includes('InfoBanner')
+    && !staleBanner.includes('path.replace')
+    && !staleBanner.includes('#FEF3C7')
+    && !staleBanner.includes('#F59E0B'),
+  'stale banner must use semantic UI and never expose API paths/raw warning colors',
+);
+console.assert(
+  readOnlyGuard.includes('InfoBanner')
+    && !readOnlyGuard.includes('🔒')
+    && !readOnlyGuard.includes('#fef3c7'),
+  'read-only state must use canonical semantic UI without operational emoji/raw colors',
+);
 
 console.assert(nav.includes('pushOsNav(path') || nav.includes('pushOsNav(qs'), 'pushScreen → string SoT');
 console.assert(offline.includes("'/conflicts'") && offline.includes('Очередь'), 'offline → conflicts');
@@ -231,6 +253,12 @@ console.assert(
 const ok =
   Boolean(cal?.pathname.includes('calendar')) &&
   Boolean(repair?.params?.tab === 'control') &&
+  conflict.kind === 'conflict' &&
+  conflict.retryable === false &&
+  staleBanner.includes('InfoBanner') &&
+  !staleBanner.includes('path.replace') &&
+  readOnlyGuard.includes('InfoBanner') &&
+  !readOnlyGuard.includes('🔒') &&
   offline.includes('/conflicts') &&
   offlineQueue.includes("reportError('offline.queueChanged.notify'") &&
   offlineQueue.includes("reportError('offline.flush.responseBody'") &&

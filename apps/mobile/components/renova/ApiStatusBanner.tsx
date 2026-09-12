@@ -1,11 +1,11 @@
-/** Баннер когда API недоступен или сессия без данных — с кнопкой восстановления */
+/** Баннер восстановления связи; отсутствие проектов в production обрабатывает ProjectEmptyState */
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 
 type Props = {
-  /** Показать даже если API доступен, но нет проектов */
+  /** В demo/dev разрешить отдельное восстановление seed, если проектов нет */
   showEmpty?: boolean;
 };
 
@@ -15,17 +15,15 @@ export function ApiStatusBanner({ showEmpty }: Props) {
   const { apiReachable, projects, recoverSession, loading } = useRenova();
   const [busy, setBusy] = useState(false);
 
-  const needsRecovery = !apiReachable || (showEmpty && projects.length === 0);
+  const demoNeedsSeedRecovery = Boolean(showEmpty) && isDemoEnv && projects.length === 0;
+  const needsRecovery = !apiReachable || demoNeedsSeedRecovery;
   if (!needsRecovery || loading) return null;
 
-  const title = !apiReachable ? 'Нет связи с сервером' : 'Нет данных проекта';
+  const title = !apiReachable ? 'Нет связи с сервером' : 'Нет данных демо';
   const sub = !apiReachable
     ? 'Проверьте интернет и нажмите «Повторить»'
-    : isDemoEnv
-      ? 'Нажмите «Загрузить демо» для восстановления данных'
-      : 'Создайте объект или войдите снова';
-  const subtle = apiReachable && projects.length === 0;
-  const showDemoBtn = isDemoEnv || !apiReachable;
+    : 'Нажмите «Загрузить демо» для восстановления тестовых данных';
+  const subtle = apiReachable && demoNeedsSeedRecovery;
 
   return (
     <View style={[s.box, !apiReachable && s.offline, subtle && s.subtle]}>
@@ -35,7 +33,7 @@ export function ApiStatusBanner({ showEmpty }: Props) {
       </View>
       {busy ? (
         <ActivityIndicator size="small" color={RenovaTheme.colors.primary} />
-      ) : showDemoBtn ? (
+      ) : (
         <Pressable
           style={s.btn}
           onPress={async () => {
@@ -47,9 +45,9 @@ export function ApiStatusBanner({ showEmpty }: Props) {
             }
           }}
         >
-          <Text style={s.btnT}>{!apiReachable ? 'Повторить' : 'Демо'}</Text>
+          <Text style={s.btnT}>{!apiReachable ? 'Повторить' : 'Загрузить демо'}</Text>
         </Pressable>
-      ) : null}
+      )}
     </View>
   );
 }

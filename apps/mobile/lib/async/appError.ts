@@ -6,6 +6,7 @@ export type AppErrorKind =
   | 'forbidden'
   | 'not_found'
   | 'validation'
+  | 'conflict'
   | 'server'
   | 'offline'
   | 'unknown';
@@ -23,7 +24,8 @@ const SAFE_MESSAGES: Record<AppErrorKind, string> = {
   unauthorized: 'Сессия истекла. Войдите снова.',
   forbidden: 'Недостаточно прав для этого действия.',
   not_found: 'Данные не найдены или были удалены.',
-  validation: 'Запрос отклонён. Обновите экран и попробуйте снова.',
+  validation: 'Запрос отклонён. Проверьте данные и повторите действие.',
+  conflict: 'Данные изменились с момента открытия. Обновите экран перед повторным действием.',
   server: 'Сервер временно недоступен. Попробуйте позже.',
   offline: 'Нет сети. Повторите после восстановления соединения.',
   unknown: 'Не удалось загрузить данные. Повторите попытку.',
@@ -34,7 +36,8 @@ function statusToKind(status: number): AppErrorKind {
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
   if (status === 408 || status === 504) return 'timeout';
-  if (status === 400 || status === 409 || status === 422) return 'validation';
+  if (status === 409) return 'conflict';
+  if (status === 400 || status === 422) return 'validation';
   if (status >= 500) return 'server';
   if (status === 0) return 'network';
   return 'unknown';
