@@ -1,3 +1,5 @@
+import './offline/intentDedupe.test';
+
 let threw = false;
 
 try {
