@@ -10,6 +10,7 @@ const objectHub = readFileSync(join(mobile, 'components/screens/OsObjectHubScree
 const repair = readFileSync(join(mobile, 'components/screens/OsRepairHubScreen.tsx'), 'utf8');
 const guide = readFileSync(join(mobile, 'components/screens/object/ObjectTabGuide.tsx'), 'utf8');
 const planOv = readFileSync(join(mobile, 'components/screens/object/PlanTabOverview.tsx'), 'utf8');
+const primaryButton = readFileSync(join(mobile, 'components/renova/PrimaryButton.tsx'), 'utf8');
 
 console.assert(
   home.includes("showAttention && phase !== 'complete'") && home.includes('<HomeActionHero'),
@@ -21,6 +22,14 @@ console.assert(objectHub.includes('secondary: true') && objectHub.includes('OsHu
 console.assert(repair.includes('secondary: true') && !repair.includes('leanCustomer'), 'repair lean both');
 console.assert(guide.includes('dismissKey') && guide.includes('Скрыть'), 'guide dismissible');
 console.assert(!planOv.includes('Как это работает') && planOv.includes('heroStatus'), 'plan overview compact');
+console.assert(
+  primaryButton.includes("PrimaryButtonHapticIntent = 'legacy' | 'none' | 'selection' | 'commit' | 'destructive'")
+    && primaryButton.includes("hapticIntent = 'legacy'")
+    && primaryButton.includes("if (intent === 'none') return")
+    && primaryButton.includes('Haptics.selectionAsync()')
+    && primaryButton.includes('Haptics.ImpactFeedbackStyle.Medium'),
+  'PrimaryButton exposes backwards-compatible semantic press haptics without moving outcome haptics into press',
+);
 
 const cust = budgetHubTabsForRole('customer');
 const contr = budgetHubTabsForRole('contractor');
@@ -32,6 +41,7 @@ const ok =
   home.includes('<HomeActionHero') &&
   more.includes('Сводка') &&
   objectHub.includes('OsHubTabs') &&
-  guide.includes('Скрыть');
+  guide.includes('Скрыть') &&
+  primaryButton.includes("hapticIntent = 'legacy'");
 if (!ok) process.exit(1);
 console.log('clarityWaveA.w153.test OK');
