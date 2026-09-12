@@ -1,6 +1,6 @@
 /** Материалы — hub: Потребности · Закупки · Чеки */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { ActivityIndicator, ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles, filterChipStyles } from '@/constants/screenTypography';
@@ -14,6 +14,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type MaterialPick, type Purchase, type ReceiptItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { InfoBanner } from '@/components/ui/InfoBanner';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenLayout } from '@/constants/screenLayout';
 import { procurementNextAction, readyPickIds } from '@/lib/domain/procurementNextAction';
@@ -22,6 +23,8 @@ import { repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertPurchaseCreated, alertPurchaseAdvanced } from '@/lib/procurementNav';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { reportError } from '@/lib/reportError';
 
 const PICK_FILTERS = [
   { key: 'all', label: 'Все' },
@@ -34,6 +37,7 @@ const PICK_FILTERS = [
 type PickFilter = (typeof PICK_FILTERS)[number]['key'];
 const SUBTAB_IDS = ['picks', 'purchases', 'receipts'] as const;
 type MaterialSubtab = (typeof SUBTAB_IDS)[number];
+type LoadState = 'loading' | 'loaded' | 'stale' | 'error';
 
 function isMaterialSubtab(value: string | undefined): value is MaterialSubtab {
   return Boolean(value && (SUBTAB_IDS as readonly string[]).includes(value));
@@ -42,6 +46,17 @@ function isMaterialSubtab(value: string | undefined): value is MaterialSubtab {
 function isMaterialAvailable(pick: MaterialPick): boolean {
   if (typeof pick.material_available === 'boolean') return pick.material_available;
   return totalAvailableQty(pick) + Number.EPSILON >= requiredQty(pick);
+}
+
+function apiErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== 'object' || !('status' in error)) return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === 'number' ? status : null;
+}
+
+function upsertPurchase(rows: Purchase[], purchase: Purchase): Purchase[] {
+  const next = rows.filter((row) => row.id !== purchase.id);
+  return [purchase, ...next];
 }
 
 export function OsMaterialsScreen({ role }: { role: import('@/constants/osSections').OsRole }) {
@@ -55,7 +70,13 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   const [mutationKey, setMutationKey] = useState<string | null>(null);
   const mutationRef = useRef(false);
   const [subtab, setSubtab] = useState<MaterialSubtab>('picks');
-  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadedContextKey, setLoadedContextKey] = useState('');
+  const loadedContextKeyRef = useRef('');
+  const loadGenerationRef = useRef(0);
+  const currentContextKey = `${user?.id ?? 'none'}:${activeProject?.id ?? 'none'}`;
+  const currentContextKeyRef = useRef(currentContextKey);
+  currentContextKeyRef.current = currentContextKey;
   const busy = mutationKey !== null;
 
   useEffect(() => {
@@ -68,26 +89,41 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     router.setParams({ tab: 'materials', subtab: tab });
   }, []);
 
-  const reload = useCallback(async () => {
-    if (!user || !activeProject) return;
-    setLoadState('loading');
+  const reload = useCallback(async (): Promise<boolean> => {
+    if (!user || !activeProject) return false;
+    const contextKey = `${user.id}:${activeProject.id}`;
+    const generation = ++loadGenerationRef.current;
+    const hasConfirmedCurrentData = loadedContextKeyRef.current === contextKey;
+    if (!hasConfirmedCurrentData) setLoadState('loading');
+
     try {
       const [pickRows, purchaseRows, receiptRows] = await Promise.all([
         api.listMaterialPicks(user.id, activeProject.id),
         api.listPurchases(user.id, activeProject.id),
         api.listReceipts(user.id, activeProject.id),
       ]);
+      if (generation !== loadGenerationRef.current || currentContextKeyRef.current !== contextKey) return false;
       setPicks(pickRows);
       setPurchases(purchaseRows);
       setReceipts(receiptRows);
+      loadedContextKeyRef.current = contextKey;
+      setLoadedContextKey(contextKey);
       setLoadState('loaded');
-    } catch {
-      setLoadState('error');
+      return true;
+    } catch (error) {
+      if (generation !== loadGenerationRef.current || currentContextKeyRef.current !== contextKey) return false;
+      reportError('materials.reload', error, { projectId: activeProject.id, role });
+      setLoadState(hasConfirmedCurrentData ? 'stale' : 'error');
+      return false;
     }
-  }, [user?.id, activeProject?.id]);
+  }, [user?.id, activeProject?.id, role]);
+
+  const reloadForBus = useCallback(async () => {
+    await reload();
+  }, [reload]);
 
   useFocusEffect(useCallback(() => { void reload(); }, [reload]));
-  useProjectDataReload(reload);
+  useProjectDataReload(reloadForBus);
 
   const runMutation = useCallback(async (key: string, task: () => Promise<void>) => {
     if (mutationRef.current) return;
@@ -124,6 +160,15 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     );
   }
 
+  if (loadState === 'loading' || loadedContextKey !== currentContextKey) {
+    return (
+      <View style={s.loadingState} accessibilityRole="summary">
+        <ActivityIndicator color={RenovaTheme.colors.primary} />
+        <Text style={screenTypography.empty}>Загрузка материалов…</Text>
+      </View>
+    );
+  }
+
   const needBuy = picks.filter((pick) => quantityToBuy(pick) > 0).length;
   const approved = picks.filter((pick) => pick.status === 'approved').length;
   const available = picks.filter(isMaterialAvailable).length;
@@ -135,6 +180,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   const readyCount = readyPickIds(picks, purchases, role).length;
   const next = procurementNextAction(picks, purchases, receipts, role);
   const nextNeedsWrite = next.id === 'generate' || next.id === 'create_purchase';
+  const stateUncertain = loadState === 'stale';
 
   const hubTabs: HubTab[] = [
     { id: 'picks', label: 'Потребности', badge: shortage || undefined },
@@ -142,23 +188,102 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     { id: 'receipts', label: 'Чеки', badge: unverifiedReceipts || undefined },
   ];
 
+  const showRefreshOnly = (title: string, message: string) => {
+    showActionConfirm({
+      title,
+      message,
+      primaryLabel: 'Обновить данные',
+      onPrimary: () => { void reload(); },
+      secondaryLabel: 'Позже',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const handleUnconfirmedMutation = (error: unknown, actionLabel: string) => {
+    if (isOfflineQueued(error)) {
+      notifyOfflineQueued(actionLabel, role);
+      return;
+    }
+
+    const status = apiErrorStatus(error);
+    if (status !== null && status >= 400 && status < 500) {
+      showRefreshOnly(
+        status === 409 ? 'Данные изменились' : 'Действие отклонено',
+        status === 409
+          ? 'Сервер не принял изменение из-за новой версии данных. Обновите экран перед следующим действием.'
+          : 'Сервер не подтвердил изменение. Обновите данные перед следующей попыткой.',
+      );
+      return;
+    }
+
+    showRefreshOnly(
+      'Результат нужно проверить',
+      'Не удалось подтвердить результат операции. Не повторяйте действие, пока не обновите данные.',
+    );
+  };
+
+  const reconcileAfterCommit = async (source: string): Promise<boolean> => {
+    let reconciled = true;
+    try {
+      await syncProjectSideEffects({ user, project: activeProject });
+    } catch (error) {
+      reconciled = false;
+      reportError(`materials.${source}.sideEffects`, error, { projectId: activeProject.id, role });
+    }
+    const refreshed = await reload();
+    return reconciled && refreshed;
+  };
+
+  const showCommittedRefreshFailure = (title: string) => {
+    showRefreshOnly(
+      title,
+      'Изменение уже сохранено на сервере, но не все данные удалось обновить. Не повторяйте операцию — обновите экран.',
+    );
+  };
+
   const generateFromEstimate = async () => {
-    if (readOnly) return;
+    if (readOnly || stateUncertain) return;
     await runMutation('generate', async () => {
-      await api.generateMaterialNeeds(user.id, activeProject.id);
-      await reload();
+      try {
+        await api.generateMaterialNeeds(user.id, activeProject.id);
+      } catch (error) {
+        handleUnconfirmedMutation(error, 'Формирование потребностей');
+        return;
+      }
+
+      const reconciled = await reconcileAfterCommit('generate');
+      if (!reconciled) showCommittedRefreshFailure('Потребности сформированы');
     });
   };
 
   const createPurchaseFromReady = async () => {
-    if (readOnly) return;
+    if (readOnly || stateUncertain) return;
     const ids = readyPickIds(picks, purchases, role);
     if (!ids.length) return;
     await runMutation('create_purchase', async () => {
-      await api.createPurchase(user.id, activeProject.id, ids);
-      await syncProjectSideEffects({ user, project: activeProject });
-      await reload();
-      setMaterialSubtab('purchases');
+      let created: Purchase;
+      try {
+        created = await api.createPurchase(user.id, activeProject.id, ids);
+      } catch (error) {
+        handleUnconfirmedMutation(error, 'Создание закупки');
+        return;
+      }
+
+      // The create commit is authoritative. Publish the confirmed entity locally
+      // before any best-effort sync/read so later reconciliation failure cannot
+      // be presented as a failed creation or invite a duplicate create.
+      setPurchases((prev) => upsertPurchase(prev, created));
+      try {
+        setMaterialSubtab('purchases');
+      } catch (error) {
+        reportError('materials.createPurchase.navigation', error, { projectId: activeProject.id, purchaseId: created.id });
+      }
+
+      const reconciled = await reconcileAfterCommit('createPurchase');
+      if (!reconciled) {
+        showCommittedRefreshFailure('Закупка создана');
+        return;
+      }
       alertPurchaseCreated(role, ids.length);
     });
   };
@@ -178,20 +303,25 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   };
 
   const advancePurchase = (id: string, status: string) => {
-    if (readOnly || mutationRef.current) return;
+    if (readOnly || stateUncertain || mutationRef.current) return;
     const key = `purchase:${id}:${status}`;
     const run = () => runMutation(key, async () => {
+      let updated: Purchase;
       try {
-        await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
-        await syncProjectSideEffects({ user, project: activeProject });
-        await reload();
-        alertPurchaseAdvanced(role, status);
-      } catch {
-        showActionConfirm({
-          title: 'Не удалось обновить закупку',
-          message: 'Статус не изменён. Проверьте сеть и повторите.',
-        });
+        updated = await api.updatePurchaseStatus(user.id, activeProject.id, id, status);
+      } catch (error) {
+        handleUnconfirmedMutation(error, 'Изменение статуса закупки');
+        return;
       }
+
+      // Status commit is confirmed independently from refresh/side effects.
+      setPurchases((prev) => upsertPurchase(prev, updated));
+      const reconciled = await reconcileAfterCommit('advancePurchase');
+      if (!reconciled) {
+        showCommittedRefreshFailure('Статус закупки сохранён');
+        return;
+      }
+      alertPurchaseAdvanced(role, status);
     });
 
     if (status === 'cancelled') {
@@ -212,6 +342,17 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   return (
     <View style={s.root}>
       <ScrollView style={s.body} contentContainerStyle={screenLayout.contentStyle}>
+        {stateUncertain ? (
+          <View style={s.staleBlock}>
+            <InfoBanner
+              tone="warning"
+              title="Показаны последние подтверждённые данные"
+              message="Не удалось обновить материалы. Изменения закупок временно недоступны до успешного обновления."
+            />
+            <PrimaryButton title="Обновить данные" variant="outline" onPress={() => { void reload(); }} />
+          </View>
+        ) : null}
+
         <View style={s.summary}>
           <View style={s.cell}>
             <Text style={s.n}>{needBuy}</Text>
@@ -229,7 +370,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
         <View style={s.nextBox}>
           <Text style={s.nextLabel}>Следующий шаг</Text>
           <Text style={s.nextTitle}>{next.title}</Text>
-          {!nextNeedsWrite || !readOnly ? (
+          {!nextNeedsWrite || (!readOnly && !stateUncertain) ? (
             <PrimaryButton
               title={next.cta}
               loading={mutationKey === next.id}
@@ -288,8 +429,8 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
               rooms={activeProject.rooms || []}
               stages={activeProject.stages || []}
               picksOverride={filteredPicks}
-              readOnly={readOnly || busy}
-              onChanged={reload}
+              readOnly={readOnly || busy || stateUncertain}
+              onChanged={reloadForBus}
             />
           </>
         ) : null}
@@ -310,7 +451,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
             ) : null}
             <PurchaseList
               purchases={purchases}
-              readOnly={readOnly}
+              readOnly={readOnly || stateUncertain}
               returnTo={pathname}
               mutationKey={mutationKey}
               onAdvance={advancePurchase}
@@ -323,7 +464,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
             <PrimaryButton
               title="Сканировать QR чека"
               variant="outline"
-              disabled={busy}
+              disabled={busy || stateUncertain}
               onPress={() => pushOsNav('/scan-receipt', pathname, role)}
             />
             <Text style={s.factHint}>После скана сверьте чек с закупкой. В факт попадают доставленные закупки и подтверждённые чеки.</Text>
@@ -338,6 +479,15 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   body: { flex: 1 },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: RenovaTheme.spacing.sm,
+    padding: RenovaTheme.spacing.lg,
+    backgroundColor: RenovaTheme.colors.background,
+  },
+  staleBlock: { marginBottom: RenovaTheme.spacing.md },
   summary: { ...listRowStyles.summaryRow, marginBottom: 4 },
   cell: { ...listRowStyles.metricCell, marginBottom: 0 },
   n: { ...screenTypography.metric },

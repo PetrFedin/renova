@@ -8,7 +8,7 @@
 | `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
-| `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `ee8ef690f9f52830feb0f07ebef77e70cfb42817` | Materials/procurement hub + supply-aware next action |
+| `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `72b549f79a7d302dd68e0d9d57803329898de826` | Materials/procurement hub + fenced read truth + committed/queued/unknown mutation outcomes |
 | `apps/mobile/components/renova/MaterialPickList.tsx` | `082f19a9c3476a10172fa984bfbaa26802b4102c` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
 | `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `9ccb7fa6b1df87d21372369de73b748f8c7779e1` | Selections |
 | `apps/mobile/components/screens/OsControlScreen.tsx` | `b33fe8343d7629fd5ac859009ebdff36da629810` | role/access-mode control router |
