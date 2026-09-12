@@ -44,7 +44,13 @@ async def _fresh_project(client: AsyncClient):
     )
     assert created.status_code == 200, created.text
     project_id = created.json()["id"]
-    assigned = await client.post(f"/api/v1/projects/{project_id}/assign", headers=h_cont)
+    # Link the chosen contractor as the project owner. Do not use /assign here:
+    # that is the contractor self-claim commercial path and correctly requires Pro.
+    assigned = await client.post(
+        f"/api/v1/projects/{project_id}/contractor",
+        headers=h_cust,
+        json={"contractor_id": contractor["id"]},
+    )
     assert assigned.status_code == 200, assigned.text
     return project_id, h_cont
 
