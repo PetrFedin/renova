@@ -11,6 +11,8 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
+from app.services import selection_create_service as selection_create
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["selections"])
 
@@ -18,6 +20,7 @@ CATEGORIES = ("tile", "plumbing", "lighting", "doors", "kitchen", "paint", "othe
 
 
 class SelectionIn(BaseModel):
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     title: str = Field(min_length=1, max_length=255)
     room_id: str | None = None
     category: str = "other"
@@ -100,34 +103,18 @@ async def create_selection(
     await require_project(db, project_id, user, write=True)
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
-    row = SelectionItem(
-        project_id=project_id,
-        room_id=body.room_id,
-        category=body.category,
-        title=body.title.strip(),
-        sku=body.sku,
-        allowance=body.allowance,
-        price=body.price,
-        shop_url=body.shop_url,
-        shop_name=body.shop_name,
-        notes=body.notes,
-        proposed_by_id=user.id,
-        status=SelectionStatus.draft,
-    )
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="selection",
-        title=f"Подбор: {row.title}",
-        body=row.category,
-        room_id=row.room_id,
-        link_path="/(customer)/(tabs)/repair?tab=selections",
-    )
-    return _out(row)
+    payload = body.model_dump(exclude={"client_request_id"})
+    try:
+        row, replayed = await selection_create.create_selection(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            client_request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(409, detail={"code": "idempotency_conflict"}) from error
+    return {**_out(row), "replayed": replayed}
 
 
 @router.post("/{project_id}/selections/{selection_id}/propose")

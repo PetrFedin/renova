@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from test_selection_create_replay_postgres import (
+    test_selection_same_key_postgres_race_creates_one_row_and_activity,
+)
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
