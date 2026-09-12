@@ -1,8 +1,8 @@
 import { dedupeJobsByIntent, type IntentDedupeJob } from './intentDedupe';
 
-const assert = (condition: unknown, message: string): asserts condition => {
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
-};
+}
 
 function job(
   id: string,
