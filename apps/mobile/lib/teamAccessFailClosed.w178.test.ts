@@ -84,4 +84,31 @@ must(
   'malformed success without committed team id must fail closed',
 );
 
+must(
+  !roleScreen.includes("(['sms'] as Mode[])"),
+  'production onboarding must not render a one-option SMS mode selector',
+);
+must(
+  roleScreen.includes("(['demo', 'sms'] as Mode[])") && roleScreen.includes('{DEMO_LOGIN_ENABLED ? ('),
+  'demo/SMS mode selection must exist only behind the explicit demo flag',
+);
+must(
+  roleScreen.includes('accessibilityRole="radio"')
+    && roleScreen.includes('accessibilityState={{ checked:'),
+  'role and demo-mode choices must expose explicit selected state to accessibility',
+);
+must(
+  roleScreen.includes('pressed && styles.pressed'),
+  'choice controls must give immediate press feedback before commit',
+);
+must(
+  !roleScreen.includes("color: '#333'")
+    && !roleScreen.includes("color: '#94a3b8'"),
+  'onboarding must use canonical theme colors instead of local hex values',
+);
+must(
+  !roleScreen.includes('для пилота') && !roleScreen.includes('После входа:'),
+  'production onboarding must not expose pilot/internal navigation instructions',
+);
+
 console.log('teamAccessFailClosed.w178.test OK');
