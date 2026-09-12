@@ -37,6 +37,11 @@ for (const service of ['postgres:', 'redis:', 'minio:', 'migrate:', 'api:', 'wor
   assert.ok(compose.includes(service), `docker-compose.yml missing ${service}`);
 }
 assert.ok(!compose.includes(':latest'), 'canonical local compose must not use mutable latest tags');
+assert.ok(
+  compose.includes('quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e'),
+  'canonical local MinIO must retain the reviewed release and immutable Quay index digest',
+);
+assert.ok(!compose.includes('image: minio/minio:'), 'canonical local runtime must not restore the unavailable Docker Hub MinIO source');
 assert.ok(compose.includes('["alembic", "upgrade", "head"]'), 'compose migrate service must be fail-fast Alembic');
 assert.ok(compose.includes('python -m app.db.migration_guard && exec renova-api'), 'local API must reject stale schema even on direct Compose startup');
 assert.ok(compose.includes('python -m app.db.migration_guard && exec renova-worker'), 'local worker must reject stale schema even on direct Compose startup');
