@@ -42,6 +42,15 @@ for (const [name, body] of [
 ] as const) {
   if (!body.includes('screenTypography')) throw new Error(`${name} missing SoT`);
 }
+if (!post.includes('SheetSurface') || post.includes('<Modal')) {
+  throw new Error('PostCreateSheet must use canonical SheetSurface');
+}
+if (!post.includes('pressed && s.rowPressed') || !post.includes('accessibilityHint={step.sub}')) {
+  throw new Error('PostCreateSheet next-step rows need immediate feedback and accessibility hint');
+}
+if (!post.includes('footer={<PrimaryButton title="На главную" variant="ghost"')) {
+  throw new Error('PostCreateSheet home action must use shared tertiary button');
+}
 if (!chips.includes('formSurfaceStyles') || !chips.includes('filterChipStyles')) {
   throw new Error('StagePickerChips missing shared form/chip SoT');
 }

@@ -1,8 +1,11 @@
 /** После создания объекта — «Что дальше?» вместо мгновенного jump на tabs */
-import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import type { PressableStateCallbackType } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { SheetSurface } from '@/components/renova/SheetSurface';
 import { objectTabHref, repairTabHref, tabsHref, customerProfileTabHref } from '@/constants/osSections';
 
 type Step = {
@@ -59,60 +62,51 @@ type Props = {
   onClose: () => void;
 };
 
-function stopPropagation(event: unknown): void {
-  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
-  const stop = event.stopPropagation;
-  if (typeof stop === 'function') stop.call(event);
-}
-
 export function PostCreateSheet({ visible, projectName, onNavigate, onHome, onClose }: Props) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={stopPropagation}>
-          <Text style={s.head}>Объект создан</Text>
-          <Text style={s.sub}>«{projectName}» готов. Что дальше?</Text>
-          {STEPS.map((step) => (
-            <Pressable key={step.id} style={s.row} onPress={() => onNavigate(step.href, step.id)}>
-              <Ionicons name={step.icon} size={22} color={RenovaTheme.colors.primary} />
-              <View style={s.body}>
-                <Text style={s.label}>{step.label}</Text>
-                <Text style={s.hint}>{step.sub}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={RenovaTheme.colors.textSubtle} />
-            </Pressable>
-          ))}
-          <Pressable style={s.homeBtn} onPress={onHome}>
-            <Text style={s.homeT}>На главную</Text>
+    <SheetSurface
+      visible={visible}
+      onClose={onClose}
+      title="Объект создан"
+      subtitle={`«${projectName}» готов. Что дальше?`}
+      accessibilityLabel="Следующий шаг после создания объекта"
+      footer={<PrimaryButton title="На главную" variant="ghost" onPress={onHome} />}
+    >
+      <View style={s.steps}>
+        {STEPS.map((step) => (
+          <Pressable
+            key={step.id}
+            style={({ pressed }: PressableStateCallbackType) => [s.row, pressed && s.rowPressed]}
+            onPress={() => onNavigate(step.href, step.id)}
+            accessibilityRole="button"
+            accessibilityLabel={step.label}
+            accessibilityHint={step.sub}
+          >
+            <Ionicons name={step.icon} size={22} color={RenovaTheme.colors.primary} />
+            <View style={s.body}>
+              <Text style={s.label}>{step.label}</Text>
+              <Text style={s.hint}>{step.sub}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={RenovaTheme.colors.textSubtle} />
           </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        ))}
+      </View>
+    </SheetSurface>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: RenovaTheme.colors.surface,
-    borderTopLeftRadius: RenovaTheme.radius.xl,
-    borderTopRightRadius: RenovaTheme.radius.xl,
-    padding: RenovaTheme.spacing.lg,
-    paddingBottom: 32,
-    gap: 4,
-  },
-  head: { ...screenTypography.listTitle, fontSize: 20, fontWeight: '700' },
-  sub: { ...screenTypography.listMeta, marginBottom: 12, fontSize: 14 },
+  steps: { gap: RenovaTheme.spacing.xs },
   row: {
     ...listRowStyles.row,
+    minHeight: RenovaTheme.minTouch,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
+    gap: RenovaTheme.spacing.md,
+    paddingVertical: RenovaTheme.spacing.md,
   },
+  rowPressed: { opacity: 0.72 },
   body: { flex: 1, minWidth: 0 },
   label: { ...screenTypography.listTitle },
   hint: { ...screenTypography.listMeta },
-  homeBtn: { marginTop: 12, alignItems: 'center', paddingVertical: 12 },
-  homeT: { ...screenTypography.listLink, marginTop: 0, color: RenovaTheme.colors.accent },
 });
