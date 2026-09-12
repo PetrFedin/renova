@@ -14,6 +14,7 @@ router = APIRouter(prefix="/projects", tags=["design"])
 
 
 class DesignIn(BaseModel):
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     title: str = Field(min_length=1, max_length=255)
     file_key: str | None = Field(default=None, max_length=512)
     notes: str | None = Field(default=None, max_length=4000)
@@ -47,7 +48,7 @@ def _design_error(error: ValueError) -> HTTPException:
             409,
             detail={"code": "invalid_design_transition", "transition": code.split(":", 1)[1]},
         )
-    if code in {"design_title_invalid", "design_file_key_invalid"}:
+    if code in {"design_title_invalid", "design_file_key_invalid", "design_notes_invalid"}:
         return HTTPException(422, detail={"code": code})
     return HTTPException(409, detail={"code": code})
 
@@ -76,17 +77,18 @@ async def create_design(
 ):
     project: Project = await require_project(db, project_id, user, write=True)
     try:
-        package = await design_svc.create_package(
+        package, replayed = await design_svc.create_package(
             db,
             project=project,
             actor=user,
+            client_request_id=body.client_request_id,
             title=body.title,
             file_key=body.file_key,
             notes=body.notes,
         )
     except ValueError as error:
         raise _design_error(error) from error
-    return _out(package, replayed=False)
+    return _out(package, replayed=replayed)
 
 
 async def _transition(
