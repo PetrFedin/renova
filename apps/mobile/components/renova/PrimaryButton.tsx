@@ -7,6 +7,8 @@ type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'dange
 type Size = 'sm' | 'md' | 'lg';
 type PressState = { pressed: boolean };
 
+export type PrimaryButtonHapticIntent = 'legacy' | 'none' | 'selection' | 'commit' | 'destructive';
+
 export type PrimaryButtonPressEvent = {
   stopPropagation?: () => void;
 };
@@ -23,6 +25,12 @@ type Props = {
   loading?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  /**
+   * Transitional semantic press haptic. `legacy` preserves the existing Light impact
+   * until call sites are classified. Success/error feedback belongs after the
+   * authoritative outcome and is intentionally not represented here.
+   */
+  hapticIntent?: PrimaryButtonHapticIntent;
 };
 
 const sizePad: Record<Size, { v: number; h: number; font: number }> = {
@@ -38,6 +46,18 @@ function pressEventCapability(event: unknown): PrimaryButtonPressEvent | undefin
   return { stopPropagation: () => stopPropagation.call(event) };
 }
 
+function firePressHaptic(intent: PrimaryButtonHapticIntent) {
+  if (intent === 'none') return;
+  const effect = intent === 'selection'
+    ? Haptics.selectionAsync()
+    : Haptics.impactAsync(
+        intent === 'destructive'
+          ? Haptics.ImpactFeedbackStyle.Medium
+          : Haptics.ImpactFeedbackStyle.Light,
+      );
+  effect.catch(reportCatch('components.renova.PrimaryButton.haptic'));
+}
+
 export function PrimaryButton({
   title,
   onPress,
@@ -49,6 +69,7 @@ export function PrimaryButton({
   loading,
   accessibilityLabel,
   accessibilityHint,
+  hapticIntent = 'legacy',
 }: Props) {
   const sz = size ?? (compact ? 'sm' : 'md');
   const pad = sizePad[sz];
@@ -79,7 +100,7 @@ export function PrimaryButton({
       ]}
       onPress={(event?: unknown) => {
         if (unavailable) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(reportCatch('components.renova.PrimaryButton.1'));
+        firePressHaptic(hapticIntent);
         onPress(pressEventCapability(event));
       }}
     >
