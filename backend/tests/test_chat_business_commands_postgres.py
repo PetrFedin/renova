@@ -14,6 +14,7 @@ from app.models.client_write_request import ClientWriteRequest
 from app.services import chat_business_commands as commands, chat_message_mutation as messages, chat_service
 from app.services.client_write_idempotency import IdempotencyConflict
 from test_chat_business_commands import seed, invoice, task, count
+from test_stage_comment_intent_postgres import test_stage_comment_same_key_postgres_race_creates_one_comment
 
 
 @pytest.fixture
