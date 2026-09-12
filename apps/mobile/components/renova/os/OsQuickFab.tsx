@@ -1,6 +1,7 @@
 /** Единая точка «+» — расход (scan/manual) · работа · чат */
 import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform, TextInput, Alert } from 'react-native';
+import type { PressableStateCallbackType } from 'react-native';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
@@ -36,7 +37,7 @@ type QuickActionRowProps = {
 function QuickActionRow({ icon, label, sub, onPress }: QuickActionRowProps) {
   return (
     <Pressable
-      style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+      style={({ pressed }: PressableStateCallbackType) => [s.row, pressed && s.rowPressed]}
       onPress={() => { void onPress(); }}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -122,7 +123,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
   return (
     <>
       <Pressable
-        style={({ pressed }) => [s.fab, pressed && s.fabPressed]}
+        style={({ pressed }: PressableStateCallbackType) => [s.fab, pressed && s.fabPressed]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel="Быстрые действия"
