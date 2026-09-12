@@ -48,22 +48,24 @@ async def test_issue_same_key_postgres_race_creates_one_issue_and_effect_set(mon
         ))
         await db.commit()
 
+    # Prove two physical sessions arrive at the serialization boundary before
+    # either is allowed to acquire the PostgreSQL project row lock.
     ready = 0
     both_ready = asyncio.Event()
     release = asyncio.Event()
     guard = asyncio.Lock()
-    original_commit = issue_create.commit_client_write
+    original_lock = issue_create._lock_project
 
-    async def synchronized_commit(*args, **kwargs):
+    async def synchronized_lock(*args, **kwargs):
         nonlocal ready
         async with guard:
             ready += 1
             if ready == 2:
                 both_ready.set()
         await asyncio.wait_for(release.wait(), 10)
-        return await original_commit(*args, **kwargs)
+        return await original_lock(*args, **kwargs)
 
-    monkeypatch.setattr(issue_create, "commit_client_write", synchronized_commit)
+    monkeypatch.setattr(issue_create, "_lock_project", synchronized_lock)
     payload = {
         "title": "Race crack",
         "description": "one intent",
