@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
+import type { PressableStateCallbackType } from 'react-native';
 import { alertMessage } from '@/lib/confirmAlert';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -119,7 +120,7 @@ export default function RoleScreen() {
               <Pressable
                 key={m}
                 disabled={teamJoinPending}
-                style={({ pressed }) => [
+                style={({ pressed }: PressableStateCallbackType) => [
                   styles.modeBtn,
                   mode === m && styles.modeOn,
                   pressed && styles.pressed,
@@ -147,7 +148,7 @@ export default function RoleScreen() {
           <Pressable
             key={r}
             disabled={teamJoinPending}
-            style={({ pressed }) => [
+            style={({ pressed }: PressableStateCallbackType) => [
               styles.roleBtn,
               role === r && styles.roleActive,
               pressed && styles.pressed,
@@ -186,7 +187,7 @@ export default function RoleScreen() {
       {teamJoinPending ? (
         <Pressable
           disabled={busy}
-          style={({ pressed }) => [styles.skipJoin, pressed && styles.pressed, busy && styles.controlDisabled]}
+          style={({ pressed }: PressableStateCallbackType) => [styles.skipJoin, pressed && styles.pressed, busy && styles.controlDisabled]}
           onPress={() => { void continueWithoutTeam(); }}
           accessibilityRole="button"
           accessibilityLabel="Продолжить без вступления в бригаду"
