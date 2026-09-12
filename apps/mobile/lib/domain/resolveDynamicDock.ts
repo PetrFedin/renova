@@ -1,4 +1,9 @@
-/** Динамическая нижняя панель заказчика — setup vs repair по чеклисту */
+/**
+ * LEGACY-RETAINED #399: historical setup/repair dock preset resolver.
+ * Production `OsDockBar` no longer applies these presets automatically because
+ * primary navigation must not rearrange itself as project context changes.
+ * Kept for migration/audit evidence until removal has full reference proof.
+ */
 import type { ProjectDetail } from '@/lib/api';
 import type { DockItemId } from '@/constants/dockBar';
 import { DOCK_PRESET_REPAIR, DOCK_PRESET_SETUP } from '@/constants/dockBar';
@@ -10,7 +15,7 @@ import type { DetailLevel } from '@/lib/detailLevel';
 
 export type DockPresetMode = 'setup' | 'repair';
 
-/** Минимальный snap для расчёта dock без полной загрузки OS */
+/** Минимальный snap для расчёта исторического preset без полной загрузки OS */
 export function minimalSnapFromProject(project: ProjectDetail): Pick<ProjectOsSnapshot, 'isComplete' | 'pendingPayments' | 'schedule'> {
   return {
     isComplete: (project.progress_percent ?? 0) >= 100,
@@ -20,7 +25,7 @@ export function minimalSnapFromProject(project: ProjectDetail): Pick<ProjectOsSn
   };
 }
 
-/** Режим preset: настройка объекта или активный ремонт */
+/** Исторический режим preset: настройка объекта или активный ремонт. */
 export function resolveDockPresetMode(
   project: ProjectDetail,
   snap: Pick<ProjectOsSnapshot, 'isComplete' | 'pendingPayments' | 'schedule'>,
@@ -39,12 +44,12 @@ export function resolveDockPresetMode(
   return 'repair';
 }
 
-/** Те же ссылки на пресеты — иначе useMemo/effects видят «новый» массив каждый раз. */
+/** Historical preset membership retained for migration/audit only. */
 export function dockPresetItems(mode: DockPresetMode): readonly DockItemId[] {
   return mode === 'setup' ? DOCK_PRESET_SETUP : DOCK_PRESET_REPAIR;
 }
 
-/** Dynamic dock только для customer; detailed — ручные prefs */
+/** Historical eligibility policy retained for migration/audit only. */
 export function shouldUseDynamicDock(role: OsRole, detailLevel: DetailLevel, phase: ReturnType<typeof resolveProjectPhase>): boolean {
   if (role !== 'customer') return false;
   if (phase === 'complete') return false;
@@ -52,6 +57,7 @@ export function shouldUseDynamicDock(role: OsRole, detailLevel: DetailLevel, pha
   return true;
 }
 
+/** Historical resolver; production Dock no longer consumes this automatically. */
 export function resolveDynamicDockItems(
   project: ProjectDetail | null,
   snap: Pick<ProjectOsSnapshot, 'isComplete' | 'pendingPayments' | 'schedule'> | null,
