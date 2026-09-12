@@ -3,6 +3,13 @@ import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 
+function newStageCommentRequestId(): string {
+  const now = Date.now().toString(36);
+  const randomA = Math.random().toString(36).slice(2, 12);
+  const randomB = Math.random().toString(36).slice(2, 12);
+  return `stage-comment-${now}-${randomA}-${randomB}`;
+}
+
 async function activeAcceptance(userId: string, projectId: string, stageId: string): Promise<WorkAcceptance | null> {
   const items = await req<WorkAcceptance[]>(
     `/api/v1/projects/${projectId}/work-acceptances?stage_id=${encodeURIComponent(stageId)}`,
@@ -18,12 +25,15 @@ export const stagesApi = {
   getStage: (userId: string, projectId: string, stageId: string) =>
     cachedGet<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}`, userId),
   addStageComment: async (userId: string, projectId: string, stageId: string, text: string) => {
+    const client_request_id = newStageCommentRequestId();
+    const body = JSON.stringify({ client_request_id, text });
+    const path = `/api/v1/projects/${projectId}/stages/${stageId}/comments`;
     try {
-      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/comments`, { method: 'POST', body: JSON.stringify({ text }) }, userId);
+      return await req(path, { method: 'POST', body }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/comments`, method: 'POST', body: JSON.stringify({ text }), userId });
+      await enqueue({ path, method: 'POST', body, userId });
       throw new Error('offline_queued');
     }
   },
