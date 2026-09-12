@@ -4,7 +4,7 @@
 
 | Source | Git blob SHA | Contract area |
 |---|---|---|
-| `apps/mobile/components/renova/PrimaryButton.tsx` | `b1dab4b50ae2b5e078024e16a3b0c37120c996a1` | shared CTA variants/sizes/states |
+| `apps/mobile/components/renova/PrimaryButton.tsx` | `2bc41382796257de5039e3bd07c3f1f49caa9216` | shared CTA variants/sizes/states + backwards-compatible semantic press-haptic intent |
 | `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
