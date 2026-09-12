@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.entities import ChatMessage, Payment, Project, WorkOrder
 from app.models.client_write_request import ClientWriteRequest
-from app.services import chat_business_commands as commands, chat_message_mutation as messages, chat_service
+from app.services import (
+    chat_business_commands as commands,
+    chat_message_mutation as messages,
+    chat_service,
+    work_order_client_write as wo_writer,
+)
 from app.services.client_write_idempotency import IdempotencyConflict
 from test_chat_business_commands import seed, invoice, task, count
 
@@ -189,6 +194,81 @@ async def test_reaction_waits_for_task_link_and_preserves_both_json_fields(postg
     finally:
         release.set()
         jobs = [job for job in (creator, reaction) if job is not None]
+        for job in jobs:
+            if not job.done():
+                job.cancel()
+        await asyncio.gather(*jobs, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed", [False, True])
+async def test_direct_work_order_create_is_exactly_once_under_postgres_contention(postgres, monkeypatch, changed):
+    """Same intent serializes on Project; replay returns one WorkOrder or 409-equivalent conflict."""
+    engine, Session, s = postgres
+    held, release, second_started = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    original_prepare = wo_writer.work_order_service.prepare_work_order
+    entered = 0
+    second_pid = None
+
+    async def pause_first(*args, **kwargs):
+        nonlocal entered
+        entered += 1
+        if entered == 1:
+            held.set()
+            await asyncio.wait_for(release.wait(), 10)
+        return await original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(wo_writer.work_order_service, "prepare_work_order", pause_first)
+
+    async def invoke(db, *, title="Direct race task"):
+        return await wo_writer.create_work_order(
+            db,
+            project_id=s.project,
+            user_id=s.contractor,
+            client_request_id="direct-work-order-race-key",
+            title=title,
+            work_type="general",
+            budget_planned=100,
+            publish=True,
+        )
+
+    async def first():
+        async with Session() as db:
+            return (await invoke(db)).id
+
+    async def second():
+        nonlocal second_pid
+        async with Session() as db:
+            second_pid = await db.scalar(text("SELECT pg_backend_pid()"))
+            second_started.set()
+            return (await invoke(db, title="Changed direct race task" if changed else "Direct race task")).id
+
+    first_job = asyncio.create_task(first())
+    second_job = None
+    try:
+        await asyncio.wait_for(held.wait(), 10)
+        second_job = asyncio.create_task(second())
+        await asyncio.wait_for(second_started.wait(), 5)
+        await assert_blocked(engine, second_pid)
+        release.set()
+        first_id = await asyncio.wait_for(first_job, 10)
+        if changed:
+            with pytest.raises(IdempotencyConflict, match="idempotency_conflict"):
+                await asyncio.wait_for(second_job, 10)
+        else:
+            assert await asyncio.wait_for(second_job, 10) == first_id
+        async with Session() as db:
+            assert await count(db, WorkOrder, WorkOrder.project_id == s.project) == 1
+            assert await count(
+                db,
+                ClientWriteRequest,
+                ClientWriteRequest.scope == wo_writer.WORK_ORDER_CREATE_SCOPE,
+                ClientWriteRequest.project_id == s.project,
+                ClientWriteRequest.user_id == s.contractor,
+            ) == 1
+    finally:
+        release.set()
+        jobs = [job for job in (first_job, second_job) if job is not None]
         for job in jobs:
             if not job.done():
                 job.cancel()

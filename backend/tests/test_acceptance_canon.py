@@ -336,6 +336,7 @@ async def test_contractor_cannot_transition_work_order_to_done():
             f"/api/v1/projects/{pid}/work-orders",
             headers=h_cont,
             json={
+                "client_request_id": "acceptance-canon-work-order-001",
                 "title": "P0 WO",
                 "work_type": "other",
                 "publish": True,
