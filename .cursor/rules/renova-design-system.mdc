@@ -10,6 +10,8 @@ alwaysApply: true
 
 Renova — спокойный slate/blue продукт про контроль ремонта. Не перерисовывать «красиво», а **следовать токенам и `components/ui`**.
 
+Governed interaction contract: `docs/technical-spec/MOBILE-INTERACTION-CONTRACT.md`.
+
 ## Источники истины
 
 | Что | Файл |
@@ -19,6 +21,29 @@ Renova — спокойный slate/blue продукт про контроль 
 | Поверхности (chip active, info card) | `@/constants/uiTokens.ts` |
 | Базовые UI | `@/components/ui/*` |
 | Отступы экранов | `@/constants/screenLayout.ts` |
+| Interaction/state contract | `docs/technical-spec/MOBILE-INTERACTION-CONTRACT.md` |
+
+## Design Decision Gate
+
+Перед новым UI или изменением поведения пройти gate в этом порядке. Это не отдельный roadmap и не разрешение расширять scope PR.
+
+1. **Purpose** — элемент решает конкретную пользовательскую задачу; декоративная функция сама по себе не основание.
+2. **Frequency** — частые действия получают минимум motion; пороги частоты — эвристика, а не автоматическое правило.
+3. **Action hierarchy** — в одном состоянии экрана не более одного primary CTA.
+4. **Press** — любой pressable сообщает о касании сразу; визуальный feedback не ждёт API-ответа.
+5. **Native first** — platform/native primitive предпочтителен, если не ломает продуктовый контракт, web parity или accessibility.
+6. **Motion purpose** — motion допустим для feedback, state indication, spatial continuity, gesture или устранения резкого скачка. «Красиво» недостаточно.
+7. **Gesture** — finger-driven UI должен следовать пальцу и оставаться interruptible; не добавлять gesture без продуктовой задачи.
+8. **Navigation** — canonical IA задаёт `routeRegistry.ts`; контекст не создаёт новый top-level hub. Изменение состава основного dock требует отдельного продуктового решения.
+9. **Haptics** — selection/commit/success/error имеют разный смысл; haptic не является обязательным свойством любой кнопки.
+10. **Tokens** — никаких локальных semantic colors/radii/status surfaces при наличии shared token/primitive.
+11. **Accessibility** — минимум 44pt, font scaling, labels/states, contrast, reduced-motion при добавлении motion.
+12. **Error/status truth** — loading, empty, stale/offline, error, read-only/access, conflict и success не подменяют друг друга. Один главный feedback channel; haptic может только сопровождать его.
+13. **Prototype gate** — если есть несколько реально разных решений с существенным trade-off, сначала изолированное сравнение; production не используется как макетная площадка.
+14. **Verify** — проверять tap/hold/rapid repeat, loading/error/offline/stale/conflict/access/success и затронутый canonical route, а не только screenshot.
+15. **Exception** — сознательное отклонение от правила имеет явную продуктовую/техническую причину и bounded evidence.
+
+Верхнее правило: **correctness before delight**. Пользователь должен понимать, что произошло, сохранено ли действие, кто действует дальше и можно ли безопасно повторить/отменить операцию.
 
 ## Запрещено
 
@@ -28,6 +53,8 @@ Renova — спокойный slate/blue продукт про контроль 
 - Свои `StyleSheet` карточки/кнопки на экранах — `Card`, `PrimaryButton`, `StatusPill`
 - Больше **1 primary CTA** на экран
 - Больше **4 hub-вкладок** без фильтра/«Ещё»
+- Fake empty/fake success: ошибка чтения не означает пустые данные, post-commit refresh failure не означает неуспешную mutation
+- Добавлять motion без purpose и reduced-motion поведения
 
 ## Цвета
 
@@ -67,6 +94,7 @@ import { Card, StatusPill, SectionHeader } from '@/components/ui';
 
 `PrimaryButton`: `primary | outline | ghost | danger | dangerOutline`, `compact`, `fullWidth`.
 Стрелки в title (`→ Бюджет`) — лучше `TextLink` или `rightIcon`.
+Press feedback и haptic — разные контракты: feedback должен быть мгновенным; haptic должен соответствовать смыслу события, а не автоматически факту наличия кнопки.
 
 ## Статусы
 
