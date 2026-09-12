@@ -1,5 +1,5 @@
-/** Нижняя панель — 5 кнопок, dynamic preset или настройки пользователя */
-import { useCallback, useMemo, useState, useEffect } from 'react';
+/** Нижняя панель — 5 стабильных кнопок из явных настроек пользователя или canonical default */
+import { useCallback, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import type { PressableStateCallbackType } from 'react-native';
 import { router, usePathname, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -19,9 +19,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { useChatUnread } from '@/lib/useChatUnread';
 import { dockChatBadgeCount } from '@/lib/domain/headerChatBadges';
 import { useTodayTaskCount } from '@/lib/useTodayTaskCount';
-import { useDetailLevel } from '@/lib/useDetailLevel';
 import { dockItemLabel } from '@/lib/detailLevelPolicy';
-import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/resolveDynamicDock';
 import { reportCatch } from '@/lib/reportError';
 import { activeDockItemId, getBudgetHubLabel } from '@/lib/navigation/navigationPolicy';
 
@@ -30,22 +28,11 @@ export function OsDockBar({ role }: { role: OsRole }) {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const bottomPad = useBottomInset();
   const { user, activeProject } = useRenova();
-  const detailLevel = useDetailLevel();
   const { count: chatUnreadRaw } = useChatUnread(user?.id, user?.role);
   /** W80: то же число, что красный бейдж на «Ещё» при chatUnread > 0 */
   const chatUnread = dockChatBadgeCount(chatUnreadRaw);
   const { count: todayTasks } = useTodayTaskCount(user?.id, activeProject?.id, role);
   const [items, setItems] = useState<DockItemId[]>(['home', 'chat', 'object', 'repair', 'budget']);
-
-  const dynamicItems = useMemo(() => {
-    if (!activeProject) return null;
-    return resolveDynamicDockItems(
-      activeProject,
-      minimalSnapFromProject(activeProject),
-      role,
-      detailLevel,
-    );
-  }, [activeProject, role, detailLevel]);
 
   /** Не вызываем setState, если состав кнопок тот же — иначе цикл с новой ссылкой массива. */
   const applyItems = useCallback((next: readonly DockItemId[]) => {
@@ -55,22 +42,20 @@ export function OsDockBar({ role }: { role: OsRole }) {
     });
   }, []);
 
+  /**
+   * #399: primary navigation does not rearrange itself when project phase changes.
+   * Explicit DockBarSettings preferences remain authoritative; without saved prefs
+   * getDockBar returns the canonical default.
+   */
   const reloadPrefs = useCallback(() => {
     getDockBar(role).then(applyItems).catch(reportCatch('components.renova.os.OsDockBar.1'));
   }, [role, applyItems]);
 
   useFocusEffect(useCallback(() => {
-    if (dynamicItems) applyItems(dynamicItems);
-    else reloadPrefs();
-  }, [dynamicItems, reloadPrefs, applyItems]));
+    reloadPrefs();
+  }, [reloadPrefs]));
 
-  useEffect(() => {
-    if (dynamicItems) applyItems(dynamicItems);
-  }, [dynamicItems, applyItems]);
-
-  useEffect(() => subscribeDockBar(() => {
-    if (!dynamicItems) reloadPrefs();
-  }), [dynamicItems, reloadPrefs]);
+  useEffect(() => subscribeDockBar(reloadPrefs), [reloadPrefs]);
 
   const activeId = activeDockItemId(items, { pathname, params });
 
