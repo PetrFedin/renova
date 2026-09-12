@@ -106,7 +106,7 @@ async def test_escalate_issue():
         issue = await client.post(
             f"/api/v1/projects/{pid}/issues",
             headers=h_cust,
-            json={"title": "Трещина", "severity": "medium"},
+            json={"client_request_id": "w69-issue-create-001", "title": "Трещина", "severity": "medium"},
         )
         assert issue.status_code == 200, issue.text
         iid = issue.json()["id"]
