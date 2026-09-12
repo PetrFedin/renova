@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from test_estimate_line_replay_postgres import (
+    test_estimate_line_same_key_postgres_race_keeps_one_line_and_budget,
+)
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
