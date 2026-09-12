@@ -40,7 +40,10 @@ export const chatsApi = {
   chatInbox: (userId: string) => req<ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
   chatUnreadTotal: (userId: string) => req<{ count: number }>(`/api/v1/chats/unread-total`, {}, userId),
   createChat: async (userId: string, projectId: string, title: string, topic?: string) => {
-    const body = JSON.stringify({ title, topic });
+    // One user intent gets one identity before the first transport attempt. The
+    // exact same serialized bytes are persisted if the response is ambiguous.
+    const client_request_id = newChatClientRequestId();
+    const body = JSON.stringify({ client_request_id, title, topic });
     try {
       return await req<ChatThread>(`/api/v1/projects/${projectId}/chats`, { method: 'POST', body }, userId);
     } catch (e) {
