@@ -20,6 +20,8 @@ export const DEMO_PHONES = ['+70000000001', '+70000000002'] as const;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const REVIEW_MODE_ENABLED = (process.env.EXPO_PUBLIC_REVIEW_MODE ?? '0') === '1';
 const DEFAULT_PING_REQUEST_TIMEOUT_MS = REVIEW_MODE_ENABLED ? 2500 : 2000;
+const REVIEW_WAKE_PROBE_TIMEOUT_MS = 8000;
+const REVIEW_WAKE_WINDOW_MS = 95000;
 
 /** iframe iphone-preview — автодемо без ручного входа, кроме явного review-стенда. */
 export function isPreviewFrame(): boolean {
@@ -40,14 +42,35 @@ async function fetchHealthWithTimeout(timeoutMs: number): Promise<Response> {
 }
 
 /**
- * Проверка доступности API с повторами. Каждый probe имеет собственный timeout,
- * а пауза между попытками фиксированная: cold-start не может заморозить UI на минуты.
+ * Проверка доступности API с повторами. Обычные probes ограничены собственным timeout.
+ * Для review cold-start длинный timeout трактуется как общее окно ожидания: iOS/Safari
+ * и Render edge могут оборвать один длинный fetch, поэтому внутри окна делаем короткие
+ * повторные probes до первого /health=200.
  */
 export async function pingApi(
   retries = 5,
   delayMs = 600,
   requestTimeoutMs = DEFAULT_PING_REQUEST_TIMEOUT_MS,
 ): Promise<boolean> {
+  if (REVIEW_MODE_ENABLED && requestTimeoutMs > 15000) {
+    const wakeWindowMs = Math.max(requestTimeoutMs, REVIEW_WAKE_WINDOW_MS);
+    const deadline = Date.now() + wakeWindowMs;
+    let lastError: unknown = new Error('review_api_wake_timeout');
+    while (Date.now() < deadline) {
+      try {
+        const remaining = Math.max(1, deadline - Date.now());
+        const res = await fetchHealthWithTimeout(Math.min(REVIEW_WAKE_PROBE_TIMEOUT_MS, remaining));
+        if (res.ok) return true;
+        lastError = new Error(`HTTP ${res.status}`);
+      } catch (error) {
+        lastError = error;
+      }
+      if (Date.now() < deadline) await sleep(Math.max(400, Math.min(1500, delayMs || 1000)));
+    }
+    reportError('sessionBootstrap.pingApi.reviewWake', lastError, { wakeWindowMs });
+    return false;
+  }
+
   const attempts = Math.max(1, retries);
   for (let i = 0; i < attempts; i++) {
     try {
