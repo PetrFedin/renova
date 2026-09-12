@@ -7,7 +7,7 @@ from app.api.deps import get_current_user, require_project, require_project_dep
 from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services import calendar_service as cal_svc
-from app.services import stage_service as stage_svc
+from app.services import calendar_stage_date_service as stage_dates
 
 router = APIRouter(prefix="/projects", tags=["calendar"])
 
@@ -37,8 +37,14 @@ async def update_stage_dates(
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель меняет даты")
-    stage = await stage_svc.update_stage_dates(db, body.stage_id, body.planned_start, body.planned_end)
-    if not stage or stage.project_id != project_id:
+    stage = await stage_dates.update_stage_dates(
+        db,
+        project_id=project_id,
+        stage_id=body.stage_id,
+        start=body.planned_start,
+        end=body.planned_end,
+    )
+    if not stage:
         raise HTTPException(404)
     from sqlalchemy import select
     from app.models.entities import WasteOrder
@@ -73,7 +79,6 @@ class IcalImportIn(BaseModel):
 @router.post("/{project_id}/calendar/import")
 async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    import re
     from datetime import datetime as dt
     events = []
     summary = None
@@ -107,9 +112,17 @@ async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(
             unused = [st for st in stages if not st.planned_start]
             stage = unused[0] if unused else None
         if stage:
-            await stage_svc.update_stage_dates(db, stage.id, d, d)
+            updated_stage = await stage_dates.update_stage_dates(
+                db,
+                project_id=project_id,
+                stage_id=stage.id,
+                start=d,
+                end=d,
+            )
+            if updated_stage is None:
+                raise HTTPException(404)
             if uid:
-                stage.ical_uid = uid
+                updated_stage.ical_uid = uid
             updated += 1
     await db.commit()
     return {"ok": True, "parsed": len(events), "updated_stages": updated}

@@ -31,6 +31,7 @@ jobs:
             tests/test_calendar_integrity.py \
             tests/test_calendar_mutation_integrity.py \
             tests/test_calendar_revoked_access.py \
+            tests/test_calendar_stage_project_scope.py \
             2>&1 | tee calendar-integrity-contracts.log
       - name: Upload calendar integrity diagnostics
         if: always()
