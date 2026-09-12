@@ -3,6 +3,8 @@ import { req, ApiError } from './client';
 import type { ProjectIssue } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
+type IssueCreateInput = Record<string, unknown> & { client_request_id?: string };
+
 async function enqueueOffline(path: string, method: string, body: string | undefined, userId: string) {
   const { enqueue } = await import('@/lib/offlineQueue');
   await enqueue({ path, method, body: body ?? '', userId });
@@ -11,7 +13,7 @@ async function enqueueOffline(path: string, method: string, body: string | undef
 
 export const issuesApi = {
   listIssues: (userId: string, projectId: string, status?: string) => req<ProjectIssue[]>(`/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`, {}, userId),
-  createIssue: async (userId: string, projectId: string, body: object & { client_request_id?: string }) => {
+  createIssue: async (userId: string, projectId: string, body: IssueCreateInput) => {
     const requestBody = {
       ...body,
       client_request_id: body.client_request_id ?? createClientRequestId('issue'),
