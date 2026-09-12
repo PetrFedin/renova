@@ -1,14 +1,16 @@
 # Renova — PrimaryButton semantic haptic contract
 
 **Статус:** ACTIVE / governed migration annex  
-**Область:** `apps/mobile/components/renova/PrimaryButton.tsx`  
+**Область:** `apps/mobile/components/renova/PrimaryButton.tsx` + explicitly classified callers  
 **Связь:** issue #400, #305 interaction consistency
 
 ## 1. Intent
 
 `PrimaryButton` остаётся canonical CTA primitive. Haptic feedback перестаёт быть неявным смыслом любой кнопки и переводится на явный semantic intent без одномоментного изменения существующего поведения всех call sites.
 
-Этот change-set вводит только backwards-compatible API. Он **не** меняет default user-visible haptic текущих немигрированных кнопок: `hapticIntent="legacy"` сохраняет существующий Light impact.
+Default остаётся backwards-compatible: `hapticIntent="legacy"` сохраняет существующий Light impact для немигрированных call sites. Только явно классифицированные callers получают новый tactile contract.
+
+Первая bounded migration в этом change-set — чистая recovery navigation на `+not-found.tsx` и `[slug].tsx`: `Назад` / `На главную` используют `hapticIntent="none"`. Там же удалён локальный raw text color в пользу `RenovaTheme.colors.textMuted`.
 
 ## 2. Press haptic intents
 
@@ -17,15 +19,13 @@ legacy       → existing Light impact; временный default для нем
 none         → no press haptic
 selection    → selection feedback
 commit       → Light impact at press/commit intent
-Destructive  → Medium impact at destructive commit intent
+destructive  → Medium impact at destructive commit intent
 ```
-
-В TypeScript значение destructive называется `destructive`.
 
 Правила:
 
 - disabled/loading button не запускает haptic и не вызывает action;
-- ordinary navigation должна постепенно мигрировать на `none`;
+- ordinary navigation постепенно мигрирует на `none` только после явной классификации;
 - selection/detent actions могут использовать `selection`;
 - meaningful local commit may use `commit` only when press itself is the causal commit moment;
 - destructive intent uses `destructive` only for an explicit confirmed destructive action;
@@ -51,13 +51,15 @@ press → Error haptic без authoritative refusal/failure
 3. Мигрировать bounded группами: navigation/selection → finance/acceptance → destructive actions.
 4. После классификации всех canonical call sites отдельным change-set удалить implicit legacy default либо изменить default только с полным regression evidence.
 
+Первый migration proof не означает, что все navigation buttons уже классифицированы. Неявный legacy default остаётся до завершения inventory.
+
 ## 5. Verification
 
-- `clarityWaveA.w153.test.ts` проверяет наличие semantic API и сохранение `legacy` default;
+- `clarityWaveA.w153.test.ts` проверяет semantic API, сохранение `legacy` default и no-haptic semantics двух recovery-navigation surfaces;
 - `SCREEN-SOURCE-SNAPSHOT.md` содержит exact blob SHA текущего `PrimaryButton.tsx`;
 - `technicalSpecAnnexContract.test.mjs` должен оставаться green;
 - `typecheck:mobile` и `mobile:test` должны оставаться green;
-- изменение API само по себе не является доказательством device-level tactile feel или production verification.
+- изменение API/source contracts не является доказательством device-level tactile feel или production verification.
 
 ## 6. Non-goals
 
