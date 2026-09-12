@@ -19,6 +19,7 @@ from app.api.v1 import project_assignment_integrity
 from app.api.v1 import project_participants
 from app.api.v1 import marketplace_conversion_integrity
 from app.api.v1 import stage_mutations
+from app.api.v1 import stage_comment_intents
 from app.api.v1 import stage_review_transitions
 from app.api.v1 import otp_auth
 from app.api.v1 import calendar_integrity
@@ -76,8 +77,10 @@ _STAGE_MUTATION_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/stages/{stage_id}/rooms", "PATCH"), ("/projects/{project_id}/stages/{stage_id}/work-type", "PATCH"),
     ("/projects/{project_id}/stages/{stage_id}/depends", "PATCH"), ("/projects/{project_id}/dependencies/sync", "POST"),
 }
-_remove_replaced_routes(stages_ext.router, _STAGE_MUTATION_ROUTES)
+_STAGE_COMMENT_ROUTES: set[RouteSignature] = {("/projects/{project_id}/stages/{stage_id}/comments", "POST")}
+_remove_replaced_routes(stages_ext.router, _STAGE_MUTATION_ROUTES | _STAGE_COMMENT_ROUTES)
 api_router.include_router(stage_mutations.router)
+api_router.include_router(stage_comment_intents.router)
 api_router.include_router(stages_ext.router)
 api_router.include_router(project_checklists.router)
 api_router.include_router(checklist_templates.router)
