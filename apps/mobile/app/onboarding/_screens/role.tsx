@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
+import type { PressableStateCallbackType } from 'react-native';
 import { alertMessage } from '@/lib/confirmAlert';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -111,35 +112,58 @@ export default function RoleScreen() {
     <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
       <Text style={styles.logo}>Renova</Text>
       <Text style={styles.sub}>Кто вы в этом проекте?</Text>
-      <View style={styles.modeRow}>
-        {(DEMO_LOGIN_ENABLED ? (['demo', 'sms'] as Mode[]) : (['sms'] as Mode[])).map((m) => (
-          <Pressable
-            key={m}
-            disabled={teamJoinPending}
-            style={[styles.modeBtn, mode === m && styles.modeOn, teamJoinPending && styles.controlDisabled]}
-            onPress={() => { setMode(m); setCodeSent(false); }}
-          >
-            <Text style={[styles.modeT, mode === m && styles.modeTOn]}>{m === 'demo' ? 'Демо-стенд' : 'SMS'}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {mode === 'demo' ? (
-        <Text style={{ color: RenovaTheme.colors.textMuted, fontSize: 13, marginBottom: 8 }}>
-          Демо-вход создаёт учебные данные. Для пилота используйте SMS.
-        </Text>
+
+      {DEMO_LOGIN_ENABLED ? (
+        <>
+          <View style={styles.modeRow} accessibilityRole="radiogroup">
+            {(['demo', 'sms'] as Mode[]).map((m) => (
+              <Pressable
+                key={m}
+                disabled={teamJoinPending}
+                style={({ pressed }: PressableStateCallbackType) => [
+                  styles.modeBtn,
+                  mode === m && styles.modeOn,
+                  pressed && styles.pressed,
+                  teamJoinPending && styles.controlDisabled,
+                ]}
+                onPress={() => { setMode(m); setCodeSent(false); }}
+                accessibilityRole="radio"
+                accessibilityLabel={m === 'demo' ? 'Демо-стенд' : 'Вход по SMS'}
+                accessibilityState={{ checked: mode === m, disabled: teamJoinPending }}
+              >
+                <Text style={[styles.modeT, mode === m && styles.modeTOn]}>{m === 'demo' ? 'Демо-стенд' : 'SMS'}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {mode === 'demo' ? (
+            <Text style={styles.demoHint}>
+              Демо-вход создаёт учебные данные. Для обычного входа выберите SMS.
+            </Text>
+          ) : null}
+        </>
       ) : null}
-      <View style={styles.roles}>
+
+      <View style={styles.roles} accessibilityRole="radiogroup">
         {(['customer', 'contractor'] as UserRole[]).map((r) => (
           <Pressable
             key={r}
             disabled={teamJoinPending}
-            style={[styles.roleBtn, role === r && styles.roleActive, teamJoinPending && styles.controlDisabled]}
+            style={({ pressed }: PressableStateCallbackType) => [
+              styles.roleBtn,
+              role === r && styles.roleActive,
+              pressed && styles.pressed,
+              teamJoinPending && styles.controlDisabled,
+            ]}
             onPress={() => setRole(r)}
+            accessibilityRole="radio"
+            accessibilityLabel={r === 'customer' ? 'Заказчик' : 'Исполнитель'}
+            accessibilityState={{ checked: role === r, disabled: teamJoinPending }}
           >
             <Text style={[styles.roleText, role === r && styles.roleTextActive]}>{r === 'customer' ? 'Заказчик' : 'Исполнитель'}</Text>
           </Pressable>
         ))}
       </View>
+
       {mode === 'sms' && (
         <>
           <TextInput style={styles.input} placeholder="Телефон +7…" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={!teamJoinPending} />
@@ -148,6 +172,7 @@ export default function RoleScreen() {
           {demoCode && <Text style={styles.demoCode}>Демо-код: {demoCode}</Text>}
         </>
       )}
+
       {teamJoinPending ? (
         <Text style={styles.joinNotice}>
           Вход уже выполнен. Не удалось подтвердить вступление в бригаду — можно повторить только этот шаг или продолжить без вступления.
@@ -160,12 +185,20 @@ export default function RoleScreen() {
         loading={busy}
       />
       {teamJoinPending ? (
-        <Pressable disabled={busy} style={styles.skipJoin} onPress={() => { void continueWithoutTeam(); }}>
+        <Pressable
+          disabled={busy}
+          style={({ pressed }: PressableStateCallbackType) => [styles.skipJoin, pressed && styles.pressed, busy && styles.controlDisabled]}
+          onPress={() => { void continueWithoutTeam(); }}
+          accessibilityRole="button"
+          accessibilityLabel="Продолжить без вступления в бригаду"
+          accessibilityState={{ disabled: busy }}
+        >
           <Text style={styles.skipJoinText}>Продолжить без вступления</Text>
         </Pressable>
       ) : null}
-      <Text style={styles.note}>{mode === 'demo' ? 'Демо без регистрации' : 'SMS — для пилота с реальными бригадами'}</Text>
-      <Text style={styles.noteHint}>После входа: «Ещё» → «← Выбор роли»</Text>
+      {DEMO_LOGIN_ENABLED ? (
+        <Text style={styles.note}>{mode === 'demo' ? 'Демо без регистрации' : 'Вход по SMS'}</Text>
+      ) : null}
     </ScrollView>
   );
 }
@@ -178,13 +211,15 @@ const styles = StyleSheet.create({
   modeRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
   modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: RenovaTheme.colors.border, alignItems: 'center' },
   modeOn: { backgroundColor: RenovaTheme.colors.primary },
-  modeT: { fontWeight: '700', color: '#333' },
+  modeT: { fontWeight: '700', color: RenovaTheme.colors.text },
   modeTOn: { color: RenovaTheme.colors.surface },
+  demoHint: { color: RenovaTheme.colors.textMuted, fontSize: 13, marginBottom: 8 },
   roles: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   roleBtn: { flex: 1, paddingVertical: 16, borderRadius: 12, borderWidth: 2, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface, alignItems: 'center' },
   roleActive: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
-  roleText: { fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  roleText: { fontWeight: '700', fontSize: 14, textAlign: 'center', color: RenovaTheme.colors.text },
   roleTextActive: { color: RenovaTheme.colors.primary },
+  pressed: { opacity: 0.82 },
   controlDisabled: { opacity: 0.55 },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: RenovaTheme.colors.surface },
   demoCode: { textAlign: 'center', color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 8 },
@@ -192,6 +227,5 @@ const styles = StyleSheet.create({
   skipJoin: { paddingVertical: 12, alignItems: 'center' },
   skipJoinText: { color: RenovaTheme.colors.textMuted, fontWeight: '600', fontSize: 13 },
   note: { textAlign: 'center', fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 16, lineHeight: 18 },
-  noteHint: { fontSize: 11, color: '#94a3b8', marginTop: 6, textAlign: 'center', lineHeight: 16 },
   error: { color: RenovaTheme.colors.dangerText, fontSize: 13, textAlign: 'center', marginBottom: 10, lineHeight: 18 },
 });
