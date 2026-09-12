@@ -4,6 +4,18 @@ Status: **candidate implementation; not complete until required CI and review ar
 
 This annex is governed by `AGENTS.md`, the Product Completion Mandate and the calculation registry. It narrows two existing client-side analytical projections. It does not redefine the authoritative expense ledger, `Project.budget_spent`, payment truth or Golden Path acceptance.
 
+## 0. Exact source bindings
+
+The bounded implementation and its executable evidence are pinned to the following Git blobs. `scripts/technicalSpecAnnexContract.test.mjs` verifies these hashes so changed calculation code cannot silently leave this annex stale.
+
+- `apps/mobile/lib/domain/aggregateBudgetByPeriod.ts` — blob `9390df5e35f6c908ae6de12dd08c1332eece7f46`.
+- `apps/mobile/lib/domain/aggregatePortfolioBudget.ts` — blob `1a41731f796b283ee019e479c92190c1b9273213`.
+- `apps/mobile/components/renova/os/portfolio/PortfolioCategoryBreakdown.tsx` — blob `91c1efd7f45e8bd1a73b84f0286d9521871fad3e`.
+- `apps/mobile/lib/domain/aggregateBudgetByPeriod.test.ts` — blob `e3b90bad297ba4f2f04dd0d0f2a2d19a3aa3792b`.
+- `apps/mobile/lib/domain/summarizePortfolio.test.ts` — blob `6971ab19cefce5456365b31c6dfe989f1b7a5c28`.
+
+These bindings are source/evidence traceability, not a claim that #318 is merged or production verified.
+
 ## 1. Period semantics
 
 The selected period is always an **as-of range**:
