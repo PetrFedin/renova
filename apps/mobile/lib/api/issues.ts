@@ -1,6 +1,7 @@
 /** API: issues */
 import { req, ApiError } from './client';
 import type { ProjectIssue } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 async function enqueueOffline(path: string, method: string, body: string | undefined, userId: string) {
   const { enqueue } = await import('@/lib/offlineQueue');
@@ -10,12 +11,18 @@ async function enqueueOffline(path: string, method: string, body: string | undef
 
 export const issuesApi = {
   listIssues: (userId: string, projectId: string, status?: string) => req<ProjectIssue[]>(`/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`, {}, userId),
-  createIssue: async (userId: string, projectId: string, body: object) => {
+  createIssue: async (userId: string, projectId: string, body: object & { client_request_id?: string }) => {
+    const requestBody = {
+      ...body,
+      client_request_id: body.client_request_id ?? createClientRequestId('issue'),
+    };
+    const serialized = JSON.stringify(requestBody);
+    const path = `/api/v1/projects/${projectId}/issues`;
     try {
-      return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues`, { method: 'POST', body: JSON.stringify(body) }, userId);
+      return await req<ProjectIssue>(path, { method: 'POST', body: serialized }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
-      await enqueueOffline(`/api/v1/projects/${projectId}/issues`, 'POST', JSON.stringify(body), userId);
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      await enqueueOffline(path, 'POST', serialized, userId);
     }
   },
   escalateIssue: async (userId: string, projectId: string, issueId: string) => {
