@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, ProjectIssue
@@ -28,6 +29,17 @@ def canonical_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _lock_project(db: AsyncSession, project_id: str) -> Project:
+    """Serialize issue-create replay checks before any candidate row is materialized."""
+    result = await db.execute(
+        select(Project).where(Project.id == project_id).with_for_update()
+    )
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise RuntimeError("issue_project_missing")
+    return project
+
+
 async def _replay(db: AsyncSession, *, project_id: str, issue_id: str) -> ProjectIssue:
     row = await db.get(ProjectIssue, issue_id)
     if row is None or row.project_id != project_id:
@@ -46,6 +58,11 @@ async def create_issue(
     canonical = canonical_payload(payload)
     project_id = project.id
 
+    # A same-project create race must re-check the request ledger only after
+    # the previous creator has either committed or rolled back. This avoids
+    # materializing two transient ProjectIssue/outbox sets and makes the
+    # request ledger a backstop instead of the only concurrency barrier.
+    project = await _lock_project(db, project_id)
     replay_id = await replay_entity_id(
         db,
         scope=SCOPE,
