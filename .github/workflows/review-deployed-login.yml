@@ -1,4 +1,4 @@
-name: Review deployed login smoke
+name: Review deployed product smoke
 
 on:
   push:
@@ -12,9 +12,9 @@ concurrency:
 
 jobs:
   deployed-role-login:
-    name: deployed-role-login-${{ matrix.browser }}
+    name: deployed-product-${{ matrix.browser }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -32,5 +32,5 @@ jobs:
         run: npm ci
       - name: Install ${{ matrix.browser }}
         run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Verify both roles and both projects on deployed review stand
-        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-login.spec.ts --reporter=line
+      - name: Verify role entry and primary product controls on deployed review stand
+        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-login.spec.ts e2e/review-deployed-product-smoke.spec.ts --reporter=line
