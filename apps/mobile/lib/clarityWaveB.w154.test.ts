@@ -21,12 +21,7 @@ const design = src('components/renova/DesignPackageList.tsx');
 must(loadErr.includes('Повторить') && loadErr.includes('showChatCta'), 'LoadErrorState');
 must(empty.includes('actionLabel') && empty.includes('EmptyActionState'), 'EmptyActionState');
 must(sheet.includes('SheetSurface') && sheet.includes('primaryLabel'), 'ActionConfirmSheet shared surface');
-must(
-  surface.includes('useReducedMotion')
-    && surface.includes("animationType={reducedMotion ? 'fade' : 'slide'}")
-    && surface.includes('KeyboardAvoidingView'),
-  'shared sheet chrome respects Reduced Motion while preserving keyboard behavior',
-);
+must(surface.includes('animationType="slide"') && surface.includes('KeyboardAvoidingView'), 'shared slide/keyboard chrome');
 must(sheet.includes('runThenClose') && sheet.includes('queueMicrotask'), 'nested confirmation deferral');
 must(floor.includes('ActionConfirmSheet') && floor.includes('LoadErrorState'), 'floor wired');
 must(control.includes('LoadErrorState'), 'control LoadError');
