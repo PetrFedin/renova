@@ -9,6 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const calculation = read('docs/technical-spec/CALCULATION-REGISTRY.md');
+const budgetProjection = read('docs/technical-spec/BUDGET-PROJECTION-TRUTH.md');
 const screens = read('docs/technical-spec/SCREEN-CONTRACT-CATALOG.md');
 const screenSources = read('docs/technical-spec/SCREEN-SOURCE-SNAPSHOT.md');
 
@@ -38,8 +39,6 @@ for (const file of [
   'apps/mobile/lib/domain/resolveProjectProgress.test.ts',
   'apps/mobile/lib/domain/scheduleExecutionStats.ts',
   'apps/mobile/lib/domain/scheduleExecutionStats.test.ts',
-  'apps/mobile/lib/domain/aggregateBudgetByPeriod.ts',
-  'apps/mobile/lib/domain/aggregatePortfolioBudget.ts',
   'apps/mobile/components/screens/OsSelectionsScreen.tsx',
 ]) {
   requireBlobReference(calculation, file);
@@ -52,10 +51,30 @@ for (const formulaToken of [
   'delta   = listTotal - serverFact',
   'margin    = planned - spent',
   'weekStart = today - 6 calendar days',
-  'periodPlanned = round(plannedTotal × overlap / projectDuration)',
-  'variance    = spent - planned',
 ]) {
   assert.ok(calculation.includes(formulaToken), `calculation registry missing verified token: ${formulaToken}`);
+}
+
+for (const file of [
+  'apps/mobile/lib/domain/aggregateBudgetByPeriod.ts',
+  'apps/mobile/lib/domain/aggregatePortfolioBudget.ts',
+  'apps/mobile/components/renova/os/portfolio/PortfolioCategoryBreakdown.tsx',
+  'apps/mobile/lib/domain/aggregateBudgetByPeriod.test.ts',
+  'apps/mobile/lib/domain/summarizePortfolio.test.ts',
+]) {
+  requireBlobReference(budgetProjection, file);
+}
+
+for (const formulaToken of [
+  'periodPlanned = round_to_kopeck(plannedTotal × overlapDays / projectDays)',
+  'Σ(bucket.planned) == periodPlanned',
+  'works.spent     = null',
+  'waste.spent     = null',
+  'reserve.spent   = null',
+  'variance = null',
+  'факт недоступен',
+]) {
+  assert.ok(budgetProjection.includes(formulaToken), `budget projection annex missing verified token: ${formulaToken}`);
 }
 
 for (const file of [
