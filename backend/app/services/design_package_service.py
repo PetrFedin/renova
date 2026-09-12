@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import DesignPackage, Project, User
 from app.services import outbox_service as outbox
 from app.services import team_service
+from app.services.client_write_idempotency import commit_client_write, replay_entity_id
 
 DesignAction = Literal["submit", "approve", "reject"]
+DESIGN_PACKAGE_CREATE_SCOPE = "design_package.create"
 
 
 def _target(action: DesignAction) -> str:
@@ -78,18 +80,12 @@ def _notification_targets(project: Project, actor_id: str, action: DesignAction)
     return sorted(value for value in candidates if value and value != actor_id)
 
 
-async def create_package(
-    db: AsyncSession,
+def _normalize_create_payload(
     *,
-    project: Project,
-    actor: User,
     title: str,
-    file_key: str | None = None,
-    notes: str | None = None,
-) -> DesignPackage:
-    """Create the next version with its audit event in one transaction."""
-    if not await _is_executor(db, project, actor):
-        raise ValueError("design_decision_actor_forbidden")
+    file_key: str | None,
+    notes: str | None,
+) -> dict[str, str | None]:
     normalized_title = (title or "").strip()
     if not normalized_title or len(normalized_title) > 255:
         raise ValueError("design_title_invalid")
@@ -97,27 +93,97 @@ async def create_package(
     if normalized_file_key and len(normalized_file_key) > 512:
         raise ValueError("design_file_key_invalid")
     normalized_notes = (notes or "").strip() or None
+    if normalized_notes and len(normalized_notes) > 4000:
+        raise ValueError("design_notes_invalid")
+    return {
+        "title": normalized_title,
+        "file_key": normalized_file_key,
+        "notes": normalized_notes,
+    }
 
-    lock_query = select(Project.id).where(Project.id == project.id)
-    try:
-        lock_query = lock_query.with_for_update()
-    except Exception:
-        pass
-    await db.execute(lock_query)
+
+async def _replay_package(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    package_id: str,
+) -> DesignPackage:
+    package = await db.get(DesignPackage, package_id)
+    if package is None or package.project_id != project_id:
+        raise RuntimeError("design_package_replay_corrupt")
+    return package
+
+
+async def create_package(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+    client_request_id: str,
+    title: str,
+    file_key: str | None = None,
+    notes: str | None = None,
+) -> tuple[DesignPackage, bool]:
+    """Create one design version per explicit client intent.
+
+    The project row is refreshed and locked before executor authority/version
+    allocation. Package, activity outbox and ClientWriteRequest share the same
+    commit boundary. Replays return the original package and never allocate a
+    second version merely because the first response was lost.
+    """
+    payload = _normalize_create_payload(title=title, file_key=file_key, notes=notes)
+
+    replay_id = await replay_entity_id(
+        db,
+        scope=DESIGN_PACKAGE_CREATE_SCOPE,
+        project_id=project.id,
+        user_id=actor.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
+    if replay_id:
+        return await _replay_package(db, project_id=project.id, package_id=replay_id), True
+
+    locked = (
+        await db.execute(
+            select(Project)
+            .where(Project.id == project.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if locked is None:
+        raise ValueError("design_project_not_found")
+    if not await _is_executor(db, locked, actor):
+        raise ValueError("design_decision_actor_forbidden")
+
+    # A second request may have waited on the project lock while the first
+    # committed. READ COMMITTED makes this recheck observe the canonical row.
+    replay_id = await replay_entity_id(
+        db,
+        scope=DESIGN_PACKAGE_CREATE_SCOPE,
+        project_id=locked.id,
+        user_id=actor.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
+    if replay_id:
+        return await _replay_package(db, project_id=locked.id, package_id=replay_id), True
+
     version = int(
         await db.scalar(
             select(func.max(DesignPackage.version)).where(
-                DesignPackage.project_id == project.id
+                DesignPackage.project_id == locked.id
             )
         )
         or 0
     ) + 1
     package = DesignPackage(
-        project_id=project.id,
-        title=normalized_title,
+        project_id=locked.id,
+        title=str(payload["title"]),
         version=version,
-        file_key=normalized_file_key,
-        notes=normalized_notes,
+        file_key=payload["file_key"],
+        notes=payload["notes"],
         status="published",
     )
     db.add(package)
@@ -128,7 +194,7 @@ async def create_package(
         aggregate_id=package.id,
         event_type=outbox.ACTIVITY_EVENT,
         payload={
-            "project_id": project.id,
+            "project_id": locked.id,
             "user_id": actor.id,
             "kind": "DesignCreated",
             "title": f"Дизайн v{version}: {package.title}",
@@ -136,17 +202,29 @@ async def create_package(
             "link_path": "/design",
         },
     )
+
     try:
-        await db.commit()
+        created, entity_id = await commit_client_write(
+            db,
+            scope=DESIGN_PACKAGE_CREATE_SCOPE,
+            project_id=locked.id,
+            user_id=actor.id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=package.id,
+        )
     except BaseException:
         await db.rollback()
         raise
-    await db.refresh(package)
 
+    if not created:
+        return await _replay_package(db, project_id=locked.id, package_id=entity_id), True
+
+    await db.refresh(package)
     from app.services.outbox_inline_dispatch import dispatch_best_effort
 
     await dispatch_best_effort(db, source="design_package.create", limit=10)
-    return package
+    return package, False
 
 
 async def _prepare_effects(
