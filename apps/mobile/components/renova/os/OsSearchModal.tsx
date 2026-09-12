@@ -27,7 +27,12 @@ export function OsSearchModal({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={s.wrap}>
-        <Pressable style={s.close} onPress={onClose}>
+        <Pressable
+          style={s.close}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Закрыть поиск"
+        >
           <View style={s.closeBar} />
         </Pressable>
         <GlobalSearchBar
