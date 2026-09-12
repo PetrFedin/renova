@@ -2,7 +2,7 @@
 import { authApi } from './auth';
 import { projectsApi } from './projects';
 import { roomsApi } from './rooms';
-import { stagesApi } from './stages';
+import { stagesApi } from './stagesReplay';
 import { paymentsApi } from './payments';
 import { estimateApi } from './estimate';
 import { receiptsApi } from './receipts';
