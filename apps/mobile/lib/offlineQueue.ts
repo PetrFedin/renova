@@ -10,6 +10,7 @@ import {
   type QueueFlushMutation,
 } from '@/lib/offline/queueMerge';
 import { filterJobsExceptProject } from '@/lib/offline/projectQueueFilter';
+import { dedupeJobsByIntent } from '@/lib/offline/intentDedupe';
 import {
   OfflineQueueStorageError,
   parseOfflineQueueStorage,
@@ -384,20 +385,16 @@ export async function updateJobBody(id: string, body: string): Promise<boolean> 
   return updated;
 }
 
-/** Remove only exact duplicate mutations from the latest locked queue. */
-export async function dedupeExactJobs(): Promise<number> {
+/**
+ * Remove only demonstrably repeated queue records / stable client intents.
+ * Byte-equal payloads are not identity and must remain separate user actions.
+ */
+export async function dedupeIntentDuplicates(): Promise<number> {
   const removed = await withQueueLock(async () => {
     const queue = await getQueueUnlocked();
-    const seen = new Set<string>();
-    const next = queue.filter((job) => {
-      const signature = JSON.stringify([job.userId, job.method, job.path, job.body]);
-      if (seen.has(signature)) return false;
-      seen.add(signature);
-      return true;
-    });
-    const count = queue.length - next.length;
-    if (count > 0) await setQueueUnlocked(next);
-    return count;
+    const result = dedupeJobsByIntent(queue);
+    if (result.removed > 0) await setQueueUnlocked(result.jobs);
+    return result.removed;
   });
   if (removed > 0) await emitQueueChanged();
   return removed;
