@@ -10,7 +10,6 @@ import argparse
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 HEX_RE = re.compile(r"#[0-9A-Fa-f]{3,8}\b")
 BANNED_OPERATIONAL_EMOJI = ("⚙", "📷", "🎤", "🔒")
@@ -79,8 +78,7 @@ def git_diff(base: str, head: str) -> str:
             "--no-color",
             f"{base}...{head}",
             "--",
-            "apps/mobile/**/*.ts",
-            "apps/mobile/**/*.tsx",
+            "apps/mobile",
         ],
         check=True,
         text=True,
