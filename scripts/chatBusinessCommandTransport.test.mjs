@@ -129,3 +129,4 @@ for (const kind of ['invoice', 'task']) {
   scenarios += 4;
 }
 console.log(`Chat command actual transport/queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);
+await import('./stageCommentTransport.test.mjs');
