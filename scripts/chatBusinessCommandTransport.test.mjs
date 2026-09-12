@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Execute actual req -> chats API -> AsyncStorage queue -> flush in Node.
+/** Execute actual req -> chats/reaction API -> AsyncStorage queue -> flush in Node.
  * Only platform storage, network and telemetry are fakes. Never fake req/enqueue.
  */
 import assert from 'node:assert/strict';
@@ -65,6 +65,7 @@ function harness({ storage = new Map(), network, failStorage = false } = {}) {
   client.setAccessToken('synthetic-test-bearer');
   return {
     api: load('@/lib/api/chats').chatsApi,
+    reactionApi: load('@/lib/api/chatReactionIntents').chatReactionIntentsApi,
     queue: load('@/lib/offlineQueue'),
     policy: load('@/lib/api/chatCommands'),
     storage, requests, errors,
@@ -74,6 +75,9 @@ const ok = (value = { id: 'one-message', payment_id: 'one-payment' }) => new Res
 function invoke(h, kind, extra = {}) {
   if (kind === 'invoice') return h.api.invoiceFromChat('actor-A', 'project-A', 'thread-A', { title: 'Invoice', amount: 1000.25, payment_type: 'material', ...extra });
   return h.api.taskFromChatMessage('actor-A', 'project-A', 'thread-A', 'source-A', { title: 'Work', due_at: '2026-10-01', ...extra });
+}
+function invokeReaction(h) {
+  return h.reactionApi.reactChatMessage('actor-A', 'project-A', 'thread-A', 'source-A', '🔥');
 }
 
 for (const kind of ['invoice', 'task']) {
@@ -128,4 +132,61 @@ for (const kind of ['invoice', 'task']) {
   assert.equal(success.policy.canQueueChatCommand(Object.assign(new Error('cancelled'), { name: 'AbortError' })), false);
   scenarios += 4;
 }
-console.log(`Chat command actual transport/queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);
+
+// Reaction uses a stable intent ID because replaying a raw toggle after response
+// loss would otherwise undo the already committed reaction.
+{
+  const server = new Map();
+  const storage = new Map();
+  let lose = true;
+  const network = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    const key = body.client_request_id;
+    assert.ok(key.startsWith('chat-reaction-'));
+    assert.equal(body.emoji, '🔥');
+    if (server.has(key)) assert.equal(server.get(key), options.body);
+    else server.set(key, options.body);
+    if (lose) { lose = false; throw new TypeError('Failed to fetch'); }
+    return ok({ reactions: { '🔥': ['actor-A'] } });
+  };
+
+  const first = harness({ storage, network });
+  await assert.rejects(invokeReaction(first), /offline_queued/);
+  const queued = await first.queue.getQueue();
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].body, first.requests[0].body);
+
+  const restart = harness({ storage, network });
+  const result = await restart.queue.flush('http://127.0.0.1:8100');
+  assert.equal(result.synced, 1);
+  assert.equal((await restart.queue.getQueue()).length, 0);
+  assert.equal(server.size, 1, 'reaction restart replay must retain the original intent identity');
+  assert.equal(restart.requests[0].body, first.requests[0].body);
+  scenarios += 1;
+
+  for (const status of [400, 401, 403, 404, 409, 422]) {
+    const h = harness({ network: async () => new Response(JSON.stringify({ detail: 'validation_failed' }), { status }) });
+    await assert.rejects(invokeReaction(h), error => error.status === status);
+    assert.equal((await h.queue.getQueue()).length, 0, `reaction authoritative ${status} must not queue`);
+    scenarios += 1;
+  }
+  for (const status of [429, 500, 502, 503]) {
+    const h = harness({ network: async () => new Response(JSON.stringify({ detail: 'temporary' }), { status }) });
+    await assert.rejects(invokeReaction(h), /offline_queued/);
+    const body = JSON.parse((await h.queue.getQueue())[0].body);
+    assert.ok(body.client_request_id.startsWith('chat-reaction-'));
+    scenarios += 1;
+  }
+  const corrupt = harness({ network: async () => new Response('{broken', { status: 200 }) });
+  await assert.rejects(invokeReaction(corrupt), /offline_queued/);
+  assert.equal((await corrupt.queue.getQueue()).length, 1);
+  const failedStorage = harness({ failStorage: true, network: async () => { throw new TypeError('Failed to fetch'); } });
+  await assert.rejects(invokeReaction(failedStorage), /storage_unavailable/);
+  assert.equal(failedStorage.storage.size, 0);
+  const success = harness({ network: async () => ok({ reactions: { '🔥': ['actor-A'] } }) });
+  assert.deepEqual((await invokeReaction(success)).reactions, { '🔥': ['actor-A'] });
+  assert.equal((await success.queue.getQueue()).length, 0);
+  scenarios += 3;
+}
+
+console.log(`Chat command/reaction actual transport queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);
