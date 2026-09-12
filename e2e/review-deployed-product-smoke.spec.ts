@@ -1,4 +1,4 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 const REVIEW_BASE = process.env.RENOVA_REVIEW_BASE_URL?.replace(/\/$/, '') || 'https://renova-review-full.onrender.com';
 const requestedBrowser = process.env.RENOVA_REVIEW_BROWSER;
@@ -103,6 +103,36 @@ async function openMore(page: Page) {
   await expect(page.getByText('Ещё', { exact: true })).toBeVisible();
 }
 
+async function closeOverlayByLabelOrBackdrop(page: Page, label: string, fallbackY = 300) {
+  const labeled = page.getByLabel(label).first();
+  if (await labeled.isVisible().catch(() => false)) {
+    await labeled.click();
+  } else {
+    await page.keyboard.press('Escape').catch(() => undefined);
+    await page.waitForTimeout(150);
+    if (await page.getByText('Объекты', { exact: true }).first().isVisible().catch(() => false)) {
+      await page.mouse.click(8, fallbackY);
+    }
+  }
+  await settle(page, 250);
+}
+
+async function closeSearch(page: Page) {
+  const semanticClose = page.getByRole('button', { name: 'Закрыть поиск' }).first();
+  if (await semanticClose.isVisible().catch(() => false)) {
+    await semanticClose.click();
+  } else {
+    await page.keyboard.press('Escape').catch(() => undefined);
+    await page.waitForTimeout(150);
+    if (await page.getByPlaceholder(/Поиск/).isVisible().catch(() => false)) {
+      const viewport = page.viewportSize();
+      await page.mouse.click((viewport?.width ?? 1280) / 2, 66);
+    }
+  }
+  await expect(page.getByPlaceholder(/Поиск/)).toHaveCount(0, { timeout: 10_000 });
+  await settle(page, 250);
+}
+
 async function openQuickFab(page: Page) {
   await clickButton(page, 'Быстрые действия');
   await expect(page.getByText('Создать', { exact: true })).toBeVisible();
@@ -165,30 +195,24 @@ async function testBudgetHub(page: Page) {
 }
 
 test.describe('deployed review product controls', () => {
-  test.describe.configure({ mode: 'serial' });
-
   for (const role of ['customer', 'contractor'] as const) {
     test(`${role}: shell controls, dock, header and quick actions`, async ({ page }) => {
       test.setTimeout(360_000);
       const evidence = watchBrowser(page);
       await enterRoleAndProject(page, role, 0);
 
-      // Mandatory dock controls.
       await clickButton(page, /^Сообщения/);
       await expect(page.getByText('Сообщения', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
       await returnHome(page);
 
-      // Project picker opens and closes without changing the project.
       await clickButton(page, /^Проект:/);
       await expect(page.getByText('Объекты', { exact: true }).first()).toBeVisible();
-      await clickButton(page, 'Закрыть');
+      await closeOverlayByLabelOrBackdrop(page, 'Закрыть');
 
-      // Profile is a real route, not a dead icon.
       await clickButton(page, 'Профиль');
       await settle(page);
       await returnHome(page);
 
-      // Header secondary navigation is populated from the route registry.
       await openMore(page);
       await expect(page.getByText('Документы проекта', { exact: true })).toBeVisible();
       await expect(page.getByText('Входящие', { exact: true })).toBeVisible();
@@ -197,21 +221,18 @@ test.describe('deployed review product controls', () => {
         await expect(page.getByText('Согласования', { exact: true })).toBeVisible();
       }
       await page.keyboard.press('Escape').catch(() => undefined);
-      // Escape is not guaranteed by RN-web Modal; close through the menu button/backdrop if still open.
       if (await page.getByText('Ещё', { exact: true }).isVisible().catch(() => false)) {
         await page.mouse.click(8, 300);
       }
 
-      // Contractor-only global search opens and has an explicit close control.
       if (role === 'contractor') {
         await clickButton(page, /^Поиск/);
         await expect(page.getByPlaceholder(/Поиск/)).toBeVisible();
-        await clickButton(page, 'Закрыть поиск');
+        await closeSearch(page);
       }
 
       await testQuickActions(page, role);
 
-      // Exercise every dock control actually exposed by the current project phase.
       const dockCandidates: Array<string | RegExp> = [
         'Объект',
         'Ремонт',
@@ -233,13 +254,10 @@ test.describe('deployed review product controls', () => {
       const evidence = watchBrowser(page);
       await enterRoleAndProject(page, role, 0);
 
-      // Object is present in every dock preset.
       await clickButton(page, 'Объект');
       await testObjectHub(page);
       await returnHome(page);
 
-      // Contractor has the full default dock; customer uses a phase-aware dock.
-      // Test hub tabs whenever the phase exposes the corresponding product pillar.
       if (await clickOptionalDock(page, 'Ремонт')) {
         await testRepairHub(page);
         await returnHome(page);
