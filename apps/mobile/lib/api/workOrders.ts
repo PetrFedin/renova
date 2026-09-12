@@ -13,13 +13,21 @@ export type WorkOrderCreateBody = Record<string, unknown> & {
   client_request_id?: string;
 };
 
+function errorName(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('name' in error)) return undefined;
+  return typeof error.name === 'string' ? error.name : undefined;
+}
+
 function canQueueReplaySafeCreate(error: unknown): boolean {
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return false;
+  const name = errorName(error);
+  if (name === 'AbortError') return false;
   const status = getFailureStatus(error);
   if (status !== undefined) return status === 0 || status === 429 || status >= 500;
-  // A malformed success response is an ambiguous committed write; replay is safe
-  // only because the exact client_request_id/body is retained below.
-  return error instanceof SyntaxError;
+  // JSON parse failures can originate in another VM/JS realm, where
+  // `instanceof SyntaxError` is false. Error name is the cross-realm contract.
+  // A malformed 2xx is ambiguous: the server may already have committed, so the
+  // exact stable intent may be replayed safely.
+  return name === 'SyntaxError';
 }
 
 export const workOrdersApi = {
