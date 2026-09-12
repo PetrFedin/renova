@@ -3,6 +3,7 @@ import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@/components/Themed';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { type OsRole } from '@/constants/osSections';
 import { goBack, goHome } from '@/lib/navigation';
@@ -84,8 +85,8 @@ export default function RootSlugCatchAll() {
             : 'Проверьте ссылку или вернитесь на главную'}
         </Text>
         <View style={styles.actions}>
-          <PrimaryButton title="← Назад" variant="outline" onPress={() => goBack(undefined, role)} />
-          <PrimaryButton title="На главную" onPress={() => goHome(role)} />
+          <PrimaryButton title="← Назад" variant="outline" hapticIntent="none" onPress={() => goBack(undefined, role)} />
+          <PrimaryButton title="На главную" hapticIntent="none" onPress={() => goHome(role)} />
         </View>
       </View>
     </>
@@ -95,6 +96,6 @@ export default function RootSlugCatchAll() {
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   title: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
-  sub: { fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 24 },
+  sub: { fontSize: 14, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginBottom: 24 },
   actions: { width: '100%', maxWidth: 280, gap: 10 },
 });
