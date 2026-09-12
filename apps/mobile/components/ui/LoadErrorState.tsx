@@ -4,10 +4,12 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import type { AppError } from '@/lib/async/appError';
 
 type Props = {
   title?: string;
   hint?: string;
+  error?: AppError;
   onRetry: () => void;
   /** Опционально — путь в чат при сбое */
   role?: OsRole;
@@ -16,16 +18,20 @@ type Props = {
 
 export function LoadErrorState({
   title = 'Не удалось загрузить',
-  hint = 'Проверьте сеть и повторите. Это не пустой список.',
+  hint,
+  error,
   onRetry,
   role,
   showChatCta = false,
 }: Props) {
+  const message = hint ?? error?.message ?? 'Проверьте сеть и повторите. Это не пустой список.';
+  const canRetry = error?.retryable ?? true;
+
   return (
     <View style={s.wrap} accessibilityRole="summary">
       <Text style={s.title}>{title}</Text>
-      <Text style={s.hint}>{hint}</Text>
-      <PrimaryButton title="Повторить" onPress={onRetry} />
+      <Text style={s.hint}>{message}</Text>
+      {canRetry ? <PrimaryButton title="Повторить" onPress={onRetry} /> : null}
       {showChatCta && role ? (
         <PrimaryButton
           title="Написать в чат"
