@@ -19,6 +19,7 @@ import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecy
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import type { OsRole } from '@/constants/osSections';
 import { filterOutJunkProjects } from '@/lib/junkProjects';
+import { reportError } from '@/lib/reportError';
 
 function projectMeta(p: ProjectSummary, pendingById: Record<string, number>): string {
   const type = p.property_type === 'house' ? 'Дом' : 'Квартира';
@@ -163,12 +164,21 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
           try {
             const n = (await api.countPendingPayments(user.id, p.id)) || 0;
             return [p.id, n] as const;
-          } catch {
-            return [p.id, 0] as const;
+          } catch (error) {
+            // Unknown payment state must remain «Закрытие»; a failed read is not zero pending payments.
+            reportError('projectPicker.pendingPayments', error, { projectId: p.id });
+            return null;
           }
         }),
       ).then((rows) => {
-        if (!cancelled) setPendingById((prev) => ({ ...prev, ...Object.fromEntries(rows) }));
+        if (cancelled) return;
+        const confirmed: Record<string, number> = {};
+        for (const row of rows) {
+          if (row) confirmed[row[0]] = row[1];
+        }
+        if (Object.keys(confirmed).length) {
+          setPendingById((prev) => ({ ...prev, ...confirmed }));
+        }
       });
     }, 0);
     return () => {
