@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.db.session import init_db
 from app.main import app
+from app.models.entities import Project
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
 
@@ -44,14 +45,18 @@ async def _fresh_project(client: AsyncClient):
     )
     assert created.status_code == 200, created.text
     project_id = created.json()["id"]
-    # Link the chosen contractor as the project owner. Do not use /assign here:
-    # that is the contractor self-claim commercial path and correctly requires Pro.
-    assigned = await client.post(
-        f"/api/v1/projects/{project_id}/contractor",
-        headers=h_cust,
-        json={"contractor_id": contractor["id"]},
-    )
-    assert assigned.status_code == 200, assigned.text
+
+    # Build only the authorization fixture directly in the isolated test DB.
+    # Public contractor-linking routes intentionally exercise subscription
+    # policy and must not be weakened or bypassed in production code merely to
+    # prepare this estimate replay test.
+    from app.db import session as sess
+    async with sess.SessionLocal() as db:
+        project = await db.get(Project, project_id)
+        assert project is not None
+        project.contractor_id = contractor["id"]
+        await db.commit()
+
     return project_id, h_cont
 
 
@@ -59,7 +64,9 @@ async def test_same_intent_replays_one_line_and_one_budget_delta():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         project_id, headers = await _fresh_project(client)
-        before = (await client.get(f"/api/v1/projects/{project_id}", headers=headers)).json()
+        before_response = await client.get(f"/api/v1/projects/{project_id}", headers=headers)
+        assert before_response.status_code == 200, before_response.text
+        before = before_response.json()
         budget_before = float(before["budget_planned"])
         payload = {
             "client_request_id": "estimate-line-response-loss-001",
@@ -83,7 +90,9 @@ async def test_same_intent_replays_one_line_and_one_budget_delta():
         assert replay.json()["id"] == first_body["id"]
         assert replay.json()["idempotent_replay"] is True
 
-        detail = (await client.get(f"/api/v1/projects/{project_id}", headers=headers)).json()
+        detail_response = await client.get(f"/api/v1/projects/{project_id}", headers=headers)
+        assert detail_response.status_code == 200, detail_response.text
+        detail = detail_response.json()
         matching = [row for row in detail["estimate_lines"] if row["name"] == "Replay tile"]
         assert len(matching) == 1
         assert float(detail["budget_planned"]) == pytest.approx(budget_before + 10_000.0)
@@ -99,7 +108,9 @@ async def test_same_intent_replays_one_line_and_one_budget_delta():
         )
         assert distinct.status_code == 200, distinct.text
         assert distinct.json()["id"] != first_body["id"]
-        after_distinct = (await client.get(f"/api/v1/projects/{project_id}", headers=headers)).json()
+        after_response = await client.get(f"/api/v1/projects/{project_id}", headers=headers)
+        assert after_response.status_code == 200, after_response.text
+        after_distinct = after_response.json()
         matching = [row for row in after_distinct["estimate_lines"] if row["name"] == "Replay tile"]
         assert len(matching) == 2
         assert float(after_distinct["budget_planned"]) == pytest.approx(budget_before + 20_000.0)
