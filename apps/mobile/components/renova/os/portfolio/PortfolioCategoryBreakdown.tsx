@@ -52,7 +52,7 @@ export function PortfolioCategoryBreakdown({
   return (
     <View style={s.wrap}>
       <Text style={s.head}>Статьи расходов</Text>
-      <Text style={s.sub}>Сумма по выбранным объектам — где был перерасход относительно плана</Text>
+      <Text style={s.sub}>План и доступный расчётный факт. Недоступный факт не подменяется планом.</Text>
       {unavailableProjectCount > 0 ? (
         <Text style={s.warning}>
           Частичные данные: детализация недоступна для {unavailableProjectCount} из {projectCount} объект(ов). Сумма ниже не является итогом всего выбранного портфеля.
@@ -63,18 +63,16 @@ export function PortfolioCategoryBreakdown({
         <View key={row.key} style={[s.line, row.key === 'total' && s.lineTotal]}>
           <View style={s.lineTop}>
             <Text style={[s.label, row.key === 'total' && s.labelTotal]}>{row.label}</Text>
-            {row.hasOverrun && row.key !== 'total' ? (
+            {row.hasOverrun && row.key !== 'total' && row.variancePct != null ? (
               <Text style={s.badge}>+{row.variancePct}%</Text>
             ) : null}
           </View>
           <View style={s.lineBottom}>
             <Text style={s.values}>
               план {formatRub(row.planned)}
-              {row.spent !== row.planned || row.key === 'materials' || row.key === 'total'
-                ? ` · факт ${formatRub(row.spent)}`
-                : ''}
+              {row.spent == null ? ' · факт недоступен' : ` · факт ${formatRub(row.spent)}`}
             </Text>
-            {row.variance !== 0 && (row.key === 'materials' || row.key === 'total') ? (
+            {row.variance != null && row.variance !== 0 && (row.key === 'materials' || row.key === 'total') ? (
               <Text style={[s.delta, row.variance > 0 ? s.deltaBad : s.deltaGood]}>
                 {row.variance > 0 ? '+' : ''}{formatRub(row.variance)}
               </Text>
