@@ -62,6 +62,10 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+
+      - name: Guard globally required PR trigger scheduling
+        run: python scripts/governance/check-required-pr-triggers.py
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
