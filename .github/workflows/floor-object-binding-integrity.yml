@@ -1,0 +1,68 @@
+name: Floor object binding integrity
+
+on:
+  push:
+    paths:
+      - 'backend/app/api/v1/floor_plans.py'
+      - 'backend/tests/test_floor_plan_object_binding*.py'
+      - '.github/workflows/floor-object-binding-integrity.yml'
+  pull_request:
+    paths:
+      - 'backend/app/api/v1/floor_plans.py'
+      - 'backend/tests/test_floor_plan_object_binding*.py'
+      - '.github/workflows/floor-object-binding-integrity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  floor-object-binding-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova_floor_binding
+        ports:
+          - 5438:5432
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova_floor_binding"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5438/renova_floor_binding
+      FLOOR_OBJECT_BINDING_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5438/renova_floor_binding
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: 'true'
+      ALLOW_DEMO_SEED: 'false'
+      PYTHONHASHSEED: '0'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.13'
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'poetry==2.4.1'
+          poetry check --lock
+          poetry sync --no-interaction
+          poetry run python -m pip check
+      - name: Upgrade PostgreSQL schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run alembic upgrade head
+      - name: Run floor object-binding PostgreSQL contract
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run pytest -q tests/test_floor_plan_object_binding_postgres.py
