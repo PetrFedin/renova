@@ -83,6 +83,30 @@ function fmtMonth(d: Date) {
 }
 
 /** Подробные интервалы внутри выбранного периода */
+/**
+ * #318 / mandate B0-5: split `total` across `count` buckets so that the parts
+ * sum EXACTLY to `total` (largest-remainder allocation on integer rubles).
+ * Independent rounding (`round(total/4)` × 5 buckets) previously overstated a
+ * 31-day month plan by up to 25 %.
+ */
+export function allocateEvenly(total: number, count: number): number[] {
+  if (count <= 0) return [];
+  const safeTotal = Number.isFinite(total) ? Math.round(total) : 0;
+  const base = Math.trunc(safeTotal / count);
+  let remainder = safeTotal - base * count;
+  const step = remainder >= 0 ? 1 : -1;
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) {
+    let v = base;
+    if (remainder !== 0) {
+      v += step;
+      remainder -= step;
+    }
+    out.push(v);
+  }
+  return out;
+}
+
 export function buildPeriodBuckets(
   rows: ExpenseDetailRow[],
   period: BudgetPeriod,
@@ -105,11 +129,11 @@ export function buildPeriodBuckets(
         key: day.toISOString().slice(0, 10),
         label: fmtDay(day),
         spent: sumRows(dayRows),
-        planned: Math.round(periodPlanned / 7),
+        planned: 0,
         rows: dayRows,
       });
     }
-    return buckets;
+    return assignPlanned(buckets, periodPlanned);
   }
 
   if (period === 'month') {
@@ -128,17 +152,17 @@ export function buildPeriodBuckets(
         key: wStart.toISOString().slice(0, 10),
         label: `${fmtDay(wStart)} – ${fmtDay(wEnd)}`,
         spent: sumRows(wRows),
-        planned: Math.round(periodPlanned / 4),
+        planned: 0,
         rows: wRows,
       });
       cursor.setDate(cursor.getDate() + 7);
     }
-    return buckets;
+    return assignPlanned(buckets, periodPlanned);
   }
 
   if (period === 'year') {
     const y = new Date().getFullYear();
-    return Array.from({ length: 12 }, (_, m) => {
+    const yearBuckets = Array.from({ length: 12 }, (_, m) => {
       const mStart = atDayStart(new Date(y, m, 1));
       const mEnd = atDayEnd(new Date(y, m + 1, 0));
       const mRows = filtered.filter((r) => rowInRange(r, mStart, mEnd));
@@ -146,10 +170,11 @@ export function buildPeriodBuckets(
         key: `${y}-${String(m + 1).padStart(2, '0')}`,
         label: fmtMonth(mStart),
         spent: sumRows(mRows),
-        planned: Math.round(periodPlanned / 12),
+        planned: 0,
         rows: mRows,
       };
     });
+    return assignPlanned(yearBuckets, periodPlanned);
   }
 
   return [
@@ -161,4 +186,9 @@ export function buildPeriodBuckets(
       rows: filtered,
     },
   ];
+}
+
+function assignPlanned(buckets: BudgetPeriodBucket[], periodPlanned: number): BudgetPeriodBucket[] {
+  const parts = allocateEvenly(periodPlanned, buckets.length);
+  return buckets.map((b, i) => ({ ...b, planned: parts[i] ?? 0 }));
 }

@@ -70,11 +70,9 @@ export function PortfolioCategoryBreakdown({
           <View style={s.lineBottom}>
             <Text style={s.values}>
               план {formatRub(row.planned)}
-              {row.spent !== row.planned || row.key === 'materials' || row.key === 'total'
-                ? ` · факт ${formatRub(row.spent)}`
-                : ''}
+              {row.factKnown ? ` · факт ${formatRub(row.spent)}` : ' · факт: нет детализации'}
             </Text>
-            {row.variance !== 0 && (row.key === 'materials' || row.key === 'total') ? (
+            {row.factKnown && row.variance !== 0 ? (
               <Text style={[s.delta, row.variance > 0 ? s.deltaBad : s.deltaGood]}>
                 {row.variance > 0 ? '+' : ''}{formatRub(row.variance)}
               </Text>
