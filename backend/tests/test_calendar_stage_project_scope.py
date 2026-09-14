@@ -83,15 +83,17 @@ async def _seed_two_projects(db):
 @pytest.mark.asyncio
 async def test_authorized_project_cannot_commit_dates_to_foreign_stage(db):
     contractor_a, project_a, _stage_a, stage_b = await _seed_two_projects(db)
+    project_a_id = project_a.id
+    stage_b_id = stage_b.id
     original_start = stage_b.planned_start
     original_end = stage_b.planned_end
     assert stage_b.ical_uid is None
 
     with pytest.raises(HTTPException) as error:
         await calendar_update_stage_dates(
-            project_a.id,
+            project_a_id,
             StageDatesUpdate(
-                stage_id=stage_b.id,
+                stage_id=stage_b_id,
                 planned_start=date(2027, 1, 1),
                 planned_end=date(2027, 1, 2),
             ),
@@ -100,11 +102,12 @@ async def test_authorized_project_cannot_commit_dates_to_foreign_stage(db):
         )
     assert error.value.status_code == 404
 
-    # End the failed request transaction and force a fresh database read. The
-    # security contract is about committed truth, not the API response code.
+    # End the failed request transaction and force a fresh database read. Keep
+    # scalar ids captured before rollback/expire so this verification cannot
+    # accidentally trigger async lazy IO from an expired ORM object.
     await db.rollback()
     db.expire_all()
-    persisted = await db.get(Stage, stage_b.id)
+    persisted = await db.get(Stage, stage_b_id)
     assert persisted is not None
     assert persisted.planned_start == original_start
     assert persisted.planned_end == original_end
@@ -114,11 +117,13 @@ async def test_authorized_project_cannot_commit_dates_to_foreign_stage(db):
 @pytest.mark.asyncio
 async def test_authorized_project_stage_date_update_still_commits(db):
     contractor_a, project_a, stage_a, _stage_b = await _seed_two_projects(db)
+    project_a_id = project_a.id
+    stage_a_id = stage_a.id
 
     response = await calendar_update_stage_dates(
-        project_a.id,
+        project_a_id,
         StageDatesUpdate(
-            stage_id=stage_a.id,
+            stage_id=stage_a_id,
             planned_start=date(2026, 11, 1),
             planned_end=date(2026, 11, 5),
         ),
@@ -128,8 +133,8 @@ async def test_authorized_project_stage_date_update_still_commits(db):
     assert response["events"]
 
     db.expire_all()
-    persisted = await db.get(Stage, stage_a.id)
+    persisted = await db.get(Stage, stage_a_id)
     assert persisted is not None
     assert persisted.planned_start == date(2026, 11, 1)
     assert persisted.planned_end == date(2026, 11, 5)
-    assert persisted.ical_uid == f"renova-{stage_a.id}@app"
+    assert persisted.ical_uid == f"renova-{stage_a_id}@app"
