@@ -28,3 +28,14 @@ const materials = cats.find((c) => c.key === 'materials');
 if (!materials || materials.planned !== 300 || materials.spent !== 340) throw new Error('materials aggregate');
 
 console.log('summarizePortfolio.test OK');
+
+// #318 / B0-5: works/waste/reserve have no per-category fact in the ledger → factKnown=false, never a fabricated 0 variance.
+const factless = aggregatePortfolioBudgetBreakdowns([
+  { works: 100, materials_plan: 50, materials_fact: 70, waste: 10, reserve: 5, budget_planned: 165, budget_spent: 90 } as never,
+]);
+for (const key of ['works', 'waste', 'reserve']) {
+  const row = factless.find((r) => r.key === key);
+  if (!row || row.factKnown || row.hasOverrun) throw new Error(`${key} must be factKnown=false`);
+}
+if (!factless.find((r) => r.key === 'materials')?.factKnown) throw new Error('materials factKnown');
+console.log('portfolio factKnown OK');
