@@ -14,11 +14,21 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         phone="+78050000001",
         role=UserRole.contractor,
     )
+    customer_a = User(
+        id="estimate-binding-customer-a",
+        phone="+78050000002",
+        role=UserRole.customer,
+    )
+    customer_b = User(
+        id="estimate-binding-customer-b",
+        phone="+78050000003",
+        role=UserRole.customer,
+    )
     project_a = Project(
         id="estimate-binding-project-a",
         name="Estimate A",
         renovation_type="cosmetic",
-        customer_id="estimate-binding-customer-a",
+        customer_id=customer_a.id,
         contractor_id=contractor.id,
         budget_planned=200,
     )
@@ -26,7 +36,7 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         id="estimate-binding-project-b",
         name="Estimate B",
         renovation_type="cosmetic",
-        customer_id="estimate-binding-customer-b",
+        customer_id=customer_b.id,
         contractor_id=contractor.id,
         budget_planned=600,
     )
@@ -50,7 +60,7 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         quantity_actual=0,
         unit_price=200,
     )
-    db.add_all([contractor, project_a, project_b, line_a, line_b])
+    db.add_all([contractor, customer_a, customer_b, project_a, project_b, line_a, line_b])
     await db.commit()
 
     with pytest.raises(HTTPException) as denied:
