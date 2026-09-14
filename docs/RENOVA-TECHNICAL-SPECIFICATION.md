@@ -10,7 +10,7 @@
 
 `AGENTS.md` — единственный engineering-policy. Этот master — текущий паспорт продукта, контрактов и доказанности. Он не подтверждает все функции по одному факту наличия кода. Предыдущая полная редакция сохранена без изменения содержимого в `technical-spec/history/RENOVA-TECHNICAL-SPECIFICATION-before-2026-09-08.md`: это справочный исторический срез, не текущий порядок работ и не launch verdict. Функциональность из целевого продукта этим переоформлением не удаляется.
 
-Актуальные приложения: [полный аудит](technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md), [план и история](technical-spec/CHANGELOG-ROADMAP.md), [расчёты](technical-spec/CALCULATION-REGISTRY.md), [экраны](technical-spec/SCREEN-CONTRACT-CATALOG.md), [source snapshot экранов](technical-spec/SCREEN-SOURCE-SNAPSHOT.md), [правила сквозного сопровождения](technical-spec/END-TO-END-GOVERNANCE.md). Детальные domain-contract приложения остаются действующими в части реализации; статус их квалификации проверяется по текущим PR/CI и разделу15, а не по старому слову candidate в приложении.
+Актуальные приложения: [полный аудит](technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md), [план и история](technical-spec/CHANGELOG-ROADMAP.md), [расчёты](technical-spec/CALCULATION-REGISTRY.md), [экраны](technical-spec/SCREEN-CONTRACT-CATALOG.md), [source snapshot экранов](technical-spec/SCREEN-SOURCE-SNAPSHOT.md), [правила сквозного сопровождения](technical-spec/END-TO-END-GOVERNANCE.md), [required PR checks](technical-spec/REQUIRED-PR-CHECK-TRIGGER-INTEGRITY.md). Детальные domain-contract приложения остаются действующими в части реализации; статус их квалификации проверяется по текущим PR/CI и разделу15, а не по старому слову candidate в приложении.
 
 # 0. Правила доказанности и сопровождения
 
@@ -30,7 +30,7 @@
 | `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
 | `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | Enum/migration invariants |
 | `apps/mobile/lib/routeRegistry.ts` | `0c9a386486f61cd1a284d8bd7fc99368b557232f` | Канонические navigation entries |
-| `apps/mobile/constants/Theme.ts` | `6e66c4bf0db8c9d1b8c4a2d0355311145ca43b20` | Theme/touch geometry |
+| `apps/mobile/constants/Theme.ts` | `6e66c4bf0db1b8c4a2d0355311145ca43b20` | Theme/touch geometry |
 | `apps/mobile/constants/typography.ts` | `8a96b7f290944ac2c566c0f1791c1f60ab90c68a` | Typography |
 | `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | Screen typography |
 | `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | Surfaces/chips/inputs |
@@ -42,7 +42,7 @@
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
 | `package.json` | `4c95fcf89d7e29f1c464a7db2c7aa4c85335fe11` | Root commands/test entrypoints |
-| `.github/workflows/local-runtime-integrity.yml` | `3ae00fa13be960bf7acba71c8cfa41134d35e16f` | Local runtime proof |
+| `.github/workflows/local-runtime-integrity.yml` | `b1e545124d6f65cace76631fd969c093ae92cd36` | Local runtime proof + required PR trigger guard |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
