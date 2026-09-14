@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import './roomIntentRecovery.contract.test';
 
 const mobile = join(__dirname, '..');
 const sheet = readFileSync(join(mobile, 'components/renova/MaterialPickDetailSheet.tsx'), 'utf8');
