@@ -10,7 +10,6 @@ import { API_BASE } from '@/lib/api/client';
 import { reportError } from '@/lib/reportError';
 
 const KEYS = {
-  userId: 'renova_user_id',
   projectId: 'renova_project_id',
   projectExplicitlyPicked: 'renova_project_explicitly_picked',
 };
@@ -41,12 +40,6 @@ async function fetchHealthWithTimeout(timeoutMs: number): Promise<Response> {
   }
 }
 
-/**
- * Проверка доступности API с повторами. Обычные probes ограничены собственным timeout.
- * Для review cold-start длинный timeout трактуется как общее окно ожидания: iOS/Safari
- * и Render edge могут оборвать один длинный fetch, поэтому внутри окна делаем короткие
- * повторные probes до первого /health=200.
- */
 export async function pingApi(
   retries = 5,
   delayMs = 600,
@@ -112,12 +105,15 @@ export function isDemoPhone(phone?: string | null): boolean {
   return !!phone && (DEMO_PHONES as readonly string[]).includes(phone);
 }
 
-/** Загрузить активный проект: явный выбор → предложенный id → канонический demo. */
+/**
+ * Resolve and read an active project only. Identity/project persistence belongs to
+ * the session-authority owner in RenovaContext; this helper must not publish it.
+ */
 export async function loadActiveProject(
   userId: string,
   projects: ProjectSummary[],
   savedProjectId: string | null,
-  role: UserRole,
+  _role: UserRole,
 ): Promise<ProjectDetail | null> {
   const fallback = pickPrimaryDemoProject(projects)?.id ?? projects[0]?.id;
   const [persistedProjectId, explicitlyPicked] = await Promise.all([
@@ -135,29 +131,15 @@ export async function loadActiveProject(
   if (!pickId) return null;
 
   let p = await api.getProject(userId, pickId);
-  if (!p && fallback) {
+  if (!p && fallback && fallback !== pickId) {
     p = await api.getProject(userId, fallback);
-    if (p) await AsyncStorage.setItem(KEYS.projectId, fallback);
-    return p;
   }
-  if (role === 'contractor' && p) {
-    try {
-      p = await api.assignProject(userId, pickId);
-    } catch (error) {
-      // getProject already proved readable access; assignment reconciliation is
-      // non-blocking, but failure must remain observable.
-      reportError('sessionBootstrap.assignProject', error, { userId, projectId: pickId });
-    }
-  }
-  if (p) await AsyncStorage.setItem(KEYS.projectId, p.id);
   return p;
 }
 
-/** Перелогин в демо-пользователя с актуальными проектами. Transport errors propagate. */
+/** Fresh demo login; caller owns session authority + durable identity publication. */
 export async function recoverDemoSession(role: UserRole): Promise<{ user: User; projects: ProjectSummary[] }> {
   const u = await api.demoLogin(role);
-  await AsyncStorage.setItem(KEYS.userId, u.id);
-  await AsyncStorage.setItem('renova_user_role', role);
   const list = await listProjectsWithRetry(u.id, 4);
   return { user: u, projects: list };
 }
