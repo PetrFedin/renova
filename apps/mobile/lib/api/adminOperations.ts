@@ -53,6 +53,11 @@ export type SubscriptionRefundReviewIndex = {
   status: string;
 };
 
+export type SubscriptionRefundResolutionAction =
+  | 'dismiss_not_subscription'
+  | 'dismiss_duplicate'
+  | 'link_and_apply';
+
 export const adminOperationsApi = {
   listProviderReconciliations: (
     userId: string,
@@ -94,6 +99,31 @@ export const adminOperationsApi = {
     req<SubscriptionRefundReview>(
       `/api/v1/admin/subscription-refunds/reviews/${encodeURIComponent(refundId)}/release`,
       { method: 'POST', body: JSON.stringify({ expected_version: expectedVersion }) },
+      userId,
+    ),
+  resolveSubscriptionRefundReview: (
+    userId: string,
+    refundId: string,
+    body: {
+      expectedVersion: number;
+      action: SubscriptionRefundResolutionAction;
+      note: string;
+      checkoutId?: string | null;
+      decisionKey: string;
+    },
+  ) =>
+    req<SubscriptionRefundReview>(
+      `/api/v1/admin/subscription-refunds/reviews/${encodeURIComponent(refundId)}/resolve`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          expected_version: body.expectedVersion,
+          decision_key: body.decisionKey,
+          action: body.action,
+          note: body.note,
+          checkout_id: body.checkoutId ?? null,
+        }),
+      },
       userId,
     ),
 };
