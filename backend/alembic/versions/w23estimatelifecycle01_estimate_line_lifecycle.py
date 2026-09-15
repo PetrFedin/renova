@@ -61,10 +61,13 @@ def _origin_for_existing(row: dict) -> str:
 def upgrade() -> None:
     op.create_table(
         "estimate_line_lifecycles",
+        # No FK to estimate_lines on purpose: a tombstone survives while the
+        # active row is absent and is the restore source of truth.
         sa.Column("estimate_line_id", sa.String(length=36), nullable=False),
         sa.Column("project_id", sa.String(length=36), nullable=False),
         sa.Column("origin", sa.String(length=16), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False),
+        sa.Column("snapshot_json", sa.Text(), nullable=True),
         sa.Column("removed_by", sa.String(length=36), nullable=True),
         sa.Column("removed_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -76,9 +79,6 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "status IN ('active','removed')",
             name="ck_estimate_line_lifecycles_status",
-        ),
-        sa.ForeignKeyConstraint(
-            ["estimate_line_id"], ["estimate_lines.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"]),
         sa.ForeignKeyConstraint(["removed_by"], ["users.id"]),
@@ -112,6 +112,7 @@ def upgrade() -> None:
         sa.column("project_id", sa.String),
         sa.column("origin", sa.String),
         sa.column("status", sa.String),
+        sa.column("snapshot_json", sa.Text),
         sa.column("removed_by", sa.String),
         sa.column("removed_at", sa.DateTime),
         sa.column("created_at", sa.DateTime),
@@ -125,6 +126,7 @@ def upgrade() -> None:
                 project_id=str(row["project_id"]),
                 origin=_origin_for_existing(dict(row)),
                 status="active",
+                snapshot_json=None,
                 removed_by=None,
                 removed_at=None,
                 created_at=now,
