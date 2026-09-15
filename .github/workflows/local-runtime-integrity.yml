@@ -46,8 +46,6 @@ on:
       - "scripts/start-dev.sh"
       - "scripts/ensure-mobile-deps.js"
       - "scripts/devRuntimeContract.test.mjs"
-      - "scripts/localMinioPull.mjs"
-      - "scripts/localMinioPullRetry.test.mjs"
       - ".github/workflows/local-runtime-integrity.yml"
   pull_request:
     paths:
@@ -92,8 +90,6 @@ on:
       - "scripts/start-dev.sh"
       - "scripts/ensure-mobile-deps.js"
       - "scripts/devRuntimeContract.test.mjs"
-      - "scripts/localMinioPull.mjs"
-      - "scripts/localMinioPullRetry.test.mjs"
       - ".github/workflows/local-runtime-integrity.yml"
 
 concurrency:
@@ -155,11 +151,10 @@ jobs:
           bash scripts/dev-runtime.sh bootstrap
           git diff --exit-code -- package-lock.json backend/pyproject.toml backend/poetry.lock
 
-      - name: Verify source contract, pull retry semantics and Compose graph
+      - name: Verify source contract and Compose graph
         run: |
           set -euo pipefail
           node scripts/devRuntimeContract.test.mjs
-          node scripts/localMinioPullRetry.test.mjs
           docker compose --project-name renova-local --env-file .env.local -f docker-compose.yml config >/tmp/renova-compose.yml
 
       - name: Start full backend topology without Expo
