@@ -137,7 +137,6 @@ async function clearAccessToken(authority: SessionAuthoritySnapshot = captureSes
   await clearSessionTokens(authority);
 }
 
-
 import type { WizardRoomDraft } from '@/constants/roomTypes';
 
 type WizardDraft = {
@@ -148,10 +147,8 @@ type WizardDraft = {
   property_type: 'apartment' | 'house';
   planned_start_date?: string;
   planned_end_date?: string;
-  /** Лимит, который заказчик готов вложить (₽) */
   customer_budget?: number;
   rooms: WizardRoomDraft[];
-  /** quick = шаблон комнат, detailed = пошагово */
   wizard_mode?: 'quick' | 'detailed';
 };
 
@@ -166,10 +163,8 @@ export type ProjectProfilePatch = {
   planned_end_date?: string | null;
 };
 
-/** Результат создания объекта из wizard */
 export type CreateProjectResult = {
   id: string;
-  /** На demo-телефоне активным остаётся канонический объект */
   demoKeptPrimary?: { createdName: string; activeName: string };
 };
 
@@ -191,12 +186,9 @@ type Ctx = {
   loginWithSms: (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => Promise<void>;
   refreshProjects: () => Promise<void>;
   refreshMe: () => Promise<void>;
-  /** Сброс активного объекта (корзина/архив текущего проекта) */
   clearActiveProject: () => Promise<void>;
   loadProject: (id: string) => Promise<ProjectLoadOutcome>;
-  /** Подхват сохранённого объекта — один раз на все разделы OS */
   ensureActiveProject: () => Promise<void>;
-  /** Идёт загрузка/восстановление активного объекта */
   projectResolving: boolean;
   recoverSession: () => Promise<void>;
   createProjectFromWizard: (extra?: Partial<WizardDraft>) => Promise<CreateProjectResult>;
@@ -235,7 +227,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const loginAttemptRef = useRef(0);
   const [wizard, setWizardState] = useState<WizardDraft>(defaultWizard);
   const [paywallVisible, setPaywallVisible] = useState(false);
-  /** Project/portal restriction only. Team restriction is composed separately below. */
   const [readOnly, setReadOnly] = useState(false);
   const [teamAccess, setTeamAccess] = useState<TeamAccess>(NOT_APPLICABLE_TEAM_ACCESS);
   const effectiveReadOnly = readOnly || teamAccess.readOnly;
@@ -260,7 +251,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       if (isSessionAuthorityCurrent(authority)) setTeamAccess(NOT_APPLICABLE_TEAM_ACCESS);
       return;
     }
-
     if (isSessionAuthorityCurrent(authority)) setTeamAccess(UNRESOLVED_TEAM_ACCESS);
     try {
       const team = await api.getTeam(u.id);
@@ -307,56 +297,47 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     await refreshTeamAccess(u);
   }, [user?.id, refreshTeamAccess]);
 
-  const loadProject = useCallback(
-    async (id: string): Promise<ProjectLoadOutcome> => {
-      if (!user) return { status: 'cancelled', projectId: id };
-      const authority = captureSessionAuthority();
-      if (authority.userId !== user.id || !authority.sessionId) {
-        return { status: 'cancelled', projectId: id };
+  const loadProject = useCallback(async (id: string): Promise<ProjectLoadOutcome> => {
+    if (!user) return { status: 'cancelled', projectId: id };
+    const authority = captureSessionAuthority();
+    if (authority.userId !== user.id || !authority.sessionId) return { status: 'cancelled', projectId: id };
+    setProjectResolving(true);
+    ensureAttemptKeyRef.current = null;
+    try {
+      let p = await api.getProject(user.id, id);
+      assertSessionAuthorityCurrent(authority);
+      if (user.role === 'contractor' && !p) throw new Error('not found');
+      p = await syncCustomerBudgetOnLoad(user, p);
+      assertSessionAuthorityCurrent(authority);
+      setActiveProject(p);
+      setReadOnly(!!p?.read_only);
+      await withSessionAuthorityWrite(authority, async () => {
+        await AsyncStorage.setItem(KEYS.projectId, id);
+        await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
+        await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
+      });
+      assertSessionAuthorityCurrent(authority);
+      notifyProjectDataChanged();
+      void reloadInboxSync({
+        userId: user.id,
+        userRole: user.role,
+        projectId: id,
+        project: p,
+        osRole: user.role === 'contractor' ? 'contractor' : 'customer',
+      }).catch((error) => {
+        if (isSessionAuthorityCurrent(authority)) reportError('renovaContext.inboxReload', error, { projectId: id });
+      });
+      return { status: 'loaded', projectId: id };
+    } catch (e) {
+      if (isSessionGenerationChanged(e) || !isSessionAuthorityCurrent(authority)) return { status: 'cancelled', projectId: id };
+      if (isRateLimitError(e) || (e instanceof Error && /rate_limit/i.test(e.message))) {
+        return { status: 'degraded', projectId: id, reason: 'rate_limit' };
       }
-      setProjectResolving(true);
-      ensureAttemptKeyRef.current = null;
-      try {
-        let p = await api.getProject(user.id, id);
-        assertSessionAuthorityCurrent(authority);
-        if (user.role === 'contractor' && !p) throw new Error('not found');
-        // Read selection must stay read-only. Contractor assignment is an explicit
-        // business mutation elsewhere; selecting a readable project cannot assign it.
-        p = await syncCustomerBudgetOnLoad(user, p);
-        assertSessionAuthorityCurrent(authority);
-        setActiveProject(p);
-        setReadOnly(!!p?.read_only);
-        await withSessionAuthorityWrite(authority, async () => {
-          await AsyncStorage.setItem(KEYS.projectId, id);
-          await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
-          await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
-        });
-        assertSessionAuthorityCurrent(authority);
-        notifyProjectDataChanged();
-        void reloadInboxSync({
-          userId: user.id,
-          userRole: user.role,
-          projectId: id,
-          project: p,
-          osRole: user.role === 'contractor' ? 'contractor' : 'customer',
-        }).catch((error) => {
-          if (isSessionAuthorityCurrent(authority)) reportError('renovaContext.inboxReload', error, { projectId: id });
-        });
-        return { status: 'loaded', projectId: id };
-      } catch (e) {
-        if (isSessionGenerationChanged(e) || !isSessionAuthorityCurrent(authority)) {
-          return { status: 'cancelled', projectId: id };
-        }
-        if (isRateLimitError(e) || (e instanceof Error && /rate_limit/i.test(e.message))) {
-          return { status: 'degraded', projectId: id, reason: 'rate_limit' };
-        }
-        throw e;
-      } finally {
-        if (isSessionAuthorityCurrent(authority)) setProjectResolving(false);
-      }
-    },
-    [user],
-  );
+      throw e;
+    } finally {
+      if (isSessionAuthorityCurrent(authority)) setProjectResolving(false);
+    }
+  }, [user]);
 
   const ensureActiveProject = useCallback(async () => {
     if (!user || activeProject || !projects.length || projectResolving) return;
@@ -374,7 +355,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     try {
       await loadProject(pickId);
     } catch {
-      /* silent-catch-ok: keep ref to avoid infinite retry; explicit project selection resets it */
+      /* keep ref to avoid infinite retry; explicit project selection resets it */
     }
   }, [user, activeProject, projects, projectResolving, loadProject]);
 
@@ -382,13 +363,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     ensureAttemptKeyRef.current = null;
   }, [projects.map((p) => p.id).join('|')]);
 
-  /** Применить пользователя + проекты + активный объект после bootstrap/recovery */
   const applySession = useCallback(async (u: User, list: ProjectSummary[]) => {
-    const hasFreshCredentials = Boolean(u.access_token?.trim() || u.refresh_token?.trim());
     let authority = captureSessionAuthority();
-    if (hasFreshCredentials || authority.userId !== u.id || !authority.sessionId) {
-      authority = beginSessionAuthority(u.id);
-    }
+    if (authority.userId !== u.id || !authority.sessionId) authority = beginSessionAuthority(u.id);
     await persistUserSession(u, authority);
     assertSessionAuthorityCurrent(authority);
     setUser(u);
@@ -409,10 +386,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     assertSessionAuthorityCurrent(authority);
     const role = inferDemoRole(u, await AsyncStorage.getItem(KEYS.userRole));
     assertSessionAuthorityCurrent(authority);
-    const demoPick =
-      isDemoPhone(u.phone) && enriched.length > 0
-        ? pickPrimaryDemoProject(enriched)?.id ?? enriched[0]?.id
-        : null;
+    const demoPick = isDemoPhone(u.phone) && enriched.length > 0
+      ? pickPrimaryDemoProject(enriched)?.id ?? enriched[0]?.id
+      : null;
     let p = await loadActiveProject(u.id, enriched, demoPick ?? pid, role);
     assertSessionAuthorityCurrent(authority);
     if (p) {
@@ -420,12 +396,13 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       assertSessionAuthorityCurrent(authority);
       setReadOnly(!!p.read_only);
       setActiveProject(p);
-      if (isDemoPhone(u.phone)) {
-        await withSessionAuthorityWrite(authority, async () => {
+      await withSessionAuthorityWrite(authority, async () => {
+        await AsyncStorage.setItem(KEYS.projectId, p.id);
+        if (isDemoPhone(u.phone)) {
           await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
           await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
-        });
-      }
+        }
+      });
     } else {
       setActiveProject(null);
       setReadOnly(false);
@@ -466,6 +443,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           if (!isSessionAuthorityCurrent(authority)) return;
           setActiveProject(p);
           setReadOnly(!!p.read_only);
+          await withSessionAuthorityWrite(authority, () => AsyncStorage.setItem(KEYS.projectId, p!.id));
         }
       }
     }
@@ -476,7 +454,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       try {
         const reachable = await pingApi();
         setApiReachable(reachable);
-
         const [uid, storedRole, storedSnapshot, storedTok, storedRefresh, storedAuthorityId] = await Promise.all([
           AsyncStorage.getItem(KEYS.userId),
           AsyncStorage.getItem(KEYS.userRole),
@@ -505,13 +482,10 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
             return;
           }
         }
-
-        if (!uid) return;
-        if (!bootstrapAuthority) return;
+        if (!uid || !bootstrapAuthority) return;
 
         const expectedRole = storedRole === 'customer' || storedRole === 'contractor' ? storedRole : null;
         const snapshot = parseSessionUserSnapshot(storedSnapshot, { id: uid, role: expectedRole });
-
         if (!reachable) {
           if (snapshot && isSessionAuthorityCurrent(bootstrapAuthority)) applyDegradedIdentity(snapshot);
           return;
@@ -532,7 +506,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
             if (snapshot) applyDegradedIdentity(snapshot);
             return;
           }
-
           invalidateSessionAuthority();
           setAccessToken(null);
           setRefreshToken(null);
@@ -541,14 +514,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           setActiveProject(null);
           const clearedAuthority = captureSessionAuthority();
           await withSessionAuthorityWrite(clearedAuthority, async () => {
-            await AsyncStorage.multiRemove([
-              KEYS.userId,
-              KEYS.userRole,
-              KEYS.projectId,
-              KEYS.accessToken,
-              KEYS.refreshToken,
-              KEYS.sessionAuthorityId,
-            ]);
+            await AsyncStorage.multiRemove([KEYS.userId, KEYS.userRole, KEYS.projectId, KEYS.accessToken, KEYS.refreshToken, KEYS.sessionAuthorityId]);
             await secureMultiRemove([KEYS.userSnapshot]);
           });
           await clearAccessToken(clearedAuthority);
@@ -560,7 +526,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         deferPushRegistration(u.id);
         let list = await listProjectsWithRetry(u.id);
         assertSessionAuthorityCurrent(bootstrapAuthority);
-
         if (list.length === 0) {
           const role = inferDemoRole(u, storedRole);
           if (isDemoPhone(u.phone) || storedRole === 'customer' || storedRole === 'contractor') {
@@ -571,7 +536,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
             }
           }
         }
-
         await applySession(u, list);
       } catch (error) {
         if (!isSessionGenerationChanged(error)) {
@@ -589,7 +553,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, [applySession, applyDegradedIdentity]);
-
 
   const demoLogin = useCallback(async (role: UserRole) => {
     const attempt = ++loginAttemptRef.current;
@@ -622,7 +585,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
     });
   }, [refreshTeamAccess]);
-
 
   const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const attempt = ++loginAttemptRef.current;
@@ -709,7 +671,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       detail = await api.getProject(user.id, created.id);
     } catch (error) {
       if (isSessionGenerationChanged(error) || !isSessionAuthorityCurrent(authority)) throw error;
-      /* POST/PATCH response is sufficient as the committed project fallback */
     }
     assertSessionAuthorityCurrent(authority);
     const refreshed = await enrichProjectsPendingPayments(user.id, await api.listProjects(user.id), user.role as UserRole);
@@ -728,10 +689,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem(KEYS.projectId, primaryId);
           await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
         });
-        return {
-          id: created.id,
-          demoKeptPrimary: { createdName: created.name, activeName: primary?.name || primaryDetail.name },
-        };
+        return { id: created.id, demoKeptPrimary: { createdName: created.name, activeName: primary?.name || primaryDetail.name } };
       }
     }
     setActiveProject(detail);
@@ -751,10 +709,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     const body: Record<string, unknown> = { ...patch };
     if (patch.address === undefined) delete body.address;
     if (patch.customer_budget === undefined) delete body.customer_budget;
-
     const p = await api.patchProject(user.id, activeProject.id, body);
     assertSessionAuthorityCurrent(authority);
-
     if (patch.customer_budget !== undefined) {
       const limit = normalizeCustomerBudget(p.customer_budget) ?? normalizeCustomerBudget(patch.customer_budget);
       try {
@@ -766,13 +722,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     assertSessionAuthorityCurrent(authority);
     setActiveProject(p);
     setReadOnly(!!p.read_only);
-
     try {
       await refreshProjects();
     } catch (error) {
       if (isSessionAuthorityCurrent(authority)) reportError('projectProfile.refreshProjects', error, { projectId: activeProject.id });
     }
-
     if (!isSessionAuthorityCurrent(authority)) return;
     try {
       await syncProjectSideEffects({ user, project: p });
@@ -781,18 +735,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, activeProject, refreshProjects]);
 
-  const submitStage = useCallback(
-    async (stageId: string) => {
-      if (!user || !activeProject) return;
-      const authority = captureSessionAuthority();
-      await api.submitStage(user.id, activeProject.id, stageId);
-      assertSessionAuthorityCurrent(authority);
-      await loadProject(activeProject.id);
-      if (!isSessionAuthorityCurrent(authority)) return;
-      await syncProjectSideEffects({ user, project: activeProject });
-    },
-    [user, activeProject, loadProject],
-  );
+  const submitStage = useCallback(async (stageId: string) => {
+    if (!user || !activeProject) return;
+    const authority = captureSessionAuthority();
+    await api.submitStage(user.id, activeProject.id, stageId);
+    assertSessionAuthorityCurrent(authority);
+    await loadProject(activeProject.id);
+    if (!isSessionAuthorityCurrent(authority)) return;
+    await syncProjectSideEffects({ user, project: activeProject });
+  }, [user, activeProject, loadProject]);
 
   const rejectStage = useCallback(async (stageId: string, reason: string, opts?: { qualityScore?: number | null }) => {
     if (!user || !activeProject) return;
@@ -804,25 +755,20 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     await syncProjectSideEffects({ user, project: activeProject });
   }, [user, activeProject, loadProject]);
 
-  const acceptStage = useCallback(
-    async (stageId: string, opts?: { qualityScore?: number | null }) => {
-      if (!user || !activeProject) return;
-      const authority = captureSessionAuthority();
-      try {
-        await api.acceptStage(user.id, activeProject.id, stageId, opts);
-      } catch (e: any) {
-        if (isSessionGenerationChanged(e) || !isSessionAuthorityCurrent(authority)) return;
-        if (e?.message === 'offline_queued') {
-          /* queued */
-        } else throw e;
-      }
-      if (!isSessionAuthorityCurrent(authority)) return;
-      await loadProject(activeProject.id);
-      if (!isSessionAuthorityCurrent(authority)) return;
-      await syncProjectSideEffects({ user, project: activeProject });
-    },
-    [user, activeProject, loadProject],
-  );
+  const acceptStage = useCallback(async (stageId: string, opts?: { qualityScore?: number | null }) => {
+    if (!user || !activeProject) return;
+    const authority = captureSessionAuthority();
+    try {
+      await api.acceptStage(user.id, activeProject.id, stageId, opts);
+    } catch (e: any) {
+      if (isSessionGenerationChanged(e) || !isSessionAuthorityCurrent(authority)) return;
+      if (e?.message !== 'offline_queued') throw e;
+    }
+    if (!isSessionAuthorityCurrent(authority)) return;
+    await loadProject(activeProject.id);
+    if (!isSessionAuthorityCurrent(authority)) return;
+    await syncProjectSideEffects({ user, project: activeProject });
+  }, [user, activeProject, loadProject]);
 
   useEffect(() => {
     if (loading || !user || activeProject || !projects.length) return;
@@ -835,8 +781,6 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken();
     loginAttemptRef.current += 1;
-
-    // Local authority is revoked synchronously before ANY storage/network await.
     invalidateSessionAuthority();
     setAccessToken(null);
     setRefreshToken(null);
@@ -869,49 +813,40 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           return { ok: false };
         })
       : Promise.resolve({ ok: false });
-
     await Promise.allSettled([localCleanup, tokenCleanup, serverRevoke]);
   }, []);
 
-  const value = useMemo(
-    () => ({
-      loading,
-      apiReachable,
-      user,
-      projects,
-      activeProject,
-      wizard,
-      setWizard,
-      demoLogin,
-      register,
-      loginWithSms,
-      refreshProjects,
-      refreshMe,
-      clearActiveProject,
-      loadProject,
-      ensureActiveProject,
-      projectResolving,
-      recoverSession,
-      createProjectFromWizard,
-      updateProjectProfile,
-      submitStage,
-      acceptStage,
-      rejectStage,
-      logout,
-      paywallVisible,
-      showPaywall: () => setPaywallVisible(true),
-      hidePaywall: () => setPaywallVisible(false),
-      readOnly: effectiveReadOnly,
-      teamRole,
-      isContractorOwner: Boolean(
-        user?.role === 'contractor'
-        && teamAccess.ownerLike
-        && activeProject
-        && activeProject.contractor_id === user.id
-      ),
-    }),
-    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, effectiveReadOnly, teamRole, teamAccess.ownerLike],
-  );
+  const value = useMemo(() => ({
+    loading,
+    apiReachable,
+    user,
+    projects,
+    activeProject,
+    wizard,
+    setWizard,
+    demoLogin,
+    register,
+    loginWithSms,
+    refreshProjects,
+    refreshMe,
+    clearActiveProject,
+    loadProject,
+    ensureActiveProject,
+    projectResolving,
+    recoverSession,
+    createProjectFromWizard,
+    updateProjectProfile,
+    submitStage,
+    acceptStage,
+    rejectStage,
+    logout,
+    paywallVisible,
+    showPaywall: () => setPaywallVisible(true),
+    hidePaywall: () => setPaywallVisible(false),
+    readOnly: effectiveReadOnly,
+    teamRole,
+    isContractorOwner: Boolean(user?.role === 'contractor' && teamAccess.ownerLike && activeProject && activeProject.contractor_id === user.id),
+  }), [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, effectiveReadOnly, teamRole, teamAccess.ownerLike]);
 
   return (
     <RenovaContext.Provider value={value}>
