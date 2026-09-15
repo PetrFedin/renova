@@ -1,14 +1,57 @@
-/** Загрузка файлов через presigned URL (S3 / local storage) */
+/** Загрузка файлов через project-scoped presigned URL (S3 / local storage) */
 import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { api } from '@/lib/api';
+import { req } from '@/lib/api/client';
 
-/** PUT blob на presigned URL, возвращает storage key для API */
-export async function uploadMediaBlob(userId: string, blob: Blob, contentType: string): Promise<string> {
-  const up = await api.getMediaUploadUrl(userId);
+export type ProjectMediaUploadIntent = {
+  key: string;
+  upload_url?: string | null;
+  public_url: string;
+  content_type?: string;
+};
+
+/**
+ * Запросить storage key, уже привязанный к объекту и write ACL.
+ * Project id фиксируется до загрузки bytes; чужой key нельзя потом прикрепить
+ * к другой project mutation.
+ */
+export async function getProjectMediaUploadIntent(
+  userId: string,
+  projectId: string,
+  contentType: string,
+  filename?: string,
+): Promise<ProjectMediaUploadIntent> {
+  return req<ProjectMediaUploadIntent>(
+    '/api/v1/media/upload-url',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: projectId,
+        content_type: contentType || 'application/octet-stream',
+        filename: filename || null,
+      }),
+    },
+    userId,
+  );
+}
+
+/** PUT blob на project-scoped presigned URL, возвращает canonical storage key. */
+export async function uploadMediaBlob(
+  userId: string,
+  projectId: string,
+  blob: Blob,
+  contentType: string,
+  filename?: string,
+): Promise<string> {
+  const normalizedType = contentType || blob.type || 'application/octet-stream';
+  const up = await getProjectMediaUploadIntent(userId, projectId, normalizedType, filename);
   if (up.upload_url) {
-    const res = await fetch(up.upload_url, { method: 'PUT', body: blob, headers: { 'Content-Type': contentType } });
+    const res = await fetch(up.upload_url, {
+      method: 'PUT',
+      body: blob,
+      headers: { 'Content-Type': normalizedType },
+    });
     if (!res.ok) throw new Error(`upload failed: ${res.status}`);
   }
   return up.key;
