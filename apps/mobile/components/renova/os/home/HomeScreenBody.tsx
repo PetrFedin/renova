@@ -18,7 +18,7 @@ import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
-import { budgetTabRoute, type OsRole } from '@/constants/osSections';
+import { budgetTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { HomeCompletionLinks } from '@/components/renova/os/home/HomeCompletionStrip';
@@ -76,7 +76,6 @@ export function HomeScreenBody({
   const showKpiHeaderLink = phase !== 'closing';
   const moneyZoneTitle = role === 'customer' ? 'Деньги' : 'Сводка';
 
-  const showMore = readOnly || moreHasContent || phase === 'complete';
   const headerIds = new Set(buildSecondaryNavigation({
     role,
     readOnly,
@@ -94,9 +93,12 @@ export function HomeScreenBody({
     surface: 'home',
     excludeRouteIds: readOnly ? [] : [...headerIds],
   });
+  // Secondary product capabilities are valuable even when there is no alert/site/risk
+  // content to summarize. Hiding the whole section made working screens effectively undiscoverable.
+  const showMore = readOnly || moreHasContent || phase === 'complete' || secondaryRoutes.length > 0;
   const moreSectionSummary = phase === 'complete'
     ? (moreSummary ? `отчёты · ${moreSummary}` : 'отчёты · экспорт')
-    : moreSummary;
+    : moreSummary || (secondaryRoutes.length ? 'инструменты проекта' : '');
 
   return (
     <>
@@ -164,7 +166,13 @@ export function HomeScreenBody({
       )}
 
       {isVisible('schedule') ? (
-        <HomeLinkRow title="Сроки" onPress={() => pushTab('calendar')} />
+        <HomeLinkRow title="График и сроки" onPress={() => pushTab('calendar')} />
+      ) : null}
+      {!readOnly && phase !== 'setup' ? (
+        <HomeLinkRow
+          title={role === 'customer' ? 'Технадзор и контроль качества' : 'Контроль качества'}
+          onPress={() => pushNav(repairTabRoute(role, 'control'))}
+        />
       ) : null}
 
       {/* Дополнительно — свёрнуто; приёмка/уведомления не дублируем (Ремонт / Входящие) */}
