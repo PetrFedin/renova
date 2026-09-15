@@ -97,7 +97,12 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         user=contractor,
         db=db,
     )
-    assert own == {"ok": True, "id": line_a_id}
+    assert own["ok"] is True
+    assert own["id"] == line_a_id
+    assert own["unit_price"] == 150
+    assert own["lifecycle_status"] == "active"
+    assert own["origin"] == "manual"
+
     await db.refresh(line_a)
     await db.refresh(project_a)
     await db.refresh(project_b)
