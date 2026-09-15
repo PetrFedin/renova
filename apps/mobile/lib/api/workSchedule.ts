@@ -1,4 +1,6 @@
 import { req, ApiError } from './client';
+import { shouldQueueReplaySafeMutation } from './failurePolicy';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type WorkScheduleStatus = 'draft' | 'submitted' | 'confirmed' | 'rejected' | 'archived';
 export type WorkScheduleItemStatus =
@@ -60,6 +62,8 @@ export type ActiveWorkScheduleResult =
   | { kind: 'absent' }
   | { kind: 'plan'; plan: WorkSchedule };
 
+export type WorkScheduleCreateInput = Partial<WorkSchedule> & { client_request_id?: string };
+
 export const workScheduleApi = {
   listWorkSchedules: (userId: string, projectId: string) =>
     req<WorkSchedule[]>(`/api/v1/projects/${projectId}/work-schedules`, {}, userId),
@@ -93,18 +97,19 @@ export const workScheduleApi = {
     }
   },
 
-  createWorkSchedule: async (userId: string, projectId: string, body: Partial<WorkSchedule> = {}) => {
-    const payload = JSON.stringify(body);
+  createWorkSchedule: async (userId: string, projectId: string, body: WorkScheduleCreateInput = {}) => {
+    const requestBody = {
+      ...body,
+      client_request_id: body.client_request_id ?? createClientRequestId('work-schedule'),
+    };
+    const payload = JSON.stringify(requestBody);
+    const path = `/api/v1/projects/${projectId}/work-schedules`;
     try {
-      return await req<WorkSchedule>(
-        `/api/v1/projects/${projectId}/work-schedules`,
-        { method: 'POST', body: payload },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      return await req<WorkSchedule>(path, { method: 'POST', body: payload }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/work-schedules`, method: 'POST', body: payload, userId });
+      await enqueue({ path, method: 'POST', body: payload, userId });
       throw new Error('offline_queued');
     }
   },
