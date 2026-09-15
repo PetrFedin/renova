@@ -1,6 +1,14 @@
 /** HTTP-клиент Renova API */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
+import { SESSION_KEYS } from '@/constants/sessionKeys';
+import { secureMultiRemove, secureSet } from '@/lib/secureTokenStore';
+import {
+  captureSessionAuthority,
+  currentSessionIdForUser,
+  isSessionAuthorityCurrent,
+  type SessionAuthoritySnapshot,
+} from '@/lib/sessionAuthority';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
 
 export class ApiError extends Error {
@@ -63,6 +71,25 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     return { message: 'Слишком много запросов. Подождите несколько секунд и повторите.', code: 'rate_limit', detail };
   }
   return { message: txt || `HTTP ${status}`, code, detail };
+}
+
+function sessionChangedError(): ApiError {
+  return new ApiError(
+    409,
+    'Сессия изменилась. Результат устаревшего запроса не применён.',
+    'session_generation_changed',
+  );
+}
+
+function requestAuthority(userId?: string): SessionAuthoritySnapshot | null {
+  if (!userId) return null;
+  const snapshot = captureSessionAuthority();
+  if (!snapshot.sessionId || snapshot.userId !== userId) throw sessionChangedError();
+  return snapshot;
+}
+
+function assertAuthorityCurrent(snapshot: SessionAuthoritySnapshot | null): void {
+  if (snapshot && !isSessionAuthorityCurrent(snapshot)) throw sessionChangedError();
 }
 
 const OFFLINE_ROOMS = 'renova_cache_rooms';
@@ -207,7 +234,7 @@ if (_apiGuard.blocked) {
 export const API_BASE = _apiGuard.apiBase;
 export const API_BASE_GUARD = _apiGuard;
 
-/** In-memory JWT (persisted via RenovaContext / AsyncStorage). */
+/** In-memory JWT. Durable writes are serialized below so stale generations cannot win. */
 let _accessToken: string | null = null;
 
 export function setAccessToken(token: string | null) {
@@ -219,7 +246,8 @@ export function getAccessToken(): string | null {
 }
 
 let _refreshToken: string | null = null;
-let _refreshInflight: Promise<boolean> | null = null;
+let _refreshInflight: { generation: number; promise: Promise<boolean> } | null = null;
+let _tokenWriteChain: Promise<void> = Promise.resolve();
 
 export function setRefreshToken(token: string | null) {
   _refreshToken = token && token.trim() ? token.trim() : null;
@@ -229,27 +257,75 @@ export function getRefreshToken(): string | null {
   return _refreshToken;
 }
 
+function withTokenWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+  const run = _tokenWriteChain.then(operation, operation);
+  _tokenWriteChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+/**
+ * The only durable token publication boundary for login/refresh.
+ * If authority changes while a stale write is executing, the new generation is
+ * queued behind it and therefore owns the final durable + in-memory state.
+ */
+export async function persistSessionTokens(
+  accessToken: string | null | undefined,
+  refreshToken: string | null | undefined,
+  authority: SessionAuthoritySnapshot = captureSessionAuthority(),
+): Promise<boolean> {
+  const access = accessToken?.trim() || null;
+  const refresh = refreshToken?.trim() || null;
+  return withTokenWriteLock(async () => {
+    if (authority.sessionId && !isSessionAuthorityCurrent(authority)) return false;
+    if (access) await secureSet(SESSION_KEYS.accessToken, access);
+    if (refresh) await secureSet(SESSION_KEYS.refreshToken, refresh);
+    if (authority.sessionId && !isSessionAuthorityCurrent(authority)) return false;
+    if (access) setAccessToken(access);
+    if (refresh) setRefreshToken(refresh);
+    return true;
+  });
+}
+
+/** Clear the current generation's persisted tokens through the same write boundary. */
+export async function clearSessionTokens(
+  authority: SessionAuthoritySnapshot = captureSessionAuthority(),
+): Promise<boolean> {
+  return withTokenWriteLock(async () => {
+    if (!isSessionAuthorityCurrent(authority)) return false;
+    await secureMultiRemove([SESSION_KEYS.accessToken, SESSION_KEYS.refreshToken]);
+    if (!isSessionAuthorityCurrent(authority)) return false;
+    setAccessToken(null);
+    setRefreshToken(null);
+    return true;
+  });
+}
+
 /**
  * Rotate refresh → new access.
- * Returns false only when the server authoritatively rejects the session.
- * Transient/network/server failures throw and preserve both tokens for retry.
+ * Returns false only when the current session is authoritatively rejected.
+ * A response from an older generation can never clear or publish newer tokens.
  */
 export async function refreshAccessToken(): Promise<boolean> {
-  if (!_refreshToken) return false;
-  if (_refreshInflight) return _refreshInflight;
-  _refreshInflight = (async () => {
+  const sourceRefresh = _refreshToken;
+  if (!sourceRefresh) return false;
+  const authority = captureSessionAuthority();
+  if (authority.sessionId && !authority.userId) throw sessionChangedError();
+  if (_refreshInflight?.generation === authority.generation) return _refreshInflight.promise;
+
+  const promise = (async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: _refreshToken }),
+        body: JSON.stringify({ refresh_token: sourceRefresh }),
       });
       const txt = await res.text();
+      if (authority.sessionId && !isSessionAuthorityCurrent(authority)) throw sessionChangedError();
       if (!res.ok) {
         const parsed = parseApiErrorBody(txt, res.status);
         if (isAuthoritativeRefreshRejection(res.status)) {
-          setAccessToken(null);
-          setRefreshToken(null);
+          const cleared = await clearSessionTokens(authority);
+          if (!cleared && authority.sessionId) throw sessionChangedError();
           return false;
         }
         throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
@@ -266,10 +342,11 @@ export async function refreshAccessToken(): Promise<boolean> {
       if (!nextAccess) {
         throw new ApiError(502, 'Сервер не вернул новый токен доступа.', 'invalid_refresh_response', data);
       }
-      setAccessToken(nextAccess);
-
-      const nextRefresh = typeof data.refresh_token === 'string' ? data.refresh_token.trim() : '';
-      if (nextRefresh) setRefreshToken(nextRefresh);
+      const nextRefresh = typeof data.refresh_token === 'string' && data.refresh_token.trim()
+        ? data.refresh_token.trim()
+        : sourceRefresh;
+      const published = await persistSessionTokens(nextAccess, nextRefresh, authority);
+      if (!published && authority.sessionId) throw sessionChangedError();
       return true;
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -278,16 +355,23 @@ export async function refreshAccessToken(): Promise<boolean> {
       }
       throw error;
     } finally {
-      _refreshInflight = null;
+      if (_refreshInflight?.promise === promise) _refreshInflight = null;
     }
   })();
-  return _refreshInflight;
+  _refreshInflight = { generation: authority.generation, promise };
+  return promise;
 }
 
 /** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
 export function authHeaders(userId?: string | null): Record<string, string> {
   const h: Record<string, string> = {};
   if (_accessToken) {
+    if (userId) {
+      const authority = captureSessionAuthority();
+      if (!authority.sessionId || currentSessionIdForUser(userId) !== authority.sessionId) {
+        throw sessionChangedError();
+      }
+    }
     h.Authorization = `Bearer ${_accessToken}`;
     return h;
   }
@@ -305,6 +389,7 @@ export type ReqOptions = RequestInit & {
 };
 
 export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
+  const authority = requestAuthority(userId);
   const { cacheFallback = true, ...fetchOpts } = opts;
   const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
@@ -320,6 +405,7 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
 
   try {
     while (attempt < 3) {
+      assertAuthorityCurrent(authority);
       attempt += 1;
       const controller = new AbortController();
       let externallyAborted = Boolean(fetchOpts.signal?.aborted);
@@ -338,12 +424,15 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
           headers,
           signal: controller.signal,
         });
+        assertAuthorityCurrent(authority);
         if (!res.ok) {
           const txt = await res.text();
+          assertAuthorityCurrent(authority);
           const parsed = parseApiErrorBody(txt, res.status);
           const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
           if (res.status === 401 && attempt < 2 && !path.includes('/auth/refresh') && getRefreshToken()) {
             const ok = await refreshAccessToken();
+            assertAuthorityCurrent(authority);
             if (ok) {
               Object.assign(headers, authHeaders(userId));
               lastError = err;
@@ -353,13 +442,17 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
           if (isGet && isRateLimitError(err) && attempt < 3) {
             lastError = err;
             await sleep(retryAfterMs(res));
+            assertAuthorityCurrent(authority);
             continue;
           }
           throw err;
         }
         const text = await res.text();
+        assertAuthorityCurrent(authority);
         const data = text ? JSON.parse(text) : undefined;
+        assertAuthorityCurrent(authority);
         if (isGet && data !== undefined) await saveDurableCache(path, userId, data);
+        assertAuthorityCurrent(authority);
         return data as T;
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
@@ -372,6 +465,7 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
         if (isGet && isRateLimitError(error) && attempt < 3) {
           lastError = error;
           await sleep(1200);
+          assertAuthorityCurrent(authority);
           continue;
         }
         throw error;
@@ -385,7 +479,9 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
       : new ApiError(429, 'Слишком много запросов. Подождите несколько секунд и повторите.', 'rate_limit');
   } catch (error) {
     if (isGet && cacheFallback && canFallbackToCache(error)) {
+      assertAuthorityCurrent(authority);
       const fallback = await readDurableCache<T>(path, userId);
+      assertAuthorityCurrent(authority);
       if (fallback !== null) return fallback;
     }
     throw error;
