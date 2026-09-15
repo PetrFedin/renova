@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 
 from app.api.v1 import estimate as api
 from app.models.entities import EstimateLine, LineType, Project, User, UserRole
+
+
+async def _scalar(db, statement):
+    return (await db.execute(statement)).scalar_one()
 
 
 @pytest.mark.asyncio
@@ -80,15 +85,24 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         )
     assert denied.value.status_code == 404
 
-    await db.refresh(line_b)
-    await db.refresh(project_a)
-    await db.refresh(project_b)
-    assert line_b.unit_price == 200
-    assert project_a.budget_planned == 200
-    assert project_b.budget_planned == 600
+    # Re-read primitives from SQL after the denied write. This proves the
+    # authoritative database stayed unchanged and avoids relying on expired ORM
+    # instances left in the identity map by rollback/commit boundaries.
+    assert await _scalar(
+        db,
+        select(EstimateLine.unit_price).where(EstimateLine.id == line_b_id),
+    ) == 200
+    assert await _scalar(
+        db,
+        select(Project.budget_planned).where(Project.id == project_a_id),
+    ) == 200
+    assert await _scalar(
+        db,
+        select(Project.budget_planned).where(Project.id == project_b_id),
+    ) == 600
 
     # The denied route may have rolled the session back and expired ORM state;
-    # refresh the principal explicitly while keeping path/object ids immutable.
+    # refresh only the principal that is intentionally passed to the next call.
     await db.refresh(contractor)
     own = await api.patch_line(
         project_a_id,
@@ -103,9 +117,17 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
     assert own["lifecycle_status"] == "active"
     assert own["origin"] == "manual"
 
-    await db.refresh(line_a)
-    await db.refresh(project_a)
-    await db.refresh(project_b)
-    assert line_a.unit_price == 150
-    assert project_a.budget_planned == 300
-    assert project_b.budget_planned == 600
+    # Verify the same facts again from fresh SQL reads after the endpoint's
+    # commit instead of observing possibly expired pre-commit ORM objects.
+    assert await _scalar(
+        db,
+        select(EstimateLine.unit_price).where(EstimateLine.id == line_a_id),
+    ) == 150
+    assert await _scalar(
+        db,
+        select(Project.budget_planned).where(Project.id == project_a_id),
+    ) == 300
+    assert await _scalar(
+        db,
+        select(Project.budget_planned).where(Project.id == project_b_id),
+    ) == 600
