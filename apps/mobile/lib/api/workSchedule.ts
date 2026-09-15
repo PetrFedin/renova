@@ -64,6 +64,18 @@ export type ActiveWorkScheduleResult =
 
 export type WorkScheduleCreateInput = Partial<WorkSchedule> & { client_request_id?: string };
 
+async function queueReplaySafeScheduleCommand<T>(
+  userId: string,
+  path: string,
+  body: string,
+  error: unknown,
+): Promise<T> {
+  if (!shouldQueueReplaySafeMutation(error)) throw error;
+  const { enqueue } = await import('@/lib/offlineQueue');
+  await enqueue({ path, method: 'POST', body, userId });
+  throw new Error('offline_queued');
+}
+
 export const workScheduleApi = {
   listWorkSchedules: (userId: string, projectId: string) =>
     req<WorkSchedule[]>(`/api/v1/projects/${projectId}/work-schedules`, {}, userId),
@@ -107,97 +119,53 @@ export const workScheduleApi = {
     try {
       return await req<WorkSchedule>(path, { method: 'POST', body: payload }, userId);
     } catch (error) {
-      if (!shouldQueueReplaySafeMutation(error)) throw error;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path, method: 'POST', body: payload, userId });
-      throw new Error('offline_queued');
+      return queueReplaySafeScheduleCommand<WorkSchedule>(userId, path, payload, error);
     }
   },
 
   submitWorkSchedule: async (userId: string, projectId: string, scheduleId: string) => {
+    const path = `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/submit`;
+    const body = '{}';
     try {
-      return await req<WorkSchedule>(
-        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/submit`,
-        { method: 'POST' },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/submit`,
-        method: 'POST',
-        body: '{}',
-        userId,
-      });
-      throw new Error('offline_queued');
+      return await req<WorkSchedule>(path, { method: 'POST' }, userId);
+    } catch (error) {
+      return queueReplaySafeScheduleCommand<WorkSchedule>(userId, path, body, error);
     }
   },
 
   confirmWorkSchedule: async (userId: string, projectId: string, scheduleId: string) => {
+    const path = `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/confirm`;
+    const body = '{}';
     try {
-      return await req<WorkSchedule>(
-        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/confirm`,
-        { method: 'POST' },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/confirm`,
-        method: 'POST',
-        body: '{}',
-        userId,
-      });
-      throw new Error('offline_queued');
+      return await req<WorkSchedule>(path, { method: 'POST' }, userId);
+    } catch (error) {
+      return queueReplaySafeScheduleCommand<WorkSchedule>(userId, path, body, error);
     }
   },
 
   rejectWorkSchedule: async (userId: string, projectId: string, scheduleId: string, reason?: string) => {
-    const payload = JSON.stringify({ reason });
+    const path = `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/reject`;
+    const body = JSON.stringify({ reason });
     try {
-      return await req<WorkSchedule>(
-        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/reject`,
-        { method: 'POST', body: payload },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/reject`,
-        method: 'POST',
-        body: payload,
-        userId,
-      });
-      throw new Error('offline_queued');
+      return await req<WorkSchedule>(path, { method: 'POST', body }, userId);
+    } catch (error) {
+      return queueReplaySafeScheduleCommand<WorkSchedule>(userId, path, body, error);
     }
   },
 
-  updateWorkScheduleItemStatus: async (
+  /**
+   * Item-status same-state writes had an authority hole and are not yet request-ledgered.
+   * Keep them fresh-only until the exact replay contract is qualified end-to-end.
+   */
+  updateWorkScheduleItemStatus: (
     userId: string,
     projectId: string,
     scheduleId: string,
     itemId: string,
     body: { status: WorkScheduleItemStatus; blocking_reason?: string; progress_percent?: number },
-  ) => {
-    try {
-      return await req<WorkScheduleItem>(
-        `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
-      throw new Error('offline_queued');
-    }
-  },
+  ) => req<WorkScheduleItem>(
+    `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,
+    { method: 'POST', body: JSON.stringify(body) },
+    userId,
+  ),
 };
