@@ -119,19 +119,22 @@ export const materialsApi = {
     }
   },
   generateMaterialNeeds: async (userId: string, projectId: string) => {
+    const serialized = JSON.stringify({
+      client_request_id: createClientRequestId('material-needs'),
+    });
     try {
-      return await req<{ count: number; created: { id: string; name: string }[] }>(
+      return await req<{ count: number; created: { id: string; name: string }[]; replayed: boolean }>(
         `/api/v1/projects/${projectId}/material-needs/from-estimate`,
-        { method: 'POST' },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/material-needs/from-estimate`,
         method: 'POST',
-        body: '{}',
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');

@@ -7,11 +7,14 @@ on:
       - "backend/app/api/v1/purchases.py"
       - "backend/app/models/material_supply.py"
       - "backend/app/services/dependency_service.py"
+      - "backend/app/services/material_need_generation_service.py"
       - "backend/app/services/material_pick_service.py"
       - "backend/app/services/material_supply_service.py"
       - "backend/app/services/purchase_create_service.py"
       - "backend/app/services/purchase_service.py"
       - "backend/alembic/versions/w20materialsupply01_material_supply_truth.py"
+      - "backend/tests/test_material_needs_replay.py"
+      - "backend/tests/test_material_needs_replay_postgres.py"
       - "backend/tests/test_material_supply_truth_integrity.py"
       - "backend/tests/test_material_supply_postgres_integrity.py"
       - "apps/mobile/components/renova/MaterialPickList.tsx"
@@ -29,11 +32,14 @@ on:
       - "backend/app/api/v1/purchases.py"
       - "backend/app/models/material_supply.py"
       - "backend/app/services/dependency_service.py"
+      - "backend/app/services/material_need_generation_service.py"
       - "backend/app/services/material_pick_service.py"
       - "backend/app/services/material_supply_service.py"
       - "backend/app/services/purchase_create_service.py"
       - "backend/app/services/purchase_service.py"
       - "backend/alembic/versions/w20materialsupply01_material_supply_truth.py"
+      - "backend/tests/test_material_needs_replay.py"
+      - "backend/tests/test_material_needs_replay_postgres.py"
       - "backend/tests/test_material_supply_truth_integrity.py"
       - "backend/tests/test_material_supply_postgres_integrity.py"
       - "apps/mobile/components/renova/MaterialPickList.tsx"
@@ -92,7 +98,7 @@ jobs:
         run: poetry run alembic upgrade head
       - name: Run material supply behavioral contracts
         working-directory: backend
-        run: poetry run pytest -q tests/test_material_supply_truth_integrity.py
-      - name: Run material supply PostgreSQL truth
+        run: poetry run pytest -q tests/test_material_supply_truth_integrity.py tests/test_material_needs_replay.py
+      - name: Run material supply PostgreSQL truth and recovery
         working-directory: backend
-        run: poetry run pytest -vv --tb=short tests/test_material_supply_postgres_integrity.py
+        run: poetry run pytest -vv --tb=short tests/test_material_supply_postgres_integrity.py tests/test_material_needs_replay_postgres.py
