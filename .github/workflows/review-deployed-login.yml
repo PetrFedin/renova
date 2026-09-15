@@ -50,7 +50,5 @@ jobs:
           cache: npm
       - name: Install workspace dependencies
         run: npm ci
-      - name: Install chromium
-        run: npx playwright install --with-deps chromium
       - name: Prove isolated customer + contractor mutations and recovery on deployed API
-        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-mutations.spec.ts --project=chromium --reporter=line
+        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-mutations.spec.ts --reporter=line
