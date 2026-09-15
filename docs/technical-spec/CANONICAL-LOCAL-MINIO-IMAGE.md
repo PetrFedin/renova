@@ -49,7 +49,7 @@ The canonical source contract in `scripts/devRuntimeContract.test.mjs` must fail
 
 After a successful pre-pull, the existing `compose up -d postgres redis minio` path remains authoritative. Runtime health, migration, API/worker readiness, repeatable seed and focused contracts are unchanged and still have to succeed.
 
-`scripts/localMinioPullRetry.test.mjs` provides deterministic negative and recovery coverage for classification, transient-then-success, bounded exhaustion and immediate non-transient failure. The test runs before the real topology starts and again through focused local contracts.
+`scripts/localMinioPullRetry.test.mjs` provides deterministic negative and recovery coverage for classification, transient-then-success, bounded exhaustion and immediate non-transient failure. The deterministic test runs through focused local contracts. Before the real topology starts, `scripts/dev-runtime.sh start` executes the same helper against the canonical immutable MinIO pull path.
 
 ## Unchanged local semantics
 
