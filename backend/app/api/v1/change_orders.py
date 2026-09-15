@@ -17,6 +17,19 @@ class ChangeOrderCreate(BaseModel):
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
+def _terminal_conflict(error: ValueError) -> HTTPException:
+    code = str(error)
+    if code == co_svc.CHANGE_ORDER_FINAL_STATE_CONFLICT:
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Дополнительные работы уже закрыты противоположным решением",
+            },
+        )
+    return HTTPException(409, detail={"code": code})
+
+
 async def _dispatch_prepared_effects(db: AsyncSession, *, source: str) -> None:
     from app.services.client_write_side_effects import clear_request_side_effect_context
     from app.services.outbox_inline_dispatch import dispatch_best_effort
@@ -116,12 +129,15 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
         raise HTTPException(403)
-    co, draft_meta = await co_svc.approve_with_sign_draft(
-        db,
-        project_id=project_id,
-        order_id=order_id,
-        created_by=user.id,
-    )
+    try:
+        co, draft_meta = await co_svc.approve_with_sign_draft(
+            db,
+            project_id=project_id,
+            order_id=order_id,
+            created_by=user.id,
+        )
+    except ValueError as error:
+        raise _terminal_conflict(error) from error
     if not co:
         raise HTTPException(404)
 
@@ -146,12 +162,15 @@ async def reject_co(project_id: str, order_id: str, user: User = Depends(get_cur
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
         raise HTTPException(403)
-    co, replayed = await co_svc.reject_with_effects(
-        db,
-        project_id=project_id,
-        order_id=order_id,
-        rejected_by=user.id,
-    )
+    try:
+        co, replayed = await co_svc.reject_with_effects(
+            db,
+            project_id=project_id,
+            order_id=order_id,
+            rejected_by=user.id,
+        )
+    except ValueError as error:
+        raise _terminal_conflict(error) from error
     if not co:
         raise HTTPException(404)
 

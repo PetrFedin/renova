@@ -8,6 +8,9 @@ from app.services.budget_service import apply_change_order_to_budget, sync_proje
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
 
 
+CHANGE_ORDER_FINAL_STATE_CONFLICT = "change_order_final_state_conflict"
+
+
 def _member_ids(project: Project) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -56,8 +59,10 @@ async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
     except Exception:
         pass
     order = (await db.execute(query)).scalar_one_or_none()
-    if not order or order.status == ChangeOrderStatus.rejected:
+    if not order:
         return None
+    if order.status == ChangeOrderStatus.rejected:
+        raise ValueError(CHANGE_ORDER_FINAL_STATE_CONFLICT)
     if order.status == ChangeOrderStatus.approved:
         await db.commit()
         return order
@@ -238,8 +243,10 @@ async def approve_with_sign_draft(
     except Exception:
         pass
     order = (await db.execute(query)).scalar_one_or_none()
-    if not order or order.status == ChangeOrderStatus.rejected:
+    if not order:
         return None, None
+    if order.status == ChangeOrderStatus.rejected:
+        raise ValueError(CHANGE_ORDER_FINAL_STATE_CONFLICT)
 
     existing_document = await _linked_document(db, order.id)
     if order.status == ChangeOrderStatus.approved and existing_document:
@@ -338,8 +345,10 @@ async def reject_with_effects(
     except Exception:
         pass
     order = (await db.execute(query)).scalar_one_or_none()
-    if not order or order.status == ChangeOrderStatus.approved:
+    if not order:
         return None, False
+    if order.status == ChangeOrderStatus.approved:
+        raise ValueError(CHANGE_ORDER_FINAL_STATE_CONFLICT)
     if order.status == ChangeOrderStatus.rejected:
         await db.commit()
         return order, True
