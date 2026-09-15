@@ -12,7 +12,7 @@ from app.models.entities import (
     User,
     UserRole,
 )
-from app.services import chat_media_acl
+from app.services import chat_media_acl, chat_message_mutation
 
 
 async def seed_chat_media(db):
@@ -150,6 +150,51 @@ async def test_project_customer_and_assigned_contractor_follow_existing_chat_aut
     assert (
         await chat_media_acl.assert_chat_media_access(db, data["contractor"], key)
     ).thread_id == thread.id
+
+
+@pytest.mark.asyncio
+async def test_new_photo_message_persists_thread_scoped_storage_key(db, monkeypatch):
+    data = await seed_chat_media(db)
+    thread = data["invited_thread"]
+    captured: dict[str, str] = {}
+
+    async def fake_save_image(image_data: str, folder: str = "images"):
+        captured["folder"] = folder
+        key = f"{folder}/stored.jpg"
+        return key, f"/api/v1/media/{key}"
+
+    async def no_inline_dispatch(*_args, **_kwargs):
+        return None
+
+    async def no_broadcast(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(chat_message_mutation.storage_svc, "save_image", fake_save_image)
+    monkeypatch.setattr(
+        chat_message_mutation.outbox_inline_dispatch,
+        "dispatch_best_effort",
+        no_inline_dispatch,
+    )
+    monkeypatch.setattr(
+        chat_message_mutation,
+        "_broadcast_after_commit",
+        no_broadcast,
+    )
+
+    message = await chat_message_mutation.send_client_message(
+        db,
+        thread=thread,
+        user_id=data["customer"].id,
+        role="customer",
+        client_request_id="chat-media-create-0001",
+        text="Scoped photo",
+        message_type="photo",
+        image_data="data:image/jpeg;base64,AA==",
+    )
+
+    assert captured["folder"] == f"chat-media/{thread.id}"
+    assert message.storage_key == f"chat-media/{thread.id}/stored.jpg"
+    assert message.image_url == f"/api/v1/media/chat-media/{thread.id}/stored.jpg"
 
 
 @pytest.mark.asyncio
