@@ -8,7 +8,7 @@
     "full_product_acceptance": "INCOMPLETE",
     "findings_are_production_incidents": false
   },
-  "expected_repo_facts": {"alembic_head":"w22projectparticipants01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
+  "expected_repo_facts": {"alembic_head":"w23estimatelifecycle01","mobile_version":"0.3.7","ios_build_number":"3","android_version_code":3},
   "backend_artifact": {"status":"UNVERIFIED_CURRENT_DIGEST","image":"ghcr.io/petrfedin/renova-api","immutable_tag_contract":"sha-${GIT_SHA}","digest":null,"git_sha":null,"evidence":null,"repo_contract":".github/workflows/backend-image.yml","latest_repo_validation":{"status":"CI_VERIFIED","note":"Exact-commit image build/health/security contracts exist; no retained current external registry digest is promoted to production evidence here."}},
   "environments": {
     "staging": {"status":"CI_ISOLATED_STAGING_PASSED_EXTERNAL_UNVERIFIED","artifact_digest":null,"evidence":null,"issue":233,"note":"Repository contract is executable, but no retained persistent external production-like staging deployment of the current exact digest is authoritative evidence."},
@@ -71,7 +71,7 @@
     {"issue":319,"priority":"P1","reason":"non-empty project purge and retention-aware related graph handling are incomplete"},
     {"issue":320,"priority":"P1","reason":"reachable native chat document export has no complete native delivery outcome"},
     {"issue":300,"priority":"P1","reason":"full declared independent-contractor product scope is incomplete"},
-    {"issue":305,"priority":"P1","reason":"correctness subset: truthful commit/refresh/recovery and role-specific interactions remain incomplete"},
+    {"issue":305,"priority":"P1 correctness subset","reason":"truthful commit/refresh/recovery and role-specific interactions remain incomplete"},
     {"issue":236,"priority":"P1","reason":"real authenticated external capacity/provider-degradation evidence is not proven"},
     {"issue":237,"priority":"P1","reason":"external security acceptance remains incomplete"},
     {"issue":238,"priority":"P1","reason":"provider/S3 authoritative reconciliation and ambiguous-write/orphan recovery remain incomplete"},
