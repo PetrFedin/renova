@@ -64,6 +64,7 @@ export type {
   ProviderReconciliationItem,
   SubscriptionRefundReview,
   SubscriptionRefundReviewIndex,
+  SubscriptionRefundResolutionAction,
 } from './adminOperations';
 export type {
   TechnicalQualityIssueInput,
