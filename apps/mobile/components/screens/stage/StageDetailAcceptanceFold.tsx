@@ -12,6 +12,7 @@ import type { StageDetail } from '@/lib/api';
 type StagePhoto = StageDetail['photos'][number];
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { api } from '@/lib/api';
+import { authHeaders } from '@/lib/api/client';
 import { addCustomCheck } from '@/lib/customChecklist';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { reportError } from '@/lib/reportError';
@@ -98,7 +99,7 @@ export function StageDetailAcceptanceFold({
           <PhotoCompare before={before} after={after} />
           {after.slice(0, 2).map((p) =>
             p.image_url ? (
-              <Image key={p.id} source={{ uri: p.image_url }} style={s.previewImg} />
+              <Image key={p.id} source={{ uri: p.image_url, headers: authHeaders(userId) }} style={s.previewImg} />
             ) : null,
           )}
           <PrimaryButton title="Полноэкранное сравнение" variant="outline" onPress={() => setSwipeOpen(true)} />
