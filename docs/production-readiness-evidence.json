@@ -71,7 +71,7 @@
     {"issue":319,"priority":"P1","reason":"non-empty project purge and retention-aware related graph handling are incomplete"},
     {"issue":320,"priority":"P1","reason":"reachable native chat document export has no complete native delivery outcome"},
     {"issue":300,"priority":"P1","reason":"full declared independent-contractor product scope is incomplete"},
-    {"issue":305,"priority":"P1 correctness subset","reason":"truthful commit/refresh/recovery and role-specific interactions remain incomplete"},
+    {"issue":305,"priority":"P1","reason":"correctness subset: truthful commit/refresh/recovery and role-specific interactions remain incomplete"},
     {"issue":236,"priority":"P1","reason":"real authenticated external capacity/provider-degradation evidence is not proven"},
     {"issue":237,"priority":"P1","reason":"external security acceptance remains incomplete"},
     {"issue":238,"priority":"P1","reason":"provider/S3 authoritative reconciliation and ambiguous-write/orphan recovery remain incomplete"},
