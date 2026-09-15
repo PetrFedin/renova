@@ -1,37 +1,43 @@
-/** P1.14: баннер когда cachedGet отдал устаревшие данные после ошибки API */
+/** P1.14/#317: баннер только по реально stale cache keys, без global last-outcome race. */
 import { useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
-import { getLastCachedGetMeta } from '@/lib/api/client';
+import {
+  getStaleCacheProvenance,
+  subscribeCacheProvenance,
+  type CachedGetMeta,
+} from '@/lib/api/client';
 
 export function StaleCacheBanner() {
-  const [stale, setStale] = useState(false);
-  const [path, setPath] = useState<string | null>(null);
+  const [staleItems, setStaleItems] = useState<CachedGetMeta[]>([]);
 
   const refresh = useCallback(() => {
-    const meta = getLastCachedGetMeta();
-    setStale(Boolean(meta?.stale));
-    setPath(meta?.stale ? meta.path : null);
+    setStaleItems(getStaleCacheProvenance());
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       refresh();
-      const id = setInterval(refresh, 4000);
-      return () => clearInterval(id);
+      return subscribeCacheProvenance(refresh);
     }, [refresh]),
   );
 
-  if (!stale) return null;
+  if (!staleItems.length) return null;
+
+  const oldest = staleItems[0];
+  const path = oldest?.path?.replace(/^\/api\/v1/, '') || null;
+  const ageMinutes = oldest ? Math.max(0, Math.floor((Date.now() - oldest.asOf) / 60_000)) : 0;
 
   return (
     <View style={s.box} accessibilityRole="alert">
       <View style={{ flex: 1 }}>
         <Text style={s.title}>Данные могут быть устаревшими</Text>
         <Text style={s.sub}>
-          Сервер временно недоступен или ограничил запросы
-          {path ? ` (${path.replace(/^\/api\/v1/, '')})` : ''}. Показан последний успешный ответ.
+          Показан последний успешный ответ
+          {path ? ` (${path})` : ''}
+          {ageMinutes > 0 ? ` · актуален на ${ageMinutes} мин. назад` : ''}.
+          {staleItems.length > 1 ? ` Устаревших источников: ${staleItems.length}.` : ''}
         </Text>
       </View>
       <Pressable style={s.btn} onPress={refresh}>
