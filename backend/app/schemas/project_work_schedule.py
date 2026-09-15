@@ -23,6 +23,7 @@ class WorkScheduleCreateIn(BaseModel):
     planned_start_date: date | None = None
     planned_finish_date: date | None = None
     items: list[WorkScheduleItemIn] = []
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class WorkScheduleUpdateIn(BaseModel):
