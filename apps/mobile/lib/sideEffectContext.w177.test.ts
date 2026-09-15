@@ -71,7 +71,7 @@ if (!/syncProjectSideEffects\(\{ user, project: linkedProject \}\)/.test(contrac
 
 const projectEmptyState = read('components/renova/ProjectEmptyState.tsx');
 if (!/const project = await api\.createProjectFromTemplate/.test(projectEmptyState)) {
-  throw new Error('template creation flow must retain its ProjectDetail response');
+  throw new Error('template creation flow must retain its committed ProjectDetail response');
 }
 if (!/loadProject\(project\.id\)/.test(projectEmptyState)) {
   throw new Error('template creation flow must load the typed project id');
@@ -183,17 +183,25 @@ if (!/archived:\s*false/.test(roomDetail) || !/archived:\s*true/.test(roomDetail
 }
 
 const stageDetail = read('components/screens/StageDetailScreen.tsx');
+const mediaUpload = read('lib/mediaUpload.ts');
 if (/compressUri\(await fetch/.test(stageDetail)) {
   throw new Error('stage photo compression must receive an image URI, never a Blob');
 }
 if (!/const compressedUri = await compressUri\(asset\.uri\)/.test(stageDetail) || !/const blob = await compressedResponse\.blob\(\)/.test(stageDetail)) {
   throw new Error('stage photo flow must compress URI before producing the upload Blob');
 }
-if (!/const uploadResponse = await fetch\(up\.upload_url/.test(stageDetail) || !/if \(!uploadResponse\.ok\)/.test(stageDetail)) {
-  throw new Error('stage photo metadata must not be registered before a successful storage PUT');
+if (
+  !/const res = await fetch\(up\.upload_url/.test(mediaUpload)
+  || !/if \(!res\.ok\) throw new Error/.test(mediaUpload)
+  || !/return up\.key/.test(mediaUpload)
+) {
+  throw new Error('project media helper must complete a successful storage PUT before returning a storage key');
 }
-if (!/await api\.addStagePhoto\([\s\S]*?up\.key, up\.public_url\)/.test(stageDetail)) {
-  throw new Error('stage photo flow must register storage key/url only after upload');
+if (
+  !/const key = await uploadMediaBlob\(user\.id, activeProject\.id, blob/.test(stageDetail)
+  || !/await api\.addStagePhoto\(user\.id, activeProject\.id, stage\.id, undefined, label, key\)/.test(stageDetail)
+) {
+  throw new Error('stage photo metadata must be registered only after the project-scoped upload helper returns its committed key');
 }
 if (/syncProjectSideEffects/.test(stageDetail)) {
   throw new Error('stage detail must reconcile committed mutations through fresh loadProject, not stale project sync');
