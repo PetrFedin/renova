@@ -1,6 +1,6 @@
 /** Only server-idempotent chat business commands may use this replay policy. */
 import { req } from './client';
-import { getFailureStatus } from './failurePolicy';
+import { shouldQueueReplaySafeMutation } from './failurePolicy';
 import { createClientRequestId } from '@/lib/clientRequestId';
 import type { ChatMessage } from './types';
 
@@ -19,12 +19,9 @@ export type ChatInvoiceInput = {
   client_request_id?: string;
 };
 
+/** Compatibility export for existing transport qualification tests. */
 export function canQueueChatCommand(error: unknown): boolean {
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return false;
-  const status = getFailureStatus(error);
-  if (status !== undefined) return status === 0 || status === 429 || status >= 500;
-  // HTTP success with a malformed body is still an ambiguous committed write.
-  return error instanceof SyntaxError || Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'SyntaxError');
+  return shouldQueueReplaySafeMutation(error);
 }
 
 export async function submitChatCommand(
@@ -37,7 +34,7 @@ export async function submitChatCommand(
   try {
     return await req<ChatMessage>(path, { method: 'POST', body }, userId);
   } catch (error) {
-    if (!canQueueChatCommand(error)) throw error;
+    if (!shouldQueueReplaySafeMutation(error)) throw error;
     const { enqueue } = await import('@/lib/offlineQueue');
     // Preserve the FIRST attempted identity and bytes; never issue a fresh intent
     // merely because transport outcome is unknown. Persistence must succeed.
