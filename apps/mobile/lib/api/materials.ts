@@ -119,10 +119,15 @@ export const materialsApi = {
     }
   },
   generateMaterialNeeds: async (userId: string, projectId: string) => {
+    // Batch identity is minted before transport; the same command is replayed
+    // after response loss while PostgreSQL serializes the project-level batch.
+    const serialized = JSON.stringify({
+      client_request_id: createClientRequestId('material-needs'),
+    });
     try {
-      return await req<{ count: number; created: { id: string; name: string }[] }>(
+      return await req<{ count: number; created: { id: string; name: string }[]; replayed?: boolean }>(
         `/api/v1/projects/${projectId}/material-needs/from-estimate`,
-        { method: 'POST' },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (e) {
@@ -131,7 +136,7 @@ export const materialsApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/material-needs/from-estimate`,
         method: 'POST',
-        body: '{}',
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
