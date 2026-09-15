@@ -14,6 +14,7 @@ export type SessionAuthoritySnapshot = Readonly<{
 let generation = 0;
 let activeUserId: string | null = null;
 let activeSessionId: string | null = null;
+let authorityWriteChain: Promise<void> = Promise.resolve();
 
 function newSessionId(): string {
   const cryptoApi = typeof globalThis !== 'undefined'
@@ -92,4 +93,28 @@ export class SessionAuthorityChangedError extends Error {
 
 export function assertSessionAuthorityCurrent(snapshot: SessionAuthoritySnapshot): void {
   if (!isSessionAuthorityCurrent(snapshot)) throw new SessionAuthorityChangedError();
+}
+
+/**
+ * Serialize session-owned durable publications (user/project/session keys).
+ * If an old write is already inside the storage driver when authority changes,
+ * the next generation's write waits behind it and therefore owns final state.
+ */
+export function withSessionAuthorityWrite<T>(
+  snapshot: SessionAuthoritySnapshot,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const run = authorityWriteChain.then(async () => {
+    assertSessionAuthorityCurrent(snapshot);
+    const value = await operation();
+    assertSessionAuthorityCurrent(snapshot);
+    return value;
+  }, async () => {
+    assertSessionAuthorityCurrent(snapshot);
+    const value = await operation();
+    assertSessionAuthorityCurrent(snapshot);
+    return value;
+  });
+  authorityWriteChain = run.then(() => undefined, () => undefined);
+  return run;
 }
