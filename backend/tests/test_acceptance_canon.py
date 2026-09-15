@@ -339,10 +339,10 @@ async def test_contractor_cannot_transition_work_order_to_done():
                 "title": "P0 WO",
                 "work_type": "other",
                 "publish": True,
+                "client_request_id": "acceptance-canon-wo-0001",
             },
         )
-        if created.status_code not in (200, 201):
-            pytest.skip(f"work-orders create unavailable: {created.status_code} {created.text}")
+        assert created.status_code in (200, 201), created.text
         wo = created.json()
         wo_id = wo["id"]
 
