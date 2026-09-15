@@ -1,4 +1,4 @@
-"""Media download / upload-url. Nested document keys + membership ACL (Wave 3)."""
+"""Media download / upload-url with project-scoped private delivery."""
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,11 @@ from app.services import storage_service as storage_svc
 from app.services.document_media_acl import (
     assert_document_media_access,
     parse_document_media_key,
+)
+from app.services.stage_photo_media_acl import (
+    assert_stage_photo_media_access,
+    assert_stage_photo_media_ticket,
+    is_stage_photo_media_key,
 )
 from sqlalchemy import select
 
@@ -30,11 +35,45 @@ async def _user_from_auth(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(401, "Пользователь не найден")
+    if getattr(user, "deleted_at", None):
+        raise HTTPException(401, "account_deleted")
     return user
+
+
+async def _authorize_private_media(
+    db: AsyncSession,
+    key: str,
+    *,
+    authorization: str | None,
+    x_user_id: str | None,
+    expires: int | None,
+    sig: str | None,
+) -> None:
+    """Authorize known private namespaces before storage lookup or redirect."""
+    if parse_document_media_key(key) is not None:
+        user = await _user_from_auth(db, authorization, x_user_id)
+        await assert_document_media_access(db, user, key, write=False)
+        return
+
+    if is_stage_photo_media_key(key):
+        # <Image> cannot reliably attach API Authorization headers. The stage
+        # read model therefore emits a short-lived signed media capability.
+        if expires is not None and sig:
+            await assert_stage_photo_media_ticket(
+                db,
+                key,
+                expires=expires,
+                signature=sig,
+            )
+            return
+        user = await _user_from_auth(db, authorization, x_user_id)
+        await assert_stage_photo_media_access(db, user, key)
 
 
 @router.post("/upload-url")
 async def upload_url(user: User = Depends(get_current_user)):
+    # The uploaded object is intentionally unreadable through /media until it
+    # is attached to a project-scoped StagePhoto or a valid signed ticket exists.
     key = f"photos/{uuid.uuid4().hex}.jpg"
     url = storage_svc.presigned_put(key)
     pub = f"{settings.public_base_url}/api/v1/media/{key}"
@@ -46,17 +85,24 @@ async def presign_media(
     file_path: str,
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    expires: int | None = None,
+    sig: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Presign redirect. documents/* — membership ACL; photos — без ACL (как раньше)."""
+    """Presign redirect after document/stage-photo project ACL."""
     key = file_path.lstrip("/")
-    if parse_document_media_key(key) is not None:
-        user = await _user_from_auth(db, authorization, x_user_id)
-        await assert_document_media_access(db, user, key, write=False)
+    await _authorize_private_media(
+        db,
+        key,
+        authorization=authorization,
+        x_user_id=x_user_id,
+        expires=expires,
+        sig=sig,
+    )
     url = storage_svc.presigned_url(key)
     if not url:
         raise HTTPException(404)
-    return RedirectResponse(url, status_code=302)
+    return RedirectResponse(url, status_code=302, headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.get("/{file_path:path}")
@@ -64,26 +110,33 @@ async def get_media(
     file_path: str,
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    expires: int | None = None,
+    sig: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Serve local/S3 media.
+    """Serve media while keeping documents and stage photos project-private.
 
-    Wave 3 ACL for documents/{project_id}/…:
-    - no auth → 401 (Bearer JWT; X-User-Id only if allow_header_user_id)
-    - no membership → 404 (privacy)
-    photos/* remain without project ACL (upload-url already requires auth).
+    documents/{project_id}/… use authenticated project membership.
+    photos/* and stages/* must be an attached StagePhoto and use either:
+    - Bearer/project membership, or
+    - a short-lived HMAC URL minted by an authorized stage read.
     """
     key = file_path.lstrip("/")
-    if parse_document_media_key(key) is not None:
-        user = await _user_from_auth(db, authorization, x_user_id)
-        await assert_document_media_access(db, user, key, write=False)
+    await _authorize_private_media(
+        db,
+        key,
+        authorization=authorization,
+        x_user_id=x_user_id,
+        expires=expires,
+        sig=sig,
+    )
 
     url = storage_svc.presigned_url(key)
     if url:
         return RedirectResponse(
             url,
             status_code=302,
-            headers={"Cache-Control": "private, max-age=3600"},
+            headers={"Cache-Control": "private, max-age=300" if is_stage_photo_media_key(key) else "private, max-age=3600"},
         )
     data = await storage_svc.read_image(key)
     if not data:
@@ -91,7 +144,9 @@ async def get_media(
     name = key.rsplit("/", 1)[-1]
     mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
     cache = (
-        "private, max-age=3600"
+        "private, max-age=300"
+        if is_stage_photo_media_key(key)
+        else "private, max-age=3600"
         if key.startswith("documents/")
         else "public, max-age=86400, s-maxage=604800"
     )
