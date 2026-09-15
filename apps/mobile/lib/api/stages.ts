@@ -2,6 +2,7 @@
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 async function activeAcceptance(userId: string, projectId: string, stageId: string): Promise<WorkAcceptance | null> {
   const items = await req<WorkAcceptance[]>(
@@ -174,13 +175,19 @@ export const stagesApi = {
   createStage: async (
     userId: string,
     projectId: string,
-    body: { name: string; planned_start?: string; planned_end?: string; room_ids?: string[]; work_type?: string },
+    body: { name: string; planned_start?: string; planned_end?: string; room_ids?: string[]; work_type?: string; client_request_id?: string },
   ) => {
-    // W112: новый этап с объекта — очередь офлайн
+    // W112/P0 #316: request identity is minted before the first transport attempt
+    // and the exact same serialized command is persisted if the response is lost.
+    const requestBody = {
+      ...body,
+      client_request_id: body.client_request_id ?? createClientRequestId('stage'),
+    };
+    const serialized = JSON.stringify(requestBody);
     try {
       return await req<Stage>(
         `/api/v1/projects/${projectId}/stages`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (error) {
@@ -189,7 +196,7 @@ export const stagesApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/stages`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');

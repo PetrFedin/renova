@@ -4,6 +4,13 @@ export type * from './api/types';
 export type { PaymentEvidence, PaymentEvidenceStatus, PaymentEvidenceUploadIntent } from './api/payments';
 export type { SelectionItem } from './api/selections';
 export type {
+  ProviderReconciliationIndex,
+  ProviderReconciliationItem,
+  SubscriptionRefundReview,
+  SubscriptionRefundReviewIndex,
+  SubscriptionRefundResolutionAction,
+} from './api/adminOperations';
+export type {
   TechnicalQualityIssueInput,
   TechnicalSupervisionAssignment,
   TechnicalSupervisionAssignmentInput,

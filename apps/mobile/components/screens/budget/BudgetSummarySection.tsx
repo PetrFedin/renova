@@ -267,8 +267,13 @@ export function BudgetSummarySection(props: Props) {
       {bwVisible('actions') && (
         <View style={s.actions}>
           <PrimaryButton title="Таблица" variant="outline" compact onPress={() => api.exportExpensesCsv(userId, projectId)} />
-          {role === 'contractor' ? (
-            <PrimaryButton title="Рыночная оценка" variant="outline" compact onPress={() => pushOsNav('/budget-planner', pathname, role)} />
+          {!readOnly ? (
+            <PrimaryButton
+              title={role === 'contractor' ? 'Рыночная оценка' : 'Планировщик бюджета'}
+              variant="outline"
+              compact
+              onPress={() => pushOsNav('/budget-planner', pathname, role)}
+            />
           ) : null}
         </View>
       )}

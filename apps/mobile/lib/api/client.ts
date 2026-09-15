@@ -1,6 +1,14 @@
 /** HTTP-клиент Renova API */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
+import { SESSION_KEYS } from '@/constants/sessionKeys';
+import { secureMultiRemove, secureSet } from '@/lib/secureTokenStore';
+import {
+  captureSessionAuthority,
+  currentSessionIdForUser,
+  isSessionAuthorityCurrent,
+  type SessionAuthoritySnapshot,
+} from '@/lib/sessionAuthority';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
 
 export class ApiError extends Error {
@@ -65,12 +73,56 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
   return { message: txt || `HTTP ${status}`, code, detail };
 }
 
+function sessionChangedError(): ApiError {
+  return new ApiError(
+    409,
+    'Сессия изменилась. Результат устаревшего запроса не применён.',
+    'session_generation_changed',
+  );
+}
+
+function requestAuthority(userId?: string): SessionAuthoritySnapshot | null {
+  if (!userId) return null;
+  const snapshot = captureSessionAuthority();
+  if (!snapshot.sessionId || snapshot.userId !== userId) throw sessionChangedError();
+  return snapshot;
+}
+
+function assertAuthorityCurrent(snapshot: SessionAuthoritySnapshot | null): void {
+  if (snapshot && !isSessionAuthorityCurrent(snapshot)) throw sessionChangedError();
+}
+
 const OFFLINE_ROOMS = 'renova_cache_rooms';
 const OFFLINE_STAGES = 'renova_cache_stages';
 const OFFLINE_GET_PREFIX = 'renova_cache_get:';
-const _cache = new Map<string, { t: number; v: unknown }>();
 const CACHE_TTL = 30_000;
 const DURABLE_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+type MemoryCacheEntry = { asOf: number; v: unknown };
+const _cache = new Map<string, MemoryCacheEntry>();
+
+export type CacheProvenanceSource = 'network' | 'memory' | 'durable';
+export type CacheFallbackReason = 'network' | 'timeout' | 'rate_limit' | 'server_error' | 'unknown';
+export type CachedGetMeta = {
+  path: string;
+  userId?: string;
+  /** Timestamp of the authoritative response that produced the value. */
+  asOf: number;
+  fromCache: boolean;
+  stale: boolean;
+  source: CacheProvenanceSource;
+  reason?: CacheFallbackReason;
+  errorStatus?: number;
+};
+
+export type CachedGetResult<T> = {
+  value: T;
+  provenance: CachedGetMeta;
+};
+
+const CACHE_PROVENANCE = Symbol.for('renova.cache.provenance');
+const _cacheProvenanceByKey = new Map<string, CachedGetMeta>();
+const _cacheProvenanceListeners = new Set<() => void>();
 
 function cacheKey(path: string, userId?: string) {
   return `${userId || ''}:${path}`;
@@ -88,6 +140,69 @@ function canFallbackToCache(error: unknown) {
   return shouldFallbackToDurableCache(error);
 }
 
+function cacheFallbackReason(error: unknown): CacheFallbackReason {
+  if (error && typeof error === 'object') {
+    const code = (error as { code?: unknown }).code;
+    const status = (error as { status?: unknown }).status;
+    if (code === 'timeout') return 'timeout';
+    if (code === 'network' || status === 0) return 'network';
+    if (code === 'rate_limit' || status === 429) return 'rate_limit';
+    if (typeof status === 'number' && status >= 500) return 'server_error';
+  }
+  return 'unknown';
+}
+
+function emitCacheProvenanceChanged() {
+  for (const listener of _cacheProvenanceListeners) {
+    try {
+      listener();
+    } catch {
+      /* UI provenance listener must not break transport. */
+    }
+  }
+}
+
+function recordCacheProvenance(key: string, meta: CachedGetMeta) {
+  _cacheProvenanceByKey.set(key, meta);
+  emitCacheProvenanceChanged();
+}
+
+function clearCacheProvenance(key: string) {
+  if (_cacheProvenanceByKey.delete(key)) emitCacheProvenanceChanged();
+}
+
+export function subscribeCacheProvenance(listener: () => void): () => void {
+  _cacheProvenanceListeners.add(listener);
+  return () => _cacheProvenanceListeners.delete(listener);
+}
+
+export function getStaleCacheProvenance(): CachedGetMeta[] {
+  return [..._cacheProvenanceByKey.values()]
+    .filter((meta) => meta.stale)
+    .sort((a, b) => a.asOf - b.asOf);
+}
+
+function attachCacheProvenance<T>(value: T, provenance: CachedGetMeta): T {
+  if (value !== null && (typeof value === 'object' || typeof value === 'function')) {
+    try {
+      Object.defineProperty(value, CACHE_PROVENANCE, {
+        value: provenance,
+        configurable: true,
+        enumerable: false,
+        writable: false,
+      });
+    } catch {
+      /* Frozen third-party values still have provenance in CachedGetResult. */
+    }
+  }
+  return value;
+}
+
+export function getCacheProvenance(value: unknown): CachedGetMeta | null {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return null;
+  return ((value as Record<PropertyKey, unknown>)[CACHE_PROVENANCE] as CachedGetMeta | undefined) ?? null;
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -100,23 +215,33 @@ function retryAfterMs(res: Response): number {
   return 1200;
 }
 
-async function saveDurableCache<T>(path: string, userId: string | undefined, value: T) {
+async function saveDurableCache<T>(
+  path: string,
+  userId: string | undefined,
+  value: T,
+  asOf = Date.now(),
+) {
   try {
-    await AsyncStorage.setItem(storageKey(path, userId), JSON.stringify({ t: Date.now(), v: value }));
+    // `t` is retained for backward compatibility with existing persisted caches.
+    await AsyncStorage.setItem(storageKey(path, userId), JSON.stringify({ asOf, t: asOf, v: value }));
   } catch {
-    /* silent-catch-ok: cache persistence is best-effort; network response stays authoritative */
+    /* cache persistence is best-effort; network response stays authoritative */
   }
 }
 
-async function readDurableCache<T>(path: string, userId?: string): Promise<T | null> {
+async function readDurableCache<T>(
+  path: string,
+  userId?: string,
+): Promise<{ value: T; asOf: number } | null> {
   try {
     const raw = await AsyncStorage.getItem(storageKey(path, userId));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { t?: number; v?: T };
-    if (!parsed.t || Date.now() - parsed.t > DURABLE_CACHE_TTL) return null;
-    return parsed.v ?? null;
+    const parsed = JSON.parse(raw) as { asOf?: number; t?: number; v?: T };
+    const asOf = parsed.asOf ?? parsed.t;
+    if (!asOf || Date.now() - asOf > DURABLE_CACHE_TTL || parsed.v === undefined || parsed.v === null) return null;
+    return { value: parsed.v, asOf };
   } catch {
-    /* silent-catch-ok: unreadable cache is a cache miss; request/error remains authoritative */
+    /* unreadable cache is a cache miss; request/error remains authoritative */
     return null;
   }
 }
@@ -128,45 +253,55 @@ const PROJECT_LIST_PATHS = [
   '/api/v1/projects?bucket=trashed',
 ] as const;
 
-/** Сброс кэша списков проектов после archive/trash/restore — иначе UI до 30с показывает старые данные. */
+/** Сброс кэша списков проектов после archive/trash/restore. */
 export async function invalidateProjectsCache(userId: string): Promise<void> {
   for (const path of PROJECT_LIST_PATHS) {
-    _cache.delete(cacheKey(path, userId));
+    const key = cacheKey(path, userId);
+    _cache.delete(key);
+    clearCacheProvenance(key);
     try {
       await AsyncStorage.removeItem(storageKey(path, userId));
     } catch {
-      /* silent-catch-ok: invalidation is best-effort; in-memory cache is already cleared */
+      /* invalidation is best-effort; in-memory cache is already cleared */
     }
   }
 }
 
-/** P1.14: last cachedGet outcome — UI can show «данные могут быть устаревшими» */
-export type CachedGetMeta = {
-  path: string;
-  fromCache: boolean;
-  stale: boolean;
-  cachedAt?: number;
-  errorStatus?: number;
-};
-let _lastCachedGetMeta: CachedGetMeta | null = null;
-export function getLastCachedGetMeta(): CachedGetMeta | null {
-  return _lastCachedGetMeta;
-}
-
-export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
-  const k = cacheKey(path, userId);
-  const hit = _cache.get(k);
-  if (hit && Date.now() - hit.t < CACHE_TTL) {
-    _lastCachedGetMeta = { path, fromCache: true, stale: false, cachedAt: hit.t };
-    return hit.v as T;
+/**
+ * Fresh-or-stale cached read with provenance bound to this exact result.
+ * Network fetch is fresh-only; stale durable data can only enter here.
+ */
+export async function cachedGetWithMeta<T>(path: string, userId?: string): Promise<CachedGetResult<T>> {
+  const key = cacheKey(path, userId);
+  const hit = _cache.get(key);
+  if (hit && Date.now() - hit.asOf < CACHE_TTL) {
+    const provenance: CachedGetMeta = {
+      path,
+      userId,
+      asOf: hit.asOf,
+      fromCache: true,
+      stale: false,
+      source: 'memory',
+    };
+    recordCacheProvenance(key, provenance);
+    return { value: attachCacheProvenance(hit.v as T, provenance), provenance };
   }
+
   try {
-    const v = await req<T>(path, {}, userId);
-    const now = Date.now();
-    _cache.set(k, { t: now, v });
-    await saveDurableCache(path, userId, v);
-    _lastCachedGetMeta = { path, fromCache: false, stale: false, cachedAt: now };
-    return v;
+    const value = await req<T>(path, { cacheFallback: false }, userId);
+    const asOf = Date.now();
+    _cache.set(key, { asOf, v: value });
+    await saveDurableCache(path, userId, value, asOf);
+    const provenance: CachedGetMeta = {
+      path,
+      userId,
+      asOf,
+      fromCache: false,
+      stale: false,
+      source: 'network',
+    };
+    recordCacheProvenance(key, provenance);
+    return { value: attachCacheProvenance(value, provenance), provenance };
   } catch (error) {
     if (canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
@@ -174,24 +309,40 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
         const status = error instanceof ApiError ? error.status : undefined;
         try {
           const { reportError } = await import('@/lib/reportError');
-          reportError('api.cachedGet.staleFallback', error, { path, status });
+          reportError('api.cachedGet.staleFallback', error, {
+            path,
+            status,
+            asOf: fallback.asOf,
+          });
         } catch {
-          /* silent-catch-ok: telemetry must never prevent a valid stale-cache fallback */
+          /* telemetry must never prevent a valid stale-cache fallback */
         }
-        _cache.set(k, { t: Date.now(), v: fallback });
-        _lastCachedGetMeta = {
+        // Preserve authoritative freshness. Never timestamp fallback as "now".
+        _cache.set(key, { asOf: fallback.asOf, v: fallback.value });
+        const provenance: CachedGetMeta = {
           path,
+          userId,
+          asOf: fallback.asOf,
           fromCache: true,
           stale: true,
-          cachedAt: Date.now(),
+          source: 'durable',
+          reason: cacheFallbackReason(error),
           errorStatus: status,
         };
-        return fallback;
+        recordCacheProvenance(key, provenance);
+        return {
+          value: attachCacheProvenance(fallback.value, provenance),
+          provenance,
+        };
       }
     }
-    _lastCachedGetMeta = { path, fromCache: false, stale: false };
+    clearCacheProvenance(key);
     throw error;
   }
+}
+
+export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
+  return (await cachedGetWithMeta<T>(path, userId)).value;
 }
 
 const _apiGuard = evaluateApiBaseGuard(
@@ -207,7 +358,7 @@ if (_apiGuard.blocked) {
 export const API_BASE = _apiGuard.apiBase;
 export const API_BASE_GUARD = _apiGuard;
 
-/** In-memory JWT (persisted via RenovaContext / AsyncStorage). */
+/** In-memory JWT. Durable writes are serialized below so stale generations cannot win. */
 let _accessToken: string | null = null;
 
 export function setAccessToken(token: string | null) {
@@ -219,7 +370,8 @@ export function getAccessToken(): string | null {
 }
 
 let _refreshToken: string | null = null;
-let _refreshInflight: Promise<boolean> | null = null;
+let _refreshInflight: { generation: number; promise: Promise<boolean> } | null = null;
+let _tokenWriteChain: Promise<void> = Promise.resolve();
 
 export function setRefreshToken(token: string | null) {
   _refreshToken = token && token.trim() ? token.trim() : null;
@@ -229,27 +381,72 @@ export function getRefreshToken(): string | null {
   return _refreshToken;
 }
 
+function withTokenWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+  const run = _tokenWriteChain.then(operation, operation);
+  _tokenWriteChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 /**
- * Rotate refresh → new access.
- * Returns false only when the server authoritatively rejects the session.
- * Transient/network/server failures throw and preserve both tokens for retry.
+ * The only durable token publication boundary for login/refresh.
+ * If authority changes while a stale write is executing, the new generation is
+ * queued behind it and therefore owns the final durable + in-memory state.
  */
+export async function persistSessionTokens(
+  accessToken: string | null | undefined,
+  refreshToken: string | null | undefined,
+  authority: SessionAuthoritySnapshot = captureSessionAuthority(),
+): Promise<boolean> {
+  const access = accessToken?.trim() || null;
+  const refresh = refreshToken?.trim() || null;
+  return withTokenWriteLock(async () => {
+    if (authority.sessionId && !isSessionAuthorityCurrent(authority)) return false;
+    if (access) await secureSet(SESSION_KEYS.accessToken, access);
+    if (refresh) await secureSet(SESSION_KEYS.refreshToken, refresh);
+    if (authority.sessionId && !isSessionAuthorityCurrent(authority)) return false;
+    if (access) setAccessToken(access);
+    if (refresh) setRefreshToken(refresh);
+    return true;
+  });
+}
+
+/** Clear the current generation's persisted tokens through the same write boundary. */
+export async function clearSessionTokens(
+  authority: SessionAuthoritySnapshot = captureSessionAuthority(),
+): Promise<boolean> {
+  return withTokenWriteLock(async () => {
+    if (!isSessionAuthorityCurrent(authority)) return false;
+    await secureMultiRemove([SESSION_KEYS.accessToken, SESSION_KEYS.refreshToken]);
+    if (!isSessionAuthorityCurrent(authority)) return false;
+    setAccessToken(null);
+    setRefreshToken(null);
+    return true;
+  });
+}
+
+/** Rotate refresh → new access under the current authority generation. */
 export async function refreshAccessToken(): Promise<boolean> {
-  if (!_refreshToken) return false;
-  if (_refreshInflight) return _refreshInflight;
-  _refreshInflight = (async () => {
+  const sourceRefresh = _refreshToken;
+  if (!sourceRefresh) return false;
+  const authority = captureSessionAuthority();
+  if (authority.sessionId && !authority.userId) throw sessionChangedError();
+  if (_refreshInflight?.generation === authority.generation) return _refreshInflight.promise;
+
+  let promise!: Promise<boolean>;
+  promise = (async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: _refreshToken }),
+        body: JSON.stringify({ refresh_token: sourceRefresh }),
       });
       const txt = await res.text();
+      if (authority.sessionId && !isSessionAuthorityCurrent(authority)) throw sessionChangedError();
       if (!res.ok) {
         const parsed = parseApiErrorBody(txt, res.status);
         if (isAuthoritativeRefreshRejection(res.status)) {
-          setAccessToken(null);
-          setRefreshToken(null);
+          const cleared = await clearSessionTokens(authority);
+          if (!cleared && authority.sessionId) throw sessionChangedError();
           return false;
         }
         throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
@@ -266,10 +463,11 @@ export async function refreshAccessToken(): Promise<boolean> {
       if (!nextAccess) {
         throw new ApiError(502, 'Сервер не вернул новый токен доступа.', 'invalid_refresh_response', data);
       }
-      setAccessToken(nextAccess);
-
-      const nextRefresh = typeof data.refresh_token === 'string' ? data.refresh_token.trim() : '';
-      if (nextRefresh) setRefreshToken(nextRefresh);
+      const nextRefresh = typeof data.refresh_token === 'string' && data.refresh_token.trim()
+        ? data.refresh_token.trim()
+        : sourceRefresh;
+      const published = await persistSessionTokens(nextAccess, nextRefresh, authority);
+      if (!published && authority.sessionId) throw sessionChangedError();
       return true;
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -278,16 +476,23 @@ export async function refreshAccessToken(): Promise<boolean> {
       }
       throw error;
     } finally {
-      _refreshInflight = null;
+      if (_refreshInflight?.promise === promise) _refreshInflight = null;
     }
   })();
-  return _refreshInflight;
+  _refreshInflight = { generation: authority.generation, promise };
+  return promise;
 }
 
 /** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
 export function authHeaders(userId?: string | null): Record<string, string> {
   const h: Record<string, string> = {};
   if (_accessToken) {
+    if (userId) {
+      const authority = captureSessionAuthority();
+      if (!authority.sessionId || currentSessionIdForUser(userId) !== authority.sessionId) {
+        throw sessionChangedError();
+      }
+    }
     h.Authorization = `Bearer ${_accessToken}`;
     return h;
   }
@@ -300,12 +505,13 @@ export function authHeaders(userId?: string | null): Record<string, string> {
 const REQUEST_TIMEOUT_MS = 20_000;
 
 export type ReqOptions = RequestInit & {
-  /** Disable durable cache when absence itself controls a write action. */
+  /** Compatibility knob. Fresh `req` never returns durable cache; use cachedGet for provenance. */
   cacheFallback?: boolean;
 };
 
 export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
-  const { cacheFallback = true, ...fetchOpts } = opts;
+  const authority = requestAuthority(userId);
+  const { cacheFallback: _ignoredCacheFallback, ...fetchOpts } = opts;
   const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
@@ -318,78 +524,80 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
   let attempt = 0;
   let lastError: unknown;
 
-  try {
-    while (attempt < 3) {
-      attempt += 1;
-      const controller = new AbortController();
-      let externallyAborted = Boolean(fetchOpts.signal?.aborted);
-      const onExternalAbort = () => {
-        externallyAborted = true;
-        controller.abort();
-      };
-      if (fetchOpts.signal && !fetchOpts.signal.aborted) {
-        fetchOpts.signal.addEventListener('abort', onExternalAbort, { once: true });
-      }
-      if (externallyAborted) controller.abort();
-      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      try {
-        const res = await fetch(`${API_BASE}${path}`, {
-          ...fetchOpts,
-          headers,
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          const txt = await res.text();
-          const parsed = parseApiErrorBody(txt, res.status);
-          const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
-          if (res.status === 401 && attempt < 2 && !path.includes('/auth/refresh') && getRefreshToken()) {
-            const ok = await refreshAccessToken();
-            if (ok) {
-              Object.assign(headers, authHeaders(userId));
-              lastError = err;
-              continue;
-            }
-          }
-          if (isGet && isRateLimitError(err) && attempt < 3) {
+  while (attempt < 3) {
+    assertAuthorityCurrent(authority);
+    attempt += 1;
+    const controller = new AbortController();
+    let externallyAborted = Boolean(fetchOpts.signal?.aborted);
+    const onExternalAbort = () => {
+      externallyAborted = true;
+      controller.abort();
+    };
+    if (fetchOpts.signal && !fetchOpts.signal.aborted) {
+      fetchOpts.signal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+    if (externallyAborted) controller.abort();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...fetchOpts,
+        headers,
+        signal: controller.signal,
+      });
+      assertAuthorityCurrent(authority);
+      if (!res.ok) {
+        const txt = await res.text();
+        assertAuthorityCurrent(authority);
+        const parsed = parseApiErrorBody(txt, res.status);
+        const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
+        if (res.status === 401 && attempt < 2 && !path.includes('/auth/refresh') && getRefreshToken()) {
+          const ok = await refreshAccessToken();
+          assertAuthorityCurrent(authority);
+          if (ok) {
+            Object.assign(headers, authHeaders(userId));
             lastError = err;
-            await sleep(retryAfterMs(res));
             continue;
           }
-          throw err;
         }
-        const text = await res.text();
-        const data = text ? JSON.parse(text) : undefined;
-        if (isGet && data !== undefined) await saveDurableCache(path, userId, data);
-        return data as T;
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          if (externallyAborted || fetchOpts.signal?.aborted) throw error;
-          throw new ApiError(0, 'Сервер не ответил вовремя. Попробуйте ещё раз.', 'timeout');
-        }
-        if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
-          throw new ApiError(0, 'Сервер временно недоступен. Проверьте соединение и повторите.', 'network');
-        }
-        if (isGet && isRateLimitError(error) && attempt < 3) {
-          lastError = error;
-          await sleep(1200);
+        if (isGet && isRateLimitError(err) && attempt < 3) {
+          lastError = err;
+          await sleep(retryAfterMs(res));
+          assertAuthorityCurrent(authority);
           continue;
         }
-        throw error;
-      } finally {
-        clearTimeout(timeoutId);
-        fetchOpts.signal?.removeEventListener('abort', onExternalAbort);
+        throw err;
       }
+      const text = await res.text();
+      assertAuthorityCurrent(authority);
+      const data = text ? JSON.parse(text) : undefined;
+      assertAuthorityCurrent(authority);
+      if (isGet && data !== undefined) await saveDurableCache(path, userId, data);
+      assertAuthorityCurrent(authority);
+      return data as T;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        if (externallyAborted || fetchOpts.signal?.aborted) throw error;
+        throw new ApiError(0, 'Сервер не ответил вовремя. Попробуйте ещё раз.', 'timeout');
+      }
+      if (error instanceof TypeError || (error instanceof Error && /fetch|network|failed/i.test(error.message))) {
+        throw new ApiError(0, 'Сервер временно недоступен. Проверьте соединение и повторите.', 'network');
+      }
+      if (isGet && isRateLimitError(error) && attempt < 3) {
+        lastError = error;
+        await sleep(1200);
+        assertAuthorityCurrent(authority);
+        continue;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+      fetchOpts.signal?.removeEventListener('abort', onExternalAbort);
     }
-    throw lastError instanceof Error
-      ? lastError
-      : new ApiError(429, 'Слишком много запросов. Подождите несколько секунд и повторите.', 'rate_limit');
-  } catch (error) {
-    if (isGet && cacheFallback && canFallbackToCache(error)) {
-      const fallback = await readDurableCache<T>(path, userId);
-      if (fallback !== null) return fallback;
-    }
-    throw error;
   }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new ApiError(429, 'Слишком много запросов. Подождите несколько секунд и повторите.', 'rate_limit');
 }
 
 export { OFFLINE_ROOMS, OFFLINE_STAGES, OFFLINE_GET_PREFIX };

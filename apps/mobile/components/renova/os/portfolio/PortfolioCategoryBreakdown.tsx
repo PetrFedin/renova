@@ -10,6 +10,10 @@ type Props = {
   unavailableProjectCount?: number;
 };
 
+function valueText(label: 'план' | 'факт', value: number | null): string {
+  return value == null ? `${label} — нет детализации` : `${label} ${formatRub(value)}`;
+}
+
 export function PortfolioCategoryBreakdown({
   rows,
   loading,
@@ -34,7 +38,7 @@ export function PortfolioCategoryBreakdown({
       <View style={s.wrap}>
         <Text style={s.head}>Статьи расходов</Text>
         <Text style={s.warning}>
-          Детализация временно недоступна для выбранных объектов. Итоги ниже не подменяются нулевыми значениями — повторите позже.
+          Детализация временно недоступна для выбранных объектов. Итоги не подменяются нулевыми значениями — повторите позже.
         </Text>
       </View>
     );
@@ -44,7 +48,7 @@ export function PortfolioCategoryBreakdown({
     return (
       <View style={s.wrap}>
         <Text style={s.head}>Статьи расходов</Text>
-        <Text style={s.empty}>Нет детализации по смете — показаны только итоги по бюджету объектов.</Text>
+        <Text style={s.empty}>Нет подтверждённой детализации по выбранным объектам.</Text>
       </View>
     );
   }
@@ -52,10 +56,12 @@ export function PortfolioCategoryBreakdown({
   return (
     <View style={s.wrap}>
       <Text style={s.head}>Статьи расходов</Text>
-      <Text style={s.sub}>Сумма по выбранным объектам — где был перерасход относительно плана</Text>
+      <Text style={s.sub}>
+        План — из сметы. Факт — только из подтверждённого реестра расходов. Если сопоставимого факта нет, RENOVA показывает «нет детализации», а не нулевое отклонение.
+      </Text>
       {unavailableProjectCount > 0 ? (
         <Text style={s.warning}>
-          Частичные данные: детализация недоступна для {unavailableProjectCount} из {projectCount} объект(ов). Сумма ниже не является итогом всего выбранного портфеля.
+          Частичные данные: план и реестр расходов недоступны для {unavailableProjectCount} из {projectCount} объект(ов). Сумма ниже не является итогом всего выбранного портфеля.
         </Text>
       ) : null}
 
@@ -63,18 +69,15 @@ export function PortfolioCategoryBreakdown({
         <View key={row.key} style={[s.line, row.key === 'total' && s.lineTotal]}>
           <View style={s.lineTop}>
             <Text style={[s.label, row.key === 'total' && s.labelTotal]}>{row.label}</Text>
-            {row.hasOverrun && row.key !== 'total' ? (
+            {row.hasOverrun && row.variancePct != null && row.key !== 'total' ? (
               <Text style={s.badge}>+{row.variancePct}%</Text>
             ) : null}
           </View>
           <View style={s.lineBottom}>
             <Text style={s.values}>
-              план {formatRub(row.planned)}
-              {row.spent !== row.planned || row.key === 'materials' || row.key === 'total'
-                ? ` · факт ${formatRub(row.spent)}`
-                : ''}
+              {valueText('план', row.planned)} · {valueText('факт', row.spent)}
             </Text>
-            {row.variance !== 0 && (row.key === 'materials' || row.key === 'total') ? (
+            {row.variance != null && row.variance !== 0 ? (
               <Text style={[s.delta, row.variance > 0 ? s.deltaBad : s.deltaGood]}>
                 {row.variance > 0 ? '+' : ''}{formatRub(row.variance)}
               </Text>

@@ -1,4 +1,6 @@
 """P2.3: plan-pinned punch list."""
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 
 from app.models.entities import FloorPlan, Project, ProjectIssue, User, UserRole
@@ -40,7 +42,11 @@ async def test_create_plan_pinned_issue(db):
     assert issue.photo_key == "issues/photo1.jpg"
 
     d = iss.issue_dict(issue)
-    assert d["photo_url"] == "/api/v1/media/issues/photo1.jpg"
+    parsed = urlparse(d["photo_url"])
+    assert parsed.path.endswith("/api/v1/media/issues/photo1.jpg")
+    query = parse_qs(parsed.query)
+    assert query.get("expires")
+    assert query.get("sig")
     assert d["floor_plan_id"] == plan.id
 
 

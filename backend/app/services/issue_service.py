@@ -39,6 +39,8 @@ def role_value(role: UserRole | str) -> str:
 
 
 def issue_dict(issue: ProjectIssue) -> dict:
+    from app.services.stage_photo_media_acl import project_photo_media_url
+
     return {
         "id": issue.id,
         "project_id": issue.project_id,
@@ -56,7 +58,7 @@ def issue_dict(issue: ProjectIssue) -> dict:
         "x_pct": issue.x_pct,
         "y_pct": issue.y_pct,
         "photo_key": issue.photo_key,
-        "photo_url": f"/api/v1/media/{issue.photo_key}" if issue.photo_key else None,
+        "photo_url": project_photo_media_url(issue.photo_key),
     }
 
 

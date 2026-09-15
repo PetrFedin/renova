@@ -1,7 +1,15 @@
 /** API: receipts */
 import { req, ApiError } from './client';
+import { shouldQueueReplaySafeMutation } from './failurePolicy';
 import type { BudgetBreakdown, ReceiptItem } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
+
+async function queueReplaySafeReceipt(path: string, body: string, userId: string, error: unknown): Promise<never> {
+  if (!shouldQueueReplaySafeMutation(error)) throw error;
+  const { enqueue } = await import('@/lib/offlineQueue');
+  await enqueue({ path, method: 'POST', body, userId });
+  throw new Error('offline_queued');
+}
 
 export const receiptsApi = {
   addManualReceipt: async (
@@ -24,14 +32,12 @@ export const receiptsApi = {
       payment_id,
       client_request_id: client_request_id ?? createClientRequestId('receipt-manual'),
     };
+    const path = `/api/v1/projects/${projectId}/receipts/manual`;
     const serialized = JSON.stringify(body);
     try {
-      return await req<ReceiptItem>(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: serialized }, userId);
+      return await req<ReceiptItem>(path, { method: 'POST', body: serialized }, userId);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/receipts/manual`, method: 'POST', body: serialized, userId });
-      throw new Error('offline_queued');
+      return queueReplaySafeReceipt(path, serialized, userId, error);
     }
   },
   scanReceipt: async (
@@ -52,14 +58,12 @@ export const receiptsApi = {
       payment_id,
       client_request_id: client_request_id ?? createClientRequestId('receipt-scan'),
     };
+    const path = `/api/v1/projects/${projectId}/receipts/scan`;
     const serialized = JSON.stringify(body);
     try {
-      return await req(`/api/v1/projects/${projectId}/receipts/scan`, { method: 'POST', body: serialized }, userId);
+      return await req(path, { method: 'POST', body: serialized }, userId);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/receipts/scan`, method: 'POST', body: serialized, userId });
-      throw new Error('offline_queued');
+      return queueReplaySafeReceipt(path, serialized, userId, error);
     }
   },
   patchReceipt: async (

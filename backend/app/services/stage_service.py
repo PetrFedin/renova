@@ -179,6 +179,8 @@ async def update_stage_dates(db: AsyncSession, stage_id: str, start: date | None
 
 def stage_to_dict(stage: Stage) -> dict:
     from app.services import workflow_service as wf
+    from app.services.stage_photo_media_acl import stage_photo_media_url
+
     cl = wf.stage_checklist(stage)
     return {
         "id": stage.id,
@@ -208,7 +210,13 @@ def stage_to_dict(stage: Stage) -> dict:
             for c in sorted(getattr(stage, "comments", None) or [], key=lambda x: x.created_at)
         ],
         "photos": [
-            {"id": p.id, "caption": p.caption, "created_at": p.created_at.isoformat(), "image_url": p.image_url, "has_image": bool(p.image_url or p.image_data)}
+            {
+                "id": p.id,
+                "caption": p.caption,
+                "created_at": p.created_at.isoformat(),
+                "image_url": stage_photo_media_url(p),
+                "has_image": bool(p.storage_key or p.image_url or p.image_data),
+            }
             for p in sorted(getattr(stage, "photos", None) or [], key=lambda x: x.created_at)
         ],
     }

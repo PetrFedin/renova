@@ -9,12 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
+from app.models.entities import Project, Room, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
+from app.services import outbox_service as outbox
+from app.services.client_write_idempotency import (
+    IdempotencyConflict,
+    commit_client_write,
+    replay_entity_id,
+)
 
 router = APIRouter(prefix="/projects", tags=["selections"])
 
 CATEGORIES = ("tile", "plumbing", "lighting", "doors", "kitchen", "paint", "other")
+SELECTION_CREATE_SCOPE = "selection.create"
 
 
 class SelectionIn(BaseModel):
@@ -27,6 +34,7 @@ class SelectionIn(BaseModel):
     shop_url: str | None = None
     shop_name: str | None = None
     notes: str | None = None
+    client_request_id: str = Field(min_length=8, max_length=80)
 
 
 class SelectionRejectIn(BaseModel):
@@ -52,6 +60,16 @@ def _out(row: SelectionItem) -> dict:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "over_allowance": bool(row.allowance and row.price > row.allowance),
     }
+
+
+def _idempotency_error() -> HTTPException:
+    return HTTPException(
+        409,
+        detail={
+            "code": "idempotency_conflict",
+            "message": "Этот запрос уже использован с другими данными",
+        },
+    )
 
 
 @router.get("/{project_id}/selections/pending-count")
@@ -100,11 +118,52 @@ async def create_selection(
     await require_project(db, project_id, user, write=True)
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
+    clean_title = body.title.strip()
+    if not clean_title:
+        raise HTTPException(422, "empty_title")
+    if body.room_id:
+        room = await db.scalar(
+            select(Room).where(Room.id == body.room_id, Room.project_id == project_id)
+        )
+        if not room:
+            raise HTTPException(404, detail={"code": "room_not_found"})
+
+    payload = {
+        "title": clean_title,
+        "room_id": body.room_id,
+        "category": body.category,
+        "sku": body.sku,
+        "allowance": body.allowance,
+        "price": body.price,
+        "shop_url": body.shop_url,
+        "shop_name": body.shop_name,
+        "notes": body.notes,
+    }
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=SELECTION_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as error:
+        raise _idempotency_error() from error
+
+    if replay_id:
+        replayed = await db.get(SelectionItem, replay_id)
+        if not replayed or replayed.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        response = _out(replayed)
+        response["idempotent_replay"] = True
+        return response
+
     row = SelectionItem(
         project_id=project_id,
         room_id=body.room_id,
         category=body.category,
-        title=body.title.strip(),
+        title=clean_title,
         sku=body.sku,
         allowance=body.allowance,
         price=body.price,
@@ -115,19 +174,52 @@ async def create_selection(
         status=SelectionStatus.draft,
     )
     db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="selection",
-        title=f"Подбор: {row.title}",
-        body=row.category,
-        room_id=row.room_id,
-        link_path="/(customer)/(tabs)/repair?tab=selections",
-    )
-    return _out(row)
+    try:
+        await db.flush()
+        await outbox.enqueue(
+            db,
+            aggregate_type="selection",
+            aggregate_id=row.id,
+            event_type=outbox.ACTIVITY_EVENT,
+            payload={
+                "project_id": project_id,
+                "user_id": user.id,
+                "kind": "selection",
+                "title": f"Подбор: {row.title}",
+                "body": row.category,
+                "room_id": row.room_id,
+                "link_path": "/(customer)/(tabs)/repair?tab=selections",
+            },
+        )
+        created, entity_id = await commit_client_write(
+            db,
+            scope=SELECTION_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+            entity_id=row.id,
+        )
+    except IdempotencyConflict as error:
+        await db.rollback()
+        raise _idempotency_error() from error
+    except BaseException:
+        await db.rollback()
+        raise
+
+    if not created:
+        row = await db.get(SelectionItem, entity_id)
+        if not row or row.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+    else:
+        await db.refresh(row)
+        from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+        await dispatch_best_effort(db, source="selection.create", limit=10)
+
+    response = _out(row)
+    response["idempotent_replay"] = not created
+    return response
 
 
 @router.post("/{project_id}/selections/{selection_id}/propose")

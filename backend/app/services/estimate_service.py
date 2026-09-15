@@ -113,7 +113,8 @@ async def add_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLin
 def material_stats(lines: list[EstimateLine]) -> dict:
     materials = [l for l in lines if l.line_type == LineType.material]
     planned = sum(l.quantity_planned * l.unit_price for l in materials)
-    actual = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
+    # quantity_actual=0 is a valid observed fact and must never be replaced by plan.
+    actual = sum(l.quantity_actual * l.unit_price for l in materials)
     overrun = ((actual - planned) / planned * 100) if planned else 0
     return {"planned": round(planned, 2), "actual": round(actual, 2), "overrun_percent": round(overrun, 1)}
 

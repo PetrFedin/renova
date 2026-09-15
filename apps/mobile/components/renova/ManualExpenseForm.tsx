@@ -28,7 +28,8 @@ export function ManualExpenseForm({
   userId: string;
   project: ProjectDetail;
   readOnly?: boolean;
-  onSaved?: (receipt: ReceiptItem) => void | Promise<void>;
+  /** Caller may return a reconciliation outcome; the form only awaits completion. */
+  onSaved?: (receipt: ReceiptItem) => void | Promise<unknown>;
   initialRoomId?: string | null;
   initialStageId?: string | null;
   initialDescription?: string;

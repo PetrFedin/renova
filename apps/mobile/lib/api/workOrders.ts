@@ -7,6 +7,25 @@ export type WorkOrderPatchBody = {
   [key: string]: unknown;
 };
 
+export function newWorkOrderClientRequestId(): string {
+  const now = Date.now().toString(36);
+  const randomA = Math.random().toString(36).slice(2, 12);
+  const randomB = Math.random().toString(36).slice(2, 12);
+  return `work-order-${now}-${randomA}-${randomB}`;
+}
+
+export function withWorkOrderClientRequestId(
+  body: Record<string, unknown>,
+  fallbackId = newWorkOrderClientRequestId(),
+): Record<string, unknown> {
+  const existing = body.client_request_id;
+  return {
+    ...body,
+    client_request_id:
+      typeof existing === 'string' && existing.length >= 8 ? existing : fallbackId,
+  };
+}
+
 export const workOrdersApi = {
   listWorkOrders: (userId: string, projectId: string) =>
     req<WorkOrder[]>(`/api/v1/projects/${projectId}/work-orders`, {}, userId),
@@ -21,11 +40,15 @@ export const workOrdersApi = {
   ),
   getWorkOrder: (userId: string, projectId: string, workOrderId: string) =>
     req<WorkOrder>(`/api/v1/projects/${projectId}/work-orders/${workOrderId}`, {}, userId),
-  createWorkOrder: async (userId: string, projectId: string, body: object) => {
+  createWorkOrder: async (userId: string, projectId: string, body: Record<string, unknown>) => {
+    // Identity is generated before the first transport attempt. The exact serialized
+    // command is reused if the response is lost and the operation must enter queue.
+    const command = withWorkOrderClientRequestId(body);
+    const serialized = JSON.stringify(command);
     try {
       return await req<WorkOrder>(
         `/api/v1/projects/${projectId}/work-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (e) {
@@ -34,7 +57,7 @@ export const workOrdersApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-orders`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');

@@ -37,7 +37,21 @@ async def assert_item_transition(
     from app.services.project_work_schedule_service import can_manage_schedule, is_project_customer
 
     if from_status == to_status:
+        # Same-status replay is not an authorization bypass: the endpoint may also
+        # carry progress/blocking fields. Preserve the authority that could have
+        # produced this state in the first place.
+        if to_status == WorkScheduleItemStatus.accepted:
+            if not is_project_customer(user, project):
+                raise HTTPException(403, detail="only_customer_can_apply_transition")
+            return
+        if to_status == WorkScheduleItemStatus.blocked:
+            if is_project_customer(user, project) or await can_manage_schedule(db, user, project):
+                return
+            raise HTTPException(403, detail="schedule_item_same_status_forbidden")
+        if not await can_manage_schedule(db, user, project):
+            raise HTTPException(403, detail="only_contractor_or_foreman_can_apply_transition")
         return
+
     if from_status in (WorkScheduleItemStatus.accepted, WorkScheduleItemStatus.cancelled):
         raise HTTPException(409, detail="schedule_item_terminal_status")
     need = _TRANSITIONS.get((from_status, to_status))

@@ -1,4 +1,4 @@
-"""Refresh token rotation smoke."""
+"""Refresh token rotation and logout revocation smoke."""
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -28,3 +28,29 @@ async def test_demo_login_returns_refresh_and_rotates(monkeypatch):
         # old refresh revoked
         r3 = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
         assert r3.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_refresh_session_and_is_idempotent(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "allow_demo_seed", True)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        login = await client.post("/api/v1/auth/demo", json={"role": "customer"})
+        if login.status_code == 404:
+            pytest.skip("demo disabled / no seed")
+        assert login.status_code == 200, login.text
+        refresh = login.json().get("refresh_token")
+        if not refresh:
+            pytest.skip("refresh not issued")
+
+        logout = await client.post("/api/v1/auth/logout", json={"refresh_token": refresh})
+        assert logout.status_code == 200, logout.text
+        assert logout.json() == {"ok": True}
+
+        rejected = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
+        assert rejected.status_code == 401
+
+        replay_logout = await client.post("/api/v1/auth/logout", json={"refresh_token": refresh})
+        assert replay_logout.status_code == 200, replay_logout.text
+        assert replay_logout.json() == {"ok": True}

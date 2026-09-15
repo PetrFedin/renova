@@ -19,6 +19,7 @@ import { floorApi } from './floor';
 import { marketApi } from './market';
 import { designApi } from './design';
 import { adminApi } from './admin';
+import { adminOperationsApi } from './adminOperations';
 import { scratchpadApi } from './scratchpad';
 import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
@@ -46,6 +47,7 @@ export const api = {
   ...marketApi,
   ...designApi,
   ...adminApi,
+  ...adminOperationsApi,
   ...scratchpadApi,
   ...workScheduleApi,
   ...miscApi,
@@ -57,6 +59,13 @@ export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, AP
 export * from './types';
 export type { PaymentEvidence, PaymentEvidenceStatus, PaymentEvidenceUploadIntent } from './payments';
 export type { SelectionItem } from './selections';
+export type {
+  ProviderReconciliationIndex,
+  ProviderReconciliationItem,
+  SubscriptionRefundReview,
+  SubscriptionRefundReviewIndex,
+  SubscriptionRefundResolutionAction,
+} from './adminOperations';
 export type {
   TechnicalQualityIssueInput,
   TechnicalSupervisionAssignment,

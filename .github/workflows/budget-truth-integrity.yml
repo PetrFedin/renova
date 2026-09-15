@@ -1,0 +1,59 @@
+name: Budget truth integrity
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/lib/domain/aggregateBudgetByPeriod.ts"
+      - "apps/mobile/lib/domain/aggregateBudgetByPeriod.test.ts"
+      - "apps/mobile/lib/domain/aggregatePortfolioBudget.ts"
+      - "apps/mobile/lib/domain/aggregatePortfolioBudget.test.ts"
+      - "apps/mobile/components/screens/budget/BudgetPeriodDetailSection.tsx"
+      - "apps/mobile/components/renova/os/PortfolioProjectsView.tsx"
+      - "apps/mobile/components/renova/os/portfolio/PortfolioCategoryBreakdown.tsx"
+      - ".github/workflows/budget-truth-integrity.yml"
+  push:
+    branches:
+      - main
+      - fix/render-review-demo-entry
+    paths:
+      - "apps/mobile/lib/domain/aggregateBudgetByPeriod.ts"
+      - "apps/mobile/lib/domain/aggregateBudgetByPeriod.test.ts"
+      - "apps/mobile/lib/domain/aggregatePortfolioBudget.ts"
+      - "apps/mobile/lib/domain/aggregatePortfolioBudget.test.ts"
+      - "apps/mobile/components/screens/budget/BudgetPeriodDetailSection.tsx"
+      - "apps/mobile/components/renova/os/PortfolioProjectsView.tsx"
+      - "apps/mobile/components/renova/os/portfolio/PortfolioCategoryBreakdown.tsx"
+      - ".github/workflows/budget-truth-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: budget-truth-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  budget-truth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Prove conservative period allocation
+        run: |
+          set -euo pipefail
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/domain/aggregateBudgetByPeriod.test.ts
+      - name: Prove portfolio fact semantics
+        run: |
+          set -euo pipefail
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/domain/aggregatePortfolioBudget.test.ts
+      - name: Run fail-closed mobile TypeScript integrity
+        run: npm run typecheck:mobile

@@ -9,8 +9,24 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import work_order_service as wo_svc
+from app.services.client_write_idempotency import (
+    IdempotencyConflict,
+    commit_client_write,
+    replay_entity_id,
+)
 
 router = APIRouter(prefix="/projects", tags=["work-orders"])
+WORK_ORDER_CREATE_SCOPE = "work_order.create"
+
+
+def _idempotency_http_error() -> HTTPException:
+    return HTTPException(
+        409,
+        detail={
+            "code": "idempotency_conflict",
+            "message": "Этот запрос уже использован с другими данными",
+        },
+    )
 
 
 class WorkOrderCreate(BaseModel):
@@ -23,6 +39,8 @@ class WorkOrderCreate(BaseModel):
     budget_planned: float = 0
     notes: str | None = None
     publish: bool = False
+    # Required because mobile POST can be persisted and replayed after response loss.
+    client_request_id: str = Field(min_length=8, max_length=80)
 
 
 class WorkOrderPatch(BaseModel):
@@ -57,8 +75,33 @@ async def list_work_orders(project_id: str, user: User = Depends(get_current_use
 @router.post("/{project_id}/work-orders")
 async def create_work_order(project_id: str, body: WorkOrderCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
+    payload = body.model_dump(exclude={"client_request_id"})
+
     try:
-        work_order = await wo_svc.create_work_order(
+        replay_id = await replay_entity_id(
+            db,
+            scope=WORK_ORDER_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as error:
+        raise _idempotency_http_error() from error
+
+    if replay_id:
+        replayed = await wo_svc.get_work_order(db, replay_id)
+        if not replayed or replayed.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        result = wo_svc.wo_dict(replayed)
+        result["idempotent_replay"] = True
+        return result
+
+    try:
+        # prepare_work_order is the PostgreSQL-qualified non-committing primitive
+        # imported from the bounded #322 repair. The request ledger, WorkOrder,
+        # bound chat thread and outbox row are committed together below.
+        work_order = await wo_svc.prepare_work_order(
             db,
             project_id=project_id,
             user_id=user.id,
@@ -72,9 +115,33 @@ async def create_work_order(project_id: str, body: WorkOrderCreate, user: User =
             notes=body.notes,
             publish=body.publish,
         )
+        created, entity_id = await commit_client_write(
+            db,
+            scope=WORK_ORDER_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+            entity_id=work_order.id,
+        )
+    except IdempotencyConflict as error:
+        raise _idempotency_http_error() from error
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
-    return wo_svc.wo_dict(work_order)
+
+    if not created:
+        work_order = await wo_svc.get_work_order(db, entity_id)
+        if not work_order or work_order.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+    else:
+        await db.refresh(work_order)
+        # Commit already happened. Inline delivery is best-effort only; durable
+        # outbox remains the source of truth if this process dies here.
+        await wo_svc._dispatch_committed_effects(db, source="work_order.create")
+
+    result = wo_svc.wo_dict(work_order)
+    result["idempotent_replay"] = not created
+    return result
 
 
 @router.get("/{project_id}/work-orders/{work_order_id}")

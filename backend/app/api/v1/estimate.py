@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import EstimateLine, User, UserRole
+from app.models.entities import BudgetLine, EstimateLine, User, UserRole
 from app.models.entities import Project
 from app.services.estimate_service import prepare_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
 from app.services.client_write_idempotency import IdempotencyConflict, commit_client_write, replay_entity_id
@@ -47,6 +48,20 @@ async def _require_estimate_editable(db, project_id: str):
         raise HTTPException(409, detail={"code": "estimate_locked", "message": "Смета зафиксирована — правки через изменение сметы (CO)"})
 
 
+async def _project_estimate_line(db: AsyncSession, project_id: str, line_id: str) -> EstimateLine:
+    line = await db.scalar(
+        select(EstimateLine).where(
+            EstimateLine.id == line_id,
+            EstimateLine.project_id == project_id,
+        )
+    )
+    if not line:
+        # Deliberately return 404 for both missing and cross-project IDs so the
+        # endpoint does not disclose another project's estimate-line existence.
+        raise HTTPException(404, "Строка не найдена")
+    return line
+
+
 @router.patch("/lines/{line_id}")
 async def patch_line(
     project_id: str,
@@ -59,10 +74,44 @@ async def patch_line(
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
+    await _project_estimate_line(db, project_id, line_id)
     line = await update_line(db, line_id, **body.model_dump(exclude_none=True))
     if not line:
         raise HTTPException(404, "Строка не найдена")
     return {"ok": True, "id": line.id}
+
+
+@router.delete("/lines/{line_id}")
+async def delete_line(
+    project_id: str,
+    line_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an editable draft estimate line and repair its budget projections."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, "Только исполнитель редактирует смету")
+    await require_project(db, project_id, user, write=True)
+    await _require_estimate_editable(db, project_id)
+    line = await _project_estimate_line(db, project_id, line_id)
+
+    # BudgetLine has a FK to estimate_lines without ON DELETE CASCADE. Remove
+    # the projection first, then rebuild current projections and project total.
+    await db.execute(
+        delete(BudgetLine).where(
+            BudgetLine.project_id == project_id,
+            BudgetLine.estimate_line_id == line_id,
+        )
+    )
+    await db.delete(line)
+    await db.flush()
+
+    from app.services.budget_service import sync_budget_lines_from_estimate, sync_project_budget_planned
+
+    await sync_budget_lines_from_estimate(db, project_id)
+    budget_planned = await sync_project_budget_planned(db, project_id)
+    await db.commit()
+    return {"ok": True, "id": line_id, "budget_planned": budget_planned}
 
 
 @router.post("/lines")

@@ -19,7 +19,8 @@ type Props = {
   orders: ChangeOrder[];
   canWrite: boolean;
   onOrdersChanged: (orders: ChangeOrder[]) => void;
-  onProjectReload: () => Promise<void>;
+  /** Reconciliation may return a typed project-load outcome; this layer only awaits it. */
+  onProjectReload: () => Promise<unknown>;
 };
 
 export function EstimateChangesLayer({
@@ -86,7 +87,6 @@ export function EstimateChangesLayer({
             order={o}
             canWrite={canWrite}
             onApprove={() => {
-              // Clarity R: money confirm перед одобрением дельты
               showActionConfirm({
                 title: 'Согласовать доп. работу?',
                 message: `«${o.title}» · ${formatRub(o.amount)} попадёт в смету и бюджет.`,
@@ -109,8 +109,6 @@ export function EstimateChangesLayer({
                       return;
                     }
 
-                    // Server decision is committed. Notification and refresh are
-                    // follow-up work and must not turn it into a false rejection.
                     try {
                       notifyBudgetDelta(o, result?.document_id);
                     } catch (error) {

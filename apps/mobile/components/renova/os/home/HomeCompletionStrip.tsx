@@ -7,6 +7,7 @@ import { HomeLinkRow } from '@/components/renova/os/HomeLinkRow';
 import { exportExpensesCsvFile } from '@/lib/exportExpensesCsv';
 import type { OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
+import { warrantyRoute } from '@/lib/navigation/navigationPolicy';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
@@ -16,7 +17,7 @@ type Props = {
 };
 
 export function HomeCompletionLinks({ role, userId, projectId }: Props) {
-  const { pushScreen } = useOsNavFromHere(role);
+  const { pushScreen, pushNav } = useOsNavFromHere(role);
   const { user, activeProject } = useRenova();
   const [busy, setBusy] = useState(false);
 
@@ -36,8 +37,9 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
 
   return (
     <>
-      {/* W55: closeout/warranty в Document Center — главный финал, не только KPI PDF */}
+      {/* Closeout и гарантия остаются в своих канонических центрах, но имеют явные entry points. */}
       <HomeLinkRow title="Закрытие и документы" onPress={() => pushScreen('/documents')} />
+      <HomeLinkRow title="Гарантия после сдачи" onPress={() => pushNav(warrantyRoute(role, { source: 'home-completion' }))} />
       <HomeLinkRow title="Отчёты проекта" onPress={() => pushScreen('/reports')} />
       <HomeLinkRow
         title={busy ? 'Дайджест…' : 'Недельный дайджест'}
@@ -46,7 +48,6 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
           setBusy(true);
           api.pushWeeklyDigest(userId, projectId)
             .then(async (res) => {
-              // W97: уведомления/inbox после дайджеста
               await syncProjectSideEffects({
                 user: user ?? ({ id: userId } as any),
                 project: activeProject ?? ({ id: projectId } as any),

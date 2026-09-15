@@ -224,7 +224,12 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={s.backdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel="Закрыть" />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть"
+          />
           <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
             <ScrollView
               style={s.menuScroll}
@@ -323,27 +328,16 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
                 <View style={s.divider} />
                 <Pressable
-                  style={s.item}
+                  style={s.createRow}
                   onPress={() => {
                     setOpen(false);
-                    pushTab('object', 'profile');
+                    setTimeout(() => pushTab('/projects'), 0);
                   }}
+                  accessibilityRole="button"
                 >
-                  <Ionicons name="create-outline" size={18} color={RenovaTheme.colors.textMuted} />
-                  <Text style={s.itemT}>Данные объекта</Text>
+                  <Ionicons name="add-circle-outline" size={20} color={RenovaTheme.colors.accent} />
+                  <Text style={s.createText}>Новый объект</Text>
                 </Pressable>
-                {bucket === 'active' ? (
-                  <Pressable
-                    style={s.item}
-                    onPress={() => {
-                      setOpen(false);
-                      pushScreen('/wizard/type');
-                    }}
-                  >
-                    <Ionicons name="add-circle-outline" size={18} color={RenovaTheme.colors.accent} />
-                    <Text style={[s.itemT, { color: RenovaTheme.colors.accent }]}>Новый проект</Text>
-                  </Pressable>
-                ) : null}
               </View>
             </ScrollView>
           </View>
@@ -354,102 +348,40 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 }
 
 const s = StyleSheet.create({
-  btn: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    backgroundColor: RenovaTheme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
+  btn: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   countBadge: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    minWidth: 14,
-    height: 14,
-    borderRadius: 7,
+    position: 'absolute', right: 1, top: 1, minWidth: 17, height: 17, borderRadius: 8.5,
+    paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center',
     backgroundColor: RenovaTheme.colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
+    borderWidth: 2, borderColor: RenovaTheme.colors.background,
   },
-  countBadgeT: { color: RenovaTheme.colors.surface, fontSize: 8, fontWeight: '800' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
-  menuWrap: {
-    position: 'absolute',
-    top: 0,
-    right: 12,
-    left: 12,
-    alignItems: 'flex-end',
-    maxHeight: '85%',
-    overflow: 'hidden',
-  },
-  menuScroll: {
-    maxWidth: 340,
-    width: '100%',
-    flex: 1,
-    flexShrink: 1,
-    minHeight: 0,
-    maxHeight: 640,
-  },
-  menuScrollIn: { alignItems: 'flex-end' },
+  countBadgeT: { fontSize: 9, fontWeight: '900', color: RenovaTheme.colors.textInverse },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' },
+  menuWrap: { alignItems: 'flex-end', paddingHorizontal: 12, maxHeight: '100%' },
+  menuScroll: { width: 330, maxWidth: '92%', maxHeight: '82%' },
+  menuScrollIn: { paddingBottom: 20 },
   menu: {
-    minWidth: 280,
-    maxWidth: 340,
-    width: '100%',
-    backgroundColor: RenovaTheme.colors.surface,
-    borderRadius: RenovaTheme.radius.md,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
+    backgroundColor: RenovaTheme.colors.surface, borderRadius: RenovaTheme.radius.lg, padding: 12,
+    borderWidth: 1, borderColor: RenovaTheme.colors.border,
+    ...RenovaTheme.shadow.card,
   },
-  menuHead: {
-    ...screenTypography.section,
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  sectionHead: {
-    ...screenTypography.section,
-    color: RenovaTheme.colors.textSubtle,
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 4,
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  sectionHeadGap: { marginTop: 4, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.borderLight },
-  itemWrap: { paddingBottom: 4, position: 'relative', minHeight: 72 },
-  item: { position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
-  portfolioItem: { backgroundColor: RenovaTheme.colors.borderLight },
-  itemOn: { backgroundColor: RenovaTheme.colors.infoBg },
-  itemBody: { flex: 1, minWidth: 0, paddingRight: 8 },
-  itemWithActions: { paddingBottom: 36 },
-  itemStatus: { alignSelf: 'flex-start', marginTop: 2 },
-  itemTitle: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
+  menuHead: { ...screenTypography.title, fontSize: 16, marginBottom: 8 },
+  sectionHead: { ...screenTypography.caption, fontWeight: '800', textTransform: 'uppercase', marginBottom: 4, marginTop: 2 },
+  sectionHeadGap: { marginTop: 12 },
+  itemWrap: { borderRadius: RenovaTheme.radius.md, marginBottom: 3 },
+  itemWithActions: { paddingRight: 76 },
+  item: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: RenovaTheme.radius.md },
+  itemOn: { backgroundColor: RenovaTheme.colors.accentSoft },
+  itemBody: { flex: 1, minWidth: 0 },
+  itemTitle: { ...screenTypography.body, fontWeight: '700', color: RenovaTheme.colors.text },
   itemTitleOn: { color: RenovaTheme.colors.accent },
-  itemMeta: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2, lineHeight: 16 },
-  itemProgress: { fontSize: 11, color: RenovaTheme.colors.textSubtle, marginTop: 4 },
-  itemT: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
-  divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 6, marginHorizontal: 12 },
-  emptyTrashBtn: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    paddingVertical: 8,
-    borderRadius: RenovaTheme.radius.sm,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.dangerBorder,
-    alignItems: 'center',
-  },
-  emptyTrashT: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.danger },
-  emptyBucket: { fontSize: 12, color: RenovaTheme.colors.textMuted, paddingHorizontal: 16, paddingVertical: 8 },
+  itemMeta: { ...screenTypography.caption, color: RenovaTheme.colors.textMuted, marginTop: 1 },
+  itemProgress: { ...screenTypography.caption, color: RenovaTheme.colors.textSecondary, marginTop: 2, fontWeight: '600' },
+  portfolioItem: { borderWidth: 1, borderColor: RenovaTheme.colors.border, marginBottom: 3 },
+  divider: { height: 1, backgroundColor: RenovaTheme.colors.border, marginVertical: 8 },
+  createRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 10 },
+  createText: { ...screenTypography.body, fontWeight: '700', color: RenovaTheme.colors.accent },
+  emptyBucket: { ...screenTypography.caption, color: RenovaTheme.colors.textMuted, paddingHorizontal: 10, paddingVertical: 16 },
+  emptyTrashBtn: { alignSelf: 'flex-start', marginHorizontal: 10, marginBottom: 6, paddingVertical: 5, paddingHorizontal: 9, borderRadius: 8, backgroundColor: RenovaTheme.colors.dangerSoft },
+  emptyTrashT: { ...screenTypography.caption, color: RenovaTheme.colors.danger, fontWeight: '800' },
 });

@@ -1,0 +1,48 @@
+name: Chat thread recovery integrity
+
+on:
+  pull_request:
+    paths:
+      - 'backend/app/api/v1/chat_thread_creation_integrity.py'
+      - 'backend/app/api/v1/chats.py'
+      - 'backend/app/api/v1/router.py'
+      - 'backend/tests/test_chat_thread_creation_idempotency.py'
+      - 'backend/tests/test_chat_thread_route_registration.py'
+      - 'apps/mobile/lib/api/chats.ts'
+      - 'apps/mobile/lib/api/failurePolicy.ts'
+      - '.github/workflows/chat-thread-recovery-integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/app/api/v1/chat_thread_creation_integrity.py'
+      - 'backend/app/api/v1/chats.py'
+      - 'backend/app/api/v1/router.py'
+      - 'apps/mobile/lib/api/chats.ts'
+      - '.github/workflows/chat-thread-recovery-integrity.yml'
+
+concurrency:
+  group: chat-thread-recovery-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chat-thread-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Chat thread create exactly once
+        working-directory: backend
+        run: pytest -q tests/test_chat_thread_creation_idempotency.py tests/test_chat_thread_route_registration.py
+      - name: Mobile chat contract typecheck
+        run: npm run typecheck:mobile
