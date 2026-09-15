@@ -40,6 +40,13 @@ const CLASSIFIED_API_MODULES = new Set([
   'workSchedule',
 ]);
 
+/**
+ * Infrastructure modules may contain transport-level writes without owning a
+ * business-object lifecycle. Keep this set explicit so a new mutating module
+ * still fails closed instead of being silently ignored.
+ */
+const INFRASTRUCTURE_API_MODULES = new Set(['client']);
+
 type LatentClassification =
   | 'EXPOSE_NOW'
   | 'EXPOSE_AFTER_FIX'
@@ -82,7 +89,9 @@ const mutatingModules = readdirSync(apiDir)
   .map((name) => name.replace(/\.ts$/, ''))
   .sort();
 
-const unclassifiedMutatingModules = mutatingModules.filter((name) => !CLASSIFIED_API_MODULES.has(name));
+const unclassifiedMutatingModules = mutatingModules.filter(
+  (name) => !CLASSIFIED_API_MODULES.has(name) && !INFRASTRUCTURE_API_MODULES.has(name),
+);
 if (unclassifiedMutatingModules.length) {
   throw new Error(
     `Mutating mobile API modules missing lifecycle classification: ${unclassifiedMutatingModules.join(', ')}`,
@@ -96,6 +105,21 @@ for (const moduleName of CLASSIFIED_API_MODULES) {
   if (!inventory.includes(`\`${moduleName}.ts\``)) {
     throw new Error(`Lifecycle inventory missing API module documentation: ${moduleName}.ts`);
   }
+}
+
+for (const moduleName of INFRASTRUCTURE_API_MODULES) {
+  if (!inventory.includes(`\`${moduleName}.ts\``)) {
+    throw new Error(`Lifecycle inventory missing API infrastructure documentation: ${moduleName}.ts`);
+  }
+}
+
+// client.ts owns transport/session refresh only; domain writers belong in classified modules.
+const clientSource = readFileSync(resolve(apiDir, 'client.ts'), 'utf8');
+const clientMutationMatches = clientSource.match(new RegExp(mutationPattern.source, 'g')) ?? [];
+if (clientMutationMatches.length !== 1 || !clientSource.includes('/api/v1/auth/refresh')) {
+  throw new Error(
+    'api/client.ts mutation surface drifted: expected only the transport-level /api/v1/auth/refresh POST',
+  );
 }
 
 const latentRoutes = RENOVA_ROUTES
