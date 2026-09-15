@@ -17,6 +17,7 @@ import { SearchFilter } from '@/components/renova/SearchFilter';
 import { CreateRoomSheet } from '@/components/renova/CreateRoomSheet';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { api, Room, RoomChangeRequest, isRateLimitError } from '@/lib/api';
+import type { RoomAuthority } from '@/lib/api/rooms';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { roomChangeStatusLabel } from '@/constants/labels';
@@ -46,6 +47,8 @@ type CustomerListResource<T> = {
   hasConfirmed: boolean;
 };
 
+type CustomerRoomMode = 'direct' | 'request' | 'blocked';
+
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
 
 export function OsRoomsScreen({ role, onNextTab }: { role: OsRole; onNextTab?: (tab: ObjectTabId) => void }) {
@@ -68,6 +71,12 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
     data: [],
     hasConfirmed: false,
   });
+  const [authorityResource, setAuthorityResource] = useState<CustomerListResource<RoomAuthority | null>>({
+    key: '',
+    status: 'loading',
+    data: null,
+    hasConfirmed: false,
+  });
   const [query, setQuery] = useState('');
   const [roomFilter, setRoomFilter] = useState('active');
 
@@ -75,6 +84,7 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
   const projectId = activeProject?.id;
   const roomsContextKey = `${userId ?? 'signed-out'}:${projectId ?? 'no-project'}:${roomFilter}`;
   const requestsContextKey = `${userId ?? 'signed-out'}:${projectId ?? 'no-project'}`;
+  const authorityContextKey = requestsContextKey;
 
   const reloadRooms = useCallback(async () => {
     if (!userId || !projectId) return;
@@ -87,10 +97,14 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
     setRequestsResource((previous) => previous.key === requestsKey
       ? { ...previous, status: 'loading' }
       : { key: requestsKey, status: 'loading', data: [], hasConfirmed: false });
+    setAuthorityResource((previous) => previous.key === requestsKey
+      ? { ...previous, status: 'loading' }
+      : { key: requestsKey, status: 'loading', data: null, hasConfirmed: false });
 
-    const [roomsResult, requestsResult] = await Promise.allSettled([
+    const [roomsResult, requestsResult, authorityResult] = await Promise.allSettled([
       api.listRooms(userId, projectId, { archived: roomFilter === 'archive' }),
       api.listRoomChangeRequests(userId, projectId),
+      api.roomAuthority(userId, projectId),
     ] as const);
 
     if (roomsResult.status === 'fulfilled') {
@@ -115,6 +129,17 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
         ? { ...previous, status: 'error' }
         : previous);
     }
+
+    if (authorityResult.status === 'fulfilled') {
+      setAuthorityResource((previous) => previous.key === requestsKey
+        ? { key: requestsKey, status: 'loaded', data: authorityResult.value, hasConfirmed: true }
+        : previous);
+    } else {
+      reportError('rooms.customer.roomAuthority', authorityResult.reason, { userId, projectId });
+      setAuthorityResource((previous) => previous.key === requestsKey
+        ? { ...previous, status: 'error' }
+        : previous);
+    }
   }, [userId, projectId, roomFilter]);
 
   useEffect(() => {
@@ -128,6 +153,15 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
   const requestsState = requestsResource.key === requestsContextKey
     ? requestsResource
     : { key: requestsContextKey, status: 'loading' as const, data: [] as RoomChangeRequest[], hasConfirmed: false };
+  const authorityState = authorityResource.key === authorityContextKey
+    ? authorityResource
+    : { key: authorityContextKey, status: 'loading' as const, data: null as RoomAuthority | null, hasConfirmed: false };
+  const authority = authorityState.status === 'loaded' ? authorityState.data : null;
+  const roomMode: CustomerRoomMode = authority?.change_request_required
+    ? 'request'
+    : authority?.direct_edit_allowed
+      ? 'direct'
+      : 'blocked';
 
   const filtered = roomsState.data
     .filter((r) => !query || r.name.toLowerCase().includes(query.toLowerCase()))
@@ -140,33 +174,44 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
         <ObjectTabGuide tab="rooms" onNextTab={onNextTab} />
-        {!activeProject.contractor_id && (
+        {authorityState.status === 'error' ? (
+          <InfoBanner
+            tone="warning"
+            title="Режим редактирования не подтверждён"
+            message="Комнаты доступны для просмотра, но изменение временно заблокировано до проверки полномочий."
+          />
+        ) : null}
+        {authority && !authority.has_active_executor ? (
           <InfoBanner
             tone="info"
             title="Исполнитель не подключён"
             message="Пока подрядчика нет — вы можете редактировать комнаты сами. После подключения изменения только через запрос."
           />
-        )}
-        {!activeProject.contractor_id ? (
-          <PrimaryButton
-            title="→ Подключить исполнителя"
-            variant="outline"
-            onPress={() =>
-              pushOsNav(customerProfileTabHref('customer', 'contractor'), nav.from, 'customer')
-            }
-          />
-        ) : (
-          <PrimaryButton
-            title="→ Ход работ и этапы"
-            variant="outline"
-            onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from, 'customer')}
-          />
-        )}
+        ) : null}
+        {authority ? (
+          !authority.has_active_executor ? (
+            <PrimaryButton
+              title="→ Подключить исполнителя"
+              variant="outline"
+              onPress={() =>
+                pushOsNav(customerProfileTabHref('customer', 'contractor'), nav.from, 'customer')
+              }
+            />
+          ) : (
+            <PrimaryButton
+              title="→ Ход работ и этапы"
+              variant="outline"
+              onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from, 'customer')}
+            />
+          )
+        ) : null}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
         <Text style={styles.hint}>
-          {activeProject.contractor_id
+          {authority?.has_active_executor
             ? 'Откройте комнату для паспорта, расходов и запроса изменений.'
-            : 'Откройте комнату для паспорта, размеров и связанных данных.'}
+            : authority
+              ? 'Откройте комнату для паспорта, размеров и связанных данных.'
+              : 'Проверяем актуальный режим редактирования комнат…'}
         </Text>
         {roomsState.status === 'error' ? (
           <>
@@ -193,7 +238,7 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
               <RoomRequestCard
                 key={room.id}
                 room={room}
-                requestOnly={!!activeProject.contractor_id}
+                mode={roomMode}
                 onOpen={() => nav.room(room.id)}
                 onSubmit={async (message, payload) => {
                   try {
@@ -495,12 +540,12 @@ function RoomRequestCard({
   room,
   onOpen,
   onSubmit,
-  requestOnly,
+  mode,
 }: {
   room: Room;
   onOpen: () => void;
   onSubmit: (msg: string, payload: Record<string, unknown>) => Promise<boolean>;
-  requestOnly?: boolean;
+  mode: CustomerRoomMode;
 }) {
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
@@ -540,7 +585,7 @@ function RoomRequestCard({
       >
         <Text style={styles.link}>Расходы по комнате →</Text>
       </Pressable>
-      {canWrite && requestOnly && (
+      {canWrite && mode === 'request' && (
         <View style={styles.requestBlock}>
           <TextInput
             style={styles.input}
@@ -558,8 +603,11 @@ function RoomRequestCard({
           />
         </View>
       )}
-      {canWrite && !requestOnly && (
+      {canWrite && mode === 'direct' && (
         <Text style={styles.meta}>Редактирование — в карточке комнаты</Text>
+      )}
+      {canWrite && mode === 'blocked' && (
+        <Text style={styles.meta}>Редактирование временно недоступно до подтверждения полномочий</Text>
       )}
     </View>
   );

@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import Room, RoomChangeLog, User
+from app.models.entities import Room, RoomChangeLog, User, UserRole
 from app.schemas.project import RoomInput, RoomOut, RoomUpdate
+from app.services import room_authority_service as authority
 from app.services import room_mutation_service as mutations
 from app.services import room_service
 
@@ -27,7 +28,7 @@ def _mutation_error(error: ValueError) -> HTTPException:
             403,
             detail={
                 "code": code,
-                "message": "Заказчик отправляет изменения через запрос комнаты; напрямую редактирует исполнитель",
+                "message": "Прямое редактирование комнаты недоступно для текущей роли и состояния объекта",
             },
         )
     if code == "idempotency_conflict":
@@ -61,6 +62,36 @@ async def list_rooms(
         for room in project.rooms
         if bool(getattr(room, "is_archived", False)) == archived
     ]
+
+
+@router.get("/{project_id}/rooms/authority")
+async def room_authority(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the same room authority used by the mutation boundary.
+
+    Mobile must not infer execution handoff from the legacy ``contractor_id``
+    field because active independent ProjectParticipant principals also transfer
+    customer edits to the change-request workflow.
+    """
+    project = await require_project(db, project_id, user, write=False)
+    descriptor = await authority.describe_room_authority(
+        db,
+        project=project,
+        actor=user,
+    )
+    owner_request_mode = (
+        user.role == UserRole.customer
+        and project.customer_id == user.id
+        and descriptor.has_active_executor
+    )
+    return {
+        "has_active_executor": descriptor.has_active_executor,
+        "direct_edit_allowed": descriptor.direct_edit_allowed,
+        "change_request_required": owner_request_mode,
+    }
 
 
 @router.patch("/{project_id}/rooms/{room_id}", response_model=RoomOut)

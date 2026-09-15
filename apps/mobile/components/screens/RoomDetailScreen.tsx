@@ -23,6 +23,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, type User, Room, RoomSnapshot, ReceiptItem, OsExpense, MaterialPick, Purchase } from '@/lib/api';
+import type { RoomAuthority } from '@/lib/api/rooms';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
@@ -30,6 +31,7 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type RoomMutation = 'archive' | 'save' | 'materials';
 type RoomLoadState = 'loading' | 'ready' | 'error';
+type AuthorityLoadState = 'loading' | 'ready' | 'error';
 
 export function RoomDetailScreen() {
   const { id, returnTo, overrun } = useLocalSearchParams<{ id: string; returnTo?: string; overrun?: string }>();
@@ -40,6 +42,8 @@ export function RoomDetailScreen() {
   const [history, setHistory] = useState<{field:string;old:string;new:string;at:string}[]>([]);
   const [room, setRoom] = useState<Room | null>(null);
   const [loadState, setLoadState] = useState<RoomLoadState>('loading');
+  const [roomAuthority, setRoomAuthority] = useState<RoomAuthority | null>(null);
+  const [authorityLoadState, setAuthorityLoadState] = useState<AuthorityLoadState>('loading');
   const [len, setLen] = useState(''); const [wid, setWid] = useState(''); const [hei, setHei] = useState('3');
   const [outlets, setOutlets] = useState('0'); const [plumbing, setPlumbing] = useState('0'); const [switches, setSwitches] = useState('0');
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
@@ -54,7 +58,14 @@ export function RoomDetailScreen() {
   const contextRef = useRef<{ userId: string | null; projectId: string | null }>({ userId: null, projectId: null });
   contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
   const isContractor = user?.role === 'contractor';
-  const ownerCanEdit = !isContractor && !activeProject?.contractor_id && canWrite && !readOnly;
+  const ownerCanEdit = !isContractor
+    && authorityLoadState === 'ready'
+    && roomAuthority?.direct_edit_allowed === true
+    && canWrite
+    && !readOnly;
+  const customerRequestOnly = !isContractor
+    && authorityLoadState === 'ready'
+    && roomAuthority?.change_request_required === true;
   const role = isContractor ? 'contractor' : 'customer';
   const busy = mutation !== null;
   const preview = useMemo(() => calcRoomMetrics(+len || 0, +wid || 0, +hei || 2.7, room?.openings_sq_m ?? 2), [len, wid, hei, room?.openings_sq_m]);
@@ -76,6 +87,19 @@ export function RoomDetailScreen() {
     const projectId = activeProject?.id;
     if (!actor || !projectId || !id) return;
     setLoadState((current) => current === 'ready' ? current : 'loading');
+    setAuthorityLoadState('loading');
+    api.roomAuthority(actor.id, projectId)
+      .then((nextAuthority) => {
+        if (contextRef.current.userId !== actor.id || contextRef.current.projectId !== projectId) return;
+        setRoomAuthority(nextAuthority);
+        setAuthorityLoadState('ready');
+      })
+      .catch((error) => {
+        reportError('components.screens.RoomDetailScreen.RoomAuthority', error, { userId: actor.id, projectId });
+        if (contextRef.current.userId !== actor.id || contextRef.current.projectId !== projectId) return;
+        setRoomAuthority(null);
+        setAuthorityLoadState('error');
+      });
     try {
       const activeRooms = await api.listRooms(actor.id, projectId, { archived: false });
       let nextRoom = activeRooms.find((candidate) => candidate.id === id) ?? null;
@@ -114,6 +138,8 @@ export function RoomDetailScreen() {
     setRoom(null);
     setRoomSnap(null);
     setHistory([]);
+    setRoomAuthority(null);
+    setAuthorityLoadState('loading');
     setLoadState('loading');
   }, [activeProject?.id, id]);
   useEffect(() => { if (room) snapshotRoom(room).catch(reportCatch('components.screens.RoomDetailScreen.6')); }, [room?.id, room?.outlets_count]);
@@ -179,6 +205,15 @@ export function RoomDetailScreen() {
 
   const save = async (body: object) => {
     if (!user || !activeProject || !room) return;
+    if (!isContractor && !ownerCanEdit) {
+      showActionConfirm({
+        title: customerRequestOnly ? 'Изменение через запрос' : 'Редактирование недоступно',
+        message: customerRequestOnly
+          ? 'После подключения исполнителя изменение комнаты оформляется запросом из списка комнат.'
+          : 'Не удалось подтвердить право на прямое редактирование. Обновите экран и повторите попытку.',
+      });
+      return;
+    }
     const actor = user;
     const projectId = activeProject.id;
     const roomId = room.id;
@@ -234,6 +269,12 @@ export function RoomDetailScreen() {
     <>
       <BackHeader title={room.name} subtitle={`${roomTypeLabel(room.room_type)}${room.floor_level && room.floor_level > 1 ? ` · ${room.floor_level} эт.` : ''}${room.is_archived ? ' · Архив' : ''}`} returnTo={returnTo} />
       <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+        {!isContractor && authorityLoadState === 'error' && (
+          <View style={s.warn}>
+            <Text style={s.warnT}>Режим редактирования не подтверждён</Text>
+            <Text style={s.line}>Комната доступна для просмотра, но прямое изменение заблокировано до обновления полномочий.</Text>
+          </View>
+        )}
         {isContractor && canWrite && (
           <PrimaryButton
             title={room.is_archived ? 'Восстановить из архива' : 'В архив'}
@@ -317,12 +358,16 @@ export function RoomDetailScreen() {
             </View>)}
             {(isContractor || ownerCanEdit) && (<View style={s.card}><Text style={s.h}>Габариты</Text>
               <Field label="Длина" value={len} onChange={setLen} /><Field label="Ширина" value={wid} onChange={setWid} /><Field label="Высота" value={hei} onChange={setHei} />
-              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
+              <PrimaryButton disabled={!canWrite || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
             </View>)}
             <View style={s.card}><Text style={s.h}>Инженерия</Text>
               {(isContractor || ownerCanEdit) ? (<><Field label="Розетки" value={outlets} onChange={setOutlets} /><Field label="Сантехника" value={plumbing} onChange={setPlumbing} />
-              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
-              : <Text style={s.line}>Розетки {room.outlets_count} · сантехника {room.plumbing_points}. Изменения — через запрос исполнителю.</Text>}
+              <PrimaryButton disabled={!canWrite || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
+              : <Text style={s.line}>{customerRequestOnly
+                  ? `Розетки ${room.outlets_count} · сантехника ${room.plumbing_points}. Изменения — через запрос исполнителю из списка комнат.`
+                  : authorityLoadState === 'loading'
+                    ? 'Проверяем актуальное право на изменение комнаты…'
+                    : 'Прямое редактирование недоступно, пока право не подтверждено.'}</Text>}
             </View>
             {lines.length > 0 && <View style={s.card}><Text style={s.h}>Смета</Text>
               {lines.map(l => (
