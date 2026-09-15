@@ -6,6 +6,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User, FloorPlan, FloorPlanPin, FurnitureItem, Room, ProjectIssue
 from app.services import activity_service as act
+from app.services.project_media_acl import assert_project_media_key_for_project
 
 router = APIRouter(prefix="/projects", tags=["floor-plans"])
 
@@ -86,6 +87,13 @@ async def list_plans(project_id: str, user: User = Depends(get_current_user), db
 @router.post("/{project_id}/floor-plans")
 async def create_plan(project_id: str, body: PlanIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
+    await assert_project_media_key_for_project(
+        db,
+        user,
+        body.image_key,
+        project_id=project_id,
+        write=True,
+    )
     p = FloorPlan(project_id=project_id, **body.model_dump())
     db.add(p); await db.commit(); await db.refresh(p)
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="plan", title=f"Планировка: {p.name}", link_path="/approvals")

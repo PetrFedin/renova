@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, ProjectIssue, UserRole
 from app.services import outbox_service as outbox
+from app.services.project_media_acl import parse_project_media_key
 
 ISSUE_TRANSITIONS: dict[str, set[str]] = {
     "open": {"in_progress", "fixed"},
@@ -87,6 +89,10 @@ async def create_issue(
     y_pct: float | None = None,
     photo_key: str | None = None,
 ) -> ProjectIssue:
+    if photo_key:
+        parsed = parse_project_media_key(photo_key)
+        if parsed is None or parsed.project_id != project_id:
+            raise HTTPException(404, "project_media_not_found")
     issue = ProjectIssue(
         project_id=project_id,
         room_id=room_id,

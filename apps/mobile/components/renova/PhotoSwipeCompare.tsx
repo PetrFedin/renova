@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { Modal, View, Text, Image, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { authHeaders } from '@/lib/api/client';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 type P = { id: string; caption: string | null; image_url?: string | null };
 export function PhotoSwipeCompare({ before, after, visible, onClose }: { before: P[]; after: P[]; visible: boolean; onClose: () => void }) {
+  const { user } = useRenova();
   const [idx, setIdx] = useState(0);
   const pool = [...before.map(p=>({...p, tag:'До'})), ...after.map(p=>({...p, tag:'После'}))];
   const cur = pool[idx];
@@ -12,7 +15,13 @@ export function PhotoSwipeCompare({ before, after, visible, onClose }: { before:
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <View style={s.wrap}>
         <Pressable onPress={onClose}><Text style={s.close}>✕ Закрыть</Text></Pressable>
-        {cur?.image_url ? <Image source={{ uri: cur.image_url }} style={s.img} resizeMode="contain" /> : <Text style={s.empty}>Нет фото</Text>}
+        {cur?.image_url ? (
+          <Image
+            source={{ uri: cur.image_url, ...(user ? { headers: authHeaders(user.id) } : {}) }}
+            style={s.img}
+            resizeMode="contain"
+          />
+        ) : <Text style={s.empty}>Нет фото</Text>}
         <Text style={s.cap}>{cur?.tag}: {cur?.caption || 'Фото'}</Text>
         <View style={s.nav}>
           <Pressable onPress={() => setIdx(i => Math.max(0, i-1))}><Text style={s.btn}>←</Text></Pressable>

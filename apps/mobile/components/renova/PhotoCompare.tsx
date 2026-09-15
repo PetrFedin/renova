@@ -1,18 +1,22 @@
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { authHeaders } from '@/lib/api/client';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 type Photo = { id: string; caption: string | null; image_url?: string | null };
 
 export function PhotoCompare({ before, after }: { before: Photo[]; after: Photo[] }) {
+  const { user } = useRenova();
   const b = before[0];
   const a = after[0];
+  const source = (uri: string) => ({ uri, ...(user ? { headers: authHeaders(user.id) } : {}) });
   if (!b && !a) return null;
   return (
     <View style={s.wrap}>
       <Text style={s.head}>Сравнение до / после</Text>
       <View style={s.row}>
-        <View style={s.col}>{b?.image_url ? <Image source={{ uri: b.image_url }} style={s.img} /> : <Text style={s.empty}>Нет «до»</Text>}<Text style={s.cap}>До</Text></View>
-        <View style={s.col}>{a?.image_url ? <Image source={{ uri: a.image_url }} style={s.img} /> : <Text style={s.empty}>Нет «после»</Text>}<Text style={s.cap}>После</Text></View>
+        <View style={s.col}>{b?.image_url ? <Image source={source(b.image_url)} style={s.img} /> : <Text style={s.empty}>Нет «до»</Text>}<Text style={s.cap}>До</Text></View>
+        <View style={s.col}>{a?.image_url ? <Image source={source(a.image_url)} style={s.img} /> : <Text style={s.empty}>Нет «после»</Text>}<Text style={s.cap}>После</Text></View>
       </View>
     </View>
   );

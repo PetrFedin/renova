@@ -1,12 +1,14 @@
 from app.core.timeutil import utc_now
 import json
 from datetime import date, datetime
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.entities import Stage, StageComment, StagePhoto, StageStatus
 from app.services import storage_service as storage_svc
 from app.services import notification_service as notif_svc
+from app.services.project_media_acl import parse_project_media_key
 
 
 def parse_room_ids(stage: Stage) -> list[str]:
@@ -50,16 +52,30 @@ async def add_comment(db: AsyncSession, stage_id: str, user_id: str, role: str, 
 
 
 async def add_photo(db: AsyncSession, stage_id: str, user_id: str, image_data: str | None, caption: str | None, *, storage_key: str | None = None, image_url: str | None = None) -> StagePhoto:
-    if storage_key and image_url:
-        key, url = storage_key, image_url
+    stage = await db.get(Stage, stage_id)
+    if not stage:
+        raise HTTPException(404, "Этап не найден")
+
+    if storage_key:
+        parsed = parse_project_media_key(storage_key)
+        if parsed is None or parsed.project_id != stage.project_id:
+            raise HTTPException(404, "project_media_not_found")
+        key = storage_svc.normalize_storage_key(storage_key)
+        from app.core.config import settings
+        url = f"{settings.public_base_url}/api/v1/media/{key}"
     elif image_data and (image_data.startswith('http') or '/media/' in image_data):
         key = image_data.split('/media/')[-1] if '/media/' in image_data else image_data.rsplit('/', 1)[-1]
-        url = image_data if image_data.startswith('http') else f"{storage_svc.settings.public_base_url if False else ''}"
+        parsed = parse_project_media_key(key)
+        if parsed is None or parsed.project_id != stage.project_id:
+            raise HTTPException(404, "project_media_not_found")
+        key = storage_svc.normalize_storage_key(key)
         from app.core.config import settings
-        url = image_data if image_data.startswith('http') else f"{settings.public_base_url}/api/v1/media/{key}"
-        key = key if '/' in key else f"photos/{key}"
+        url = f"{settings.public_base_url}/api/v1/media/{key}"
     else:
-        key, url = await storage_svc.save_image(image_data or '', folder="stages")
+        key, url = await storage_svc.save_image(
+            image_data or '',
+            folder=f"project-media/{stage.project_id}",
+        )
     p = StagePhoto(stage_id=stage_id, user_id=user_id, caption=caption, storage_key=key, image_url=url)
     db.add(p)
     await db.commit()
