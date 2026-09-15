@@ -1,4 +1,4 @@
-"""Authenticated media download and project-scoped upload intents."""
+"""Authenticated media download and project/thread-scoped upload intents."""
 from __future__ import annotations
 
 import mimetypes
@@ -16,6 +16,12 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import storage_service as storage_svc
+from app.services.chat_media_acl import (
+    assert_chat_media_access,
+    assert_legacy_chat_media_access,
+    is_legacy_chat_media_key,
+    parse_chat_media_key,
+)
 from app.services.document_media_acl import (
     assert_document_media_access,
     parse_document_media_key,
@@ -130,7 +136,7 @@ async def _authorize_media_read(
     authorization: str | None,
     x_user_id: str | None,
 ) -> bool:
-    """Return whether this key is project-private and enforce its read ACL."""
+    """Return whether this key is private and enforce its owning-domain ACL."""
     if parse_document_media_key(key) is not None:
         user = await _user_from_auth(db, authorization, x_user_id)
         await assert_document_media_access(db, user, key, write=False)
@@ -139,9 +145,17 @@ async def _authorize_media_read(
         user = await _user_from_auth(db, authorization, x_user_id)
         await assert_project_media_access(db, user, key, write=False)
         return True
+    if parse_chat_media_key(key) is not None:
+        user = await _user_from_auth(db, authorization, x_user_id)
+        await assert_chat_media_access(db, user, key)
+        return True
     if is_legacy_project_media_key(key):
         user = await _user_from_auth(db, authorization, x_user_id)
         await assert_legacy_project_media_access(db, user, key, write=False)
+        return True
+    if is_legacy_chat_media_key(key):
+        user = await _user_from_auth(db, authorization, x_user_id)
+        await assert_legacy_chat_media_access(db, user, key)
         return True
     return False
 
