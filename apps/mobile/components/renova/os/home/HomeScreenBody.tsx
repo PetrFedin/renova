@@ -168,7 +168,7 @@ export function HomeScreenBody({
       {isVisible('schedule') ? (
         <HomeLinkRow title="График и сроки" onPress={() => pushTab('calendar')} />
       ) : null}
-      {!readOnly && phase !== 'setup' ? (
+      {!readOnly ? (
         <HomeLinkRow
           title={role === 'customer' ? 'Технадзор и контроль качества' : 'Контроль качества'}
           onPress={() => pushNav(repairTabRoute(role, 'control'))}
