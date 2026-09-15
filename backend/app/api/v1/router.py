@@ -28,6 +28,7 @@ from app.api.v1 import technical_supervision_actions
 from app.api.v1 import technical_supervision_chat
 from app.api.v1 import technical_supervision_schedule
 from app.api.v1 import warranty
+from app.api.v1 import issue_creation_integrity
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -95,7 +96,10 @@ api_router.include_router(ocr_worker.router)
 api_router.include_router(automation_worker.router)
 _EXPENSE_MUTATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/os/expenses/{expense_id}", "PATCH"), ("/projects/{project_id}/os/expenses/{expense_id}", "DELETE")}
 _remove_replaced_routes(os.router, _EXPENSE_MUTATION_ROUTES)
+_ISSUE_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/issues", "POST")}
+_remove_replaced_routes(os.router, _ISSUE_CREATION_ROUTES)
 api_router.include_router(expense_mutations.router)
+api_router.include_router(issue_creation_integrity.router)
 api_router.include_router(os.router)
 _PORTAL_CHANGE_ORDER_ROUTES: set[RouteSignature] = {("/portal/projects/{project_id}/change-orders/{order_id}/approve", "POST"), ("/portal/projects/{project_id}/change-orders/{order_id}/reject", "POST")}
 _PORTAL_ACCEPTANCE_ROUTES: set[RouteSignature] = {("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/accept", "POST"), ("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/return", "POST")}
