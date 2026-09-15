@@ -1,14 +1,15 @@
 """Lifecycle and provenance metadata for estimate lines.
 
-EstimateLine remains the commercial line identity. This sidecar keeps reversible
-remove/restore state and source provenance without turning quantity=0 or a hard
-DELETE into lifecycle semantics.
+Active commercial rows live in ``estimate_lines``. A user remove creates a
+lossless tombstone here before the active row is deleted; restore recreates the
+same estimate-line identity from that snapshot. This keeps legacy read models
+safe because inactive rows cannot accidentally participate in calculations.
 """
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timeutil import utc_now
@@ -32,14 +33,13 @@ class EstimateLineLifecycle(Base):
         ),
     )
 
-    estimate_line_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("estimate_lines.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
+    # Intentionally not a foreign key: the lifecycle row must survive while the
+    # active EstimateLine row is absent.
+    estimate_line_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     origin: Mapped[str] = mapped_column(String(16), default="manual", index=True)
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     removed_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
