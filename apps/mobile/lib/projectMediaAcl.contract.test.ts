@@ -46,10 +46,10 @@ must(
   'floor plan and punch media must use project-scoped upload and authenticated reads',
 );
 must(
-  stage.includes('uploadMediaBlob(\n            user.id,\n            activeProject.id,')
+  stage.includes('uploadMediaBlob(user.id, activeProject.id, blob')
     && !stage.includes('api.getUploadUrl(user.id)')
     && stage.includes('headers: authHeaders(user.id)'),
-  'stage photos must not use legacy upload-url and must authenticate reads',
+  'stage photos must use the project-scoped upload helper and authenticated reads',
 );
 must(
   qc.includes('headers: authHeaders(userId)')
