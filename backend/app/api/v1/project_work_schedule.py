@@ -6,7 +6,7 @@ from app.api.deps import get_current_user, require_project
 from app.core.timeutil import utc_now
 from app.db.session import get_db
 from app.models.entities import User
-from app.models.work_schedule import ProjectWorkSchedule, ProjectWorkScheduleItem
+from app.models.work_schedule import ProjectWorkSchedule, ProjectWorkScheduleItem, WorkScheduleStatus
 from app.schemas.project_work_schedule import (
     WorkScheduleCreateIn,
     WorkScheduleItemOut,
@@ -186,6 +186,18 @@ async def submit_project_work_schedule(
     schedule = await get_schedule(db, project_id=project.id, schedule_id=schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="work_schedule_not_found")
+    if not await can_manage_schedule(db, user, project):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_submit_schedule")
+    if schedule.status == WorkScheduleStatus.submitted:
+        return schedule
+    if schedule.status not in {WorkScheduleStatus.draft, WorkScheduleStatus.rejected}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "schedule_submit_transition_forbidden",
+                "message": "Подтверждённый или архивный график нельзя повторно отправить на согласование",
+            },
+        )
     return await submit_schedule(db, schedule=schedule, user=user)
 
 
@@ -200,6 +212,12 @@ async def confirm_project_work_schedule(
     schedule = await get_schedule(db, project_id=project.id, schedule_id=schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="work_schedule_not_found")
+    if user.id != project.customer_id:
+        raise HTTPException(status_code=403, detail="only_customer_can_confirm_schedule")
+    if schedule.status == WorkScheduleStatus.confirmed:
+        return schedule
+    if schedule.status != WorkScheduleStatus.submitted:
+        raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_confirm")
     return await confirm_schedule(db, project=project, schedule=schedule, user=user)
 
 
@@ -215,6 +233,20 @@ async def reject_project_work_schedule(
     schedule = await get_schedule(db, project_id=project.id, schedule_id=schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="work_schedule_not_found")
+    if user.id != project.customer_id:
+        raise HTTPException(status_code=403, detail="only_customer_can_reject_schedule")
+    if schedule.status == WorkScheduleStatus.rejected:
+        if (schedule.rejection_reason or None) == (body.reason or None):
+            return schedule
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "schedule_already_rejected",
+                "message": "График уже отклонён с другой причиной",
+            },
+        )
+    if schedule.status != WorkScheduleStatus.submitted:
+        raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_reject")
     return await reject_schedule(db, project=project, schedule=schedule, user=user, reason=body.reason)
 
 
