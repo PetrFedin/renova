@@ -1,6 +1,13 @@
 /** API: rooms */
 import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
+
+export type RoomAuthority = {
+  has_active_executor: boolean;
+  direct_edit_allowed: boolean;
+  change_request_required: boolean;
+};
 
 function roomCacheKey(projectId: string, archived: boolean | undefined): string {
   const scope = archived === true ? 'archived' : archived === false ? 'active' : 'default';
@@ -51,6 +58,8 @@ export const roomsApi = {
     }
   },
   listRoomsRaw: (userId: string, projectId: string) => req<Room[]>(`/api/v1/projects/${projectId}/rooms`, {}, userId),
+  roomAuthority: (userId: string, projectId: string) =>
+    req<RoomAuthority>(`/api/v1/projects/${projectId}/rooms/authority`, {}, userId),
   updateRoom: async (userId: string, projectId: string, roomId: string, body: object) => {
     try {
       return await req<Room>(`/api/v1/projects/${projectId}/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
@@ -62,15 +71,21 @@ export const roomsApi = {
     }
   },
   createRoom: async (userId: string, projectId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const requestBody = {
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('room'),
+    };
+    const serialized = JSON.stringify(requestBody);
     try {
-      return await req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: JSON.stringify(body) }, userId);
+      return await req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: serialized }, userId);
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/rooms`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
@@ -96,12 +111,18 @@ export const roomsApi = {
   listRoomChangeRequests: (userId: string, projectId: string) =>
     req<RoomChangeRequest[]>(`/api/v1/projects/${projectId}/room-change-requests`, {}, userId),
   createRoomChangeRequest: async (userId: string, projectId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const requestBody = {
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('room-change'),
+    };
+    const serialized = JSON.stringify(requestBody);
     try {
-      return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: JSON.stringify(body) }, userId);
+      return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: serialized }, userId);
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: JSON.stringify(body), userId });
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
     }
   },
