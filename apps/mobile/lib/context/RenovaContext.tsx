@@ -394,10 +394,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     if (p) {
       p = await syncCustomerBudgetOnLoad(u, p);
       assertSessionAuthorityCurrent(authority);
-      setReadOnly(!!p.read_only);
-      setActiveProject(p);
+      const resolvedProject = p;
+      setReadOnly(!!resolvedProject.read_only);
+      setActiveProject(resolvedProject);
       await withSessionAuthorityWrite(authority, async () => {
-        await AsyncStorage.setItem(KEYS.projectId, p.id);
+        await AsyncStorage.setItem(KEYS.projectId, resolvedProject.id);
         if (isDemoPhone(u.phone)) {
           await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
           await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
