@@ -32,5 +32,5 @@ jobs:
         run: npm ci
       - name: Install ${{ matrix.browser }}
         run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Verify role entry and primary product controls on deployed review stand
-        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-login.spec.ts e2e/review-deployed-product-smoke.spec.ts --reporter=line
+      - name: Verify roles, primary controls and surfaced capabilities on deployed review stand
+        run: npx playwright test -c e2e/playwright.config.ts e2e/review-deployed-login.spec.ts e2e/review-deployed-product-smoke.spec.ts e2e/review-deployed-capabilities.spec.ts --reporter=line
