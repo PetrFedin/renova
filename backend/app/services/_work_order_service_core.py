@@ -207,7 +207,7 @@ async def _validate_resource_refs(
             raise ValueError("work_order_stage_invalid")
 
 
-async def create_work_order(
+async def prepare_work_order(
     db: AsyncSession,
     *,
     project_id: str,
@@ -222,6 +222,7 @@ async def create_work_order(
     notes: str | None = None,
     publish: bool = False,
 ) -> WorkOrder:
+    """Prepare work, bound thread and durable activity without committing."""
     try:
         if not title.strip() or not work_type.strip():
             raise ValueError("work_order_fields_invalid")
@@ -276,11 +277,40 @@ async def create_work_order(
                 "link_path": f"/work-order/{work_order.id}",
             },
         )
-        await db.commit()
     except BaseException:
         await db.rollback()
         raise
 
+    return work_order
+
+
+async def create_work_order(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user_id: str,
+    title: str,
+    work_type: str,
+    room_id: str | None = None,
+    stage_id: str | None = None,
+    planned_start: date | None = None,
+    planned_end: date | None = None,
+    budget_planned: float = 0,
+    notes: str | None = None,
+    publish: bool = False,
+) -> WorkOrder:
+    """Compatibility entrypoint; composition must use prepare_work_order()."""
+    work_order = await prepare_work_order(
+        db, project_id=project_id, user_id=user_id, title=title,
+        work_type=work_type, room_id=room_id, stage_id=stage_id,
+        planned_start=planned_start, planned_end=planned_end,
+        budget_planned=budget_planned, notes=notes, publish=publish,
+    )
+    try:
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
     await db.refresh(work_order)
     await _dispatch_committed_effects(db, source="work_order.create")
     return work_order
