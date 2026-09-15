@@ -44,7 +44,7 @@ async def _fixture(db):
     )
     db.add(project)
     await db.flush()
-    room = Room(project_id=project.id, name="Kitchen", room_type="kitchen")
+    room = Room(project_id=project.id, name="Kitchen", room_type="kitchen", length_m=4, width_m=3)
     db.add(room)
     await db.flush()
     db.add_all(
